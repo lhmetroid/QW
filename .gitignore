@@ -1,0 +1,23 @@
+# Local test runs
+AI测试*/
+tests/
+test_*.py
+*_test.py
+
+# Local scratch/vendor archives outside the synced project folders
+scratch/
+sdk_win_v3/
+sdk_win_v3.zip
+
+# Python/runtime artifacts
+__pycache__/
+*.py[cod]
+*.log
+backend/logs/
+backend/seq_cursor.txt
+
+# Local secrets and machine-specific configuration
+.env
+.env.*
+*.pem
+docs/配置.txt

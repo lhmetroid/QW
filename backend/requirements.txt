@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic-settings
+requests
+sqlalchemy
+psycopg2-binary
+python-multipart
+pycryptodome
+pgvector
+pyodbc
+openpyxl
