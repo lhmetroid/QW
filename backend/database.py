@@ -150,6 +150,43 @@ class PricingRule(Base):
         Index("idx_pr_scope", "language_pair", "service_scope", "customer_tier"),
     )
 
+class KnowledgeCandidate(Base):
+    """知识候选池：承接销售反馈与历史资料抽取结果，编辑后再转为 draft 知识。"""
+    __tablename__ = "knowledge_candidate"
+
+    candidate_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    title = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    knowledge_type = Column(String(50), nullable=False, default="faq")
+    chunk_type = Column(String(50), nullable=False, default="faq")
+    business_line = Column(String(50), nullable=False, default="general")
+    sub_service = Column(String(80), nullable=True)
+    language_pair = Column(String(50), nullable=True)
+    service_scope = Column(String(80), nullable=True)
+    region = Column(String(80), nullable=True)
+    customer_tier = Column(String(80), nullable=True)
+    priority = Column(Integer, nullable=False, default=50)
+    risk_level = Column(String(20), nullable=False, default="medium")
+    effective_from = Column(DateTime, nullable=True)
+    effective_to = Column(DateTime, nullable=True)
+    pricing_rule = Column(JSON, nullable=True)
+    source_type = Column(String(50), nullable=False, default="feedback")
+    source_ref = Column(String(255), nullable=True)
+    source_snapshot = Column(JSON, nullable=True)
+    status = Column(String(20), nullable=False, default="candidate")
+    owner = Column(String(100), nullable=True)
+    operator = Column(String(100), nullable=True)
+    review_notes = Column(Text, nullable=True)
+    promoted_document_id = Column(UUID(as_uuid=False), ForeignKey("knowledge_document.document_id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_kcand_status_created", "status", "created_at"),
+        Index("idx_kcand_source", "source_type", "source_ref"),
+        Index("idx_kcand_business_type", "business_line", "knowledge_type"),
+    )
+
 class KnowledgeHitLog(Base):
     """知识检索命中日志：用于追溯命中、未命中和检索质量"""
     __tablename__ = "knowledge_hit_logs"
@@ -164,6 +201,13 @@ class KnowledgeHitLog(Base):
     scores = Column(JSON, nullable=True)
     no_hit_reason = Column(Text, nullable=True)
     status = Column(String(50), nullable=False, default="not_started")
+    retrieval_quality = Column(String(50), nullable=True)
+    confidence_score = Column(Numeric(8, 6), nullable=True)
+    insufficient_info = Column(Boolean, nullable=False, default=False)
+    manual_review_required = Column(Boolean, nullable=False, default=False)
+    final_response = Column(Text, nullable=True)
+    manual_feedback = Column(JSON, nullable=True)
+    feedback_status = Column(String(50), nullable=True)
     latency_ms = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 

@@ -23,6 +23,7 @@
             <div class="flex justify-between items-center">
                 <h1 class="font-bold text-lg text-slate-700">企微实时智能</h1>
                 <div class="flex space-x-2">
+                    <button onclick="openKnowledgeAdmin()" class="text-[10px] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-emerald-700 hover:bg-emerald-100">知识库</button>
                     <button onclick="openSettings()" class="text-[10px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-slate-600 hover:bg-slate-200">⚙️ 引擎配置</button>
                     <button onclick="seedData()" class="text-[10px] text-blue-500 hover:text-blue-700"> 重置 Mock</button>
                 </div>
@@ -263,14 +264,54 @@
                             ${data.has_v2 ? '🔄 重新演算金牌建议 (覆盖当前)' : (data.has_v1 ? '▶️ 立刻调用知识库进行话术辅助生成' : '⛔ 请先完成阶段一特征提取')}
                         </button>
                         <div class="ml-2 text-xs">
-                            <span class="text-amber-500 font-bold block mb-1">AI 建议回复文案与思路:</span> 
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-amber-500 font-bold">AI 建议回复文案与思路:</span>
+                                <span class="flex gap-1">
+                                    <button onclick='copyText(${JSON.stringify(data.sales_advice_v2 || '')})' class="px-2 py-1 bg-white border rounded text-[10px] text-slate-600">复制</button>
+                                    <button onclick="submitAssistFeedback('${userId}', 'useful')" class="px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-700">有用</button>
+                                    <button onclick="submitAssistFeedback('${userId}', 'needs_fix')" class="px-2 py-1 bg-rose-50 border border-rose-200 rounded text-[10px] text-rose-700">需修正</button>
+                                </span>
+                            </div>
                             <div class="font-medium text-amber-900 bg-white p-3 rounded-lg border border-amber-100 whitespace-pre-wrap leading-relaxed ${data.has_v2?'':'opacity-40'}">
                                 ${data.has_v2 ? data.sales_advice_v2 : '（空，等待大模型推演）'}
                             </div>
+                            ${data.knowledge_v2 ? renderAssistEvidence(data.knowledge_v2) : ''}
                         </div>
                     </div>
                 </div>
             `;
+        }
+
+        function renderAssistEvidence(knowledge) {
+            const hits = knowledge.hits || [];
+            const warning = knowledge.manual_review_required ? '<div class="mt-2 text-[10px] text-rose-700 font-bold">需要人工复核：知识证据不足或命中限制性规则</div>' : '';
+            return `
+                <details class="mt-3 bg-white border border-amber-100 rounded p-2">
+                    <summary class="cursor-pointer text-[10px] font-bold text-slate-500">知识证据 ${safeText(knowledge.status)} · 置信 ${safeText(knowledge.confidence_score)}</summary>
+                    ${warning}
+                    <div class="mt-2 space-y-2">${hits.length ? hits.map(hit => `
+                        <div class="border rounded p-2">
+                            <div class="font-bold">${safeText(hit.title)} <span class="text-slate-400">score ${safeText(hit.score)}</span></div>
+                            <div class="text-slate-500">${safeText(hit.knowledge_type_label || hit.knowledge_type)} · ${safeText(hit.business_line_label || hit.business_line)} · ${safeText(hit.service_scope_label || hit.service_scope)}</div>
+                            <div class="mt-1 line-clamp-3">${safeText(hit.content)}</div>
+                        </div>`).join('') : '<div class="text-slate-400">无命中证据</div>'}</div>
+                </details>`;
+        }
+
+        async function submitAssistFeedback(sessionId, status) {
+            const note = status === 'needs_fix' ? prompt('请填写需要修正的原因') : '';
+            const res = await fetch(`${API_BASE}/api/assist/feedback`, {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({session_id: sessionId, feedback_status: status, manual_feedback: {note: note || '', source: 'frontend_sidebar'}})
+            });
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            if (data.candidate?.candidate_id) {
+                alert(`反馈已记录，并已生成候选：${data.candidate.title}`);
+            } else {
+                alert('反馈已记录');
+            }
         }
 
         async function triggerLLM(userId, step) {
@@ -415,6 +456,885 @@
             } finally {
                 btn.innerText = '💾 强行保存并立即生效';
             }
+        }
+
+        let kbState = {
+            tab: 'documents',
+            dictionaries: {},
+            selectedDocumentId: null,
+            selectedCandidateId: null
+        };
+
+        function optionTags(dictName, selected = '') {
+            const dict = kbState.dictionaries[dictName] || {};
+            return `<option value="">全部</option>` + Object.entries(dict).map(([code, label]) =>
+                `<option value="${code}" ${code === selected ? 'selected' : ''}>${label}</option>`
+            ).join('');
+        }
+
+        function safeText(value) {
+            if (value === null || value === undefined || value === '') return '-';
+            return String(value).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+        }
+
+        function fmtStatus(item) {
+            return `<span class="text-[10px] px-2 py-0.5 rounded border bg-slate-50 text-slate-700">${safeText(item.status_label || item.status)}</span>`;
+        }
+
+        function rawText(value) {
+            if (value === null || value === undefined) return '';
+            return String(value);
+        }
+
+        async function copyText(text) {
+            try {
+                await navigator.clipboard.writeText(text || '');
+                alert('已复制');
+            } catch(e) {
+                alert('复制失败，请手动选择文本');
+            }
+        }
+
+        async function openKnowledgeAdmin() {
+            let overlay = document.getElementById('kb-modal');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'kb-modal';
+                overlay.className = 'fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center';
+                document.body.appendChild(overlay);
+                overlay.innerHTML = `
+                    <div class="bg-white w-[94vw] h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden">
+                        <div class="h-14 border-b px-5 flex items-center justify-between bg-slate-50">
+                            <div class="flex items-center gap-3">
+                                <h2 class="font-bold text-slate-800">知识库管理</h2>
+                                <div id="kb-tabs" class="flex flex-wrap gap-1 text-xs"></div>
+                            </div>
+                            <button onclick="document.getElementById('kb-modal').style.display='none'" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">&times;</button>
+                        </div>
+                        <div id="kb-body" class="flex-1 overflow-hidden"></div>
+                    </div>`;
+            }
+            overlay.style.display = 'flex';
+            await loadKbDictionaries();
+            renderKbTabs();
+            await loadKbTab(kbState.tab);
+        }
+
+        async function loadKbDictionaries() {
+            if (Object.keys(kbState.dictionaries).length) return;
+            const res = await fetch(`${API_BASE}/api/kb/dictionaries`);
+            kbState.dictionaries = await res.json();
+        }
+
+        function renderKbTabs() {
+            const tabs = [
+                ['documents', '列表'],
+                ['review', '待审核'],
+                ['candidates', '知识候选'],
+                ['import', '导入中心'],
+                ['batches', '批次'],
+                ['pricing', '报价规则'],
+                ['retrieve', '检索测试'],
+                ['quality', '质量治理'],
+                ['regression', '回归测试'],
+                ['ops', '运行状态'],
+                ['logs', '命中日志']
+            ];
+            document.getElementById('kb-tabs').innerHTML = tabs.map(([key, label]) => `
+                <button onclick="loadKbTab('${key}')" class="px-3 py-1 rounded border ${kbState.tab === key ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'}">${label}</button>
+            `).join('');
+        }
+
+        async function loadKbTab(tab) {
+            kbState.tab = tab;
+            renderKbTabs();
+            const body = document.getElementById('kb-body');
+            body.innerHTML = `<div class="h-full flex items-center justify-center text-slate-400 text-sm">加载中...</div>`;
+            if (tab === 'documents') return loadKbDocuments();
+            if (tab === 'review') return loadKbReview();
+            if (tab === 'candidates') return loadKbCandidates();
+            if (tab === 'import') return renderKbImport();
+            if (tab === 'batches') return loadKbBatches();
+            if (tab === 'pricing') return loadKbPricing();
+            if (tab === 'retrieve') return loadKbRetrieveTest();
+            if (tab === 'quality') return loadKbQuality();
+            if (tab === 'regression') return loadKbRegression();
+            if (tab === 'ops') return loadKbOps();
+            if (tab === 'logs') return loadKbLogs();
+        }
+
+        function renderKbShell(leftHtml, rightHtml = '') {
+            document.getElementById('kb-body').innerHTML = `
+                <div class="h-full grid grid-cols-[minmax(520px,1fr)_420px] overflow-hidden">
+                    <div class="overflow-y-auto p-4 bg-slate-50">${leftHtml}</div>
+                    <div class="overflow-y-auto border-l bg-white p-4" id="kb-detail">${rightHtml || '<div class="text-sm text-slate-400 pt-12 text-center">选择一条记录查看详情</div>'}</div>
+                </div>`;
+        }
+
+        async function loadKbDocuments() {
+            const filters = `
+                <div class="flex gap-2 mb-3">
+                    <select id="kb-filter-status" class="border rounded px-2 py-1 text-xs">${optionTags('status')}</select>
+                    <select id="kb-filter-type" class="border rounded px-2 py-1 text-xs">${optionTags('knowledge_type')}</select>
+                    <select id="kb-filter-line" class="border rounded px-2 py-1 text-xs">${optionTags('business_line')}</select>
+                    <button onclick="showKbCreateForm()" class="px-3 py-1 bg-emerald-600 text-white rounded text-xs">新增知识</button>
+                    <button onclick="refreshKbDocuments()" class="px-3 py-1 bg-slate-800 text-white rounded text-xs">刷新</button>
+                </div>
+                <div id="kb-doc-list"></div>`;
+            renderKbShell(filters);
+            await refreshKbDocuments();
+        }
+
+        async function refreshKbDocuments(extra = {}) {
+            const params = new URLSearchParams({limit: '200', ...extra});
+            const status = document.getElementById('kb-filter-status')?.value;
+            const type = document.getElementById('kb-filter-type')?.value;
+            const line = document.getElementById('kb-filter-line')?.value;
+            if (status) params.set('status', status);
+            if (type) params.set('knowledge_type', type);
+            if (line) params.set('business_line', line);
+            const res = await fetch(`${API_BASE}/api/kb/documents?${params.toString()}`);
+            const docs = await res.json();
+            document.getElementById('kb-doc-list').innerHTML = renderKbDocTable(docs);
+        }
+
+        function renderKbDocTable(docs) {
+            if (!docs.length) return '<div class="text-sm text-slate-400 p-8 text-center bg-white rounded border">暂无知识记录</div>';
+            return `
+                <div class="bg-white border rounded overflow-hidden">
+                    <table class="w-full text-xs">
+                        <thead class="bg-slate-100 text-slate-500">
+                            <tr><th class="text-left p-2">标题</th><th class="text-left p-2">类型</th><th class="text-left p-2">业务线</th><th class="text-left p-2">状态</th><th class="text-left p-2">风险</th><th class="text-left p-2">操作</th></tr>
+                        </thead>
+                        <tbody>${docs.map(doc => `
+                            <tr class="border-t hover:bg-slate-50">
+                                <td class="p-2 font-medium text-slate-700">${safeText(doc.title)}</td>
+                                <td class="p-2">${safeText(doc.knowledge_type_label)}</td>
+                                <td class="p-2">${safeText(doc.business_line_label)}</td>
+                                <td class="p-2">${fmtStatus(doc)}</td>
+                                <td class="p-2">${safeText(doc.risk_level_label)}</td>
+                                <td class="p-2">
+                                    <button onclick="showKbDocument('${doc.document_id}')" class="text-emerald-700 font-bold">详情</button>
+                                </td>
+                            </tr>`).join('')}</tbody>
+                    </table>
+                </div>`;
+        }
+
+        async function showKbDocument(documentId) {
+            kbState.selectedDocumentId = documentId;
+            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}`);
+            const data = await res.json();
+            const doc = data.document;
+            document.getElementById('kb-detail').innerHTML = `
+                <div class="space-y-4">
+                    <div>
+                        <div class="text-xs text-slate-400 mb-1">${safeText(doc.document_id)}</div>
+                        <h3 class="font-bold text-slate-800">${safeText(doc.title)}</h3>
+                        <div class="mt-2 flex gap-2 flex-wrap">${fmtStatus(doc)}<span class="text-[10px] px-2 py-0.5 rounded bg-amber-50 border text-amber-700">${safeText(doc.review_status_label)}</span></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div><b>类型</b><br>${safeText(doc.knowledge_type_label)}</div>
+                        <div><b>业务线</b><br>${safeText(doc.business_line_label)}</div>
+                        <div><b>版本</b><br>${safeText(doc.version_no)}</div>
+                        <div><b>批次</b><br>${safeText(doc.import_batch)}</div>
+                        <div><b>生效</b><br>${safeText(doc.effective_from)}</div>
+                        <div><b>失效</b><br>${safeText(doc.effective_to)}</div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="editKbDocument('${doc.document_id}')" class="px-3 py-1 rounded text-xs bg-white border text-slate-700">编辑文档</button>
+                        <button onclick="kbDocAction('${doc.document_id}', 'submit_review')" class="px-3 py-1 rounded text-xs bg-indigo-600 text-white">提交审核</button>
+                        <button onclick="kbDocAction('${doc.document_id}', 'publish')" class="px-3 py-1 rounded text-xs bg-emerald-600 text-white">发布</button>
+                        <button onclick="kbDocAction('${doc.document_id}', 'archive')" class="px-3 py-1 rounded text-xs bg-slate-600 text-white">归档</button>
+                        <button onclick="kbDocAction('${doc.document_id}', 'reject')" class="px-3 py-1 rounded text-xs bg-rose-600 text-white">驳回</button>
+                    </div>
+                    <div>
+                        <div class="font-bold text-xs text-slate-500 mb-2">切片</div>
+                        <div class="space-y-2">${data.chunks.map(chunk => `
+                            <div class="border rounded p-2 text-xs">
+                                <div class="font-bold flex justify-between gap-2"><span>${safeText(chunk.title)}</span><button onclick="editKbChunk('${chunk.chunk_id}', '${doc.document_id}')" class="text-emerald-700">编辑</button></div>
+                                <div class="text-slate-500 mt-1">${safeText(chunk.knowledge_type_label)} · ${safeText(chunk.chunk_type)} · ${safeText(chunk.language_pair_label)}</div>
+                                <div class="mt-2 whitespace-pre-wrap">${safeText(chunk.content)}</div>
+                            </div>`).join('')}</div>
+                    </div>
+                    <div>
+                        <div class="font-bold text-xs text-slate-500 mb-2">报价规则</div>
+                        <button onclick="addKbPricingRule('${data.chunks[0]?.chunk_id || ''}', '${doc.document_id}')" class="mb-2 px-3 py-1 rounded text-xs bg-emerald-600 text-white">补报价规则</button>
+                        <div class="space-y-2">${data.pricing_rules.length ? data.pricing_rules.map(rule => `
+                            <div class="border rounded p-2 text-xs bg-emerald-50/50">
+                                <div class="font-bold flex justify-between gap-2"><span>${safeText(rule.unit)} · ${safeText(rule.currency)}</span><span><button onclick="editKbPricingRule('${rule.rule_id}', '${doc.document_id}')" class="text-emerald-700 mr-2">编辑</button><button onclick="archiveKbPricingRule('${rule.rule_id}', '${doc.document_id}')" class="text-rose-700">停用</button></span></div>
+                                <div>价格: ${safeText(rule.price_min)} - ${safeText(rule.price_max)} / 最低收费: ${safeText(rule.min_charge)}</div>
+                                <div>版本: ${safeText(rule.version_no)} · ${safeText(rule.status_label)}</div>
+                            </div>`).join('') : '<div class="text-xs text-slate-400">无结构化报价规则</div>'}</div>
+                    </div>
+                </div>`;
+        }
+
+        async function kbDocAction(documentId, action) {
+            let options = {method: 'POST'};
+            if (action === 'publish') {
+                options.headers = {'Content-Type': 'application/json'};
+                options.body = JSON.stringify({operator: 'frontend_admin'});
+            }
+            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}/${action}`, options);
+            const data = await res.json();
+            if (!res.ok) {
+                const gateReport = data.detail?.gate_report;
+                if (action === 'publish' && gateReport) {
+                    const reason = prompt(`发布门禁未通过。\n失败用例：${(gateReport.failed_cases || []).map(item => item.case_id).join(', ')}\n请输入强制发布原因：`);
+                    if (!reason) return;
+                    const forceRes = await fetch(`${API_BASE}/api/kb/documents/${documentId}/publish`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({force: true, force_reason: reason, operator: 'frontend_admin'})
+                    });
+                    const forceData = await forceRes.json();
+                    if (!forceRes.ok) return alert(JSON.stringify(forceData.detail || forceData, null, 2));
+                    alert(`已强制发布。\n门禁用例 ${forceData.gate_report?.summary?.selected || 0} 条，失败 ${forceData.gate_report?.summary?.failed || 0} 条。`);
+                    await showKbDocument(documentId);
+                    if (kbState.tab === 'review') await loadKbReview();
+                    if (kbState.tab === 'documents') await refreshKbDocuments();
+                    return;
+                }
+                alert(JSON.stringify(data.detail || data, null, 2));
+                return;
+            }
+            if (action === 'publish' && data.gate_report) {
+                alert(`发布通过。\n门禁用例 ${data.gate_report.summary?.selected || 0} 条，失败 ${data.gate_report.summary?.failed || 0} 条。`);
+            }
+            await showKbDocument(documentId);
+            if (kbState.tab === 'review') await loadKbReview();
+            if (kbState.tab === 'documents') await refreshKbDocuments();
+        }
+
+        function showKbCreateForm() {
+            document.getElementById('kb-detail').innerHTML = `
+                <div class="space-y-3 text-sm">
+                    <h3 class="font-bold text-slate-800">新增知识</h3>
+                    <input id="kb-new-title" class="w-full border rounded p-2 text-sm" placeholder="标题">
+                    <textarea id="kb-new-content" class="w-full border rounded p-2 text-sm h-40" placeholder="内容"></textarea>
+                    <div class="grid grid-cols-2 gap-2">
+                        <select id="kb-new-type" class="border rounded p-2 text-sm">${optionTags('knowledge_type', 'faq')}</select>
+                        <select id="kb-new-line" class="border rounded p-2 text-sm">${optionTags('business_line', 'translation')}</select>
+                        <select id="kb-new-chunk-type" class="border rounded p-2 text-sm">${optionTags('chunk_type', 'rule')}</select>
+                        <select id="kb-new-scope" class="border rounded p-2 text-sm">${optionTags('service_scope', 'general')}</select>
+                    </div>
+                    <button onclick="createKbKnowledge()" class="px-4 py-2 bg-emerald-600 text-white rounded text-sm">保存为草稿</button>
+                </div>`;
+        }
+
+        async function createKbKnowledge() {
+            const payload = {
+                title: document.getElementById('kb-new-title').value,
+                content: document.getElementById('kb-new-content').value,
+                knowledge_type: document.getElementById('kb-new-type').value || 'faq',
+                business_line: document.getElementById('kb-new-line').value || 'general',
+                chunk_type: document.getElementById('kb-new-chunk-type').value || 'rule',
+                service_scope: document.getElementById('kb-new-scope').value || null,
+                owner: 'frontend_admin'
+            };
+            const res = await fetch(`${API_BASE}/api/kb/documents/manual`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            await refreshKbDocuments();
+            await showKbDocument(data.document.document_id);
+        }
+
+        async function editKbDocument(documentId) {
+            const title = prompt('新标题');
+            if (title === null) return;
+            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({title})});
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            await showKbDocument(documentId);
+            await refreshKbDocuments();
+        }
+
+        async function editKbChunk(chunkId, documentId) {
+            const content = prompt('新切片内容');
+            if (content === null) return;
+            const res = await fetch(`${API_BASE}/api/kb/chunks/${chunkId}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({content})});
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            await showKbDocument(documentId);
+        }
+
+        async function addKbPricingRule(chunkId, documentId) {
+            if (!chunkId) return alert('没有可关联的切片');
+            const price = prompt('价格或最低收费，例如 220');
+            if (price === null) return;
+            const payload = {unit:'per_project', currency:'CNY', price_min: price || null, price_max: price || null, source_ref:'frontend_manual'};
+            const res = await fetch(`${API_BASE}/api/kb/chunks/${chunkId}/pricing_rule`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            await showKbDocument(documentId);
+        }
+
+        async function editKbPricingRule(ruleId, documentId) {
+            const price = prompt('新价格，留空不改');
+            if (price === null) return;
+            const payload = price ? {price_min: price, price_max: price} : {};
+            const res = await fetch(`${API_BASE}/api/kb/pricing_rules/${ruleId}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            await showKbDocument(documentId);
+        }
+
+        async function archiveKbPricingRule(ruleId, documentId) {
+            if (!confirm('确认停用这条报价规则？')) return;
+            const res = await fetch(`${API_BASE}/api/kb/pricing_rules/${ruleId}/archive`, {method:'POST'});
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            await showKbDocument(documentId);
+        }
+
+        async function loadKbReview() {
+            renderKbShell(`<div class="flex gap-2 mb-3"><button onclick="bulkKbAction('submit_review')" class="px-3 py-1 bg-indigo-600 text-white rounded text-xs">批量提交审核</button><button onclick="bulkKbAction('publish')" class="px-3 py-1 bg-emerald-600 text-white rounded text-xs">批量发布</button><button onclick="bulkKbAction('archive')" class="px-3 py-1 bg-slate-600 text-white rounded text-xs">批量归档</button></div><div id="kb-review-list"></div>`);
+            const res = await fetch(`${API_BASE}/api/kb/documents?status=draft&limit=300`);
+            const draftDocs = await res.json();
+            const res2 = await fetch(`${API_BASE}/api/kb/documents?status=review&limit=300`);
+            const reviewDocs = await res2.json();
+            const docs = [...draftDocs, ...reviewDocs];
+            document.getElementById('kb-review-list').innerHTML = docs.length ? `
+                <div class="bg-white border rounded overflow-hidden">
+                    <table class="w-full text-xs">
+                        <thead class="bg-slate-100"><tr><th class="p-2"><input type="checkbox" onchange="document.querySelectorAll('.kb-select-doc').forEach(x=>x.checked=this.checked)"></th><th class="text-left p-2">标题</th><th class="text-left p-2">状态</th><th class="text-left p-2">风险</th><th class="text-left p-2">操作</th></tr></thead>
+                        <tbody>${docs.map(doc => `<tr class="border-t"><td class="p-2"><input class="kb-select-doc" type="checkbox" value="${doc.document_id}"></td><td class="p-2 font-medium">${safeText(doc.title)}</td><td class="p-2">${fmtStatus(doc)}</td><td class="p-2">${safeText(doc.risk_level_label)}</td><td class="p-2"><button onclick="showKbDocument('${doc.document_id}')" class="text-emerald-700 font-bold">详情</button></td></tr>`).join('')}</tbody>
+                    </table>
+                </div>` : '<div class="text-sm text-slate-400 p-8 text-center bg-white rounded border">暂无待审核知识</div>';
+        }
+
+        async function bulkKbAction(action) {
+            const ids = [...document.querySelectorAll('.kb-select-doc:checked')].map(x => x.value);
+            if (!ids.length) return alert('请选择知识');
+            const res = await fetch(`${API_BASE}/api/kb/bulk/documents/${action}`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({document_ids: ids})});
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            await loadKbReview();
+        }
+
+        async function loadKbCandidates() {
+            renderKbShell(`
+                <div class="flex gap-2 mb-3">
+                    <select id="kb-candidate-status" class="border rounded px-2 py-1 text-xs">
+                        <option value="">全部状态</option>
+                        <option value="candidate">候选中</option>
+                        <option value="promoted">已转知识</option>
+                        <option value="rejected">已拒绝</option>
+                        <option value="archived">已归档</option>
+                    </select>
+                    <select id="kb-candidate-source" class="border rounded px-2 py-1 text-xs">
+                        <option value="">全部来源</option>
+                        <option value="feedback">销售反馈</option>
+                        <option value="message_extract">会话抽取</option>
+                        <option value="case_extract">历史案例</option>
+                        <option value="email_excel">邮件整理表</option>
+                    </select>
+                    <button onclick="refreshKbCandidates()" class="px-3 py-1 bg-slate-800 text-white rounded text-xs">刷新</button>
+                </div>
+                <div id="kb-candidate-list"></div>
+            `);
+            await refreshKbCandidates();
+        }
+
+        async function refreshKbCandidates() {
+            const params = new URLSearchParams({limit: '200'});
+            const status = document.getElementById('kb-candidate-status')?.value;
+            const source = document.getElementById('kb-candidate-source')?.value;
+            if (status) params.set('status', status);
+            if (source) params.set('source_type', source);
+            const res = await fetch(`${API_BASE}/api/kb/candidates?${params.toString()}`);
+            const items = await res.json();
+            document.getElementById('kb-candidate-list').innerHTML = items.length ? `
+                <div class="bg-white border rounded overflow-hidden">
+                    <table class="w-full text-xs">
+                        <thead class="bg-slate-100">
+                            <tr><th class="text-left p-2">标题</th><th class="text-left p-2">来源</th><th class="text-left p-2">类型</th><th class="text-left p-2">业务线</th><th class="text-left p-2">状态</th><th class="text-left p-2">操作</th></tr>
+                        </thead>
+                        <tbody>${items.map(item => `
+                            <tr class="border-t hover:bg-slate-50">
+                                <td class="p-2 font-medium">${safeText(item.title)}</td>
+                                <td class="p-2">${safeText(item.source_type_label || item.source_type)}</td>
+                                <td class="p-2">${safeText(item.knowledge_type_label)} / ${safeText(item.chunk_type_label || item.chunk_type)}</td>
+                                <td class="p-2">${safeText(item.business_line_label)}</td>
+                                <td class="p-2"><span class="text-[10px] px-2 py-0.5 rounded border bg-slate-50 text-slate-700">${safeText(item.status_label || item.status)}</span></td>
+                                <td class="p-2"><button onclick="showKbCandidate('${item.candidate_id}')" class="text-emerald-700 font-bold">详情</button></td>
+                            </tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>` : '<div class="text-sm text-slate-400 p-8 text-center bg-white rounded border">暂无知识候选</div>';
+        }
+
+        async function showKbCandidate(candidateId) {
+            kbState.selectedCandidateId = candidateId;
+            const res = await fetch(`${API_BASE}/api/kb/candidates?limit=200`);
+            const items = await res.json();
+            const item = (items || []).find(candidate => candidate.candidate_id === candidateId);
+            if (!item) return alert('未找到候选记录');
+            document.getElementById('kb-detail').innerHTML = `
+                <div class="space-y-4 text-xs">
+                    <div>
+                        <div class="text-slate-400 mb-1">${safeText(item.candidate_id)}</div>
+                        <h3 class="font-bold text-slate-800 text-sm">${safeText(item.title)}</h3>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            <span class="px-2 py-0.5 rounded border bg-slate-50 text-slate-700">${safeText(item.status_label || item.status)}</span>
+                            <span class="px-2 py-0.5 rounded border bg-slate-50 text-slate-700">${safeText(item.source_type_label || item.source_type)}</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div><b>类型</b><br>${safeText(item.knowledge_type_label)}</div>
+                        <div><b>业务线</b><br>${safeText(item.business_line_label)}</div>
+                        <div><b>语种</b><br>${safeText(item.language_pair_label)}</div>
+                        <div><b>范围</b><br>${safeText(item.service_scope_label)}</div>
+                    </div>
+                    <div class="whitespace-pre-wrap border rounded p-3 bg-slate-50">${safeText(item.content)}</div>
+                    ${item.pricing_rule ? `<pre class="bg-emerald-50 border rounded p-3 overflow-auto">${safeText(JSON.stringify(item.pricing_rule, null, 2))}</pre>` : ''}
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="editKbCandidate('${item.candidate_id}')" class="px-3 py-1 rounded text-xs bg-white border text-slate-700">编辑候选</button>
+                        <button onclick="promoteKbCandidate('${item.candidate_id}')" class="px-3 py-1 rounded text-xs bg-emerald-600 text-white">转为草稿知识</button>
+                    </div>
+                    <div>
+                        <div class="font-bold text-slate-500 mb-2">来源快照</div>
+                        <pre class="bg-slate-900 text-slate-100 rounded p-3 overflow-auto max-h-64">${safeText(JSON.stringify(item.source_snapshot || {}, null, 2))}</pre>
+                    </div>
+                </div>`;
+        }
+
+        async function editKbCandidate(candidateId) {
+            const title = prompt('候选标题', '');
+            if (title === null) return;
+            const content = prompt('候选内容');
+            if (content === null) return;
+            const res = await fetch(`${API_BASE}/api/kb/candidates/${candidateId}`, {
+                method:'PATCH',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({title, content, operator: 'frontend_admin'})
+            });
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            await refreshKbCandidates();
+            await showKbCandidate(candidateId);
+        }
+
+        async function promoteKbCandidate(candidateId) {
+            if (!confirm('确认将该候选转为 draft 知识？')) return;
+            const res = await fetch(`${API_BASE}/api/kb/candidates/${candidateId}/promote`, {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({operator: 'frontend_admin', owner: 'frontend_admin'})
+            });
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            alert(`已转为草稿知识：${data.document?.title || ''}`);
+            await refreshKbCandidates();
+            if (data.document?.document_id) {
+                kbState.tab = 'documents';
+                renderKbTabs();
+                await loadKbDocuments();
+                await showKbDocument(data.document.document_id);
+            }
+        }
+
+        function renderKbImport() {
+            document.getElementById('kb-body').innerHTML = `
+                <div class="h-full overflow-y-auto p-5 bg-slate-50">
+                    <div class="bg-white border rounded p-4 mb-4">
+                        <div class="flex flex-wrap items-end gap-3 mb-4">
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">导入类型</label>
+                                <select id="kb-import-type" onchange="loadKbTemplateInfo()" class="border rounded px-3 py-2 text-sm">
+                                    <option value="faq">FAQ</option>
+                                    <option value="pricing">报价表</option>
+                                    <option value="process">流程 SOP</option>
+                                    <option value="capability">能力清单</option>
+                                    <option value="case">历史案例</option>
+                                    <option value="script">销售话术</option>
+                                    <option value="email_digest">邮件整理</option>
+                                </select>
+                            </div>
+                            <button onclick="downloadKbTemplate()" class="px-4 py-2 bg-white border rounded text-sm text-slate-700">下载模板</button>
+                            <div class="min-w-[320px] flex-1">
+                                <label class="block text-xs text-slate-500 mb-1">Excel 文件</label>
+                                <input id="kb-excel-file" type="file" accept=".xlsx,.xlsm" class="block w-full text-sm border rounded p-2">
+                            </div>
+                            <button onclick="previewKbExcelImport()" class="px-4 py-2 bg-slate-800 text-white rounded text-sm">预览</button>
+                            <button onclick="commitKbExcelImport()" class="px-4 py-2 bg-emerald-600 text-white rounded text-sm">确认导入</button>
+                        </div>
+                        <div id="kb-template-info" class="text-xs text-slate-500 mb-4">必备列：标题/节点名/问题 与 内容/答案/回复/话术。可选列：业务线、知识类型、语种、服务范围、客户层级、价格、最低收费、税费、生效时间、失效时间。</div>
+                        <div id="kb-import-summary" class="mb-4"></div>
+                        <div id="kb-import-preview" class="overflow-auto max-h-[420px] border rounded bg-white"></div>
+                        <pre id="kb-import-result" class="mt-4 bg-slate-900 text-slate-100 text-xs p-3 rounded overflow-auto max-h-72"></pre>
+                    </div>
+                    <div class="bg-white border rounded p-4 space-y-4">
+                        <div>
+                            <div class="font-bold text-slate-800 mb-1">历史抽取</div>
+                            <div class="text-xs text-slate-500">支持从企微历史会话、历史案例文本和邮件整理表生成知识候选，默认进入候选池。</div>
+                        </div>
+                        <div class="grid grid-cols-[220px_1fr_auto] gap-3 items-end">
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">企微会话 ID</label>
+                                <input id="kb-extract-session-id" class="w-full border rounded px-3 py-2 text-sm" placeholder="single_xxx / group_xxx">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">历史案例 / 补充文本</label>
+                                <textarea id="kb-extract-messages" class="w-full border rounded p-3 text-sm h-28" placeholder="每行一条历史案例或会话摘要"></textarea>
+                            </div>
+                            <div class="flex flex-col gap-2">
+                                <button onclick="runKbMessageExtract('message_extract')" class="px-4 py-2 bg-slate-800 text-white rounded text-sm">会话抽取</button>
+                                <button onclick="runKbMessageExtract('case_extract')" class="px-4 py-2 bg-indigo-600 text-white rounded text-sm">历史案例抽取</button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-[1fr_auto] gap-3 items-end">
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">邮件整理表</label>
+                                <input id="kb-email-extract-file" type="file" accept=".xlsx,.xlsm,.csv" class="block w-full text-sm border rounded p-2">
+                            </div>
+                            <button onclick="runKbEmailExtract()" class="px-4 py-2 bg-emerald-600 text-white rounded text-sm">邮件整理表抽取</button>
+                        </div>
+                        <pre id="kb-extract-result" class="bg-slate-900 text-slate-100 text-xs p-3 rounded overflow-auto max-h-72"></pre>
+                    </div>
+                </div>`;
+            loadKbTemplateInfo();
+        }
+
+        async function loadKbTemplateInfo() {
+            const res = await fetch(`${API_BASE}/api/kb/import/templates`);
+            const data = await res.json();
+            const type = document.getElementById('kb-import-type')?.value || 'faq';
+            const item = (data.templates || []).find(x => x.type === type);
+            if (!item) return;
+            document.getElementById('kb-template-info').innerHTML = `当前模板：<b>${safeText(item.label)}</b>，默认知识类型 ${safeText(item.knowledge_type)}，默认切片 ${safeText(item.chunk_type)}。必备列：标题、内容。`;
+        }
+
+        async function runKbMessageExtract(sourceType) {
+            const sessionId = document.getElementById('kb-extract-session-id')?.value.trim();
+            const lines = (document.getElementById('kb-extract-messages')?.value || '')
+                .split('\n')
+                .map(item => item.trim())
+                .filter(Boolean);
+            if (!sessionId && !lines.length) return alert('请填写会话 ID 或历史文本');
+            const target = document.getElementById('kb-extract-result');
+            target.textContent = 'extracting...';
+            const res = await fetch(`${API_BASE}/api/kb/extract/from_messages`, {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    session_id: sessionId || null,
+                    messages: lines.length ? lines : null,
+                    source_type: sourceType,
+                    owner: 'frontend_extract',
+                    operator: 'frontend_extract'
+                })
+            });
+            const data = await res.json();
+            target.textContent = JSON.stringify(data, null, 2);
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            if (data.created_count) {
+                await loadKbTab('candidates');
+            }
+        }
+
+        async function runKbEmailExtract() {
+            const fileInput = document.getElementById('kb-email-extract-file');
+            if (!fileInput.files?.length) return alert('请选择邮件整理文件');
+            const target = document.getElementById('kb-extract-result');
+            target.textContent = 'extracting...';
+            const form = new FormData();
+            form.append('file', fileInput.files[0]);
+            form.append('owner', 'frontend_extract');
+            form.append('operator', 'frontend_extract');
+            const res = await fetch(`${API_BASE}/api/kb/extract/from_email_excel`, {method:'POST', body: form});
+            const data = await res.json();
+            target.textContent = JSON.stringify(data, null, 2);
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            if (data.created_count) {
+                await loadKbTab('candidates');
+            }
+        }
+
+        function downloadKbTemplate() {
+            const type = document.getElementById('kb-import-type')?.value || 'faq';
+            window.open(`${API_BASE}/api/kb/import/templates/${type}/download`, '_blank');
+        }
+
+        function buildKbImportForm() {
+            const file = document.getElementById('kb-excel-file').files[0];
+            if (!file) return alert('请选择 Excel 文件');
+            const form = new FormData();
+            form.append('file', file);
+            form.append('import_type', document.getElementById('kb-import-type').value);
+            return form;
+        }
+
+        async function previewKbExcelImport() {
+            const form = buildKbImportForm();
+            if (!form) return;
+            document.getElementById('kb-import-result').textContent = 'previewing...';
+            const res = await fetch(`${API_BASE}/api/kb/import/excel/preview`, {method: 'POST', body: form});
+            const data = await res.json();
+            if (!res.ok) {
+                document.getElementById('kb-import-result').textContent = JSON.stringify(data.detail || data, null, 2);
+                return;
+            }
+            renderKbImportPreview(data);
+            document.getElementById('kb-import-result').textContent = JSON.stringify({
+                status: data.status,
+                valid_count: data.valid_count,
+                skipped_count: data.skipped_count,
+                failed_count: data.failed_count,
+                failed: data.failed
+            }, null, 2);
+        }
+
+        async function commitKbExcelImport() {
+            const form = buildKbImportForm();
+            if (!form) return;
+            if (!confirm('确认将预览中的合法行导入为草稿知识？')) return;
+            document.getElementById('kb-import-result').textContent = 'importing...';
+            const res = await fetch(`${API_BASE}/api/kb/import/excel/commit`, {method: 'POST', body: form});
+            const data = await res.json();
+            document.getElementById('kb-import-result').textContent = JSON.stringify(data, null, 2);
+            if (res.ok) document.getElementById('kb-import-summary').insertAdjacentHTML('beforeend', `<div class="mt-3 text-xs text-emerald-700">已生成批次：${safeText(data.import_batch)}，可到“批次”页提交审核或发布。</div>`);
+        }
+
+        function renderKbImportPreview(data) {
+            document.getElementById('kb-import-summary').innerHTML = `
+                <div class="grid grid-cols-4 gap-3 text-sm">
+                    <div class="border rounded p-3"><div class="text-xs text-slate-500">类型</div><div class="font-bold">${safeText(data.import_type_label)}</div></div>
+                    <div class="border rounded p-3"><div class="text-xs text-slate-500">可导入</div><div class="font-bold text-emerald-700">${safeText(data.valid_count)}</div></div>
+                    <div class="border rounded p-3"><div class="text-xs text-slate-500">跳过</div><div class="font-bold text-slate-600">${safeText(data.skipped_count)}</div></div>
+                    <div class="border rounded p-3"><div class="text-xs text-slate-500">错误</div><div class="font-bold text-rose-600">${safeText(data.failed_count)}</div></div>
+                </div>`;
+            const rows = data.rows || [];
+            document.getElementById('kb-import-preview').innerHTML = rows.length ? `
+                <table class="w-full text-xs">
+                    <thead class="bg-slate-100"><tr><th class="text-left p-2">行</th><th class="text-left p-2">标题</th><th class="text-left p-2">类型</th><th class="text-left p-2">业务线</th><th class="text-left p-2">语种</th><th class="text-left p-2">范围</th><th class="text-left p-2">风险</th><th class="text-left p-2">报价</th></tr></thead>
+                    <tbody>${rows.map(row => `<tr class="border-t">
+                        <td class="p-2">${safeText(row.row)}</td>
+                        <td class="p-2 font-medium">${safeText(row.title)}</td>
+                        <td class="p-2">${safeText(row.knowledge_type_label)} / ${safeText(row.chunk_type)}</td>
+                        <td class="p-2">${safeText(row.business_line_label)}</td>
+                        <td class="p-2">${safeText(row.language_pair_label)}</td>
+                        <td class="p-2">${safeText(row.service_scope_label)}</td>
+                        <td class="p-2">${safeText(row.risk_level)}</td>
+                        <td class="p-2">${safeText(row.pricing_rule ? JSON.stringify(row.pricing_rule) : '')}</td>
+                    </tr>`).join('')}</tbody>
+                </table>` : '<div class="text-sm text-slate-400 text-center p-8">没有可导入行</div>';
+        }
+
+        async function loadKbBatches() {
+            document.getElementById('kb-body').innerHTML = `<div class="h-full grid grid-cols-[minmax(520px,1fr)_420px] overflow-hidden"><div class="overflow-y-auto p-4 bg-slate-50" id="kb-batches-list"></div><div class="overflow-y-auto border-l bg-white p-4" id="kb-detail"><div class="text-sm text-slate-400 pt-12 text-center">选择批次查看结果</div></div></div>`;
+            const res = await fetch(`${API_BASE}/api/kb/import_batches`);
+            const batches = await res.json();
+            document.getElementById('kb-batches-list').innerHTML = batches.length ? batches.map(batch => `
+                <div class="bg-white border rounded p-3 mb-2 text-xs hover:border-emerald-300 cursor-pointer" onclick="showKbBatch('${batch.import_batch}')">
+                    <div class="font-bold text-slate-700">${safeText(batch.import_batch)}</div>
+                    <div class="text-slate-500 mt-1">总数 ${safeText(batch.total_count)} · ${safeText(JSON.stringify(batch.status_counts))}</div>
+                </div>`).join('') : '<div class="text-sm text-slate-400 p-8 text-center bg-white rounded border">暂无导入批次</div>';
+        }
+
+        async function showKbBatch(batchId) {
+            const res = await fetch(`${API_BASE}/api/kb/import_batches/${batchId}`);
+            const data = await res.json();
+            document.getElementById('kb-detail').innerHTML = `
+                <h3 class="font-bold text-slate-800">${safeText(batchId)}</h3>
+                <pre class="text-xs bg-slate-50 border rounded p-2 mt-3">${safeText(JSON.stringify(data.summary, null, 2))}</pre>
+                <div class="flex gap-2 my-3">
+                    <button onclick="kbBatchAction('${batchId}', 'submit_review')" class="px-3 py-1 bg-indigo-600 text-white rounded text-xs">提交审核</button>
+                    <button onclick="kbBatchAction('${batchId}', 'publish')" class="px-3 py-1 bg-emerald-600 text-white rounded text-xs">发布</button>
+                    <button onclick="kbBatchAction('${batchId}', 'archive')" class="px-3 py-1 bg-slate-600 text-white rounded text-xs">归档</button>
+                    <button onclick="kbBatchAction('${batchId}', 'rollback')" class="px-3 py-1 bg-rose-600 text-white rounded text-xs">回滚</button>
+                </div>
+                <div class="space-y-2">${data.documents.map(doc => `<div class="border rounded p-2 text-xs"><div class="font-bold">${safeText(doc.title)}</div><div>${fmtStatus(doc)} · chunk ${doc.chunk_count} · rule ${doc.pricing_rule_count}</div></div>`).join('')}</div>`;
+        }
+
+        async function kbBatchAction(batchId, action) {
+            const res = await fetch(`${API_BASE}/api/kb/import_batches/${batchId}/${action}`, {method: 'POST'});
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            await loadKbBatches();
+            await showKbBatch(batchId);
+        }
+
+        async function loadKbPricing() {
+            const res = await fetch(`${API_BASE}/api/kb/pricing_rules?limit=300`);
+            const rules = await res.json();
+            document.getElementById('kb-body').innerHTML = `
+                <div class="h-full overflow-y-auto p-4 bg-slate-50">
+                    <div class="bg-white border rounded overflow-hidden">
+                        <table class="w-full text-xs">
+                            <thead class="bg-slate-100"><tr><th class="text-left p-2">业务线</th><th class="text-left p-2">语种</th><th class="text-left p-2">单位</th><th class="text-left p-2">价格</th><th class="text-left p-2">最低收费</th><th class="text-left p-2">状态</th></tr></thead>
+                            <tbody>${rules.map(rule => `<tr class="border-t"><td class="p-2">${safeText(rule.business_line_label)}</td><td class="p-2">${safeText(rule.language_pair_label)}</td><td class="p-2">${safeText(rule.unit)}</td><td class="p-2">${safeText(rule.price_min)}-${safeText(rule.price_max)} ${safeText(rule.currency)}</td><td class="p-2">${safeText(rule.min_charge)}</td><td class="p-2">${fmtStatus(rule)}</td></tr>`).join('')}</tbody>
+                        </table>
+                    </div>
+                </div>`;
+        }
+
+        async function loadKbLogs() {
+            const res = await fetch(`${API_BASE}/api/kb/hit_logs?limit=100&redact=true`);
+            const logs = await res.json();
+            document.getElementById('kb-body').innerHTML = `
+                <div class="h-full overflow-y-auto p-4 bg-slate-50">
+                    <div class="bg-white border rounded overflow-hidden">
+                        <table class="w-full text-xs">
+                            <thead class="bg-slate-100"><tr><th class="text-left p-2">时间</th><th class="text-left p-2">状态</th><th class="text-left p-2">Query</th><th class="text-left p-2">命中</th><th class="text-left p-2">耗时</th><th class="text-left p-2">原因</th><th class="text-left p-2">操作</th></tr></thead>
+                            <tbody>${logs.map(log => `<tr class="border-t"><td class="p-2">${safeText(log.created_at)}</td><td class="p-2">${safeText(log.status)}</td><td class="p-2">${safeText(log.query_text)}</td><td class="p-2">${safeText((log.hit_chunk_ids || []).length)}</td><td class="p-2">${safeText(log.latency_ms)}ms</td><td class="p-2">${safeText(log.no_hit_reason)}</td><td class="p-2"><button onclick="createCandidateFromLog('${log.log_id}')" class="text-emerald-700 font-bold">转候选</button></td></tr>`).join('')}</tbody>
+                        </table>
+                    </div>
+                </div>`;
+        }
+
+        async function createCandidateFromLog(logId) {
+            const note = prompt('补充候选说明（可留空）') || '';
+            const res = await fetch(`${API_BASE}/api/kb/candidates/from_feedback`, {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({log_id: logId, note, operator: 'frontend_log', owner: 'frontend_log'})
+            });
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            alert(`已生成候选：${data.candidate?.title || ''}`);
+            kbState.tab = 'candidates';
+            renderKbTabs();
+            await loadKbCandidates();
+        }
+
+        async function loadKbRetrieveTest() {
+            document.getElementById('kb-body').innerHTML = `
+                <div class="h-full overflow-y-auto p-4 bg-slate-50">
+                    <div class="bg-white border rounded p-4 mb-4">
+                        <textarea id="kb-retrieve-query" class="w-full border rounded p-3 text-sm h-24" placeholder="输入客户问题，例如：英译法普通商务资料多少钱？"></textarea>
+                        <div class="grid grid-cols-6 gap-2 mt-3">
+                            <select id="kb-retrieve-line" class="border rounded p-2 text-xs">${optionTags('business_line', 'translation')}</select>
+                            <select id="kb-retrieve-type" class="border rounded p-2 text-xs">${optionTags('knowledge_type')}</select>
+                            <select id="kb-retrieve-lang" class="border rounded p-2 text-xs">${optionTags('language_pair')}</select>
+                            <select id="kb-retrieve-scope" class="border rounded p-2 text-xs">${optionTags('service_scope')}</select>
+                            <input id="kb-retrieve-topk" type="number" value="5" min="1" max="20" class="border rounded p-2 text-xs">
+                            <button onclick="runKbRetrieveTest()" class="bg-emerald-600 text-white rounded text-sm">检索</button>
+                        </div>
+                    </div>
+                    <div id="kb-retrieve-result"></div>
+                </div>`;
+        }
+
+        async function runKbRetrieveTest() {
+            const query = document.getElementById('kb-retrieve-query').value;
+            if (!query.trim()) return alert('请输入问题');
+            const features = {};
+            const line = document.getElementById('kb-retrieve-line').value;
+            const type = document.getElementById('kb-retrieve-type').value;
+            const lang = document.getElementById('kb-retrieve-lang').value;
+            const scope = document.getElementById('kb-retrieve-scope').value;
+            if (line) features.business_line = line;
+            if (type) features.knowledge_type = [type];
+            if (lang) features.language_pair = lang;
+            if (scope) features.service_scope = scope;
+            const topK = parseInt(document.getElementById('kb-retrieve-topk').value || '5', 10);
+            document.getElementById('kb-retrieve-result').innerHTML = '<div class="text-sm text-slate-400">检索中...</div>';
+            const res = await fetch(`${API_BASE}/api/kb/retrieve`, {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({query_text: query, query_features: features, top_k: topK, request_id: 'frontend_retrieve_' + Date.now(), session_id: 'frontend_retrieve'})
+            });
+            const data = await res.json();
+            document.getElementById('kb-retrieve-result').innerHTML = `
+                <div class="bg-white border rounded p-4">
+                    <div class="flex gap-2 flex-wrap text-xs mb-3">
+                        <span class="px-2 py-1 rounded bg-slate-100">状态 ${safeText(data.status)}</span>
+                        <span class="px-2 py-1 rounded bg-slate-100">置信 ${safeText(data.confidence_score)}</span>
+                        <span class="px-2 py-1 rounded ${data.manual_review_required ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}">人工复核 ${safeText(data.manual_review_required)}</span>
+                        <span class="px-2 py-1 rounded bg-slate-100">耗时 ${safeText(data.latency_ms)}ms</span>
+                    </div>
+                    <div class="space-y-3">${(data.hits || []).map(hit => `
+                        <div class="border rounded p-3 text-xs">
+                            <div class="font-bold">${safeText(hit.title)} <span class="text-slate-400">score ${safeText(hit.score)}</span></div>
+                            <div class="text-slate-500 mt-1">${safeText(hit.knowledge_type_label)} · ${safeText(hit.business_line_label)} · ${safeText(hit.language_pair_label)} · ${safeText(hit.service_scope_label)}</div>
+                            <div class="mt-2 whitespace-pre-wrap">${safeText(hit.content)}</div>
+                            ${hit.pricing_rules && hit.pricing_rules.length ? `<pre class="mt-2 bg-emerald-50 border rounded p-2 overflow-auto">${safeText(JSON.stringify(hit.pricing_rules, null, 2))}</pre>` : ''}
+                        </div>`).join('') || '<div class="text-slate-400 text-sm">无命中</div>'}</div>
+                    <pre class="mt-4 bg-slate-900 text-slate-100 text-xs p-3 rounded overflow-auto max-h-80">${safeText(JSON.stringify(data.filters_used, null, 2))}</pre>
+                </div>`;
+        }
+
+        async function loadKbQuality() {
+            const res = await fetch(`${API_BASE}/api/kb/quality/report?days=30&limit=300`);
+            const data = await res.json();
+            const issues = data.issues || [];
+            document.getElementById('kb-body').innerHTML = `
+                <div class="h-full overflow-y-auto p-4 bg-slate-50">
+                    <div class="grid grid-cols-4 gap-3 mb-4">
+                        <div class="bg-white border rounded p-3"><div class="text-xs text-slate-500">问题总数</div><div class="text-2xl font-bold">${safeText(data.total_issues)}</div></div>
+                        <div class="bg-white border rounded p-3"><div class="text-xs text-slate-500">高风险</div><div class="text-2xl font-bold text-rose-600">${safeText((data.by_severity || {}).high || 0)}</div></div>
+                        <div class="bg-white border rounded p-3"><div class="text-xs text-slate-500">中风险</div><div class="text-2xl font-bold text-amber-600">${safeText((data.by_severity || {}).medium || 0)}</div></div>
+                        <div class="bg-white border rounded p-3"><div class="text-xs text-slate-500">窗口</div><div class="text-2xl font-bold">${safeText(data.window_days)}天</div></div>
+                    </div>
+                    <div class="bg-white border rounded overflow-hidden">
+                        <table class="w-full text-xs">
+                            <thead class="bg-slate-100"><tr><th class="text-left p-2">等级</th><th class="text-left p-2">类型</th><th class="text-left p-2">标题/范围</th><th class="text-left p-2">说明</th></tr></thead>
+                            <tbody>${issues.map(issue => `
+                                <tr class="border-t">
+                                    <td class="p-2">${safeText(issue.severity)}</td>
+                                    <td class="p-2 font-medium">${safeText(issue.type)}</td>
+                                    <td class="p-2">${safeText(issue.title || JSON.stringify(issue.scope || {}))}</td>
+                                    <td class="p-2">${safeText(issue.message)}</td>
+                                </tr>`).join('')}</tbody>
+                        </table>
+                    </div>
+                </div>`;
+        }
+
+        async function loadKbRegression() {
+            const res = await fetch(`${API_BASE}/api/kb/regression_cases`);
+            const data = await res.json();
+            document.getElementById('kb-body').innerHTML = `
+                <div class="h-full overflow-y-auto p-4 bg-slate-50">
+                    <div class="mb-3 flex items-center gap-2">
+                        <button onclick="runKbRegression()" class="px-4 py-2 bg-emerald-600 text-white rounded text-sm">执行20题回归</button>
+                        <label class="text-xs text-slate-500"><input id="kb-reg-keep-logs" type="checkbox" class="align-middle mr-1">保留命中日志</label>
+                    </div>
+                    <div class="bg-white border rounded overflow-hidden mb-4">
+                        <table class="w-full text-xs">
+                            <thead class="bg-slate-100"><tr><th class="text-left p-2">编号</th><th class="text-left p-2">类别</th><th class="text-left p-2">问题</th></tr></thead>
+                            <tbody>${(data.cases || []).map(item => `<tr class="border-t"><td class="p-2 font-medium">${safeText(item.case_id)}</td><td class="p-2">${safeText(item.category)}</td><td class="p-2">${safeText(item.query_text)}</td></tr>`).join('')}</tbody>
+                        </table>
+                    </div>
+                    <pre id="kb-regression-result" class="bg-slate-900 text-slate-100 text-xs p-3 rounded overflow-auto max-h-[420px]"></pre>
+                </div>`;
+        }
+
+        async function runKbRegression() {
+            const keepLogs = document.getElementById('kb-reg-keep-logs')?.checked;
+            const target = document.getElementById('kb-regression-result');
+            target.textContent = 'running...';
+            const res = await fetch(`${API_BASE}/api/kb/regression_cases/run`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({top_k: 5, cleanup_logs: !keepLogs, include_hits: false})
+            });
+            const data = await res.json();
+            target.textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function loadKbOps() {
+            const [healthRes, perfRes] = await Promise.all([
+                fetch(`${API_BASE}/api/health/ready`),
+                fetch(`${API_BASE}/api/kb/performance/status`)
+            ]);
+            const health = await healthRes.json();
+            const perf = await perfRes.json();
+            document.getElementById('kb-body').innerHTML = `
+                <div class="h-full overflow-y-auto p-4 bg-slate-50">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-white border rounded p-4">
+                            <h3 class="font-bold text-slate-800 mb-3">健康检查</h3>
+                            <pre class="text-xs bg-slate-50 border rounded p-3 overflow-auto max-h-[520px]">${safeText(JSON.stringify(health, null, 2))}</pre>
+                        </div>
+                        <div class="bg-white border rounded p-4">
+                            <h3 class="font-bold text-slate-800 mb-3">检索性能</h3>
+                            <pre class="text-xs bg-slate-50 border rounded p-3 overflow-auto max-h-[520px]">${safeText(JSON.stringify(perf, null, 2))}</pre>
+                        </div>
+                    </div>
+                </div>`;
         }
 
         fetchSessions();

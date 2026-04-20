@@ -32,7 +32,7 @@ class EmbeddingService:
         }
         try:
             session = requests.Session()
-            session.trust_env = False
+            session.trust_env = settings.HTTP_TRUST_ENV
             response = session.post(
                 url,
                 json=payload,
@@ -66,7 +66,9 @@ class EmbeddingService:
         headers = {"Authorization": f"Bearer {settings.EMBEDDING_API_KEY}"}
         payload = {"model": settings.EMBEDDING_MODEL, "input": text}
         try:
-            response = requests.post(
+            session = requests.Session()
+            session.trust_env = settings.HTTP_TRUST_ENV
+            response = session.post(
                 url,
                 headers=headers,
                 json=payload,

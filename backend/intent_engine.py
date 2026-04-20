@@ -11,6 +11,7 @@ from config import settings
 from qywx_utils import QYWXUtils
 from database import SessionLocal, KnowledgeBase, IntentSummary, KnowledgeChunk, KnowledgeHitLog, PricingRule
 from embedding_service import EmbeddingService
+from logging_config import sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class IntentEngine:
     @staticmethod
     def _post_json(url: str, headers: dict, payload: dict, timeout: int):
         session = requests.Session()
-        session.trust_env = False
+        session.trust_env = settings.HTTP_TRUST_ENV
         return session.post(url, headers=headers, json=payload, timeout=timeout)
 
     @classmethod
@@ -56,7 +57,7 @@ class IntentEngine:
         max_chars = settings.LOG_LLM_PROMPT_MAX_CHARS
         prompt_text = prompt or ""
         truncated = len(prompt_text) > max_chars
-        logged_prompt = prompt_text[:max_chars]
+        logged_prompt = sanitize_text(prompt_text[:max_chars]) if settings.LOG_DESENSITIZE_ENABLED else prompt_text[:max_chars]
         logger.info(
             "LLM_PROMPT_%s %s",
             label,
@@ -228,6 +229,34 @@ class IntentEngine:
                 score += 1.0
         return min(score / 5.0, 1.0)
 
+    @staticmethod
+    def _query_terms(query_text: str) -> List[str]:
+        terms = []
+        for token in re.split(r"[\s,，。；;、/？?！!：:（）()《》\"']+", query_text or ""):
+            token = token.strip().lower()
+            if len(token) >= 2 and token not in terms:
+                terms.append(token)
+        return terms[:8]
+
+    @staticmethod
+    def _constraint_applies(query_text: str, chunk: KnowledgeChunk, keyword_score: float) -> bool:
+        if keyword_score > 0:
+            return True
+        query = (query_text or "").lower()
+        haystack = "\n".join([chunk.title or "", chunk.content or "", chunk.keyword_text or ""]).lower()
+        guard_terms = [
+            "火星语",
+            "未知语种",
+            "同步传译",
+            "特殊折扣",
+            "折扣价",
+            "从没发布",
+            "未发布",
+            "未授权",
+            "编造价格",
+        ]
+        return any(term in query and term in haystack for term in guard_terms)
+
     @classmethod
     def retrieve_knowledge_v2(
         cls,
@@ -248,6 +277,8 @@ class IntentEngine:
             "service_scope": features.get("service_scope"),
             "customer_tier": features.get("customer_tier"),
             "effective_time": "now",
+            "candidate_limit": settings.KB_CANDIDATE_LIMIT,
+            "keyword_prefilter_enabled": settings.KB_KEYWORD_PREFILTER_ENABLED,
         }
 
         vector = cls.get_embedding(query_text)
@@ -287,22 +318,48 @@ class IntentEngine:
                     KnowledgeChunk.customer_tier.is_(None),
                 ))
 
-            candidates = query.limit(500).all()
+            candidate_limit = max(20, min(int(settings.KB_CANDIDATE_LIMIT or 500), 2000))
+            candidate_source = "structured_filters"
+            candidate_query = query
+            query_terms = cls._query_terms(query_text)
+            if settings.KB_KEYWORD_PREFILTER_ENABLED and query_terms:
+                keyword_conditions = []
+                for term in query_terms:
+                    like_term = f"%{term}%"
+                    keyword_conditions.extend([
+                        KnowledgeChunk.title.ilike(like_term),
+                        KnowledgeChunk.keyword_text.ilike(like_term),
+                        KnowledgeChunk.content.ilike(like_term),
+                    ])
+                keyword_query = query.filter(or_(*keyword_conditions))
+                keyword_candidates = keyword_query.order_by(KnowledgeChunk.priority.desc()).limit(candidate_limit).all()
+                if keyword_candidates:
+                    candidates = keyword_candidates
+                    candidate_source = "keyword_prefilter"
+                else:
+                    candidates = query.order_by(KnowledgeChunk.priority.desc()).limit(candidate_limit).all()
+                    candidate_source = "structured_filters_fallback"
+            else:
+                candidates = candidate_query.order_by(KnowledgeChunk.priority.desc()).limit(candidate_limit).all()
+            filters_used["candidate_source"] = candidate_source
+            filters_used["candidate_count"] = len(candidates)
             scored = []
             for chunk in candidates:
                 semantic_score = cls._cosine_sim(vector, chunk.embedding) if vector and chunk.embedding else 0.0
                 keyword_score = cls._keyword_score(query_text, chunk)
                 priority_score = min((chunk.priority or 50) / 100.0, 1.0)
                 final_score = round((semantic_score * 0.75) + (keyword_score * 0.15) + (priority_score * 0.10), 6)
-                if final_score > 0:
+                if semantic_score > 0 or keyword_score > 0:
                     scored.append((final_score, semantic_score, keyword_score, chunk))
 
             scored.sort(key=lambda item: item[0], reverse=True)
             hits = []
             for final_score, semantic_score, keyword_score, chunk in scored[:top_k]:
+                is_constraint = chunk.chunk_type == "constraint" or bool((chunk.structured_tags or {}).get("manual_review_required"))
+                constraint_applies = is_constraint and cls._constraint_applies(query_text, chunk, keyword_score)
                 pricing_rules = []
                 pricing_rule_missing = False
-                if chunk.knowledge_type == "pricing":
+                if chunk.knowledge_type == "pricing" and not is_constraint:
                     active_rules = db.query(PricingRule).filter(
                         PricingRule.status == "active",
                         PricingRule.document_id == chunk.document_id,
@@ -354,13 +411,52 @@ class IntentEngine:
                     "embedding_dim": chunk.embedding_dim,
                     "pricing_rules": pricing_rules,
                     "pricing_rule_missing": pricing_rule_missing,
-                    "insufficient_info": pricing_rule_missing,
-                    "manual_review_required": pricing_rule_missing,
-                    "applicability": "matched",
+                    "insufficient_info": pricing_rule_missing or constraint_applies,
+                    "manual_review_required": pricing_rule_missing or constraint_applies,
+                    "applicability": "constraint" if constraint_applies else "matched",
                 })
 
-            status = "ok" if hits else "empty_or_unavailable"
-            no_hit_reason = None if hits else "未命中符合 active 状态与适用范围过滤条件的知识"
+            confidence_score = hits[0]["score"] if hits else 0.0
+            min_score = float(features.get("min_score", 0.18) or 0.18)
+            any_manual_review = any(hit.get("manual_review_required") for hit in hits)
+            any_insufficient = any(hit.get("insufficient_info") for hit in hits)
+            if not hits:
+                status = "empty_or_unavailable"
+                no_hit_reason = "未命中符合 active 状态、适用范围与有效期过滤条件的知识"
+                retrieval_quality = "no_hit"
+                insufficient_info = True
+                manual_review_required = True
+            elif confidence_score < min_score:
+                status = "low_confidence"
+                no_hit_reason = f"最高命中分 {confidence_score} 低于阈值 {min_score}"
+                retrieval_quality = "low_confidence"
+                insufficient_info = True
+                manual_review_required = True
+            elif any_manual_review or any_insufficient:
+                status = "manual_review_required"
+                no_hit_reason = "命中结果存在需要人工复核的知识证据"
+                retrieval_quality = "needs_review"
+                insufficient_info = any_insufficient
+                manual_review_required = True
+            else:
+                status = "ok"
+                no_hit_reason = None
+                retrieval_quality = "high_confidence"
+                insufficient_info = False
+                manual_review_required = False
+
+            evidence_context = {
+                "rules": [],
+                "faqs": [],
+                "cases": [],
+            }
+            for hit in hits:
+                if hit["knowledge_type"] == "pricing" or hit.get("pricing_rules"):
+                    evidence_context["rules"].append(hit)
+                elif hit["knowledge_type"] == "faq":
+                    evidence_context["faqs"].append(hit)
+                else:
+                    evidence_context["cases"].append(hit)
             latency_ms = round((perf_counter() - started) * 1000)
 
             log = KnowledgeHitLog(
@@ -373,6 +469,10 @@ class IntentEngine:
                 scores=[hit["score"] for hit in hits],
                 no_hit_reason=no_hit_reason,
                 status=status,
+                retrieval_quality=retrieval_quality,
+                confidence_score=confidence_score,
+                insufficient_info=insufficient_info,
+                manual_review_required=manual_review_required,
                 latency_ms=latency_ms,
             )
             db.add(log)
@@ -384,6 +484,11 @@ class IntentEngine:
                 "query_features": features,
                 "filters_used": filters_used,
                 "hits": hits,
+                "evidence_context": evidence_context,
+                "confidence_score": confidence_score,
+                "retrieval_quality": retrieval_quality,
+                "insufficient_info": insufficient_info,
+                "manual_review_required": manual_review_required,
                 "no_hit_reason": no_hit_reason,
                 "latency_ms": latency_ms,
                 "log_id": str(log.log_id),
@@ -397,9 +502,134 @@ class IntentEngine:
                 "query_features": features,
                 "filters_used": filters_used,
                 "hits": [],
+                "evidence_context": {"rules": [], "faqs": [], "cases": []},
+                "confidence_score": 0.0,
+                "retrieval_quality": "error",
+                "insufficient_info": True,
+                "manual_review_required": True,
                 "no_hit_reason": str(e),
                 "latency_ms": round((perf_counter() - started) * 1000),
             }
+        finally:
+            db.close()
+
+    @staticmethod
+    def infer_query_features(summary_json: Dict[str, Any]) -> Dict[str, Any]:
+        """从 V1 摘要生成知识库 V2 检索过滤字段；宁可少过滤，不误伤候选。"""
+        text = json.dumps(summary_json or {}, ensure_ascii=False)
+        features: Dict[str, Any] = {}
+
+        if any(word in text for word in ["翻译", "口译", "同传", "字幕", "配音", "语种", "英译", "中译"]):
+            features["business_line"] = "translation"
+        elif any(word in text for word in ["印刷", "画册", "手册", "样本", "易拉宝"]):
+            features["business_line"] = "printing"
+        elif any(word in text for word in ["展台", "展会", "搭建", "撤展"]):
+            features["business_line"] = "exhibition"
+        else:
+            features["business_line"] = "general"
+
+        knowledge_types = []
+        if any(word in text for word in ["报价", "价格", "多少钱", "收费", "费用", "最低收费", "折扣", "税", "发票"]):
+            knowledge_types.append("pricing")
+        if any(word in text for word in ["能做", "可做", "是否支持", "业务范围", "服务范围"]):
+            knowledge_types.append("capability")
+        if any(word in text for word in ["流程", "怎么", "如何", "步骤", "周期", "交付"]):
+            knowledge_types.append("process")
+        knowledge_types.append("faq")
+        features["knowledge_type"] = list(dict.fromkeys(knowledge_types))
+
+        language_patterns = [
+            ("en->fr", ["英译法", "英文翻法文", "英语翻法语"]),
+            ("en->zh", ["英译中", "英文翻中文", "英语翻中文"]),
+            ("zh->en", ["中译英", "中文翻英文", "中文翻英语"]),
+            ("en->ru", ["英译俄", "英文翻俄文", "英语翻俄语"]),
+            ("ja->zh", ["日译中", "日文翻中文"]),
+            ("ko->zh", ["韩译中", "韩文翻中文"]),
+        ]
+        for code, words in language_patterns:
+            if any(word in text for word in words):
+                features["language_pair"] = code
+                break
+
+        if any(word in text for word in ["法律", "合同", "法务"]):
+            features["service_scope"] = "legal"
+        elif any(word in text for word in ["医学", "医疗", "药品"]):
+            features["service_scope"] = "medical"
+        elif any(word in text for word in ["技术", "说明书", "工程"]):
+            features["service_scope"] = "technical"
+        elif any(word in text for word in ["认证", "盖章", "公证"]):
+            features["service_scope"] = "certified"
+        elif features.get("business_line") == "translation":
+            features["service_scope"] = "general"
+
+        return features
+
+    @staticmethod
+    def format_knowledge_context(knowledge_payload) -> str:
+        """把 V2 证据包按规则/FAQ/案例三段格式化，兼容旧 list[str]。"""
+        if not knowledge_payload:
+            return ""
+        if isinstance(knowledge_payload, list):
+            return "\n".join([f"- 参考知识: {item}" for item in knowledge_payload])
+
+        evidence = knowledge_payload.get("evidence_context") if isinstance(knowledge_payload, dict) else None
+        if not evidence:
+            hits = knowledge_payload.get("hits", []) if isinstance(knowledge_payload, dict) else []
+            evidence = {"rules": [], "faqs": [], "cases": hits}
+
+        def render_hit(hit: dict) -> str:
+            lines = [
+                f"- 标题: {hit.get('title')}",
+                f"  内容: {hit.get('content')}",
+                f"  分数: {hit.get('score')}",
+            ]
+            for rule in hit.get("pricing_rules") or []:
+                lines.append(
+                    "  报价规则: "
+                    f"rule_id={rule.get('rule_id')}, version={rule.get('version_no')}, "
+                    f"unit={rule.get('unit')}, currency={rule.get('currency')}, "
+                    f"price_min={rule.get('price_min')}, price_max={rule.get('price_max')}, "
+                    f"min_charge={rule.get('min_charge')}, effective={rule.get('effective_from')}~{rule.get('effective_to')}"
+                )
+            if hit.get("manual_review_required"):
+                lines.append("  风险: 该知识需要人工复核，不能直接生成确定性承诺。")
+            return "\n".join(lines)
+
+        sections = [
+            ("[规则型知识]", evidence.get("rules") or []),
+            ("[FAQ型知识]", evidence.get("faqs") or []),
+            ("[案例型知识]", evidence.get("cases") or []),
+        ]
+        rendered = []
+        for title, hits in sections:
+            rendered.append(title)
+            rendered.append("\n".join(render_hit(hit) for hit in hits) if hits else "- 无")
+        if knowledge_payload.get("manual_review_required"):
+            rendered.append("[低命中保护]")
+            rendered.append(f"- 当前状态: {knowledge_payload.get('status')}")
+            rendered.append(f"- 原因: {knowledge_payload.get('no_hit_reason') or '命中证据需要人工确认'}")
+            rendered.append("- 要求: 涉及报价、承诺或规则时必须提示人工确认，不得编造。")
+        return "\n".join(rendered)
+
+    @staticmethod
+    def update_knowledge_hit_log_outcome(log_id: str | None, final_response: str | None = None, manual_feedback: dict | None = None, feedback_status: str | None = None):
+        if not log_id:
+            return
+        db = SessionLocal()
+        try:
+            log = db.query(KnowledgeHitLog).filter(KnowledgeHitLog.log_id == log_id).first()
+            if not log:
+                return
+            if final_response is not None:
+                log.final_response = final_response
+            if manual_feedback is not None:
+                log.manual_feedback = manual_feedback
+            if feedback_status is not None:
+                log.feedback_status = feedback_status
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error("知识命中日志结果更新失败: %s", e)
         finally:
             db.close()
 
@@ -458,9 +688,9 @@ class IntentEngine:
         return empty_profile
 
     @classmethod
-    def generate_sales_assist(cls, summary_json: dict, knowledge_list: List[str], crm_context: dict = None):
+    def generate_sales_assist(cls, summary_json: dict, knowledge_list, crm_context: dict = None):
         """调用 LLM-2 生成销售辅助建议"""
-        knowledge_context = "\n".join([f"- 参考知识: {k}" for k in knowledge_list])
+        knowledge_context = cls.format_knowledge_context(knowledge_list)
         prompt2 = cls.get_prompt2()
         
         summary_str = json.dumps(summary_json, ensure_ascii=False)

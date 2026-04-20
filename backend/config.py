@@ -35,12 +35,15 @@ class Settings(BaseSettings):
     LLM2_TIMEOUT_SECONDS: int = 100
     LOG_LLM_PROMPTS: bool = True
     LOG_LLM_PROMPT_MAX_CHARS: int = 12000
+    LOG_DESENSITIZE_ENABLED: bool = True
+    SLOW_REQUEST_MS: int = 3000
+    HTTP_TRUST_ENV: bool = False
 
     # Knowledge-base embedding configuration.
     EMBEDDING_PROVIDER: str = "ollama"
-    EMBEDDING_API_URL: str = "http://localhost:11434"
+    EMBEDDING_API_URL: str = "http://192.168.31.102:11434"
     EMBEDDING_API_KEY: str = ""
-    EMBEDDING_MODEL: str = "bge-m3:latest"
+    EMBEDDING_MODEL: str = "qllama/bge-m3:latest"
     EMBEDDING_DIM: int = 1024
     EMBEDDING_TIMEOUT_SECONDS: int = 100
 
@@ -56,6 +59,10 @@ class Settings(BaseSettings):
     PGVECTOR_REQUIRED: bool = False
     PGVECTOR_ENABLED: bool = False
     PGVECTOR_DIM: int = 1024
+    KB_CANDIDATE_LIMIT: int = 500
+    KB_KEYWORD_PREFILTER_ENABLED: bool = True
+    KB_FULLTEXT_INDEX_ENABLED: bool = True
+    KB_HEALTHCHECK_TIMEOUT_SECONDS: int = 5
 
     # CRM MSSQL configuration.
     CRM_DBHost: str = "localhost"
