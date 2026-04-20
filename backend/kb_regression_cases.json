@@ -3,140 +3,1709 @@
     "case_id": "kb_reg_001",
     "category": "pricing",
     "query_text": "英译法普通商务资料多少钱？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["pricing"], "language_pair": "en->fr", "service_scope": "general"},
-    "expected": {"must_hit_knowledge_type": "pricing", "manual_review_allowed": false}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "language_pair": "en->fr",
+      "service_scope": "general"
+    },
+    "expected": {
+      "must_hit_knowledge_type": "pricing",
+      "manual_review_allowed": false
+    },
+    "risk_level": "high",
+    "group": "translation_pricing"
   },
   {
     "case_id": "kb_reg_002",
     "category": "pricing",
     "query_text": "英译法最低收费是多少？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["pricing"], "language_pair": "en->fr"},
-    "expected": {"must_hit_pricing_rule": true}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "language_pair": "en->fr"
+    },
+    "expected": {
+      "must_hit_pricing_rule": true
+    },
+    "risk_level": "high",
+    "group": "translation_pricing"
   },
   {
     "case_id": "kb_reg_003",
     "category": "pricing",
     "query_text": "这个翻译项目要加急，能直接按固定加急费报价吗？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["pricing", "faq"]},
-    "expected": {"must_not_fabricate_price": true, "manual_review_allowed": true}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "risk_level": "high",
+    "group": "translation_pricing"
   },
   {
     "case_id": "kb_reg_004",
     "category": "pricing",
     "query_text": "报价含税吗？可以开专票吗？",
-    "query_features": {"business_line": "general", "knowledge_type": ["pricing", "faq"]},
-    "expected": {"must_hit_tax_or_invoice": true}
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_hit_tax_or_invoice": true
+    },
+    "risk_level": "high",
+    "group": "translation_pricing"
   },
   {
     "case_id": "kb_reg_005",
     "category": "capability",
     "query_text": "你们能做英译法吗？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["capability"], "language_pair": "en->fr"},
-    "expected": {"must_hit_knowledge_type": "capability"}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability"
+      ],
+      "language_pair": "en->fr"
+    },
+    "expected": {
+      "must_hit_knowledge_type": "capability"
+    },
+    "risk_level": "medium",
+    "group": "translation_capability"
   },
   {
     "case_id": "kb_reg_006",
     "category": "capability",
     "query_text": "医学资料可以翻译吗？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["capability", "faq"], "service_scope": "medical"},
-    "expected": {"service_scope_filter": "medical"}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ],
+      "service_scope": "medical"
+    },
+    "expected": {
+      "service_scope_filter": "medical"
+    },
+    "risk_level": "medium",
+    "group": "translation_capability"
   },
   {
     "case_id": "kb_reg_007",
     "category": "capability",
     "query_text": "法律合同能不能翻译？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["capability", "faq"], "service_scope": "legal"},
-    "expected": {"service_scope_filter": "legal"}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ],
+      "service_scope": "legal"
+    },
+    "expected": {
+      "service_scope_filter": "legal"
+    },
+    "risk_level": "medium",
+    "group": "translation_capability"
   },
   {
     "case_id": "kb_reg_008",
     "category": "process",
     "query_text": "翻译下单后流程是怎样的？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["process", "faq"]},
-    "expected": {"must_hit_knowledge_type": "process"}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_hit_knowledge_type": "process"
+    },
+    "risk_level": "medium",
+    "group": "delivery_process"
   },
   {
     "case_id": "kb_reg_009",
     "category": "process",
     "query_text": "文件发给你们以后多久能确认交期？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["process", "faq"]},
-    "expected": {"should_return_process_or_faq": true}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "should_return_process_or_faq": true
+    },
+    "risk_level": "medium",
+    "group": "delivery_process"
   },
   {
     "case_id": "kb_reg_010",
     "category": "faq",
     "query_text": "你们公司主要做什么业务？",
-    "query_features": {"business_line": "general", "knowledge_type": ["faq", "capability"]},
-    "expected": {"business_line_filter": "general"}
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "faq",
+        "capability"
+      ]
+    },
+    "expected": {
+      "business_line_filter": "general"
+    },
+    "risk_level": "low",
+    "group": "general_faq"
   },
   {
     "case_id": "kb_reg_011",
     "category": "faq",
     "query_text": "如果我现在没有翻译需求，还能先了解吗？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["faq"]},
-    "expected": {"must_hit_knowledge_type": "faq"}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_hit_knowledge_type": "faq"
+    },
+    "risk_level": "low",
+    "group": "general_faq"
   },
   {
     "case_id": "kb_reg_012",
     "category": "printing",
     "query_text": "画册印刷你们能做吗？",
-    "query_features": {"business_line": "printing", "knowledge_type": ["capability", "faq"]},
-    "expected": {"business_line_filter": "printing"}
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ]
+    },
+    "expected": {
+      "business_line_filter": "printing"
+    },
+    "risk_level": "high",
+    "group": "printing_sales"
   },
   {
     "case_id": "kb_reg_013",
     "category": "printing",
     "query_text": "印刷画册怎么报价？",
-    "query_features": {"business_line": "printing", "knowledge_type": ["pricing", "faq"]},
-    "expected": {"must_not_use_translation_price": true}
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_not_use_translation_price": true
+    },
+    "risk_level": "high",
+    "group": "printing_sales"
   },
   {
     "case_id": "kb_reg_014",
     "category": "exhibition",
     "query_text": "展台搭建服务范围包括哪些？",
-    "query_features": {"business_line": "exhibition", "knowledge_type": ["capability", "faq"]},
-    "expected": {"business_line_filter": "exhibition"}
+    "query_features": {
+      "business_line": "exhibition",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ]
+    },
+    "expected": {
+      "business_line_filter": "exhibition"
+    },
+    "risk_level": "medium",
+    "group": "exhibition_sales"
   },
   {
     "case_id": "kb_reg_015",
     "category": "template",
     "query_text": "客户嫌价格高，应该怎么回复？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["faq", "process", "pricing"]},
-    "expected": {"should_include_rules_before_expression": true}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "faq",
+        "process",
+        "pricing"
+      ]
+    },
+    "expected": {
+      "should_include_rules_before_expression": true
+    },
+    "risk_level": "medium",
+    "group": "sales_script"
   },
   {
     "case_id": "kb_reg_016",
     "category": "low_confidence",
     "query_text": "你们能不能做火星语同步传译？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["capability", "faq"]},
-    "expected": {"manual_review_required": true, "must_not_fabricate_capability": true}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_required": true,
+      "must_not_fabricate_capability": true
+    },
+    "risk_level": "high",
+    "group": "risk_guard"
   },
   {
     "case_id": "kb_reg_017",
     "category": "low_confidence",
     "query_text": "给我一个从没发布过的特殊折扣价。",
-    "query_features": {"business_line": "translation", "knowledge_type": ["pricing"]},
-    "expected": {"manual_review_required": true, "must_not_fabricate_price": true}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ]
+    },
+    "expected": {
+      "manual_review_required": true,
+      "must_not_fabricate_price": true
+    },
+    "risk_level": "high",
+    "group": "risk_guard"
   },
   {
     "case_id": "kb_reg_018",
     "category": "versioning",
     "query_text": "去年那版报价现在还能用吗？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["pricing"]},
-    "expected": {"must_check_effective_time": true}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ]
+    },
+    "expected": {
+      "must_check_effective_time": true
+    },
+    "risk_level": "high",
+    "group": "version_guard"
   },
   {
     "case_id": "kb_reg_019",
     "category": "customer_tier",
     "query_text": "重点客户有没有不同报价政策？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["pricing"], "customer_tier": "key"},
-    "expected": {"customer_tier_filter": "key"}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "customer_tier": "key"
+    },
+    "expected": {
+      "customer_tier_filter": "key"
+    },
+    "risk_level": "high",
+    "group": "crm_tier"
   },
   {
     "case_id": "kb_reg_020",
     "category": "cross_scope",
     "query_text": "英译法法律合同和普通商务资料报价一样吗？",
-    "query_features": {"business_line": "translation", "knowledge_type": ["pricing"], "language_pair": "en->fr", "service_scope": "legal"},
-    "expected": {"service_scope_filter": "legal", "must_not_use_general_if_legal_exists": true}
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "language_pair": "en->fr",
+      "service_scope": "legal"
+    },
+    "expected": {
+      "service_scope_filter": "legal",
+      "must_not_use_general_if_legal_exists": true
+    },
+    "risk_level": "high",
+    "group": "scope_guard"
+  },
+  {
+    "group": "translation_pricing",
+    "category": "pricing",
+    "risk_level": "high",
+    "query_text": "?????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "language_pair": "en->zh",
+      "service_scope": "technical"
+    },
+    "expected": {
+      "must_hit_knowledge_type": "pricing",
+      "must_check_effective_time": true
+    },
+    "case_id": "kb_reg_021"
+  },
+  {
+    "group": "translation_pricing",
+    "category": "pricing",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "language_pair": "zh->en",
+      "service_scope": "legal"
+    },
+    "expected": {
+      "must_hit_pricing_rule": true,
+      "service_scope_filter": "legal"
+    },
+    "case_id": "kb_reg_022"
+  },
+  {
+    "group": "translation_pricing",
+    "category": "pricing",
+    "risk_level": "high",
+    "query_text": "?????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ],
+      "language_pair": "en->zh",
+      "service_scope": "medical"
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_023"
+  },
+  {
+    "group": "translation_capability",
+    "category": "capability",
+    "risk_level": "medium",
+    "query_text": "????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ],
+      "language_pair": "zh->en",
+      "service_scope": "technical"
+    },
+    "expected": {
+      "must_hit_knowledge_type": "capability"
+    },
+    "case_id": "kb_reg_024"
+  },
+  {
+    "group": "translation_capability",
+    "category": "capability",
+    "risk_level": "medium",
+    "query_text": "????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ],
+      "service_scope": "certified"
+    },
+    "expected": {
+      "service_scope_filter": "certified"
+    },
+    "case_id": "kb_reg_025"
+  },
+  {
+    "group": "delivery_process",
+    "category": "process",
+    "risk_level": "medium",
+    "query_text": "????????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "should_return_process_or_faq": true
+    },
+    "case_id": "kb_reg_026"
+  },
+  {
+    "group": "delivery_process",
+    "category": "process",
+    "risk_level": "medium",
+    "query_text": "??????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "should_return_process_or_faq": true
+    },
+    "case_id": "kb_reg_027"
+  },
+  {
+    "group": "general_faq",
+    "category": "faq",
+    "risk_level": "low",
+    "query_text": "????????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_hit_knowledge_type": "faq"
+    },
+    "case_id": "kb_reg_028"
+  },
+  {
+    "group": "printing_sales",
+    "category": "printing",
+    "risk_level": "high",
+    "query_text": "????????????",
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_not_use_translation_price": true
+    },
+    "case_id": "kb_reg_029"
+  },
+  {
+    "group": "printing_sales",
+    "category": "printing",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_hit_tax_or_invoice": true
+    },
+    "case_id": "kb_reg_030"
+  },
+  {
+    "group": "printing_sales",
+    "category": "printing",
+    "risk_level": "medium",
+    "query_text": "?????????????",
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_031"
+  },
+  {
+    "group": "exhibition_sales",
+    "category": "exhibition",
+    "risk_level": "medium",
+    "query_text": "????????????",
+    "query_features": {
+      "business_line": "exhibition",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_032"
+  },
+  {
+    "group": "exhibition_sales",
+    "category": "exhibition",
+    "risk_level": "medium",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "exhibition",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "should_return_process_or_faq": true
+    },
+    "case_id": "kb_reg_033"
+  },
+  {
+    "group": "sales_script",
+    "category": "template",
+    "risk_level": "medium",
+    "query_text": "?????????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "faq",
+        "pricing"
+      ]
+    },
+    "expected": {
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_034"
+  },
+  {
+    "group": "risk_guard",
+    "category": "low_confidence",
+    "risk_level": "high",
+    "query_text": "?????????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing"
+      ]
+    },
+    "expected": {
+      "manual_review_required": true,
+      "must_not_fabricate_price": true
+    },
+    "case_id": "kb_reg_035"
+  },
+  {
+    "group": "version_guard",
+    "category": "versioning",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_check_effective_time": true
+    },
+    "case_id": "kb_reg_036"
+  },
+  {
+    "group": "crm_tier",
+    "category": "customer_tier",
+    "risk_level": "high",
+    "query_text": "?????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "customer_tier": "key"
+    },
+    "expected": {
+      "customer_tier_filter": "key"
+    },
+    "case_id": "kb_reg_037"
+  },
+  {
+    "group": "scope_guard",
+    "category": "cross_scope",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "service_scope": "medical"
+    },
+    "expected": {
+      "service_scope_filter": "medical"
+    },
+    "case_id": "kb_reg_038"
+  },
+  {
+    "group": "scope_guard",
+    "category": "cross_scope",
+    "risk_level": "high",
+    "query_text": "????????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ],
+      "service_scope": "legal"
+    },
+    "expected": {
+      "must_not_use_general_if_legal_exists": true
+    },
+    "case_id": "kb_reg_039"
+  },
+  {
+    "group": "translation_pricing",
+    "category": "pricing",
+    "risk_level": "high",
+    "query_text": "??????????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_040"
+  },
+  {
+    "group": "translation_capability",
+    "category": "capability",
+    "risk_level": "medium",
+    "query_text": "?????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_041"
+  },
+  {
+    "group": "delivery_process",
+    "category": "process",
+    "risk_level": "medium",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "should_return_process_or_faq": true
+    },
+    "case_id": "kb_reg_042"
+  },
+  {
+    "group": "printing_sales",
+    "category": "printing",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_043"
+  },
+  {
+    "group": "exhibition_sales",
+    "category": "exhibition",
+    "risk_level": "medium",
+    "query_text": "?????????????",
+    "query_features": {
+      "business_line": "exhibition",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {},
+    "case_id": "kb_reg_044"
+  },
+  {
+    "group": "risk_guard",
+    "category": "low_confidence",
+    "risk_level": "high",
+    "query_text": "???????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_required": true
+    },
+    "case_id": "kb_reg_045"
+  },
+  {
+    "group": "crm_tier",
+    "category": "customer_tier",
+    "risk_level": "high",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "customer_tier": "key"
+    },
+    "expected": {
+      "customer_tier_filter": "key"
+    },
+    "case_id": "kb_reg_046"
+  },
+  {
+    "group": "version_guard",
+    "category": "versioning",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_check_effective_time": true
+    },
+    "case_id": "kb_reg_047"
+  },
+  {
+    "group": "translation_pricing",
+    "category": "pricing",
+    "risk_level": "high",
+    "query_text": "???????????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_048"
+  },
+  {
+    "group": "translation_capability",
+    "category": "capability",
+    "risk_level": "medium",
+    "query_text": "????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_049"
+  },
+  {
+    "group": "delivery_process",
+    "category": "process",
+    "risk_level": "medium",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "should_return_process_or_faq": true
+    },
+    "case_id": "kb_reg_050"
+  },
+  {
+    "group": "printing_sales",
+    "category": "printing",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_051"
+  },
+  {
+    "group": "exhibition_sales",
+    "category": "exhibition",
+    "risk_level": "medium",
+    "query_text": "???????????",
+    "query_features": {
+      "business_line": "exhibition",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {},
+    "case_id": "kb_reg_052"
+  },
+  {
+    "group": "risk_guard",
+    "category": "low_confidence",
+    "risk_level": "high",
+    "query_text": "?????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_required": true
+    },
+    "case_id": "kb_reg_053"
+  },
+  {
+    "group": "crm_tier",
+    "category": "customer_tier",
+    "risk_level": "high",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "customer_tier": "key"
+    },
+    "expected": {
+      "customer_tier_filter": "key"
+    },
+    "case_id": "kb_reg_054"
+  },
+  {
+    "group": "version_guard",
+    "category": "versioning",
+    "risk_level": "high",
+    "query_text": "????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_check_effective_time": true
+    },
+    "case_id": "kb_reg_055"
+  },
+  {
+    "group": "translation_pricing",
+    "category": "pricing",
+    "risk_level": "high",
+    "query_text": "??????????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_056"
+  },
+  {
+    "group": "translation_capability",
+    "category": "capability",
+    "risk_level": "medium",
+    "query_text": "?????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_057"
+  },
+  {
+    "group": "delivery_process",
+    "category": "process",
+    "risk_level": "medium",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "should_return_process_or_faq": true
+    },
+    "case_id": "kb_reg_058"
+  },
+  {
+    "group": "printing_sales",
+    "category": "printing",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_059"
+  },
+  {
+    "group": "exhibition_sales",
+    "category": "exhibition",
+    "risk_level": "medium",
+    "query_text": "?????????????",
+    "query_features": {
+      "business_line": "exhibition",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {},
+    "case_id": "kb_reg_060"
+  },
+  {
+    "group": "risk_guard",
+    "category": "low_confidence",
+    "risk_level": "high",
+    "query_text": "???????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_required": true
+    },
+    "case_id": "kb_reg_061"
+  },
+  {
+    "group": "crm_tier",
+    "category": "customer_tier",
+    "risk_level": "high",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "customer_tier": "key"
+    },
+    "expected": {
+      "customer_tier_filter": "key"
+    },
+    "case_id": "kb_reg_062"
+  },
+  {
+    "group": "version_guard",
+    "category": "versioning",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_check_effective_time": true
+    },
+    "case_id": "kb_reg_063"
+  },
+  {
+    "group": "translation_pricing",
+    "category": "pricing",
+    "risk_level": "high",
+    "query_text": "???????????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_064"
+  },
+  {
+    "group": "translation_capability",
+    "category": "capability",
+    "risk_level": "medium",
+    "query_text": "????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_065"
+  },
+  {
+    "group": "delivery_process",
+    "category": "process",
+    "risk_level": "medium",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "should_return_process_or_faq": true
+    },
+    "case_id": "kb_reg_066"
+  },
+  {
+    "group": "printing_sales",
+    "category": "printing",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_067"
+  },
+  {
+    "group": "exhibition_sales",
+    "category": "exhibition",
+    "risk_level": "medium",
+    "query_text": "???????????",
+    "query_features": {
+      "business_line": "exhibition",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {},
+    "case_id": "kb_reg_068"
+  },
+  {
+    "group": "risk_guard",
+    "category": "low_confidence",
+    "risk_level": "high",
+    "query_text": "?????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_required": true
+    },
+    "case_id": "kb_reg_069"
+  },
+  {
+    "group": "crm_tier",
+    "category": "customer_tier",
+    "risk_level": "high",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "customer_tier": "key"
+    },
+    "expected": {
+      "customer_tier_filter": "key"
+    },
+    "case_id": "kb_reg_070"
+  },
+  {
+    "group": "version_guard",
+    "category": "versioning",
+    "risk_level": "high",
+    "query_text": "????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_check_effective_time": true
+    },
+    "case_id": "kb_reg_071"
+  },
+  {
+    "group": "translation_pricing",
+    "category": "pricing",
+    "risk_level": "high",
+    "query_text": "??????????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_072"
+  },
+  {
+    "group": "translation_capability",
+    "category": "capability",
+    "risk_level": "medium",
+    "query_text": "?????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_073"
+  },
+  {
+    "group": "delivery_process",
+    "category": "process",
+    "risk_level": "medium",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "should_return_process_or_faq": true
+    },
+    "case_id": "kb_reg_074"
+  },
+  {
+    "group": "printing_sales",
+    "category": "printing",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_075"
+  },
+  {
+    "group": "exhibition_sales",
+    "category": "exhibition",
+    "risk_level": "medium",
+    "query_text": "?????????????",
+    "query_features": {
+      "business_line": "exhibition",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {},
+    "case_id": "kb_reg_076"
+  },
+  {
+    "group": "risk_guard",
+    "category": "low_confidence",
+    "risk_level": "high",
+    "query_text": "???????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_required": true
+    },
+    "case_id": "kb_reg_077"
+  },
+  {
+    "group": "crm_tier",
+    "category": "customer_tier",
+    "risk_level": "high",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "customer_tier": "key"
+    },
+    "expected": {
+      "customer_tier_filter": "key"
+    },
+    "case_id": "kb_reg_078"
+  },
+  {
+    "group": "version_guard",
+    "category": "versioning",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_check_effective_time": true
+    },
+    "case_id": "kb_reg_079"
+  },
+  {
+    "group": "translation_pricing",
+    "category": "pricing",
+    "risk_level": "high",
+    "query_text": "???????????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_080"
+  },
+  {
+    "group": "translation_capability",
+    "category": "capability",
+    "risk_level": "medium",
+    "query_text": "????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_081"
+  },
+  {
+    "group": "delivery_process",
+    "category": "process",
+    "risk_level": "medium",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "should_return_process_or_faq": true
+    },
+    "case_id": "kb_reg_082"
+  },
+  {
+    "group": "printing_sales",
+    "category": "printing",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_083"
+  },
+  {
+    "group": "exhibition_sales",
+    "category": "exhibition",
+    "risk_level": "medium",
+    "query_text": "???????????",
+    "query_features": {
+      "business_line": "exhibition",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {},
+    "case_id": "kb_reg_084"
+  },
+  {
+    "group": "risk_guard",
+    "category": "low_confidence",
+    "risk_level": "high",
+    "query_text": "?????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_required": true
+    },
+    "case_id": "kb_reg_085"
+  },
+  {
+    "group": "crm_tier",
+    "category": "customer_tier",
+    "risk_level": "high",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "customer_tier": "key"
+    },
+    "expected": {
+      "customer_tier_filter": "key"
+    },
+    "case_id": "kb_reg_086"
+  },
+  {
+    "group": "version_guard",
+    "category": "versioning",
+    "risk_level": "high",
+    "query_text": "????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_check_effective_time": true
+    },
+    "case_id": "kb_reg_087"
+  },
+  {
+    "group": "translation_pricing",
+    "category": "pricing",
+    "risk_level": "high",
+    "query_text": "??????????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_088"
+  },
+  {
+    "group": "translation_capability",
+    "category": "capability",
+    "risk_level": "medium",
+    "query_text": "?????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_089"
+  },
+  {
+    "group": "delivery_process",
+    "category": "process",
+    "risk_level": "medium",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "should_return_process_or_faq": true
+    },
+    "case_id": "kb_reg_090"
+  },
+  {
+    "group": "printing_sales",
+    "category": "printing",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_091"
+  },
+  {
+    "group": "exhibition_sales",
+    "category": "exhibition",
+    "risk_level": "medium",
+    "query_text": "?????????????",
+    "query_features": {
+      "business_line": "exhibition",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {},
+    "case_id": "kb_reg_092"
+  },
+  {
+    "group": "risk_guard",
+    "category": "low_confidence",
+    "risk_level": "high",
+    "query_text": "???????????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_required": true
+    },
+    "case_id": "kb_reg_093"
+  },
+  {
+    "group": "crm_tier",
+    "category": "customer_tier",
+    "risk_level": "high",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing"
+      ],
+      "customer_tier": "key"
+    },
+    "expected": {
+      "customer_tier_filter": "key"
+    },
+    "case_id": "kb_reg_094"
+  },
+  {
+    "group": "version_guard",
+    "category": "versioning",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "general",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_check_effective_time": true
+    },
+    "case_id": "kb_reg_095"
+  },
+  {
+    "group": "translation_pricing",
+    "category": "pricing",
+    "risk_level": "high",
+    "query_text": "???????????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "pricing"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_096"
+  },
+  {
+    "group": "translation_capability",
+    "category": "capability",
+    "risk_level": "medium",
+    "query_text": "????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "capability",
+        "faq"
+      ]
+    },
+    "expected": {
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_097"
+  },
+  {
+    "group": "delivery_process",
+    "category": "process",
+    "risk_level": "medium",
+    "query_text": "??????????????",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {
+      "should_return_process_or_faq": true
+    },
+    "case_id": "kb_reg_098"
+  },
+  {
+    "group": "printing_sales",
+    "category": "printing",
+    "risk_level": "high",
+    "query_text": "???????????????",
+    "query_features": {
+      "business_line": "printing",
+      "knowledge_type": [
+        "pricing",
+        "faq"
+      ]
+    },
+    "expected": {
+      "must_not_fabricate_price": true,
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_099"
+  },
+  {
+    "group": "exhibition_sales",
+    "category": "exhibition",
+    "risk_level": "medium",
+    "query_text": "???????????",
+    "query_features": {
+      "business_line": "exhibition",
+      "knowledge_type": [
+        "process",
+        "faq"
+      ]
+    },
+    "expected": {},
+    "case_id": "kb_reg_100"
   }
 ]

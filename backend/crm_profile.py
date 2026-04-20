@@ -19,10 +19,15 @@ class CRMProfileResponse(BaseModel):
     """客户画像响应模型"""
     crm_contact_name: Optional[str] = None
     company_name: Optional[str] = None
+    company_industry: Optional[str] = None
     recent_opportunities: Optional[str] = None
+    recent_quote_summary: Optional[str] = None
     ongoing_contracts: Optional[str] = None
     contact_recent_followup: Optional[str] = None
     customer_lifecycle_stage: Optional[str] = None
+    customer_tier: Optional[str] = None
+    payment_risk_level: Optional[str] = None
+    high_risk_flags: Optional[list[str]] = None
 
 
 def fetch_crm_profile(external_userid: str, db: Session) -> CRMProfileResponse:
@@ -138,14 +143,23 @@ def fetch_crm_profile(external_userid: str, db: Session) -> CRMProfileResponse:
                 contact_recent_followup = date_label + "\n" + "\n----------------------\n".join(record_items)
 
         customer_lifecycle_stage = _get_customer_lifecycle_stage(contact_id, db)
+        company_industry = _infer_company_industry(company_name, recent_opportunities, ongoing_contracts)
+        customer_tier = _infer_customer_tier(customer_lifecycle_stage, recent_opportunities, ongoing_contracts)
+        payment_risk_level = _infer_payment_risk(contact_recent_followup)
+        high_risk_flags = _build_high_risk_flags(payment_risk_level, customer_tier, recent_opportunities)
 
         return CRMProfileResponse(
             crm_contact_name=contact_name,
             company_name=company_name,
+            company_industry=company_industry,
             recent_opportunities=recent_opportunities,
+            recent_quote_summary=recent_opportunities,
             ongoing_contracts=ongoing_contracts,
             contact_recent_followup=contact_recent_followup,
-            customer_lifecycle_stage=customer_lifecycle_stage
+            customer_lifecycle_stage=customer_lifecycle_stage,
+            customer_tier=customer_tier,
+            payment_risk_level=payment_risk_level,
+            high_risk_flags=high_risk_flags,
         )
 
     except HTTPException:
@@ -310,3 +324,57 @@ def _get_customer_lifecycle_stage(contact_id, db: Session) -> Optional[str]:
 
     except Exception:
         return None
+
+
+def _infer_company_industry(company_name: Optional[str], recent_opportunities: Optional[str], ongoing_contracts: Optional[str]) -> Optional[str]:
+    text_value = " ".join(filter(None, [company_name, recent_opportunities, ongoing_contracts])).lower()
+    mapping = [
+        ("medical", ["medical", "医院", "医学", "药", "临床"]),
+        ("legal", ["law", "法律", "合同", "律所"]),
+        ("manufacturing", ["factory", "制造", "工厂", "设备"]),
+        ("exhibition", ["展会", "展台", "搭建"]),
+        ("education", ["学校", "教育", "培训"]),
+    ]
+    for label, words in mapping:
+        if any(word in text_value for word in words):
+            return label
+    return None
+
+
+def _infer_customer_tier(
+    lifecycle_stage: Optional[str],
+    recent_opportunities: Optional[str],
+    ongoing_contracts: Optional[str],
+) -> Optional[str]:
+    stage = lifecycle_stage or ""
+    if ongoing_contracts and recent_opportunities:
+        return "key"
+    if any(word in stage for word in ["老联系人", "熟联系人"]):
+        return "key"
+    if ongoing_contracts:
+        return "common"
+    return None
+
+
+def _infer_payment_risk(contact_recent_followup: Optional[str]) -> Optional[str]:
+    text_value = (contact_recent_followup or "").lower()
+    if any(word in text_value for word in ["逾期", "催款", "拖欠", "回款慢", "付款慢"]):
+        return "high"
+    if any(word in text_value for word in ["审批", "预算", "待确认"]):
+        return "medium"
+    return "low" if text_value else None
+
+
+def _build_high_risk_flags(
+    payment_risk_level: Optional[str],
+    customer_tier: Optional[str],
+    recent_opportunities: Optional[str],
+) -> list[str]:
+    flags: list[str] = []
+    if payment_risk_level == "high":
+        flags.append("payment_risk")
+    if customer_tier == "key":
+        flags.append("key_customer")
+    if recent_opportunities and any(word in recent_opportunities for word in ["报价", "折扣", "Quotation"]):
+        flags.append("historical_quote")
+    return flags

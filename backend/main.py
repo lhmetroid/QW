@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from time import perf_counter
+from typing import Any
 from sqlalchemy import or_, text, func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -23,8 +24,10 @@ from embedding_service import EmbeddingService
 from email_import_service import EmailImportService
 from database import (
     SessionLocal, MessageLog, init_db, KnowledgeBase, IntentSummary, get_db,
-    KnowledgeDocument, KnowledgeChunk, PricingRule, KnowledgeHitLog, KnowledgeCandidate
+    KnowledgeDocument, KnowledgeChunk, PricingRule, KnowledgeHitLog, KnowledgeCandidate,
+    KnowledgeVersionSnapshot, JobTask,
 )
+from worker import start_job
 
 app = FastAPI(title="企微智能实时提醒后台")
 logger = logging.getLogger(__name__)
@@ -317,11 +320,18 @@ class AssistFeedback(BaseModel):
 
 class KnowledgeRegressionRunRequest(BaseModel):
     case_ids: list[str] | None = None
+    groups: list[str] | None = None
+    category: str | None = None
+    risk_level: str | None = None
+    business_line: str | None = None
     top_k: int = 5
     min_score: float | None = None
     cleanup_logs: bool = True
     include_hits: bool = False
     run_id: str | None = None
+
+class JobRetryRequest(BaseModel):
+    operator: str | None = None
 
 class KnowledgePublishRequest(BaseModel):
     force: bool = False
@@ -1050,6 +1060,198 @@ def _candidate_to_dict(candidate: KnowledgeCandidate) -> dict:
         "updated_at": candidate.updated_at,
     }
 
+def _jsonable(value: Any) -> Any:
+    return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+
+def _version_snapshot_to_dict(snapshot: KnowledgeVersionSnapshot) -> dict:
+    return {
+        "snapshot_id": str(snapshot.snapshot_id),
+        "document_id": str(snapshot.document_id),
+        "version_no": snapshot.version_no,
+        "action": snapshot.action,
+        "operator": snapshot.operator,
+        "note": snapshot.note,
+        "created_at": snapshot.created_at,
+    }
+
+def _job_to_dict(job: JobTask) -> dict:
+    return {
+        "job_id": str(job.job_id),
+        "job_type": job.job_type,
+        "status": job.status,
+        "progress": job.progress,
+        "summary": job.summary,
+        "task_payload": job.task_payload,
+        "result": job.result,
+        "error_message": job.error_message,
+        "retry_of": job.retry_of,
+        "created_at": job.created_at,
+        "started_at": job.started_at,
+        "finished_at": job.finished_at,
+        "updated_at": job.updated_at,
+    }
+
+def _document_snapshot_payload(doc: KnowledgeDocument, chunks: list[KnowledgeChunk], pricing_rules: list[PricingRule]) -> dict:
+    return _jsonable({
+        "document": _doc_to_dict(doc),
+        "chunks": [_chunk_to_dict(chunk) for chunk in chunks],
+        "pricing_rules": [_pricing_rule_to_dict(rule) for rule in pricing_rules],
+    })
+
+def _next_publish_version_no(db: Session, document_id: str, current_version: int | None) -> int:
+    latest_snapshot = db.query(func.max(KnowledgeVersionSnapshot.version_no)).filter(
+        KnowledgeVersionSnapshot.document_id == document_id
+    ).scalar()
+    if latest_snapshot:
+        return int(latest_snapshot) + 1
+    return max(int(current_version or 1), 1)
+
+def _create_version_snapshot(
+    db: Session,
+    doc: KnowledgeDocument,
+    *,
+    action: str = "publish",
+    operator: str | None = None,
+    note: str | None = None,
+    version_no: int | None = None,
+) -> KnowledgeVersionSnapshot:
+    chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc.document_id).order_by(KnowledgeChunk.chunk_no.asc()).all()
+    pricing_rules = db.query(PricingRule).filter(PricingRule.document_id == doc.document_id).order_by(PricingRule.created_at.asc()).all()
+    snapshot = KnowledgeVersionSnapshot(
+        document_id=doc.document_id,
+        version_no=version_no or int(doc.version_no or 1),
+        action=action,
+        operator=operator,
+        note=note,
+        snapshot_data=_document_snapshot_payload(doc, chunks, pricing_rules),
+    )
+    db.add(snapshot)
+    db.flush()
+    return snapshot
+
+def _restore_document_from_snapshot(db: Session, doc: KnowledgeDocument, snapshot: KnowledgeVersionSnapshot) -> dict:
+    payload = snapshot.snapshot_data or {}
+    doc_payload = payload.get("document") or {}
+    chunks_payload = payload.get("chunks") or []
+    pricing_payload = payload.get("pricing_rules") or []
+
+    for field in [
+        "title", "knowledge_type", "business_line", "sub_service", "source_type",
+        "source_ref", "risk_level", "owner", "import_batch", "review_required", "tags",
+    ]:
+        if field in doc_payload:
+            setattr(doc, field, doc_payload.get(field))
+    doc.source_meta = dict(doc_payload.get("source_meta") or {})
+    doc.effective_from = _parse_datetime_or_none(doc_payload.get("effective_from"))
+    doc.effective_to = _parse_datetime_or_none(doc_payload.get("effective_to"))
+    doc.version_no = int(snapshot.version_no)
+    doc.status = "review"
+    doc.review_required = True
+    doc.review_status = "in_review"
+
+    db.query(PricingRule).filter(PricingRule.document_id == doc.document_id).delete(synchronize_session=False)
+    db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc.document_id).delete(synchronize_session=False)
+    db.flush()
+
+    chunk_id_map: dict[str, str] = {}
+    recreated_chunks = []
+    recreated_rules = []
+    for chunk_payload in sorted(chunks_payload, key=lambda item: int(item.get("chunk_no") or 1)):
+        embedding = EmbeddingService.embed(f"{chunk_payload.get('title') or ''}\n{chunk_payload.get('content') or ''}")
+        if not embedding:
+            raise HTTPException(status_code=500, detail=f"Embedding failed when restoring chunk: {chunk_payload.get('title')}")
+        chunk = KnowledgeChunk(
+            document_id=doc.document_id,
+            chunk_no=int(chunk_payload.get("chunk_no") or 1),
+            chunk_type=chunk_payload.get("chunk_type") or "faq",
+            title=chunk_payload.get("title") or doc.title,
+            content=chunk_payload.get("content") or "",
+            keyword_text=chunk_payload.get("keyword_text") or f"{chunk_payload.get('title') or ''}\n{chunk_payload.get('content') or ''}",
+            embedding=embedding,
+            embedding_provider=settings.EMBEDDING_PROVIDER,
+            embedding_model=settings.EMBEDDING_MODEL,
+            embedding_dim=settings.EMBEDDING_DIM,
+            priority=int(chunk_payload.get("priority") or 50),
+            retrieval_weight=_decimal_or_none(chunk_payload.get("retrieval_weight")) or Decimal("1.000"),
+            business_line=chunk_payload.get("business_line") or doc.business_line,
+            sub_service=chunk_payload.get("sub_service"),
+            knowledge_type=chunk_payload.get("knowledge_type") or doc.knowledge_type,
+            language_pair=chunk_payload.get("language_pair"),
+            service_scope=chunk_payload.get("service_scope"),
+            region=chunk_payload.get("region"),
+            customer_tier=chunk_payload.get("customer_tier"),
+            structured_tags=chunk_payload.get("structured_tags"),
+            status="review",
+            effective_from=doc.effective_from,
+            effective_to=doc.effective_to,
+        )
+        db.add(chunk)
+        db.flush()
+        if chunk_payload.get("chunk_id"):
+            chunk_id_map[str(chunk_payload["chunk_id"])] = str(chunk.chunk_id)
+        recreated_chunks.append(chunk)
+
+    for rule_payload in pricing_payload:
+        rule = PricingRule(
+            document_id=doc.document_id,
+            chunk_id=chunk_id_map.get(str(rule_payload.get("chunk_id"))) if rule_payload.get("chunk_id") else None,
+            business_line=rule_payload.get("business_line") or doc.business_line,
+            sub_service=rule_payload.get("sub_service"),
+            language_pair=rule_payload.get("language_pair"),
+            service_scope=rule_payload.get("service_scope"),
+            unit=rule_payload.get("unit") or "per_project",
+            currency=rule_payload.get("currency") or "CNY",
+            price_min=_decimal_or_none(rule_payload.get("price_min")),
+            price_max=_decimal_or_none(rule_payload.get("price_max")),
+            urgent_multiplier=_decimal_or_none(rule_payload.get("urgent_multiplier")),
+            tax_policy=rule_payload.get("tax_policy"),
+            min_charge=_decimal_or_none(rule_payload.get("min_charge")),
+            customer_tier=rule_payload.get("customer_tier"),
+            region=rule_payload.get("region"),
+            status="review",
+            effective_from=doc.effective_from,
+            effective_to=doc.effective_to,
+            version_no=doc.version_no,
+            source_ref=rule_payload.get("source_ref") or doc.source_ref,
+        )
+        db.add(rule)
+        recreated_rules.append(rule)
+
+    restore_meta = dict(doc.source_meta or {})
+    restore_meta["restored_from_version"] = snapshot.version_no
+    restore_meta["restored_at"] = datetime.utcnow().isoformat()
+    doc.source_meta = restore_meta
+    return {
+        "restored_version": snapshot.version_no,
+        "chunk_count": len(recreated_chunks),
+        "pricing_rule_count": len(recreated_rules),
+    }
+
+def _job_payload_dir() -> str:
+    path = os.path.join(os.path.dirname(__file__), "..", "scratch", "job_payloads")
+    os.makedirs(path, exist_ok=True)
+    return os.path.abspath(path)
+
+def _create_job_task(
+    db: Session,
+    *,
+    job_type: str,
+    task_payload: dict | None = None,
+    summary: str | None = None,
+    retry_of: str | None = None,
+) -> JobTask:
+    job = JobTask(
+        job_type=job_type,
+        status="queued",
+        progress=0,
+        summary=summary or "queued",
+        task_payload=_jsonable(task_payload or {}),
+        retry_of=retry_of,
+    )
+    db.add(job)
+    db.flush()
+    return job
+
 def _create_single_document_and_chunk(
     db: Session,
     *,
@@ -1390,6 +1592,33 @@ def _load_regression_cases() -> list[dict]:
     with open(filepath, "r", encoding="utf-8") as f:
         return json.load(f)
 
+def _filter_regression_cases(
+    cases: list[dict],
+    *,
+    case_ids: list[str] | None = None,
+    groups: list[str] | None = None,
+    category: str | None = None,
+    risk_level: str | None = None,
+    business_line: str | None = None,
+) -> list[dict]:
+    selected_ids = set(case_ids or [])
+    selected_groups = set(groups or [])
+    filtered = []
+    for case in cases:
+        if selected_ids and case.get("case_id") not in selected_ids:
+            continue
+        if selected_groups and case.get("group") not in selected_groups:
+            continue
+        if category and case.get("category") != category:
+            continue
+        if risk_level and case.get("risk_level") != risk_level:
+            continue
+        case_business_line = (case.get("query_features") or {}).get("business_line") or case.get("business_line")
+        if business_line and case_business_line != business_line:
+            continue
+        filtered.append(case)
+    return filtered
+
 def _evaluate_regression_case(case: dict, result: dict) -> dict:
     expected = case.get("expected") or {}
     hits = result.get("hits") or []
@@ -1673,6 +1902,7 @@ def build_kb_quality_report(db: Session, days: int = 30, limit: int = 300) -> di
                     "service_scope": chunk.service_scope,
                     "customer_tier": chunk.customer_tier,
                 },
+                "actions": ["view_document", "view_chunk", "add_pricing_rule"],
             })
 
     active_rules = db.query(PricingRule).filter(PricingRule.status == "active").limit(max(1, min(limit, 1000))).all()
@@ -1694,6 +1924,7 @@ def build_kb_quality_report(db: Session, days: int = 30, limit: int = 300) -> di
             "rule_ids": [str(rule.rule_id) for rule in rules],
             "document_ids": sorted({str(rule.document_id) for rule in rules}),
             "signatures": [list(signature) for signature in sorted(signatures, key=lambda item: str(item))],
+            "actions": ["view_rules", "archive_duplicate_rules" if issue_type == "duplicate_pricing_rule" else "review_conflict_rules"],
         })
 
     expiring_docs = db.query(KnowledgeDocument).filter(
@@ -1711,6 +1942,7 @@ def build_kb_quality_report(db: Session, days: int = 30, limit: int = 300) -> di
             "title": doc.title,
             "effective_to": doc.effective_to,
             "days_left": (doc.effective_to - now).days,
+            "actions": ["view_document", "extend_effective_to", "archive_document"],
         })
 
     expiring_rules = db.query(PricingRule).filter(
@@ -1729,6 +1961,7 @@ def build_kb_quality_report(db: Session, days: int = 30, limit: int = 300) -> di
             "scope": _scope_to_dict(_pricing_scope(rule)),
             "effective_to": rule.effective_to,
             "days_left": (rule.effective_to - now).days,
+            "actions": ["view_rules", "archive_pricing_rule"],
         })
 
     by_type: dict[str, int] = {}
@@ -2198,9 +2431,29 @@ async def get_kb_document(document_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Knowledge document not found")
     chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == document_id).order_by(KnowledgeChunk.chunk_no.asc()).all()
     pricing_rules = db.query(PricingRule).filter(PricingRule.document_id == document_id).order_by(PricingRule.created_at.asc()).all()
+    snapshots = db.query(KnowledgeVersionSnapshot).filter(
+        KnowledgeVersionSnapshot.document_id == document_id
+    ).order_by(KnowledgeVersionSnapshot.version_no.desc(), KnowledgeVersionSnapshot.created_at.desc()).all()
     return {
         "document": _doc_to_dict(doc),
         "chunks": [_chunk_to_dict(chunk) for chunk in chunks],
+        "pricing_rules": [_pricing_rule_to_dict(rule) for rule in pricing_rules],
+        "version_snapshots": [_version_snapshot_to_dict(item) for item in snapshots],
+    }
+
+@app.get("/api/kb/chunks/{chunk_id}")
+async def get_kb_chunk(chunk_id: str, db: Session = Depends(get_db)):
+    chunk = db.query(KnowledgeChunk).filter(KnowledgeChunk.chunk_id == chunk_id).first()
+    if not chunk:
+        raise HTTPException(status_code=404, detail="Knowledge chunk not found")
+    doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == chunk.document_id).first()
+    pricing_rules = db.query(PricingRule).filter(
+        PricingRule.document_id == chunk.document_id,
+        or_(PricingRule.chunk_id == chunk.chunk_id, PricingRule.chunk_id.is_(None)),
+    ).order_by(PricingRule.created_at.asc()).all()
+    return {
+        "chunk": _chunk_to_dict(chunk),
+        "document": _doc_to_dict(doc) if doc else None,
         "pricing_rules": [_pricing_rule_to_dict(rule) for rule in pricing_rules],
     }
 
@@ -2275,6 +2528,8 @@ async def list_kb_pricing_rules(
     language_pair: str | None = None,
     service_scope: str | None = None,
     customer_tier: str | None = None,
+    document_id: str | None = None,
+    rule_ids: str | None = None,
     limit: int = 200,
     db: Session = Depends(get_db),
 ):
@@ -2289,6 +2544,12 @@ async def list_kb_pricing_rules(
         query = query.filter(PricingRule.service_scope == service_scope)
     if customer_tier:
         query = query.filter(PricingRule.customer_tier == customer_tier)
+    if document_id:
+        query = query.filter(PricingRule.document_id == document_id)
+    if rule_ids:
+        parsed_rule_ids = [item.strip() for item in rule_ids.split(",") if item.strip()]
+        if parsed_rule_ids:
+            query = query.filter(PricingRule.rule_id.in_(parsed_rule_ids))
     rules = query.order_by(PricingRule.created_at.desc()).limit(max(1, min(limit, 500))).all()
     return [_pricing_rule_to_dict(rule) for rule in rules]
 
@@ -2421,28 +2682,29 @@ async def submit_assist_feedback(payload: AssistFeedback, db: Session = Depends(
         "candidate": _candidate_to_dict(candidate) if candidate else None,
     }
 
-@app.get("/api/kb/regression_cases")
-async def list_kb_regression_cases():
-    cases = _load_regression_cases()
-    return {
-        "status": "success",
-        "count": len(cases),
-        "cases": cases,
-    }
-
-@app.post("/api/kb/regression_cases/run")
-async def run_kb_regression_cases(payload: KnowledgeRegressionRunRequest):
-    cases = _load_regression_cases()
-    selected_ids = set(payload.case_ids or [])
-    if selected_ids:
-        cases = [case for case in cases if case.get("case_id") in selected_ids]
+def _execute_regression_cases(payload: KnowledgeRegressionRunRequest, report: Any = None) -> dict:
+    cases = _filter_regression_cases(
+        _load_regression_cases(),
+        case_ids=payload.case_ids,
+        groups=payload.groups,
+        category=payload.category,
+        risk_level=payload.risk_level,
+        business_line=payload.business_line,
+    )
     if not cases:
         raise HTTPException(status_code=404, detail="No regression cases matched")
 
     run_id = payload.run_id or f"kb_reg_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
     results = []
     request_ids = []
-    for case in cases:
+    total_cases = len(cases)
+    for index, case in enumerate(cases, start=1):
+        if report:
+            report(
+                progress=min(95, round(index * 100 / max(total_cases, 1))),
+                summary=f"running {case.get('case_id')}",
+                result_patch={"current_case_id": case.get("case_id"), "total_cases": total_cases},
+            )
         case_id = case["case_id"]
         request_id = f"{run_id}_{case_id}"
         request_ids.append(request_id)
@@ -2472,6 +2734,8 @@ async def run_kb_regression_cases(payload: KnowledgeRegressionRunRequest):
         ]
         item = {
             "case_id": case_id,
+            "group": case.get("group"),
+            "risk_level": case.get("risk_level"),
             "category": case.get("category"),
             "passed": evaluation["passed"],
             "status": result.get("status"),
@@ -2499,15 +2763,125 @@ async def run_kb_regression_cases(payload: KnowledgeRegressionRunRequest):
         finally:
             db.close()
 
+    summary_by_group = {}
+    for item in results:
+        key = item.get("group") or "default"
+        bucket = summary_by_group.setdefault(key, {"total": 0, "passed": 0, "failed": 0})
+        bucket["total"] += 1
+        if item["passed"]:
+            bucket["passed"] += 1
+        else:
+            bucket["failed"] += 1
+
     return {
         "status": "success" if failed_count == 0 else "failed",
         "run_id": run_id,
         "total": len(results),
         "passed": passed_count,
         "failed": failed_count,
+        "pass_rate": round((passed_count / len(results)) * 100, 2) if results else 0,
         "cleanup": cleanup,
+        "summary_by_group": summary_by_group,
         "results": results,
     }
+
+def _run_regression_job(report: Any, payload_data: dict) -> dict:
+    payload = KnowledgeRegressionRunRequest(**payload_data)
+    return _execute_regression_cases(payload, report=report)
+
+@app.get("/api/kb/regression_cases")
+async def list_kb_regression_cases(
+    group: str | None = None,
+    category: str | None = None,
+    risk_level: str | None = None,
+    business_line: str | None = None,
+):
+    cases = _filter_regression_cases(
+        _load_regression_cases(),
+        groups=[group] if group else None,
+        category=category,
+        risk_level=risk_level,
+        business_line=business_line,
+    )
+    meta = {
+        "groups": sorted({case.get("group") for case in _load_regression_cases() if case.get("group")}),
+        "categories": sorted({case.get("category") for case in _load_regression_cases() if case.get("category")}),
+        "risk_levels": sorted({case.get("risk_level") for case in _load_regression_cases() if case.get("risk_level")}),
+        "business_lines": sorted({
+            ((case.get("query_features") or {}).get("business_line") or case.get("business_line"))
+            for case in _load_regression_cases()
+            if ((case.get("query_features") or {}).get("business_line") or case.get("business_line"))
+        }),
+    }
+    return {
+        "status": "success",
+        "count": len(cases),
+        "meta": meta,
+        "cases": cases,
+    }
+
+@app.post("/api/kb/regression_cases/run")
+async def run_kb_regression_cases(payload: KnowledgeRegressionRunRequest):
+    return _execute_regression_cases(payload)
+
+@app.post("/api/kb/regression_cases/run_async")
+async def run_kb_regression_cases_async(payload: KnowledgeRegressionRunRequest, db: Session = Depends(get_db)):
+    job = _create_job_task(
+        db,
+        job_type="kb_regression",
+        task_payload=payload.model_dump(),
+        summary="queued regression run",
+    )
+    db.commit()
+    db.refresh(job)
+    start_job(str(job.job_id), _run_regression_job, payload.model_dump())
+    return {"status": "queued", "job": _job_to_dict(job)}
+
+@app.get("/api/jobs")
+async def list_jobs(job_type: str | None = None, status: str | None = None, limit: int = 100, db: Session = Depends(get_db)):
+    query = db.query(JobTask)
+    if job_type:
+        query = query.filter(JobTask.job_type == job_type)
+    if status:
+        query = query.filter(JobTask.status == status)
+    jobs = query.order_by(JobTask.created_at.desc()).limit(max(1, min(limit, 300))).all()
+    return {
+        "status": "success",
+        "count": len(jobs),
+        "jobs": [_job_to_dict(job) for job in jobs],
+    }
+
+@app.get("/api/jobs/{job_id}")
+async def get_job(job_id: str, db: Session = Depends(get_db)):
+    job = db.query(JobTask).filter(JobTask.job_id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"status": "success", "job": _job_to_dict(job)}
+
+@app.post("/api/jobs/{job_id}/retry")
+async def retry_job(job_id: str, payload: JobRetryRequest | None = None, db: Session = Depends(get_db)):
+    job = db.query(JobTask).filter(JobTask.job_id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    retry_payload = dict(job.task_payload or {})
+    if payload and payload.operator:
+        retry_payload["operator"] = payload.operator
+    retry_job_record = _create_job_task(
+        db,
+        job_type=job.job_type,
+        task_payload=retry_payload,
+        summary=f"retry {job.job_type}",
+        retry_of=str(job.job_id),
+    )
+    db.commit()
+    db.refresh(retry_job_record)
+    if job.job_type == "kb_regression":
+        start_job(str(retry_job_record.job_id), _run_regression_job, retry_payload)
+    elif job.job_type == "kb_excel_import":
+        start_job(str(retry_job_record.job_id), _run_excel_import_job, retry_payload)
+    else:
+        raise HTTPException(status_code=422, detail=f"Retry not supported for job_type={job.job_type}")
+    return {"status": "queued", "job": _job_to_dict(retry_job_record)}
 
 @app.get("/api/kb/quality/report")
 async def get_kb_quality_report(days: int = 30, limit: int = 300, db: Session = Depends(get_db)):
@@ -2564,6 +2938,175 @@ async def get_kb_performance_status(db: Session = Depends(get_db)):
             "active_pricing_rules": active_pricing_rule_count,
         },
         "indexes": [dict(row) for row in index_rows],
+    }
+
+def _is_placeholder_value(value: str | None) -> bool:
+    text_value = str(value or "").strip()
+    if not text_value:
+        return True
+    placeholders = {"your-corp-id", "your-corp-secret", "your-agent-id", "your-token", "your-token",
+                    "your-encoding-aes-key", "your-chatdata-secret", "your-db-name", "your-db-user",
+                    "your-db-password", "your-llm1-api-key", "your-llm2-api-key"}
+    return text_value in placeholders or text_value.startswith("your-")
+
+def _mask_config_value(value: str | None, keep: int = 4) -> str | None:
+    if value is None:
+        return None
+    text_value = str(value)
+    if len(text_value) <= keep:
+        return "*" * len(text_value)
+    return f"{text_value[:keep]}***"
+
+def _probe_http_status(url: str, headers: dict | None = None) -> dict:
+    try:
+        session = requests.Session()
+        session.trust_env = settings.HTTP_TRUST_ENV
+        response = session.get(url, headers=headers or {}, timeout=settings.KB_HEALTHCHECK_TIMEOUT_SECONDS)
+        reachable = response.status_code < 500
+        return {
+            "status": "ok" if reachable else "error",
+            "reachable": reachable,
+            "http_status": response.status_code,
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "reachable": False,
+            "error": sanitize_text(str(exc)),
+        }
+
+def _system_config_check() -> dict:
+    checks = {}
+
+    db_configured = not any(
+        _is_placeholder_value(value)
+        for value in [settings.DB_HOST, settings.DB_NAME, settings.DB_USER, settings.DB_PASSWORD]
+    )
+    db_check = {
+        "configured": db_configured,
+        "host": settings.DB_HOST,
+        "database": settings.DB_NAME,
+        "user": settings.DB_USER,
+        "suggestions": [],
+    }
+    if db_configured:
+        try:
+            db = SessionLocal()
+            db.execute(text("SELECT 1"))
+            db_check["status"] = "ok"
+        except Exception as exc:
+            db_check["status"] = "error"
+            db_check["error"] = sanitize_text(str(exc))
+            db_check["suggestions"].append("检查 PostgreSQL 地址、库名、账号密码，以及数据库是否允许当前主机连接。")
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+    else:
+        db_check["status"] = "error"
+        db_check["suggestions"].append("补齐 DB_HOST / DB_NAME / DB_USER / DB_PASSWORD。")
+    checks["postgres"] = db_check
+
+    embedding_headers = {"Authorization": f"Bearer {settings.EMBEDDING_API_KEY}"} if settings.EMBEDDING_API_KEY else {}
+    embedding_probe = _probe_http_status(settings.EMBEDDING_API_URL.rstrip("/") + "/api/tags", embedding_headers)
+    checks["embedding"] = {
+        "status": embedding_probe["status"] if not _is_placeholder_value(settings.EMBEDDING_API_URL) else "error",
+        "configured": not _is_placeholder_value(settings.EMBEDDING_API_URL),
+        "provider": settings.EMBEDDING_PROVIDER,
+        "url": settings.EMBEDDING_API_URL,
+        "model": settings.EMBEDDING_MODEL,
+        "probe": embedding_probe,
+        "suggestions": [] if embedding_probe.get("reachable") else ["检查 Ollama 服务是否启动、URL 是否正确、模型是否已拉取。"],
+    }
+
+    def build_llm_check(name: str, api_url: str, api_key: str, model: str):
+        configured = not _is_placeholder_value(api_url) and not _is_placeholder_value(api_key)
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key and not api_key.startswith("app-") else {}
+        probe_url = api_url.rstrip("/")
+        if api_key.startswith("app-"):
+            probe_url = probe_url + "/info"
+            headers = {"Authorization": f"Bearer {api_key}"}
+        else:
+            probe_url = probe_url + "/models"
+        probe = _probe_http_status(probe_url, headers)
+        suggestions = []
+        if not configured:
+            suggestions.append(f"补齐 {name.upper()} 的 API URL / API KEY / MODEL。")
+        elif not probe.get("reachable"):
+            suggestions.append(f"检查 {name.upper()} 的网关地址、代理和 API KEY。")
+        return {
+            "status": "ok" if configured and probe.get("reachable") else "error",
+            "configured": configured,
+            "url": api_url,
+            "api_key_masked": _mask_config_value(api_key),
+            "model": model,
+            "probe": probe,
+            "suggestions": suggestions,
+        }
+
+    checks["llm1"] = build_llm_check("llm1", settings.LLM1_API_URL, settings.LLM1_API_KEY, settings.LLM1_MODEL)
+    checks["llm2"] = build_llm_check("llm2", settings.LLM2_API_URL, settings.LLM2_API_KEY, settings.LLM2_MODEL)
+
+    crm_configured = not any(
+        _is_placeholder_value(value)
+        for value in [settings.CRM_DBHost, settings.CRM_DBName, settings.CRM_DBUserId, settings.CRM_DBPassword]
+    )
+    crm_check = {
+        "configured": crm_configured,
+        "host": settings.CRM_DBHost,
+        "database": settings.CRM_DBName,
+        "user": settings.CRM_DBUserId,
+        "suggestions": [],
+    }
+    if crm_configured:
+        try:
+            from crm_database import CRMSessionLocal
+            crm_db = CRMSessionLocal()
+            crm_db.execute(text("SELECT 1"))
+            crm_check["status"] = "ok"
+        except Exception as exc:
+            crm_check["status"] = "error"
+            crm_check["error"] = sanitize_text(str(exc))
+            crm_check["suggestions"].append("检查 SQL Server 地址、ODBC Driver、账号密码和网络连通性。")
+        finally:
+            try:
+                crm_db.close()
+            except Exception:
+                pass
+    else:
+        crm_check["status"] = "error"
+        crm_check["suggestions"].append("补齐 CRM_DBHost / CRM_DBName / CRM_DBUserId / CRM_DBPassword。")
+    checks["crm"] = crm_check
+
+    qywx_credentials_ready = not any(
+        _is_placeholder_value(value)
+        for value in [settings.CORP_ID, settings.CORP_SECRET, settings.AGENT_ID, settings.TOKEN, settings.ENCODING_AES_KEY]
+    )
+    checks["qywx"] = {
+        "status": "ok" if qywx_credentials_ready else "error",
+        "configured": qywx_credentials_ready,
+        "corp_id_masked": _mask_config_value(settings.CORP_ID),
+        "agent_id_masked": _mask_config_value(settings.AGENT_ID),
+        "suggestions": [] if qywx_credentials_ready else ["补齐企微应用 CorpID / Secret / AgentID / Token / EncodingAESKey。"],
+    }
+
+    sdk_path = os.path.join(os.path.dirname(__file__), "WeWorkFinanceSdk.dll")
+    checks["archive_sdk"] = {
+        "status": "ok" if os.path.exists(sdk_path) and os.path.exists(settings.PRIVATE_KEY_PATH) and not _is_placeholder_value(settings.CHATDATA_SECRET) else "error",
+        "sdk_present": os.path.exists(sdk_path),
+        "private_key_present": os.path.exists(settings.PRIVATE_KEY_PATH),
+        "chatdata_secret_configured": not _is_placeholder_value(settings.CHATDATA_SECRET),
+        "private_key_path": settings.PRIVATE_KEY_PATH,
+        "suggestions": [] if os.path.exists(sdk_path) and os.path.exists(settings.PRIVATE_KEY_PATH) else ["检查 WeWorkFinanceSdk.dll 和企微会话存档私钥文件是否存在。"],
+    }
+
+    overall = "ok" if all(item.get("status") == "ok" for item in checks.values()) else "degraded"
+    return {
+        "status": overall,
+        "generated_at": datetime.utcnow().isoformat(),
+        "checks": checks,
+        "deployment_doc": "docs/生产部署与配置清单.md",
     }
 
 def _runtime_health() -> dict:
@@ -2639,6 +3182,10 @@ async def health_check():
 async def readiness_check():
     return _runtime_health()
 
+@app.get("/api/system/config_check")
+async def get_system_config_check():
+    return _system_config_check()
+
 @app.post("/api/kb/documents/{document_id}/publish")
 async def publish_kb_document(
     document_id: str,
@@ -2656,6 +3203,15 @@ async def publish_kb_document(
         force=publish_payload.force,
         force_reason=publish_payload.force_reason,
         operator=publish_payload.operator,
+    )
+    doc.version_no = _next_publish_version_no(db, str(doc.document_id), doc.version_no)
+    _create_version_snapshot(
+        db,
+        doc,
+        action="publish",
+        operator=publish_payload.operator,
+        note=publish_payload.force_reason if publish_payload.force else None,
+        version_no=doc.version_no,
     )
     updated_chunks, updated_pricing_rules = _sync_related_status(db, doc, "active", "approved")
     db.commit()
@@ -2714,6 +3270,27 @@ async def reject_kb_document(document_id: str, db: Session = Depends(get_db)):
         "updated_pricing_rules": updated_pricing_rules,
     }
 
+@app.post("/api/kb/documents/{document_id}/restore/{version_no}")
+async def restore_kb_document_version(document_id: str, version_no: int, db: Session = Depends(get_db)):
+    doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Knowledge document not found")
+    snapshot = db.query(KnowledgeVersionSnapshot).filter(
+        KnowledgeVersionSnapshot.document_id == document_id,
+        KnowledgeVersionSnapshot.version_no == version_no,
+    ).order_by(KnowledgeVersionSnapshot.created_at.desc()).first()
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Knowledge version snapshot not found")
+    restore_report = _restore_document_from_snapshot(db, doc, snapshot)
+    db.commit()
+    db.refresh(doc)
+    return {
+        "status": "success",
+        "document": _doc_to_dict(doc),
+        "restore_report": restore_report,
+        "version_snapshot": _version_snapshot_to_dict(snapshot),
+    }
+
 def _load_bulk_docs(db: Session, document_ids: list[str]):
     unique_ids = [doc_id for doc_id in dict.fromkeys(document_ids or []) if doc_id]
     if not unique_ids:
@@ -2758,6 +3335,16 @@ async def publish_kb_documents(payload: KnowledgeBulkAction, db: Session = Depen
         force_reason=payload.force_reason,
         operator=payload.operator,
     )
+    for doc in docs:
+        doc.version_no = _next_publish_version_no(db, str(doc.document_id), doc.version_no)
+        _create_version_snapshot(
+            db,
+            doc,
+            action="publish",
+            operator=payload.operator,
+            note=payload.force_reason if payload.force else None,
+            version_no=doc.version_no,
+        )
     result = _bulk_set_documents_status(db, docs, "active", "approved")
     return {"status": "success", **result, "gate_report": gate_report, "force_published": payload.force}
 
@@ -2878,6 +3465,15 @@ async def publish_kb_import_batch(import_batch: str, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Import batch not found")
     _validate_documents_publishable(db, docs)
     gate_report = await _ensure_publish_gate(docs, db, force=False, operator="import_batch_publish")
+    for doc in docs:
+        doc.version_no = _next_publish_version_no(db, str(doc.document_id), doc.version_no)
+        _create_version_snapshot(
+            db,
+            doc,
+            action="publish",
+            operator="import_batch_publish",
+            version_no=doc.version_no,
+        )
     updated_chunks, updated_pricing_rules = set_documents_status(db, docs, "active", "approved")
     return {
         "status": "success",
@@ -2959,22 +3555,29 @@ async def preview_kb_excel_import(
         "failed": parsed["failed"],
     }
 
-@app.post("/api/kb/import/excel/commit")
-async def commit_kb_excel_import(
-    file: UploadFile = File(...),
-    import_type: str = Form("faq"),
-    owner: str = Form("kb_excel_import"),
-    db: Session = Depends(get_db),
-):
-    """统一知识 Excel 确认导入：合法行写入 draft，等待审核发布。"""
-    filename = file.filename or "kb_import.xlsx"
-    raw = await file.read()
+def _commit_kb_excel_import_raw(
+    db: Session,
+    *,
+    raw: bytes,
+    filename: str,
+    import_type: str,
+    owner: str,
+    report: Any = None,
+) -> dict:
     parsed = parse_kb_excel_import(raw, filename, import_type)
     import_batch = f"{import_type}_excel_{uuid.uuid4().hex[:12]}"
     created = []
     failed = list(parsed["failed"])
+    valid_rows = parsed["valid_rows"]
+    total_rows = max(len(valid_rows), 1)
 
-    for item in parsed["valid_rows"]:
+    for index, item in enumerate(valid_rows, start=1):
+        if report:
+            report(
+                progress=min(95, round(index * 100 / total_rows)),
+                summary=f"importing row {item['row']}",
+                result_patch={"current_row": item["row"], "total_rows": len(valid_rows)},
+            )
         title = item["title"]
         content = item["content"]
         embedding = EmbeddingService.embed(f"{title}\n{content}")
@@ -3037,7 +3640,7 @@ async def commit_kb_excel_import(
 
         pricing_rule = None
         if item.get("pricing_rule"):
-            pricing_rule_payload = item["pricing_rule"]
+            pricing_rule_payload = dict(item["pricing_rule"])
             pricing_rule_payload["source_ref"] = pricing_rule_payload.get("source_ref") or document.source_ref
             pricing_rule = _create_pricing_rule(db, document, chunk, pricing_rule_payload)
 
@@ -3075,6 +3678,73 @@ async def commit_kb_excel_import(
         "skipped": parsed["skipped"],
         "failed": failed,
     }
+
+def _run_excel_import_job(report: Any, payload_data: dict) -> dict:
+    temp_path = payload_data["temp_path"]
+    filename = payload_data["filename"]
+    import_type = payload_data["import_type"]
+    owner = payload_data.get("owner") or "kb_excel_import"
+    with open(temp_path, "rb") as f:
+        raw = f.read()
+    db = SessionLocal()
+    try:
+        result = _commit_kb_excel_import_raw(
+            db,
+            raw=raw,
+            filename=filename,
+            import_type=import_type,
+            owner=owner,
+            report=report,
+        )
+    finally:
+        db.close()
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+    return result
+
+@app.post("/api/kb/import/excel/commit")
+async def commit_kb_excel_import(
+    file: UploadFile = File(...),
+    import_type: str = Form("faq"),
+    owner: str = Form("kb_excel_import"),
+    db: Session = Depends(get_db),
+):
+    """统一知识 Excel 确认导入：合法行写入 draft，等待审核发布。"""
+    filename = file.filename or "kb_import.xlsx"
+    raw = await file.read()
+    return _commit_kb_excel_import_raw(db, raw=raw, filename=filename, import_type=import_type, owner=owner)
+
+@app.post("/api/kb/import/excel/commit_async")
+async def commit_kb_excel_import_async(
+    file: UploadFile = File(...),
+    import_type: str = Form("faq"),
+    owner: str = Form("kb_excel_import"),
+    db: Session = Depends(get_db),
+):
+    filename = file.filename or "kb_import.xlsx"
+    raw = await file.read()
+    temp_filename = f"{uuid.uuid4().hex}_{filename}"
+    temp_path = os.path.join(_job_payload_dir(), temp_filename)
+    with open(temp_path, "wb") as f:
+        f.write(raw)
+    payload = {
+        "temp_path": temp_path,
+        "filename": filename,
+        "import_type": import_type,
+        "owner": owner,
+    }
+    job = _create_job_task(
+        db,
+        job_type="kb_excel_import",
+        task_payload=payload,
+        summary=f"queued excel import {filename}",
+    )
+    db.commit()
+    db.refresh(job)
+    start_job(str(job.job_id), _run_excel_import_job, payload)
+    return {"status": "queued", "job": _job_to_dict(job)}
 
 @app.post("/api/kb/extract/from_messages")
 async def extract_kb_candidates_from_messages(payload: KnowledgeExtractFromMessagesRequest, db: Session = Depends(get_db)):
@@ -3581,10 +4251,12 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                     "todo_items": summary.todo_items, "risks": summary.risks, "to_be_confirmed": summary.to_be_confirmed,
                     "fast_track_signals": fast_track_signals
                 }
+                # CRM Context
+                crm_context = IntentEngine.get_crm_context(user_id)
                 # RAG V2
                 knowledge = {"status": "skipped_no_core_demand", "hits": [], "evidence_context": {"rules": [], "faqs": [], "cases": []}}
                 if summary.core_demand and summary.core_demand != "未明确":
-                    query_features = IntentEngine.infer_query_features(summary_json)
+                    query_features = IntentEngine.infer_query_features(summary_json, crm_context)
                     knowledge = IntentEngine.retrieve_knowledge_v2(
                         summary.core_demand,
                         query_features=query_features,
@@ -3592,10 +4264,9 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                         request_id=f"manual_llm2_{uuid.uuid4().hex[:12]}",
                         session_id=user_id,
                     )
-                # CRM Context
-                crm_context = IntentEngine.get_crm_context(user_id)
                 # LLM2
-                assist_content = IntentEngine.generate_sales_assist(summary_json, knowledge, crm_context)
+                assist_bundle = IntentEngine.generate_sales_assist_bundle(summary_json, knowledge, crm_context)
+                assist_content = assist_bundle.get("content")
                 if assist_content:
                     IntentEngine.update_knowledge_hit_log_outcome(knowledge.get("log_id"), final_response=assist_content)
                     summary.sales_advice_v2 = assist_content
@@ -3625,6 +4296,9 @@ async def get_latest_analysis(user_id: str):
             "has_v1": False,
             "has_v2": False
         }
+        crm_context = IntentEngine.get_crm_context(user_id)
+        result["crm_info"] = crm_context
+        result["crm_status"] = crm_context.get("crm_profile_status")
         
         if summary:
             result.update({
@@ -3644,7 +4318,7 @@ async def get_latest_analysis(user_id: str):
                         "risks": summary.risks,
                         "fast_track_signals": fast_track_signals,
                     }
-                    query_features = IntentEngine.infer_query_features(summary_json)
+                    query_features = IntentEngine.infer_query_features(summary_json, crm_context)
                     knowledge_v2 = IntentEngine.retrieve_knowledge_v2(
                         summary.core_demand,
                         query_features=query_features,
@@ -3656,7 +4330,10 @@ async def get_latest_analysis(user_id: str):
                     result["knowledge_status"] = knowledge_v2.get("status")
                     result["knowledge_confidence_score"] = knowledge_v2.get("confidence_score")
                     result["knowledge_manual_review_required"] = knowledge_v2.get("manual_review_required")
-                
+                    result["knowledge_evidence_context"] = knowledge_v2.get("evidence_context")
+                    result["evidence_refs"] = knowledge_v2.get("evidence_refs") or []
+                    result["assist_validation"] = IntentEngine.validate_sales_assist_output(summary.sales_advice_v2, knowledge_v2, crm_context=crm_context)
+                 
         return result
     finally:
         db.close()
@@ -3689,6 +4366,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
     crm_context = None
     knowledge_base = None
     knowledge_v2 = None
+    assist_bundle = None
 
     def mark_timing(name: str, started_at: float):
         timings_ms[name] = round((perf_counter() - started_at) * 1000, 2)
@@ -3768,7 +4446,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
 
             if summary.core_demand and summary.core_demand != "未明确":
                 stage_started = perf_counter()
-                query_features = IntentEngine.infer_query_features(summary_json)
+                query_features = IntentEngine.infer_query_features(summary_json, crm_context)
                 knowledge_v2 = IntentEngine.retrieve_knowledge_v2(
                     summary.core_demand,
                     query_features=query_features,
@@ -3781,12 +4459,13 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 knowledge_status = knowledge_v2.get("status", "error")
                 stage_status["knowledge_v2"] = knowledge_status
             else:
-                knowledge_v2 = {"status": "skipped_no_core_demand", "hits": [], "evidence_context": {"rules": [], "faqs": [], "cases": []}}
+                knowledge_v2 = {"status": "skipped_no_core_demand", "hits": [], "evidence_context": {"rules": [], "faqs": [], "cases": []}, "evidence_refs": []}
                 knowledge_base = knowledge_v2
                 knowledge_status = "skipped_no_core_demand"
 
             stage_started = perf_counter()
-            assist_content = IntentEngine.generate_sales_assist(summary_json, knowledge_v2, crm_context)
+            assist_bundle = IntentEngine.generate_sales_assist_bundle(summary_json, knowledge_v2, crm_context)
+            assist_content = assist_bundle.get("content")
             mark_timing("llm2_generate_ms", stage_started)
             if assist_content:
                 IntentEngine.update_knowledge_hit_log_outcome(knowledge_v2.get("log_id"), final_response=assist_content)
@@ -3826,12 +4505,16 @@ async def sidebar_assist(request: SidebarAssistRequest):
             if summary.sales_advice_v2:
                 result["has_v2"] = True
                 result["sales_advice_v2"] = summary.sales_advice_v2
+                if assist_bundle:
+                    result["assist_validation"] = assist_bundle.get("validation")
+                    result["evidence_refs"] = assist_bundle.get("evidence_refs") or []
                 # 回传检索到的原始知识块参考文档
                 if knowledge_base is not None:
                     result["knowledge_v2"] = knowledge_base
                     result["knowledge_base"] = [hit.get("content") for hit in knowledge_base.get("hits", [])] if isinstance(knowledge_base, dict) else knowledge_base
                     if isinstance(knowledge_base, dict):
                         result["knowledge_evidence_context"] = knowledge_base.get("evidence_context")
+                        result["evidence_refs"] = result.get("evidence_refs") or knowledge_base.get("evidence_refs") or []
                         result["knowledge_confidence_score"] = knowledge_base.get("confidence_score")
                         result["knowledge_manual_review_required"] = knowledge_base.get("manual_review_required")
                 elif summary.core_demand and summary.core_demand != "未明确":
@@ -3841,7 +4524,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
                         "core_demand": summary.core_demand,
                         "key_facts": summary.key_facts,
                         "risks": summary.risks,
-                    })
+                    }, crm_context)
                     knowledge_v2 = IntentEngine.retrieve_knowledge_v2(
                         summary.core_demand,
                         query_features=query_features,
@@ -3852,13 +4535,17 @@ async def sidebar_assist(request: SidebarAssistRequest):
                     result["knowledge_v2"] = knowledge_v2
                     result["knowledge_base"] = [hit.get("content") for hit in knowledge_v2.get("hits", [])]
                     result["knowledge_evidence_context"] = knowledge_v2.get("evidence_context")
+                    result["evidence_refs"] = knowledge_v2.get("evidence_refs") or []
+                    validation = IntentEngine.validate_sales_assist_output(summary.sales_advice_v2, knowledge_v2, crm_context=crm_context)
+                    result["assist_validation"] = validation
                     result["knowledge_confidence_score"] = knowledge_v2.get("confidence_score")
                     result["knowledge_manual_review_required"] = knowledge_v2.get("manual_review_required")
                     mark_timing("knowledge_retrieve_ms", stage_started)
                     knowledge_status = knowledge_v2.get("status", "error")
                 else:
                     result["knowledge_base"] = []
-                    result["knowledge_v2"] = {"status": "skipped_no_core_demand", "hits": []}
+                    result["knowledge_v2"] = {"status": "skipped_no_core_demand", "hits": [], "evidence_refs": []}
+                    result["evidence_refs"] = []
                     knowledge_status = "skipped_no_core_demand"
             
             # 始终回传 CRM 画像供前端显示

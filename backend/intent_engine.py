@@ -4,6 +4,7 @@ from typing import Optional, List, Dict, Any
 import requests
 import json
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from time import perf_counter
 from fastapi import HTTPException
 from sqlalchemy import or_
@@ -485,6 +486,7 @@ class IntentEngine:
                 "filters_used": filters_used,
                 "hits": hits,
                 "evidence_context": evidence_context,
+                "evidence_refs": cls.build_evidence_refs({"hits": hits}),
                 "confidence_score": confidence_score,
                 "retrieval_quality": retrieval_quality,
                 "insufficient_info": insufficient_info,
@@ -503,6 +505,7 @@ class IntentEngine:
                 "filters_used": filters_used,
                 "hits": [],
                 "evidence_context": {"rules": [], "faqs": [], "cases": []},
+                "evidence_refs": [],
                 "confidence_score": 0.0,
                 "retrieval_quality": "error",
                 "insufficient_info": True,
@@ -514,7 +517,7 @@ class IntentEngine:
             db.close()
 
     @staticmethod
-    def infer_query_features(summary_json: Dict[str, Any]) -> Dict[str, Any]:
+    def infer_query_features(summary_json: Dict[str, Any], crm_context: Dict[str, Any] | None = None) -> Dict[str, Any]:
         """从 V1 摘要生成知识库 V2 检索过滤字段；宁可少过滤，不误伤候选。"""
         text = json.dumps(summary_json or {}, ensure_ascii=False)
         features: Dict[str, Any] = {}
@@ -561,6 +564,13 @@ class IntentEngine:
             features["service_scope"] = "certified"
         elif features.get("business_line") == "translation":
             features["service_scope"] = "general"
+
+        crm = crm_context or {}
+        crm_customer_tier = crm.get("customer_tier")
+        if crm_customer_tier in {"key", "vip", "strategic"}:
+            features["customer_tier"] = crm_customer_tier
+        if crm.get("payment_risk_level") == "high":
+            features["manual_review_hint"] = True
 
         return features
 
@@ -612,6 +622,141 @@ class IntentEngine:
         return "\n".join(rendered)
 
     @staticmethod
+    def _normalize_numeric(value) -> str | None:
+        if value in (None, ""):
+            return None
+        try:
+            return str(Decimal(str(value)).normalize())
+        except (InvalidOperation, ValueError):
+            return None
+
+    @classmethod
+    def build_evidence_refs(cls, knowledge_payload) -> List[Dict[str, Any]]:
+        if not isinstance(knowledge_payload, dict):
+            return []
+        refs: List[Dict[str, Any]] = []
+        seen = set()
+        for hit in knowledge_payload.get("hits") or []:
+            chunk_ref_id = f"chunk:{hit.get('chunk_id')}"
+            if hit.get("chunk_id") and chunk_ref_id not in seen:
+                refs.append({
+                    "ref_id": chunk_ref_id,
+                    "ref_type": "chunk",
+                    "document_id": hit.get("document_id"),
+                    "chunk_id": hit.get("chunk_id"),
+                    "knowledge_type": hit.get("knowledge_type"),
+                    "title": hit.get("title"),
+                    "score": hit.get("score"),
+                    "business_line": hit.get("business_line"),
+                    "service_scope": hit.get("service_scope"),
+                    "snippet": sanitize_text((hit.get("content") or "")[:160]),
+                })
+                seen.add(chunk_ref_id)
+            for rule in hit.get("pricing_rules") or []:
+                rule_ref_id = f"pricing_rule:{rule.get('rule_id')}"
+                if rule.get("rule_id") and rule_ref_id not in seen:
+                    refs.append({
+                        "ref_id": rule_ref_id,
+                        "ref_type": "pricing_rule",
+                        "document_id": rule.get("document_id"),
+                        "chunk_id": rule.get("chunk_id"),
+                        "rule_id": rule.get("rule_id"),
+                        "title": hit.get("title"),
+                        "knowledge_type": "pricing",
+                        "version_no": rule.get("version_no"),
+                        "business_line": rule.get("business_line"),
+                        "service_scope": rule.get("service_scope"),
+                        "summary": {
+                            "unit": rule.get("unit"),
+                            "currency": rule.get("currency"),
+                            "price_min": rule.get("price_min"),
+                            "price_max": rule.get("price_max"),
+                            "min_charge": rule.get("min_charge"),
+                            "urgent_multiplier": rule.get("urgent_multiplier"),
+                            "effective_from": rule.get("effective_from"),
+                            "effective_to": rule.get("effective_to"),
+                        },
+                    })
+                    seen.add(rule_ref_id)
+        return refs
+
+    @classmethod
+    def validate_sales_assist_output(cls, response_text: str | None, knowledge_payload, crm_context: dict | None = None) -> Dict[str, Any]:
+        text = (response_text or "").strip()
+        hits = knowledge_payload.get("hits") if isinstance(knowledge_payload, dict) else []
+        evidence_refs = cls.build_evidence_refs(knowledge_payload)
+        warnings: List[str] = []
+        blocking_issues: List[str] = []
+        pricing_rules = [rule for hit in hits for rule in (hit.get("pricing_rules") or [])]
+
+        pricing_mentions = re.findall(r"(\d+(?:\.\d+)?)\s*(元|%|％|倍)", text)
+        if "/千字" in text or "每千字" in text:
+            pricing_mentions.extend((match, "千字") for match in re.findall(r"(\d+(?:\.\d+)?)\s*(?:元\s*/?\s*(?:每)?千字)", text))
+        mentioned_numbers = [cls._normalize_numeric(value) for value, _unit in pricing_mentions]
+        mentioned_numbers = [value for value in mentioned_numbers if value is not None]
+        allowed_numbers = {
+            normalized
+            for rule in pricing_rules
+            for normalized in [
+                cls._normalize_numeric(rule.get("price_min")),
+                cls._normalize_numeric(rule.get("price_max")),
+                cls._normalize_numeric(rule.get("min_charge")),
+                cls._normalize_numeric(rule.get("urgent_multiplier")),
+            ]
+            if normalized is not None
+        }
+        if mentioned_numbers:
+            if not pricing_rules:
+                blocking_issues.append("话术包含价格/倍率数字，但当前没有命中结构化 pricing_rule 证据。")
+            else:
+                unmatched = sorted({value for value in mentioned_numbers if value not in allowed_numbers})
+                if unmatched:
+                    blocking_issues.append(f"话术包含未在 pricing_rule 中出现的数字: {', '.join(unmatched)}")
+
+        capability_claim_patterns = [
+            r"能做", r"可做", r"支持", r"可承接", r"可以承接", r"能够提供", r"可以安排",
+        ]
+        capability_claimed = any(re.search(pattern, text) for pattern in capability_claim_patterns)
+        capability_hits = [
+            hit for hit in hits
+            if hit.get("knowledge_type") in {"capability", "faq", "process"}
+        ]
+        if capability_claimed and not capability_hits:
+            blocking_issues.append("话术包含能力/流程承诺，但当前没有命中对应 active 知识证据。")
+
+        if isinstance(knowledge_payload, dict) and knowledge_payload.get("manual_review_required"):
+            warnings.append("知识检索本身已标记人工复核，话术必须保守使用。")
+
+        crm = crm_context or {}
+        if crm.get("recent_quote_summary") and mentioned_numbers:
+            warnings.append("CRM 中存在历史报价记录，当前价格承诺需以现行 pricing_rule 为准。")
+        if crm.get("payment_risk_level") == "high" and (mentioned_numbers or capability_claimed):
+            warnings.append("当前客户存在较高回款/跟进风险，报价或能力承诺建议人工复核。")
+
+        manual_review_required = bool(blocking_issues) or bool(knowledge_payload.get("manual_review_required")) if isinstance(knowledge_payload, dict) else bool(blocking_issues)
+        if crm.get("payment_risk_level") == "high" and (mentioned_numbers or capability_claimed):
+            manual_review_required = True
+        return {
+            "status": "manual_review_required" if manual_review_required else "ok",
+            "manual_review_required": manual_review_required,
+            "warnings": warnings,
+            "blocking_issues": blocking_issues,
+            "evidence_refs": evidence_refs,
+        }
+
+    @staticmethod
+    def build_safe_assist_response(summary_json: dict, validation: dict) -> str:
+        topic = (summary_json or {}).get("topic") or "当前需求"
+        issues = validation.get("blocking_issues") or ["知识证据不足"]
+        issue_lines = "\n".join(f"- {item}" for item in issues[:3])
+        return (
+            f"当前关于“{topic}”的知识证据不足，涉及报价、能力或流程承诺请先人工确认。\n"
+            f"{issue_lines}\n"
+            "- 建议先向客户补充确认资料类型、语种、用途、交付要求。\n"
+            "- 再依据已发布知识或请运营/负责人复核后回复。"
+        )
+
+    @staticmethod
     def update_knowledge_hit_log_outcome(log_id: str | None, final_response: str | None = None, manual_feedback: dict | None = None, feedback_status: str | None = None):
         if not log_id:
             return
@@ -639,10 +784,15 @@ class IntentEngine:
         empty_profile = {
             "crm_contact_name": None,
             "company_name": None,
+            "company_industry": None,
             "recent_opportunities": None,
+            "recent_quote_summary": None,
             "ongoing_contracts": None,
             "contact_recent_followup": None,
             "customer_lifecycle_stage": None,
+            "customer_tier": None,
+            "payment_risk_level": None,
+            "high_risk_flags": [],
             "crm_profile_status": "empty"
         }
 
@@ -664,10 +814,15 @@ class IntentEngine:
             return {
                 "crm_contact_name": data.get("crm_contact_name"),
                 "company_name": data.get("company_name"),
+                "company_industry": data.get("company_industry"),
                 "recent_opportunities": data.get("recent_opportunities"),
+                "recent_quote_summary": data.get("recent_quote_summary"),
                 "ongoing_contracts": data.get("ongoing_contracts"),
                 "contact_recent_followup": data.get("contact_recent_followup"),
                 "customer_lifecycle_stage": data.get("customer_lifecycle_stage"),
+                "customer_tier": data.get("customer_tier"),
+                "payment_risk_level": data.get("payment_risk_level"),
+                "high_risk_flags": data.get("high_risk_flags") or [],
                 "crm_profile_status": "success"
             }
 
@@ -689,6 +844,11 @@ class IntentEngine:
 
     @classmethod
     def generate_sales_assist(cls, summary_json: dict, knowledge_list, crm_context: dict = None):
+        bundle = cls.generate_sales_assist_bundle(summary_json, knowledge_list, crm_context)
+        return bundle.get("content")
+
+    @classmethod
+    def generate_sales_assist_bundle(cls, summary_json: dict, knowledge_list, crm_context: dict = None):
         """调用 LLM-2 生成销售辅助建议"""
         knowledge_context = cls.format_knowledge_context(knowledge_list)
         prompt2 = cls.get_prompt2()
@@ -727,10 +887,31 @@ class IntentEngine:
             )
             res_data = response.json()
             if "choices" in res_data:
-                return res_data["choices"][0]["message"]["content"]
+                raw_content = res_data["choices"][0]["message"]["content"]
+                validation = cls.validate_sales_assist_output(raw_content, knowledge_list, crm_context=crm_context)
+                content = raw_content
+                if validation.get("blocking_issues"):
+                    content = cls.build_safe_assist_response(summary_json, validation)
+                return {
+                    "content": content,
+                    "raw_content": raw_content,
+                    "validation": validation,
+                    "evidence_refs": validation.get("evidence_refs") or [],
+                }
         except Exception as e:
             logger.error(f"LLM-2 调用异常: {e}")
-        return None
+        return {
+            "content": None,
+            "raw_content": None,
+            "validation": {
+                "status": "error",
+                "manual_review_required": True,
+                "warnings": [],
+                "blocking_issues": [f"LLM-2 调用异常: {sanitize_text(str(e))}"] if 'e' in locals() else ["LLM-2 调用异常"],
+                "evidence_refs": cls.build_evidence_refs(knowledge_list),
+            },
+            "evidence_refs": cls.build_evidence_refs(knowledge_list),
+        }
 
     @classmethod
     def slow_track_analyze(cls, user_id: str, context: List[dict]):

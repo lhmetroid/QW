@@ -256,6 +256,8 @@
                         </div>
                     </div>
 
+                    ${renderCrmSummary(data.crm_info)}
+
                     <!-- 话术层 LLM-2 -->
                     <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl relative shadow-sm hover:shadow-md transition">
                         <div class="absolute top-0 left-0 w-1 h-full bg-amber-500 rounded-l-xl"></div>
@@ -275,7 +277,9 @@
                             <div class="font-medium text-amber-900 bg-white p-3 rounded-lg border border-amber-100 whitespace-pre-wrap leading-relaxed ${data.has_v2?'':'opacity-40'}">
                                 ${data.has_v2 ? data.sales_advice_v2 : '（空，等待大模型推演）'}
                             </div>
+                            ${data.assist_validation ? renderAssistValidation(data.assist_validation) : ''}
                             ${data.knowledge_v2 ? renderAssistEvidence(data.knowledge_v2) : ''}
+                            ${(!data.knowledge_v2 && data.evidence_refs?.length) ? renderEvidenceRefs(data.evidence_refs) : ''}
                         </div>
                     </div>
                 </div>
@@ -295,7 +299,129 @@
                             <div class="text-slate-500">${safeText(hit.knowledge_type_label || hit.knowledge_type)} · ${safeText(hit.business_line_label || hit.business_line)} · ${safeText(hit.service_scope_label || hit.service_scope)}</div>
                             <div class="mt-1 line-clamp-3">${safeText(hit.content)}</div>
                         </div>`).join('') : '<div class="text-slate-400">无命中证据</div>'}</div>
+                    ${renderEvidenceRefs(knowledge.evidence_refs || [])}
                 </details>`;
+        }
+
+        function renderEvidenceRefs(refs) {
+            if (!refs || !refs.length) return '';
+            return `
+                <div class="mt-3">
+                    <div class="text-[10px] font-bold text-slate-500 mb-2">引用来源</div>
+                    <div class="space-y-2">${refs.map(ref => `
+                        <div class="border rounded p-2 bg-slate-50">
+                            <div class="font-bold text-slate-700">${safeText(ref.ref_type)} · ${safeText(ref.ref_id)}</div>
+                            <div class="text-slate-500 mt-1">${safeText(ref.title || '')}</div>
+                            ${ref.summary ? `<pre class="mt-2 bg-white border rounded p-2 overflow-auto">${safeText(JSON.stringify(ref.summary, null, 2))}</pre>` : `<div class="mt-1 text-slate-600">${safeText(ref.snippet || '')}</div>`}
+                        </div>`).join('')}
+                    </div>
+                </div>`;
+        }
+
+        function renderAssistValidation(validation) {
+            if (!validation) return '';
+            const warnings = validation.warnings || [];
+            const blocking = validation.blocking_issues || [];
+            return `
+                <div class="mt-3 border rounded p-3 ${validation.manual_review_required ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}">
+                    <div class="text-[10px] font-bold ${validation.manual_review_required ? 'text-rose-700' : 'text-emerald-700'}">
+                        输出校验 ${safeText(validation.status)}
+                    </div>
+                    ${blocking.length ? `<ul class="mt-2 text-[11px] text-rose-700 list-disc pl-4">${blocking.map(item => `<li>${safeText(item)}</li>`).join('')}</ul>` : ''}
+                    ${warnings.length ? `<ul class="mt-2 text-[11px] text-amber-700 list-disc pl-4">${warnings.map(item => `<li>${safeText(item)}</li>`).join('')}</ul>` : ''}
+                </div>`;
+        }
+
+        function renderCrmSummary(info) {
+            if (!info || info.crm_profile_status === 'empty' || info.crm_profile_status === 'not_found') {
+                return `
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl relative shadow-sm">
+                        <div class="font-bold text-[11px] text-slate-600 mb-2 uppercase tracking-widest">🏷️ CRM 摘要</div>
+                        <div class="text-xs text-slate-400">暂无可用 CRM 画像</div>
+                    </div>`;
+            }
+            const flags = info.high_risk_flags || [];
+            return `
+                <div class="p-3 bg-cyan-50 border border-cyan-200 rounded-xl relative shadow-sm hover:shadow-md transition">
+                    <div class="absolute top-0 left-0 w-1 h-full bg-cyan-500 rounded-l-xl"></div>
+                    <div class="font-bold text-[11px] text-cyan-700 mb-3 ml-2 uppercase tracking-widest">🏷️ CRM 摘要</div>
+                    <div class="ml-2 space-y-2 text-xs">
+                        <div class="grid grid-cols-[84px_1fr] items-start">
+                            <span class="text-cyan-600 font-bold">客户:</span>
+                            <span class="text-slate-700">${safeText(info.company_name || info.crm_contact_name || '-')}</span>
+                        </div>
+                        <div class="grid grid-cols-[84px_1fr] items-start">
+                            <span class="text-cyan-600 font-bold">层级:</span>
+                            <span class="text-slate-700">${safeText(info.customer_tier || '-')} / ${safeText(info.customer_lifecycle_stage || '-')}</span>
+                        </div>
+                        <div class="grid grid-cols-[84px_1fr] items-start">
+                            <span class="text-cyan-600 font-bold">行业:</span>
+                            <span class="text-slate-700">${safeText(info.company_industry || '-')}</span>
+                        </div>
+                        <div class="grid grid-cols-[84px_1fr] items-start">
+                            <span class="text-cyan-600 font-bold">回款风险:</span>
+                            <span class="text-slate-700">${safeText(info.payment_risk_level || '-')}</span>
+                        </div>
+                        ${flags.length ? `<div class="flex flex-wrap gap-1 pt-1">${flags.map(flag => `<span class="bg-white border border-cyan-200 text-cyan-700 px-2 py-0.5 rounded text-[10px] font-bold">${safeText(flag)}</span>`).join('')}</div>` : ''}
+                        ${info.recent_quote_summary ? `<div class="border rounded bg-white/70 p-2"><div class="text-[10px] text-slate-500 mb-1">最近报价/商机</div><div class="text-slate-700 whitespace-pre-wrap">${safeText(info.recent_quote_summary)}</div></div>` : ''}
+                    </div>
+                </div>`;
+        }
+
+        function renderJobList(targetId, jobs) {
+            const el = document.getElementById(targetId);
+            if (!el) return;
+            el.innerHTML = jobs.length ? jobs.map(job => `
+                <div class="border rounded p-3 bg-white text-xs">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="font-bold text-slate-700">${safeText(job.job_type)} · ${safeText(job.job_id)}</div>
+                        <span class="px-2 py-0.5 rounded border ${job.status === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : job.status === 'failed' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-700 border-amber-200'}">${safeText(job.status)}</span>
+                    </div>
+                    <div class="mt-2 text-slate-500">progress ${safeText(job.progress)}% · ${safeText(job.summary || '-')}</div>
+                    ${job.error_message ? `<div class="mt-2 text-rose-700 whitespace-pre-wrap">${safeText(job.error_message)}</div>` : ''}
+                    ${job.result ? `<pre class="mt-2 bg-slate-900 text-slate-100 rounded p-2 overflow-auto max-h-48">${safeText(JSON.stringify(job.result, null, 2))}</pre>` : ''}
+                    ${job.status === 'failed' ? `<button onclick="retryJob('${job.job_id}', '${targetId}')" class="mt-2 px-3 py-1 rounded bg-slate-800 text-white">重试</button>` : ''}
+                </div>
+            `).join('') : '<div class="text-sm text-slate-400 p-4 border rounded bg-white">暂无任务</div>';
+        }
+
+        async function refreshJobList(jobType, targetId) {
+            const res = await fetch(`${API_BASE}/api/jobs?job_type=${encodeURIComponent(jobType)}&limit=20`);
+            const data = await res.json();
+            renderJobList(targetId, data.jobs || []);
+        }
+
+        async function retryJob(jobId, targetId) {
+            const res = await fetch(`${API_BASE}/api/jobs/${jobId}/retry`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({operator: 'frontend_admin'})
+            });
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            if (data.job?.job_type) await refreshJobList(data.job.job_type, targetId);
+        }
+
+        async function pollJob(jobId, resultTargetId, jobType, jobListTargetId) {
+            for (let i = 0; i < 120; i++) {
+                const res = await fetch(`${API_BASE}/api/jobs/${jobId}`);
+                const data = await res.json();
+                if (!res.ok) {
+                    if (resultTargetId && document.getElementById(resultTargetId)) {
+                        document.getElementById(resultTargetId).textContent = JSON.stringify(data.detail || data, null, 2);
+                    }
+                    return null;
+                }
+                if (jobListTargetId) await refreshJobList(jobType, jobListTargetId);
+                if (data.job?.status === 'success' || data.job?.status === 'failed') {
+                    if (resultTargetId && document.getElementById(resultTargetId)) {
+                        document.getElementById(resultTargetId).textContent = JSON.stringify(data.job?.result || data.job, null, 2);
+                    }
+                    return data.job;
+                }
+                await new Promise(resolve => setTimeout(resolve, 1500));
+            }
+            return null;
         }
 
         async function submitAssistFeedback(sessionId, status) {
@@ -462,7 +588,8 @@
             tab: 'documents',
             dictionaries: {},
             selectedDocumentId: null,
-            selectedCandidateId: null
+            selectedCandidateId: null,
+            qualityIssues: []
         };
 
         function optionTags(dictName, selected = '') {
@@ -571,6 +698,110 @@
                 </div>`;
         }
 
+        function renderOpsConfigCheck(config) {
+            const labels = {
+                postgres: 'PostgreSQL',
+                embedding: 'Embedding / Ollama',
+                llm1: 'LLM-1',
+                llm2: 'LLM-2',
+                crm: 'CRM',
+                qywx: '企微应用',
+                archive_sdk: '会话存档 SDK'
+            };
+            const checks = config?.checks || {};
+            const items = Object.entries(checks);
+            const okCount = items.filter(([, item]) => item?.status === 'ok').length;
+
+            const renderStatus = (status) => {
+                const styleMap = {
+                    ok: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                    warning: 'bg-amber-50 text-amber-700 border-amber-200',
+                    degraded: 'bg-amber-50 text-amber-700 border-amber-200',
+                    configured: 'bg-slate-100 text-slate-600 border-slate-200',
+                    error: 'bg-rose-50 text-rose-700 border-rose-200'
+                };
+                const textMap = {
+                    ok: '正常',
+                    warning: '告警',
+                    degraded: '降级',
+                    configured: '已配置',
+                    error: '异常'
+                };
+                const cls = styleMap[status] || styleMap.error;
+                return `<span class="px-2 py-0.5 rounded border text-[10px] font-bold ${cls}">${textMap[status] || safeText(status || 'unknown')}</span>`;
+            };
+
+            const renderMeta = (item) => {
+                const pairs = [
+                    ['host', item.host],
+                    ['database', item.database],
+                    ['user', item.user],
+                    ['provider', item.provider],
+                    ['url', item.url],
+                    ['model', item.model],
+                    ['api_key', item.api_key_masked],
+                    ['corp_id', item.corp_id_masked],
+                    ['agent_id', item.agent_id_masked],
+                    ['private_key', item.private_key_path]
+                ].filter(([, value]) => value !== undefined && value !== null && value !== '');
+                if (!pairs.length) return '';
+                return `<div class="mt-2 flex flex-wrap gap-1">${pairs.map(([key, value]) =>
+                    `<span class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px]">${safeText(key)}: ${safeText(value)}</span>`
+                ).join('')}</div>`;
+            };
+
+            const renderProbe = (probe) => {
+                if (!probe) return '';
+                return `<div class="mt-2 text-[11px] text-slate-500">
+                    probe: ${safeText(probe.status || '-')}
+                    ${probe.http_status ? ` / HTTP ${safeText(probe.http_status)}` : ''}
+                    ${probe.error ? ` / ${safeText(probe.error)}` : ''}
+                </div>`;
+            };
+
+            const renderSuggestions = (suggestions) => {
+                if (!suggestions?.length) return '';
+                return `<ul class="mt-2 text-[11px] text-amber-700 list-disc pl-4 space-y-1">${suggestions.map(item =>
+                    `<li>${safeText(item)}</li>`
+                ).join('')}</ul>`;
+            };
+
+            return `
+                <div class="space-y-4">
+                    <div class="grid grid-cols-3 gap-3">
+                        <div class="bg-white border rounded p-3">
+                            <div class="text-xs text-slate-500">总体状态</div>
+                            <div class="mt-2">${renderStatus(config?.status)}</div>
+                        </div>
+                        <div class="bg-white border rounded p-3">
+                            <div class="text-xs text-slate-500">检查项</div>
+                            <div class="mt-2 text-2xl font-bold text-slate-800">${items.length}</div>
+                        </div>
+                        <div class="bg-white border rounded p-3">
+                            <div class="text-xs text-slate-500">通过项</div>
+                            <div class="mt-2 text-2xl font-bold text-emerald-600">${okCount}</div>
+                        </div>
+                    </div>
+                    <div class="space-y-3">
+                        ${items.map(([key, item]) => `
+                            <div class="bg-white border rounded p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-slate-800 text-sm">${safeText(labels[key] || key)}</div>
+                                    ${renderStatus(item?.status)}
+                                </div>
+                                ${renderMeta(item || {})}
+                                ${renderProbe(item?.probe)}
+                                ${renderSuggestions(item?.suggestions)}
+                            </div>
+                        `).join('') || '<div class="bg-white border rounded p-4 text-sm text-slate-400">暂无配置检查结果</div>'}
+                    </div>
+                    <div class="bg-slate-900 text-slate-100 rounded p-3 text-xs">
+                        <div>生成时间：${safeText(config?.generated_at || '-')}</div>
+                        <div class="mt-1">部署清单：${safeText(config?.deployment_doc || '-')}</div>
+                    </div>
+                </div>`;
+        }
+
         async function loadKbDocuments() {
             const filters = `
                 <div class="flex gap-2 mb-3">
@@ -667,7 +898,30 @@
                                 <div>版本: ${safeText(rule.version_no)} · ${safeText(rule.status_label)}</div>
                             </div>`).join('') : '<div class="text-xs text-slate-400">无结构化报价规则</div>'}</div>
                     </div>
+                    <div>
+                        <div class="font-bold text-xs text-slate-500 mb-2">版本历史</div>
+                        <div class="space-y-2">${(data.version_snapshots || []).length ? data.version_snapshots.map(item => `
+                            <div class="border rounded p-2 text-xs bg-slate-50">
+                                <div class="flex items-center justify-between gap-2">
+                                    <div class="font-bold">v${safeText(item.version_no)} · ${safeText(item.action)}</div>
+                                    <button onclick="restoreKbDocumentVersion('${doc.document_id}', ${item.version_no})" class="text-indigo-700">恢复到此版本</button>
+                                </div>
+                                <div class="mt-1 text-slate-500">${safeText(item.created_at)} · ${safeText(item.operator || '-')}</div>
+                                <div class="mt-1 text-slate-600">${safeText(item.note || '')}</div>
+                            </div>
+                        `).join('') : '<div class="text-xs text-slate-400">暂无版本快照</div>'}</div>
+                    </div>
                 </div>`;
+        }
+
+        async function restoreKbDocumentVersion(documentId, versionNo) {
+            if (!confirm(`确认将当前文档恢复到 v${versionNo} 并重新进入审核？`)) return;
+            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}/restore/${versionNo}`, {method: 'POST'});
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            await showKbDocument(documentId);
+            if (kbState.tab === 'documents') await refreshKbDocuments();
+            if (kbState.tab === 'review') await loadKbReview();
         }
 
         async function kbDocAction(documentId, action) {
@@ -965,6 +1219,10 @@
                         <div id="kb-import-preview" class="overflow-auto max-h-[420px] border rounded bg-white"></div>
                         <pre id="kb-import-result" class="mt-4 bg-slate-900 text-slate-100 text-xs p-3 rounded overflow-auto max-h-72"></pre>
                     </div>
+                    <div class="bg-white border rounded p-4 mb-4">
+                        <div class="font-bold text-slate-800 mb-3">异步导入任务</div>
+                        <div id="kb-import-jobs" class="space-y-2"></div>
+                    </div>
                     <div class="bg-white border rounded p-4 space-y-4">
                         <div>
                             <div class="font-bold text-slate-800 mb-1">历史抽取</div>
@@ -995,6 +1253,7 @@
                     </div>
                 </div>`;
             loadKbTemplateInfo();
+            refreshJobList('kb_excel_import', 'kb-import-jobs');
         }
 
         async function loadKbTemplateInfo() {
@@ -1090,11 +1349,19 @@
             const form = buildKbImportForm();
             if (!form) return;
             if (!confirm('确认将预览中的合法行导入为草稿知识？')) return;
-            document.getElementById('kb-import-result').textContent = 'importing...';
-            const res = await fetch(`${API_BASE}/api/kb/import/excel/commit`, {method: 'POST', body: form});
+            document.getElementById('kb-import-result').textContent = 'queueing async import...';
+            const res = await fetch(`${API_BASE}/api/kb/import/excel/commit_async`, {method: 'POST', body: form});
             const data = await res.json();
+            if (!res.ok) {
+                document.getElementById('kb-import-result').textContent = JSON.stringify(data.detail || data, null, 2);
+                return;
+            }
             document.getElementById('kb-import-result').textContent = JSON.stringify(data, null, 2);
-            if (res.ok) document.getElementById('kb-import-summary').insertAdjacentHTML('beforeend', `<div class="mt-3 text-xs text-emerald-700">已生成批次：${safeText(data.import_batch)}，可到“批次”页提交审核或发布。</div>`);
+            await refreshJobList('kb_excel_import', 'kb-import-jobs');
+            const job = await pollJob(data.job.job_id, 'kb-import-result', 'kb_excel_import', 'kb-import-jobs');
+            if (job?.result?.import_batch) {
+                document.getElementById('kb-import-summary').insertAdjacentHTML('beforeend', `<div class="mt-3 text-xs text-emerald-700">已生成批次：${safeText(job.result.import_batch)}，可到“批次”页提交审核或发布。</div>`);
+            }
         }
 
         function renderKbImportPreview(data) {
@@ -1260,27 +1527,133 @@
             const res = await fetch(`${API_BASE}/api/kb/quality/report?days=30&limit=300`);
             const data = await res.json();
             const issues = data.issues || [];
-            document.getElementById('kb-body').innerHTML = `
-                <div class="h-full overflow-y-auto p-4 bg-slate-50">
-                    <div class="grid grid-cols-4 gap-3 mb-4">
-                        <div class="bg-white border rounded p-3"><div class="text-xs text-slate-500">问题总数</div><div class="text-2xl font-bold">${safeText(data.total_issues)}</div></div>
-                        <div class="bg-white border rounded p-3"><div class="text-xs text-slate-500">高风险</div><div class="text-2xl font-bold text-rose-600">${safeText((data.by_severity || {}).high || 0)}</div></div>
-                        <div class="bg-white border rounded p-3"><div class="text-xs text-slate-500">中风险</div><div class="text-2xl font-bold text-amber-600">${safeText((data.by_severity || {}).medium || 0)}</div></div>
-                        <div class="bg-white border rounded p-3"><div class="text-xs text-slate-500">窗口</div><div class="text-2xl font-bold">${safeText(data.window_days)}天</div></div>
+            kbState.qualityIssues = issues;
+            renderKbShell(`
+                <div class="grid grid-cols-4 gap-3 mb-4">
+                    <div class="bg-white border rounded p-3"><div class="text-xs text-slate-500">问题总数</div><div class="text-2xl font-bold">${safeText(data.total_issues)}</div></div>
+                    <div class="bg-white border rounded p-3"><div class="text-xs text-slate-500">高风险</div><div class="text-2xl font-bold text-rose-600">${safeText((data.by_severity || {}).high || 0)}</div></div>
+                    <div class="bg-white border rounded p-3"><div class="text-xs text-slate-500">中风险</div><div class="text-2xl font-bold text-amber-600">${safeText((data.by_severity || {}).medium || 0)}</div></div>
+                    <div class="bg-white border rounded p-3"><div class="text-xs text-slate-500">窗口</div><div class="text-2xl font-bold">${safeText(data.window_days)}天</div></div>
+                </div>
+                <div class="bg-white border rounded overflow-hidden">
+                    <table class="w-full text-xs">
+                        <thead class="bg-slate-100"><tr><th class="text-left p-2">等级</th><th class="text-left p-2">类型</th><th class="text-left p-2">标题/范围</th><th class="text-left p-2">说明</th><th class="text-left p-2">操作</th></tr></thead>
+                        <tbody>${issues.map((issue, index) => `
+                            <tr class="border-t">
+                                <td class="p-2">${safeText(issue.severity)}</td>
+                                <td class="p-2 font-medium">${safeText(issue.type)}</td>
+                                <td class="p-2">${safeText(issue.title || JSON.stringify(issue.scope || {}))}</td>
+                                <td class="p-2">${safeText(issue.message)}</td>
+                                <td class="p-2">${renderQualityIssueActions(issue, index)}</td>
+                            </tr>`).join('')}</tbody>
+                    </table>
+                </div>
+            `);
+        }
+
+        function renderQualityIssueActions(issue, index) {
+            const buttons = [`<button onclick="showQualityIssue(${index})" class="text-emerald-700 font-bold mr-2">详情</button>`];
+            if (issue.document_id) buttons.push(`<button onclick="showKbDocument('${issue.document_id}')" class="text-slate-700 mr-2">文档</button>`);
+            if (issue.chunk_id) buttons.push(`<button onclick="showQualityChunk('${issue.chunk_id}')" class="text-slate-700 mr-2">Chunk</button>`);
+            if (issue.type === 'missing_pricing_rule' && issue.chunk_id && issue.document_id) buttons.push(`<button onclick="addKbPricingRule('${issue.chunk_id}', '${issue.document_id}')" class="text-emerald-700 mr-2">补规则</button>`);
+            if ((issue.rule_ids && issue.rule_ids.length) || issue.rule_id) buttons.push(`<button onclick="showQualityRules('${(issue.rule_ids || [issue.rule_id]).join(',')}')" class="text-slate-700 mr-2">规则</button>`);
+            if (issue.type === 'duplicate_pricing_rule' && issue.rule_ids?.length > 1) buttons.push(`<button onclick="archiveDuplicateRules('${issue.rule_ids.join(',')}')" class="text-rose-700 mr-2">归档重复</button>`);
+            if ((issue.type === 'expired_document' || issue.type === 'expiring_document') && issue.document_id) {
+                buttons.push(`<button onclick="extendQualityDocument('${issue.document_id}')" class="text-indigo-700 mr-2">延长期限</button>`);
+                buttons.push(`<button onclick="kbDocAction('${issue.document_id}', 'archive')" class="text-rose-700 mr-2">归档</button>`);
+            }
+            if ((issue.type === 'expired_pricing_rule' || issue.type === 'expiring_pricing_rule') && issue.rule_id) {
+                buttons.push(`<button onclick="archiveKbPricingRule('${issue.rule_id}', '${issue.document_id || ''}')" class="text-rose-700 mr-2">停用规则</button>`);
+            }
+            return buttons.join('');
+        }
+
+        async function showQualityIssue(index) {
+            const issue = kbState.qualityIssues[index];
+            if (!issue) return;
+            let extraHtml = '';
+            if (issue.rule_ids?.length) {
+                const res = await fetch(`${API_BASE}/api/kb/pricing_rules?rule_ids=${encodeURIComponent(issue.rule_ids.join(','))}&limit=50`);
+                const rules = await res.json();
+                extraHtml = `<div class="space-y-2">${rules.map(rule => `<div class="border rounded p-2 bg-emerald-50/40"><div class="font-bold">${safeText(rule.rule_id)}</div><div class="mt-1">${safeText(rule.unit)} / ${safeText(rule.currency)} / ${safeText(rule.price_min)}-${safeText(rule.price_max)} / 最低收费 ${safeText(rule.min_charge)}</div></div>`).join('')}</div>`;
+            }
+            document.getElementById('kb-detail').innerHTML = `
+                <div class="space-y-4 text-xs">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-sm">${safeText(issue.type)}</h3>
+                        <div class="mt-2">${safeText(issue.message)}</div>
                     </div>
-                    <div class="bg-white border rounded overflow-hidden">
-                        <table class="w-full text-xs">
-                            <thead class="bg-slate-100"><tr><th class="text-left p-2">等级</th><th class="text-left p-2">类型</th><th class="text-left p-2">标题/范围</th><th class="text-left p-2">说明</th></tr></thead>
-                            <tbody>${issues.map(issue => `
-                                <tr class="border-t">
-                                    <td class="p-2">${safeText(issue.severity)}</td>
-                                    <td class="p-2 font-medium">${safeText(issue.type)}</td>
-                                    <td class="p-2">${safeText(issue.title || JSON.stringify(issue.scope || {}))}</td>
-                                    <td class="p-2">${safeText(issue.message)}</td>
-                                </tr>`).join('')}</tbody>
-                        </table>
-                    </div>
+                    <pre class="bg-slate-900 text-slate-100 rounded p-3 overflow-auto max-h-72">${safeText(JSON.stringify(issue, null, 2))}</pre>
+                    ${extraHtml}
                 </div>`;
+        }
+
+        async function showQualityChunk(chunkId) {
+            const res = await fetch(`${API_BASE}/api/kb/chunks/${chunkId}`);
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            document.getElementById('kb-detail').innerHTML = `
+                <div class="space-y-4 text-xs">
+                    <div>
+                        <div class="text-slate-400">${safeText(data.chunk.chunk_id)}</div>
+                        <h3 class="font-bold text-slate-800 text-sm">${safeText(data.chunk.title)}</h3>
+                        <div class="mt-2">${safeText(data.chunk.knowledge_type_label)} · ${safeText(data.chunk.chunk_type)}</div>
+                    </div>
+                    <div class="whitespace-pre-wrap border rounded p-3 bg-slate-50">${safeText(data.chunk.content)}</div>
+                    <div class="flex gap-2">
+                        <button onclick="showKbDocument('${data.document?.document_id || ''}')" class="px-3 py-1 rounded text-xs bg-white border text-slate-700">查看文档</button>
+                        <button onclick="editKbChunk('${data.chunk.chunk_id}', '${data.document?.document_id || ''}')" class="px-3 py-1 rounded text-xs bg-white border text-slate-700">编辑 Chunk</button>
+                        <button onclick="addKbPricingRule('${data.chunk.chunk_id}', '${data.document?.document_id || ''}')" class="px-3 py-1 rounded text-xs bg-emerald-600 text-white">补报价规则</button>
+                    </div>
+                    ${data.pricing_rules?.length ? `<pre class="bg-emerald-50 border rounded p-3 overflow-auto">${safeText(JSON.stringify(data.pricing_rules, null, 2))}</pre>` : ''}
+                </div>`;
+        }
+
+        async function showQualityRules(ruleIds) {
+            const res = await fetch(`${API_BASE}/api/kb/pricing_rules?rule_ids=${encodeURIComponent(ruleIds)}&limit=50`);
+            const rules = await res.json();
+            document.getElementById('kb-detail').innerHTML = `
+                <div class="space-y-3 text-xs">
+                    <h3 class="font-bold text-slate-800 text-sm">冲突/重复报价规则</h3>
+                    <div class="space-y-2">${rules.map(rule => `
+                        <div class="border rounded p-3 bg-emerald-50/40">
+                            <div class="font-bold flex justify-between gap-2">
+                                <span>${safeText(rule.rule_id)}</span>
+                                <span>
+                                    <button onclick="editKbPricingRule('${rule.rule_id}', '${rule.document_id}')" class="text-emerald-700 mr-2">编辑</button>
+                                    <button onclick="archiveKbPricingRule('${rule.rule_id}', '${rule.document_id}')" class="text-rose-700">停用</button>
+                                </span>
+                            </div>
+                            <div class="mt-2">${safeText(rule.business_line_label)} · ${safeText(rule.language_pair_label)} · ${safeText(rule.service_scope_label)}</div>
+                            <pre class="mt-2 bg-white border rounded p-2 overflow-auto">${safeText(JSON.stringify(rule, null, 2))}</pre>
+                        </div>`).join('')}</div>
+                </div>`;
+        }
+
+        async function archiveDuplicateRules(ruleIds) {
+            const ids = ruleIds.split(',').map(item => item.trim()).filter(Boolean);
+            if (ids.length < 2) return;
+            if (!confirm(`确认归档重复规则？将保留第一条，归档其余 ${ids.length - 1} 条。`)) return;
+            for (const ruleId of ids.slice(1)) {
+                const res = await fetch(`${API_BASE}/api/kb/pricing_rules/${ruleId}/archive`, {method:'POST'});
+                const data = await res.json();
+                if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            }
+            await loadKbQuality();
+        }
+
+        async function extendQualityDocument(documentId) {
+            const effectiveTo = prompt('新的失效日期，例如 2030-12-31');
+            if (!effectiveTo) return;
+            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}`, {
+                method:'PATCH',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({effective_to: `${effectiveTo}T23:59:59`})
+            });
+            const data = await res.json();
+            if (!res.ok) return alert(JSON.stringify(data.detail || data, null, 2));
+            await loadKbQuality();
+            await showKbDocument(documentId);
         }
 
         async function loadKbRegression() {
@@ -1289,42 +1662,95 @@
             document.getElementById('kb-body').innerHTML = `
                 <div class="h-full overflow-y-auto p-4 bg-slate-50">
                     <div class="mb-3 flex items-center gap-2">
-                        <button onclick="runKbRegression()" class="px-4 py-2 bg-emerald-600 text-white rounded text-sm">执行20题回归</button>
+                        <select id="kb-reg-group" class="border rounded px-2 py-1 text-xs">
+                            <option value="">全部分组</option>
+                            ${(data.meta?.groups || []).map(item => `<option value="${safeText(item)}">${safeText(item)}</option>`).join('')}
+                        </select>
+                        <select id="kb-reg-category" class="border rounded px-2 py-1 text-xs">
+                            <option value="">全部类别</option>
+                            ${(data.meta?.categories || []).map(item => `<option value="${safeText(item)}">${safeText(item)}</option>`).join('')}
+                        </select>
+                        <select id="kb-reg-risk" class="border rounded px-2 py-1 text-xs">
+                            <option value="">全部风险</option>
+                            ${(data.meta?.risk_levels || []).map(item => `<option value="${safeText(item)}">${safeText(item)}</option>`).join('')}
+                        </select>
+                        <select id="kb-reg-business-line" class="border rounded px-2 py-1 text-xs">
+                            <option value="">全部业务线</option>
+                            ${(data.meta?.business_lines || []).map(item => `<option value="${safeText(item)}">${safeText(item)}</option>`).join('')}
+                        </select>
+                        <button onclick="reloadKbRegressionCases()" class="px-4 py-2 bg-white border rounded text-sm text-slate-700">筛选</button>
+                        <button onclick="runKbRegression()" class="px-4 py-2 bg-emerald-600 text-white rounded text-sm">异步执行回归</button>
                         <label class="text-xs text-slate-500"><input id="kb-reg-keep-logs" type="checkbox" class="align-middle mr-1">保留命中日志</label>
                     </div>
-                    <div class="bg-white border rounded overflow-hidden mb-4">
+                    <div id="kb-regression-table" class="bg-white border rounded overflow-hidden mb-4">
                         <table class="w-full text-xs">
-                            <thead class="bg-slate-100"><tr><th class="text-left p-2">编号</th><th class="text-left p-2">类别</th><th class="text-left p-2">问题</th></tr></thead>
-                            <tbody>${(data.cases || []).map(item => `<tr class="border-t"><td class="p-2 font-medium">${safeText(item.case_id)}</td><td class="p-2">${safeText(item.category)}</td><td class="p-2">${safeText(item.query_text)}</td></tr>`).join('')}</tbody>
+                            <thead class="bg-slate-100"><tr><th class="text-left p-2">编号</th><th class="text-left p-2">分组</th><th class="text-left p-2">类别</th><th class="text-left p-2">风险</th><th class="text-left p-2">问题</th></tr></thead>
+                            <tbody>${(data.cases || []).map(item => `<tr class="border-t"><td class="p-2 font-medium">${safeText(item.case_id)}</td><td class="p-2">${safeText(item.group || '-')}</td><td class="p-2">${safeText(item.category)}</td><td class="p-2">${safeText(item.risk_level || '-')}</td><td class="p-2">${safeText(item.query_text)}</td></tr>`).join('')}</tbody>
                         </table>
+                    </div>
+                    <div class="bg-white border rounded p-4 mb-4">
+                        <div class="font-bold text-slate-800 mb-3">异步回归任务</div>
+                        <div id="kb-reg-jobs" class="space-y-2"></div>
                     </div>
                     <pre id="kb-regression-result" class="bg-slate-900 text-slate-100 text-xs p-3 rounded overflow-auto max-h-[420px]"></pre>
                 </div>`;
+            refreshJobList('kb_regression', 'kb-reg-jobs');
+        }
+
+        async function reloadKbRegressionCases() {
+            const params = new URLSearchParams();
+            const group = document.getElementById('kb-reg-group')?.value;
+            const category = document.getElementById('kb-reg-category')?.value;
+            const risk = document.getElementById('kb-reg-risk')?.value;
+            const businessLine = document.getElementById('kb-reg-business-line')?.value;
+            if (group) params.set('group', group);
+            if (category) params.set('category', category);
+            if (risk) params.set('risk_level', risk);
+            if (businessLine) params.set('business_line', businessLine);
+            const res = await fetch(`${API_BASE}/api/kb/regression_cases?${params.toString()}`);
+            const data = await res.json();
+            document.getElementById('kb-regression-table').innerHTML = `
+                <table class="w-full text-xs">
+                    <thead class="bg-slate-100"><tr><th class="text-left p-2">编号</th><th class="text-left p-2">分组</th><th class="text-left p-2">类别</th><th class="text-left p-2">风险</th><th class="text-left p-2">问题</th></tr></thead>
+                    <tbody>${(data.cases || []).map(item => `<tr class="border-t"><td class="p-2 font-medium">${safeText(item.case_id)}</td><td class="p-2">${safeText(item.group || '-')}</td><td class="p-2">${safeText(item.category)}</td><td class="p-2">${safeText(item.risk_level || '-')}</td><td class="p-2">${safeText(item.query_text)}</td></tr>`).join('')}</tbody>
+                </table>`;
         }
 
         async function runKbRegression() {
             const keepLogs = document.getElementById('kb-reg-keep-logs')?.checked;
+            const group = document.getElementById('kb-reg-group')?.value;
+            const category = document.getElementById('kb-reg-category')?.value;
+            const risk = document.getElementById('kb-reg-risk')?.value;
+            const businessLine = document.getElementById('kb-reg-business-line')?.value;
             const target = document.getElementById('kb-regression-result');
-            target.textContent = 'running...';
-            const res = await fetch(`${API_BASE}/api/kb/regression_cases/run`, {
+            target.textContent = 'queueing async regression...';
+            const res = await fetch(`${API_BASE}/api/kb/regression_cases/run_async`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({top_k: 5, cleanup_logs: !keepLogs, include_hits: false})
+                body: JSON.stringify({groups: group ? [group] : null, category: category || null, risk_level: risk || null, business_line: businessLine || null, top_k: 5, cleanup_logs: !keepLogs, include_hits: false})
             });
             const data = await res.json();
+            if (!res.ok) {
+                target.textContent = JSON.stringify(data.detail || data, null, 2);
+                return;
+            }
             target.textContent = JSON.stringify(data, null, 2);
+            await refreshJobList('kb_regression', 'kb-reg-jobs');
+            await pollJob(data.job.job_id, 'kb-regression-result', 'kb_regression', 'kb-reg-jobs');
         }
 
         async function loadKbOps() {
-            const [healthRes, perfRes] = await Promise.all([
+            const [healthRes, perfRes, configRes] = await Promise.all([
                 fetch(`${API_BASE}/api/health/ready`),
-                fetch(`${API_BASE}/api/kb/performance/status`)
+                fetch(`${API_BASE}/api/kb/performance/status`),
+                fetch(`${API_BASE}/api/system/config_check`)
             ]);
             const health = await healthRes.json();
             const perf = await perfRes.json();
+            const configCheck = await configRes.json();
             document.getElementById('kb-body').innerHTML = `
                 <div class="h-full overflow-y-auto p-4 bg-slate-50">
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
                         <div class="bg-white border rounded p-4">
                             <h3 class="font-bold text-slate-800 mb-3">健康检查</h3>
                             <pre class="text-xs bg-slate-50 border rounded p-3 overflow-auto max-h-[520px]">${safeText(JSON.stringify(health, null, 2))}</pre>
@@ -1332,6 +1758,10 @@
                         <div class="bg-white border rounded p-4">
                             <h3 class="font-bold text-slate-800 mb-3">检索性能</h3>
                             <pre class="text-xs bg-slate-50 border rounded p-3 overflow-auto max-h-[520px]">${safeText(JSON.stringify(perf, null, 2))}</pre>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-800 mb-3">配置诊断</h3>
+                            ${renderOpsConfigCheck(configCheck)}
                         </div>
                     </div>
                 </div>`;

@@ -217,6 +217,47 @@ class KnowledgeHitLog(Base):
         Index("idx_khl_session", "session_id"),
     )
 
+class KnowledgeVersionSnapshot(Base):
+    """知识版本快照：发布前保存文档、切片、报价规则的完整恢复包。"""
+    __tablename__ = "knowledge_version_snapshot"
+
+    snapshot_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    document_id = Column(UUID(as_uuid=False), ForeignKey("knowledge_document.document_id"), nullable=False)
+    version_no = Column(Integer, nullable=False)
+    action = Column(String(30), nullable=False, default="publish")  # publish/restore/manual
+    operator = Column(String(100), nullable=True)
+    note = Column(Text, nullable=True)
+    snapshot_data = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_kvs_doc_version", "document_id", "version_no"),
+        Index("idx_kvs_created_at", "created_at"),
+    )
+
+class JobTask(Base):
+    """异步任务表：承接回归、导入和抽取等耗时任务。"""
+    __tablename__ = "job_task"
+
+    job_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    job_type = Column(String(50), nullable=False)
+    status = Column(String(20), nullable=False, default="queued")  # queued/running/success/failed
+    progress = Column(Integer, nullable=False, default=0)
+    summary = Column(String(255), nullable=True)
+    task_payload = Column(JSON, nullable=True)
+    result = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    retry_of = Column(String(36), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_job_task_status_created", "status", "created_at"),
+        Index("idx_job_task_type_created", "job_type", "created_at"),
+    )
+
 # 初始化数据库连接
 engine = create_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
