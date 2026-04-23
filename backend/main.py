@@ -5219,11 +5219,25 @@ def log_sidebar_result(event: str, payload: dict):
         json.dumps(payload, ensure_ascii=False, default=str),
     )
 
+def log_reply_chain_event(event: str, payload: dict):
+    """Log one compact JSON line for reply-generation chain UI actions."""
+    logger.info(
+        "REPLY_CHAIN_%s %s",
+        event,
+        json.dumps(payload, ensure_ascii=False, default=str),
+    )
+
 def reanalyze_session_task(user_id: str, step: int = 1):
     """由界面主动测算触发：抓取特定会话并投递给 LLM 大语言模型进行意图重算"""
     db = SessionLocal()
     try:
         if step == 1:
+            log_reply_chain_event("STEP_START", {
+                "source": "frontend",
+                "business_object": user_id,
+                "step": step,
+                "stage": "llm1",
+            })
             logger.info(f"⏳ 正在执行阶段 1: 调遣 Dify 大语言模型提取会话 {user_id} 结构化画像...")
             context_logs = db.query(MessageLog).filter(
                 MessageLog.user_id == user_id,
@@ -5233,8 +5247,30 @@ def reanalyze_session_task(user_id: str, step: int = 1):
             if context:
                 IntentEngine.slow_track_analyze(user_id, context)
                 logger.info(f"✅ 会话 {user_id} 的 AI 结构化特征(V1) 以及连带(V2)推送已生成完毕！")
+                log_reply_chain_event("STEP_RESULT", {
+                    "source": "frontend",
+                    "business_object": user_id,
+                    "step": step,
+                    "stage": "llm1",
+                    "result": "success",
+                    "message_count": len(context),
+                })
+            else:
+                log_reply_chain_event("STEP_RESULT", {
+                    "source": "frontend",
+                    "business_object": user_id,
+                    "step": step,
+                    "stage": "llm1",
+                    "result": "skipped_no_messages",
+                })
         
         elif step == 2:
+            log_reply_chain_event("STEP_START", {
+                "source": "frontend",
+                "business_object": user_id,
+                "step": step,
+                "stage": "llm2",
+            })
             logger.info(f"⏳ 正在执行阶段 2: 调遣 DeepSeek 针对 {user_id} 发放销售实战指令...")
             summary = db.query(IntentSummary).filter(IntentSummary.user_id == user_id).order_by(IntentSummary.id.desc()).first()
             if summary:
@@ -5272,9 +5308,41 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                     title = f"💡 [AI销售辅助更新] - {summary.topic}"
                     QYWXUtils.send_text_card(user_id, title, assist_content)
                     logger.info("✅ 实战建议(V2)指令下发完成！")
+                    log_reply_chain_event("STEP_RESULT", {
+                        "source": "frontend",
+                        "business_object": user_id,
+                        "step": step,
+                        "stage": "llm2",
+                        "result": "success",
+                        "knowledge_status": knowledge.get("status"),
+                        "knowledge_log_id": knowledge.get("log_id"),
+                    })
+                else:
+                    log_reply_chain_event("STEP_RESULT", {
+                        "source": "frontend",
+                        "business_object": user_id,
+                        "step": step,
+                        "stage": "llm2",
+                        "result": "failed_no_content",
+                    })
+            else:
+                log_reply_chain_event("STEP_RESULT", {
+                    "source": "frontend",
+                    "business_object": user_id,
+                    "step": step,
+                    "stage": "llm2",
+                    "result": "skipped_no_summary",
+                })
             
     except Exception as e:
         logger.error(f"AI 推理过程崩坏: {e}")
+        log_reply_chain_event("STEP_RESULT", {
+            "source": "frontend",
+            "business_object": user_id,
+            "step": step,
+            "result": "error",
+            "reason": str(e),
+        })
     finally:
         db.close()
 
@@ -5359,8 +5427,17 @@ class TriggerReq(BaseModel):
     step: int
 
 @app.post("/api/sessions/{user_id}/trigger_llm")
-async def trigger_llm_post(user_id: str, req: TriggerReq, background_tasks: BackgroundTasks):
+async def trigger_llm_post(user_id: str, req: TriggerReq, background_tasks: BackgroundTasks, request: Request):
     """前端手动拔枪按钮请求"""
+    payload = {
+        "source": "frontend",
+        "client_host": request.client.host if request.client else "",
+        "user_agent": request.headers.get("user-agent", "")[:160],
+        "business_object": user_id,
+        "step": req.step,
+        "result": "accepted",
+    }
+    log_reply_chain_event("TRIGGER_REQUEST", payload)
     logger.info(f"收到前台发起的 LLM 手动指令！正在执行阶段 {req.step} ...")
     background_tasks.add_task(reanalyze_session_task, user_id, req.step)
     return {"status": "success", "msg": f"已将步骤 {req.step} 投入后台大模型运算池"}
@@ -5616,12 +5693,45 @@ async def sidebar_assist(request: SidebarAssistRequest):
         db.close()
 
 @app.post("/api/sync/today")
-async def sync_today_messages():
+async def sync_today_messages(request: Request):
     """触发真实会话存档同步"""
     from archive_service import ArchiveService
-    res = ArchiveService.sync_today_data()
+    log_reply_chain_event("SYNC_REQUEST", {
+        "source": "frontend",
+        "client_host": request.client.host if request.client else "",
+        "user_agent": request.headers.get("user-agent", "")[:160],
+        "business_object": "today_archive_sync",
+        "step": "sync",
+        "result": "started",
+    })
+    try:
+        res = await asyncio.wait_for(asyncio.to_thread(ArchiveService.sync_today_data), timeout=60)
+    except asyncio.TimeoutError:
+        reason = "企微会话存档同步超过 60 秒未返回，可能是外部 SDK、网络或企微服务器阻塞"
+        log_reply_chain_event("SYNC_RESULT", {
+            "source": "frontend",
+            "business_object": "today_archive_sync",
+            "step": "sync",
+            "result": "timeout",
+            "reason": reason,
+        })
+        raise HTTPException(status_code=504, detail=reason)
     if res.get("status") == "error":
+        log_reply_chain_event("SYNC_RESULT", {
+            "source": "frontend",
+            "business_object": "today_archive_sync",
+            "step": "sync",
+            "result": "error",
+            "reason": res.get("msg"),
+        })
         raise HTTPException(status_code=500, detail=res.get("msg"))
+    log_reply_chain_event("SYNC_RESULT", {
+        "source": "frontend",
+        "business_object": "today_archive_sync",
+        "step": "sync",
+        "result": res.get("status"),
+        "message": res.get("msg"),
+    })
     return res
 
 def archive_sdk_status():

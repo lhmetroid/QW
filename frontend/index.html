@@ -179,6 +179,7 @@
                 点击会话查看详细结构化特征
             </div>
         </div>
+        <div id="operation-status" class="hidden rounded-xl border border-blue-100 bg-blue-50 p-3 text-[11px] text-blue-900 shadow-sm"></div>
 
         <div class="mt-auto pt-6 border-t">
              <div class="bg-amber-50 rounded-xl p-4 border border-amber-100 shadow-sm">
@@ -622,13 +623,13 @@
                     {label: '命中信号', html: `<div class="flex flex-wrap gap-1">${signalHtml}</div>`},
                     {label: '后续影响', value: signals.length ? '作为 LLM-2 输入信号参与回复策略' : '无强信号，不阻断后续摘要和生成'}
                 ])}`;
-            const actions = `<button onclick="loadAnalysis(${jsArg(data.user_id || '')})" class="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded hover:bg-slate-100 transition">↺ 刷新</button>`;
+            const actions = `<button onclick='loadAnalysis(${jsArg(data.user_id || '')})' class="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded hover:bg-slate-100 transition">↺ 刷新</button>`;
             return renderPipelineCard(2, '强信号扫描 (Fast-Track)', '旁路规则先行识别风险、报价、时间等强信号', '#64748b', body, {scriptKey: 'FAST_TRACK_RULES', actions});
         }
 
         function renderStageOneCard(data, userId) {
             const actionLabel = data.has_v1 ? '🔄 重新提取' : '▶️ 提取特征';
-            const actions = `<button onclick="triggerLLM(${jsArg(userId)}, 1)" class="text-[10px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 border border-indigo-600 px-2 py-1 rounded transition">${actionLabel}</button>`;
+            const actions = `<button onclick='triggerLLM(${jsArg(userId)}, 1)' class="text-[10px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 border border-indigo-600 px-2 py-1 rounded transition">${actionLabel}</button>`;
             const body = `
                 <div class="mb-2">${renderStatusPill(data.has_v1 ? (data.status || '特征就绪') : '等待提取', data.has_v1 ? 'emerald' : 'amber')}</div>
                 ${renderPipelineRows([
@@ -746,13 +747,13 @@
 
         function renderFinalReplyCard(data, userId) {
             const actionLabel = data.has_v2 ? '🔄 重新生成' : (data.has_v1 ? '▶️ 生成回复' : '⛔ 需先提取');
-            const actions = `<button onclick="triggerLLM(${jsArg(userId)}, 2)" ${data.has_v1 ? '' : 'disabled'} class="text-[10px] font-bold ${data.has_v1 ? 'text-white bg-amber-500 hover:bg-amber-600 border border-amber-600' : 'text-amber-400 bg-amber-100 border border-amber-200 cursor-not-allowed'} px-2 py-1 rounded transition">${actionLabel}</button>`;
+            const actions = `<button onclick='triggerLLM(${jsArg(userId)}, 2)' ${data.has_v1 ? '' : 'disabled'} class="text-[10px] font-bold ${data.has_v1 ? 'text-white bg-amber-500 hover:bg-amber-600 border border-amber-600' : 'text-amber-400 bg-amber-100 border border-amber-200 cursor-not-allowed'} px-2 py-1 rounded transition">${actionLabel}</button>`;
             const advice = data.sales_advice_v2 || '';
             const feedback = data.has_v2 ? `
                 <div class="flex flex-wrap gap-1 pt-1">
                     <button onclick="copyTextFromEncoded('${encodedArg(advice)}')" class="px-2 py-1 bg-white border rounded text-[10px] text-slate-600">复制</button>
-                    <button onclick="submitAssistFeedback(${jsArg(userId)}, 'useful')" class="px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-700">有用</button>
-                    <button onclick="submitAssistFeedback(${jsArg(userId)}, 'needs_fix')" class="px-2 py-1 bg-rose-50 border border-rose-200 rounded text-[10px] text-rose-700">需修正</button>
+                    <button onclick='submitAssistFeedback(${jsArg(userId)}, "useful")' class="px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-700">有用</button>
+                    <button onclick='submitAssistFeedback(${jsArg(userId)}, "needs_fix")' class="px-2 py-1 bg-rose-50 border border-rose-200 rounded text-[10px] text-rose-700">需修正</button>
                 </div>` : '';
             const body = `
                 <div class="mb-2">${renderStatusPill(data.has_v2 ? '已生成' : '等待生成', data.has_v2 ? 'emerald' : 'amber')}</div>
@@ -1021,7 +1022,38 @@
             }
         }
 
+        function renderOperationStatus(status) {
+            const box = document.getElementById('operation-status');
+            if (!box) return;
+            const tone = status.ok === false ? 'rose' : (status.ok === true ? 'emerald' : 'blue');
+            const styles = {
+                blue: 'border-blue-100 bg-blue-50 text-blue-900',
+                emerald: 'border-emerald-100 bg-emerald-50 text-emerald-900',
+                rose: 'border-rose-100 bg-rose-50 text-rose-900'
+            };
+            const rows = [
+                ['状态', status.label || '已发起'],
+                ['请求地址', status.url || '-'],
+                ['后端返回', status.response || '-'],
+                ['下一步建议', status.next || '-']
+            ];
+            box.className = `rounded-xl border p-3 text-[11px] shadow-sm ${styles[tone]}`;
+            box.innerHTML = rows.map(([label, value]) => `
+                <div class="grid grid-cols-[70px_1fr] gap-2 py-0.5">
+                    <span class="font-bold opacity-70">${safeText(label)}</span>
+                    <span class="break-all whitespace-pre-wrap">${safeText(value)}</span>
+                </div>
+            `).join('');
+        }
+
         async function triggerLLM(userId, step) {
+            const url = `${API_BASE}/api/sessions/${userId}/trigger_llm`;
+            renderOperationStatus({
+                label: `阶段 ${step} 已发起，等待后端确认`,
+                url,
+                response: 'POST 请求发送中',
+                next: '保持当前页面，系统会自动刷新右侧链路状态。'
+            });
             document.getElementById('analysis-content').innerHTML = `
                 <div class="flex flex-col items-center justify-center py-20 text-slate-400">
                     <svg class="animate-spin h-8 w-8 text-indigo-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1034,9 +1066,34 @@
                 </div>
             `;
             try {
-                await fetch(`${API_BASE}/api/sessions/${userId}/trigger_llm`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({step: step}) });
+                const res = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({step: step}) });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    renderOperationStatus({
+                        ok: false,
+                        label: `阶段 ${step} 发起失败：HTTP ${res.status}`,
+                        url,
+                        response: JSON.stringify(data),
+                        next: '查看后端日志中的 REPLY_CHAIN_TRIGGER_REQUEST / REQUEST_ERROR，并按错误原因修复后重试。'
+                    });
+                    return;
+                }
+                renderOperationStatus({
+                    ok: true,
+                    label: `阶段 ${step} 已进入后台执行`,
+                    url,
+                    response: JSON.stringify(data),
+                    next: '等待 5.5 秒后自动刷新；若结果仍未完成，请再次点击刷新分析或查看后端 REPLY_CHAIN_STEP 日志。'
+                });
             } catch (err) {
                 console.error("服务端暂时不可达或重启中:", err);
+                renderOperationStatus({
+                    ok: false,
+                    label: `阶段 ${step} 请求异常`,
+                    url,
+                    response: translateApiMessage(err?.message || err),
+                    next: '确认后端服务端口可访问，再从真实页面重新点击当前阶段按钮。'
+                });
             } finally {
                 setTimeout(() => loadAnalysis(userId), 5500);
             }
@@ -1066,21 +1123,50 @@
                 await updateProgress('正在建立会话存档安全通道...', 20);
                 await updateProgress('正在握手企微存档中心...', 55);
                 
-                const res = await fetch(`${API_BASE}/api/sync/today`, {method: 'POST'});
-                const data = await res.json();
+                const url = `${API_BASE}/api/sync/today`;
+                renderOperationStatus({
+                    label: '同步今日真实记录已发起',
+                    url,
+                    response: 'POST 请求发送中',
+                    next: '等待企微会话存档 SDK 返回。'
+                });
+                const res = await fetch(url, {method: 'POST'});
+                const data = await res.json().catch(() => ({}));
                 
-                if(data.status === 'success') {
+                if(res.ok && data.status === 'success') {
                     await updateProgress('正在解析加密报文流...', 90);
                     await updateProgress('同步完成', 100);
+                    renderOperationStatus({
+                        ok: true,
+                        label: '同步今日真实记录成功',
+                        url,
+                        response: JSON.stringify(data),
+                        next: '已刷新真实会话列表，可选择会话继续执行回复生成链路。'
+                    });
                     setTimeout(() => {
                         statusBox.classList.add('hidden');
                         fetchSessions();
                     }, 1500);
                 } else {
-                    alert('同步中遇到障碍：' + translateApiMessage(data.msg || data.message || '未知错误'));
+                    const message = translateApiMessage(data.detail || data.msg || data.message || `HTTP ${res.status}`);
+                    renderOperationStatus({
+                        ok: false,
+                        label: '同步今日真实记录失败',
+                        url,
+                        response: JSON.stringify(data),
+                        next: '本次会继续使用已有真实历史会话验证后续链路；请检查企微会话存档外部链路或 SDK 日志。'
+                    });
+                    alert('同步中遇到障碍：' + message);
                     statusBox.classList.add('hidden');
                 }
             } catch(e) {
+                renderOperationStatus({
+                    ok: false,
+                    label: '同步今日真实记录请求异常',
+                    url: `${API_BASE}/api/sync/today`,
+                    response: translateApiMessage(e?.message || e),
+                    next: '确认后端服务和企微会话存档依赖可用后重试。'
+                });
                 alert('网络链路异常：' + translateApiMessage(e?.message || e));
                 statusBox.classList.add('hidden');
             } finally {

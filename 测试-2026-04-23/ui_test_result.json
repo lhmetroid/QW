@@ -1,0 +1,78 @@
+{
+  "base_url": "http://127.0.0.1:8010/",
+  "target_session_id": "single_joycesheng_wmS8sICwAAa55HEd90VALjoRBvCJE43g",
+  "started_at": "2026-04-23T13:37:48",
+  "sync": {
+    "attempted": true,
+    "dialog_messages": [],
+    "operation_status": "状态\n同步今日真实记录成功\n请求地址\nhttp://127.0.0.1:8010/api/sync/today\n后端返回\n{\"status\":\"success\",\"msg\":\"同步成功！已成功解密并展示 50 条真实中文对话。\"}\n下一步建议\n已刷新真实会话列表，可选择会话继续执行回复生成链路。",
+    "screenshot": "sync-real-ui-status.png"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "slug": "conversation-input",
+      "screenshot": "step-01-conversation-input.png",
+      "html": "step-01-conversation-input.html",
+      "card_text": "01\n当前会话输入\n最终回复的原始上下文来源\n已载入 20 条\n展示最近 6 条\n会话条数:\n20 条\n最新消息:\n好的\n输入用途:\n供 Fast-Track 扫描、LLM-1 摘要与后续知识检索使用\n客户 · 04月15日 17:59:45\n嗯嗯\n我方销售 · 04月15日 17:59:57\n够的\n客户 · 04月15日 18:00:02\n有的话就不用另外那家人再转了就我们付了\n客户 · 04月15日 18:00:05\n行\n客户 · 04月15日 18:00:10\n那我邮件给你\n我方销售 · 04月15日 18:00:39\n好的",
+      "operation_status": "状态\n同步今日真实记录成功\n请求地址\nhttp://127.0.0.1:8010/api/sync/today\n后端返回\n{\"status\":\"success\",\"msg\":\"同步成功！已成功解密并展示 50 条真实中文对话。\"}\n下一步建议\n已刷新真实会话列表，可选择会话继续执行回复生成链路。",
+      "data_type": "real_wecom_history"
+    },
+    {
+      "step": 2,
+      "slug": "fast-track-scan",
+      "screenshot": "step-02-fast-track-scan.png",
+      "html": "step-02-fast-track-scan.html",
+      "card_text": "02\n强信号扫描 (Fast-Track)\n旁路规则先行识别风险、报价、时间等强信号\n↺ 刷新\n脚本\n扫描状态:\ndone\n扫描范围:\n最近 15 句真实会话\n命中信号:\n近15句暂无旁路拦截信号\n后续影响:\n无强信号，不阻断后续摘要和生成",
+      "operation_status": "状态\n同步今日真实记录成功\n请求地址\nhttp://127.0.0.1:8010/api/sync/today\n后端返回\n{\"status\":\"success\",\"msg\":\"同步成功！已成功解密并展示 50 条真实中文对话。\"}\n下一步建议\n已刷新真实会话列表，可选择会话继续执行回复生成链路。",
+      "data_type": "real_wecom_history"
+    },
+    {
+      "step": 3,
+      "slug": "llm1-feature-extract",
+      "screenshot": "step-03-llm1-feature-extract.png",
+      "html": "step-03-llm1-feature-extract.html",
+      "card_text": "03\n第一阶段特征提取\nLLM-1 将会话压缩为可检索、可生成的结构化摘要\n🔄 重新提取\n脚本\n进行中\n核心主线:\nPO余额确认与付款安排\n核心诉求:\n客户确认使用之前Celine开具的5000元PO余额来支付当前含税2400元的订单，以避免通过其他方转账。\n关键事实:\n客户曾通过Celine获得一张5000元的PO\n当前订单金额为含税2400元\n销售确认PO余额足够支付\n客户将通过邮件正式通知付款\n待办动作:\n销售等待客户发送付款安排的邮件、根据邮件执行PO扣款和付款流程\n顾虑风险:\nPO余额可能因其他未记录支出而不足、邮件通知延迟或遗漏可能导致付款延误、客户可能混淆PO使用条款或有效期\n待确认项:\nPO的具体剩余金额、PO的有效期限、付款的具体邮件内容和要求、是否需要补充合同或正式确认文件",
+      "operation_status": "状态\n阶段 1 已进入后台执行\n请求地址\nhttp://127.0.0.1:8010/api/sessions/single_joycesheng_wmS8sICwAAa55HEd90VALjoRBvCJE43g/trigger_llm\n后端返回\n{\"status\":\"success\",\"msg\":\"已将步骤 1 投入后台大模型运算池\"}\n下一步建议\n等待 5.5 秒后自动刷新；若结果仍未完成，请再次点击刷新分析或查看后端 REPLY_CHAIN_STEP 日志。",
+      "completed": true
+    },
+    {
+      "step": 4,
+      "slug": "crm-profile",
+      "screenshot": "step-04-crm-profile.png",
+      "html": "step-04-crm-profile.html",
+      "card_text": "04\n客户画像 / CRM\n客户等级、生命周期、风险和最近报价用于修正话术边界\nsuccess\nexternal_userid:\nwmS8sICwAAa55HEd90VALjoRBvCJE43g\n客户真名:\n成可儿\n企业主体:\n英威达管理（上海）有限公司\n近期商机:\nCRM暂无跟进中商机\n执行合同:\nXS260403-004-业务类型:笔译|英译中|负责人:盛晔|莱卡牛仔布用可再生方面主品介绍\n最近跟进:\n8天前以下具体时间点发生：\n18:00，QQ，内容为：销售确认订单金额并发送邮件给客户\n----------------------\n18:05，邮件，内容为：客户确认翻译完成，总费用2400含税\n生命周期:\n新联系人\n客户层级:\ncommon\n客户行业:\nCRM暂无行业推断\n回款风险:\nlow\n风险标记:\n无\n问题原因:\n已读取 CRM；单项为空表示 CRM 暂无对应记录",
+      "operation_status": "状态\n阶段 1 已进入后台执行\n请求地址\nhttp://127.0.0.1:8010/api/sessions/single_joycesheng_wmS8sICwAAa55HEd90VALjoRBvCJE43g/trigger_llm\n后端返回\n{\"status\":\"success\",\"msg\":\"已将步骤 1 投入后台大模型运算池\"}\n下一步建议\n等待 5.5 秒后自动刷新；若结果仍未完成，请再次点击刷新分析或查看后端 REPLY_CHAIN_STEP 日志。",
+      "data_type": "old_crm_read_only"
+    },
+    {
+      "step": 5,
+      "slug": "knowledge-evidence",
+      "screenshot": "step-05-knowledge-evidence.png",
+      "html": "step-05-knowledge-evidence.html",
+      "card_text": "05\n知识库检索证据\n基于核心诉求检索已发布知识、报价规则、案例和 FAQ\nok\n置信 0.490043\n命中 5 条\n185ms\n检索问题:\n客户确认使用之前Celine开具的5000元PO余额来支付当前含税2400元的订单，以避免通过其他方转账。\n检索特征:\n{\n  \"business_line\": \"general\",\n  \"knowledge_type\": [\n    \"pricing\",\n    \"faq\"\n  ]\n}\n过滤条件:\n{\n  \"status\": \"active\",\n  \"business_line\": \"general\",\n  \"knowledge_type\": [\n    \"pricing\",\n    \"faq\"\n  ],\n  \"language_pair\": null,\n  \"service_scope\": null,\n  \"customer_tier\": null,\n  \"effective_time\": \"now\",\n  \"candidate_limit\": 500,\n  \"keyword_prefilter_enabled\": true,\n  \"normalized_query_text\": \"客户确认使用之前Celine开具的5000元PO余额来支付当前含税2400元的订单，以避免通过其他方转账。\",\n  \"candidate_source\": \"keyword_prefilter_fallback\",\n  \"candidate_count\": 8\n}\n证据分类:\n规则 1 / FAQ 0 / 案例 4\n复核要求:\n无需人工复核\n1. 报价税费与发票说明\nscore 0.490043\nfaq · rule · general · -\n报价默认不含税；如客户需要开具发票，应先确认开票主体、发票类型、税率/税点、合同金额和收款安排。涉及专票或特殊税务要求时，不直接口头承诺固定税点，需交由财务确认后回复。\n2. 拜耳项目案例\nscore 0.365632\nfaq · example · general · -\n拜耳：左炔诺孕酮宫内节育系统相关资料1000万字处方抗肿瘤药、抗感染药注册资料。\n3. 医疗行业客户列表\nscore 0.345314\nfaq · example · general · -\n我们的客户包括Johnson & Johnson(强生)、Nycomed(奈科明)、Solvay(苏威制药)、Boehringer Ingelheim(勃林格殷格翰)、Roche(罗氏制药)、AstraZenica(阿斯利康)、OMRON(欧姆龙)、西门子医学诊断、施贵宝、日机装等众多沪上知名跨国公司。\n4. 3M项目案例\nscore 0.343748\nfaq · example · general · -\n3M:300分钟+口腔护理、输液设备视频听写+翻译+配字幕。\n5. 申淇项目案例\nscore 0.336235\nfaq · example · general · -\n申淇:4000页药物涂层冠脉球囊导管产品注册资料（专业设计医学、医疗器械、化工测试、机械制造、质量管理等诸多领域）。\n引用来源\nchunk · chunk:0d25127f-4176-4e2e-9259-f1f74284b709\n报价税费与发票说明\n报价默认不含税；如客户需要开具发票，应先确认开票主体、发票类型、税率/税点、合同金额和收款安排。涉及专票或特殊税务要求时，不直接口头承诺固定税点，需交由财务确认后回复。\nchunk · chunk:c2dd3b25-023d-4308-8d11-acef094965f7\n拜耳项目案例\n拜耳：左炔诺孕酮宫内节育系统相关资料1000万字处方抗肿瘤药、抗感染药注册资料。\nchunk · chunk:7cdfb72e-410e-454c-8988-d7148bfb3115\n医疗行业客户列表\n我们的客户包括Johnson & Johnson(强生)、Nycomed(奈科明)、Solvay(苏威制药)、Boehringer Ingelheim(勃林格殷格翰)、Roche(罗氏制药)、AstraZenica(阿斯利康)、OMRON(欧姆龙)、西门子医学诊断、施贵宝、日机装等众多沪上知名跨国公司。\nchunk · chunk:5e1c70e8-3f3c-4f69-b21f-77c211c9f731\n3M项目案例\n3M:300分钟+口腔护理、输液设备视频听写+翻译+配字幕。\nchunk · chunk:fac92fac-93da-4c27-acff-74a341fa9871\n申淇项目案例\n申淇:4000页药物涂层冠脉球囊导管产品注册资料（专业设计医学、医疗器械、化工测试、机械制造、质量管理等诸多领域）。",
+      "operation_status": "状态\n阶段 2 已进入后台执行\n请求地址\nhttp://127.0.0.1:8010/api/sessions/single_joycesheng_wmS8sICwAAa55HEd90VALjoRBvCJE43g/trigger_llm\n后端返回\n{\"status\":\"success\",\"msg\":\"已将步骤 2 投入后台大模型运算池\"}\n下一步建议\n等待 5.5 秒后自动刷新；若结果仍未完成，请再次点击刷新分析或查看后端 REPLY_CHAIN_STEP 日志。",
+      "completed_after_step6": true
+    },
+    {
+      "step": 6,
+      "slug": "llm2-final-reply",
+      "screenshot": "step-06-llm2-final-reply.png",
+      "html": "step-06-llm2-final-reply.html",
+      "card_text": "06\n第二阶段话术生成 / 最终回复\nLLM-2 使用结构化摘要、CRM 和知识证据生成可复制回复\n🔄 重新生成\n脚本\n已生成\n生成输入:\n结构化摘要 + CRM 客户画像 + 知识库证据\n回复文案:\n已生成，见下方全文\n问题原因:\n已完成二阶段生成\n【企微回复参考】\n成可儿，那您这边直接用之前Celine那张PO的余额来付就行。等您邮件通知，我们马上操作扣款。\n\n【跟进思路说明】\n客户核心诉求是便捷支付，话术直接确认方案并引导其发邮件推动流程。注意邮件可能延迟，若24小时未收到需温和提醒。\n复制\n有用\n需修正",
+      "operation_status": "状态\n阶段 2 已进入后台执行\n请求地址\nhttp://127.0.0.1:8010/api/sessions/single_joycesheng_wmS8sICwAAa55HEd90VALjoRBvCJE43g/trigger_llm\n后端返回\n{\"status\":\"success\",\"msg\":\"已将步骤 2 投入后台大模型运算池\"}\n下一步建议\n等待 5.5 秒后自动刷新；若结果仍未完成，请再次点击刷新分析或查看后端 REPLY_CHAIN_STEP 日志。",
+      "completed": true
+    },
+    {
+      "step": 7,
+      "slug": "output-validation",
+      "screenshot": "step-07-output-validation.png",
+      "html": "step-07-output-validation.html",
+      "card_text": "07\n输出校验与人工复核\n检查回复是否缺证据、越权承诺或需要人工复核\nok\n可直接参考\n未发现阻断或提醒项。",
+      "operation_status": "状态\n阶段 2 已进入后台执行\n请求地址\nhttp://127.0.0.1:8010/api/sessions/single_joycesheng_wmS8sICwAAa55HEd90VALjoRBvCJE43g/trigger_llm\n后端返回\n{\"status\":\"success\",\"msg\":\"已将步骤 2 投入后台大模型运算池\"}\n下一步建议\n等待 5.5 秒后自动刷新；若结果仍未完成，请再次点击刷新分析或查看后端 REPLY_CHAIN_STEP 日志。",
+      "completed_after_step6": true
+    }
+  ],
+  "dialogs": [],
+  "console_errors": []
+}
