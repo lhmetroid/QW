@@ -1,38 +1,56 @@
 import os
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # WeCom app configuration. Override these values with environment variables.
-    CORP_ID: str = "your-corp-id"
-    CORP_SECRET: str = "your-corp-secret"
-    AGENT_ID: str = "your-agent-id"
-    TOKEN: str = "your-token"
-    ENCODING_AES_KEY: str = "your-encoding-aes-key"
+    model_config = SettingsConfigDict(
+        env_file=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # Runtime values are loaded from the project-root .env file.
+    # The defaults below are placeholders only, so stale credentials do not
+    # appear configured when .env is missing.
+
+    # WeCom app configuration.
+    CORP_ID: str = ""
+    CORP_SECRET: str = ""
+    AGENT_ID: str = ""
+    TOKEN: str = ""
+    ENCODING_AES_KEY: str = ""
 
     # WeCom chat archive configuration.
-    CHATDATA_SECRET: str = "your-chatdata-secret"
-    PRIVATE_KEY_PATH: str = os.path.join(os.path.dirname(__file__), "private_key.pem")
+    CHATDATA_SECRET: str = ""
+    PRIVATE_KEY_PATH: str = ""
     PUBLIC_KEY_VER: int = 2
+    ENABLE_ARCHIVE_POLLING: bool = False
 
     # PostgreSQL configuration.
-    DB_HOST: str = "localhost"
+    DATABASE_URL: str | None = None
+    DB_HOST: str = ""
     DB_PORT: int = 5432
-    DB_NAME: str = "your-db-name"
-    DB_USER: str = "your-db-user"
-    DB_PASSWORD: str = "your-db-password"
+    DB_NAME: str = ""
+    DB_USER: str = ""
+    DB_PASSWORD: str = ""
 
-    # LLM-1 configuration.
-    LLM1_API_URL: str = "https://api.deepseek.com"
-    LLM1_API_KEY: str = "your-llm1-api-key"
-    LLM1_MODEL: str = "deepseek-chat"
+    # LLM-1 configuration: structured extraction.
+    LLM1_API_URL: str = ""
+    LLM1_API_KEY: str = ""
+    LLM1_MODEL: str = ""
     LLM1_TIMEOUT_SECONDS: int = 100
 
-    # LLM-2 configuration.
-    LLM2_API_URL: str = "https://api.deepseek.com"
-    LLM2_API_KEY: str = "your-llm2-api-key"
-    LLM2_MODEL: str = "deepseek-chat"
+    # LLM-2 configuration: sales-assist comparison/generation.
+    LLM2_API_URL: str = ""
+    LLM2_API_KEY: str = ""
+    LLM2_MODEL: str = ""
     LLM2_TIMEOUT_SECONDS: int = 100
+
+    # LLM-2 comparison configuration: optional second sales-assist output.
+    LLM2_COMPARE_API_URL: str = ""
+    LLM2_COMPARE_API_KEY: str = ""
+    LLM2_COMPARE_MODEL: str = ""
+    LLM2_COMPARE_TIMEOUT_SECONDS: int = 100
     LOG_LLM_PROMPTS: bool = True
     LOG_LLM_PROMPT_MAX_CHARS: int = 12000
     LOG_DESENSITIZE_ENABLED: bool = True
@@ -40,10 +58,10 @@ class Settings(BaseSettings):
     HTTP_TRUST_ENV: bool = False
 
     # Knowledge-base embedding configuration.
-    EMBEDDING_PROVIDER: str = "ollama"
-    EMBEDDING_API_URL: str = "http://192.168.31.102:11434"
+    EMBEDDING_PROVIDER: str = ""
+    EMBEDDING_API_URL: str = ""
     EMBEDDING_API_KEY: str = ""
-    EMBEDDING_MODEL: str = "qllama/bge-m3:latest"
+    EMBEDDING_MODEL: str = ""
     EMBEDDING_DIM: int = 1024
     EMBEDDING_TIMEOUT_SECONDS: int = 100
 
@@ -65,18 +83,18 @@ class Settings(BaseSettings):
     KB_HEALTHCHECK_TIMEOUT_SECONDS: int = 5
 
     # CRM MSSQL configuration.
-    CRM_DBHost: str = "localhost"
+    CRM_DBHost: str = ""
     CRM_DBPort: int = 1433
-    CRM_DBName: str = "your-crm-db-name"
-    CRM_DBUserId: str = "your-crm-db-user"
-    CRM_DBPassword: str = "your-crm-db-password"
-    CRM_ODBC_DRIVER: str = "ODBC Driver 18 for SQL Server"
+    CRM_DBName: str = ""
+    CRM_DBUserId: str = ""
+    CRM_DBPassword: str = ""
+    CRM_ODBC_DRIVER: str = ""
     CRM_DB_ENCRYPT: bool = False
     CRM_DB_TRUST_SERVER_CERTIFICATE: bool = True
     CRM_DB_CONNECTION_TIMEOUT: int = 100
 
     # Redis configuration.
-    REDIS_HOST: str = "127.0.0.1"
+    REDIS_HOST: str = ""
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
 
@@ -88,6 +106,8 @@ class Settings(BaseSettings):
     def database_url(self) -> str:
         import urllib.parse
 
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
         encoded_password = urllib.parse.quote_plus(self.DB_PASSWORD)
         return f"postgresql://{self.DB_USER}:{encoded_password}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 

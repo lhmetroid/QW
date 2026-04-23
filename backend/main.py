@@ -85,6 +85,9 @@ def auto_patch_db():
         db = SessionLocal()
         # 强制补丁：为旧表增加 is_mock 列
         db.execute(text("ALTER TABLE message_logs ADD COLUMN IF NOT EXISTS is_mock BOOLEAN DEFAULT FALSE;"))
+        db.execute(text("ALTER TABLE message_logs ALTER COLUMN user_id TYPE VARCHAR(120);"))
+        db.execute(text("ALTER TABLE intent_summaries ALTER COLUMN user_id TYPE VARCHAR(120);"))
+        db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS sales_advice_compare_v2 TEXT;"))
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS retrieval_quality VARCHAR(50);"))
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS confidence_score NUMERIC(8, 6);"))
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS insufficient_info BOOLEAN DEFAULT FALSE;"))
@@ -3647,6 +3650,39 @@ def _mask_config_value(value: str | None, keep: int = 4) -> str | None:
         return "*" * len(text_value)
     return f"{text_value[:keep]}***"
 
+def _llm_provider_label(api_key: str | None) -> str:
+    if not str(api_key or "").strip():
+        return "未配置"
+    return "Dify" if str(api_key or "").startswith("app-") else "OpenAI-compatible"
+
+def _llm_runtime_config() -> dict:
+    return {
+        "llm1": {
+            "id": "LLM-1",
+            "role": "第一阶段特征提取",
+            "model": settings.LLM1_MODEL,
+            "provider": _llm_provider_label(settings.LLM1_API_KEY),
+            "url": settings.LLM1_API_URL,
+            "display_name": f"LLM-1 / {settings.LLM1_MODEL or '未配置'}",
+        },
+        "llm2": {
+            "id": "LLM-2",
+            "role": "第二阶段主回复生成",
+            "model": settings.LLM2_MODEL,
+            "provider": _llm_provider_label(settings.LLM2_API_KEY),
+            "url": settings.LLM2_API_URL,
+            "display_name": f"LLM-2 / {settings.LLM2_MODEL or '未配置'}",
+        },
+        "llm2_compare": {
+            "id": "LLM-2 对比",
+            "role": "第二阶段对比回复生成",
+            "model": settings.LLM2_COMPARE_MODEL,
+            "provider": _llm_provider_label(settings.LLM2_COMPARE_API_KEY),
+            "url": settings.LLM2_COMPARE_API_URL,
+            "display_name": f"LLM-2 对比 / {settings.LLM2_COMPARE_MODEL or '未配置'}",
+        },
+    }
+
 def _probe_http_status(url: str, headers: dict | None = None) -> dict:
     try:
         session = requests.Session()
@@ -3744,12 +3780,20 @@ def _system_config_check() -> dict:
             "url": api_url,
             "api_key_masked": _mask_config_value(api_key),
             "model": model,
+            "provider": _llm_provider_label(api_key),
+            "role": _llm_runtime_config().get(name, {}).get("role"),
             "probe": probe,
             "suggestions": suggestions,
         }
 
     checks["llm1"] = build_llm_check("llm1", settings.LLM1_API_URL, settings.LLM1_API_KEY, settings.LLM1_MODEL)
     checks["llm2"] = build_llm_check("llm2", settings.LLM2_API_URL, settings.LLM2_API_KEY, settings.LLM2_MODEL)
+    checks["llm2_compare"] = build_llm_check(
+        "llm2_compare",
+        settings.LLM2_COMPARE_API_URL,
+        settings.LLM2_COMPARE_API_KEY,
+        settings.LLM2_COMPARE_MODEL,
+    )
 
     crm_configured = not any(
         _is_placeholder_value(value)
@@ -3810,6 +3854,7 @@ def _system_config_check() -> dict:
         "status": overall,
         "generated_at": datetime.utcnow().isoformat(),
         "checks": checks,
+        "llm_runtime": _llm_runtime_config(),
         "deployment_doc": "docs/生产部署与配置清单.md",
     }
 
@@ -3867,6 +3912,7 @@ def _runtime_health() -> dict:
         "http_trust_env": settings.HTTP_TRUST_ENV,
         "llm1_timeout_seconds": settings.LLM1_TIMEOUT_SECONDS,
         "llm2_timeout_seconds": settings.LLM2_TIMEOUT_SECONDS,
+        "llm2_compare_timeout_seconds": settings.LLM2_COMPARE_TIMEOUT_SECONDS,
         "embedding_timeout_seconds": settings.EMBEDDING_TIMEOUT_SECONDS,
         "slow_request_ms": settings.SLOW_REQUEST_MS,
         "log_desensitize_enabled": settings.LOG_DESENSITIZE_ENABLED,
@@ -5179,20 +5225,22 @@ async def get_messages(user_id: str):
 def build_single_session_id(userid: str, external_userid: str) -> str:
     """保持与会话存档 1v1 session_id 生成规则一致"""
     participants = sorted([userid.strip(), external_userid.strip()])
-    session_id = f"single_{'_'.join(participants)}"
-    return session_id[:50]
+    return f"single_{'_'.join(participants)}"
 
 def extract_external_userid(value: str) -> str:
     """从单聊 session_id 中取真实外部联系人 ID；群聊没有 CRM external_userid。"""
+    import re
+
     text_value = (value or "").strip()
     if text_value.startswith(("wm", "wo", "wb")):
         return text_value
     if text_value.startswith("group_"):
         return ""
     if text_value.startswith("single_"):
-        for part in text_value.replace("single_", "", 1).split("_"):
-            if part.startswith(("wm", "wo", "wb")):
-                return part
+        body = text_value.replace("single_", "", 1)
+        match = re.search(r"(?:^|_)((?:wm|wo|wb)[A-Za-z0-9_-]+)$", body)
+        if match:
+            return match.group(1)
     return ""
 
 def collect_fast_track_signals(logs) -> list:
@@ -5238,7 +5286,7 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                 "step": step,
                 "stage": "llm1",
             })
-            logger.info(f"⏳ 正在执行阶段 1: 调遣 Dify 大语言模型提取会话 {user_id} 结构化画像...")
+            logger.info(f"⏳ 正在执行阶段 1: 调用 LLM-1 提取会话 {user_id} 结构化画像...")
             context_logs = db.query(MessageLog).filter(
                 MessageLog.user_id == user_id,
                 MessageLog.is_mock.is_(False),
@@ -5246,7 +5294,7 @@ def reanalyze_session_task(user_id: str, step: int = 1):
             context = [{"content": l.content, "sender_type": l.sender_type} for l in reversed(context_logs)]
             if context:
                 IntentEngine.slow_track_analyze(user_id, context)
-                logger.info(f"✅ 会话 {user_id} 的 AI 结构化特征(V1) 以及连带(V2)推送已生成完毕！")
+                logger.info(f"✅ 会话 {user_id} 的 AI 结构化特征(V1) 已生成完毕！")
                 log_reply_chain_event("STEP_RESULT", {
                     "source": "frontend",
                     "business_object": user_id,
@@ -5298,13 +5346,34 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                         request_id=f"manual_llm2_{uuid.uuid4().hex[:12]}",
                         session_id=user_id,
                     )
-                # LLM2
+                # LLM2 primary
                 assist_bundle = IntentEngine.generate_sales_assist_bundle(summary_json, knowledge, crm_context)
                 assist_content = assist_bundle.get("content")
                 if assist_content:
                     IntentEngine.update_knowledge_hit_log_outcome(knowledge.get("log_id"), final_response=assist_content)
                     summary.sales_advice_v2 = assist_content
                     db.commit()
+                    compare_result = "not_configured"
+                    if settings.LLM2_COMPARE_API_URL and settings.LLM2_COMPARE_API_KEY and settings.LLM2_COMPARE_MODEL:
+                        try:
+                            compare_bundle = IntentEngine.generate_sales_assist_bundle(
+                                summary_json,
+                                knowledge,
+                                crm_context,
+                                api_url=settings.LLM2_COMPARE_API_URL,
+                                api_key=settings.LLM2_COMPARE_API_KEY,
+                                model=settings.LLM2_COMPARE_MODEL,
+                                timeout_seconds=settings.LLM2_COMPARE_TIMEOUT_SECONDS,
+                                label="LLM2_COMPARE",
+                            )
+                            compare_content = compare_bundle.get("content")
+                            if compare_content:
+                                summary.sales_advice_compare_v2 = compare_content
+                                db.commit()
+                                compare_result = "success"
+                        except Exception as compare_exc:
+                            compare_result = f"error: {compare_exc}"
+                            logger.error("LLM-2 对比模型调用失败: %s", compare_exc)
                     title = f"💡 [AI销售辅助更新] - {summary.topic}"
                     QYWXUtils.send_text_card(user_id, title, assist_content)
                     logger.info("✅ 实战建议(V2)指令下发完成！")
@@ -5314,6 +5383,7 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                         "step": step,
                         "stage": "llm2",
                         "result": "success",
+                        "compare_result": compare_result,
                         "knowledge_status": knowledge.get("status"),
                         "knowledge_log_id": knowledge.get("log_id"),
                     })
@@ -5364,6 +5434,8 @@ async def get_latest_analysis(user_id: str):
             "fast_track": fast_track_signals,
             "has_v1": False,
             "has_v2": False,
+            "has_v2_compare": False,
+            "llm_runtime": _llm_runtime_config(),
             "latest_dialog_count": len(recent_logs),
             "stage_status": {
                 "conversation_input": "done" if recent_logs else "empty",
@@ -5372,6 +5444,7 @@ async def get_latest_analysis(user_id: str):
                 "crm_profile": "not_started",
                 "knowledge_v2": "not_started",
                 "llm2": "not_started",
+                "llm2_compare": "not_started",
             },
         }
         crm_context = IntentEngine.get_crm_context(extract_external_userid(user_id))
@@ -5391,32 +5464,40 @@ async def get_latest_analysis(user_id: str):
                 result["stage_status"]["llm2"] = "done"
                 result["has_v2"] = True
                 result["sales_advice_v2"] = summary.sales_advice_v2
-                if summary.core_demand and summary.core_demand != "未明确":
-                    summary_json = {
-                        "topic": summary.topic,
-                        "core_demand": summary.core_demand,
-                        "key_facts": summary.key_facts,
-                        "risks": summary.risks,
-                        "fast_track_signals": fast_track_signals,
-                    }
-                    query_features = IntentEngine.infer_query_features(summary_json, crm_context)
-                    knowledge_v2 = IntentEngine.retrieve_knowledge_v2(
-                        summary.core_demand,
-                        query_features=query_features,
-                        top_k=5,
-                        request_id=f"analysis_{uuid.uuid4().hex[:12]}",
-                        session_id=user_id,
-                    )
-                    result["knowledge_v2"] = knowledge_v2
-                    result["knowledge_status"] = knowledge_v2.get("status")
-                    result["stage_status"]["knowledge_v2"] = result["knowledge_status"]
-                    result["knowledge_confidence_score"] = knowledge_v2.get("confidence_score")
-                    result["knowledge_manual_review_required"] = knowledge_v2.get("manual_review_required")
-                    result["knowledge_evidence_context"] = knowledge_v2.get("evidence_context")
-                    result["evidence_refs"] = knowledge_v2.get("evidence_refs") or []
+            if summary.sales_advice_compare_v2:
+                result["stage_status"]["llm2_compare"] = "done"
+                result["has_v2_compare"] = True
+                result["sales_advice_compare_v2"] = summary.sales_advice_compare_v2
+
+            if summary.core_demand and summary.core_demand != "未明确":
+                summary_json = {
+                    "topic": summary.topic,
+                    "core_demand": summary.core_demand,
+                    "key_facts": summary.key_facts,
+                    "risks": summary.risks,
+                    "fast_track_signals": fast_track_signals,
+                }
+                query_features = IntentEngine.infer_query_features(summary_json, crm_context)
+                knowledge_v2 = IntentEngine.retrieve_knowledge_v2(
+                    summary.core_demand,
+                    query_features=query_features,
+                    top_k=5,
+                    request_id=f"analysis_{uuid.uuid4().hex[:12]}",
+                    session_id=user_id,
+                )
+                result["knowledge_v2"] = knowledge_v2
+                result["knowledge_status"] = knowledge_v2.get("status")
+                result["stage_status"]["knowledge_v2"] = result["knowledge_status"]
+                result["knowledge_confidence_score"] = knowledge_v2.get("confidence_score")
+                result["knowledge_manual_review_required"] = knowledge_v2.get("manual_review_required")
+                result["knowledge_evidence_context"] = knowledge_v2.get("evidence_context")
+                result["evidence_refs"] = knowledge_v2.get("evidence_refs") or []
+                if summary.sales_advice_v2:
                     result["assist_validation"] = IntentEngine.validate_sales_assist_output(summary.sales_advice_v2, knowledge_v2, crm_context=crm_context)
-                else:
-                    result["stage_status"]["knowledge_v2"] = "skipped_no_core_demand"
+                if summary.sales_advice_compare_v2:
+                    result["assist_compare_validation"] = IntentEngine.validate_sales_assist_output(summary.sales_advice_compare_v2, knowledge_v2, crm_context=crm_context)
+            else:
+                result["stage_status"]["knowledge_v2"] = "skipped_no_core_demand"
                  
         return result
     finally:
@@ -5460,6 +5541,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
     knowledge_base = None
     knowledge_v2 = None
     assist_bundle = None
+    compare_bundle = None
 
     def mark_timing(name: str, started_at: float):
         timings_ms[name] = round((perf_counter() - started_at) * 1000, 2)
@@ -5528,7 +5610,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
             stage_status["analysis_mode"] = "complete_missing_v2" if not summary.sales_advice_v2 else "cache"
             stage_status["llm1"] = "skipped_summary_exists"
 
-        if summary and (request.force_refresh or not summary.sales_advice_v2):
+        if summary and (request.force_refresh or not summary.sales_advice_v2 or not summary.sales_advice_compare_v2):
             # 同步执行 V2
             summary_json = {
                 "topic": summary.topic, "core_demand": summary.core_demand, "key_facts": summary.key_facts,
@@ -5570,10 +5652,35 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 db.commit()
                 mark_timing("persist_llm2_ms", stage_started)
                 stage_status["llm2"] = "done"
+                if settings.LLM2_COMPARE_API_URL and settings.LLM2_COMPARE_API_KEY and settings.LLM2_COMPARE_MODEL:
+                    stage_started = perf_counter()
+                    compare_bundle = IntentEngine.generate_sales_assist_bundle(
+                        summary_json,
+                        knowledge_v2,
+                        crm_context,
+                        api_url=settings.LLM2_COMPARE_API_URL,
+                        api_key=settings.LLM2_COMPARE_API_KEY,
+                        model=settings.LLM2_COMPARE_MODEL,
+                        timeout_seconds=settings.LLM2_COMPARE_TIMEOUT_SECONDS,
+                        label="LLM2_COMPARE",
+                    )
+                    compare_content = compare_bundle.get("content")
+                    mark_timing("llm2_compare_generate_ms", stage_started)
+                    if compare_content:
+                        stage_started = perf_counter()
+                        summary.sales_advice_compare_v2 = compare_content
+                        db.commit()
+                        mark_timing("persist_llm2_compare_ms", stage_started)
+                        stage_status["llm2_compare"] = "done"
+                    else:
+                        stage_status["llm2_compare"] = "failed_no_content"
+                else:
+                    stage_status["llm2_compare"] = "not_configured"
             else:
                 stage_status["llm2"] = "failed_no_content"
         else:
             stage_status["llm2"] = "skipped_advice_exists" if summary and summary.sales_advice_v2 else "skipped_no_summary"
+            stage_status["llm2_compare"] = "skipped_advice_exists" if summary and summary.sales_advice_compare_v2 else "skipped_no_summary"
 
         # 3. 封装全量字段给侧边栏前端
         result = {
@@ -5585,6 +5692,8 @@ async def sidebar_assist(request: SidebarAssistRequest):
             "fast_track": fast_track_signals,
             "has_v1": False,
             "has_v2": False,
+            "has_v2_compare": False,
+            "llm_runtime": _llm_runtime_config(),
             "stage_status": stage_status
         }
         
@@ -5643,6 +5752,11 @@ async def sidebar_assist(request: SidebarAssistRequest):
                     result["knowledge_v2"] = {"status": "skipped_no_core_demand", "hits": [], "evidence_refs": []}
                     result["evidence_refs"] = []
                     knowledge_status = "skipped_no_core_demand"
+            if summary.sales_advice_compare_v2:
+                result["has_v2_compare"] = True
+                result["sales_advice_compare_v2"] = summary.sales_advice_compare_v2
+                if compare_bundle:
+                    result["assist_compare_validation"] = compare_bundle.get("validation")
             
             # 始终回传 CRM 画像供前端显示
             if crm_context is None:
@@ -5668,6 +5782,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
             "latest_dialog_count": len(recent_logs),
             "has_v1": result.get("has_v1"),
             "has_v2": result.get("has_v2"),
+            "has_v2_compare": result.get("has_v2_compare"),
             "crm_status": result.get("crm_status"),
             "knowledge_status": result.get("knowledge_status"),
             "stage_status": stage_status,

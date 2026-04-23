@@ -34,22 +34,28 @@ class IntentEngine:
                 return json.load(f)
         except Exception as e:
             logger.error(f"读取 ai_settings.json 失败: {e}")
-            return {}
+            raise RuntimeError(f"读取 ai_settings.json 失败: {e}") from e
 
     @classmethod
     def get_rules(cls):
         rules = cls.get_ai_settings().get("FAST_TRACK_RULES", [])
-        return rules if rules else [
-            {"id": 1, "name": "防挂底库", "pattern": r"(地址|电话)"}
-        ]
+        if not rules:
+            raise RuntimeError("ai_settings.json 缺少 FAST_TRACK_RULES")
+        return rules
 
     @classmethod
     def get_prompt1(cls):
-        return cls.get_ai_settings().get("SYSTEM_PROMPT_LLM1", "提取客户核心诉求。")
+        prompt = cls.get_ai_settings().get("SYSTEM_PROMPT_LLM1")
+        if not prompt:
+            raise RuntimeError("ai_settings.json 缺少 SYSTEM_PROMPT_LLM1")
+        return prompt
 
     @classmethod
     def get_prompt2(cls):
-        return cls.get_ai_settings().get("SYSTEM_PROMPT_LLM2", "极简输出。")
+        prompt = cls.get_ai_settings().get("SYSTEM_PROMPT_LLM2")
+        if not prompt:
+            raise RuntimeError("ai_settings.json 缺少 SYSTEM_PROMPT_LLM2")
+        return prompt
 
     @staticmethod
     def _log_llm_prompt(label: str, model: str, url: str, prompt: str):
@@ -108,8 +114,7 @@ class IntentEngine:
                     cls._log_llm_prompt("KB_ASSIST_DIFY_COMPLETION", settings.LLM1_MODEL, url, prompt)
                     response = cls._post_json(url, headers, payload, settings.LLM1_TIMEOUT_SECONDS)
                 if response.status_code != 200:
-                    logger.error("知识库 LLM 辅助 Dify 调用失败: HTTP %s", response.status_code)
-                    return None
+                    raise RuntimeError(f"知识库 LLM 辅助 Dify 调用失败: HTTP {response.status_code}")
                 raw_text = response.json().get("answer", "")
             else:
                 url = settings.LLM1_API_URL.rstrip("/") + "/chat/completions"
@@ -121,17 +126,16 @@ class IntentEngine:
                 cls._log_llm_prompt("KB_ASSIST_OPENAI", settings.LLM1_MODEL, url, prompt)
                 response = cls._post_json(url, headers, payload, settings.LLM1_TIMEOUT_SECONDS)
                 if response.status_code != 200:
-                    logger.error("知识库 LLM 辅助 OpenAI-compatible 调用失败: HTTP %s", response.status_code)
-                    return None
+                    raise RuntimeError(f"知识库 LLM 辅助 OpenAI-compatible 调用失败: HTTP {response.status_code}")
                 data = response.json()
                 raw_text = data["choices"][0]["message"]["content"] if "choices" in data else ""
             return json.loads(cls._strip_json_fences(raw_text))
         except json.JSONDecodeError as e:
             logger.error("知识库 LLM 辅助返回 JSON 解析失败: %s", e)
-            return None
+            raise RuntimeError(f"知识库 LLM 辅助返回 JSON 解析失败: {e}") from e
         except Exception as e:
             logger.error("知识库 LLM 辅助调用异常: %s", e)
-            return None
+            raise
 
     @classmethod
     def fast_track_scan(cls, user_id: str, content: str):
@@ -167,11 +171,9 @@ class IntentEngine:
         try:
             results = db.query(KnowledgeBase).filter(KnowledgeBase.embedding.isnot(None)).all()
             if not results:
-                return []
+                raise RuntimeError("旧知识库为空，无法执行 retrieve_knowledge")
 
             vector = cls.get_embedding(query_text)
-            if not vector:
-                return []
                 
             import math
             def cosine_sim(v1, v2):
@@ -191,7 +193,7 @@ class IntentEngine:
             return [doc[1] for doc in scored_docs[:top_k]]
         except Exception as e:
             logger.error(f"RAG 本地检索异常: {e}")
-            return []
+            raise
         finally:
             db.close()
 
@@ -258,6 +260,108 @@ class IntentEngine:
         ]
         return any(term in query and term in haystack for term in guard_terms)
 
+    @staticmethod
+    def _is_definition_query(query_text: str) -> bool:
+        query = (query_text or "").lower()
+        patterns = [
+            "是什么",
+            "什么意思",
+            "含义",
+            "定义",
+            "区别",
+            "简称",
+            "全称",
+            "指什么",
+            "是什么意思",
+        ]
+        return any(pattern in query for pattern in patterns)
+
+    @staticmethod
+    def _definition_alias_markers() -> list[str]:
+        return ["简称", "别名", "品牌名", "品牌别名", "也叫", "又称", "指我们公司", "我们公司", "公司简称"]
+
+    @classmethod
+    def _is_alias_definition(cls, chunk: KnowledgeChunk) -> bool:
+        haystack = "\n".join([chunk.title or "", chunk.content or ""])
+        return any(marker in haystack for marker in cls._definition_alias_markers())
+
+    @classmethod
+    def _extract_alias_terms(cls, chunk: KnowledgeChunk) -> list[str]:
+        if chunk.chunk_type != "definition":
+            return []
+        title = (chunk.title or "").strip()
+        content = (chunk.content or "").strip()
+        if not title:
+            return []
+        terms = [title]
+        patterns = [
+            r"([\u4e00-\u9fa5A-Za-z0-9·]{2,24})是([\u4e00-\u9fa5A-Za-z0-9·]{2,24})的(?:公司)?(?:简称|别名|品牌别名|品牌名)",
+            r"([\u4e00-\u9fa5A-Za-z0-9·]{2,24})也叫([\u4e00-\u9fa5A-Za-z0-9·]{2,24})",
+            r"([\u4e00-\u9fa5A-Za-z0-9·]{2,24})又称([\u4e00-\u9fa5A-Za-z0-9·]{2,24})",
+        ]
+        for pattern in patterns:
+            for match in re.finditer(pattern, content):
+                for value in match.groups():
+                    value = (value or "").strip("：:，,。；; ")
+                    if 2 <= len(value) <= 24 and value not in terms:
+                        terms.append(value)
+        for pattern in [r"(?:简称|别名|品牌名|品牌别名)[：: ]*([\u4e00-\u9fa5A-Za-z0-9·/、，, ]{2,40})"]:
+            match = re.search(pattern, content)
+            if not match:
+                continue
+            for value in re.split(r"[/、，, ]+", match.group(1)):
+                value = (value or "").strip()
+                if 2 <= len(value) <= 24 and value not in terms:
+                    terms.append(value)
+        return terms
+
+    @classmethod
+    def _definition_score_multiplier(cls, query_text: str, chunk: KnowledgeChunk) -> float:
+        if chunk.chunk_type != "definition":
+            return 1.0
+        if cls._is_definition_query(query_text):
+            return 1.2
+        if cls._is_alias_definition(chunk):
+            return 0.08
+        return 0.25
+
+    @classmethod
+    def _score_bucket(cls, query_text: str, chunk: KnowledgeChunk) -> int:
+        if chunk.chunk_type != "definition":
+            return 0
+        if cls._is_definition_query(query_text):
+            return 0
+        return 2 if cls._is_alias_definition(chunk) else 1
+
+    @classmethod
+    def _normalize_query_with_alias_hints(cls, db, query_text: str) -> str:
+        text = (query_text or "").strip()
+        if not text:
+            return text
+        try:
+            alias_chunks = db.query(KnowledgeChunk).filter(
+                KnowledgeChunk.status == "active",
+                KnowledgeChunk.chunk_type == "definition",
+            ).limit(200).all()
+        except Exception:
+            return text
+
+        augmented_terms = []
+        for chunk in alias_chunks:
+            alias_terms = cls._extract_alias_terms(chunk)
+            if not alias_terms:
+                continue
+            if not any(term in text for term in alias_terms):
+                continue
+            for term in alias_terms:
+                if term not in text and term not in augmented_terms:
+                    augmented_terms.append(term)
+            if cls._is_alias_definition(chunk):
+                augmented_terms.extend(["公司", "本公司"])
+        if not augmented_terms:
+            return text
+        return f"{text} {' '.join(dict.fromkeys(augmented_terms))}".strip()
+
     @classmethod
     def retrieve_knowledge_v2(
         cls,
@@ -282,9 +386,10 @@ class IntentEngine:
             "keyword_prefilter_enabled": settings.KB_KEYWORD_PREFILTER_ENABLED,
         }
 
-        vector = cls.get_embedding(query_text)
         db = SessionLocal()
         try:
+            normalized_query_text = cls._normalize_query_with_alias_hints(db, query_text)
+            vector = cls.get_embedding(normalized_query_text)
             now = datetime.utcnow()
             query = db.query(KnowledgeChunk).filter(
                 KnowledgeChunk.status == "active",
@@ -322,7 +427,8 @@ class IntentEngine:
             candidate_limit = max(20, min(int(settings.KB_CANDIDATE_LIMIT or 500), 2000))
             candidate_source = "structured_filters"
             candidate_query = query
-            query_terms = cls._query_terms(query_text)
+            query_terms = cls._query_terms(normalized_query_text)
+            filters_used["normalized_query_text"] = normalized_query_text
             if settings.KB_KEYWORD_PREFILTER_ENABLED and query_terms:
                 keyword_conditions = []
                 for term in query_terms:
@@ -338,8 +444,8 @@ class IntentEngine:
                     candidates = keyword_candidates
                     candidate_source = "keyword_prefilter"
                 else:
-                    candidates = query.order_by(KnowledgeChunk.priority.desc()).limit(candidate_limit).all()
-                    candidate_source = "structured_filters_fallback"
+                    candidates = candidate_query.order_by(KnowledgeChunk.priority.desc()).limit(candidate_limit).all()
+                    candidate_source = "keyword_prefilter_fallback"
             else:
                 candidates = candidate_query.order_by(KnowledgeChunk.priority.desc()).limit(candidate_limit).all()
             filters_used["candidate_source"] = candidate_source
@@ -347,15 +453,16 @@ class IntentEngine:
             scored = []
             for chunk in candidates:
                 semantic_score = cls._cosine_sim(vector, chunk.embedding) if vector and chunk.embedding else 0.0
-                keyword_score = cls._keyword_score(query_text, chunk)
+                keyword_score = cls._keyword_score(normalized_query_text, chunk)
                 priority_score = min((chunk.priority or 50) / 100.0, 1.0)
-                final_score = round((semantic_score * 0.75) + (keyword_score * 0.15) + (priority_score * 0.10), 6)
+                definition_multiplier = cls._definition_score_multiplier(normalized_query_text, chunk)
+                final_score = round(((semantic_score * 0.75) + (keyword_score * 0.15) + (priority_score * 0.10)) * definition_multiplier, 6)
                 if semantic_score > 0 or keyword_score > 0:
-                    scored.append((final_score, semantic_score, keyword_score, chunk))
+                    scored.append((cls._score_bucket(normalized_query_text, chunk), final_score, semantic_score, keyword_score, chunk))
 
-            scored.sort(key=lambda item: item[0], reverse=True)
+            scored.sort(key=lambda item: (item[0], -item[1], -item[2], -item[3]))
             hits = []
-            for final_score, semantic_score, keyword_score, chunk in scored[:top_k]:
+            for _bucket, final_score, semantic_score, keyword_score, chunk in scored[:top_k]:
                 is_constraint = chunk.chunk_type == "constraint" or bool((chunk.structured_tags or {}).get("manual_review_required"))
                 constraint_applies = is_constraint and cls._constraint_applies(query_text, chunk, keyword_score)
                 pricing_rules = []
@@ -395,7 +502,9 @@ class IntentEngine:
                 hits.append({
                     "chunk_id": str(chunk.chunk_id),
                     "document_id": str(chunk.document_id),
+                    "knowledge_class": (chunk.structured_tags or {}).get("knowledge_class"),
                     "knowledge_type": chunk.knowledge_type,
+                    "chunk_type": chunk.chunk_type,
                     "title": chunk.title,
                     "content": chunk.content,
                     "score": final_score,
@@ -452,12 +561,12 @@ class IntentEngine:
                 "cases": [],
             }
             for hit in hits:
-                if hit["knowledge_type"] == "pricing" or hit.get("pricing_rules"):
+                if hit.get("chunk_type") in {"rule", "constraint"} or hit["knowledge_type"] == "pricing" or hit.get("pricing_rules"):
                     evidence_context["rules"].append(hit)
-                elif hit["knowledge_type"] == "faq":
-                    evidence_context["faqs"].append(hit)
-                else:
+                elif hit.get("chunk_type") in {"example", "template"}:
                     evidence_context["cases"].append(hit)
+                else:
+                    evidence_context["faqs"].append(hit)
             latency_ms = round((perf_counter() - started) * 1000)
 
             log = KnowledgeHitLog(
@@ -498,21 +607,7 @@ class IntentEngine:
         except Exception as e:
             db.rollback()
             logger.error("知识库 V2 检索异常: %s", e)
-            return {
-                "status": "error",
-                "query_text": query_text,
-                "query_features": features,
-                "filters_used": filters_used,
-                "hits": [],
-                "evidence_context": {"rules": [], "faqs": [], "cases": []},
-                "evidence_refs": [],
-                "confidence_score": 0.0,
-                "retrieval_quality": "error",
-                "insufficient_info": True,
-                "manual_review_required": True,
-                "no_hit_reason": str(e),
-                "latency_ms": round((perf_counter() - started) * 1000),
-            }
+            raise RuntimeError(f"知识库 V2 检索异常: {e}") from e
         finally:
             db.close()
 
@@ -545,9 +640,43 @@ class IntentEngine:
             ("en->fr", ["英译法", "英文翻法文", "英语翻法语"]),
             ("en->zh", ["英译中", "英文翻中文", "英语翻中文"]),
             ("zh->en", ["中译英", "中文翻英文", "中文翻英语"]),
+            ("zh->ja", ["中译日", "中文翻日文", "中文翻日语"]),
+            ("fr->zh", ["法译中", "法文翻中文", "法语翻中文"]),
+            ("zh->fr", ["中译法", "中文翻法文", "中文翻法语"]),
+            ("de->zh", ["德译中", "德文翻中文", "德语翻中文"]),
+            ("zh->de", ["中译德", "中文翻德文", "中文翻德语"]),
             ("en->ru", ["英译俄", "英文翻俄文", "英语翻俄语"]),
+            ("ru->zh", ["俄译中", "俄文翻中文", "俄语翻中文"]),
+            ("zh->ru", ["中译俄", "中文翻俄文", "中文翻俄语"]),
             ("ja->zh", ["日译中", "日文翻中文"]),
             ("ko->zh", ["韩译中", "韩文翻中文"]),
+            ("zh->ko", ["中译韩", "中文翻韩文", "中文翻韩语"]),
+            ("it->zh", ["意译中", "意文翻中文", "意大利语翻中文"]),
+            ("zh->it", ["中译意", "中文翻意文", "中文翻意大利语"]),
+            ("es->zh", ["西译中", "西文翻中文", "西班牙语翻中文"]),
+            ("zh->es", ["中译西", "中文翻西文", "中文翻西班牙语"]),
+            ("ar->zh", ["阿译中", "阿拉伯语翻中文"]),
+            ("zh->ar", ["中译阿", "中文翻阿拉伯语"]),
+            ("da->zh", ["丹麦语译中", "丹麦文翻中文"]),
+            ("zh->da", ["中译丹麦语", "中文翻丹麦语"]),
+            ("pt->zh", ["葡译中", "葡萄牙语翻中文", "葡文翻中文"]),
+            ("zh->pt", ["中译葡", "中文翻葡萄牙语", "中文翻葡文"]),
+            ("nl->zh", ["荷译中", "荷兰语翻中文", "荷文翻中文"]),
+            ("zh->nl", ["中译荷", "中文翻荷兰语", "中文翻荷文"]),
+            ("sv->zh", ["瑞典语译中", "瑞典文翻中文"]),
+            ("zh->sv", ["中译瑞典语", "中文翻瑞典语"]),
+            ("no->zh", ["挪威语译中", "挪威文翻中文"]),
+            ("zh->no", ["中译挪威语", "中文翻挪威语"]),
+            ("el->zh", ["希腊语译中", "希腊文翻中文"]),
+            ("zh->el", ["中译希腊语", "中文翻希腊语"]),
+            ("tr->zh", ["土耳其语译中", "土耳其文翻中文"]),
+            ("zh->tr", ["中译土耳其语", "中文翻土耳其语"]),
+            ("fr->en", ["法译英", "法文翻英文", "法语翻英语"]),
+            ("de->en", ["德译英", "德文翻英文", "德语翻英语"]),
+            ("en->de", ["英译德", "英文翻德文", "英语翻德语"]),
+            ("en->ja", ["英译日", "英文翻日文", "英语翻日语"]),
+            ("ja->en", ["日译英", "日文翻英文", "日语翻英语"]),
+            ("en->en", ["英文润稿", "英文母语润稿", "英语润稿"]),
         ]
         for code, words in language_patterns:
             if any(word in text for word in words):
@@ -779,7 +908,7 @@ class IntentEngine:
             db.close()
 
     @classmethod
-    def get_crm_context(cls, external_userid: str) -> dict:
+    def get_crm_context(cls, external_userid: str, strict: bool = False) -> dict:
         """从 CRM 数据库拉取最新商机、合同、跟进和生命周期信息"""
         empty_profile = {
             "crm_contact_name": None,
@@ -797,6 +926,8 @@ class IntentEngine:
         }
 
         if not external_userid:
+            if strict:
+                raise RuntimeError("CRM 查询失败: external_userid 为空")
             empty_profile["crm_profile_error"] = "external_userid 为空"
             return empty_profile
 
@@ -827,6 +958,8 @@ class IntentEngine:
             }
 
         except HTTPException as e:
+            if strict:
+                raise RuntimeError(f"CRM 客户画像查询失败: {e.detail}") from e
             if e.status_code == 404:
                 empty_profile["crm_profile_status"] = "not_found"
                 empty_profile["crm_profile_error"] = e.detail
@@ -836,6 +969,8 @@ class IntentEngine:
                 empty_profile["crm_profile_error"] = e.detail
                 logger.error(f"CRM 客户画像查询异常: {e.detail}")
         except Exception as e:
+            if strict:
+                raise RuntimeError(f"CRM 数据库查询失败: {e}") from e
             empty_profile["crm_profile_status"] = "error"
             empty_profile["crm_profile_error"] = f"CRM 数据库查询失败: {e}"
             logger.error(empty_profile["crm_profile_error"])
@@ -848,10 +983,28 @@ class IntentEngine:
         return bundle.get("content")
 
     @classmethod
-    def generate_sales_assist_bundle(cls, summary_json: dict, knowledge_list, crm_context: dict = None):
+    def generate_sales_assist_bundle(
+        cls,
+        summary_json: dict,
+        knowledge_list,
+        crm_context: dict = None,
+        *,
+        api_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        timeout_seconds: int | None = None,
+        label: str = "LLM2",
+    ):
         """调用 LLM-2 生成销售辅助建议"""
         knowledge_context = cls.format_knowledge_context(knowledge_list)
         prompt2 = cls.get_prompt2()
+        api_url = api_url if api_url is not None else settings.LLM2_API_URL
+        api_key = api_key if api_key is not None else settings.LLM2_API_KEY
+        model = model if model is not None else settings.LLM2_MODEL
+        api_url = api_url or ""
+        api_key = api_key or ""
+        model = model or ""
+        timeout_seconds = timeout_seconds if timeout_seconds is not None else settings.LLM2_TIMEOUT_SECONDS
         
         summary_str = json.dumps(summary_json, ensure_ascii=False)
         crm_str = json.dumps(crm_context or {}, ensure_ascii=False)
@@ -865,33 +1018,61 @@ class IntentEngine:
             final_prompt = f"{prompt2}\n\n会话摘要档案：{summary_str}\n\n内部 CRM 客户标签：{crm_str}\n\n参考知识库匹配：\n{knowledge_context or '无相关参考'}"
 
         headers = {
-            "Authorization": f"Bearer {settings.LLM2_API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
-        payload = {
-            "model": settings.LLM2_MODEL,
-            "messages": [
-                {"role": "user", "content": final_prompt}
-            ],
-            "temperature": 0.7
-        }
-        cls._log_llm_prompt("LLM2", settings.LLM2_MODEL, settings.LLM2_API_URL, final_prompt)
 
         try:
-            logger.info("正在调用 LLM-2 生成回复建议...")
-            response = cls._post_json(
-                settings.LLM2_API_URL + "/chat/completions",
-                headers=headers,
-                timeout=settings.LLM2_TIMEOUT_SECONDS,
-                payload=payload,
-            )
+            logger.info("正在调用 %s 生成回复建议...", label)
+            if api_key.startswith("app-"):
+                url = api_url.rstrip("/") + "/chat-messages"
+                payload = {
+                    "inputs": {},
+                    "query": final_prompt,
+                    "response_mode": "blocking",
+                    "user": f"sales_assist_{label.lower()}",
+                }
+                cls._log_llm_prompt(f"{label}_DIFY", model, url, final_prompt)
+                response = cls._post_json(url, headers=headers, timeout=timeout_seconds, payload=payload)
+                if response.status_code == 404:
+                    url = api_url.rstrip("/") + "/completion-messages"
+                    cls._log_llm_prompt(f"{label}_DIFY_COMPLETION", model, url, final_prompt)
+                    response = cls._post_json(url, headers=headers, timeout=timeout_seconds, payload=payload)
+                if response.status_code != 200:
+                    raise RuntimeError(f"Dify 接口错误: HTTP {response.status_code}")
+                raw_content = response.json().get("answer", "")
+                if raw_content:
+                    validation = cls.validate_sales_assist_output(raw_content, knowledge_list, crm_context=crm_context)
+                    content = raw_content
+                    if validation.get("blocking_issues"):
+                        raise RuntimeError("LLM-2 输出未通过证据校验: " + "; ".join(validation.get("blocking_issues") or []))
+                    return {
+                        "content": content,
+                        "raw_content": raw_content,
+                        "validation": validation,
+                        "evidence_refs": validation.get("evidence_refs") or [],
+                    }
+                raise RuntimeError("Dify 返回缺少 answer 字段")
+
+            url = api_url.rstrip("/") + "/chat/completions"
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "user", "content": final_prompt}
+                ],
+                "temperature": 0.7
+            }
+            cls._log_llm_prompt(f"{label}_OPENAI", model, url, final_prompt)
+            response = cls._post_json(url, headers=headers, timeout=timeout_seconds, payload=payload)
+            if response.status_code != 200:
+                raise RuntimeError(f"OpenAI 协议接口错误: HTTP {response.status_code}")
             res_data = response.json()
-            if "choices" in res_data:
-                raw_content = res_data["choices"][0]["message"]["content"]
+            raw_content = res_data["choices"][0]["message"]["content"] if "choices" in res_data else ""
+            if raw_content:
                 validation = cls.validate_sales_assist_output(raw_content, knowledge_list, crm_context=crm_context)
                 content = raw_content
                 if validation.get("blocking_issues"):
-                    content = cls.build_safe_assist_response(summary_json, validation)
+                    raise RuntimeError("LLM-2 输出未通过证据校验: " + "; ".join(validation.get("blocking_issues") or []))
                 return {
                     "content": content,
                     "raw_content": raw_content,
@@ -900,18 +1081,8 @@ class IntentEngine:
                 }
         except Exception as e:
             logger.error(f"LLM-2 调用异常: {e}")
-        return {
-            "content": None,
-            "raw_content": None,
-            "validation": {
-                "status": "error",
-                "manual_review_required": True,
-                "warnings": [],
-                "blocking_issues": [f"LLM-2 调用异常: {sanitize_text(str(e))}"] if 'e' in locals() else ["LLM-2 调用异常"],
-                "evidence_refs": cls.build_evidence_refs(knowledge_list),
-            },
-            "evidence_refs": cls.build_evidence_refs(knowledge_list),
-        }
+            raise RuntimeError(f"LLM-2 调用异常: {e}") from e
+        raise RuntimeError("LLM-2 返回缺少有效内容")
 
     @classmethod
     def slow_track_analyze(cls, user_id: str, context: List[dict]):
@@ -919,7 +1090,7 @@ class IntentEngine:
         # 1. 结构化提取 (LLM-1)
         summary = cls._run_llm1(user_id, context)
         if not summary:
-            return None
+            raise RuntimeError("LLM-1 未返回有效结构化摘要")
         
         # 2. 存回数据库存证
         db = SessionLocal()
@@ -993,8 +1164,7 @@ class IntentEngine:
                     response = cls._post_json(url, headers, payload, settings.LLM1_TIMEOUT_SECONDS)
                     
                 if response.status_code != 200:
-                    logger.error(f"Dify 接口错误: HTTP {response.status_code} - 需检查 10.0.0.210 服务端点配置。(包含非JSON数据)")
-                    return None
+                    raise RuntimeError(f"Dify 接口错误: HTTP {response.status_code}")
                     
                 res_data = response.json()
                 raw_text = res_data.get("answer", "")
@@ -1011,14 +1181,12 @@ class IntentEngine:
                 cls._log_llm_prompt("LLM1_OPENAI", settings.LLM1_MODEL, url, full_prompt)
                 response = cls._post_json(url, headers, payload, settings.LLM1_TIMEOUT_SECONDS)
                 if response.status_code != 200:
-                    logger.error(f"OpenAI 协议接口错误: HTTP {response.status_code} - URL无响应或报错。")
-                    return None
+                    raise RuntimeError(f"OpenAI 协议接口错误: HTTP {response.status_code}")
                 
                 try:
                     res_data = response.json()
                 except Exception:
-                    logger.error(f"LLM 接口返回了无法解析的错误报文 (例如 HTML 面板)。")
-                    return None
+                    raise RuntimeError("LLM 接口返回了无法解析的错误报文")
                     
                 raw_text = res_data["choices"][0]["message"]["content"] if "choices" in res_data else ""
             
@@ -1035,9 +1203,9 @@ class IntentEngine:
             
         except json.JSONDecodeError as e:
             logger.error(f"LLM-1 最终提取的 JSON 无法解析: {e}\n原文: {raw_text[:200]}")
+            raise RuntimeError(f"LLM-1 最终提取的 JSON 无法解析: {e}") from e
         except Exception as e:
             logger.error(f"LLM-1 调用彻底失败: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            
-        return None
+            raise

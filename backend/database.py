@@ -15,7 +15,7 @@ class MessageLog(Base):
     __tablename__ = "message_logs"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String(50), index=True)     # 外部联系人ID或员工ID
+    user_id = Column(String(120), index=True)    # 会话ID，需容纳销售ID + external_userid
     sender_type = Column(String(20))              # customer / sales
     content = Column(Text)                         # 消息原文
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
@@ -26,7 +26,7 @@ class IntentSummary(Base):
     __tablename__ = "intent_summaries"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String(50), index=True)
+    user_id = Column(String(120), index=True)
     summarized_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     # 按照 Schema V1 分字段存储
@@ -38,6 +38,7 @@ class IntentSummary(Base):
     to_be_confirmed = Column(Text)       # 待确认信息
     status = Column(String(50))          # 对话状态 (枚举)
     sales_advice_v2 = Column(Text)       # LLM2 的金牌销售话术持久化
+    sales_advice_compare_v2 = Column(Text)  # LLM2 对比模型话术持久化
 
 class KnowledgeBase(Base):
     """销售知识库/回复模板"""

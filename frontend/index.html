@@ -542,6 +542,21 @@
             return `<span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${styles[tone] || styles.slate}">${safeText(text)}</span>`;
         }
 
+        function getLlmRuntime(data, key) {
+            return data?.llm_runtime?.[key] || {};
+        }
+
+        function renderLlmRuntimeStrip(data, key, tone = 'slate') {
+            const item = getLlmRuntime(data, key);
+            const label = item.display_name || `${key.toUpperCase()} / ${item.model || '未配置'}`;
+            return `
+                <div class="flex flex-wrap gap-1 mb-2">
+                    ${renderStatusPill(label, tone)}
+                    ${renderStatusPill(item.provider || '未配置', 'slate')}
+                    ${renderStatusPill(item.role || '-', 'blue')}
+                </div>`;
+        }
+
         function hasDisplayValue(value) {
             if (value === null || value === undefined) return false;
             if (Array.isArray(value)) return value.length > 0;
@@ -583,8 +598,9 @@
             if (text.startsWith('wm') || text.startsWith('wo') || text.startsWith('wb')) return text;
             if (text.startsWith('group_')) return '';
             if (text.startsWith('single_')) {
-                const found = text.replace('single_', '').split('_').find(part => part.startsWith('wm') || part.startsWith('wo') || part.startsWith('wb'));
-                return found || '';
+                const body = text.replace('single_', '');
+                const match = body.match(/(?:^|_)((?:wm|wo|wb)[A-Za-z0-9_-]+)$/);
+                return match ? match[1] : '';
             }
             return '';
         }
@@ -630,7 +646,9 @@
         function renderStageOneCard(data, userId) {
             const actionLabel = data.has_v1 ? '🔄 重新提取' : '▶️ 提取特征';
             const actions = `<button onclick='triggerLLM(${jsArg(userId)}, 1)' class="text-[10px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 border border-indigo-600 px-2 py-1 rounded transition">${actionLabel}</button>`;
+            const llm1 = getLlmRuntime(data, 'llm1');
             const body = `
+                ${renderLlmRuntimeStrip(data, 'llm1', 'blue')}
                 <div class="mb-2">${renderStatusPill(data.has_v1 ? (data.status || '特征就绪') : '等待提取', data.has_v1 ? 'emerald' : 'amber')}</div>
                 ${renderPipelineRows([
                     {label: '核心主线', value: data.has_v1 ? gracefulStr(data.topic) : '--待构建--', className: data.has_v1 ? 'text-slate-700 font-medium' : 'text-slate-400'},
@@ -640,7 +658,7 @@
                     {label: '顾虑风险', value: data.has_v1 ? gracefulStr(data.risks) : '--待构建--', className: data.has_v1 ? 'text-rose-700 font-bold' : 'text-slate-400'},
                     {label: '待确认项', value: data.has_v1 ? gracefulStr(data.to_be_confirmed) : '--待构建--', className: data.has_v1 ? 'text-amber-800 font-medium break-all' : 'text-slate-400'}
                 ])}`;
-            return renderPipelineCard(3, '第一阶段特征提取', 'LLM-1 将会话压缩为可检索、可生成的结构化摘要', '#6366f1', body, {scriptKey: 'SYSTEM_PROMPT_LLM1', actions});
+            return renderPipelineCard(3, '第一阶段特征提取（LLM-1）', `${llm1.model || '未配置'}：将会话压缩为可检索、可生成的结构化摘要`, '#6366f1', body, {scriptKey: 'SYSTEM_PROMPT_LLM1', actions});
         }
 
         function renderCrmContextCard(info, sessionId = '') {
@@ -695,7 +713,7 @@
                 </div>`;
         }
 
-        function renderKnowledgeBaseCard(data) {
+        function renderKnowledgeBaseCard(data, userId) {
             const knowledge = data.knowledge_v2;
             if (!data.has_v1) {
                 return renderPipelineCard(5, '知识库检索证据', '基于核心诉求检索已发布知识、报价规则、案例和 FAQ', '#10b981', `
@@ -710,6 +728,7 @@
                     ])}`);
             }
             if (!knowledge) {
+                const actions = `<button onclick='loadAnalysis(${jsArg(userId)})' class="text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 border border-emerald-700 px-2 py-1 rounded transition">▶️ 执行检索</button>`;
                 return renderPipelineCard(5, '知识库检索证据', '基于核心诉求检索已发布知识、报价规则、案例和 FAQ', '#10b981', `
                     <div class="mb-2">${renderStatusPill('待二阶段生成时检索', 'amber')}</div>
                     ${renderPipelineRows([
@@ -718,8 +737,8 @@
                         {label: '过滤条件', value: '--待检索--', className: 'text-slate-400'},
                         {label: '命中证据', value: '--待检索--', className: 'text-slate-400'},
                         {label: '复核要求', value: '--待检索--', className: 'text-slate-400'},
-                        {label: '问题原因', value: '点击第二阶段生成后，会按核心诉求、客户画像和结构化过滤条件检索知识库。', className: 'text-amber-700'}
-                    ])}`);
+                        {label: '问题原因', value: '点击执行检索，可先按核心诉求、客户画像和结构化过滤条件检索知识库；生成回复时也会再次检索。', className: 'text-amber-700'}
+                    ])}`, {actions});
             }
             const hits = knowledge.hits || [];
             const filters = knowledge.filters_used || {};
@@ -742,29 +761,51 @@
                 ${knowledge.no_hit_reason ? `<div class="rounded bg-rose-50 border border-rose-100 p-2 text-[11px] text-rose-700">${safeText(knowledge.no_hit_reason)}</div>` : ''}
                 <div class="space-y-2">${hits.length ? hits.map((hit, idx) => renderKnowledgeHit(hit, idx)).join('') : '<div class="text-slate-400 text-[11px]">无命中证据</div>'}</div>
                 ${renderEvidenceRefs(knowledge.evidence_refs || [])}`;
-            return renderPipelineCard(5, '知识库检索证据', '基于核心诉求检索已发布知识、报价规则、案例和 FAQ', '#10b981', body);
+            const actions = `<button onclick='loadAnalysis(${jsArg(userId)})' class="text-[10px] font-bold text-emerald-700 bg-white border border-emerald-200 px-2 py-1 rounded hover:bg-emerald-50 transition">↺ 重新检索</button>`;
+            return renderPipelineCard(5, '知识库检索证据', '基于核心诉求检索已发布知识、报价规则、案例和 FAQ', '#10b981', body, {actions});
         }
 
         function renderFinalReplyCard(data, userId) {
-            const actionLabel = data.has_v2 ? '🔄 重新生成' : (data.has_v1 ? '▶️ 生成回复' : '⛔ 需先提取');
+            const actionLabel = data.has_v2 && data.has_v2_compare ? '🔄 重新生成对比' : (data.has_v1 ? '▶️ 生成两版回复' : '⛔ 需先提取');
             const actions = `<button onclick='triggerLLM(${jsArg(userId)}, 2)' ${data.has_v1 ? '' : 'disabled'} class="text-[10px] font-bold ${data.has_v1 ? 'text-white bg-amber-500 hover:bg-amber-600 border border-amber-600' : 'text-amber-400 bg-amber-100 border border-amber-200 cursor-not-allowed'} px-2 py-1 rounded transition">${actionLabel}</button>`;
+            const llm2 = getLlmRuntime(data, 'llm2');
+            const llm2Compare = getLlmRuntime(data, 'llm2_compare');
             const advice = data.sales_advice_v2 || '';
+            const compareAdvice = data.sales_advice_compare_v2 || '';
             const feedback = data.has_v2 ? `
                 <div class="flex flex-wrap gap-1 pt-1">
                     <button onclick="copyTextFromEncoded('${encodedArg(advice)}')" class="px-2 py-1 bg-white border rounded text-[10px] text-slate-600">复制</button>
                     <button onclick='submitAssistFeedback(${jsArg(userId)}, "useful")' class="px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-700">有用</button>
                     <button onclick='submitAssistFeedback(${jsArg(userId)}, "needs_fix")' class="px-2 py-1 bg-rose-50 border border-rose-200 rounded text-[10px] text-rose-700">需修正</button>
                 </div>` : '';
+            const compareCopy = data.has_v2_compare ? `
+                <div class="flex flex-wrap gap-1 pt-1">
+                    <button onclick="copyTextFromEncoded('${encodedArg(compareAdvice)}')" class="px-2 py-1 bg-white border rounded text-[10px] text-slate-600">复制对比版</button>
+                </div>` : '';
             const body = `
-                <div class="mb-2">${renderStatusPill(data.has_v2 ? '已生成' : '等待生成', data.has_v2 ? 'emerald' : 'amber')}</div>
+                <div class="mb-2 flex flex-wrap gap-1">
+                    ${renderStatusPill(data.has_v2 ? '主模型已生成' : '主模型等待生成', data.has_v2 ? 'emerald' : 'amber')}
+                    ${renderStatusPill(data.has_v2_compare ? '对比模型已生成' : '对比模型等待生成', data.has_v2_compare ? 'emerald' : 'amber')}
+                </div>
                 ${renderPipelineRows([
                     {label: '生成输入', value: data.has_v1 ? '结构化摘要 + CRM 客户画像 + 知识库证据' : '--待构建--', className: data.has_v1 ? 'text-slate-700' : 'text-slate-400'},
-                    {label: '回复文案', value: data.has_v2 ? '已生成，见下方全文' : '--待生成--', className: data.has_v2 ? 'text-emerald-700 font-bold' : 'text-slate-400'},
-                    {label: '问题原因', value: data.has_v2 ? '已完成二阶段生成' : (data.has_v1 ? '等待点击生成回复' : '需要先完成第一阶段特征提取'), className: data.has_v2 ? 'text-emerald-700' : 'text-amber-700'}
+                    {label: '主模型', value: llm2.display_name || llm2.model || '--待配置--', className: data.has_v2 ? 'text-emerald-700 font-bold' : 'text-slate-400'},
+                    {label: '对比模型', value: llm2Compare.display_name || llm2Compare.model || '--待配置--', className: data.has_v2_compare ? 'text-emerald-700 font-bold' : 'text-slate-400'},
+                    {label: '问题原因', value: data.has_v2 && data.has_v2_compare ? '已完成主模型与对比模型生成' : (data.has_v1 ? '等待点击生成两版回复' : '需要先完成第一阶段特征提取'), className: data.has_v2 && data.has_v2_compare ? 'text-emerald-700' : 'text-amber-700'}
                 ])}
-                <div class="font-medium text-amber-900 bg-amber-50 p-3 rounded-lg border border-amber-100 whitespace-pre-wrap leading-relaxed ${data.has_v2 ? '' : 'opacity-50'}">${safeText(advice || '（空，等待大模型推演）')}</div>
-                ${feedback}`;
-            return renderPipelineCard(6, '第二阶段话术生成 / 最终回复', 'LLM-2 使用结构化摘要、CRM 和知识证据生成可复制回复', '#f59e0b', body, {scriptKey: 'SYSTEM_PROMPT_LLM2', actions});
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                    <div class="rounded-lg border border-amber-100 bg-amber-50 p-3">
+                        ${renderLlmRuntimeStrip(data, 'llm2', 'amber')}
+                        <div class="font-medium text-amber-900 whitespace-pre-wrap leading-relaxed ${data.has_v2 ? '' : 'opacity-50'}">${safeText(advice || '（主模型空，等待生成）')}</div>
+                        ${feedback}
+                    </div>
+                    <div class="rounded-lg border border-blue-100 bg-blue-50 p-3">
+                        ${renderLlmRuntimeStrip(data, 'llm2_compare', 'blue')}
+                        <div class="font-medium text-blue-950 whitespace-pre-wrap leading-relaxed ${data.has_v2_compare ? '' : 'opacity-50'}">${safeText(compareAdvice || '（对比模型空，等待生成）')}</div>
+                        ${compareCopy}
+                    </div>
+                </div>`;
+            return renderPipelineCard(6, '第二阶段话术生成（双模型对比）', `${llm2.model || '主模型未配置'} vs ${llm2Compare.model || '对比模型未配置'}`, '#f59e0b', body, {scriptKey: 'SYSTEM_PROMPT_LLM2', actions});
         }
 
         function renderValidationCard(validation) {
@@ -852,11 +893,12 @@
                     ${renderFastTrackCard(data)}
                     ${renderStageOneCard(data, userId)}
                     ${renderCrmContextCard(data.crm_info, userId)}
-                    ${renderKnowledgeBaseCard(data)}
+                    ${renderKnowledgeBaseCard(data, userId)}
                     ${renderFinalReplyCard(data, userId)}
                     ${renderValidationCard(data.assist_validation)}
                 </div>
             `;
+            return data;
         }
 
         function renderAssistEvidence(knowledge) {
@@ -1083,8 +1125,9 @@
                     label: `阶段 ${step} 已进入后台执行`,
                     url,
                     response: JSON.stringify(data),
-                    next: '等待 5.5 秒后自动刷新；若结果仍未完成，请再次点击刷新分析或查看后端 REPLY_CHAIN_STEP 日志。'
+                    next: '系统正在自动轮询刷新，完成后会立即更新右侧链路显示。'
                 });
+                await pollAnalysisUntilComplete(userId, step, url);
             } catch (err) {
                 console.error("服务端暂时不可达或重启中:", err);
                 renderOperationStatus({
@@ -1094,9 +1137,45 @@
                     response: translateApiMessage(err?.message || err),
                     next: '确认后端服务端口可访问，再从真实页面重新点击当前阶段按钮。'
                 });
-            } finally {
-                setTimeout(() => loadAnalysis(userId), 5500);
             }
+        }
+
+        function isAnalysisStepComplete(data, step) {
+            if (!data) return false;
+            if (step === 1) return Boolean(data.has_v1 || data.stage_status?.llm1 === 'done');
+            if (step === 2) return Boolean((data.has_v2 && data.has_v2_compare) || (data.stage_status?.llm2 === 'done' && data.stage_status?.llm2_compare === 'done'));
+            return false;
+        }
+
+        async function pollAnalysisUntilComplete(userId, step, url) {
+            const maxAttempts = 60;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                await new Promise(resolve => setTimeout(resolve, attempt === 1 ? 2500 : 2000));
+                let data = null;
+                try {
+                    data = await loadAnalysis(userId);
+                } catch (err) {
+                    console.warn('自动刷新分析状态失败，继续重试', err);
+                }
+                if (isAnalysisStepComplete(data, step)) {
+                    renderOperationStatus({
+                        ok: true,
+                        label: `阶段 ${step} 已完成并刷新显示`,
+                        url,
+                        response: `轮询 ${attempt} 次后检测到完成`,
+                        next: step === 1 ? '可继续查看知识证据，或点击第二阶段生成回复。' : '最终回复与输出校验已刷新。'
+                    });
+                    return data;
+                }
+            }
+            renderOperationStatus({
+                ok: false,
+                label: `阶段 ${step} 自动刷新超时`,
+                url,
+                response: '后台可能仍在执行，前端已停止自动轮询。',
+                next: '点击当前卡片的刷新/重新检索按钮，或查看后端 REPLY_CHAIN_STEP_RESULT 日志。'
+            });
+            return null;
         }
 
         async function syncRealData() {
@@ -1943,7 +2022,8 @@
                 postgres: '知识库数据库',
                 embedding: '向量模型服务',
                 llm1: '第一阶段大模型',
-                llm2: '第二阶段大模型',
+                llm2: '第二阶段主模型',
+                llm2_compare: '第二阶段对比模型',
                 crm: '客户画像库',
                 qywx: '企微应用',
                 archive_sdk: '会话存档组件'
@@ -1977,6 +2057,7 @@
                     ['数据库', item.database],
                     ['用户', item.user],
                     ['服务类型', item.provider],
+                    ['用途', item.role],
                     ['地址', item.url],
                     ['模型', item.model],
                     ['接口密钥', item.api_key_masked],
