@@ -19,5 +19,6 @@ backend/seq_cursor.txt
 # Local secrets and machine-specific configuration
 .env
 .env.*
+!.env.example
 *.pem
 docs/配置.txt

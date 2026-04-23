@@ -17,6 +17,53 @@ class ArchiveService:
     
     _sdk = None
 
+    @staticmethod
+    def _is_placeholder(value: object) -> bool:
+        text = str(value or "").strip()
+        return not text or text.startswith("your-")
+
+    @staticmethod
+    def _project_root() -> str:
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    @classmethod
+    def _resolve_private_key_path(cls) -> str:
+        configured = settings.PRIVATE_KEY_PATH
+        if os.path.isabs(configured):
+            return configured
+        root_candidate = os.path.join(cls._project_root(), configured)
+        if os.path.exists(root_candidate):
+            return root_candidate
+        return os.path.abspath(configured)
+
+    @classmethod
+    def config_status(cls) -> dict:
+        sdk_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "WeWorkFinanceSdk.dll")
+        private_key_path = cls._resolve_private_key_path()
+        checks = {
+            "sdk_present": os.path.exists(sdk_path),
+            "private_key_present": os.path.exists(private_key_path),
+            "corp_id_configured": not cls._is_placeholder(settings.CORP_ID),
+            "chatdata_secret_configured": not cls._is_placeholder(settings.CHATDATA_SECRET),
+        }
+        missing = []
+        if not checks["sdk_present"]:
+            missing.append("backend/WeWorkFinanceSdk.dll")
+        if not checks["private_key_present"]:
+            missing.append(f"PRIVATE_KEY_PATH={settings.PRIVATE_KEY_PATH}")
+        if not checks["corp_id_configured"]:
+            missing.append("CORP_ID")
+        if not checks["chatdata_secret_configured"]:
+            missing.append("CHATDATA_SECRET")
+        return {
+            **checks,
+            "ready": not missing,
+            "missing": missing,
+            "sdk_path": sdk_path,
+            "private_key_path": private_key_path,
+            "archive_polling_enabled": bool(settings.ENABLE_ARCHIVE_POLLING),
+        }
+
     @classmethod
     def _load_sdk(cls):
         if cls._sdk:
@@ -24,6 +71,9 @@ class ArchiveService:
         
         current_dir = os.path.dirname(os.path.abspath(__file__))
         dll_path = os.path.join(current_dir, "WeWorkFinanceSdk.dll")
+        if not os.path.exists(dll_path):
+            logger.warning("企微会话存档 SDK 未配置: %s", dll_path)
+            return None
         
         if hasattr(os, "add_dll_directory"):
             try: os.add_dll_directory(current_dir)
@@ -60,12 +110,16 @@ class ArchiveService:
         from datetime import datetime
         import json
 
+        status = cls.config_status()
+        if not status["ready"]:
+            return {"status": "error", "msg": "企微会话存档未完整配置: " + ", ".join(status["missing"]), "config": status}
+
         sdk = cls._load_sdk()
         if not sdk: return {"status": "error", "msg": "SDK加载失败"}
         
         try:
             # 1. 准备本地私钥
-            with open(settings.PRIVATE_KEY_PATH, "rb") as f:
+            with open(status["private_key_path"], "rb") as f:
                 private_key = RSA.import_key(f.read())
             cipher_rsa = PKCS1_v1_5.new(private_key)
 
@@ -136,10 +190,6 @@ class ArchiveService:
                                 participants = sorted([sender] + (tolist if isinstance(tolist, list) else []))
                                 session_id = f"single_{'_'.join(participants)}"
                             
-                            # 防止超过 VARCHAR(50)
-                            if len(session_id) > 50:
-                                session_id = session_id[:50]
-                                
                             ts = float(dec_obj.get("msgtime", 0))
                             ts = ts / 1000.0 if ts > 9999999999 else ts
                             now_ts = datetime.now().timestamp()
@@ -178,7 +228,4 @@ class ArchiveService:
     @classmethod
     def get_token_status(cls):
         """仅做连通性测试"""
-        return {
-            "is_sdk_present": os.path.exists(os.path.join(os.path.dirname(__file__), "WeWorkFinanceSdk.dll")),
-            "private_key_present": os.path.exists(settings.PRIVATE_KEY_PATH)
-        }
+        return cls.config_status()

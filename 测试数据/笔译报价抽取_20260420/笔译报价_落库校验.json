@@ -1,0 +1,26 @@
+{
+  "import_batch": "pricing_excel_60a34f67c2e9",
+  "document_count": 59,
+  "chunk_count": 59,
+  "pricing_rule_count": 59,
+  "statuses": [
+    "draft"
+  ],
+  "review_statuses": [
+    "pending"
+  ],
+  "zh_de_rules": [
+    {
+      "title": "中译德法/德报价 400元/1000中文字符",
+      "doc_status": "draft",
+      "chunk_status": "draft",
+      "rule_status": "draft",
+      "language_pair": "zh->de",
+      "service_scope": "general",
+      "unit": "per_1000_chars",
+      "currency": "CNY",
+      "price_min": "400.00",
+      "price_max": "400.00"
+    }
+  ]
+}

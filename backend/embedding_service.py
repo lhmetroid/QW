@@ -15,7 +15,7 @@ class EmbeddingService:
     def embed(text: str) -> Optional[List[float]]:
         clean_text = (text or "").strip()
         if not clean_text:
-            return None
+            raise ValueError("Embedding text is empty")
 
         provider = (settings.EMBEDDING_PROVIDER or "").lower()
         if provider == "ollama":
@@ -42,25 +42,20 @@ class EmbeddingService:
             data = response.json()
             embedding = data.get("embedding")
             if not isinstance(embedding, list):
-                logger.error("Ollama embedding 返回缺少 embedding 字段")
-                return None
+                raise RuntimeError("Ollama embedding 返回缺少 embedding 字段")
             if settings.EMBEDDING_DIM and len(embedding) != settings.EMBEDDING_DIM:
-                logger.error(
-                    "Ollama embedding 维度不匹配: expected=%s actual=%s",
-                    settings.EMBEDDING_DIM,
-                    len(embedding),
+                raise RuntimeError(
+                    f"Ollama embedding 维度不匹配: expected={settings.EMBEDDING_DIM} actual={len(embedding)}"
                 )
-                return None
             return embedding
         except Exception as e:
             logger.error("Ollama embedding 调用失败: %s", e)
-            return None
+            raise RuntimeError(f"Ollama embedding 调用失败: {e}") from e
 
     @staticmethod
     def _embed_openai_compatible(text: str) -> Optional[List[float]]:
         if not settings.EMBEDDING_API_KEY:
-            logger.warning("知识库 Embedding KEY 未配置，跳过 RAG 知识检索")
-            return None
+            raise RuntimeError("知识库 Embedding KEY 未配置")
 
         url = settings.EMBEDDING_API_URL.rstrip("/") + "/embeddings"
         headers = {"Authorization": f"Bearer {settings.EMBEDDING_API_KEY}"}
@@ -78,16 +73,12 @@ class EmbeddingService:
             data = response.json()
             embedding = data.get("data", [{}])[0].get("embedding")
             if not isinstance(embedding, list):
-                logger.error("OpenAI-compatible embedding 返回缺少 data[0].embedding 字段")
-                return None
+                raise RuntimeError("OpenAI-compatible embedding 返回缺少 data[0].embedding 字段")
             if settings.EMBEDDING_DIM and len(embedding) != settings.EMBEDDING_DIM:
-                logger.error(
-                    "OpenAI-compatible embedding 维度不匹配: expected=%s actual=%s",
-                    settings.EMBEDDING_DIM,
-                    len(embedding),
+                raise RuntimeError(
+                    f"OpenAI-compatible embedding 维度不匹配: expected={settings.EMBEDDING_DIM} actual={len(embedding)}"
                 )
-                return None
             return embedding
         except Exception as e:
             logger.error("OpenAI-compatible embedding 调用失败: %s", e)
-            return None
+            raise RuntimeError(f"OpenAI-compatible embedding 调用失败: {e}") from e

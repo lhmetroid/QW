@@ -350,7 +350,7 @@
     "group": "translation_pricing",
     "category": "pricing",
     "risk_level": "high",
-    "query_text": "?????????????",
+    "query_text": "英译中技术资料报价是多少？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -369,7 +369,7 @@
     "group": "translation_pricing",
     "category": "pricing",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "医学资料翻译怎么报价？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -388,7 +388,7 @@
     "group": "translation_pricing",
     "category": "pricing",
     "risk_level": "high",
-    "query_text": "?????????????",
+    "query_text": "医学资料英译中怎么计费？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -408,7 +408,7 @@
     "group": "translation_capability",
     "category": "capability",
     "risk_level": "medium",
-    "query_text": "????????????",
+    "query_text": "中译英技术翻译能做吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -427,7 +427,7 @@
     "group": "translation_capability",
     "category": "capability",
     "risk_level": "medium",
-    "query_text": "????????????",
+    "query_text": "证件翻译和盖章多少钱？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -445,7 +445,7 @@
     "group": "delivery_process",
     "category": "process",
     "risk_level": "medium",
-    "query_text": "????????????????",
+    "query_text": "翻译项目的标准交付流程是怎样的？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -462,7 +462,7 @@
     "group": "delivery_process",
     "category": "process",
     "risk_level": "medium",
-    "query_text": "??????????",
+    "query_text": "下单后怎么看进度？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -479,7 +479,7 @@
     "group": "general_faq",
     "category": "faq",
     "risk_level": "low",
-    "query_text": "????????????????????",
+    "query_text": "你们公司主要做哪些行业的业务？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -495,7 +495,7 @@
     "group": "printing_sales",
     "category": "printing",
     "risk_level": "high",
-    "query_text": "????????????",
+    "query_text": "画册印刷怎么报价？",
     "query_features": {
       "business_line": "printing",
       "knowledge_type": [
@@ -512,7 +512,7 @@
     "group": "printing_sales",
     "category": "printing",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "印刷报价含税能开专票吗？",
     "query_features": {
       "business_line": "printing",
       "knowledge_type": [
@@ -529,7 +529,7 @@
     "group": "printing_sales",
     "category": "printing",
     "risk_level": "medium",
-    "query_text": "?????????????",
+    "query_text": "除了画册能印手册吗？",
     "query_features": {
       "business_line": "printing",
       "knowledge_type": [
@@ -546,7 +546,7 @@
     "group": "exhibition_sales",
     "category": "exhibition",
     "risk_level": "medium",
-    "query_text": "????????????",
+    "query_text": "展台搭建费收多少？",
     "query_features": {
       "business_line": "exhibition",
       "knowledge_type": [
@@ -563,7 +563,7 @@
     "group": "exhibition_sales",
     "category": "exhibition",
     "risk_level": "medium",
-    "query_text": "??????????????",
+    "query_text": "展台搭建需要多长时间？",
     "query_features": {
       "business_line": "exhibition",
       "knowledge_type": [
@@ -580,7 +580,7 @@
     "group": "sales_script",
     "category": "template",
     "risk_level": "medium",
-    "query_text": "?????????????????????",
+    "query_text": "客户嫌贵，有没有对应的话术参考？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -597,7 +597,7 @@
     "group": "risk_guard",
     "category": "low_confidence",
     "risk_level": "high",
-    "query_text": "?????????????????????",
+    "query_text": "能不能给我一个从来没报过的内部低价？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -614,7 +614,7 @@
     "group": "version_guard",
     "category": "versioning",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "去年的报价现在还算吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -631,7 +631,7 @@
     "group": "crm_tier",
     "category": "customer_tier",
     "risk_level": "high",
-    "query_text": "?????????????????",
+    "query_text": "大客户的折扣政策是怎样的？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -648,7 +648,7 @@
     "group": "scope_guard",
     "category": "cross_scope",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "医学翻译比普件贵吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -665,7 +665,7 @@
     "group": "scope_guard",
     "category": "cross_scope",
     "risk_level": "high",
-    "query_text": "????????????????",
+    "query_text": "法律合同有行业附加费吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -683,7 +683,7 @@
     "group": "translation_pricing",
     "category": "pricing",
     "risk_level": "high",
-    "query_text": "??????????????????",
+    "query_text": "没定字数能先给个单价吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -700,7 +700,7 @@
     "group": "translation_capability",
     "category": "capability",
     "risk_level": "medium",
-    "query_text": "?????????????",
+    "query_text": "能翻译芬兰语吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -717,7 +717,7 @@
     "group": "delivery_process",
     "category": "process",
     "risk_level": "medium",
-    "query_text": "??????????????",
+    "query_text": "翻译完修改收费吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -734,7 +734,7 @@
     "group": "printing_sales",
     "category": "printing",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "印刷打样要多少钱？",
     "query_features": {
       "business_line": "printing",
       "knowledge_type": [
@@ -752,7 +752,7 @@
     "group": "exhibition_sales",
     "category": "exhibition",
     "risk_level": "medium",
-    "query_text": "?????????????",
+    "query_text": "撤展垃圾谁负责？",
     "query_features": {
       "business_line": "exhibition",
       "knowledge_type": [
@@ -767,7 +767,7 @@
     "group": "risk_guard",
     "category": "low_confidence",
     "risk_level": "high",
-    "query_text": "???????????????????",
+    "query_text": "这个项目先大概报个价，细节还没定。",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -784,7 +784,7 @@
     "group": "crm_tier",
     "category": "customer_tier",
     "risk_level": "high",
-    "query_text": "??????????????",
+    "query_text": "大客户加急能插队吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -801,7 +801,7 @@
     "group": "version_guard",
     "category": "versioning",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "之前的活动还能参加吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -818,7 +818,7 @@
     "group": "translation_pricing",
     "category": "pricing",
     "risk_level": "high",
-    "query_text": "???????????????????",
+    "query_text": "翻译字数是怎么统计的？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -835,7 +835,7 @@
     "group": "translation_capability",
     "category": "capability",
     "risk_level": "medium",
-    "query_text": "????????????",
+    "query_text": "有翻译资质证明吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -852,7 +852,7 @@
     "group": "delivery_process",
     "category": "process",
     "risk_level": "medium",
-    "query_text": "??????????????",
+    "query_text": "可以提供纸质件吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -869,7 +869,7 @@
     "group": "printing_sales",
     "category": "printing",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "批量印刷有折扣吗？",
     "query_features": {
       "business_line": "printing",
       "knowledge_type": [
@@ -887,7 +887,7 @@
     "group": "exhibition_sales",
     "category": "exhibition",
     "risk_level": "medium",
-    "query_text": "???????????",
+    "query_text": "展台修改限次数吗？",
     "query_features": {
       "business_line": "exhibition",
       "knowledge_type": [
@@ -902,7 +902,7 @@
     "group": "risk_guard",
     "category": "low_confidence",
     "risk_level": "high",
-    "query_text": "?????????????????",
+    "query_text": "客户只说先看看，价格和范围都还没明确。",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -919,7 +919,7 @@
     "group": "crm_tier",
     "category": "customer_tier",
     "risk_level": "high",
-    "query_text": "??????????????",
+    "query_text": "项目款可以月结吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -936,7 +936,7 @@
     "group": "version_guard",
     "category": "versioning",
     "risk_level": "high",
-    "query_text": "????????????????",
+    "query_text": "报价单过期要重审吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -953,7 +953,7 @@
     "group": "translation_pricing",
     "category": "pricing",
     "risk_level": "high",
-    "query_text": "??????????????????",
+    "query_text": "能不能直接按页计费？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -970,7 +970,7 @@
     "group": "translation_capability",
     "category": "capability",
     "risk_level": "medium",
-    "query_text": "?????????????",
+    "query_text": "能处理复杂排版吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -987,7 +987,7 @@
     "group": "delivery_process",
     "category": "process",
     "risk_level": "medium",
-    "query_text": "??????????????",
+    "query_text": "格式会保持原样吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1004,7 +1004,7 @@
     "group": "printing_sales",
     "category": "printing",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "颜色偏差大怎么办？",
     "query_features": {
       "business_line": "printing",
       "knowledge_type": [
@@ -1022,7 +1022,7 @@
     "group": "exhibition_sales",
     "category": "exhibition",
     "risk_level": "medium",
-    "query_text": "?????????????",
+    "query_text": "施工证谁去办理？",
     "query_features": {
       "business_line": "exhibition",
       "knowledge_type": [
@@ -1037,7 +1037,7 @@
     "group": "risk_guard",
     "category": "low_confidence",
     "risk_level": "high",
-    "query_text": "???????????????????",
+    "query_text": "先别区分语种和用途，给我一个参考价。",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1054,7 +1054,7 @@
     "group": "crm_tier",
     "category": "customer_tier",
     "risk_level": "high",
-    "query_text": "??????????????",
+    "query_text": "框架协议包含这项吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1071,7 +1071,7 @@
     "group": "version_guard",
     "category": "versioning",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "这是哪个版本的价表？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1088,7 +1088,7 @@
     "group": "translation_pricing",
     "category": "pricing",
     "risk_level": "high",
-    "query_text": "???????????????????",
+    "query_text": "加急费是怎么收取的？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1105,7 +1105,7 @@
     "group": "translation_capability",
     "category": "capability",
     "risk_level": "medium",
-    "query_text": "????????????",
+    "query_text": "有做过类似案例吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1122,7 +1122,7 @@
     "group": "delivery_process",
     "category": "process",
     "risk_level": "medium",
-    "query_text": "??????????????",
+    "query_text": "中途终止怎么结算？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1139,7 +1139,7 @@
     "group": "printing_sales",
     "category": "printing",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "印刷成品送货上门吗？",
     "query_features": {
       "business_line": "printing",
       "knowledge_type": [
@@ -1157,7 +1157,7 @@
     "group": "exhibition_sales",
     "category": "exhibition",
     "risk_level": "medium",
-    "query_text": "???????????",
+    "query_text": "现场有专人维护吗？",
     "query_features": {
       "business_line": "exhibition",
       "knowledge_type": [
@@ -1172,7 +1172,7 @@
     "group": "risk_guard",
     "category": "low_confidence",
     "risk_level": "high",
-    "query_text": "?????????????????",
+    "query_text": "资料类型还没确认，先按常规报个价可以吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1189,7 +1189,7 @@
     "group": "crm_tier",
     "category": "customer_tier",
     "risk_level": "high",
-    "query_text": "??????????????",
+    "query_text": "战略合作能免服费吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1206,7 +1206,7 @@
     "group": "version_guard",
     "category": "versioning",
     "risk_level": "high",
-    "query_text": "????????????????",
+    "query_text": "有效期内会涨价吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1223,7 +1223,7 @@
     "group": "translation_pricing",
     "category": "pricing",
     "risk_level": "high",
-    "query_text": "??????????????????",
+    "query_text": "量大单价能再降吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1240,7 +1240,7 @@
     "group": "translation_capability",
     "category": "capability",
     "risk_level": "medium",
-    "query_text": "?????????????",
+    "query_text": "流程中有三校机制吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1257,7 +1257,7 @@
     "group": "delivery_process",
     "category": "process",
     "risk_level": "medium",
-    "query_text": "??????????????",
+    "query_text": "会有质检报告吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1274,7 +1274,7 @@
     "group": "printing_sales",
     "category": "printing",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "纸张克重有哪些？",
     "query_features": {
       "business_line": "printing",
       "knowledge_type": [
@@ -1292,7 +1292,7 @@
     "group": "exhibition_sales",
     "category": "exhibition",
     "risk_level": "medium",
-    "query_text": "?????????????",
+    "query_text": "搭建材料环保吗？",
     "query_features": {
       "business_line": "exhibition",
       "knowledge_type": [
@@ -1307,7 +1307,7 @@
     "group": "risk_guard",
     "category": "low_confidence",
     "risk_level": "high",
-    "query_text": "???????????????????",
+    "query_text": "客户没给字数和交付要求，先口头报价。",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1324,7 +1324,7 @@
     "group": "crm_tier",
     "category": "customer_tier",
     "risk_level": "high",
-    "query_text": "??????????????",
+    "query_text": "支持哪些支付方式？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1341,7 +1341,7 @@
     "group": "version_guard",
     "category": "versioning",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "还能享昨天的优惠吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1358,7 +1358,7 @@
     "group": "translation_pricing",
     "category": "pricing",
     "risk_level": "high",
-    "query_text": "???????????????????",
+    "query_text": "按小时还是按天计费？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1375,7 +1375,7 @@
     "group": "translation_capability",
     "category": "capability",
     "risk_level": "medium",
-    "query_text": "????????????",
+    "query_text": "有母语审校服务吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1392,7 +1392,7 @@
     "group": "delivery_process",
     "category": "process",
     "risk_level": "medium",
-    "query_text": "??????????????",
+    "query_text": "加内容怎么收费？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1409,7 +1409,7 @@
     "group": "printing_sales",
     "category": "printing",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "重印需要多久？",
     "query_features": {
       "business_line": "printing",
       "knowledge_type": [
@@ -1427,7 +1427,7 @@
     "group": "exhibition_sales",
     "category": "exhibition",
     "risk_level": "medium",
-    "query_text": "???????????",
+    "query_text": "尾款什么时候结清？",
     "query_features": {
       "business_line": "exhibition",
       "knowledge_type": [
@@ -1442,7 +1442,7 @@
     "group": "risk_guard",
     "category": "low_confidence",
     "risk_level": "high",
-    "query_text": "?????????????????",
+    "query_text": "先按老客户惯例估个价格，具体需求后面再补。",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1459,7 +1459,7 @@
     "group": "crm_tier",
     "category": "customer_tier",
     "risk_level": "high",
-    "query_text": "??????????????",
+    "query_text": "有专属经理对接吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1476,7 +1476,7 @@
     "group": "version_guard",
     "category": "versioning",
     "risk_level": "high",
-    "query_text": "????????????????",
+    "query_text": "阶梯报价门槛是多少？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1493,7 +1493,7 @@
     "group": "translation_pricing",
     "category": "pricing",
     "risk_level": "high",
-    "query_text": "??????????????????",
+    "query_text": "能保证准确性吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1510,7 +1510,7 @@
     "group": "translation_capability",
     "category": "capability",
     "risk_level": "medium",
-    "query_text": "?????????????",
+    "query_text": "能提供译员简历吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1527,7 +1527,7 @@
     "group": "delivery_process",
     "category": "process",
     "risk_level": "medium",
-    "query_text": "??????????????",
+    "query_text": "件需要快递吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1544,7 +1544,7 @@
     "group": "printing_sales",
     "category": "printing",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "封面工艺有哪些？",
     "query_features": {
       "business_line": "printing",
       "knowledge_type": [
@@ -1562,7 +1562,7 @@
     "group": "exhibition_sales",
     "category": "exhibition",
     "risk_level": "medium",
-    "query_text": "?????????????",
+    "query_text": "音响设备谁提供？",
     "query_features": {
       "business_line": "exhibition",
       "knowledge_type": [
@@ -1577,7 +1577,7 @@
     "group": "risk_guard",
     "category": "low_confidence",
     "risk_level": "high",
-    "query_text": "???????????????????",
+    "query_text": "范围和语种都没定，能先说个大致费用吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1594,7 +1594,7 @@
     "group": "crm_tier",
     "category": "customer_tier",
     "risk_level": "high",
-    "query_text": "??????????????",
+    "query_text": "能先译后付款吗？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1611,7 +1611,7 @@
     "group": "version_guard",
     "category": "versioning",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "汇率是怎么确定的？",
     "query_features": {
       "business_line": "general",
       "knowledge_type": [
@@ -1628,7 +1628,7 @@
     "group": "translation_pricing",
     "category": "pricing",
     "risk_level": "high",
-    "query_text": "???????????????????",
+    "query_text": "是按字数还是单词？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1645,7 +1645,7 @@
     "group": "translation_capability",
     "category": "capability",
     "risk_level": "medium",
-    "query_text": "????????????",
+    "query_text": "能承接速记工作吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1662,7 +1662,7 @@
     "group": "delivery_process",
     "category": "process",
     "risk_level": "medium",
-    "query_text": "??????????????",
+    "query_text": "节点能写进合同吗？",
     "query_features": {
       "business_line": "translation",
       "knowledge_type": [
@@ -1679,7 +1679,7 @@
     "group": "printing_sales",
     "category": "printing",
     "risk_level": "high",
-    "query_text": "???????????????",
+    "query_text": "文件需要什么格式？",
     "query_features": {
       "business_line": "printing",
       "knowledge_type": [
@@ -1697,7 +1697,7 @@
     "group": "exhibition_sales",
     "category": "exhibition",
     "risk_level": "medium",
-    "query_text": "???????????",
+    "query_text": "包含地毯家具吗？",
     "query_features": {
       "business_line": "exhibition",
       "knowledge_type": [

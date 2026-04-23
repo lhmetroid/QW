@@ -1,0 +1,15 @@
+{
+  "source": "docs\\笔译报价.doc",
+  "bytes": 58368,
+  "utf16_chars": 29008,
+  "meaningful_lines": 574,
+  "raw_text": "测试数据\\笔译报价抽取_20260420\\笔译报价_raw_text.txt",
+  "hits": {
+    "翻译报价单": true,
+    "1000中文字符": true,
+    "中译英": true,
+    "英译日": true,
+    "法/德": true,
+    "阿拉伯": true
+  }
+}

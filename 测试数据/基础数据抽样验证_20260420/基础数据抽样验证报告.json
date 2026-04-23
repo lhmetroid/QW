@@ -1,0 +1,486 @@
+{
+  "run_at": "2026-04-20T18:24:34",
+  "seed": 20260420,
+  "sources": [
+    {
+      "key": "dev_email",
+      "label": "销售开发类邮件（正文）",
+      "path": "docs\\开发邮件出已标识意图.xlsx",
+      "kind": "email",
+      "parsed_count": 27,
+      "sample_file": "测试数据\\基础数据抽样验证_20260420\\dev_email_sample5.json",
+      "validation": {
+        "created_total": 38,
+        "items": [
+          {
+            "sample_index": 1,
+            "source_row": 11,
+            "title_or_subject": "",
+            "content_preview": "您好！新年之际，首先衷心感谢您长久以来的信赖。\n我们珍视与您的每一次合作——无论是多语种翻译（笔译/口译）、设计印刷、礼品定制，还是展会支持。这些服务就像老朋友，而老朋友也在悄悄进步。近30年的专注，让我们将自研的系统与流程管理能力，更深地融入每一个环节。\n随信附上我们近期的笔记本、印刷样册与同传案例，这正是我们成熟体系所保障的交付品质。\n同时，我们也在聆听客户的新需求。许多伙伴提到招聘初筛耗时、流程不透明。为此，我们尝试开发了一个“AI视频面试平台”，希望能帮助HR伙伴提效...",
+            "status": "success",
+            "created_count": 6,
+            "candidates": [
+              {
+                "candidate_id": "235687c9-ff67-469e-97f5-ab73ec2bfad7",
+                "title": "核心服务范围",
+                "knowledge_type": "capability",
+                "business_line": "general",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "80d88406-489e-4a22-a845-63b02a94fd42",
+                "title": "公司专注年限",
+                "knowledge_type": "capability",
+                "business_line": "general",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "02067194-7d12-4130-a8c0-94f96a0c4b0f",
+                "title": "核心能力",
+                "knowledge_type": "capability",
+                "business_line": "general",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "062084da-c5c4-4214-b145-85384650ae51",
+                "title": "新服务：AI视频面试平台",
+                "knowledge_type": "capability",
+                "business_line": "general",
+                "risk_level": "medium"
+              },
+              {
+                "candidate_id": "a691e0f3-7bb8-4af3-a365-dc924a734ef3",
+                "title": "客户反馈与需求",
+                "knowledge_type": "process",
+                "business_line": "general",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "f4a5dfee-ee21-4b12-9257-90cc8a9c5c40",
+                "title": "客户答谢礼品",
+                "knowledge_type": "process",
+                "business_line": "printing",
+                "risk_level": "low"
+              }
+            ]
+          },
+          {
+            "sample_index": 2,
+            "source_row": 29,
+            "title_or_subject": "",
+            "content_preview": "我们深耕定制笔记本领域28年，累计已设计印刷笔记本达30余万册，服务客户遍及全球，涵盖金融、科技、制造、能源、医疗等多个行业，长期世界500强企业提供年度定制礼品解决方案。我们的设计团队从品牌调性出发，打造兼具创意与实用性的专属作品，助力客户在年终答谢、员工激励、客户赠礼等关键场景中脱颖而出。\n\n为什么选择我们？\n28年专注，行业领航者：自2004年起，20多年来为众多全球知名企业成功交付定制项目，累计达30余万册，品质值得信赖。\n全链路定制能力，从概念到交付：我们提供“设计...",
+            "status": "success",
+            "created_count": 9,
+            "candidates": [
+              {
+                "candidate_id": "7f0fdb94-b43d-4303-987e-ebf6ec753181",
+                "title": "定制笔记本业务年限与规模",
+                "knowledge_type": "capability",
+                "business_line": "printing",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "67922980-3204-4261-abec-6ca9048f09bf",
+                "title": "定制笔记本服务行业",
+                "knowledge_type": "capability",
+                "business_line": "printing",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "8fe4aa70-4141-4ab8-b857-fdfc8db3d58e",
+                "title": "定制笔记本设计理念",
+                "knowledge_type": "capability",
+                "business_line": "printing",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "fe560e2b-9b61-4ea6-b3b0-dc7cbc0fc4ef",
+                "title": "定制笔记本服务流程",
+                "knowledge_type": "process",
+                "business_line": "printing",
+                "risk_level": "medium"
+              },
+              {
+                "candidate_id": "089849f1-df15-4def-a654-c6cffa06c273",
+                "title": "定制笔记本可选材质",
+                "knowledge_type": "capability",
+                "business_line": "printing",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "dd54f429-d0b8-4eb7-8f04-902bd872a563",
+                "title": "定制笔记本可选工艺",
+                "knowledge_type": "capability",
+                "business_line": "printing",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "6da5894c-932d-491b-8d59-053b0ad75a6b",
+                "title": "定制笔记本个性化选项",
+                "knowledge_type": "capability",
+                "business_line": "printing",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "a84e055c-b15e-4b3d-a270-b0c17d2d8a68",
+                "title": "定制笔记本礼盒组合方案",
+                "knowledge_type": "capability",
+                "business_line": "printing",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "e05d7fc1-84e6-4ae4-908c-787d9c23c601",
+                "title": "定制笔记本咨询方式",
+                "knowledge_type": "process",
+                "business_line": "printing",
+                "risk_level": "low"
+              }
+            ]
+          },
+          {
+            "sample_index": 3,
+            "source_row": 24,
+            "title_or_subject": "",
+            "content_preview": "诚挚感谢您一直以来的信任与支持！愿您在这热情洋溢的夏日里，收获清凉与喜悦，工作顺心，生活惬意。\n回望7月26日在上海举办的2025世界人工智能大会，那场汇聚全球行业顶尖企业与专家的盛会依然令人印象深刻。展会期间，共举办了三场聚焦AI与技术创新的高端研讨会，以及两场重要媒体采访。我们的同声传译团队以精准专业的语言服务，确保技术交流顺畅无碍；交替传译则在采访环节中助力客户清晰表达观点，实现高效沟通。凭借卓越的现场表现，我们的翻译服务为多国参会者搭建了无障碍交流的桥梁，充分展现了在...",
+            "status": "success",
+            "created_count": 7,
+            "candidates": [
+              {
+                "candidate_id": "165db2f1-7a7c-4cad-ba23-f940906fb5e2",
+                "title": "展会服务能力概述",
+                "knowledge_type": "capability",
+                "business_line": "exhibition",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "a3df2972-def1-4ac3-9668-6a8863eb7113",
+                "title": "展会服务范围",
+                "knowledge_type": "capability",
+                "business_line": "exhibition",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "822594db-88f5-478f-b3fd-1fefd703d767",
+                "title": "展台设计与搭建服务",
+                "knowledge_type": "capability",
+                "business_line": "exhibition",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "8c4232d1-353f-4fd8-a92c-d927e40eb4aa",
+                "title": "印刷解决方案服务",
+                "knowledge_type": "capability",
+                "business_line": "exhibition",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "f465d1f4-04cf-441e-b5c3-0aa509ad91d8",
+                "title": "视频本地化服务",
+                "knowledge_type": "capability",
+                "business_line": "exhibition",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "d903aa24-d173-4bd9-9f87-740be9accaa7",
+                "title": "现场口译支持服务",
+                "knowledge_type": "capability",
+                "business_line": "exhibition",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "0b2c6810-f665-486d-9ebd-cd23c557012c",
+                "title": "文档翻译服务",
+                "knowledge_type": "capability",
+                "business_line": "exhibition",
+                "risk_level": "low"
+              }
+            ]
+          },
+          {
+            "sample_index": 4,
+            "source_row": 13,
+            "title_or_subject": "",
+            "content_preview": "很高兴能再次与您联系。每每回想起过去的合作，内心都充满感激——感谢您曾给予我们的信任与支持。2026年即将开启，我们满怀期待，希望能继续为您提供专业、可靠的服务。为此，整理了公司简介与翻译服务的主要优势，方便您随时查阅了解。\n关于我们\n自1997年创立以来，“SPEED”已专注高端商务服务27年，长期为世界500强在华企业、各国领事馆及重大国际项目提供专业、可靠的一站式解决方案。我们的服务涵盖资料翻译、同声传译、图文设计印刷、视频译制、展台设计搭建及商务礼品定制等多个领域。\n...",
+            "status": "success",
+            "created_count": 9,
+            "candidates": [
+              {
+                "candidate_id": "5b27aa53-420f-4f34-99ab-41e9b04d21fa",
+                "title": "公司创立时间与专注领域",
+                "knowledge_type": "capability",
+                "business_line": "general",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "09f16f96-e717-4802-b8fa-dcd469586caf",
+                "title": "公司服务范围",
+                "knowledge_type": "capability",
+                "business_line": "general",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "87c8dede-4a4d-40d8-9b61-971a6489447f",
+                "title": "翻译领域荣誉与技术应用",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "6056100f-7939-4ef8-95f5-78c2d9b2ed6a",
+                "title": "笔译服务核心优势：快速响应",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "6b17da55-c3b7-48d5-abd7-d5076b411de7",
+                "title": "笔译服务核心优势：技术赋能",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "feb56a85-d8c1-4faf-bdb7-da3be8da3342",
+                "title": "笔译服务核心优势：译员资源",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "77d4058f-eaef-4190-8ec9-e49a117370c7",
+                "title": "笔译服务核心优势：行业经验",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "4601be19-241f-4736-8531-2c594caac306",
+                "title": "笔译服务核心优势：项目管理能力",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "a199e66c-9f10-49a1-8b98-e4cf3b1e6e02",
+                "title": "配套服务范围",
+                "knowledge_type": "capability",
+                "business_line": "general",
+                "risk_level": "low"
+              }
+            ]
+          },
+          {
+            "sample_index": 5,
+            "source_row": 28,
+            "title_or_subject": "",
+            "content_preview": "想跟您分享一个我们最近刚完成的项目案例——我们为TST与上海电气合作的轨道交通项目提供了中译英招投标文件翻译服务，在短短10天内高质量完成了42万字的技术文档，顺利通过客户验收。\n该项目涉及大量专业内容，包括系统安全、RAM（可靠性、可用性、可维护性）、接口设计、备品备件保障等，正是我们长期深耕的领域。得益于15年来在轨道交通行业的积累，以及自主研发的翻译管理系统，我们在确保术语准确统一的同时，大幅提升了翻译效率，最终实现了准时甚至提前交付。\n目前，我们的专业语料库已累计：\n...",
+            "status": "success",
+            "created_count": 7,
+            "candidates": [
+              {
+                "candidate_id": "605841e2-2757-4e7c-af2a-1f81a2bbcc1a",
+                "title": "轨道交通项目翻译服务案例",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "5c27d602-3bf5-4f5f-bf1d-94f9c908441c",
+                "title": "轨道交通翻译专业领域",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "fccde959-9ed9-44dc-8a0c-1906781594ba",
+                "title": "翻译效率与质量保障能力",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "14517a4b-4d53-4256-8c11-1da09b652ba5",
+                "title": "轨道交通专业语料库规模",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "7cedbaee-2336-4e75-b483-66e1e350a5ab",
+                "title": "轨道交通类可翻译文档类型",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "low"
+              },
+              {
+                "candidate_id": "6d37d2e7-b581-4b48-931f-2a2e5a3da179",
+                "title": "大型标书项目服务承诺",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "medium"
+              },
+              {
+                "candidate_id": "4f30ed8c-15bf-49e3-9704-f1083702368a",
+                "title": "翻译服务响应与团队组建承诺",
+                "knowledge_type": "capability",
+                "business_line": "translation",
+                "risk_level": "medium"
+              }
+            ]
+          }
+        ]
+      },
+      "usable_as_foundation": true,
+      "ingest_recommendation": "适合作为候选知识来源；建议先进入 candidate 池，人工审核后再转正式知识。"
+    },
+    {
+      "key": "biz_email",
+      "label": "除开发类，日常业务沟通邮件（正文）",
+      "path": "docs\\除开发类销售沟通邮件出已标识意图.xlsx",
+      "kind": "email",
+      "parsed_count": 317,
+      "sample_file": "测试数据\\基础数据抽样验证_20260420\\biz_email_sample5.json",
+      "validation": {
+        "created_total": 0,
+        "items": [
+          {
+            "sample_index": 1,
+            "source_row": 273,
+            "title_or_subject": "",
+            "content_preview": "Hi Charlotte,\nHope you’re having a good week.\nI’m just writing to follow up on the payment forPO POSG0100000724(RMB 8,354.00). I know you kindly confirmed receipt with finance back in November, but we still haven’t received the payment or a...",
+            "status": "success",
+            "created_count": 0,
+            "candidates": []
+          },
+          {
+            "sample_index": 2,
+            "source_row": 97,
+            "title_or_subject": "",
+            "content_preview": "想跟您确认一下，请问修改后的RD77MS样机本周是否已顺利收到？\n如顺利收到的话，预计大概什么时候可以给到我们反馈呢？",
+            "status": "success",
+            "created_count": 0,
+            "candidates": []
+          },
+          {
+            "sample_index": 3,
+            "source_row": 48,
+            "title_or_subject": "",
+            "content_preview": "请查收附件中的发票，并请协助安排付款，谢谢！",
+            "status": "success",
+            "created_count": 0,
+            "candidates": []
+          },
+          {
+            "sample_index": 4,
+            "source_row": 124,
+            "title_or_subject": "",
+            "content_preview": "收到，谢谢",
+            "status": "success",
+            "created_count": 0,
+            "candidates": []
+          },
+          {
+            "sample_index": 5,
+            "source_row": 177,
+            "title_or_subject": "",
+            "content_preview": "I received two links from you, but both have been recalled. Has the file version been updated?",
+            "status": "success",
+            "created_count": 0,
+            "candidates": []
+          }
+        ]
+      },
+      "usable_as_foundation": true,
+      "ingest_recommendation": "适合作为候选知识来源；建议先进入 candidate 池，人工审核后再转正式知识。"
+    },
+    {
+      "key": "business_knowledge",
+      "label": "业务知识、业务流程、话术、案例",
+      "path": "docs\\业务知识、业务流程、话术、案例.xlsx",
+      "kind": "knowledge_xlsx",
+      "parsed_count": 711,
+      "sample_file": "测试数据\\基础数据抽样验证_20260420\\business_knowledge_sample5.json",
+      "standard_import_file": "测试数据\\基础数据抽样验证_20260420\\business_knowledge_sample5_standard_import.xlsx",
+      "standard_preview": {
+        "valid_count": 3,
+        "failed_count": 2,
+        "skipped_count": 0
+      },
+      "validation": {
+        "created_total": 0,
+        "items": [
+          {
+            "sample_index": 1,
+            "source_row": 195,
+            "title_or_subject": "如何更新报价信息?",
+            "content_preview": "客户应在原有报价邮件上进行更新并重新发送给销售。",
+            "status": "success",
+            "created_count": 0,
+            "candidates": []
+          },
+          {
+            "sample_index": 2,
+            "source_row": 64,
+            "title_or_subject": "客户回复没有需求，如何回答？",
+            "content_preview": "是啊，我知道您平时可能会有这方面的需要，也可能会有固定的供应商嘛。_x000D_\n所以不知道有没有可能，我发一些我们的案例，您有时间的话，可以看一下吗？",
+            "status": "success",
+            "created_count": 0,
+            "candidates": []
+          },
+          {
+            "sample_index": 3,
+            "source_row": 628,
+            "title_or_subject": "客户提到的“TR”和“TS”分别代表什么？",
+            "content_preview": "1. TR在这里并不是指土耳其，而是一个特定的缩写或代码。_x000D_\n2. TS可能指的是传统书籍中的某个特定部分，需要保留不翻。",
+            "status": "success",
+            "created_count": 0,
+            "candidates": []
+          },
+          {
+            "sample_index": 4,
+            "source_row": 557,
+            "title_or_subject": "支付流程和条件是什么？",
+            "content_preview": "1. 客户确认后，费用支付没有问题，基于以往的合作信用。_x000D_\n2. 公司规定通过特定方式（比如B围）进行付款。_x000D_\n3. 此前有合作历史，包括支付流程及必要的信息交换。",
+            "status": "success",
+            "created_count": 0,
+            "candidates": []
+          },
+          {
+            "sample_index": 5,
+            "source_row": 532,
+            "title_or_subject": "如何对于大公司如何进行部门级别的开发？",
+            "content_preview": "1.了解公司的整体结构，识别出各个业务部门_x000D_\n2.逐个部门进行开发，从已合作的部门开始_x000D_\n3. 定制化方案，满足部门特定需求",
+            "status": "success",
+            "created_count": 0,
+            "candidates": []
+          }
+        ]
+      },
+      "usable_as_foundation": true,
+      "ingest_recommendation": "适合作为基础知识来源；原文件缺标准表头，建议先转换为标准模板后入库。"
+    },
+    {
+      "key": "translation_quote_doc",
+      "label": "笔译报价规范",
+      "path": "docs\\笔译报价.doc",
+      "kind": "doc_quote",
+      "extractable": false,
+      "reason": "未找到 word/document.xml，包内只有主题/样式资源，未发现正文",
+      "package_files": [
+        "[Content_Types].xml",
+        "_rels/.rels",
+        "theme/theme/themeManager.xml",
+        "theme/theme/theme1.xml",
+        "theme/theme/_rels/themeManager.xml.rels"
+      ],
+      "parsed_count": 0,
+      "sample_file": null,
+      "validation": {
+        "created_total": 0,
+        "items": []
+      },
+      "usable_as_foundation": false,
+      "ingest_recommendation": "当前文件未发现可抽取正文，不能作为入库基础数据；请重新提供包含正文表格/段落的 .docx/.xlsx/.pdf 或可解析 .doc。"
+    }
+  ]
+}

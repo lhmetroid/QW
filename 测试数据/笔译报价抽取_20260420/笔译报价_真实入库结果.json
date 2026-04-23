@@ -1,0 +1,604 @@
+{
+  "status": "success",
+  "filename": "笔译报价_结构化入库.xlsx",
+  "sheet": "kb_pricing_import",
+  "import_type": "pricing",
+  "import_batch": "pricing_excel_60a34f67c2e9",
+  "created_count": 59,
+  "skipped_count": 0,
+  "failed_count": 0,
+  "created": [
+    {
+      "row": 2,
+      "document_id": "0c252310-a645-473d-9b8a-914c2fd33394",
+      "chunk_id": "684fd4c0-17e2-46e1-8eb4-33e42c5152b4",
+      "pricing_rule_created": true,
+      "title": "英译中普通类/技术类报价 200元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 3,
+      "document_id": "0b352395-8087-4fc0-bebd-5521c144ed6d",
+      "chunk_id": "7debcd77-649c-407d-8611-0fdba971d6d9",
+      "pricing_rule_created": true,
+      "title": "日译中普通类/技术类报价 200元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 4,
+      "document_id": "762c9889-c573-4ab7-beb9-55ab613492c1",
+      "chunk_id": "2a64eb14-8c95-4cdb-894d-b1731859acb4",
+      "pricing_rule_created": true,
+      "title": "英译中合同、条款类报价 240元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 5,
+      "document_id": "15024279-c293-43c0-a8f1-b2675affc1d3",
+      "chunk_id": "55d732e6-b4dc-40e4-996f-7b21cfe27766",
+      "pricing_rule_created": true,
+      "title": "日译中合同、条款类报价 240元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 6,
+      "document_id": "410557a1-b61e-4936-96f4-6a43bbf942f1",
+      "chunk_id": "10cbf5fe-6c73-4163-a407-136a62cb2de8",
+      "pricing_rule_created": true,
+      "title": "英译中公关、新闻稿报价 400元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 7,
+      "document_id": "3a9e2e72-ff78-4251-8ca1-564a79b3ec74",
+      "chunk_id": "a07cb05c-c92a-446b-8c6a-1ecbf8849aa6",
+      "pricing_rule_created": true,
+      "title": "日译中公关、新闻稿报价 400元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 8,
+      "document_id": "d6de94cd-4c4d-4117-8cce-324524bccebe",
+      "chunk_id": "502afe33-124a-483f-930d-2f7987de9a8f",
+      "pricing_rule_created": true,
+      "title": "英译中菜单、铭牌、产品名和简介、广告语、古文等文学类报价 400元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 9,
+      "document_id": "1248a11d-f19f-47c0-ba13-ece1883a2cbb",
+      "chunk_id": "26e30a30-16ff-4889-aecb-368e10a6f0c1",
+      "pricing_rule_created": true,
+      "title": "日译中菜单、铭牌、产品名和简介、广告语、古文等文学类报价 400元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 10,
+      "document_id": "09e4967d-0595-4877-b794-1c7d53a7c177",
+      "chunk_id": "55375f55-fb50-461c-8363-3f12ba5184be",
+      "pricing_rule_created": true,
+      "title": "英译中幻灯片类报价 30元/幻灯片",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 11,
+      "document_id": "57867988-e5eb-425e-9efa-878ee60b3f60",
+      "chunk_id": "68a74a12-335c-46ec-83ed-dabb62557cf8",
+      "pricing_rule_created": true,
+      "title": "日译中幻灯片类报价 30元/幻灯片",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 12,
+      "document_id": "fb6109fa-15f2-4613-86fd-8ee42482e01c",
+      "chunk_id": "6bf945c4-5d0c-4c5b-92cb-4f79ec15ba1c",
+      "pricing_rule_created": true,
+      "title": "中译英普通类/技术类报价 280元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 13,
+      "document_id": "c31d5b6e-6bc3-451f-a23b-54124af3acc3",
+      "chunk_id": "8ad67f1a-99a5-4ecd-b574-238fb6f3e2ca",
+      "pricing_rule_created": true,
+      "title": "中译日普通类/技术类报价 280元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 14,
+      "document_id": "964dad00-2b74-4ff6-97a2-eeee0891c3c9",
+      "chunk_id": "3400acb6-dcc4-4a46-a548-5ab99af32b90",
+      "pricing_rule_created": true,
+      "title": "中译英合同、条款类报价 320元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 15,
+      "document_id": "ea971b19-c542-4b32-9718-67d494b46a2f",
+      "chunk_id": "d753380f-d056-498b-baed-76fa19841e82",
+      "pricing_rule_created": true,
+      "title": "中译日合同、条款类报价 320元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 16,
+      "document_id": "f133d8e8-229f-4814-b72e-b285d7ec3050",
+      "chunk_id": "608af83d-216d-45dc-b18c-d66d12d80b95",
+      "pricing_rule_created": true,
+      "title": "中译英公关、新闻稿报价 560元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 17,
+      "document_id": "fa3e01da-7f3c-4223-8f28-2507cd1e924a",
+      "chunk_id": "6375e921-414f-407b-87ce-a656e31d324e",
+      "pricing_rule_created": true,
+      "title": "中译日公关、新闻稿报价 560元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 18,
+      "document_id": "aa399c3b-ab5e-4121-a635-4ffb4ef93cb5",
+      "chunk_id": "d46acd8a-2c58-48a6-a38a-61cae744531d",
+      "pricing_rule_created": true,
+      "title": "中译英菜单、铭牌、产品名和简介、广告语、古文等文学类报价 560元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 19,
+      "document_id": "c6d88f20-3206-451b-b99f-834534bc9378",
+      "chunk_id": "d6afa68a-3c43-476b-94c9-bb1442c7d84c",
+      "pricing_rule_created": true,
+      "title": "中译日菜单、铭牌、产品名和简介、广告语、古文等文学类报价 560元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 20,
+      "document_id": "dc312367-108a-48a9-8178-3a209940c7d0",
+      "chunk_id": "d907bd75-f29e-45e8-8e4e-cdb5de09e79d",
+      "pricing_rule_created": true,
+      "title": "中译英中国译员翻译后加外籍译员母语润稿报价 800元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 21,
+      "document_id": "d5ec26a2-d7ac-42a1-b9ef-ba1ca780ffc4",
+      "chunk_id": "29970d6c-5163-4a56-a2d4-d8d210f6668c",
+      "pricing_rule_created": true,
+      "title": "中译日中国译员翻译后加外籍译员母语润稿报价 800元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 22,
+      "document_id": "2cfc8682-ed53-4e76-afa3-362d90eb7530",
+      "chunk_id": "a7425c76-df4a-4257-8047-422a49c33388",
+      "pricing_rule_created": true,
+      "title": "中译英直接外籍译员母语翻译报价 1200元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 23,
+      "document_id": "23e0eb80-9c94-4c0d-bfce-6bf4b4d531ef",
+      "chunk_id": "da59a984-8988-47e1-b8b7-d53dc5e1f5e0",
+      "pricing_rule_created": true,
+      "title": "中译日直接外籍译员母语翻译报价 1200元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 24,
+      "document_id": "09766807-fc54-4250-8a8f-f810bd5f86b4",
+      "chunk_id": "4d89d1fb-e4a2-48ff-8717-6caf58cca18f",
+      "pricing_rule_created": true,
+      "title": "英文润稿英文外籍译员母语润稿报价 1.4元/英文单词",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 25,
+      "document_id": "d54c2d59-978f-48a9-bd3f-d039a38ec08c",
+      "chunk_id": "b7176fc9-3476-4fdf-9b2a-b69e028cd720",
+      "pricing_rule_created": true,
+      "title": "法译中法/德报价 300元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 26,
+      "document_id": "7d45e8e1-f8c1-4607-958f-5b96b9426161",
+      "chunk_id": "c2d1f253-09d5-4d4b-9083-95bf05dea1e9",
+      "pricing_rule_created": true,
+      "title": "德译中法/德报价 300元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 27,
+      "document_id": "34259153-e270-4ab0-924b-5f321ca5d202",
+      "chunk_id": "ab7fa305-f8e8-49b8-a1b8-c6b3999607e1",
+      "pricing_rule_created": true,
+      "title": "中译法法/德报价 400元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 28,
+      "document_id": "61a5ac18-683b-40b7-a4d9-71de0223b1af",
+      "chunk_id": "aa8edcad-15a1-423f-a85d-5002e610fa0b",
+      "pricing_rule_created": true,
+      "title": "中译德法/德报价 400元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 29,
+      "document_id": "90963cfa-154f-4ada-84d7-afb563a1e301",
+      "chunk_id": "cd743ae4-c7da-4d94-b0a7-fe743d81d896",
+      "pricing_rule_created": true,
+      "title": "韩译中韩报价 340元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 30,
+      "document_id": "bc708b97-136d-44ff-ac9f-1271fd2405d8",
+      "chunk_id": "0c1f48ec-d55e-42ea-be06-fc6b039a7d41",
+      "pricing_rule_created": true,
+      "title": "中译韩韩报价 450元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 31,
+      "document_id": "5c67ddd7-cd85-4f55-a70e-cd0f7874e372",
+      "chunk_id": "d6644b93-3835-4cca-853c-9cc4c9da025a",
+      "pricing_rule_created": true,
+      "title": "俄译中俄/意/西班牙等小语种报价 450元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 32,
+      "document_id": "13843343-1d06-42b8-bde8-92bc144c7325",
+      "chunk_id": "37c98993-5e75-41b1-b65a-ab0ae58cc69d",
+      "pricing_rule_created": true,
+      "title": "意译中俄/意/西班牙等小语种报价 450元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 33,
+      "document_id": "372e3acb-e108-41e4-999b-5553dbc1cc90",
+      "chunk_id": "962400ef-51de-4f40-a35f-979cac4d0eda",
+      "pricing_rule_created": true,
+      "title": "西译中俄/意/西班牙等小语种报价 450元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 34,
+      "document_id": "fefaaebf-5cda-47cb-8017-78071bfac256",
+      "chunk_id": "d6f060d8-cc48-4242-aa69-25109014d9ed",
+      "pricing_rule_created": true,
+      "title": "中译俄俄/意/西班牙等小语种报价 550元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 35,
+      "document_id": "df7b10e6-5cb2-494b-b486-7494ea069338",
+      "chunk_id": "3269a676-6262-4d4c-9d91-039bf4f5327d",
+      "pricing_rule_created": true,
+      "title": "中译意俄/意/西班牙等小语种报价 550元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 36,
+      "document_id": "da4a9d9c-4b15-44c0-a4a8-6a1080b4006e",
+      "chunk_id": "5ada0355-0e0d-4b8d-942e-e681af70b7d8",
+      "pricing_rule_created": true,
+      "title": "中译西俄/意/西班牙等小语种报价 550元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 37,
+      "document_id": "04750285-e9a0-4255-a36f-a73fa1127f3d",
+      "chunk_id": "ef0e41e6-c484-41d4-beff-aecc1bba5781",
+      "pricing_rule_created": true,
+      "title": "阿译中阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 600元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 38,
+      "document_id": "5efb276b-d9a7-4f41-b169-0752b567b0a1",
+      "chunk_id": "8ee9a026-efc8-462c-8f09-6ae6fe8f1132",
+      "pricing_rule_created": true,
+      "title": "丹麦语译中阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 600元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 39,
+      "document_id": "f7bc112b-af4e-4110-b7bf-6d53caad44d0",
+      "chunk_id": "d092aba2-b2a0-499f-aeb4-bdb171045389",
+      "pricing_rule_created": true,
+      "title": "葡译中阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 600元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 40,
+      "document_id": "44986fa1-cf40-45ea-9b64-d4189d155a74",
+      "chunk_id": "8b537c0b-418b-4eda-a4cd-1c073dd25852",
+      "pricing_rule_created": true,
+      "title": "荷译中阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 600元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 41,
+      "document_id": "4d20ca97-e932-497f-b5b4-564f7475c513",
+      "chunk_id": "e794211d-366e-4721-a726-d02d89e2d5cc",
+      "pricing_rule_created": true,
+      "title": "瑞典语译中阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 600元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 42,
+      "document_id": "8379a01f-3220-4a17-b957-202135c6927d",
+      "chunk_id": "6fc9cdcc-27d9-4570-ad85-96c1e1491ffc",
+      "pricing_rule_created": true,
+      "title": "挪威语译中阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 600元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 43,
+      "document_id": "43126b61-0795-4b1b-82ed-3c641c75a2ee",
+      "chunk_id": "939a5ddf-9b56-4c1b-8b5d-6e4348e58caa",
+      "pricing_rule_created": true,
+      "title": "希腊语译中阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 600元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 44,
+      "document_id": "ddc416f7-4a8f-401a-91d1-8041b32523c1",
+      "chunk_id": "6064ef07-a994-4967-a2e7-9676d4b25b55",
+      "pricing_rule_created": true,
+      "title": "土耳其语译中阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 600元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 45,
+      "document_id": "ab36f6ef-9a44-44a8-b001-fb0090e7d233",
+      "chunk_id": "d08e5f54-9f3b-429f-b06e-6d1507e1b3a7",
+      "pricing_rule_created": true,
+      "title": "中译阿阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 700元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 46,
+      "document_id": "b5ba983b-2450-43ec-ab29-dced1f21857f",
+      "chunk_id": "0cb30420-66d2-4d40-b7f9-0ddacee2ec36",
+      "pricing_rule_created": true,
+      "title": "中译丹麦语阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 700元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 47,
+      "document_id": "47d91b9e-b1c3-471e-a229-300fea0f28ec",
+      "chunk_id": "6dfb710f-a5e2-47dc-818a-30f41986d504",
+      "pricing_rule_created": true,
+      "title": "中译葡阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 700元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 48,
+      "document_id": "1a61cc29-2ac4-492a-b4cf-662e36deac37",
+      "chunk_id": "59bc2a3d-bcee-4fb3-b7d7-f78735b55825",
+      "pricing_rule_created": true,
+      "title": "中译荷阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 700元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 49,
+      "document_id": "916e9aca-88bd-4567-ab2f-46b7012bdb3b",
+      "chunk_id": "549f6434-245d-44f1-bde7-d94dde80c32d",
+      "pricing_rule_created": true,
+      "title": "中译瑞典语阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 700元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 50,
+      "document_id": "9a035dcb-69e1-4a09-a530-7df3ab9d70c8",
+      "chunk_id": "80c1159c-ed6f-4a0e-91dc-85abbbc451eb",
+      "pricing_rule_created": true,
+      "title": "中译挪威语阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 700元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 51,
+      "document_id": "a7417831-f543-430f-ae3d-d647677779fa",
+      "chunk_id": "9ac04daa-652b-4b6d-83ff-e8f26948083c",
+      "pricing_rule_created": true,
+      "title": "中译希腊语阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 700元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 52,
+      "document_id": "42188295-a456-4ecc-950e-82104d9f9edb",
+      "chunk_id": "841d0e25-8743-4c8b-9783-30a8f8c768fc",
+      "pricing_rule_created": true,
+      "title": "中译土耳其语阿拉伯、丹麦、葡萄牙、荷兰、瑞典、挪威、希腊、土耳其等欧洲稀有语种报价 700元/1000中文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 53,
+      "document_id": "d63f76f2-d765-4562-8bdd-63abc217f8a6",
+      "chunk_id": "2f6e9804-5bf6-4b6e-b289-b06609a35a02",
+      "pricing_rule_created": true,
+      "title": "法译英法/德译英报价 1.14元/原文单词",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 54,
+      "document_id": "c425b108-095f-4b1c-b922-44ce90bc138b",
+      "chunk_id": "2b44594b-b9de-46fb-a7e3-b34687751ca8",
+      "pricing_rule_created": true,
+      "title": "德译英法/德译英报价 1.14元/原文单词",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 55,
+      "document_id": "49352191-486f-40a6-8905-7d014cee00df",
+      "chunk_id": "e61aa73b-b5b5-4250-b37c-0bef828d99bc",
+      "pricing_rule_created": true,
+      "title": "英译法英译法/德报价 1.08元/英文单词",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 56,
+      "document_id": "ea9f96e0-c42f-407d-81d7-3056f5b6a6c2",
+      "chunk_id": "d1edbec1-9500-42ef-b698-146ad3978eab",
+      "pricing_rule_created": true,
+      "title": "英译德英译法/德报价 1.08元/英文单词",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 57,
+      "document_id": "a1ab50ce-9c98-4cf8-98aa-b69e2e13bcb2",
+      "chunk_id": "91dd8fc6-e391-4abf-ad1c-afc6912d660f",
+      "pricing_rule_created": true,
+      "title": "英译日英译日报价 0.96元/英文单词",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 58,
+      "document_id": "20f547d5-bef8-4a76-9375-f432de2ce0b1",
+      "chunk_id": "59dbac94-fe5b-4bca-91f5-7b0ab6c3406b",
+      "pricing_rule_created": true,
+      "title": "日译英日译英报价 0.8元/日文字符",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 59,
+      "document_id": "2ed301e2-6fff-477e-8cfa-a94d147dbd1f",
+      "chunk_id": "3bdae133-7b74-4b58-be33-7ab8ef8c92f5",
+      "pricing_rule_created": true,
+      "title": "无固定语种纯文字输入并排版(非PPT)报价 20元/A4原稿",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    },
+    {
+      "row": 60,
+      "document_id": "0fb05aab-d35d-4fdd-8c34-133baed180dc",
+      "chunk_id": "f43714f3-0bed-448d-89be-805875e50f25",
+      "pricing_rule_created": true,
+      "title": "无固定语种PowerPoint排版(客户不提供PPT原稿软件)报价 15元/幻灯片",
+      "knowledge_type": "pricing",
+      "business_line": "translation",
+      "risk_level": "high"
+    }
+  ],
+  "skipped": [],
+  "failed": []
+}

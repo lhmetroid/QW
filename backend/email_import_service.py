@@ -6,7 +6,7 @@ from io import BytesIO, StringIO
 
 class EmailImportService:
     SUBJECT_ALIASES = ["主题", "邮件主题", "subject", "title"]
-    CONTENT_ALIASES = ["正文", "内容", "邮件内容", "摘要", "body", "content"]
+    CONTENT_ALIASES = ["正文", "内容", "邮件内容", "摘要", "body", "content", "本次邮件内容提纯后", "PureEmailText", "原始邮件内容", "OriThisEmail"]
     SENDER_ALIASES = ["发件人", "sender", "from", "from_email"]
     SENT_AT_ALIASES = ["发送时间", "日期", "时间", "sent_at", "date", "created_at"]
 
@@ -48,6 +48,8 @@ class EmailImportService:
         for row_number, row in enumerate(rows[1:], start=2):
             subject = cls._cell(row, subject_idx)
             content = cls._cell(row, content_idx)
+            if str(subject or "").strip() in {"OriThisEmail", "PureEmailText"} or str(content or "").strip() in {"OriThisEmail", "PureEmailText"}:
+                continue
             if not subject and not content:
                 continue
             records.append(

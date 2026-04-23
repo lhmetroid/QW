@@ -1,0 +1,27 @@
+{
+  "valid_rows": 59,
+  "failed_rows": 0,
+  "skipped_rows": 0,
+  "first_failed": [],
+  "contains_zh_de": true,
+  "zh_de_rows": [
+    {
+      "title": "中译德法/德报价 400元/1000中文字符",
+      "language_pair": "zh->de",
+      "service_scope": "general",
+      "pricing_rule": {
+        "business_line": "translation",
+        "sub_service": "written_translation",
+        "language_pair": "zh->de",
+        "service_scope": "general",
+        "unit": "per_1000_chars",
+        "currency": "CNY",
+        "price_min": 400,
+        "price_max": 400,
+        "min_charge": null,
+        "urgent_multiplier": null,
+        "tax_policy": null
+      }
+    }
+  ]
+}
