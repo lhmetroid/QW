@@ -541,6 +541,52 @@
             return `<span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${styles[tone] || styles.slate}">${safeText(text)}</span>`;
         }
 
+        function hasDisplayValue(value) {
+            if (value === null || value === undefined) return false;
+            if (Array.isArray(value)) return value.length > 0;
+            if (typeof value === 'object') return Object.keys(value).length > 0;
+            return String(value).trim() !== '';
+        }
+
+        function displayValue(value, fallback = '--待构建--') {
+            if (!hasDisplayValue(value)) return fallback;
+            if (Array.isArray(value)) return value.join('、');
+            if (typeof value === 'object') return JSON.stringify(value, null, 2);
+            return String(value);
+        }
+
+        function rowText(value, fallback = '--待构建--', filledClass = 'text-slate-700', emptyClass = 'text-slate-400') {
+            return {
+                value: displayValue(value, fallback),
+                className: hasDisplayValue(value) ? filledClass : emptyClass
+            };
+        }
+
+        function crmStatusTone(status) {
+            if (status === 'success') return 'emerald';
+            if (status === 'not_found' || status === 'error') return 'rose';
+            if (status === 'empty') return 'amber';
+            return 'slate';
+        }
+
+        function crmFieldValue(info, key, fallbackWhenSuccess = 'CRM暂无该字段数据') {
+            const status = info?.crm_profile_status || 'empty';
+            if (hasDisplayValue(info?.[key])) return rowText(info[key], fallbackWhenSuccess);
+            if (status === 'success') return rowText('', fallbackWhenSuccess);
+            const reason = info?.crm_profile_error || (status === 'empty' ? 'external_userid 为空或未完成 CRM 查询' : `CRM 状态：${status}`);
+            return rowText('', `未读取到：${reason}`, 'text-slate-700', 'text-rose-600');
+        }
+
+        function extractExternalUserIdFromSession(sessionId) {
+            const text = String(sessionId || '').trim();
+            if (text.startsWith('wm') || text.startsWith('wo') || text.startsWith('wb')) return text;
+            if (text.startsWith('single_')) {
+                const found = text.replace('single_', '').split('_').find(part => part.startsWith('wm') || part.startsWith('wo') || part.startsWith('wb'));
+                return found || text;
+            }
+            return text;
+        }
+
         function renderConversationInputCard(messages) {
             const recent = (messages || []).slice(-6);
             const rows = recent.map(m => `
@@ -554,6 +600,11 @@
                     ${renderStatusPill(`已载入 ${messages?.length || 0} 条`, 'blue')}
                     ${renderStatusPill('展示最近 6 条', 'slate')}
                 </div>
+                ${renderPipelineRows([
+                    {label: '会话条数', ...rowText(messages?.length ? `${messages.length} 条` : '', '--待同步--')},
+                    {label: '最新消息', ...rowText(recent.at(-1)?.content, '--待构建--')},
+                    {label: '输入用途', value: '供 Fast-Track 扫描、LLM-1 摘要与后续知识检索使用'}
+                ])}
                 <div class="space-y-2">${rows || '<div class="text-slate-400 italic">暂无会话输入</div>'}</div>`;
             return renderPipelineCard(1, '当前会话输入', '最终回复的原始上下文来源', '#2563eb', body);
         }
@@ -565,8 +616,10 @@
                 : '<span class="text-slate-400 text-[10px] italic">近15句暂无旁路拦截信号</span>';
             const body = `
                 ${renderPipelineRows([
+                    {label: '扫描状态', value: data.stage_status?.fast_track || 'done'},
                     {label: '扫描范围', value: '最近 15 句真实会话'},
-                    {label: '命中信号', html: `<div class="flex flex-wrap gap-1">${signalHtml}</div>`}
+                    {label: '命中信号', html: `<div class="flex flex-wrap gap-1">${signalHtml}</div>`},
+                    {label: '后续影响', value: signals.length ? '作为 LLM-2 输入信号参与回复策略' : '无强信号，不阻断后续摘要和生成'}
                 ])}`;
             const actions = `<button onclick="loadAnalysis(${jsArg(data.user_id || '')})" class="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded hover:bg-slate-100 transition">↺ 刷新</button>`;
             return renderPipelineCard(2, '强信号扫描 (Fast-Track)', '旁路规则先行识别风险、报价、时间等强信号', '#64748b', body, {scriptKey: 'FAST_TRACK_RULES', actions});
@@ -588,24 +641,33 @@
             return renderPipelineCard(3, '第一阶段特征提取', 'LLM-1 将会话压缩为可检索、可生成的结构化摘要', '#6366f1', body, {scriptKey: 'SYSTEM_PROMPT_LLM1', actions});
         }
 
-        function renderCrmContextCard(info) {
-            if (!info || info.crm_profile_status === 'empty' || info.crm_profile_status === 'not_found') {
-                const body = `
-                    <div class="mb-2">${renderStatusPill(info?.crm_profile_status || 'empty', 'slate')}</div>
-                    <div class="text-[11px] text-slate-400">暂无可用客户画像，最终回复不会使用 CRM 加权信息。</div>`;
-                return renderPipelineCard(4, '客户画像 / CRM', '客户等级、生命周期、风险和最近报价用于修正话术边界', '#06b6d4', body);
-            }
-            const flags = info.high_risk_flags || [];
-            const flagsHtml = flags.length ? `<div class="flex flex-wrap gap-1">${flags.map(flag => `<span class="bg-cyan-50 border border-cyan-200 text-cyan-700 px-2 py-0.5 rounded text-[10px] font-bold">${safeText(flag)}</span>`).join('')}</div>` : '<span class="text-slate-400">无</span>';
+        function renderCrmContextCard(info, sessionId = '') {
+            const profile = info || {};
+            const status = profile.crm_profile_status || 'empty';
+            const reason = profile.crm_profile_error || (status === 'success' ? '' : '未读取到 CRM 客户画像');
+            const lookupExternalUserId = profile.crm_external_userid || extractExternalUserIdFromSession(sessionId);
+            const flags = profile.high_risk_flags || [];
+            const flagsHtml = flags.length
+                ? `<div class="flex flex-wrap gap-1">${flags.map(flag => `<span class="bg-cyan-50 border border-cyan-200 text-cyan-700 px-2 py-0.5 rounded text-[10px] font-bold">${safeText(flag)}</span>`).join('')}</div>`
+                : `<span class="${status === 'success' ? 'text-slate-400' : 'text-rose-600'}">${status === 'success' ? '无' : safeText(`未读取到：${reason}`)}</span>`;
             const body = `
-                <div class="mb-2">${renderStatusPill(info.crm_profile_status || 'available', 'emerald')}</div>
+                <div class="flex flex-wrap gap-2 mb-2">
+                    ${renderStatusPill(status, crmStatusTone(status))}
+                    ${status !== 'success' ? renderStatusPill(reason, 'rose') : ''}
+                </div>
                 ${renderPipelineRows([
-                    {label: '客户', value: info.company_name || info.crm_contact_name || '-'},
-                    {label: '层级阶段', value: `${info.customer_tier || '-'} / ${info.customer_lifecycle_stage || '-'}`},
-                    {label: '行业', value: info.company_industry || '-'},
-                    {label: '回款风险', value: info.payment_risk_level || '-'},
+                    {label: 'external_userid', ...rowText(lookupExternalUserId, '未读取到：当前会话无法解析 external_userid', 'text-slate-700', 'text-rose-600')},
+                    {label: '客户真名', ...crmFieldValue(profile, 'crm_contact_name')},
+                    {label: '企业主体', ...crmFieldValue(profile, 'company_name')},
+                    {label: '近期商机', ...crmFieldValue(profile, 'recent_opportunities', 'CRM暂无跟进中商机'), className: `${crmFieldValue(profile, 'recent_opportunities', 'CRM暂无跟进中商机').className} whitespace-pre-wrap`},
+                    {label: '执行合同', ...crmFieldValue(profile, 'ongoing_contracts', 'CRM暂无执行中合同'), className: `${crmFieldValue(profile, 'ongoing_contracts', 'CRM暂无执行中合同').className} whitespace-pre-wrap`},
+                    {label: '最近跟进', ...crmFieldValue(profile, 'contact_recent_followup', 'CRM暂无成功跟进记录'), className: `${crmFieldValue(profile, 'contact_recent_followup', 'CRM暂无成功跟进记录').className} whitespace-pre-wrap`},
+                    {label: '生命周期', ...crmFieldValue(profile, 'customer_lifecycle_stage', 'CRM暂无生命周期判断')},
+                    {label: '客户层级', ...crmFieldValue(profile, 'customer_tier', 'CRM暂无客户层级推断')},
+                    {label: '客户行业', ...crmFieldValue(profile, 'company_industry', 'CRM暂无行业推断')},
+                    {label: '回款风险', ...crmFieldValue(profile, 'payment_risk_level', 'CRM暂无回款风险推断')},
                     {label: '风险标记', html: flagsHtml},
-                    {label: '最近报价', value: info.recent_quote_summary || '-', className: 'text-slate-700 whitespace-pre-wrap'}
+                    {label: '问题原因', value: status === 'success' ? '已读取 CRM；单项为空表示 CRM 暂无对应记录' : reason, className: status === 'success' ? 'text-emerald-700' : 'text-rose-600'}
                 ])}`;
             return renderPipelineCard(4, '客户画像 / CRM', '客户等级、生命周期、风险和最近报价用于修正话术边界', '#06b6d4', body);
         }
@@ -631,14 +693,27 @@
         function renderKnowledgeBaseCard(data) {
             const knowledge = data.knowledge_v2;
             if (!data.has_v1) {
-                return renderPipelineCard(5, '知识库检索证据', '基于核心诉求检索已发布知识、报价规则、案例和 FAQ', '#10b981', '<div class="text-[11px] text-slate-400">等待第一阶段特征提取后形成检索条件。</div>');
+                return renderPipelineCard(5, '知识库检索证据', '基于核心诉求检索已发布知识、报价规则、案例和 FAQ', '#10b981', `
+                    <div class="mb-2">${renderStatusPill('等待一阶段', 'amber')}</div>
+                    ${renderPipelineRows([
+                        {label: '检索问题', value: '--待构建--', className: 'text-slate-400'},
+                        {label: '检索特征', value: '--待构建--', className: 'text-slate-400'},
+                        {label: '过滤条件', value: '--待检索--', className: 'text-slate-400'},
+                        {label: '命中证据', value: '--待检索--', className: 'text-slate-400'},
+                        {label: '复核要求', value: '--待检索--', className: 'text-slate-400'},
+                        {label: '问题原因', value: '等待第一阶段特征提取后形成检索条件', className: 'text-amber-700'}
+                    ])}`);
             }
             if (!knowledge) {
                 return renderPipelineCard(5, '知识库检索证据', '基于核心诉求检索已发布知识、报价规则、案例和 FAQ', '#10b981', `
                     <div class="mb-2">${renderStatusPill('待二阶段生成时检索', 'amber')}</div>
                     ${renderPipelineRows([
                         {label: '检索问题', value: gracefulStr(data.core_demand)},
-                        {label: '说明', value: '点击第二阶段生成后，会按核心诉求、客户画像和结构化过滤条件检索知识库。'}
+                        {label: '检索特征', value: '--待检索--', className: 'text-slate-400'},
+                        {label: '过滤条件', value: '--待检索--', className: 'text-slate-400'},
+                        {label: '命中证据', value: '--待检索--', className: 'text-slate-400'},
+                        {label: '复核要求', value: '--待检索--', className: 'text-slate-400'},
+                        {label: '问题原因', value: '点击第二阶段生成后，会按核心诉求、客户画像和结构化过滤条件检索知识库。', className: 'text-amber-700'}
                     ])}`);
             }
             const hits = knowledge.hits || [];
@@ -654,6 +729,7 @@
                 </div>
                 ${renderPipelineRows([
                     {label: '检索问题', value: knowledge.query_text || data.core_demand || '-'},
+                    {label: '检索特征', html: `<pre class="bg-slate-50 border rounded p-2 overflow-auto max-h-36">${safeText(JSON.stringify(knowledge.query_features || {}, null, 2))}</pre>`},
                     {label: '过滤条件', html: `<pre class="bg-slate-50 border rounded p-2 overflow-auto max-h-36">${safeText(JSON.stringify(filters, null, 2))}</pre>`},
                     {label: '证据分类', value: `规则 ${context.rules?.length || 0} / FAQ ${context.faqs?.length || 0} / 案例 ${context.cases?.length || 0}`},
                     {label: '复核要求', value: knowledge.manual_review_required ? '需要人工复核' : '无需人工复核', className: knowledge.manual_review_required ? 'text-rose-700 font-bold' : 'text-emerald-700 font-bold'}
@@ -676,6 +752,11 @@
                 </div>` : '';
             const body = `
                 <div class="mb-2">${renderStatusPill(data.has_v2 ? '已生成' : '等待生成', data.has_v2 ? 'emerald' : 'amber')}</div>
+                ${renderPipelineRows([
+                    {label: '生成输入', value: data.has_v1 ? '结构化摘要 + CRM 客户画像 + 知识库证据' : '--待构建--', className: data.has_v1 ? 'text-slate-700' : 'text-slate-400'},
+                    {label: '回复文案', value: data.has_v2 ? '已生成，见下方全文' : '--待生成--', className: data.has_v2 ? 'text-emerald-700 font-bold' : 'text-slate-400'},
+                    {label: '问题原因', value: data.has_v2 ? '已完成二阶段生成' : (data.has_v1 ? '等待点击生成回复' : '需要先完成第一阶段特征提取'), className: data.has_v2 ? 'text-emerald-700' : 'text-amber-700'}
+                ])}
                 <div class="font-medium text-amber-900 bg-amber-50 p-3 rounded-lg border border-amber-100 whitespace-pre-wrap leading-relaxed ${data.has_v2 ? '' : 'opacity-50'}">${safeText(advice || '（空，等待大模型推演）')}</div>
                 ${feedback}`;
             return renderPipelineCard(6, '第二阶段话术生成 / 最终回复', 'LLM-2 使用结构化摘要、CRM 和知识证据生成可复制回复', '#f59e0b', body, {scriptKey: 'SYSTEM_PROMPT_LLM2', actions});
@@ -683,7 +764,15 @@
 
         function renderValidationCard(validation) {
             if (!validation) {
-                return renderPipelineCard(7, '输出校验与人工复核', '检查回复是否缺证据、越权承诺或需要人工复核', '#f43f5e', '<div class="text-[11px] text-slate-400">等待第二阶段生成后执行校验。</div>');
+                return renderPipelineCard(7, '输出校验与人工复核', '检查回复是否缺证据、越权承诺或需要人工复核', '#f43f5e', `
+                    <div class="mb-2">${renderStatusPill('等待校验', 'amber')}</div>
+                    ${renderPipelineRows([
+                        {label: '校验状态', value: '--待校验--', className: 'text-slate-400'},
+                        {label: '阻断问题', value: '--待校验--', className: 'text-slate-400'},
+                        {label: '提醒事项', value: '--待校验--', className: 'text-slate-400'},
+                        {label: '人工复核', value: '--待校验--', className: 'text-slate-400'},
+                        {label: '问题原因', value: '等待第二阶段生成后执行校验。', className: 'text-amber-700'}
+                    ])}`);
             }
             const warnings = validation.warnings || [];
             const blocking = validation.blocking_issues || [];
@@ -757,7 +846,7 @@
                     ${renderConversationInputCard(currentSessionMessages)}
                     ${renderFastTrackCard(data)}
                     ${renderStageOneCard(data, userId)}
-                    ${renderCrmContextCard(data.crm_info)}
+                    ${renderCrmContextCard(data.crm_info, userId)}
                     ${renderKnowledgeBaseCard(data)}
                     ${renderFinalReplyCard(data, userId)}
                     ${renderValidationCard(data.assist_validation)}
