@@ -5183,15 +5183,17 @@ def build_single_session_id(userid: str, external_userid: str) -> str:
     return session_id[:50]
 
 def extract_external_userid(value: str) -> str:
-    """从单聊 session_id 中取真实外部联系人 ID，避免拿组合会话 ID 查 CRM。"""
+    """从单聊 session_id 中取真实外部联系人 ID；群聊没有 CRM external_userid。"""
     text_value = (value or "").strip()
     if text_value.startswith(("wm", "wo", "wb")):
         return text_value
+    if text_value.startswith("group_"):
+        return ""
     if text_value.startswith("single_"):
         for part in text_value.replace("single_", "", 1).split("_"):
             if part.startswith(("wm", "wo", "wb")):
                 return part
-    return text_value
+    return ""
 
 def collect_fast_track_signals(logs) -> list:
     """扫描最近消息命中的强信号规则，规则异常不阻断主流程"""

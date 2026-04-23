@@ -580,11 +580,12 @@
         function extractExternalUserIdFromSession(sessionId) {
             const text = String(sessionId || '').trim();
             if (text.startsWith('wm') || text.startsWith('wo') || text.startsWith('wb')) return text;
+            if (text.startsWith('group_')) return '';
             if (text.startsWith('single_')) {
                 const found = text.replace('single_', '').split('_').find(part => part.startsWith('wm') || part.startsWith('wo') || part.startsWith('wb'));
-                return found || text;
+                return found || '';
             }
-            return text;
+            return '';
         }
 
         function renderConversationInputCard(messages) {
@@ -646,6 +647,9 @@
             const status = profile.crm_profile_status || 'empty';
             const reason = profile.crm_profile_error || (status === 'success' ? '' : '未读取到 CRM 客户画像');
             const lookupExternalUserId = profile.crm_external_userid || extractExternalUserIdFromSession(sessionId);
+            const externalUserIdReason = String(sessionId || '').startsWith('group_')
+                ? '群聊会话没有单一外部联系人 external_userid，不能按 CRM 客户画像接口查询'
+                : '当前会话无法解析 wm/wo/wb 外部联系人 external_userid';
             const flags = profile.high_risk_flags || [];
             const flagsHtml = flags.length
                 ? `<div class="flex flex-wrap gap-1">${flags.map(flag => `<span class="bg-cyan-50 border border-cyan-200 text-cyan-700 px-2 py-0.5 rounded text-[10px] font-bold">${safeText(flag)}</span>`).join('')}</div>`
@@ -656,7 +660,7 @@
                     ${status !== 'success' ? renderStatusPill(reason, 'rose') : ''}
                 </div>
                 ${renderPipelineRows([
-                    {label: 'external_userid', ...rowText(lookupExternalUserId, '未读取到：当前会话无法解析 external_userid', 'text-slate-700', 'text-rose-600')},
+                    {label: 'external_userid', ...rowText(lookupExternalUserId, `未读取到：${externalUserIdReason}`, 'text-slate-700', 'text-rose-600')},
                     {label: '客户真名', ...crmFieldValue(profile, 'crm_contact_name')},
                     {label: '企业主体', ...crmFieldValue(profile, 'company_name')},
                     {label: '近期商机', ...crmFieldValue(profile, 'recent_opportunities', 'CRM暂无跟进中商机'), className: `${crmFieldValue(profile, 'recent_opportunities', 'CRM暂无跟进中商机').className} whitespace-pre-wrap`},
