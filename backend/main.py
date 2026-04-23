@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
+import xml.etree.ElementTree as ET
 import os
 import logging
 import json
@@ -31,6 +32,10 @@ from worker import start_job
 
 app = FastAPI(title="企微智能实时提醒后台")
 logger = logging.getLogger(__name__)
+
+@app.get("/")
+async def index_redirect():
+    return RedirectResponse(url="/static/index.html")
 
 @app.middleware("http")
 async def request_observability_middleware(request: Request, call_next):
@@ -114,14 +119,24 @@ from archive_service import ArchiveService
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("🔄 启动本地 20秒 异步抗阻塞定时刷盘时钟 (兼顾 Webhook 失效或本地未连通公网情况)")
+    archive_status = ArchiveService.config_status()
+    if not settings.ENABLE_ARCHIVE_POLLING:
+        logger.info("企微会话存档自动轮询未启用；知识库后台正常启动。")
+        return
+    if not archive_status["ready"]:
+        logger.warning("企微会话存档自动轮询已请求但配置不完整，跳过启动: %s", archive_status["missing"])
+        return
+
+    logger.info("启动企微会话存档 20 秒异步轮询任务")
     async def background_poll_worker():
         while True:
             try:
                 # 使用 to_thread 将底层 C-SDK 同步阻塞(10秒超时网络I/O) 推到独立线程池，绝不卡死 FastAPI 主服务
-                await asyncio.to_thread(ArchiveService.sync_today_data)
+                result = await asyncio.to_thread(ArchiveService.sync_today_data)
+                if result.get("status") != "success":
+                    logger.warning("企微会话存档轮询未成功: %s", result.get("msg"))
             except Exception as e:
-                logger.error(f"⚠️ 自动轮询线程异常: {e}")
+                logger.error(f"企微会话存档自动轮询异常: {e}")
             await asyncio.sleep(20)
     
     asyncio.create_task(background_poll_worker())
@@ -152,9 +167,20 @@ async def qywx_receive_message(
     if not xml_content:
         raise HTTPException(status_code=400, detail="Decrypt failed")
     
-    # 此处省略 XML 解析逻辑，直接模拟
-    from_user = "mock_user" 
-    content = "测试消息内容" 
+    try:
+        root = ET.fromstring(xml_content)
+        from_user = (root.findtext("FromUserName") or "").strip()
+        content = (
+            root.findtext("Content")
+            or root.findtext("Recognition")
+            or root.findtext("Title")
+            or ""
+        ).strip()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"企微消息 XML 解析失败: {exc}") from exc
+
+    if not from_user or not content:
+        raise HTTPException(status_code=400, detail="企微回调缺少 FromUserName 或文本内容")
     
     # 1. 实时旁路扫描 (主线程)
     IntentEngine.fast_track_scan(from_user, content)
@@ -213,6 +239,7 @@ async def list_knowledge():
 class KnowledgeManualCreate(BaseModel):
     title: str
     content: str
+    knowledge_class: str | None = None
     knowledge_type: str = "faq"
     business_line: str = "general"
     sub_service: str | None = None
@@ -225,7 +252,7 @@ class KnowledgeManualCreate(BaseModel):
     source_ref: str | None = None
     owner: str | None = None
     priority: int = 50
-    risk_level: str = "medium"
+    risk_level: str | None = None
     review_required: bool = True
     tags: dict | None = None
     effective_from: datetime | None = None
@@ -242,6 +269,7 @@ class KnowledgeRetrieveRequest(BaseModel):
 class KnowledgeChunkCreate(BaseModel):
     title: str
     content: str
+    knowledge_class: str | None = None
     knowledge_type: str = "faq"
     chunk_type: str = "rule"
     business_line: str = "general"
@@ -256,13 +284,14 @@ class KnowledgeChunkCreate(BaseModel):
 
 class KnowledgeMultiChunkCreate(BaseModel):
     title: str
+    knowledge_class: str | None = None
     knowledge_type: str = "faq"
     business_line: str = "general"
     sub_service: str | None = None
     source_type: str = "manual"
     source_ref: str | None = None
     owner: str | None = None
-    risk_level: str = "medium"
+    risk_level: str | None = None
     review_required: bool = True
     tags: dict | None = None
     effective_from: datetime | None = None
@@ -271,6 +300,7 @@ class KnowledgeMultiChunkCreate(BaseModel):
 
 class KnowledgeDocumentUpdate(BaseModel):
     title: str | None = None
+    knowledge_class: str | None = None
     knowledge_type: str | None = None
     business_line: str | None = None
     sub_service: str | None = None
@@ -283,6 +313,7 @@ class KnowledgeDocumentUpdate(BaseModel):
 class KnowledgeChunkUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
+    knowledge_class: str | None = None
     chunk_type: str | None = None
     knowledge_type: str | None = None
     business_line: str | None = None
@@ -414,11 +445,15 @@ class PricingRulePayload(BaseModel):
 
 KB_LABELS = {
     "business_line": {
-        "general": "通用",
         "translation": "翻译",
         "printing": "印刷",
-        "exhibition": "展台/展会",
+        "interpretation": "同传",
+        "multimedia": "多媒体译制",
+        "exhibition": "展台搭建",
+        "gifts": "礼品",
+        "general": "通用",
     },
+    "sub_service": {},
     "knowledge_type": {
         "capability": "能力知识",
         "pricing": "报价知识",
@@ -432,9 +467,17 @@ KB_LABELS = {
         "archived": "已归档",
         "rejected": "已驳回",
     },
+    "document_stage": {
+        "draft": "草稿",
+        "review": "审核中",
+        "approved": "审核同意",
+        "active": "已发布",
+        "archived": "已归档",
+        "rejected": "已驳回",
+    },
     "candidate_status": {
         "candidate": "候选中",
-        "promoted": "已转知识",
+        "promoted": "已转为草稿知识",
         "rejected": "已拒绝",
         "archived": "已归档",
     },
@@ -464,6 +507,40 @@ KB_LABELS = {
         "en->ru": "英译俄",
         "ja->zh": "日译中",
         "ko->zh": "韩译中",
+        "zh->ja": "中译日",
+        "fr->zh": "法译中",
+        "zh->fr": "中译法",
+        "de->zh": "德译中",
+        "zh->de": "中译德",
+        "ru->zh": "俄译中",
+        "zh->ru": "中译俄",
+        "zh->ko": "中译韩",
+        "it->zh": "意译中",
+        "zh->it": "中译意",
+        "es->zh": "西译中",
+        "zh->es": "中译西",
+        "ar->zh": "阿译中",
+        "zh->ar": "中译阿",
+        "da->zh": "丹麦语译中",
+        "zh->da": "中译丹麦语",
+        "pt->zh": "葡译中",
+        "zh->pt": "中译葡",
+        "nl->zh": "荷译中",
+        "zh->nl": "中译荷",
+        "sv->zh": "瑞典语译中",
+        "zh->sv": "中译瑞典语",
+        "no->zh": "挪威语译中",
+        "zh->no": "中译挪威语",
+        "el->zh": "希腊语译中",
+        "zh->el": "中译希腊语",
+        "tr->zh": "土耳其语译中",
+        "zh->tr": "中译土耳其语",
+        "fr->en": "法译英",
+        "de->en": "德译英",
+        "en->de": "英译德",
+        "en->ja": "英译日",
+        "ja->en": "日译英",
+        "en->en": "英文润稿",
     },
     "service_scope": {
         "general": "普通资料",
@@ -474,6 +551,13 @@ KB_LABELS = {
         "marketing": "市场宣传资料",
         "certified": "认证/盖章文件",
         "confidential": "保密资料",
+        "literary_marketing": "菜单/品牌/文学类资料",
+        "presentation": "幻灯片资料",
+        "native_polishing": "外籍母语润稿",
+        "native_translation": "外籍母语翻译",
+        "rare_language": "欧洲稀有语种资料",
+        "bilingual_foreign": "双外语翻译",
+        "formatting": "输入或排版服务",
     },
     "customer_tier": {
         "common": "普通客户",
@@ -483,11 +567,20 @@ KB_LABELS = {
     },
     "chunk_type": {
         "rule": "规则",
-        "faq": "FAQ",
+        "faq": "问答",
         "example": "案例",
-        "template": "模板",
+        "template": "话术模板",
         "constraint": "限制条件",
         "definition": "定义",
+    },
+    "knowledge_class": {
+        "pricing_constraint": "报价限制条件",
+        "capability": "能力知识",
+        "process": "流程规则",
+        "faq": "FAQ常见问答",
+        "example": "案例",
+        "email_template": "邮件模板",
+        "definition": "名词定义",
     },
     "intent_type": {
         "pricing": "报价咨询",
@@ -497,10 +590,80 @@ KB_LABELS = {
     },
 }
 
+KB_PRICING_UNIT_LABELS = {
+    "per_1000_chars": "每千中文字符",
+    "per_project": "每个项目",
+    "per_hour": "每小时",
+    "per_day": "每天",
+    "per_slide": "每页幻灯片",
+    "per_english_word": "每个英文单词",
+    "per_source_word": "每个原文单词",
+    "per_japanese_char": "每个日文字符",
+    "per_a4_original": "每页 A4 原稿",
+}
+
 def label_for(dict_type: str, code: str | None) -> str | None:
     if code is None:
         return None
     return KB_LABELS.get(dict_type, {}).get(code, code)
+
+def document_stage_code(doc: "KnowledgeDocument") -> str:
+    if doc.status == "archived":
+        return "archived"
+    if doc.status == "rejected" or doc.review_status == "rejected":
+        return "rejected"
+    if doc.status == "active":
+        return "active"
+    if doc.status == "review" and doc.review_status == "approved":
+        return "approved"
+    if doc.status == "review":
+        return "review"
+    return "draft"
+
+def document_stage_label(doc: "KnowledgeDocument") -> str:
+    return label_for("document_stage", document_stage_code(doc)) or "-"
+
+def document_allowed_actions(doc: "KnowledgeDocument") -> list[str]:
+    stage = document_stage_code(doc)
+    if stage == "draft":
+        return ["edit", "submit_review", "archive", "reject"]
+    if stage == "review":
+        return ["edit", "approve", "reject", "archive"]
+    if stage == "approved":
+        return ["edit", "publish", "reject", "archive"]
+    if stage == "active":
+        return ["archive"]
+    if stage == "rejected":
+        return ["archive"]
+    return []
+
+KB_ACTION_LABELS = {
+    "edit": "编辑文档",
+    "submit_review": "提交审核",
+    "approve": "审核同意",
+    "publish": "发布",
+    "archive": "归档",
+    "reject": "驳回",
+}
+
+def _ensure_document_action_allowed(doc: "KnowledgeDocument", action: str) -> None:
+    if action in document_allowed_actions(doc):
+        return
+    stage_label = document_stage_label(doc)
+    action_label = KB_ACTION_LABELS.get(action, action)
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "message": f"当前状态为{stage_label}，不允许执行{action_label}",
+            "document_id": str(doc.document_id),
+            "document_stage": document_stage_code(doc),
+            "allowed_actions": document_allowed_actions(doc),
+        },
+    )
+
+def _ensure_documents_action_allowed(docs: list["KnowledgeDocument"], action: str) -> None:
+    for doc in docs:
+        _ensure_document_action_allowed(doc, action)
 
 def normalize_code(dict_type: str, value):
     if value is None:
@@ -515,19 +678,108 @@ def normalize_code(dict_type: str, value):
             return item_code, None
     return None, code
 
+KB_KNOWLEDGE_CLASS_CONFIG = {
+    "pricing_constraint": {"knowledge_type": "pricing", "chunk_type": "constraint", "risk_level": "high"},
+    "capability": {"knowledge_type": "capability", "chunk_type": "rule", "risk_level": "medium"},
+    "process": {"knowledge_type": "process", "chunk_type": "rule", "risk_level": "medium"},
+    "faq": {"knowledge_type": "faq", "chunk_type": "faq", "risk_level": "medium"},
+    "example": {"knowledge_type": "faq", "chunk_type": "example", "risk_level": "medium"},
+    "email_template": {"knowledge_type": "faq", "chunk_type": "template", "risk_level": "medium"},
+    "definition": {"knowledge_type": "faq", "chunk_type": "definition", "risk_level": "low"},
+}
+
+def normalize_knowledge_class(value):
+    return normalize_code("knowledge_class", value)
+
+def normalize_knowledge_class_or_raise(value: str | None, field_name: str = "knowledge_class") -> str | None:
+    code, raw_value = normalize_knowledge_class(value)
+    if raw_value:
+        options = "、".join(KB_LABELS["knowledge_class"].values())
+        raise HTTPException(status_code=400, detail=f"{field_name} 不合法，必须是以下之一：{options}")
+    return code
+
+def knowledge_class_from_pair(knowledge_type: str | None, chunk_type: str | None) -> str | None:
+    for class_code, config in KB_KNOWLEDGE_CLASS_CONFIG.items():
+        if config["knowledge_type"] == knowledge_type and config["chunk_type"] == chunk_type:
+            return class_code
+    if knowledge_type == "pricing":
+        return "pricing_constraint" if chunk_type == "constraint" else None
+    if knowledge_type == "capability":
+        return "capability"
+    if knowledge_type == "process":
+        return "process"
+    if chunk_type == "example":
+        return "example"
+    if chunk_type == "template":
+        return "email_template"
+    if chunk_type == "definition":
+        return "definition"
+    if knowledge_type == "faq":
+        return "faq"
+    return None
+
+def knowledge_class_label(knowledge_type: str | None, chunk_type: str | None, tags: dict | None = None) -> str | None:
+    class_code = (tags or {}).get("knowledge_class") or knowledge_class_from_pair(knowledge_type, chunk_type)
+    return label_for("knowledge_class", class_code)
+
+def merge_knowledge_class_tags(tags: dict | None, knowledge_class: str | None) -> dict | None:
+    merged = dict(tags or {})
+    if knowledge_class:
+        merged["knowledge_class"] = knowledge_class
+    return merged or None
+
+def resolve_knowledge_class_fields(
+    *,
+    knowledge_class: str | None,
+    knowledge_type: str | None,
+    chunk_type: str | None,
+    risk_level: str | None = None,
+):
+    class_code = knowledge_class or knowledge_class_from_pair(knowledge_type, chunk_type) or "faq"
+    config = KB_KNOWLEDGE_CLASS_CONFIG.get(class_code, KB_KNOWLEDGE_CLASS_CONFIG["faq"])
+    resolved_type = config["knowledge_type"] if knowledge_class else (knowledge_type or config["knowledge_type"])
+    resolved_chunk_type = config["chunk_type"] if knowledge_class else (chunk_type or config["chunk_type"])
+    resolved_risk = risk_level or config["risk_level"]
+    return class_code, resolved_type, resolved_chunk_type, resolved_risk
+
+def _parse_auto_split_flag(value) -> bool:
+    if value is None or value == "":
+        return False
+    text = str(value).strip().lower()
+    return text in {"1", "true", "yes", "y", "是", "需切分", "切分", "自动切分"}
+
+def normalize_pricing_unit(value):
+    if value is None:
+        return None, None
+    code = str(value).strip()
+    if not code:
+        return None, None
+    if code in KB_PRICING_UNIT_LABELS:
+        return code, None
+    for item_code, label in KB_PRICING_UNIT_LABELS.items():
+        if code == label:
+            return item_code, None
+    return None, code
+
 def infer_faq_business_line(title: str, content: str) -> str:
     text = f"{title or ''}\n{content or ''}"
-    if any(word in text for word in ["翻译需求", "口译需求", "同传需求", "语种需求"]):
+    if any(word in text for word in ["口译", "同传", "交传", "会议翻译", "会议服务"]):
+        return "interpretation"
+    if any(word in text for word in ["字幕", "配音", "译制", "多媒体", "音视频", "视频翻译"]):
+        return "multimedia"
+    if any(word in text for word in ["礼品", "赠品", "定制礼盒", "伴手礼"]):
+        return "gifts"
+    if any(word in text for word in ["翻译需求", "语种需求"]):
         return "translation"
     general_words = ["公司", "身份", "哪位", "没听说", "业务范围", "服务范围"]
-    business_hits = sum(1 for word in ["翻译", "口译", "同传", "字幕", "配音", "语种", "印刷", "画册", "易拉宝", "样本", "手册", "展台", "展会", "搭建", "撤展"] if word in text)
+    business_hits = sum(1 for word in ["翻译", "口译", "同传", "字幕", "配音", "语种", "印刷", "画册", "易拉宝", "样本", "手册", "展台", "展会", "搭建", "撤展", "礼品"] if word in text)
     if any(word in text for word in general_words) and business_hits >= 2:
         return "general"
     if any(word in text for word in ["印刷", "画册", "易拉宝", "样本", "手册"]):
         return "printing"
     if any(word in text for word in ["展台", "展会", "搭建", "撤展"]):
         return "exhibition"
-    if any(word in text for word in ["翻译", "口译", "同传", "字幕", "配音", "语种"]):
+    if any(word in text for word in ["翻译", "语种"]):
         return "translation"
     return "general"
 
@@ -606,25 +858,26 @@ def find_column_index(headers: list, candidates: list[str]) -> int | None:
     return None
 
 KB_EXCEL_IMPORT_TYPES = {
-    "faq": {"label": "FAQ", "knowledge_type": "faq", "chunk_type": "faq", "risk_level": "medium"},
-    "pricing": {"label": "报价表", "knowledge_type": "pricing", "chunk_type": "rule", "risk_level": "high"},
-    "process": {"label": "流程 SOP", "knowledge_type": "process", "chunk_type": "rule", "risk_level": "medium"},
-    "capability": {"label": "能力清单", "knowledge_type": "capability", "chunk_type": "rule", "risk_level": "medium"},
-    "case": {"label": "历史案例", "knowledge_type": "faq", "chunk_type": "example", "risk_level": "medium"},
-    "script": {"label": "销售话术", "knowledge_type": "faq", "chunk_type": "template", "risk_level": "medium"},
-    "email_digest": {"label": "邮件整理", "knowledge_type": "faq", "chunk_type": "faq", "risk_level": "medium"},
+    "unified": {"label": "统一知识与报价导入模板", "knowledge_class": None, "knowledge_type": "faq", "chunk_type": "faq", "risk_level": "medium"},
+    "faq": {"label": "FAQ常见问答", "knowledge_class": "faq", "knowledge_type": "faq", "chunk_type": "faq", "risk_level": "medium"},
+    "pricing": {"label": "结构化报价规则", "knowledge_class": None, "knowledge_type": "pricing", "chunk_type": "rule", "risk_level": "high"},
+    "pricing_constraint": {"label": "报价限制条件", "knowledge_class": "pricing_constraint", "knowledge_type": "pricing", "chunk_type": "constraint", "risk_level": "high"},
+    "process": {"label": "流程规则", "knowledge_class": "process", "knowledge_type": "process", "chunk_type": "rule", "risk_level": "medium"},
+    "capability": {"label": "能力知识", "knowledge_class": "capability", "knowledge_type": "capability", "chunk_type": "rule", "risk_level": "medium"},
+    "case": {"label": "案例", "knowledge_class": "example", "knowledge_type": "faq", "chunk_type": "example", "risk_level": "medium"},
+    "script": {"label": "邮件模板", "knowledge_class": "email_template", "knowledge_type": "faq", "chunk_type": "template", "risk_level": "medium"},
+    "definition": {"label": "名词定义", "knowledge_class": "definition", "knowledge_type": "faq", "chunk_type": "definition", "risk_level": "low"},
+    "email_digest": {"label": "邮件整理", "knowledge_class": "faq", "knowledge_type": "faq", "chunk_type": "faq", "risk_level": "medium"},
 }
 
 KB_EXCEL_TEMPLATE_COLUMNS = [
     "标题",
     "内容",
-    "知识类型",
-    "切片类型",
-    "业务线",
-    "子服务",
+    "知识分类",
+    "切分",
+    "服务",
     "语种",
     "服务范围",
-    "地区",
     "客户层级",
     "优先级",
     "风险等级",
@@ -641,21 +894,33 @@ KB_EXCEL_TEMPLATE_COLUMNS = [
 ]
 
 KB_EXCEL_TEMPLATE_SAMPLE = {
-    "faq": ["客户问公司主要做什么", "公司提供翻译、印刷、展会等企业服务。", "faq", "faq", "general", "", "", "general", "", "", 50, "medium", "", "", "", "", "", "", "", "", "", "公司介绍"],
-    "pricing": ["英译法普通商务资料报价", "英译法普通商务资料按220元/千字报价，最低收费300元。", "pricing", "rule", "translation", "written_translation", "en->fr", "general", "", "", 95, "high", "2026-04-20", "2030-12-31", "per_1000_chars", "CNY", 220, 220, 300, "", "不含税", "报价"],
-    "process": ["翻译下单流程", "收文件、确认语种用途、评估报价交期、付款立项、译审交付。", "process", "rule", "translation", "", "", "general", "", "", 80, "medium", "", "", "", "", "", "", "", "", "", "流程"],
-    "capability": ["英译法能力说明", "可承接英译法普通商务资料。", "capability", "rule", "translation", "", "en->fr", "general", "", "", 80, "medium", "", "", "", "", "", "", "", "", "", "能力"],
-    "case": ["价格异议案例", "客户质疑价格高，销售解释译审流程与交付保障后成交。", "faq", "example", "translation", "", "", "general", "", "", 60, "medium", "", "", "", "", "", "", "", "", "", "案例"],
-    "script": ["价格异议话术", "可以先说明价格包含译审和交付保障，再按已发布报价规则说明。", "faq", "template", "translation", "", "", "general", "", "", 60, "medium", "", "", "", "", "", "", "", "", "", "话术"],
-    "email_digest": ["邮件询价整理", "客户邮件询问英译法报价和交期，需先确认文件字数和用途。", "faq", "faq", "translation", "", "en->fr", "general", "", "", 60, "medium", "", "", "", "", "", "", "", "", "", "邮件"],
+    "unified": ["客户问公司主要做什么", "公司提供翻译、口译、多媒体、印刷、展会与礼品等企业服务。", "FAQ常见问答", 0, "通用", "", "普通资料", "", 50, "中", "", "", "", "", "", "", "", "", "", "公司介绍"],
+    "faq": ["客户问公司主要做什么", "公司提供翻译、印刷、展台搭建等企业服务。", "FAQ常见问答", 0, "通用", "", "普通资料", "", 50, "中", "", "", "", "", "", "", "", "", "", "公司介绍"],
+    "pricing": ["英译法普通商务资料报价", "英译法普通商务资料按220元/千字报价，最低收费300元。", "", 0, "翻译", "英译法", "普通资料", "", 95, "高", "2026-04-20", "2030-12-31", "每千中文字符", "CNY", 220, 220, 300, "", "不含税", "结构化报价"],
+    "pricing_constraint": ["加急费用确认规则", "加急费用需根据交付时间和项目量另行确认，不能直接承诺固定加急价。", "报价限制条件", 0, "翻译", "", "普通资料", "", 90, "高", "", "", "", "", "", "", "", "", "", "报价限制"],
+    "process": ["翻译下单流程", "收文件、确认语种用途、评估报价交期、付款立项、译审交付。", "流程规则", 1, "翻译", "", "普通资料", "", 80, "中", "", "", "", "", "", "", "", "", "", "流程"],
+    "capability": ["英译法能力说明", "可承接英译法普通商务资料。", "能力知识", 0, "翻译", "英译法", "普通资料", "", 80, "中", "", "", "", "", "", "", "", "", "", "能力"],
+    "case": ["价格异议案例", "客户质疑价格高，销售解释译审流程与交付保障后成交。", "案例", 0, "翻译", "", "普通资料", "", 60, "中", "", "", "", "", "", "", "", "", "", "案例"],
+    "script": ["询价回复邮件模板", "您好，请您先发送需翻译文件，并说明语种、用途、交付时间和质量要求，我们收到后尽快评估报价。", "邮件模板", 0, "翻译", "", "普通资料", "", 60, "中", "", "", "", "", "", "", "", "", "", "邮件模板"],
+    "definition": ["1000中文字符定义", "1000中文字符通常指中文原文字符数量，用于按千字计价的翻译报价口径。", "名词定义", 0, "翻译", "", "普通资料", "", 50, "低", "", "", "", "", "", "", "", "", "", "定义"],
+    "email_digest": ["邮件询价整理", "客户邮件询问英译法报价和交期，需先确认文件字数和用途。", "FAQ常见问答", 0, "翻译", "英译法", "普通资料", "", 60, "中", "", "", "", "", "", "", "", "", "", "邮件"],
 }
+
+KB_UNIFIED_TEMPLATE_SAMPLE_ROWS = [
+    ["客户问公司主要做什么", "公司提供翻译、口译、多媒体、印刷、展会与礼品等企业服务。", "FAQ常见问答", 0, "通用", "", "普通资料", "", 50, "中", "", "", "", "", "", "", "", "", "", "公司介绍"],
+    ["翻译下单流程", "收文件、确认语种用途、评估报价交期、付款立项、译审交付。", "流程规则", 1, "翻译", "", "普通资料", "", 80, "中", "", "", "", "", "", "", "", "", "", "流程"],
+    ["加急费用确认规则", "加急费用需根据交付时间和项目量另行确认，不能直接承诺固定加急价。", "报价限制条件", 0, "翻译", "", "普通资料", "", 90, "高", "", "", "", "", "", "", "", "", "", "报价限制"],
+    ["英译法普通商务资料报价", "英译法普通商务资料按220元/千字报价，最低收费300元。", "", 0, "翻译", "英译法", "普通资料", "", 95, "高", "2026-04-20", "2030-12-31", "每千中文字符", "CNY", 220, 220, 300, "", "不含税", "结构化报价"],
+]
 
 KB_EXCEL_COLUMN_ALIASES = {
     "title": ["标题", "节点名", "问题", "场景", "主题", "案例标题", "话术标题", "邮件主题", "title"],
     "content": ["内容", "答案", "回复", "话术", "正文", "案例内容", "邮件内容", "处理方式", "流程", "content"],
+    "knowledge_class": ["知识分类", "知识类别", "分类", "knowledge_class"],
+    "auto_split": ["切分", "是否切分", "自动切分", "auto_split"],
     "knowledge_type": ["知识类型", "knowledge_type", "类型"],
     "chunk_type": ["切片类型", "chunk_type"],
-    "business_line": ["业务线", "business_line", "业务"],
+    "business_line": ["服务", "业务线", "business_line", "业务"],
     "sub_service": ["子服务", "sub_service"],
     "language_pair": ["语种", "语言对", "language_pair"],
     "service_scope": ["服务范围", "资料类型", "service_scope"],
@@ -710,6 +975,22 @@ def _safe_int(value, default: int = 50) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+def _has_structured_pricing_cells(row: tuple, columns: dict[str, int | None]) -> bool:
+    pricing_fields = ["unit", "currency", "price_min", "price_max", "min_charge", "urgent_multiplier", "tax_policy"]
+    return any(_cell(row, columns.get(field)) not in (None, "") for field in pricing_fields)
+
+def _template_type_from_knowledge_class(knowledge_class: str | None) -> str:
+    mapping = {
+        "pricing_constraint": "pricing_constraint",
+        "capability": "capability",
+        "process": "process",
+        "faq": "faq",
+        "example": "case",
+        "email_template": "script",
+        "definition": "definition",
+    }
+    return mapping.get(knowledge_class or "", "faq")
 
 def _resolve_excel_header(rows: list[tuple]) -> tuple[int, dict[str, int | None]]:
     best_index = None
@@ -769,9 +1050,27 @@ def parse_kb_excel_import(raw: bytes, filename: str, import_type: str) -> dict:
         if not content:
             row_errors.append("missing_content")
 
+        requested_knowledge_class = _cell(row, columns["knowledge_class"])
+        knowledge_class, raw_knowledge_class = normalize_knowledge_class(
+            requested_knowledge_class or import_config.get("knowledge_class")
+        )
+        effective_import_type = import_type
+        effective_import_config = import_config
+        structured_pricing_row = _has_structured_pricing_cells(row, columns)
+        if import_type == "unified":
+            if structured_pricing_row or (not knowledge_class and is_pricing_text(title, content, "pricing")):
+                effective_import_type = "pricing"
+                effective_import_config = KB_EXCEL_IMPORT_TYPES["pricing"]
+            elif knowledge_class:
+                effective_import_type = _template_type_from_knowledge_class(knowledge_class)
+                effective_import_config = KB_EXCEL_IMPORT_TYPES[effective_import_type]
+            else:
+                row_errors.append("missing_knowledge_class")
+
+        class_config = KB_KNOWLEDGE_CLASS_CONFIG.get(knowledge_class or "")
         knowledge_type, raw_knowledge_type = normalize_code(
             "knowledge_type",
-            _cell(row, columns["knowledge_type"]) or import_config["knowledge_type"],
+            _cell(row, columns["knowledge_type"]) or (class_config or {}).get("knowledge_type") or effective_import_config["knowledge_type"],
         )
         business_line, raw_business_line = normalize_code(
             "business_line",
@@ -781,23 +1080,38 @@ def parse_kb_excel_import(raw: bytes, filename: str, import_type: str) -> dict:
         service_scope, raw_service_scope = normalize_code("service_scope", _cell(row, columns["service_scope"]))
         customer_tier, raw_customer_tier = normalize_code("customer_tier", _cell(row, columns["customer_tier"]))
 
-        raw_chunk_type = str(_cell(row, columns["chunk_type"]) or import_config["chunk_type"]).strip()
-        chunk_type = raw_chunk_type if raw_chunk_type in KB_LABELS["chunk_type"] else import_config["chunk_type"]
-        risk_level_value = str(_cell(row, columns["risk_level"]) or import_config["risk_level"]).strip()
-        risk_level = risk_level_value if risk_level_value in KB_LABELS["risk_level"] else import_config["risk_level"]
+        chunk_type, raw_chunk_type = normalize_code(
+            "chunk_type",
+            _cell(row, columns["chunk_type"]) or (class_config or {}).get("chunk_type") or effective_import_config["chunk_type"],
+        )
+        chunk_type = chunk_type or effective_import_config["chunk_type"]
+        risk_level, raw_risk_level = normalize_code(
+            "risk_level",
+            _cell(row, columns["risk_level"]) or (class_config or {}).get("risk_level") or effective_import_config["risk_level"],
+        )
+        risk_level = risk_level or effective_import_config["risk_level"]
         if knowledge_type == "pricing" or is_pricing_text(title, content, knowledge_type):
             risk_level = "high"
+        auto_split = _parse_auto_split_flag(_cell(row, columns["auto_split"]))
+        if effective_import_type == "pricing":
+            auto_split = False
 
         tags = {
-            "import_type": import_type,
+            "import_type": effective_import_type,
+            "request_import_type": import_type,
             "raw_source": "kb_excel_import",
+            "knowledge_class": knowledge_class or knowledge_class_from_pair(knowledge_type, chunk_type),
+            "auto_split": auto_split,
         }
         for key, value in {
+            "raw_knowledge_class": raw_knowledge_class,
             "raw_knowledge_type": raw_knowledge_type,
             "raw_business_line": raw_business_line,
             "raw_language_pair": raw_language_pair,
             "raw_service_scope": raw_service_scope,
             "raw_customer_tier": raw_customer_tier,
+            "raw_chunk_type": raw_chunk_type,
+            "raw_risk_level": raw_risk_level,
         }.items():
             if value:
                 tags[key] = value
@@ -806,13 +1120,33 @@ def parse_kb_excel_import(raw: bytes, filename: str, import_type: str) -> dict:
             tags["source_tags"] = str(raw_tags)
 
         pricing_rule = None
-        if knowledge_type == "pricing" or import_type == "pricing":
+        pricing_cells = [
+            _cell(row, columns["unit"]),
+            _cell(row, columns["currency"]),
+            _cell(row, columns["price_min"]),
+            _cell(row, columns["price_max"]),
+            _cell(row, columns["min_charge"]),
+            _cell(row, columns["urgent_multiplier"]),
+            _cell(row, columns["tax_policy"]),
+        ]
+        should_build_pricing_rule = (
+            effective_import_type == "pricing"
+            or (
+                knowledge_type == "pricing"
+                and chunk_type != "constraint"
+                and (any(value not in (None, "") for value in pricing_cells) or is_pricing_text(title, content, knowledge_type))
+            )
+        )
+        if should_build_pricing_rule:
+            unit, raw_unit = normalize_pricing_unit(_cell(row, columns["unit"]) or "per_project")
+            if raw_unit:
+                tags["raw_unit"] = raw_unit
             pricing_rule = {
                 "business_line": business_line,
-                "sub_service": _cell(row, columns["sub_service"]),
+                "sub_service": None,
                 "language_pair": language_pair,
                 "service_scope": service_scope,
-                "unit": _cell(row, columns["unit"]) or "per_project",
+                "unit": unit or "per_project",
                 "currency": _cell(row, columns["currency"]) or "CNY",
                 "price_min": _cell(row, columns["price_min"]),
                 "price_max": _cell(row, columns["price_max"]),
@@ -830,10 +1164,12 @@ def parse_kb_excel_import(raw: bytes, filename: str, import_type: str) -> dict:
             "row": row_index,
             "title": title,
             "content": content,
-            "knowledge_type": knowledge_type or import_config["knowledge_type"],
+            "import_type": effective_import_type,
+            "import_type_label": KB_EXCEL_IMPORT_TYPES[effective_import_type]["label"],
+            "knowledge_type": knowledge_type or effective_import_config["knowledge_type"],
             "chunk_type": chunk_type,
             "business_line": business_line or "general",
-            "sub_service": _cell(row, columns["sub_service"]),
+            "sub_service": None,
             "language_pair": language_pair,
             "service_scope": service_scope,
             "region": _cell(row, columns["region"]),
@@ -844,6 +1180,8 @@ def parse_kb_excel_import(raw: bytes, filename: str, import_type: str) -> dict:
             "effective_to": _parse_datetime_or_none(_cell(row, columns["effective_to"])),
             "tags": tags,
             "pricing_rule": pricing_rule,
+            "knowledge_class": tags["knowledge_class"],
+            "auto_split": auto_split,
             "errors": row_errors,
         }
         if row_errors:
@@ -867,9 +1205,13 @@ def _excel_item_preview(item: dict) -> dict:
     return {
         "row": item["row"],
         "title": item["title"],
+        "knowledge_class": item.get("knowledge_class"),
+        "knowledge_class_label": label_for("knowledge_class", item.get("knowledge_class")),
+        "auto_split": item.get("auto_split", False),
         "knowledge_type": item["knowledge_type"],
         "knowledge_type_label": label_for("knowledge_type", item["knowledge_type"]),
         "chunk_type": item["chunk_type"],
+        "chunk_type_label": label_for("chunk_type", item["chunk_type"]),
         "business_line": item["business_line"],
         "business_line_label": label_for("business_line", item["business_line"]),
         "language_pair": item.get("language_pair"),
@@ -877,23 +1219,42 @@ def _excel_item_preview(item: dict) -> dict:
         "service_scope": item.get("service_scope"),
         "service_scope_label": label_for("service_scope", item.get("service_scope")),
         "risk_level": item["risk_level"],
+        "risk_level_label": label_for("risk_level", item["risk_level"]),
         "pricing_rule": item.get("pricing_rule"),
     }
 
 def _doc_to_dict(doc: KnowledgeDocument) -> dict:
+    def extract_knowledge_class(tags):
+        if isinstance(tags, dict):
+            return tags.get("knowledge_class")
+        elif isinstance(tags, list):
+            # 假设 list 里是 dict 或 key-value 对
+            for item in tags:
+                if isinstance(item, dict) and "knowledge_class" in item:
+                    return item["knowledge_class"]
+                if isinstance(item, (list, tuple)) and len(item) == 2 and item[0] == "knowledge_class":
+                    return item[1]
+        return None
+
+    knowledge_class_val = extract_knowledge_class(doc.tags) or knowledge_class_from_pair(doc.knowledge_type, None)
     return {
         "document_id": str(doc.document_id),
         "title": doc.title,
+        "knowledge_class": knowledge_class_val,
+        "knowledge_class_label": label_for("knowledge_class", knowledge_class_val),
         "knowledge_type": doc.knowledge_type,
         "knowledge_type_label": label_for("knowledge_type", doc.knowledge_type),
         "business_line": doc.business_line,
         "business_line_label": label_for("business_line", doc.business_line),
         "sub_service": doc.sub_service,
+        "sub_service_label": label_for("sub_service", doc.sub_service),
         "source_type": doc.source_type,
         "source_ref": doc.source_ref,
         "source_meta": doc.source_meta,
         "status": doc.status,
         "status_label": label_for("status", doc.status),
+        "display_status": document_stage_code(doc),
+        "display_status_label": document_stage_label(doc),
         "version_no": doc.version_no,
         "effective_from": doc.effective_from,
         "effective_to": doc.effective_to,
@@ -904,6 +1265,7 @@ def _doc_to_dict(doc: KnowledgeDocument) -> dict:
         "review_required": doc.review_required,
         "review_status": doc.review_status,
         "review_status_label": label_for("review_status", doc.review_status),
+        "allowed_actions": document_allowed_actions(doc),
         "tags": doc.tags,
         "created_at": doc.created_at,
         "updated_at": doc.updated_at,
@@ -917,9 +1279,12 @@ def _chunk_to_dict(chunk: KnowledgeChunk) -> dict:
         "chunk_type": chunk.chunk_type,
         "title": chunk.title,
         "content": chunk.content,
+        "knowledge_class": (chunk.structured_tags or {}).get("knowledge_class") or knowledge_class_from_pair(chunk.knowledge_type, chunk.chunk_type),
+        "knowledge_class_label": knowledge_class_label(chunk.knowledge_type, chunk.chunk_type, chunk.structured_tags),
         "business_line": chunk.business_line,
         "business_line_label": label_for("business_line", chunk.business_line),
         "sub_service": chunk.sub_service,
+        "sub_service_label": label_for("sub_service", chunk.sub_service),
         "knowledge_type": chunk.knowledge_type,
         "knowledge_type_label": label_for("knowledge_type", chunk.knowledge_type),
         "language_pair": chunk.language_pair,
@@ -958,6 +1323,7 @@ def _pricing_rule_to_dict(rule: PricingRule) -> dict:
         "business_line": rule.business_line,
         "business_line_label": label_for("business_line", rule.business_line),
         "sub_service": rule.sub_service,
+        "sub_service_label": label_for("sub_service", rule.sub_service),
         "language_pair": rule.language_pair,
         "language_pair_label": label_for("language_pair", rule.language_pair),
         "service_scope": rule.service_scope,
@@ -1026,6 +1392,8 @@ def _candidate_to_dict(candidate: KnowledgeCandidate) -> dict:
         "candidate_id": str(candidate.candidate_id),
         "title": candidate.title,
         "content": candidate.content,
+        "knowledge_class": (candidate.source_snapshot or {}).get("knowledge_class") or knowledge_class_from_pair(candidate.knowledge_type, candidate.chunk_type),
+        "knowledge_class_label": label_for("knowledge_class", (candidate.source_snapshot or {}).get("knowledge_class") or knowledge_class_from_pair(candidate.knowledge_type, candidate.chunk_type)),
         "knowledge_type": candidate.knowledge_type,
         "knowledge_type_label": label_for("knowledge_type", candidate.knowledge_type),
         "chunk_type": candidate.chunk_type,
@@ -1033,6 +1401,7 @@ def _candidate_to_dict(candidate: KnowledgeCandidate) -> dict:
         "business_line": candidate.business_line,
         "business_line_label": label_for("business_line", candidate.business_line),
         "sub_service": candidate.sub_service,
+        "sub_service_label": label_for("sub_service", candidate.sub_service),
         "language_pair": candidate.language_pair,
         "language_pair_label": label_for("language_pair", candidate.language_pair),
         "service_scope": candidate.service_scope,
@@ -1257,6 +1626,7 @@ def _create_single_document_and_chunk(
     *,
     title: str,
     content: str,
+    knowledge_class: str | None = None,
     knowledge_type: str,
     business_line: str,
     sub_service: str | None = None,
@@ -1278,13 +1648,20 @@ def _create_single_document_and_chunk(
     pricing_rule: dict | None = None,
     import_batch: str | None = None,
 ):
+    resolved_class, resolved_type, resolved_chunk_type, resolved_risk = resolve_knowledge_class_fields(
+        knowledge_class=knowledge_class,
+        knowledge_type=knowledge_type,
+        chunk_type=chunk_type,
+        risk_level=risk_level,
+    )
+    merged_tags = merge_knowledge_class_tags(tags, resolved_class)
     embedding = EmbeddingService.embed(f"{title}\n{content}")
     if not embedding:
         raise HTTPException(status_code=500, detail="Embedding failed")
 
     document = KnowledgeDocument(
         title=title,
-        knowledge_type=knowledge_type,
+        knowledge_type=resolved_type,
         business_line=business_line,
         sub_service=sub_service,
         source_type=source_type,
@@ -1295,10 +1672,10 @@ def _create_single_document_and_chunk(
         import_batch=import_batch,
         effective_from=effective_from,
         effective_to=effective_to,
-        risk_level=risk_level,
+        risk_level=resolved_risk,
         review_required=review_required,
         review_status="pending" if review_required else "auto_ready",
-        tags=tags,
+        tags=merged_tags,
     )
     db.add(document)
     db.flush()
@@ -1306,7 +1683,7 @@ def _create_single_document_and_chunk(
     chunk = KnowledgeChunk(
         document_id=document.document_id,
         chunk_no=1,
-        chunk_type=chunk_type,
+        chunk_type=resolved_chunk_type,
         title=title,
         content=content,
         keyword_text=f"{title}\n{content}",
@@ -1317,12 +1694,12 @@ def _create_single_document_and_chunk(
         priority=priority,
         business_line=business_line,
         sub_service=sub_service,
-        knowledge_type=knowledge_type,
+        knowledge_type=resolved_type,
         language_pair=language_pair,
         service_scope=service_scope,
         region=region,
         customer_tier=customer_tier,
-        structured_tags=tags,
+        structured_tags=merged_tags,
         status="draft",
         effective_from=effective_from,
         effective_to=effective_to,
@@ -1330,14 +1707,16 @@ def _create_single_document_and_chunk(
     db.add(chunk)
     db.flush()
 
-    pricing_rule_payload = pricing_rule or infer_pricing_rule_candidate(
-        title,
-        content,
-        business_line,
-        language_pair,
-        service_scope,
-        customer_tier,
-    )
+    pricing_rule_payload = pricing_rule
+    if not pricing_rule_payload and resolved_type == "pricing" and resolved_chunk_type != "constraint":
+        pricing_rule_payload = infer_pricing_rule_candidate(
+            title,
+            content,
+            business_line,
+            language_pair,
+            service_scope,
+            customer_tier,
+        )
     rule = _create_pricing_rule(db, document, chunk, pricing_rule_payload)
     return document, chunk, rule
 
@@ -1352,60 +1731,87 @@ def _extract_relevant_sentences(content: str, keywords: list[str], limit: int = 
     text = "。".join(selected).strip("。")
     return text or (content or "")[:500]
 
-def _fallback_extract_candidate_items_from_text(title: str, content: str, source_type: str) -> list[dict]:
-    text = f"{title or ''}\n{content or ''}"
-    business_line = infer_faq_business_line(title, content)
+def _llm_extract_candidate_items_from_text(title: str, content: str, source_type: str) -> list[dict]:
+    prompt = f"""
+你是企业知识库候选抽取助手。只允许根据原文抽取已明确出现的业务知识，不允许猜测、补全、编造价格、能力、流程或客户信息。
+
+请返回纯 JSON：
+{{
+  "items": [
+    {{
+      "title": "候选知识标题",
+      "content": "可审核入库的原文依据或严谨改写",
+      "knowledge_type": "faq|pricing|process|capability",
+      "chunk_type": "faq|rule|example|constraint|definition",
+      "business_line": "translation|printing|interpretation|multimedia|exhibition|gifts|general",
+      "sub_service": null,
+      "language_pair": null,
+      "service_scope": null,
+      "region": null,
+      "customer_tier": null,
+      "priority": 50,
+      "risk_level": "low|medium|high",
+      "pricing_rule": null
+    }}
+  ]
+}}
+
+要求：
+- 没有明确知识点时返回 {{"items":[]}}，不要兜底生成常见问答。
+- 报价、折扣、税费、合同、赔付、能力承诺必须 risk_level=high 或 medium，且 content 必须包含原文依据。
+- pricing_rule 只能填原文中明确出现的数字、单位、币种、最低收费、税费或加急倍率；不确定则为 null。
+- source_type={source_type}
+
+标题：{title}
+原文：
+{content}
+"""
+    llm_result = IntentEngine.run_llm1_json_prompt(prompt, user_id="kb_candidate_extract")
+    raw_items = llm_result.get("items") if isinstance(llm_result, dict) else None
+    if raw_items is None:
+        raise HTTPException(status_code=502, detail="LLM 候选抽取返回缺少 items 字段")
+    if not isinstance(raw_items, list):
+        raise HTTPException(status_code=502, detail="LLM 候选抽取 items 不是数组")
+
     items = []
-
-    pricing_keywords = ["报价", "价格", "收费", "最低收费", "加急", "税费", "税点", "发票"]
-    process_keywords = ["流程", "步骤", "下单", "交付", "审核", "确认交期", "立项", "安排"]
-    capability_keywords = ["能做", "可做", "支持", "承接", "服务范围", "能力", "覆盖"]
-
-    if any(keyword in text for keyword in pricing_keywords):
-        pricing_content = _extract_relevant_sentences(content, pricing_keywords)
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            raise HTTPException(status_code=502, detail="LLM 候选抽取返回了非对象 item")
+        item_title = str(raw_item.get("title") or "").strip()
+        item_content = str(raw_item.get("content") or "").strip()
+        if not item_title or not item_content:
+            continue
+        knowledge_type, _raw_knowledge_type = normalize_code("knowledge_type", raw_item.get("knowledge_type") or "faq")
+        business_line, _raw_business_line = normalize_code("business_line", raw_item.get("business_line") or "general")
+        language_pair, _raw_language_pair = normalize_code("language_pair", raw_item.get("language_pair"))
+        service_scope, _raw_service_scope = normalize_code("service_scope", raw_item.get("service_scope"))
+        risk_level = str(raw_item.get("risk_level") or infer_faq_risk_level(item_title, item_content)).strip()
+        if risk_level not in KB_LABELS["risk_level"]:
+            raise HTTPException(status_code=502, detail=f"LLM 候选抽取返回非法 risk_level: {risk_level}")
+        pricing_rule = raw_item.get("pricing_rule")
+        if pricing_rule:
+            pricing_rule = infer_pricing_rule_candidate(
+                item_title,
+                item_content,
+                business_line or "general",
+                language_pair,
+                service_scope,
+                raw_pricing_rule=pricing_rule,
+            )
         items.append({
-            "title": (title or "历史报价提醒")[:255],
-            "content": pricing_content,
-            "knowledge_type": "pricing",
-            "chunk_type": "rule",
-            "business_line": business_line,
-            "risk_level": "high",
-            "pricing_rule": infer_pricing_rule_candidate(title or "历史报价提醒", pricing_content, business_line),
-        })
-
-    if any(keyword in text for keyword in process_keywords):
-        process_content = _extract_relevant_sentences(content, process_keywords)
-        items.append({
-            "title": f"{(title or '历史流程经验')[:220]} - 流程",
-            "content": process_content,
-            "knowledge_type": "process",
-            "chunk_type": "rule",
-            "business_line": business_line,
-            "risk_level": "medium",
-            "pricing_rule": None,
-        })
-
-    if any(keyword in text for keyword in capability_keywords):
-        capability_content = _extract_relevant_sentences(content, capability_keywords)
-        items.append({
-            "title": f"{(title or '历史能力说明')[:220]} - 能力",
-            "content": capability_content,
-            "knowledge_type": "capability",
-            "chunk_type": "rule",
-            "business_line": business_line,
-            "risk_level": "medium",
-            "pricing_rule": None,
-        })
-
-    if not items:
-        items.append({
-            "title": (title or "历史FAQ候选")[:255],
-            "content": (content or "")[:1000],
-            "knowledge_type": "faq",
-            "chunk_type": "example" if source_type == "case_extract" else "faq",
-            "business_line": business_line,
-            "risk_level": infer_faq_risk_level(title, content),
-            "pricing_rule": None,
+            "title": item_title[:255],
+            "content": item_content,
+            "knowledge_type": knowledge_type or "faq",
+            "chunk_type": raw_item.get("chunk_type") or ("example" if source_type == "case_extract" else "faq"),
+            "business_line": business_line or "general",
+            "sub_service": raw_item.get("sub_service"),
+            "language_pair": language_pair,
+            "service_scope": service_scope,
+            "region": raw_item.get("region"),
+            "customer_tier": raw_item.get("customer_tier"),
+            "priority": int(raw_item.get("priority") or 50),
+            "risk_level": risk_level,
+            "pricing_rule": pricing_rule,
         })
     return items
 
@@ -1414,7 +1820,7 @@ def _build_candidate_entries_from_record(record: dict, source_type: str) -> list
     content = sanitize_text(str(record.get("content") or "").strip())
     if not content:
         return []
-    items = _fallback_extract_candidate_items_from_text(title, content, source_type)
+    items = _llm_extract_candidate_items_from_text(title, content, source_type)
     snapshot = {
         key: sanitize_text(str(value)) if isinstance(value, str) else value
         for key, value in record.items()
@@ -1628,63 +2034,82 @@ def _evaluate_regression_case(case: dict, result: dict) -> dict:
     def hit_text(hit):
         return f"{hit.get('title') or ''}\n{hit.get('content') or ''}".lower()
 
+    def label(dict_name: str, code: str | None) -> str:
+        if not code:
+            return "-"
+        return label_for(dict_name, code)
+
+    def hit_has_tax_or_invoice_evidence(hit: dict) -> bool:
+        text = hit_text(hit)
+        if any(word in text for word in ["税", "发票", "invoice", "tax"]):
+            return True
+        for rule in hit.get("pricing_rules") or []:
+            raw_tax_policy = rule.get("tax_policy") or ""
+            if str(raw_tax_policy).strip():
+                return True
+            tax_policy = str(raw_tax_policy).lower()
+            source_ref = (rule.get("source_ref") or "").lower()
+            if any(word in tax_policy for word in ["税", "发票", "invoice", "tax"]):
+                return True
+            if any(word in source_ref for word in ["税", "发票", "invoice", "tax"]):
+                return True
+        return False
+
     must_type = expected.get("must_hit_knowledge_type")
     if must_type and not any(hit.get("knowledge_type") == must_type for hit in hits):
-        failures.append(f"missing knowledge_type={must_type}")
+        failures.append(f"未命中要求的知识类型：{label('knowledge_type', must_type)}")
 
     if expected.get("must_hit_pricing_rule") and not any(hit.get("pricing_rules") for hit in hits):
-        failures.append("missing structured pricing_rule")
+        failures.append("未命中结构化报价规则")
 
     if expected.get("manual_review_required") is True and not result.get("manual_review_required"):
-        failures.append("manual_review_required was expected but not triggered")
+        failures.append("本用例要求触发人工复核，但检索结果没有触发")
 
     if expected.get("manual_review_allowed") is False and result.get("manual_review_required"):
-        failures.append("manual_review_required was triggered unexpectedly")
+        failures.append("本用例不允许触发人工复核，但检索结果触发了人工复核")
 
     service_scope = expected.get("service_scope_filter")
     if service_scope and hits and not any(hit.get("service_scope") == service_scope for hit in hits):
-        failures.append(f"missing service_scope={service_scope}")
+        failures.append(f"未命中要求的服务范围：{label('service_scope', service_scope)}")
 
     business_line = expected.get("business_line_filter")
     if business_line and hits and not all(hit.get("business_line") == business_line for hit in hits):
-        failures.append(f"hit outside business_line={business_line}")
+        failures.append(f"命中了指定服务之外的知识，要求服务：{label('business_line', business_line)}")
 
     customer_tier = expected.get("customer_tier_filter")
     if customer_tier and not result.get("filters_used", {}).get("customer_tier") == customer_tier:
-        failures.append(f"customer_tier filter not applied: {customer_tier}")
+        failures.append(f"客户层级过滤未生效：{label('customer_tier', customer_tier)}")
 
     if expected.get("must_not_use_translation_price") and any(
         hit.get("business_line") == "translation" and hit.get("knowledge_type") == "pricing" for hit in hits
     ):
-        failures.append("translation pricing was used for a non-translation query")
+        failures.append("非翻译业务问题误用了翻译报价知识")
 
-    if expected.get("must_hit_tax_or_invoice") and not any(
-        any(word in hit_text(hit) for word in ["税", "发票", "invoice", "tax"]) for hit in hits
-    ):
-        failures.append("tax/invoice evidence not found")
+    if expected.get("must_hit_tax_or_invoice") and not any(hit_has_tax_or_invoice_evidence(hit) for hit in hits):
+        failures.append("未找到税费或发票相关证据")
 
     if expected.get("should_return_process_or_faq") and not any(
         hit.get("knowledge_type") in {"process", "faq"} for hit in hits
     ):
-        failures.append("process/faq evidence not found")
+        failures.append("未命中流程知识或常见问答证据")
 
     if expected.get("must_check_effective_time") and result.get("filters_used", {}).get("effective_time") != "now":
-        failures.append("effective_time filter not applied")
+        failures.append("未按当前有效期过滤知识")
 
     if expected.get("must_not_use_general_if_legal_exists"):
         legal_hits = [hit for hit in hits if hit.get("service_scope") == "legal"]
         general_hits = [hit for hit in hits if hit.get("service_scope") == "general"]
         if general_hits and not legal_hits:
-            failures.append("general scope used while legal scope was requested")
+            failures.append("请求法律范围时仅命中了通用范围证据")
 
     if expected.get("should_include_rules_before_expression") and not result.get("evidence_context", {}).get("rules"):
-        warnings.append("rule evidence not found before expression/template evidence")
+        warnings.append("建议优先命中规则类证据，但当前未命中规则证据")
 
     if expected.get("must_not_fabricate_price") and result.get("status") == "ok" and not hits:
-        failures.append("ok status without price evidence")
+        failures.append("价格类问题没有价格证据时不得返回正常结果")
 
     if expected.get("must_not_fabricate_capability") and result.get("status") == "ok" and not hits:
-        failures.append("ok status without capability evidence")
+        failures.append("能力类问题没有能力证据时不得返回正常结果")
 
     return {
         "passed": not failures,
@@ -1692,20 +2117,29 @@ def _evaluate_regression_case(case: dict, result: dict) -> dict:
         "warnings": warnings,
     }
 
-def _select_publish_gate_case_ids(doc: KnowledgeDocument, chunks: list[KnowledgeChunk]) -> list[str]:
+def _select_publish_gate_case_ids(doc: KnowledgeDocument, chunks: list[KnowledgeChunk], db: Session) -> list[str]:
     cases = _load_regression_cases()
+    rules = db.query(PricingRule).filter(
+        PricingRule.document_id == doc.document_id,
+        PricingRule.status != "archived",
+    ).all()
     knowledge_types = {doc.knowledge_type}
     knowledge_types.update(chunk.knowledge_type for chunk in chunks if chunk.knowledge_type)
     chunk_types = {chunk.chunk_type for chunk in chunks if chunk.chunk_type}
+    language_pairs = {chunk.language_pair for chunk in chunks if chunk.language_pair}
+    language_pairs.update(rule.language_pair for rule in rules if rule.language_pair)
     service_scopes = {chunk.service_scope for chunk in chunks if chunk.service_scope}
+    service_scopes.update(rule.service_scope for rule in rules if rule.service_scope)
     customer_tiers = {chunk.customer_tier for chunk in chunks if chunk.customer_tier}
+    customer_tiers.update(rule.customer_tier for rule in rules if rule.customer_tier)
     business_line = doc.business_line
     is_high_risk = doc.risk_level == "high" or "pricing" in knowledge_types
 
     selected = []
     for case in cases:
         query_features = case.get("query_features") or {}
-        case_types = set(query_features.get("knowledge_type") or [])
+        raw_case_types = query_features.get("knowledge_type") or []
+        case_types = set(raw_case_types if isinstance(raw_case_types, list) else [raw_case_types])
         case_business_line = query_features.get("business_line")
         category = case.get("category")
 
@@ -1713,7 +2147,6 @@ def _select_publish_gate_case_ids(doc: KnowledgeDocument, chunks: list[Knowledge
             not case_business_line
             or case_business_line == business_line
             or category == business_line
-            or (case_business_line == "general" and is_high_risk)
         )
         if not business_match:
             continue
@@ -1731,6 +2164,10 @@ def _select_publish_gate_case_ids(doc: KnowledgeDocument, chunks: list[Knowledge
         if not knowledge_match:
             continue
 
+        language_pair = query_features.get("language_pair")
+        if language_pair and language_pairs and language_pair not in language_pairs:
+            continue
+
         service_scope = query_features.get("service_scope")
         if service_scope and service_scopes and service_scope not in service_scopes and category not in {"cross_scope", "capability"}:
             continue
@@ -1742,31 +2179,48 @@ def _select_publish_gate_case_ids(doc: KnowledgeDocument, chunks: list[Knowledge
         selected.append(case["case_id"])
 
     if not selected and is_high_risk:
-        selected = [case["case_id"] for case in cases if case.get("category") in {"pricing", "low_confidence", "versioning"}]
+        selected = [
+            case["case_id"]
+            for case in cases
+            if ((case.get("query_features") or {}).get("business_line") in {None, business_line})
+            and (case.get("category") in {"pricing", "low_confidence", "versioning"})
+        ]
     return list(dict.fromkeys(selected))
 
 async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Session) -> dict:
     case_ids = []
     docs_report = []
+    selected_case_category_counts: dict[str, int] = {}
+    case_meta = {case["case_id"]: case for case in _load_regression_cases()}
     for doc in docs:
         chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc.document_id).all()
-        selected_ids = _select_publish_gate_case_ids(doc, chunks)
+        selected_ids = _select_publish_gate_case_ids(doc, chunks, db)
         case_ids.extend(selected_ids)
+        category_counts: dict[str, int] = {}
+        for case_id in selected_ids:
+            category = case_meta.get(case_id, {}).get("category") or "uncategorized"
+            category_counts[category] = category_counts.get(category, 0) + 1
+            selected_case_category_counts[category] = selected_case_category_counts.get(category, 0) + 1
         docs_report.append({
             "document_id": str(doc.document_id),
             "title": doc.title,
             "knowledge_type": doc.knowledge_type,
             "business_line": doc.business_line,
             "selected_case_ids": selected_ids,
+            "selected_case_count": len(selected_ids),
+            "selected_case_category_counts": category_counts,
         })
 
     case_ids = list(dict.fromkeys(case_ids))
     if not case_ids:
         return {
             "selected_case_ids": [],
+            "target_document_ids": [str(doc.document_id) for doc in docs],
+            "target_document_count": len(docs),
             "documents": docs_report,
             "passed": True,
             "summary": {"selected": 0, "passed": 0, "failed": 0},
+            "selected_case_category_counts": {},
             "results": [],
             "failed_cases": [],
         }
@@ -1783,17 +2237,41 @@ async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Ses
     failed_cases = [item for item in regression.get("results", []) if not item.get("passed")]
     return {
         "selected_case_ids": case_ids,
+        "target_document_ids": [str(doc.document_id) for doc in docs],
+        "target_document_count": len(docs),
         "documents": docs_report,
         "passed": not failed_cases,
         "summary": {
             "selected": len(case_ids),
-            "passed": regression.get("passed_count", 0),
-            "failed": regression.get("failed_count", 0),
+            "passed": regression.get("passed", 0),
+            "failed": regression.get("failed", 0),
         },
+        "selected_case_category_counts": selected_case_category_counts,
         "results": regression.get("results", []),
         "failed_cases": failed_cases,
         "run_id": regression.get("run_id"),
     }
+
+def _ensure_documents_approved_for_publish(docs: list[KnowledgeDocument]) -> None:
+    invalid = []
+    for doc in docs:
+        if document_stage_code(doc) != "approved":
+            invalid.append({
+                "document_id": str(doc.document_id),
+                "title": doc.title,
+                "stage_label": document_stage_label(doc),
+            })
+    if invalid:
+        raise HTTPException(status_code=422, detail={
+            "message": "只有审核同意的知识才能发布",
+            "documents": {
+                item["document_id"]: {
+                    "title": item["title"],
+                    "errors": [f"当前状态为{item['stage_label']}，请先完成审核同意后再发布"]
+                }
+                for item in invalid
+            },
+        })
 
 def _append_publish_gate_audit(
     doc: KnowledgeDocument,
@@ -1830,14 +2308,60 @@ async def _ensure_publish_gate(
     force_reason: str | None = None,
     operator: str | None = None,
 ) -> dict:
-    gate_report = await _run_publish_gate_for_documents(docs, db)
+    doc_ids = [doc.document_id for doc in docs]
+    chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id.in_(doc_ids)).all() if doc_ids else []
+    pricing_rules = db.query(PricingRule).filter(PricingRule.document_id.in_(doc_ids)).all() if doc_ids else []
+    original_doc_states = {
+        doc.document_id: (doc.status, doc.review_status)
+        for doc in docs
+    }
+    original_chunk_states = {
+        chunk.chunk_id: chunk.status
+        for chunk in chunks
+    }
+    original_rule_states = {
+        rule.rule_id: rule.status
+        for rule in pricing_rules
+    }
+    try:
+        # 发布门禁必须检索到“本次待发布”的知识；失败后会恢复原状态，不污染线上 active 集合。
+        for doc in docs:
+            doc.status = "active"
+            doc.review_status = "approved"
+        for chunk in chunks:
+            doc = next((item for item in docs if item.document_id == chunk.document_id), None)
+            chunk.status = "active"
+            if doc:
+                chunk.effective_from = doc.effective_from
+                chunk.effective_to = doc.effective_to
+        for rule in pricing_rules:
+            doc = next((item for item in docs if item.document_id == rule.document_id), None)
+            rule.status = "active"
+            if doc:
+                rule.effective_from = doc.effective_from
+                rule.effective_to = doc.effective_to
+                rule.version_no = doc.version_no
+        db.commit()
+        gate_report = await _run_publish_gate_for_documents(docs, db)
+    finally:
+        for doc in docs:
+            old_status, old_review_status = original_doc_states.get(doc.document_id, (doc.status, doc.review_status))
+            doc.status = old_status
+            doc.review_status = old_review_status
+        for chunk in chunks:
+            chunk.status = original_chunk_states.get(chunk.chunk_id, chunk.status)
+        for rule in pricing_rules:
+            rule.status = original_rule_states.get(rule.rule_id, rule.status)
+        db.commit()
+
     if not gate_report.get("passed") and not force:
         raise HTTPException(status_code=422, detail={
-            "message": "Knowledge publish gate blocked",
+            "message": "知识发布门禁未通过",
+            "suggestion": "请查看 failed_cases 中的失败用例，修正知识内容、结构化报价规则或检索条件后再发布；如确需上线，请填写强制发布原因。",
             "gate_report": gate_report,
         })
     if force and not force_reason:
-        raise HTTPException(status_code=422, detail="force_reason is required when force publish")
+        raise HTTPException(status_code=422, detail="强制发布时必须填写强制发布原因")
     for doc in docs:
         _append_publish_gate_audit(
             doc,
@@ -1860,7 +2384,6 @@ def _pricing_signature(rule: PricingRule) -> tuple:
 def _pricing_scope(rule: PricingRule) -> tuple:
     return (
         rule.business_line,
-        rule.sub_service,
         rule.language_pair,
         rule.service_scope,
         rule.customer_tier,
@@ -1870,7 +2393,7 @@ def _pricing_scope(rule: PricingRule) -> tuple:
     )
 
 def _scope_to_dict(scope: tuple) -> dict:
-    keys = ["business_line", "sub_service", "language_pair", "service_scope", "customer_tier", "region", "unit", "currency"]
+    keys = ["business_line", "language_pair", "service_scope", "customer_tier", "region", "unit", "currency"]
     return {key: value for key, value in zip(keys, scope)}
 
 def build_kb_quality_report(db: Session, days: int = 30, limit: int = 300) -> dict:
@@ -1892,7 +2415,7 @@ def build_kb_quality_report(db: Session, days: int = 30, limit: int = 300) -> di
             issues.append({
                 "type": "missing_pricing_rule",
                 "severity": "high",
-                "message": "active pricing chunk has no active structured pricing_rule",
+                "message": "已发布报价切片缺少可用的结构化报价规则",
                 "document_id": str(chunk.document_id),
                 "chunk_id": str(chunk.chunk_id),
                 "title": chunk.title,
@@ -1919,7 +2442,7 @@ def build_kb_quality_report(db: Session, days: int = 30, limit: int = 300) -> di
         issues.append({
             "type": issue_type,
             "severity": severity,
-            "message": "same pricing scope has conflicting values" if issue_type == "pricing_conflict" else "same pricing scope has duplicate values",
+            "message": "同一报价范围存在冲突价格" if issue_type == "pricing_conflict" else "同一报价范围存在重复价格",
             "scope": _scope_to_dict(scope),
             "rule_ids": [str(rule.rule_id) for rule in rules],
             "document_ids": sorted({str(rule.document_id) for rule in rules}),
@@ -1937,7 +2460,7 @@ def build_kb_quality_report(db: Session, days: int = 30, limit: int = 300) -> di
         issues.append({
             "type": "expired_document" if expired else "expiring_document",
             "severity": "high" if expired else "medium",
-            "message": "active document is expired" if expired else "active document will expire soon",
+            "message": "已发布知识已过期" if expired else "已发布知识即将过期",
             "document_id": str(doc.document_id),
             "title": doc.title,
             "effective_to": doc.effective_to,
@@ -1955,7 +2478,7 @@ def build_kb_quality_report(db: Session, days: int = 30, limit: int = 300) -> di
         issues.append({
             "type": "expired_pricing_rule" if expired else "expiring_pricing_rule",
             "severity": "high" if expired else "medium",
-            "message": "active pricing rule is expired" if expired else "active pricing rule will expire soon",
+            "message": "已发布报价规则已过期" if expired else "已发布报价规则即将过期",
             "rule_id": str(rule.rule_id),
             "document_id": str(rule.document_id),
             "scope": _scope_to_dict(_pricing_scope(rule)),
@@ -2019,10 +2542,10 @@ def _create_pricing_rule(
 def _document_publish_errors(db: Session, doc: KnowledgeDocument) -> list[str]:
     errors = []
     if not doc.version_no:
-        errors.append("version_no is required")
+        errors.append("版本号不能为空")
     chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc.document_id).all()
     if not chunks:
-        errors.append("at least one knowledge chunk is required")
+        errors.append("至少需要一个知识切片")
 
     pricing_chunks = [
         chunk for chunk in chunks
@@ -2030,27 +2553,38 @@ def _document_publish_errors(db: Session, doc: KnowledgeDocument) -> list[str]:
     ]
     if pricing_chunks:
         if not doc.effective_from or not doc.effective_to:
-            errors.append("pricing document requires effective_from and effective_to")
+            errors.append("报价类知识必须填写生效时间和失效时间")
         for chunk in pricing_chunks:
             rule_count = db.query(PricingRule).filter(
                 PricingRule.document_id == doc.document_id,
                 or_(PricingRule.chunk_id == chunk.chunk_id, PricingRule.chunk_id.is_(None)),
             ).count()
             if rule_count == 0:
-                errors.append(f"pricing chunk requires pricing_rule: {chunk.title}")
+                errors.append(f"报价切片缺少结构化报价规则：{chunk.title}")
     return errors
 
 def _validate_documents_publishable(db: Session, docs) -> None:
+    _ensure_documents_publishable(db, docs, force=False)
+    return None
+
+def _ensure_documents_publishable(db: Session, docs, *, force: bool = False) -> dict:
     all_errors = {}
     for doc in docs:
         errors = _document_publish_errors(db, doc)
         if errors:
             all_errors[str(doc.document_id)] = {"title": doc.title, "errors": errors}
     if all_errors:
-        raise HTTPException(status_code=422, detail={
-            "message": "Knowledge publish validation failed",
-            "documents": all_errors,
-        })
+        report = {"passed": False, "documents": all_errors}
+        if not force:
+            raise HTTPException(status_code=422, detail={
+                "message": "知识发布前结构校验未通过",
+                "documents": all_errors,
+                "force_allowed": True,
+                "publish_validation": report,
+                "suggestion": "请补齐控制项后重新发布；如确认风险可接受，可填写强制发布原因后人工通过。",
+            })
+        return report
+    return {"passed": True, "documents": {}}
 
 def _sync_related_status(db: Session, doc: KnowledgeDocument, status: str, review_status: str | None = None):
     doc.status = status
@@ -2069,9 +2603,34 @@ def _sync_related_status(db: Session, doc: KnowledgeDocument, status: str, revie
         rule.version_no = doc.version_no
     return len(chunks), len(pricing_rules)
 
+def _sync_single_chunk_document_from_chunk(db: Session, chunk: KnowledgeChunk) -> None:
+    doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == chunk.document_id).first()
+    if not doc:
+        return
+    chunk_count = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == chunk.document_id).count()
+    if chunk_count != 1:
+        return
+    class_code = (chunk.structured_tags or {}).get("knowledge_class") or knowledge_class_from_pair(chunk.knowledge_type, chunk.chunk_type)
+    doc.title = chunk.title
+    doc.knowledge_type = chunk.knowledge_type
+    doc.business_line = chunk.business_line
+    doc.tags = merge_knowledge_class_tags(doc.tags, class_code)
+    if class_code:
+        config = KB_KNOWLEDGE_CLASS_CONFIG.get(class_code)
+        if config:
+            doc.risk_level = config["risk_level"]
+
 @app.post("/api/kb/documents/manual")
 async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = Depends(get_db)):
     """手工新增一条知识，默认进入 draft，不直接发布。"""
+    knowledge_class = normalize_knowledge_class_or_raise(payload.knowledge_class)
+    resolved_class, resolved_type, resolved_chunk_type, resolved_risk = resolve_knowledge_class_fields(
+        knowledge_class=knowledge_class,
+        knowledge_type=payload.knowledge_type,
+        chunk_type=payload.chunk_type,
+        risk_level=payload.risk_level,
+    )
+    merged_tags = merge_knowledge_class_tags(payload.tags, resolved_class)
     embedding_text = f"{payload.title}\n{payload.content}"
     embedding = EmbeddingService.embed(embedding_text)
     if not embedding:
@@ -2080,7 +2639,7 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
     now_status = "draft"
     document = KnowledgeDocument(
         title=payload.title,
-        knowledge_type=payload.knowledge_type,
+        knowledge_type=resolved_type,
         business_line=payload.business_line,
         sub_service=payload.sub_service,
         source_type=payload.source_type,
@@ -2089,10 +2648,10 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
         owner=payload.owner,
         effective_from=payload.effective_from,
         effective_to=payload.effective_to,
-        risk_level=payload.risk_level,
+        risk_level=resolved_risk,
         review_required=payload.review_required,
         review_status="pending" if payload.review_required else "auto_ready",
-        tags=payload.tags,
+        tags=merged_tags,
     )
     db.add(document)
     db.flush()
@@ -2100,7 +2659,7 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
     chunk = KnowledgeChunk(
         document_id=document.document_id,
         chunk_no=1,
-        chunk_type=payload.chunk_type,
+        chunk_type=resolved_chunk_type,
         title=payload.title,
         content=payload.content,
         keyword_text=f"{payload.title}\n{payload.content}",
@@ -2111,26 +2670,28 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
         priority=payload.priority,
         business_line=payload.business_line,
         sub_service=payload.sub_service,
-        knowledge_type=payload.knowledge_type,
+        knowledge_type=resolved_type,
         language_pair=payload.language_pair,
         service_scope=payload.service_scope,
         region=payload.region,
         customer_tier=payload.customer_tier,
-        structured_tags=payload.tags,
+        structured_tags=merged_tags,
         status=now_status,
         effective_from=payload.effective_from,
         effective_to=payload.effective_to,
     )
     db.add(chunk)
     db.flush()
-    pricing_rule_payload = payload.pricing_rule or infer_pricing_rule_candidate(
-        payload.title,
-        payload.content,
-        payload.business_line,
-        payload.language_pair,
-        payload.service_scope,
-        payload.customer_tier,
-    )
+    pricing_rule_payload = payload.pricing_rule
+    if not pricing_rule_payload and resolved_type == "pricing" and resolved_chunk_type != "constraint":
+        pricing_rule_payload = infer_pricing_rule_candidate(
+            payload.title,
+            payload.content,
+            payload.business_line,
+            payload.language_pair,
+            payload.service_scope,
+            payload.customer_tier,
+        )
     pricing_rule = _create_pricing_rule(db, document, chunk, pricing_rule_payload)
     db.commit()
     db.refresh(document)
@@ -2150,9 +2711,17 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
     if not payload.chunks:
         raise HTTPException(status_code=400, detail="chunks 不能为空")
 
+    document_knowledge_class = normalize_knowledge_class_or_raise(payload.knowledge_class)
+    resolved_doc_class, resolved_doc_type, _resolved_doc_chunk_type, resolved_doc_risk = resolve_knowledge_class_fields(
+        knowledge_class=document_knowledge_class,
+        knowledge_type=payload.knowledge_type,
+        chunk_type=None,
+        risk_level=payload.risk_level,
+    )
+    merged_doc_tags = merge_knowledge_class_tags(payload.tags, resolved_doc_class)
     document = KnowledgeDocument(
         title=payload.title,
-        knowledge_type=payload.knowledge_type,
+        knowledge_type=resolved_doc_type,
         business_line=payload.business_line,
         sub_service=payload.sub_service,
         source_type=payload.source_type,
@@ -2161,10 +2730,10 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
         owner=payload.owner,
         effective_from=payload.effective_from,
         effective_to=payload.effective_to,
-        risk_level=payload.risk_level,
+        risk_level=resolved_doc_risk,
         review_required=payload.review_required,
         review_status="pending" if payload.review_required else "auto_ready",
-        tags=payload.tags,
+        tags=merged_doc_tags,
     )
     db.add(document)
     db.flush()
@@ -2172,13 +2741,21 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
     created_chunks = []
     created_pricing_rules = []
     for idx, item in enumerate(payload.chunks, start=1):
+        chunk_knowledge_class = normalize_knowledge_class_or_raise(item.knowledge_class)
+        resolved_chunk_class, resolved_chunk_type, resolved_chunk_chunk_type, _resolved_chunk_risk = resolve_knowledge_class_fields(
+            knowledge_class=chunk_knowledge_class,
+            knowledge_type=item.knowledge_type or resolved_doc_type,
+            chunk_type=item.chunk_type,
+            risk_level=None,
+        )
+        merged_chunk_tags = merge_knowledge_class_tags(item.tags, resolved_chunk_class)
         embedding = EmbeddingService.embed(f"{item.title}\n{item.content}")
         if not embedding:
             raise HTTPException(status_code=500, detail=f"Embedding failed at chunk {idx}: {item.title}")
         chunk = KnowledgeChunk(
             document_id=document.document_id,
             chunk_no=idx,
-            chunk_type=item.chunk_type,
+            chunk_type=resolved_chunk_chunk_type,
             title=item.title,
             content=item.content,
             keyword_text=f"{item.title}\n{item.content}",
@@ -2189,26 +2766,28 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
             priority=item.priority,
             business_line=item.business_line or payload.business_line,
             sub_service=item.sub_service or payload.sub_service,
-            knowledge_type=item.knowledge_type or payload.knowledge_type,
+            knowledge_type=resolved_chunk_type,
             language_pair=item.language_pair,
             service_scope=item.service_scope,
             region=item.region,
             customer_tier=item.customer_tier,
-            structured_tags=item.tags,
+            structured_tags=merged_chunk_tags,
             status="draft",
             effective_from=payload.effective_from,
             effective_to=payload.effective_to,
         )
         db.add(chunk)
         db.flush()
-        pricing_rule_payload = item.pricing_rule or infer_pricing_rule_candidate(
-            item.title,
-            item.content,
-            item.business_line or payload.business_line,
-            item.language_pair,
-            item.service_scope,
-            item.customer_tier,
-        )
+        pricing_rule_payload = item.pricing_rule
+        if not pricing_rule_payload and resolved_chunk_type == "pricing" and resolved_chunk_chunk_type != "constraint":
+            pricing_rule_payload = infer_pricing_rule_candidate(
+                item.title,
+                item.content,
+                item.business_line or payload.business_line,
+                item.language_pair,
+                item.service_scope,
+                item.customer_tier,
+            )
         pricing_rule = _create_pricing_rule(db, document, chunk, pricing_rule_payload)
         if pricing_rule:
             created_pricing_rules.append(pricing_rule)
@@ -2233,20 +2812,24 @@ async def get_kb_dictionaries():
 
 @app.get("/api/kb/import/templates")
 async def list_kb_import_templates():
+    default_template = {
+        "type": "unified",
+        "label": KB_EXCEL_IMPORT_TYPES["unified"]["label"],
+        "knowledge_class": KB_EXCEL_IMPORT_TYPES["unified"]["knowledge_class"],
+        "knowledge_type": KB_EXCEL_IMPORT_TYPES["unified"]["knowledge_type"],
+        "chunk_type": KB_EXCEL_IMPORT_TYPES["unified"]["chunk_type"],
+        "risk_level": KB_EXCEL_IMPORT_TYPES["unified"]["risk_level"],
+    }
     return {
         "status": "success",
         "columns": KB_EXCEL_TEMPLATE_COLUMNS,
-        "templates": [
-            {
-                "type": import_type,
-                "label": config["label"],
-                "knowledge_type": config["knowledge_type"],
-                "chunk_type": config["chunk_type"],
-                "risk_level": config["risk_level"],
-            }
-            for import_type, config in KB_EXCEL_IMPORT_TYPES.items()
-        ],
+        "default_template": default_template,
+        "templates": [default_template],
     }
+
+@app.get("/api/kb/import/template/download")
+async def download_default_kb_import_template():
+    return await download_kb_import_template("unified")
 
 @app.get("/api/kb/import/templates/{template_type}/download")
 async def download_kb_import_template(template_type: str):
@@ -2261,10 +2844,22 @@ async def download_kb_import_template(template_type: str):
     sheet = workbook.active
     sheet.title = KB_EXCEL_IMPORT_TYPES[template_type]["label"][:31]
     sheet.append(KB_EXCEL_TEMPLATE_COLUMNS)
-    sheet.append(KB_EXCEL_TEMPLATE_SAMPLE[template_type])
+    sample_rows = KB_UNIFIED_TEMPLATE_SAMPLE_ROWS if template_type == "unified" else [KB_EXCEL_TEMPLATE_SAMPLE[template_type]]
+    for row in sample_rows:
+        sheet.append(row)
     for idx, column_name in enumerate(KB_EXCEL_TEMPLATE_COLUMNS, start=1):
         sheet.cell(row=1, column=idx).value = column_name
         sheet.column_dimensions[sheet.cell(row=1, column=idx).column_letter].width = max(12, min(len(column_name) + 8, 24))
+
+    if template_type == "unified":
+        guide = workbook.create_sheet("填写说明")
+        guide.append(["规则", "说明"])
+        guide.append(["统一模板", "该模板同时支持 7 类业务知识和结构化报价规则，无需先选择导入类型。"])
+        guide.append(["知识分类", "除结构化报价规则外，其余业务知识必须填写知识分类。"])
+        guide.append(["结构化报价规则", "结构化报价规则行的知识分类留空，填写价格/单位/币种/生效时间/失效时间等字段。"])
+        guide.append(["切分", "切分=1 时会调用 LLM 自动拆成多条草稿 chunk；结构化报价规则固定按单条导入。"])
+        guide.append(["审核发布", "所有导入结果先进入 draft，后续仍需提交审核、审核同意和发布门禁。"])
+    workbook.active = 0
 
     buffer = BytesIO()
     workbook.save(buffer)
@@ -2397,7 +2992,9 @@ async def promote_kb_candidate(candidate_id: str, payload: KnowledgeCandidatePro
 @app.get("/api/kb/documents")
 async def list_kb_documents(
     status: str | None = None,
+    stage: str | None = None,
     business_line: str | None = None,
+    knowledge_class: str | None = None,
     knowledge_type: str | None = None,
     import_batch: str | None = None,
     review_status: str | None = None,
@@ -2407,10 +3004,33 @@ async def list_kb_documents(
     db: Session = Depends(get_db),
 ):
     query = db.query(KnowledgeDocument)
+    knowledge_class_code = normalize_knowledge_class_or_raise(knowledge_class) if knowledge_class else None
     if status:
-        query = query.filter(KnowledgeDocument.status == status)
+        if status == "approved":
+            query = query.filter(KnowledgeDocument.status == "review", KnowledgeDocument.review_status == "approved")
+        else:
+            query = query.filter(KnowledgeDocument.status == status)
+    if stage:
+        if stage == "draft":
+            query = query.filter(KnowledgeDocument.status == "draft")
+        elif stage == "review":
+            query = query.filter(KnowledgeDocument.status == "review", KnowledgeDocument.review_status != "approved")
+        elif stage == "approved":
+            query = query.filter(KnowledgeDocument.status == "review", KnowledgeDocument.review_status == "approved")
+        elif stage == "active":
+            query = query.filter(KnowledgeDocument.status == "active")
+        elif stage == "archived":
+            query = query.filter(KnowledgeDocument.status == "archived")
+        elif stage == "rejected":
+            query = query.filter(or_(KnowledgeDocument.status == "rejected", KnowledgeDocument.review_status == "rejected"))
+        else:
+            raise HTTPException(status_code=400, detail="stage 参数不合法")
     if business_line:
         query = query.filter(KnowledgeDocument.business_line == business_line)
+    if knowledge_class_code:
+        config = KB_KNOWLEDGE_CLASS_CONFIG.get(knowledge_class_code)
+        if config:
+            query = query.filter(KnowledgeDocument.knowledge_type == config["knowledge_type"])
     if knowledge_type:
         query = query.filter(KnowledgeDocument.knowledge_type == knowledge_type)
     if import_batch:
@@ -2421,8 +3041,13 @@ async def list_kb_documents(
         query = query.filter(KnowledgeDocument.source_type == source_type)
     if risk_level:
         query = query.filter(KnowledgeDocument.risk_level == risk_level)
-    docs = query.order_by(KnowledgeDocument.created_at.desc()).limit(max(1, min(limit, 500))).all()
-    return [_doc_to_dict(doc) for doc in docs]
+    query_limit = max(1, min(limit, 500))
+    fetch_limit = max(query_limit * 5, query_limit) if knowledge_class_code else query_limit
+    docs = query.order_by(KnowledgeDocument.created_at.desc()).limit(min(fetch_limit, 1000)).all()
+    result = [_doc_to_dict(doc) for doc in docs]
+    if knowledge_class_code:
+        result = [doc for doc in result if doc.get("knowledge_class") == knowledge_class_code]
+    return result[:query_limit]
 
 @app.get("/api/kb/documents/{document_id}")
 async def get_kb_document(document_id: str, db: Session = Depends(get_db)):
@@ -2463,13 +3088,43 @@ async def update_kb_document(document_id: str, payload: KnowledgeDocumentUpdate,
     doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Knowledge document not found")
-    for field in [
-        "title", "knowledge_type", "business_line", "sub_service", "risk_level",
-        "review_required", "tags", "effective_from", "effective_to"
-    ]:
-        value = getattr(payload, field)
-        if value is not None:
-            setattr(doc, field, value)
+    if payload.title is not None:
+        doc.title = payload.title
+    if payload.business_line is not None:
+        doc.business_line = payload.business_line
+    if payload.sub_service is not None:
+        doc.sub_service = payload.sub_service
+    if payload.review_required is not None:
+        doc.review_required = payload.review_required
+    if payload.effective_from is not None:
+        doc.effective_from = payload.effective_from
+    if payload.effective_to is not None:
+        doc.effective_to = payload.effective_to
+
+    knowledge_class = normalize_knowledge_class_or_raise(payload.knowledge_class)
+    merged_tags = payload.tags if payload.tags is not None else doc.tags
+    if knowledge_class:
+        _class_code, resolved_type, resolved_chunk_type, resolved_risk = resolve_knowledge_class_fields(
+            knowledge_class=knowledge_class,
+            knowledge_type=payload.knowledge_type or doc.knowledge_type,
+            chunk_type=None,
+            risk_level=payload.risk_level or doc.risk_level,
+        )
+        doc.knowledge_type = resolved_type
+        doc.risk_level = resolved_risk if payload.risk_level is None else payload.risk_level
+        doc.tags = merge_knowledge_class_tags(merged_tags, knowledge_class)
+        chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc.document_id).all()
+        if len(chunks) == 1:
+            chunks[0].knowledge_type = resolved_type
+            chunks[0].chunk_type = resolved_chunk_type
+            chunks[0].structured_tags = merge_knowledge_class_tags(chunks[0].structured_tags, knowledge_class)
+    else:
+        if payload.knowledge_type is not None:
+            doc.knowledge_type = payload.knowledge_type
+        if payload.risk_level is not None:
+            doc.risk_level = payload.risk_level
+        if payload.tags is not None:
+            doc.tags = payload.tags
     if doc.status == "draft":
         doc.review_status = "pending" if doc.review_required else "auto_ready"
     db.commit()
@@ -2485,13 +3140,46 @@ async def update_kb_chunk(chunk_id: str, payload: KnowledgeChunkUpdate, db: Sess
 
     old_title = chunk.title
     old_content = chunk.content
-    for field in [
-        "title", "content", "chunk_type", "knowledge_type", "business_line", "sub_service",
-        "language_pair", "service_scope", "region", "customer_tier", "priority", "structured_tags"
-    ]:
-        value = getattr(payload, field)
-        if value is not None:
-            setattr(chunk, field, value)
+    if payload.title is not None:
+        chunk.title = payload.title
+    if payload.content is not None:
+        chunk.content = payload.content
+    if payload.business_line is not None:
+        chunk.business_line = payload.business_line
+    if payload.sub_service is not None:
+        chunk.sub_service = payload.sub_service
+    if payload.language_pair is not None:
+        chunk.language_pair = payload.language_pair
+    if payload.service_scope is not None:
+        chunk.service_scope = payload.service_scope
+    if payload.region is not None:
+        chunk.region = payload.region
+    if payload.customer_tier is not None:
+        chunk.customer_tier = payload.customer_tier
+    if payload.priority is not None:
+        chunk.priority = payload.priority
+
+    knowledge_class = normalize_knowledge_class_or_raise(payload.knowledge_class)
+    if knowledge_class:
+        _class_code, resolved_type, resolved_chunk_type, _resolved_risk = resolve_knowledge_class_fields(
+            knowledge_class=knowledge_class,
+            knowledge_type=payload.knowledge_type or chunk.knowledge_type,
+            chunk_type=payload.chunk_type or chunk.chunk_type,
+            risk_level=None,
+        )
+        chunk.knowledge_type = resolved_type
+        chunk.chunk_type = resolved_chunk_type
+        chunk.structured_tags = merge_knowledge_class_tags(
+            payload.structured_tags if payload.structured_tags is not None else chunk.structured_tags,
+            knowledge_class,
+        )
+    else:
+        if payload.chunk_type is not None:
+            chunk.chunk_type = payload.chunk_type
+        if payload.knowledge_type is not None:
+            chunk.knowledge_type = payload.knowledge_type
+        if payload.structured_tags is not None:
+            chunk.structured_tags = payload.structured_tags
 
     if chunk.title != old_title or chunk.content != old_content:
         embedding = EmbeddingService.embed(f"{chunk.title}\n{chunk.content}")
@@ -2503,6 +3191,7 @@ async def update_kb_chunk(chunk_id: str, payload: KnowledgeChunkUpdate, db: Sess
         chunk.embedding_model = settings.EMBEDDING_MODEL
         chunk.embedding_dim = settings.EMBEDDING_DIM
 
+    _sync_single_chunk_document_from_chunk(db, chunk)
     db.commit()
     db.refresh(chunk)
     return {"status": "success", "chunk": _chunk_to_dict(chunk)}
@@ -2734,6 +3423,7 @@ def _execute_regression_cases(payload: KnowledgeRegressionRunRequest, report: An
         ]
         item = {
             "case_id": case_id,
+            "query_text": case.get("query_text"),
             "group": case.get("group"),
             "risk_level": case.get("risk_level"),
             "category": case.get("category"),
@@ -2978,15 +3668,28 @@ def _probe_http_status(url: str, headers: dict | None = None) -> dict:
 def _system_config_check() -> dict:
     checks = {}
 
-    db_configured = not any(
+    db_configured = bool(settings.DATABASE_URL and not _is_placeholder_value(settings.DATABASE_URL)) or not any(
         _is_placeholder_value(value)
         for value in [settings.DB_HOST, settings.DB_NAME, settings.DB_USER, settings.DB_PASSWORD]
     )
+    db_host = settings.DB_HOST
+    db_name = settings.DB_NAME
+    db_user = settings.DB_USER
+    if settings.DATABASE_URL and not _is_placeholder_value(settings.DATABASE_URL):
+        try:
+            from sqlalchemy.engine import make_url
+            parsed_db_url = make_url(settings.DATABASE_URL)
+            db_host = parsed_db_url.host or db_host
+            db_name = parsed_db_url.database or db_name
+            db_user = parsed_db_url.username or db_user
+        except Exception:
+            pass
     db_check = {
         "configured": db_configured,
-        "host": settings.DB_HOST,
-        "database": settings.DB_NAME,
-        "user": settings.DB_USER,
+        "url_configured": bool(settings.DATABASE_URL and not _is_placeholder_value(settings.DATABASE_URL)),
+        "host": db_host,
+        "database": db_name,
+        "user": db_user,
         "suggestions": [],
     }
     if db_configured:
@@ -3005,7 +3708,7 @@ def _system_config_check() -> dict:
                 pass
     else:
         db_check["status"] = "error"
-        db_check["suggestions"].append("补齐 DB_HOST / DB_NAME / DB_USER / DB_PASSWORD。")
+        db_check["suggestions"].append("补齐 DATABASE_URL，或 DB_HOST / DB_NAME / DB_USER / DB_PASSWORD。")
     checks["postgres"] = db_check
 
     embedding_headers = {"Authorization": f"Bearer {settings.EMBEDDING_API_KEY}"} if settings.EMBEDDING_API_KEY else {}
@@ -3091,14 +3794,15 @@ def _system_config_check() -> dict:
         "suggestions": [] if qywx_credentials_ready else ["补齐企微应用 CorpID / Secret / AgentID / Token / EncodingAESKey。"],
     }
 
-    sdk_path = os.path.join(os.path.dirname(__file__), "WeWorkFinanceSdk.dll")
+    archive_status = ArchiveService.config_status()
     checks["archive_sdk"] = {
-        "status": "ok" if os.path.exists(sdk_path) and os.path.exists(settings.PRIVATE_KEY_PATH) and not _is_placeholder_value(settings.CHATDATA_SECRET) else "error",
-        "sdk_present": os.path.exists(sdk_path),
-        "private_key_present": os.path.exists(settings.PRIVATE_KEY_PATH),
-        "chatdata_secret_configured": not _is_placeholder_value(settings.CHATDATA_SECRET),
-        "private_key_path": settings.PRIVATE_KEY_PATH,
-        "suggestions": [] if os.path.exists(sdk_path) and os.path.exists(settings.PRIVATE_KEY_PATH) else ["检查 WeWorkFinanceSdk.dll 和企微会话存档私钥文件是否存在。"],
+        "status": "ok" if archive_status["ready"] else "error",
+        "sdk_present": archive_status["sdk_present"],
+        "private_key_present": archive_status["private_key_present"],
+        "chatdata_secret_configured": archive_status["chatdata_secret_configured"],
+        "private_key_path": archive_status["private_key_path"],
+        "archive_polling_enabled": archive_status["archive_polling_enabled"],
+        "suggestions": [] if archive_status["ready"] else ["企微会话存档未完整配置；未启用时不影响知识库后台启动。"],
     }
 
     overall = "ok" if all(item.get("status") == "ok" for item in checks.values()) else "degraded"
@@ -3195,8 +3899,10 @@ async def publish_kb_document(
     doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Knowledge document not found")
-    _validate_documents_publishable(db, [doc])
+    _ensure_document_action_allowed(doc, "publish")
+    _ensure_documents_approved_for_publish([doc])
     publish_payload = payload or KnowledgePublishRequest()
+    publish_validation = _ensure_documents_publishable(db, [doc], force=publish_payload.force)
     gate_report = await _ensure_publish_gate(
         [doc],
         db,
@@ -3222,6 +3928,7 @@ async def publish_kb_document(
         "updated_chunks": updated_chunks,
         "updated_pricing_rules": updated_pricing_rules,
         "gate_report": gate_report,
+        "publish_validation": publish_validation,
         "force_published": publish_payload.force,
     }
 
@@ -3230,7 +3937,24 @@ async def submit_review_kb_document(document_id: str, db: Session = Depends(get_
     doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Knowledge document not found")
+    _ensure_document_action_allowed(doc, "submit_review")
     updated_chunks, updated_pricing_rules = _sync_related_status(db, doc, "review", "in_review")
+    db.commit()
+    db.refresh(doc)
+    return {
+        "status": "success",
+        "document": _doc_to_dict(doc),
+        "updated_chunks": updated_chunks,
+        "updated_pricing_rules": updated_pricing_rules,
+    }
+
+@app.post("/api/kb/documents/{document_id}/approve")
+async def approve_kb_document(document_id: str, db: Session = Depends(get_db)):
+    doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Knowledge document not found")
+    _ensure_document_action_allowed(doc, "approve")
+    updated_chunks, updated_pricing_rules = _sync_related_status(db, doc, "review", "approved")
     db.commit()
     db.refresh(doc)
     return {
@@ -3245,6 +3969,7 @@ async def archive_kb_document(document_id: str, db: Session = Depends(get_db)):
     doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Knowledge document not found")
+    _ensure_document_action_allowed(doc, "archive")
     updated_chunks, updated_pricing_rules = _sync_related_status(db, doc, "archived")
     db.commit()
     db.refresh(doc)
@@ -3260,6 +3985,7 @@ async def reject_kb_document(document_id: str, db: Session = Depends(get_db)):
     doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Knowledge document not found")
+    _ensure_document_action_allowed(doc, "reject")
     updated_chunks, updated_pricing_rules = _sync_related_status(db, doc, "rejected", "rejected")
     db.commit()
     db.refresh(doc)
@@ -3303,8 +4029,6 @@ def _load_bulk_docs(db: Session, document_ids: list[str]):
     return docs
 
 def _bulk_set_documents_status(db: Session, docs, status: str, review_status: str | None = None):
-    if status == "active":
-        _validate_documents_publishable(db, docs)
     updated_chunks = 0
     updated_pricing_rules = 0
     for doc in docs:
@@ -3321,13 +4045,16 @@ def _bulk_set_documents_status(db: Session, docs, status: str, review_status: st
 @app.post("/api/kb/bulk/documents/submit_review")
 async def submit_review_kb_documents(payload: KnowledgeBulkAction, db: Session = Depends(get_db)):
     docs = _load_bulk_docs(db, payload.document_ids)
+    _ensure_documents_action_allowed(docs, "submit_review")
     result = _bulk_set_documents_status(db, docs, "review", "in_review")
     return {"status": "success", **result}
 
 @app.post("/api/kb/bulk/documents/publish")
 async def publish_kb_documents(payload: KnowledgeBulkAction, db: Session = Depends(get_db)):
     docs = _load_bulk_docs(db, payload.document_ids)
-    _validate_documents_publishable(db, docs)
+    _ensure_documents_action_allowed(docs, "publish")
+    _ensure_documents_approved_for_publish(docs)
+    publish_validation = _ensure_documents_publishable(db, docs, force=payload.force)
     gate_report = await _ensure_publish_gate(
         docs,
         db,
@@ -3346,12 +4073,26 @@ async def publish_kb_documents(payload: KnowledgeBulkAction, db: Session = Depen
             version_no=doc.version_no,
         )
     result = _bulk_set_documents_status(db, docs, "active", "approved")
-    return {"status": "success", **result, "gate_report": gate_report, "force_published": payload.force}
+    return {
+        "status": "success",
+        **result,
+        "gate_report": gate_report,
+        "publish_validation": publish_validation,
+        "force_published": payload.force,
+    }
 
 @app.post("/api/kb/bulk/documents/archive")
 async def archive_kb_documents(payload: KnowledgeBulkAction, db: Session = Depends(get_db)):
     docs = _load_bulk_docs(db, payload.document_ids)
+    _ensure_documents_action_allowed(docs, "archive")
     result = _bulk_set_documents_status(db, docs, "archived")
+    return {"status": "success", **result}
+
+@app.post("/api/kb/bulk/documents/approve")
+async def approve_kb_documents(payload: KnowledgeBulkAction, db: Session = Depends(get_db)):
+    docs = _load_bulk_docs(db, payload.document_ids)
+    _ensure_documents_action_allowed(docs, "approve")
+    result = _bulk_set_documents_status(db, docs, "review", "approved")
     return {"status": "success", **result}
 
 @app.get("/api/kb/import_batches")
@@ -3449,6 +4190,7 @@ async def submit_review_kb_import_batch(import_batch: str, db: Session = Depends
     docs = db.query(KnowledgeDocument).filter(KnowledgeDocument.import_batch == import_batch).all()
     if not docs:
         raise HTTPException(status_code=404, detail="Import batch not found")
+    _ensure_documents_action_allowed(docs, "submit_review")
     updated_chunks, updated_pricing_rules = set_documents_status(db, docs, "review", "in_review")
     return {
         "status": "success",
@@ -3463,6 +4205,8 @@ async def publish_kb_import_batch(import_batch: str, db: Session = Depends(get_d
     docs = db.query(KnowledgeDocument).filter(KnowledgeDocument.import_batch == import_batch).all()
     if not docs:
         raise HTTPException(status_code=404, detail="Import batch not found")
+    _ensure_documents_action_allowed(docs, "publish")
+    _ensure_documents_approved_for_publish(docs)
     _validate_documents_publishable(db, docs)
     gate_report = await _ensure_publish_gate(docs, db, force=False, operator="import_batch_publish")
     for doc in docs:
@@ -3489,7 +4233,23 @@ async def archive_kb_import_batch(import_batch: str, db: Session = Depends(get_d
     docs = db.query(KnowledgeDocument).filter(KnowledgeDocument.import_batch == import_batch).all()
     if not docs:
         raise HTTPException(status_code=404, detail="Import batch not found")
+    _ensure_documents_action_allowed(docs, "archive")
     updated_chunks, updated_pricing_rules = set_documents_status(db, docs, "archived")
+    return {
+        "status": "success",
+        "import_batch": import_batch,
+        "updated_documents": len(docs),
+        "updated_chunks": updated_chunks,
+        "updated_pricing_rules": updated_pricing_rules,
+    }
+
+@app.post("/api/kb/import_batches/{import_batch}/approve")
+async def approve_kb_import_batch(import_batch: str, db: Session = Depends(get_db)):
+    docs = db.query(KnowledgeDocument).filter(KnowledgeDocument.import_batch == import_batch).all()
+    if not docs:
+        raise HTTPException(status_code=404, detail="Import batch not found")
+    _ensure_documents_action_allowed(docs, "approve")
+    updated_chunks, updated_pricing_rules = set_documents_status(db, docs, "review", "approved")
     return {
         "status": "success",
         "import_batch": import_batch,
@@ -3525,8 +4285,10 @@ async def retrieve_kb(payload: KnowledgeRetrieveRequest):
         session_id=payload.session_id,
     )
     for hit in result.get("hits", []):
+        hit["knowledge_class_label"] = label_for("knowledge_class", hit.get("knowledge_class"))
         hit["business_line_label"] = label_for("business_line", hit.get("business_line"))
         hit["knowledge_type_label"] = label_for("knowledge_type", hit.get("knowledge_type"))
+        hit["chunk_type_label"] = label_for("chunk_type", hit.get("chunk_type"))
         hit["language_pair_label"] = label_for("language_pair", hit.get("language_pair"))
         hit["service_scope_label"] = label_for("service_scope", hit.get("service_scope"))
     return result
@@ -3534,7 +4296,7 @@ async def retrieve_kb(payload: KnowledgeRetrieveRequest):
 @app.post("/api/kb/import/excel/preview")
 async def preview_kb_excel_import(
     file: UploadFile = File(...),
-    import_type: str = Form("faq"),
+    import_type: str = Form("unified"),
 ):
     """统一知识 Excel 预览：只解析和校验，不写入数据库。"""
     filename = file.filename or "kb_import.xlsx"
@@ -3554,6 +4316,97 @@ async def preview_kb_excel_import(
         "skipped": parsed["skipped"],
         "failed": parsed["failed"],
     }
+
+def _llm_split_excel_item_to_chunks(item: dict) -> list[KnowledgeChunkCreate]:
+    class_options = "、".join(KB_LABELS["knowledge_class"].values())
+    prompt = f"""
+你是企业知识库切分助手。请只根据原文拆分知识，不要编造价格、能力、交期、承诺或客户信息。
+
+业务侧知识分类只能从以下 7 类中选择：{class_options}。
+注意：报价规则不是知识分类；明确价格、单位、最低收费、税费、加急倍率应由结构化 pricing_rule 管理。这里仅可输出报价限制条件，例如“需另行确认”“不能直接承诺固定价”。
+
+输出纯 JSON：
+{{
+  "chunks": [
+    {{
+      "title": "简短标题",
+      "content": "只表达一个业务可调用知识点",
+      "knowledge_class": "报价限制条件|能力知识|流程规则|FAQ常见问答|案例|邮件模板|名词定义",
+      "business_line": "translation|printing|interpretation|multimedia|exhibition|gifts|general",
+      "language_pair": null,
+      "service_scope": null,
+      "customer_tier": null,
+      "priority": 50,
+      "risk_level": "low|medium|high",
+      "tags": {{}}
+    }}
+  ]
+}}
+
+规则：
+- 一条 chunk 只表达一个知识点；流程步骤、能力说明、案例、模板、定义混在一起时必须拆开。
+- 报价、费用、合同、承诺、交付边界类内容 risk_level 必须为 high 或 medium。
+- 没有可拆分知识时返回 {{"chunks":[]}}，不要兜底编造 FAQ。
+- 不确定的结构字段填 null。
+
+默认知识分类：{label_for("knowledge_class", item.get("knowledge_class")) or "未指定"}
+默认服务：{item.get("business_line") or "general"}
+原始标题：{item.get("title")}
+原文：
+{item.get("content")}
+"""
+    llm_result = IntentEngine.run_llm1_json_prompt(prompt, user_id="kb_excel_auto_split")
+    raw_chunks = llm_result.get("chunks") if isinstance(llm_result, dict) else None
+    if not isinstance(raw_chunks, list):
+        raise HTTPException(status_code=502, detail="LLM 自动切分返回格式错误")
+
+    chunks = []
+    default_class = item.get("knowledge_class") or knowledge_class_from_pair(item.get("knowledge_type"), item.get("chunk_type")) or "faq"
+    for raw_chunk in raw_chunks:
+        if not isinstance(raw_chunk, dict):
+            continue
+        title = str(raw_chunk.get("title") or "").strip()
+        content = str(raw_chunk.get("content") or "").strip()
+        if not title or not content:
+            continue
+        knowledge_class, raw_knowledge_class = normalize_knowledge_class(raw_chunk.get("knowledge_class") or default_class)
+        knowledge_class = knowledge_class or default_class
+        class_config = KB_KNOWLEDGE_CLASS_CONFIG.get(knowledge_class, KB_KNOWLEDGE_CLASS_CONFIG["faq"])
+        business_line, raw_business_line = normalize_code("business_line", raw_chunk.get("business_line") or item.get("business_line") or "general")
+        language_pair, raw_language_pair = normalize_code("language_pair", raw_chunk.get("language_pair") or item.get("language_pair"))
+        service_scope, raw_service_scope = normalize_code("service_scope", raw_chunk.get("service_scope") or item.get("service_scope"))
+        customer_tier, raw_customer_tier = normalize_code("customer_tier", raw_chunk.get("customer_tier") or item.get("customer_tier"))
+        risk_level, raw_risk_level = normalize_code("risk_level", raw_chunk.get("risk_level") or class_config["risk_level"])
+        tags = dict(raw_chunk.get("tags") or {})
+        tags.update({
+            "knowledge_class": knowledge_class,
+            "auto_split": True,
+            "source_row": item.get("row"),
+        })
+        for key, value in {
+            "raw_knowledge_class": raw_knowledge_class,
+            "raw_business_line": raw_business_line,
+            "raw_language_pair": raw_language_pair,
+            "raw_service_scope": raw_service_scope,
+            "raw_customer_tier": raw_customer_tier,
+            "raw_risk_level": raw_risk_level,
+        }.items():
+            if value:
+                tags[key] = value
+        chunks.append(KnowledgeChunkCreate(
+            title=title[:255],
+            content=content,
+            knowledge_type=class_config["knowledge_type"],
+            chunk_type=class_config["chunk_type"],
+            business_line=business_line or item.get("business_line") or "general",
+            language_pair=language_pair,
+            service_scope=service_scope,
+            customer_tier=customer_tier,
+            priority=int(raw_chunk.get("priority") or item.get("priority") or 50),
+            tags=tags,
+            pricing_rule=None,
+        ))
+    return chunks
 
 def _commit_kb_excel_import_raw(
     db: Session,
@@ -3580,23 +4433,140 @@ def _commit_kb_excel_import_raw(
             )
         title = item["title"]
         content = item["content"]
-        embedding = EmbeddingService.embed(f"{title}\n{content}")
-        if not embedding:
-            failed.append({"row": item["row"], "title": title, "errors": ["embedding_failed"]})
+        item_import_type = item.get("import_type") or import_type
+        if item.get("auto_split"):
+            try:
+                split_chunks = _llm_split_excel_item_to_chunks(item)
+            except Exception as exc:
+                failed.append({"row": item["row"], "title": title, "errors": [f"auto_split_failed: {exc}"]})
+                continue
+            if not split_chunks:
+                failed.append({"row": item["row"], "title": title, "errors": ["auto_split_empty"]})
+                continue
+
+            chunk_knowledge_types = {chunk_payload.knowledge_type for chunk_payload in split_chunks}
+            document_knowledge_type = split_chunks[0].knowledge_type if len(chunk_knowledge_types) == 1 else item["knowledge_type"]
+            document_risk_level = "high" if any(
+                chunk_payload.knowledge_type == "pricing" or is_pricing_text(chunk_payload.title, chunk_payload.content, chunk_payload.knowledge_type)
+                for chunk_payload in split_chunks
+            ) else item["risk_level"]
+            document_tags = dict(item["tags"] or {})
+            document_tags.update({
+                "knowledge_class": item.get("knowledge_class"),
+                "auto_split": True,
+                "split_chunk_count": len(split_chunks),
+            })
+            document = KnowledgeDocument(
+                title=title,
+                knowledge_type=document_knowledge_type,
+                business_line=item["business_line"],
+                sub_service=item.get("sub_service"),
+                source_type=f"excel_{item_import_type}",
+                source_ref=f"{filename} / {parsed['sheet']} / row {item['row']}",
+                source_meta={
+                    "filename": filename,
+                    "sheet": parsed["sheet"],
+                    "row": item["row"],
+                    "import_type": item_import_type,
+                    "request_import_type": import_type,
+                    "auto_split": True,
+                },
+                status="draft",
+                owner=owner,
+                import_batch=import_batch,
+                effective_from=item.get("effective_from"),
+                effective_to=item.get("effective_to"),
+                risk_level=document_risk_level,
+                review_required=True,
+                review_status="pending",
+                tags=document_tags,
+            )
+            db.add(document)
+            db.flush()
+
+            created_chunk_ids = []
+            split_pricing_count = 0
+            for chunk_index, chunk_payload in enumerate(split_chunks, start=1):
+                embedding = EmbeddingService.embed(f"{chunk_payload.title}\n{chunk_payload.content}")
+                if not embedding:
+                    failed.append({"row": item["row"], "title": chunk_payload.title, "errors": [f"embedding_failed_at_split_chunk_{chunk_index}"]})
+                    continue
+                chunk = KnowledgeChunk(
+                    document_id=document.document_id,
+                    chunk_no=chunk_index,
+                    chunk_type=chunk_payload.chunk_type,
+                    title=chunk_payload.title,
+                    content=chunk_payload.content,
+                    keyword_text=f"{chunk_payload.title}\n{chunk_payload.content}",
+                    embedding=embedding,
+                    embedding_provider=settings.EMBEDDING_PROVIDER,
+                    embedding_model=settings.EMBEDDING_MODEL,
+                    embedding_dim=settings.EMBEDDING_DIM,
+                    priority=chunk_payload.priority,
+                    business_line=chunk_payload.business_line or item["business_line"],
+                    sub_service=chunk_payload.sub_service or item.get("sub_service"),
+                    knowledge_type=chunk_payload.knowledge_type,
+                    language_pair=chunk_payload.language_pair,
+                    service_scope=chunk_payload.service_scope,
+                    region=chunk_payload.region,
+                    customer_tier=chunk_payload.customer_tier,
+                    structured_tags=chunk_payload.tags,
+                    status="draft",
+                    effective_from=item.get("effective_from"),
+                    effective_to=item.get("effective_to"),
+                )
+                db.add(chunk)
+                db.flush()
+                pricing_rule_payload = None
+                if item_import_type == "pricing" and chunk_payload.chunk_type != "constraint":
+                    pricing_rule_payload = chunk_payload.pricing_rule or infer_pricing_rule_candidate(
+                        chunk_payload.title,
+                        chunk_payload.content,
+                        chunk_payload.business_line or item["business_line"],
+                        chunk_payload.language_pair,
+                        chunk_payload.service_scope,
+                        chunk_payload.customer_tier,
+                    )
+                pricing_rule = _create_pricing_rule(db, document, chunk, pricing_rule_payload)
+                if pricing_rule:
+                    split_pricing_count += 1
+                created_chunk_ids.append(str(chunk.chunk_id))
+
+            if not created_chunk_ids:
+                db.delete(document)
+                failed.append({"row": item["row"], "title": title, "errors": ["auto_split_no_valid_chunks"]})
+                continue
+
+            created.append({
+                "row": item["row"],
+                "document_id": str(document.document_id),
+                "chunk_id": created_chunk_ids[0] if created_chunk_ids else None,
+                "chunk_ids": created_chunk_ids,
+                "split_chunk_count": len(created_chunk_ids),
+                "pricing_rule_created": bool(split_pricing_count),
+                "title": title,
+                "import_type": item_import_type,
+                "knowledge_type": document_knowledge_type,
+                "business_line": item["business_line"],
+                "risk_level": document_risk_level,
+                "auto_split": True,
+            })
             continue
+        embedding = EmbeddingService.embed(f"{title}\n{content}")
 
         document = KnowledgeDocument(
             title=title,
             knowledge_type=item["knowledge_type"],
             business_line=item["business_line"],
             sub_service=item.get("sub_service"),
-            source_type=f"excel_{import_type}",
+            source_type=f"excel_{item_import_type}",
             source_ref=f"{filename} / {parsed['sheet']} / row {item['row']}",
             source_meta={
                 "filename": filename,
                 "sheet": parsed["sheet"],
                 "row": item["row"],
-                "import_type": import_type,
+                "import_type": item_import_type,
+                "request_import_type": import_type,
             },
             status="draft",
             owner=owner,
@@ -3650,6 +4620,7 @@ def _commit_kb_excel_import_raw(
             "chunk_id": str(chunk.chunk_id),
             "pricing_rule_created": bool(pricing_rule),
             "title": title,
+            "import_type": item_import_type,
             "knowledge_type": item["knowledge_type"],
             "business_line": item["business_line"],
             "risk_level": item["risk_level"],
@@ -3707,7 +4678,7 @@ def _run_excel_import_job(report: Any, payload_data: dict) -> dict:
 @app.post("/api/kb/import/excel/commit")
 async def commit_kb_excel_import(
     file: UploadFile = File(...),
-    import_type: str = Form("faq"),
+    import_type: str = Form("unified"),
     owner: str = Form("kb_excel_import"),
     db: Session = Depends(get_db),
 ):
@@ -3719,7 +4690,7 @@ async def commit_kb_excel_import(
 @app.post("/api/kb/import/excel/commit_async")
 async def commit_kb_excel_import_async(
     file: UploadFile = File(...),
-    import_type: str = Form("faq"),
+    import_type: str = Form("unified"),
     owner: str = Form("kb_excel_import"),
     db: Session = Depends(get_db),
 ):
@@ -3752,7 +4723,7 @@ async def extract_kb_candidates_from_messages(payload: KnowledgeExtractFromMessa
     if payload.session_id:
         logs = (
             db.query(MessageLog)
-            .filter(MessageLog.user_id == payload.session_id)
+            .filter(MessageLog.user_id == payload.session_id, MessageLog.is_mock.is_(False))
             .order_by(MessageLog.timestamp.asc(), MessageLog.id.asc())
             .limit(max(1, min(payload.max_messages, 200)))
             .all()
@@ -3838,7 +4809,7 @@ async def extract_kb_candidates_from_email_excel(
 
 @app.post("/api/kb/import/faq_excel")
 async def import_faq_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """导入 FAQ Excel：按“节点名/内容”列生成 draft 知识。"""
+    """导入常见问答 Excel：按“节点名/内容”列生成 draft 知识。"""
     filename = file.filename or "faq_import.xlsx"
     if not filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="仅支持 .xlsx/.xlsm 文件")
@@ -3941,7 +4912,7 @@ async def import_faq_excel(file: UploadFile = File(...), db: Session = Depends(g
         })
 
     db.commit()
-    logger.info("KB_FAQ_EXCEL_IMPORT %s", json.dumps({
+    logger.info("KB_COMMON_QA_EXCEL_IMPORT %s", json.dumps({
         "filename": filename,
         "sheet": sheet.title,
         "import_batch": import_batch,
@@ -3975,9 +4946,8 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
     {{
       "title": "简短标题",
       "content": "只包含一个业务知识点的原文或规范化表述",
-      "knowledge_type": "capability|pricing|process|faq",
-      "chunk_type": "rule|faq|constraint|definition",
-      "business_line": "general|translation|printing|exhibition",
+      "knowledge_class": "报价限制条件|能力知识|流程规则|FAQ常见问答|案例|邮件模板|名词定义",
+      "business_line": "translation|printing|interpretation|multimedia|exhibition|gifts|general",
       "sub_service": null,
       "language_pair": null,
       "service_scope": null,
@@ -3999,15 +4969,16 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
 }}
 
 字段约束：
-- knowledge_type 只能使用 capability、pricing、process、faq。
-- business_line 只能使用 general、translation、printing、exhibition。
+- knowledge_class 只能使用 7 类业务分类：报价限制条件、能力知识、流程规则、FAQ常见问答、案例、邮件模板、名词定义。
+- 报价规则不是知识分类；明确价格和单位必须进入结构化 pricing_rule，普通 chunk 只承载报价限制条件或说明证据。
+- business_line 只能使用 translation、printing、interpretation、multimedia、exhibition、gifts、general。
 - 价格、费用、折扣、税费、合同、承诺、赔付类内容 risk_level 必须为 high 且 review_required=true。
 - 一条 chunk 只能表达一个知识点；如果一句话里有报价、最低收费、加急规则，必须拆成多条。
-- knowledge_type=pricing 时必须尽量输出 pricing_rule；无法确定价格数字时保留 null，但不能编造数字。
+- 确有原文价格数字时必须尽量输出 pricing_rule；无法确定价格数字时保留 null，但不能编造数字。
 - 不确定的字段填 null，不要自造 code。
 
 资料标题：{payload.title}
-默认业务线：{payload.business_line}
+默认服务：{payload.business_line}
 原文：
 {payload.content}
 """
@@ -4021,18 +4992,25 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
         content = str(raw_chunk.get("content") or "").strip()
         if not title or not content:
             continue
-        knowledge_type, raw_knowledge_type = normalize_code("knowledge_type", raw_chunk.get("knowledge_type") or "faq")
+        knowledge_class, raw_knowledge_class = normalize_knowledge_class(raw_chunk.get("knowledge_class"))
+        class_config = KB_KNOWLEDGE_CLASS_CONFIG.get(knowledge_class or "")
+        knowledge_type, raw_knowledge_type = normalize_code("knowledge_type", raw_chunk.get("knowledge_type") or (class_config or {}).get("knowledge_type") or "faq")
+        legacy_chunk_type, raw_legacy_chunk_type = normalize_code("chunk_type", raw_chunk.get("chunk_type"))
         business_line, raw_business_line = normalize_code("business_line", raw_chunk.get("business_line") or payload.business_line)
         language_pair, raw_language_pair = normalize_code("language_pair", raw_chunk.get("language_pair"))
         service_scope, raw_service_scope = normalize_code("service_scope", raw_chunk.get("service_scope"))
         tags = raw_chunk.get("tags") or {}
         raw_codes = {
             "raw_knowledge_type": raw_knowledge_type,
+            "raw_knowledge_class": raw_knowledge_class,
+            "raw_chunk_type": raw_legacy_chunk_type,
             "raw_business_line": raw_business_line,
             "raw_language_pair": raw_language_pair,
             "raw_service_scope": raw_service_scope,
         }
         tags.update({key: value for key, value in raw_codes.items() if value})
+        tags["knowledge_class"] = knowledge_class or knowledge_class_from_pair(knowledge_type, legacy_chunk_type) or "faq"
+        class_config = KB_KNOWLEDGE_CLASS_CONFIG.get(tags["knowledge_class"], class_config or KB_KNOWLEDGE_CLASS_CONFIG["faq"])
         pricing_rule = infer_pricing_rule_candidate(
             title=title,
             content=content,
@@ -4044,8 +5022,8 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
         chunks_payload.append(KnowledgeChunkCreate(
             title=title,
             content=content,
-            knowledge_type=knowledge_type or "faq",
-            chunk_type=raw_chunk.get("chunk_type") or "rule",
+            knowledge_type=class_config["knowledge_type"],
+            chunk_type=class_config["chunk_type"],
             business_line=business_line or payload.business_line,
             sub_service=raw_chunk.get("sub_service"),
             language_pair=language_pair,
@@ -4107,14 +5085,16 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
         )
         db.add(chunk)
         db.flush()
-        pricing_rule_payload = item.pricing_rule or infer_pricing_rule_candidate(
-            item.title,
-            item.content,
-            item.business_line,
-            item.language_pair,
-            item.service_scope,
-            item.customer_tier,
-        )
+        pricing_rule_payload = item.pricing_rule
+        if not pricing_rule_payload and item.knowledge_type == "pricing" and item.chunk_type != "constraint":
+            pricing_rule_payload = infer_pricing_rule_candidate(
+                item.title,
+                item.content,
+                item.business_line,
+                item.language_pair,
+                item.service_scope,
+                item.customer_tier,
+            )
         pricing_rule = _create_pricing_rule(db, document, chunk, pricing_rule_payload)
         if pricing_rule:
             created_pricing_rules.append(pricing_rule)
@@ -4150,15 +5130,11 @@ async def get_ai_scripts():
         if os.path.exists(filepath):
             with open(filepath, "r", encoding="utf-8") as f:
                 return json.load(f)
-    except Exception:
-        pass
-    # 兜底返回默认框架
-    from intent_engine import IntentEngine
-    return {
-        "SYSTEM_PROMPT_LLM1": IntentEngine.get_prompt1(),
-        "SYSTEM_PROMPT_LLM2": IntentEngine.get_prompt2(),
-        "FAST_TRACK_RULES": IntentEngine.get_rules()
-    }
+        raise HTTPException(status_code=500, detail="ai_settings.json 不存在")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"读取 ai_settings.json 失败: {exc}") from exc
 
 @app.post("/api/system/ai_scripts")
 async def save_ai_scripts(payload: dict):
@@ -4175,13 +5151,13 @@ async def save_ai_scripts(payload: dict):
 
 @app.get("/api/sessions")
 async def get_sessions(db: Session = Depends(get_db)):
-    """获取会话列表 (包含今日真实消息与模拟案例)"""
+    """获取真实会话列表；模拟数据不会进入日常运行视图。"""
     from sqlalchemy import func, cast, Integer, text
     results = db.query(
         MessageLog.user_id,
         func.max(MessageLog.timestamp).label("last_msg"),
         func.max(cast(MessageLog.is_mock, Integer)).label("is_mock_int")
-    ).group_by(MessageLog.user_id).order_by(text("last_msg DESC")).all()
+    ).filter(MessageLog.is_mock.is_(False)).group_by(MessageLog.user_id).order_by(text("last_msg DESC")).all()
     
     return [
         {"user_id": r.user_id, "last_msg": r.last_msg, "is_mock": bool(r.is_mock_int)} for r in results
@@ -4191,7 +5167,10 @@ async def get_sessions(db: Session = Depends(get_db)):
 async def get_messages(user_id: str):
     db = SessionLocal()
     try:
-        messages = db.query(MessageLog).filter(MessageLog.user_id == user_id).order_by(MessageLog.id.asc()).all()
+        messages = db.query(MessageLog).filter(
+            MessageLog.user_id == user_id,
+            MessageLog.is_mock.is_(False),
+        ).order_by(MessageLog.id.asc()).all()
         logger.info(f"查询到用户 {user_id} 的消息，数量: {len(messages)}")
         return [{"id": m.id, "sender": m.sender_type, "content": m.content, "time": m.timestamp} for m in messages]
     finally:
@@ -4202,6 +5181,17 @@ def build_single_session_id(userid: str, external_userid: str) -> str:
     participants = sorted([userid.strip(), external_userid.strip()])
     session_id = f"single_{'_'.join(participants)}"
     return session_id[:50]
+
+def extract_external_userid(value: str) -> str:
+    """从单聊 session_id 中取真实外部联系人 ID，避免拿组合会话 ID 查 CRM。"""
+    text_value = (value or "").strip()
+    if text_value.startswith(("wm", "wo", "wb")):
+        return text_value
+    if text_value.startswith("single_"):
+        for part in text_value.replace("single_", "", 1).split("_"):
+            if part.startswith(("wm", "wo", "wb")):
+                return part
+    return text_value
 
 def collect_fast_track_signals(logs) -> list:
     """扫描最近消息命中的强信号规则，规则异常不阻断主流程"""
@@ -4233,7 +5223,10 @@ def reanalyze_session_task(user_id: str, step: int = 1):
     try:
         if step == 1:
             logger.info(f"⏳ 正在执行阶段 1: 调遣 Dify 大语言模型提取会话 {user_id} 结构化画像...")
-            context_logs = db.query(MessageLog).filter(MessageLog.user_id == user_id).order_by(MessageLog.id.desc()).limit(15).all()
+            context_logs = db.query(MessageLog).filter(
+                MessageLog.user_id == user_id,
+                MessageLog.is_mock.is_(False),
+            ).order_by(MessageLog.id.desc()).limit(15).all()
             context = [{"content": l.content, "sender_type": l.sender_type} for l in reversed(context_logs)]
             if context:
                 IntentEngine.slow_track_analyze(user_id, context)
@@ -4244,7 +5237,10 @@ def reanalyze_session_task(user_id: str, step: int = 1):
             summary = db.query(IntentSummary).filter(IntentSummary.user_id == user_id).order_by(IntentSummary.id.desc()).first()
             if summary:
                 # 重新构建 json 体传给 llm2
-                recent_logs = db.query(MessageLog).filter(MessageLog.user_id == user_id).order_by(MessageLog.id.desc()).limit(15).all()
+                recent_logs = db.query(MessageLog).filter(
+                    MessageLog.user_id == user_id,
+                    MessageLog.is_mock.is_(False),
+                ).order_by(MessageLog.id.desc()).limit(15).all()
                 fast_track_signals = collect_fast_track_signals(recent_logs)
                 summary_json = {
                     "topic": summary.topic, "core_demand": summary.core_demand, "key_facts": summary.key_facts,
@@ -4252,7 +5248,7 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                     "fast_track_signals": fast_track_signals
                 }
                 # CRM Context
-                crm_context = IntentEngine.get_crm_context(user_id)
+                crm_context = IntentEngine.get_crm_context(extract_external_userid(user_id))
                 # RAG V2
                 knowledge = {"status": "skipped_no_core_demand", "hits": [], "evidence_context": {"rules": [], "faqs": [], "cases": []}}
                 if summary.core_demand and summary.core_demand != "未明确":
@@ -4285,7 +5281,10 @@ async def get_latest_analysis(user_id: str):
     db = SessionLocal()
     try:
         # 1. 实时扫描 Fast-Track 信号供前台色块展示
-        recent_logs = db.query(MessageLog).filter(MessageLog.user_id == user_id).order_by(MessageLog.id.desc()).limit(15).all()
+        recent_logs = db.query(MessageLog).filter(
+            MessageLog.user_id == user_id,
+            MessageLog.is_mock.is_(False),
+        ).order_by(MessageLog.id.desc()).limit(15).all()
         fast_track_signals = collect_fast_track_signals(recent_logs)
 
         # 2. 获取 V1 及 V2 结果
@@ -4294,13 +5293,24 @@ async def get_latest_analysis(user_id: str):
         result = {
             "fast_track": fast_track_signals,
             "has_v1": False,
-            "has_v2": False
+            "has_v2": False,
+            "latest_dialog_count": len(recent_logs),
+            "stage_status": {
+                "conversation_input": "done" if recent_logs else "empty",
+                "fast_track": "done",
+                "llm1": "not_started",
+                "crm_profile": "not_started",
+                "knowledge_v2": "not_started",
+                "llm2": "not_started",
+            },
         }
-        crm_context = IntentEngine.get_crm_context(user_id)
+        crm_context = IntentEngine.get_crm_context(extract_external_userid(user_id))
         result["crm_info"] = crm_context
         result["crm_status"] = crm_context.get("crm_profile_status")
+        result["stage_status"]["crm_profile"] = result["crm_status"] or "unknown"
         
         if summary:
+            result["stage_status"]["llm1"] = "done"
             result.update({
                 "has_v1": True,
                 "topic": summary.topic, "core_demand": summary.core_demand, "key_facts": summary.key_facts,
@@ -4308,6 +5318,7 @@ async def get_latest_analysis(user_id: str):
                 "status": summary.status, "at": summary.summarized_at
             })
             if summary.sales_advice_v2:
+                result["stage_status"]["llm2"] = "done"
                 result["has_v2"] = True
                 result["sales_advice_v2"] = summary.sales_advice_v2
                 if summary.core_demand and summary.core_demand != "未明确":
@@ -4328,11 +5339,14 @@ async def get_latest_analysis(user_id: str):
                     )
                     result["knowledge_v2"] = knowledge_v2
                     result["knowledge_status"] = knowledge_v2.get("status")
+                    result["stage_status"]["knowledge_v2"] = result["knowledge_status"]
                     result["knowledge_confidence_score"] = knowledge_v2.get("confidence_score")
                     result["knowledge_manual_review_required"] = knowledge_v2.get("manual_review_required")
                     result["knowledge_evidence_context"] = knowledge_v2.get("evidence_context")
                     result["evidence_refs"] = knowledge_v2.get("evidence_refs") or []
                     result["assist_validation"] = IntentEngine.validate_sales_assist_output(summary.sales_advice_v2, knowledge_v2, crm_context=crm_context)
+                else:
+                    result["stage_status"]["knowledge_v2"] = "skipped_no_core_demand"
                  
         return result
     finally:
@@ -4399,7 +5413,10 @@ async def sidebar_assist(request: SidebarAssistRequest):
         
         # 获取当前销售与客户这条 1v1 会话的最近消息
         stage_started = perf_counter()
-        recent_logs = db.query(MessageLog).filter(MessageLog.user_id == session_id).order_by(MessageLog.id.desc()).limit(15).all()
+        recent_logs = db.query(MessageLog).filter(
+            MessageLog.user_id == session_id,
+            MessageLog.is_mock.is_(False),
+        ).order_by(MessageLog.id.desc()).limit(15).all()
         mark_timing("load_recent_messages_ms", stage_started)
 
         # Fast-Track 前置扫描：既返回给侧边栏展示，也作为 LLM-2 的输入信号
@@ -4593,71 +5610,6 @@ async def sidebar_assist(request: SidebarAssistRequest):
             "stage_status": stage_status,
             "timings_ms": timings_ms
         }
-    finally:
-        db.close()
-
-@app.post("/api/test/seed")
-async def seed_test_data():
-    db = SessionLocal()
-    try:
-        # 案例 1: 价格冲突 (1v1 私聊场景)
-        user1 = "case_price_conflict"
-        db.query(MessageLog).filter(MessageLog.user_id == user1).delete()
-        db.query(IntentSummary).filter(IntentSummary.user_id == user1).delete()
-        
-        db.add_all([
-            MessageLog(user_id=user1, sender_type="customer", content="你们的报价单我收到了，但感觉比去年涨了不少啊。", is_mock=True),
-            MessageLog(user_id=user1, sender_type="sales", content="今年原材料成本确实有波动，但我可以帮您申请大客户优惠。", is_mock=True),
-            MessageLog(user_id=user1, sender_type="customer", content="如果能打8折我就定1000套，你们尽快确认，我等下要开会。", is_mock=True)
-        ])
-        db.add(IntentSummary(
-            user_id=user1, topic="价格异议与折扣申请", core_demand="申请8折优惠以购买1000套",
-            key_facts=["当前状态: 已获初次报价", "核心痛点: 成本上涨", "期望价格: 8折"], 
-            todo_items=["核算8折毛利空间", "回复确认最后期限"],
-            risks="客户极度敏感，不排除对比竞品", to_be_confirmed="能否通过高管折扣特批", status="报价中"
-        ))
-
-        # 案例 2: 售后服务纠纷 (群聊场景)
-        user2 = "group_after_sales_998"
-        db.query(MessageLog).filter(MessageLog.user_id == user2).delete()
-        db.query(IntentSummary).filter(IntentSummary.user_id == user2).delete()
-
-        db.add_all([
-            MessageLog(user_id=user2, sender_type="customer", content="上周发的那批货有3箱破损了，能不能给个说法？", is_mock=True),
-            MessageLog(user_id=user2, sender_type="sales", content="非常抱歉，我马上让物流查一下，图片拍了吗？", is_mock=True),
-            MessageLog(user_id=user2, sender_type="customer", content="[图片] 看下，这都没法用了，急着等补货。", is_mock=True)
-        ])
-        db.add(IntentSummary(
-            user_id=user2, topic="物流损毁赔付与补货", core_demand="尽快安排补发3箱货物并解决赔付",
-            key_facts=["损毁详情: 3箱", "业务影响: 导致生产停滞", "优先等级: 紧急"], 
-            todo_items=["向仓储部申请急速补货", "启动物流赔付流程"],
-            risks="客户可能因此减少后续订单份额", to_be_confirmed="损毁的具体原因定位", status="售后处理中"
-        ))
-
-        # 案例 3: 产品规格深度咨询
-        user3 = "case_tech_consult"
-        db.query(MessageLog).filter(MessageLog.user_id == user3).delete()
-        db.query(IntentSummary).filter(IntentSummary.user_id == user3).delete()
-
-        db.add_all([
-            MessageLog(user_id=user3, sender_type="customer", content="请问你们这款智能传感器的 IP 等级是多少？支持 Modbus 吗？", is_mock=True),
-            MessageLog(user_id=user3, sender_type="sales", content="支持 Modbus-RTU 协议，且具备 IP67 防护等级，适合户外使用。", is_mock=True),
-            MessageLog(user_id=user3, sender_type="customer", content="那我们需要 1.2m 长度的连接线，你们有现成的规格吗？", is_mock=True)
-        ])
-        db.add(IntentSummary(
-            user_id=user3, topic="产品规格匹配确认", core_demand="确认传感器防护等级与线缆定制可行性",
-            key_facts=["协议需求: Modbus-RTU", "防护等级: IP67", "定制项: 1.2m 线缆"], 
-            todo_items=["咨询技术部线缆定制成本", "发送 IP67 测试报告"],
-            risks="竞争对手可能提供更低价的同级别产品", to_be_confirmed="定制线缆的起订量", status="方案咨询"
-        ))
-        
-        db.commit()
-        logger.info(f"Mock 场景全量加载成功 [严谨性标识: is_mock=True]")
-        return {"status": "seeded", "cases": [user1, user2, user3]}
-    except Exception as e:
-        logger.error(f"Mock 场景加载失败: {e}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
 
