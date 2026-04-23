@@ -1,0 +1,63 @@
+{
+  "run_at": "2026-04-23T12:35:31",
+  "session_id": "group_wrS8sICwAAVf9gAKbRbfH3wBXbiLxPBQ",
+  "steps": [
+    {
+      "step": 1,
+      "status": "actual",
+      "html": "step-01.html"
+    },
+    {
+      "step": 2,
+      "status": "actual",
+      "html": "step-02.html",
+      "fast_track": [
+        "价格/比价",
+        "财务/结算",
+        "合规/文件"
+      ]
+    },
+    {
+      "step": 3,
+      "status": "actual",
+      "html": "step-03.html",
+      "error": ""
+    },
+    {
+      "step": 4,
+      "status": "simulated",
+      "html": "step-04.html",
+      "error": "群聊会话没有单一外部联系人 external_userid，未访问旧 CRM 数据库。",
+      "old_crm_modified": false
+    },
+    {
+      "step": 5,
+      "status": "actual",
+      "html": "step-05.html",
+      "error": "",
+      "new_db_modified": true
+    },
+    {
+      "step": 6,
+      "status": "actual",
+      "html": "step-06.html",
+      "error": ""
+    },
+    {
+      "step": 7,
+      "status": "actual",
+      "html": "step-07.html",
+      "error": ""
+    }
+  ],
+  "environment": {
+    "new_database_select_1": {
+      "ok": true,
+      "detail": "SELECT 1 -> 1",
+      "modified": false
+    }
+  },
+  "database_modifications": [
+    "新数据库 AISaleData：IntentEngine.retrieve_knowledge_v2 写入了一条 knowledge_hit_logs 查询日志。"
+  ]
+}

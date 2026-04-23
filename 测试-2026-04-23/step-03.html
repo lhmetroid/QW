@@ -1,0 +1,58 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+body { margin:0; background:#eef2f7; font-family:'Microsoft YaHei', Arial, sans-serif; color:#0f172a; }
+.wrap { width: 1180px; min-height: 760px; padding: 36px; box-sizing:border-box; }
+.card { background:#fff; border:1px solid #d9e2ef; border-radius:18px; box-shadow:0 10px 30px rgba(15,23,42,.08); padding:24px 28px 28px 28px; position:relative; }
+.card:before { content:''; position:absolute; left:0; top:0; bottom:0; width:6px; border-radius:18px 0 0 18px; background:#2563eb; }
+.head { display:flex; align-items:flex-start; gap:14px; border-bottom:1px solid #e2e8f0; padding-bottom:16px; margin-bottom:18px; }
+.badge { background:#020617; color:#fff; border-radius:999px; padding:7px 10px; font-size:14px; font-weight:800; }
+h1 { font-size:24px; line-height:1.2; margin:0; }
+.subtitle { color:#64748b; font-size:13px; margin-top:6px; }
+.status { margin-left:auto; border-radius:999px; padding:7px 11px; font-size:12px; font-weight:800; border:1px solid #dbe3ef; }
+.status.ok { color:#047857; background:#ecfdf5; border-color:#a7f3d0; }
+.status.warn { color:#92400e; background:#fffbeb; border-color:#fde68a; }
+.status.fail { color:#be123c; background:#fff1f2; border-color:#fecdd3; }
+.row { display:grid; grid-template-columns:150px 1fr; gap:18px; padding:9px 0; border-bottom:1px dashed #e2e8f0; }
+.label { color:#64748b; font-size:14px; font-weight:800; }
+.value { color:#1e293b; font-size:14px; line-height:1.65; white-space:pre-wrap; }
+.notes { margin:18px 0 0 0; padding:14px 18px 14px 34px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; color:#475569; font-size:13px; line-height:1.7; }
+.foot { color:#94a3b8; font-size:12px; margin-top:16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="head">
+      <div class="badge">03</div>
+      <div><h1>第一阶段特征提取</h1><div class="subtitle">LLM-1 将会话压缩为可检索、可生成的结构化摘要</div></div>
+      <div class="status ok">actual</div>
+    </div>
+    <div class='row'><div class='label'>核心主线:</div><div class='value'>国际论坛同传及设备支持需求</div></div><div class='row'><div class='label'>核心诉求:</div><div class='value'>客户下个月举办国际论坛，需要中英同传服务和相关设备支持，并要求控制预算，希望本周内确定方案。</div></div><div class='row'><div class='label'>关键事实:</div><div class='value'>[
+  &quot;会议时间：下个月&quot;,
+  &quot;会议规模：约200人&quot;,
+  &quot;语种需求：中英同传&quot;,
+  &quot;预算要求：需控制成本&quot;,
+  &quot;时间要求：希望本周内确定方案&quot;,
+  &quot;流程要求：需提前明确合同和发票流程&quot;
+]</div></div><div class='row'><div class='label'>待办动作:</div><div class='value'>[
+  &quot;提供会议同传及设备支持的初步方案&quot;,
+  &quot;确认会议现场条件细节&quot;,
+  &quot;明确合同签订及发票开具流程&quot;
+]</div></div><div class='row'><div class='label'>顾虑风险:</div><div class='value'>[
+  &quot;预算控制可能限制服务或设备选项&quot;,
+  &quot;本周内定案时间较紧，可能影响方案细化或资源协调&quot;
+]</div></div><div class='row'><div class='label'>待确认项:</div><div class='value'>[
+  &quot;具体会议日期及时长&quot;,
+  &quot;现场设备条件（如网络、电力、布局）&quot;,
+  &quot;预算具体范围或上限&quot;,
+  &quot;合同及发票的具体要求（如开票信息、付款方式）&quot;
+]</div></div><div class='row'><div class='label'>问题原因:</div><div class='value'></div></div>
+
+    <div class="foot">测试时间：2026-04-23T12:35:31；测试目录：测试-2026-04-23</div>
+  </div>
+</div>
+</body>
+</html>

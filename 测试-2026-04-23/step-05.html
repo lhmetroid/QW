@@ -1,0 +1,138 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+body { margin:0; background:#eef2f7; font-family:'Microsoft YaHei', Arial, sans-serif; color:#0f172a; }
+.wrap { width: 1180px; min-height: 760px; padding: 36px; box-sizing:border-box; }
+.card { background:#fff; border:1px solid #d9e2ef; border-radius:18px; box-shadow:0 10px 30px rgba(15,23,42,.08); padding:24px 28px 28px 28px; position:relative; }
+.card:before { content:''; position:absolute; left:0; top:0; bottom:0; width:6px; border-radius:18px 0 0 18px; background:#2563eb; }
+.head { display:flex; align-items:flex-start; gap:14px; border-bottom:1px solid #e2e8f0; padding-bottom:16px; margin-bottom:18px; }
+.badge { background:#020617; color:#fff; border-radius:999px; padding:7px 10px; font-size:14px; font-weight:800; }
+h1 { font-size:24px; line-height:1.2; margin:0; }
+.subtitle { color:#64748b; font-size:13px; margin-top:6px; }
+.status { margin-left:auto; border-radius:999px; padding:7px 11px; font-size:12px; font-weight:800; border:1px solid #dbe3ef; }
+.status.ok { color:#047857; background:#ecfdf5; border-color:#a7f3d0; }
+.status.warn { color:#92400e; background:#fffbeb; border-color:#fde68a; }
+.status.fail { color:#be123c; background:#fff1f2; border-color:#fecdd3; }
+.row { display:grid; grid-template-columns:150px 1fr; gap:18px; padding:9px 0; border-bottom:1px dashed #e2e8f0; }
+.label { color:#64748b; font-size:14px; font-weight:800; }
+.value { color:#1e293b; font-size:14px; line-height:1.65; white-space:pre-wrap; }
+.notes { margin:18px 0 0 0; padding:14px 18px 14px 34px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; color:#475569; font-size:13px; line-height:1.7; }
+.foot { color:#94a3b8; font-size:12px; margin-top:16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="head">
+      <div class="badge">05</div>
+      <div><h1>知识库检索证据</h1><div class="subtitle">基于核心诉求检索已发布知识、报价规则、案例和 FAQ</div></div>
+      <div class="status ok">actual</div>
+    </div>
+    <div class='row'><div class='label'>新库连接:</div><div class='value'>SELECT 1 -&gt; 1</div></div><div class='row'><div class='label'>检索问题:</div><div class='value'>客户下个月举办国际论坛，需要中英同传服务和相关设备支持，并要求控制预算，希望本周内确定方案。</div></div><div class='row'><div class='label'>检索特征:</div><div class='value'>{
+  &quot;business_line&quot;: &quot;translation&quot;,
+  &quot;knowledge_type&quot;: [
+    &quot;pricing&quot;,
+    &quot;process&quot;,
+    &quot;faq&quot;
+  ],
+  &quot;service_scope&quot;: &quot;legal&quot;
+}</div></div><div class='row'><div class='label'>过滤条件:</div><div class='value'>{
+  &quot;status&quot;: &quot;active&quot;,
+  &quot;business_line&quot;: &quot;translation&quot;,
+  &quot;knowledge_type&quot;: [
+    &quot;pricing&quot;,
+    &quot;process&quot;,
+    &quot;faq&quot;
+  ],
+  &quot;language_pair&quot;: null,
+  &quot;service_scope&quot;: &quot;legal&quot;,
+  &quot;customer_tier&quot;: null,
+  &quot;effective_time&quot;: &quot;now&quot;,
+  &quot;candidate_limit&quot;: 500,
+  &quot;keyword_prefilter_enabled&quot;: true,
+  &quot;normalized_query_text&quot;: &quot;客户下个月举办国际论坛，需要中英同传服务和相关设备支持，并要求控制预算，希望本周内确定方案。&quot;,
+  &quot;candidate_source&quot;: &quot;keyword_prefilter_fallback&quot;,
+  &quot;candidate_count&quot;: 2
+}</div></div><div class='row'><div class='label'>命中数量:</div><div class='value'>2</div></div><div class='row'><div class='label'>最高置信:</div><div class='value'>0.514693</div></div><div class='row'><div class='label'>复核要求:</div><div class='value'>False</div></div><div class='row'><div class='label'>问题原因:</div><div class='value'></div></div><div class='row'><div class='label'>命中证据:</div><div class='value'>[
+  {
+    &quot;chunk_id&quot;: &quot;617d40f9-aa60-44c7-96fb-2ccdab26efc9&quot;,
+    &quot;document_id&quot;: &quot;99f4bf82-515f-4ef9-bb74-b062a6acb845&quot;,
+    &quot;knowledge_class&quot;: null,
+    &quot;knowledge_type&quot;: &quot;pricing&quot;,
+    &quot;chunk_type&quot;: &quot;rule&quot;,
+    &quot;title&quot;: &quot;英译法法律合同报价范围规则&quot;,
+    &quot;content&quot;: &quot;英译法法律合同报价不能直接等同普通商务资料。法律合同应先确认合同用途、难度、是否需要法务复核、交付时间和保密要求，再单独评估价格；没有完成评估前不直接套用普通英译法报价。&quot;,
+    &quot;score&quot;: 0.514693,
+    &quot;semantic_score&quot;: 0.554258,
+    &quot;keyword_score&quot;: 0.0,
+    &quot;priority&quot;: 99,
+    &quot;business_line&quot;: &quot;translation&quot;,
+    &quot;sub_service&quot;: null,
+    &quot;language_pair&quot;: &quot;en-&gt;fr&quot;,
+    &quot;service_scope&quot;: &quot;legal&quot;,
+    &quot;region&quot;: null,
+    &quot;customer_tier&quot;: null,
+    &quot;embedding_model&quot;: &quot;qllama/bge-m3:latest&quot;,
+    &quot;embedding_dim&quot;: 1024,
+    &quot;pricing_rules&quot;: [
+      {
+        &quot;rule_id&quot;: &quot;623b4fe8-64db-487b-a269-708112508031&quot;,
+        &quot;document_id&quot;: &quot;99f4bf82-515f-4ef9-bb74-b062a6acb845&quot;,
+        &quot;chunk_id&quot;: &quot;617d40f9-aa60-44c7-96fb-2ccdab26efc9&quot;,
+        &quot;business_line&quot;: &quot;translation&quot;,
+        &quot;language_pair&quot;: &quot;en-&gt;fr&quot;,
+        &quot;service_scope&quot;: &quot;legal&quot;,
+        &quot;unit&quot;: &quot;per_project&quot;,
+        &quot;currency&quot;: &quot;CNY&quot;,
+        &quot;price_min&quot;: null,
+        &quot;price_max&quot;: null,
+        &quot;urgent_multiplier&quot;: null,
+        &quot;tax_policy&quot;: &quot;legal_translation_requires_manual_pricing&quot;,
+        &quot;min_charge&quot;: null,
+        &quot;customer_tier&quot;: null,
+        &quot;region&quot;: null,
+        &quot;version_no&quot;: 1,
+        &quot;effective_from&quot;: &quot;2026-04-20T00:00:00&quot;,
+        &quot;effective_to&quot;: &quot;2030-12-31T23:59:59&quot;
+      }
+    ],
+    &quot;pricing_rule_missing&quot;: false,
+    &quot;insufficient_info&quot;: false,
+    &quot;manual_review_required&quot;: false,
+    &quot;applicability&quot;: &quot;matched&quot;
+  },
+  {
+    &quot;chunk_id&quot;: &quot;bd6c4178-b03c-41aa-8d2d-6bf777f93195&quot;,
+    &quot;document_id&quot;: &quot;0657a3cc-5e44-4657-b2d4-a506e0d5de1a&quot;,
+    &quot;knowledge_class&quot;: null,
+    &quot;knowledge_type&quot;: &quot;pricing&quot;,
+    &quot;chunk_type&quot;: &quot;constraint&quot;,
+    &quot;title&quot;: &quot;未发布特殊折扣不得编造报价&quot;,
+    &quot;content&quot;: &quot;客户要求从未发布过的特殊折扣价、例外折扣或未授权低价时，不能编造价格，也不能把普通最低收费当作特殊折扣承诺。必须标记为人工复核，由负责人确认授权后再回复。&quot;,
+    &quot;score&quot;: 0.453778,
+    &quot;semantic_score&quot;: 0.471703,
+    &quot;keyword_score&quot;: 0.0,
+    &quot;priority&quot;: 100,
+    &quot;business_line&quot;: &quot;translation&quot;,
+    &quot;sub_service&quot;: null,
+    &quot;language_pair&quot;: null,
+    &quot;service_scope&quot;: null,
+    &quot;region&quot;: null,
+    &quot;customer_tier&quot;: null,
+    &quot;embedding_model&quot;: &quot;qllama/bge-m3:latest&quot;,
+    &quot;embedding_dim&quot;: 1024,
+    &quot;pricing_rules&quot;: [],
+    &quot;pricing_rule_missing&quot;: false,
+    &quot;insufficient_info&quot;: false,
+    &quot;manual_review_required&quot;: false,
+    &quot;applicability&quot;: &quot;matched&quot;
+  }
+]</div></div>
+
+    <div class="foot">测试时间：2026-04-23T12:35:31；测试目录：测试-2026-04-23</div>
+  </div>
+</div>
+</body>
+</html>
