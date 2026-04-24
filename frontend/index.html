@@ -221,6 +221,33 @@
             SYSTEM_PROMPT_LLM2: '第二阶段话术生成脚本'
         };
         let currentSessionMessages = [];
+        let currentSelectedSessionId = '';
+        let uiRuntimeConfig = {
+            wecomRecentMessageLimit: 6,
+        };
+
+        function clampWecomRecentMessageLimit(value) {
+            const parsed = Number.parseInt(value, 10);
+            if (!Number.isFinite(parsed)) return 6;
+            return Math.max(1, Math.min(30, parsed));
+        }
+
+        function getWecomRecentMessageLimit() {
+            return clampWecomRecentMessageLimit(uiRuntimeConfig.wecomRecentMessageLimit);
+        }
+
+        async function loadUiRuntimeConfig() {
+            try {
+                const res = await fetch(`${API_BASE}/api/system/ai_scripts`);
+                const data = await res.json();
+                if (res.ok) {
+                    uiRuntimeConfig.wecomRecentMessageLimit = clampWecomRecentMessageLimit(data.WECOM_RECENT_MESSAGE_LIMIT);
+                }
+            } catch (_) {
+                uiRuntimeConfig.wecomRecentMessageLimit = 6;
+            }
+            return uiRuntimeConfig;
+        }
 
         function initAnalysisPanelResize() {
             const handle = document.getElementById('analysis-resize-handle');
@@ -443,6 +470,7 @@
         }
 
         async function selectSession(userId) {
+            currentSelectedSessionId = userId;
             document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active-session'));
             const target = document.getElementById(`session-${userId}`);
             if(target) target.classList.add('active-session');
@@ -504,8 +532,8 @@
 
         function renderPipelineCard(index, title, subtitle, accent, body, options = {}) {
             return `
-                <section class="pipeline-card p-3 pl-4" style="--card-accent:${accent || '#64748b'}">
-                    <div class="flex items-start justify-between gap-3 mb-3">
+                <section class="pipeline-card p-3 pl-3" style="--card-accent:${accent || '#64748b'}">
+                    <div class="flex items-start justify-between gap-3 mb-2">
                         <div class="flex items-start gap-2 min-w-0">
                             <span class="shrink-0 mt-0.5 rounded-full bg-slate-900 text-white text-[10px] font-bold px-2 py-1">${String(index).padStart(2, '0')}</span>
                             <div class="min-w-0">
@@ -518,7 +546,7 @@
                             ${renderScriptButton(options.scriptKey)}
                         </div>
                     </div>
-                    <div class="text-xs text-slate-700 space-y-2">${body}</div>
+                    <div class="text-xs text-slate-700 space-y-1">${body}</div>
                 </section>`;
         }
 
@@ -606,39 +634,61 @@
         }
 
         function renderConversationInputCard(messages) {
-            const recent = (messages || []).slice(-6);
+            const limit = getWecomRecentMessageLimit();
+            const recent = (messages || []).slice(-limit);
             const rows = recent.map(m => `
-                <div class="rounded-lg border border-slate-100 bg-slate-50 p-2">
+                <div class="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
                     <div class="text-[10px] font-bold text-slate-400 mb-1">${safeText(m.sender === 'customer' ? '客户' : (m.sender === 'system' ? '系统' : '我方销售'))} · ${safeText(formatDateTime(m.time))}</div>
-                    <div class="text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap">${safeText(m.content)}</div>
+                    <div class="text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${safeText(m.content)}</div>
                 </div>
             `).join('');
+            const latest = recent.at(-1);
             const body = `
-                <div class="flex flex-wrap gap-2 mb-2">
-                    ${renderStatusPill(`已载入 ${messages?.length || 0} 条`, 'blue')}
-                    ${renderStatusPill('展示最近 6 条', 'slate')}
+                <div class="grid gap-2 mb-2 lg:grid-cols-[auto,minmax(0,1fr)] lg:items-stretch">
+                    <div class="flex flex-wrap gap-2 lg:content-start">
+                        ${renderStatusPill(`已载入 ${messages?.length || 0} 条`, 'blue')}
+                        ${renderStatusPill(`展示最近 ${limit} 条`, 'slate')}
+                    </div>
+                    <div class="grid grid-cols-1 gap-2 text-[10px] sm:grid-cols-2">
+                        <div class="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
+                            <div class="font-bold text-slate-400">会话概况</div>
+                            <div class="mt-1 text-slate-700">${safeText(messages?.length ? `${messages.length} 条，右侧展示最近 ${limit} 条` : '--待同步--')}</div>
+                        </div>
+                        <div class="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
+                            <div class="font-bold text-slate-400">输入用途</div>
+                            <div class="mt-1 text-slate-700">供 Fast-Track、LLM-1 和知识检索使用</div>
+                        </div>
+                    </div>
                 </div>
-                ${renderPipelineRows([
-                    {label: '会话条数', ...rowText(messages?.length ? `${messages.length} 条` : '', '--待同步--')},
-                    {label: '最新消息', ...rowText(recent.at(-1)?.content, '--待构建--')},
-                    {label: '输入用途', value: '供 Fast-Track 扫描、LLM-1 摘要与后续知识检索使用'}
-                ])}
-                <div class="space-y-2">${rows || '<div class="text-slate-400 italic">暂无会话输入</div>'}</div>`;
+                <div class="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5 mb-2 text-[10px]">
+                    <div class="font-bold text-slate-400">最新消息</div>
+                    <div class="mt-1 text-slate-700" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${safeText(latest?.content || '--待构建--')}</div>
+                </div>
+                <div class="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                    ${rows || '<div class="text-slate-400 italic">暂无会话输入</div>'}
+                </div>`;
             return renderPipelineCard(1, '当前会话输入', '最终回复的原始上下文来源', '#2563eb', body);
         }
 
         function renderFastTrackCard(data) {
             const signals = data.fast_track || [];
+            const scanWindow = 15;
             const signalHtml = signals.length
                 ? signals.map(f => `<span class="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold shadow-sm">${safeText(f)}</span>`).join('')
-                : '<span class="text-slate-400 text-[10px] italic">近15句暂无旁路拦截信号</span>';
+                : `<span class="text-slate-400 text-[10px] italic">近 ${scanWindow} 句暂无旁路拦截信号</span>`;
+            const fastTrackHow = signals.length
+                ? `后端按 FAST_TRACK_RULES 中的关键词/正则逐条扫描最近 ${scanWindow} 条真实会话，已命中：${signals.join('、')}。`
+                : `后端按 FAST_TRACK_RULES 中的关键词/正则逐条扫描最近 ${scanWindow} 条真实会话；当前没有命中任何强信号。`;
             const body = `
                 ${renderPipelineRows([
                     {label: '扫描状态', value: data.stage_status?.fast_track || 'done'},
-                    {label: '扫描范围', value: '最近 15 句真实会话'},
+                    {label: '扫描范围', value: `最近 ${scanWindow} 条真实会话`},
                     {label: '命中信号', html: `<div class="flex flex-wrap gap-1">${signalHtml}</div>`},
                     {label: '后续影响', value: signals.length ? '作为 LLM-2 输入信号参与回复策略' : '无强信号，不阻断后续摘要和生成'}
-                ])}`;
+                ])}
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-[11px] text-slate-600">
+                    <span class="font-bold text-slate-500">实现原理：</span>${safeText(fastTrackHow)}
+                </div>`;
             const actions = `<button onclick='loadAnalysis(${jsArg(data.user_id || '')})' class="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded hover:bg-slate-100 transition">↺ 刷新</button>`;
             return renderPipelineCard(2, '强信号扫描 (Fast-Track)', '旁路规则先行识别风险、报价、时间等强信号', '#64748b', body, {scriptKey: 'FAST_TRACK_RULES', actions});
         }
@@ -647,6 +697,19 @@
             const actionLabel = data.has_v1 ? '🔄 重新提取' : '▶️ 提取特征';
             const actions = `<button onclick='triggerLLM(${jsArg(userId)}, 1)' class="text-[10px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 border border-indigo-600 px-2 py-1 rounded transition">${actionLabel}</button>`;
             const llm1 = getLlmRuntime(data, 'llm1');
+            const threadFact = data.thread_business_fact || {};
+            const threadFactHtml = threadFact.business_state ? `
+                <div class="mt-3 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-950">
+                    <div class="font-bold text-indigo-700 mb-1">线程业务事实层</div>
+                    <div class="flex flex-wrap gap-2">
+                        <span>状态 ${safeText(threadFact.business_state || '-')}</span>
+                        <span>场景 ${safeText(threadFact.scenario_label || '-')}</span>
+                        <span>意图 ${safeText(threadFact.intent_label || '-')}</span>
+                        <span>风格 ${safeText(threadFact.language_style || '-')}</span>
+                        <span>质量 ${safeText(threadFact.quality_score ?? '-')}</span>
+                    </div>
+                    ${threadFact.reply_guard_reason ? `<div class="mt-2 text-rose-700">门禁：${safeText(threadFact.reply_guard_reason)}</div>` : ''}
+                </div>` : '';
             const body = `
                 ${renderLlmRuntimeStrip(data, 'llm1', 'blue')}
                 <div class="mb-2">${renderStatusPill(data.has_v1 ? (data.status || '特征就绪') : '等待提取', data.has_v1 ? 'emerald' : 'amber')}</div>
@@ -657,7 +720,8 @@
                     {label: '待办动作', value: data.has_v1 ? gracefulStr(data.todo_items) : '--待构建--', className: data.has_v1 ? 'text-slate-700' : 'text-slate-400'},
                     {label: '顾虑风险', value: data.has_v1 ? gracefulStr(data.risks) : '--待构建--', className: data.has_v1 ? 'text-rose-700 font-bold' : 'text-slate-400'},
                     {label: '待确认项', value: data.has_v1 ? gracefulStr(data.to_be_confirmed) : '--待构建--', className: data.has_v1 ? 'text-amber-800 font-medium break-all' : 'text-slate-400'}
-                ])}`;
+                ])}
+                ${threadFactHtml}`;
             return renderPipelineCard(3, '第一阶段特征提取（LLM-1）', `${llm1.model || '未配置'}：将会话压缩为可检索、可生成的结构化摘要`, '#6366f1', body, {scriptKey: 'SYSTEM_PROMPT_LLM1', actions});
         }
 
@@ -700,6 +764,7 @@
             const pricingHtml = pricingRules.length
                 ? `<div class="mt-2 space-y-1">${pricingRules.map(rule => `<div class="rounded bg-amber-50 border border-amber-100 px-2 py-1 text-[10px] text-amber-800">报价规则：${safeText(rule.currency)} ${safeText(rule.price_min)}-${safeText(rule.price_max)} / ${safeText(rule.unit)} ${rule.min_charge ? ` · 最低 ${safeText(rule.min_charge)}` : ''}</div>`).join('')}</div>`
                 : '';
+            const qualityTone = hit.usable_for_reply ? 'text-emerald-700' : 'text-amber-700';
             return `
                 <div class="rounded-lg border border-emerald-100 bg-white p-2">
                     <div class="flex items-start justify-between gap-2">
@@ -707,6 +772,7 @@
                         <span class="text-[10px] font-bold text-emerald-700">score ${safeText(hit.score)}</span>
                     </div>
                     <div class="text-[10px] text-slate-400 mt-1">${safeText(hit.knowledge_type_label || hit.knowledge_type)} · ${safeText(hit.chunk_type)} · ${safeText(hit.business_line_label || hit.business_line || '-')} · ${safeText(hit.service_scope_label || hit.service_scope || '-')}</div>
+                    <div class="mt-1 text-[10px] ${qualityTone}">质量 ${safeText(hit.useful_score ?? '-')} · ${safeText(hit.usable_for_reply ? '可自动回复' : '仅人工参考')} · ${safeText(hit.library_type || 'reference')}</div>
                     <div class="text-[11px] text-slate-700 leading-relaxed mt-2 whitespace-pre-wrap">${safeText(hit.content)}</div>
                     ${hit.manual_review_required ? '<div class="mt-2 text-[10px] text-rose-700 font-bold">该证据要求人工复核</div>' : ''}
                     ${pricingHtml}
@@ -744,22 +810,27 @@
             const filters = knowledge.filters_used || {};
             const context = knowledge.evidence_context || {};
             const statusTone = knowledge.status === 'ok' ? 'emerald' : (knowledge.manual_review_required ? 'rose' : 'amber');
+            const knowledgeHow = `基于核心诉求做向量召回 Top 5，再叠加关键词预筛、业务线/语种/服务范围等结构化过滤条件，最后重排出当前证据。`;
             const body = `
                 <div class="flex flex-wrap gap-2 mb-2">
                     ${renderStatusPill(knowledge.status || 'unknown', statusTone)}
                     ${renderStatusPill(`置信 ${knowledge.confidence_score ?? '-'}`, statusTone)}
                     ${renderStatusPill(`命中 ${hits.length} 条`, hits.length ? 'emerald' : 'rose')}
+                    ${renderStatusPill(`可回复 ${knowledge.replyable_hits?.length || 0} 条`, (knowledge.replyable_hits?.length || 0) ? 'emerald' : 'amber')}
                     ${knowledge.latency_ms ? renderStatusPill(`${knowledge.latency_ms}ms`, 'slate') : ''}
                 </div>
                 ${renderPipelineRows([
                     {label: '检索问题', value: knowledge.query_text || data.core_demand || '-'},
                     {label: '检索特征', html: `<pre class="bg-slate-50 border rounded p-2 overflow-auto max-h-36">${safeText(JSON.stringify(knowledge.query_features || {}, null, 2))}</pre>`},
                     {label: '过滤条件', html: `<pre class="bg-slate-50 border rounded p-2 overflow-auto max-h-36">${safeText(JSON.stringify(filters, null, 2))}</pre>`},
-                    {label: '证据分类', value: `规则 ${context.rules?.length || 0} / FAQ ${context.faqs?.length || 0} / 案例 ${context.cases?.length || 0}`},
+                    {label: '证据分类', value: `规则 ${context.rules?.length || 0} / FAQ ${context.faqs?.length || 0} / 案例 ${context.cases?.length || 0} / 人工参考 ${knowledge.human_only_hits?.length || 0}`},
                     {label: '复核要求', value: knowledge.manual_review_required ? '需要人工复核' : '无需人工复核', className: knowledge.manual_review_required ? 'text-rose-700 font-bold' : 'text-emerald-700 font-bold'}
                 ])}
                 ${knowledge.no_hit_reason ? `<div class="rounded bg-rose-50 border border-rose-100 p-2 text-[11px] text-rose-700">${safeText(knowledge.no_hit_reason)}</div>` : ''}
                 <div class="space-y-2">${hits.length ? hits.map((hit, idx) => renderKnowledgeHit(hit, idx)).join('') : '<div class="text-slate-400 text-[11px]">无命中证据</div>'}</div>
+                <div class="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-2 text-[11px] text-emerald-900">
+                    <span class="font-bold text-emerald-700">实现原理：</span>${safeText(knowledgeHow)}
+                </div>
                 ${renderEvidenceRefs(knowledge.evidence_refs || [])}`;
             const actions = `<button onclick='loadAnalysis(${jsArg(userId)})' class="text-[10px] font-bold text-emerald-700 bg-white border border-emerald-200 px-2 py-1 rounded hover:bg-emerald-50 transition">↺ 重新检索</button>`;
             return renderPipelineCard(5, '知识库检索证据', '基于核心诉求检索已发布知识、报价规则、案例和 FAQ', '#10b981', body, {actions});
@@ -772,6 +843,23 @@
             const llm2Compare = getLlmRuntime(data, 'llm2_compare');
             const advice = data.sales_advice_v2 || '';
             const compareAdvice = data.sales_advice_compare_v2 || '';
+            const compareStage = data.stage_status?.llm2_compare || 'not_started';
+            const compareRuntime = data.llm2_compare_runtime_status || {};
+            const compareConfigured = data.llm2_compare_configured !== false && Boolean(llm2Compare.model);
+            const compareIsError = ['not_configured', 'failed_no_content', 'error'].includes(compareStage);
+            const comparePillText = data.has_v2_compare ? '对比模型已生成' : (
+                compareStage === 'not_configured' ? '对比模型未配置' :
+                compareStage === 'error' ? '对比模型失败' :
+                compareStage === 'failed_no_content' ? '对比模型空返回' :
+                compareStage === 'running' ? '对比模型生成中' :
+                '对比模型等待生成'
+            );
+            const compareReason = compareRuntime.reason || (
+                compareStage === 'not_configured' ? '对比模型配置未被后端读取，请检查 LLM2_COMPARE_API_URL / API_KEY / MODEL。' :
+                compareStage === 'error' ? '对比模型接口调用失败，查看后端 llm2_compare 状态或日志。' :
+                compareStage === 'failed_no_content' ? '对比模型接口返回空内容。' :
+                data.has_v1 ? '等待点击生成两版回复' : '需要先完成第一阶段特征提取'
+            );
             const feedback = data.has_v2 ? `
                 <div class="flex flex-wrap gap-1 pt-1">
                     <button onclick="copyTextFromEncoded('${encodedArg(advice)}')" class="px-2 py-1 bg-white border rounded text-[10px] text-slate-600">复制</button>
@@ -785,13 +873,13 @@
             const body = `
                 <div class="mb-2 flex flex-wrap gap-1">
                     ${renderStatusPill(data.has_v2 ? '主模型已生成' : '主模型等待生成', data.has_v2 ? 'emerald' : 'amber')}
-                    ${renderStatusPill(data.has_v2_compare ? '对比模型已生成' : '对比模型等待生成', data.has_v2_compare ? 'emerald' : 'amber')}
+                    ${renderStatusPill(comparePillText, data.has_v2_compare ? 'emerald' : (compareIsError ? 'rose' : 'amber'))}
                 </div>
                 ${renderPipelineRows([
                     {label: '生成输入', value: data.has_v1 ? '结构化摘要 + CRM 客户画像 + 知识库证据' : '--待构建--', className: data.has_v1 ? 'text-slate-700' : 'text-slate-400'},
                     {label: '主模型', value: llm2.display_name || llm2.model || '--待配置--', className: data.has_v2 ? 'text-emerald-700 font-bold' : 'text-slate-400'},
-                    {label: '对比模型', value: llm2Compare.display_name || llm2Compare.model || '--待配置--', className: data.has_v2_compare ? 'text-emerald-700 font-bold' : 'text-slate-400'},
-                    {label: '问题原因', value: data.has_v2 && data.has_v2_compare ? '已完成主模型与对比模型生成' : (data.has_v1 ? '等待点击生成两版回复' : '需要先完成第一阶段特征提取'), className: data.has_v2 && data.has_v2_compare ? 'text-emerald-700' : 'text-amber-700'}
+                    {label: '对比模型', value: llm2Compare.display_name || llm2Compare.model || '--待配置--', className: data.has_v2_compare ? 'text-emerald-700 font-bold' : (compareConfigured ? 'text-slate-700' : 'text-rose-600 font-bold')},
+                    {label: '问题原因', value: data.has_v2 && data.has_v2_compare ? '已完成主模型与对比模型生成' : compareReason, className: data.has_v2 && data.has_v2_compare ? 'text-emerald-700' : (compareIsError ? 'text-rose-700' : 'text-amber-700')}
                 ])}
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-2">
                     <div class="rounded-lg border border-amber-100 bg-amber-50 p-3">
@@ -801,7 +889,7 @@
                     </div>
                     <div class="rounded-lg border border-blue-100 bg-blue-50 p-3">
                         ${renderLlmRuntimeStrip(data, 'llm2_compare', 'blue')}
-                        <div class="font-medium text-blue-950 whitespace-pre-wrap leading-relaxed ${data.has_v2_compare ? '' : 'opacity-50'}">${safeText(compareAdvice || '（对比模型空，等待生成）')}</div>
+                        <div class="font-medium text-blue-950 whitespace-pre-wrap leading-relaxed ${data.has_v2_compare ? '' : 'opacity-50'}">${safeText(compareAdvice || `（${compareReason}）`)}</div>
                         ${compareCopy}
                     </div>
                 </div>`;
@@ -1143,7 +1231,11 @@
         function isAnalysisStepComplete(data, step) {
             if (!data) return false;
             if (step === 1) return Boolean(data.has_v1 || data.stage_status?.llm1 === 'done');
-            if (step === 2) return Boolean((data.has_v2 && data.has_v2_compare) || (data.stage_status?.llm2 === 'done' && data.stage_status?.llm2_compare === 'done'));
+            if (step === 2) {
+                const compareStage = data.stage_status?.llm2_compare;
+                const compareTerminal = ['done', 'not_configured', 'failed_no_content', 'error'].includes(compareStage);
+                return Boolean(data.has_v2 && (data.has_v2_compare || compareTerminal));
+            }
             return false;
         }
 
@@ -1282,7 +1374,13 @@
             try {
                 const res = await fetch(`${API_BASE}/api/system/ai_scripts`);
                 const data = await res.json();
+                uiRuntimeConfig.wecomRecentMessageLimit = clampWecomRecentMessageLimit(data.WECOM_RECENT_MESSAGE_LIMIT);
                 document.getElementById('settings-form').innerHTML = `
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-2">右侧链路展示近 N 条企微记录</label>
+                        <input id="set_recent_message_limit" type="number" min="1" max="30" class="w-full text-sm p-3 border border-slate-300 rounded-md focus:ring-2 focus:ring-slate-500 bg-white" value="${safeText(String(uiRuntimeConfig.wecomRecentMessageLimit))}">
+                        <div class="text-[11px] text-slate-500 mt-2">保存后立即刷新当前右侧链路卡片。建议 4-12 条，过大会影响阅读紧凑度。</div>
+                    </div>
                     <div>
                         <label class="block font-bold text-slate-700 mb-2">▶️ 第一阶段：结构化特征提取与格式约束</label>
                         <textarea id="set_prompt1" class="w-full text-xs font-mono p-3 border border-indigo-200 rounded-md focus:ring-2 focus:ring-indigo-500 h-[150px] leading-relaxed bg-indigo-50/30">${data.SYSTEM_PROMPT_LLM1 || ''}</textarea>
@@ -1306,6 +1404,7 @@
             btn.innerText = '保存中...';
             try {
                 const payload = {
+                    WECOM_RECENT_MESSAGE_LIMIT: clampWecomRecentMessageLimit(document.getElementById('set_recent_message_limit').value),
                     SYSTEM_PROMPT_LLM1: document.getElementById('set_prompt1').value,
                     SYSTEM_PROMPT_LLM2: document.getElementById('set_prompt2').value,
                     FAST_TRACK_RULES: JSON.parse(document.getElementById('set_rules').value)
@@ -1315,8 +1414,13 @@
                     body: JSON.stringify(payload)
                 });
                 if(res.ok) {
+                    const saved = await res.json().catch(() => ({}));
+                    uiRuntimeConfig.wecomRecentMessageLimit = clampWecomRecentMessageLimit(saved.saved?.WECOM_RECENT_MESSAGE_LIMIT ?? payload.WECOM_RECENT_MESSAGE_LIMIT);
                     alert("配置已保存，后续真实调用会使用这套新规则。");
                     document.getElementById('settings-modal').style.display = 'none';
+                    if (currentSelectedSessionId) {
+                        await loadAnalysis(currentSelectedSessionId);
+                    }
                 } else {
                     const data = await res.json();
                     showApiError(data, '保存配置失败');
@@ -3177,8 +3281,8 @@
                                 <select id="kb-retrieve-line" class="border rounded p-2 text-xs w-full">${optionTags('business_line', 'translation')}</select>
                             </label>
                             <label class="block text-[11px] text-slate-500">
-                                <span class="block mb-1">知识类型</span>
-                                <select id="kb-retrieve-type" class="border rounded p-2 text-xs w-full">${optionTags('knowledge_type')}</select>
+                                <span class="block mb-1">知识分类</span>
+                                <select id="kb-retrieve-type" class="border rounded p-2 text-xs w-full">${optionTags('knowledge_class')}</select>
                             </label>
                             <label class="block text-[11px] text-slate-500">
                                 <span class="block mb-1">语种</span>
@@ -3208,7 +3312,7 @@
             const lang = document.getElementById('kb-retrieve-lang').value;
             const scope = document.getElementById('kb-retrieve-scope').value;
             if (line) features.business_line = line;
-            if (type) features.knowledge_type = [type];
+            if (type) features.knowledge_class = type;
             if (lang) features.language_pair = lang;
             if (scope) features.service_scope = scope;
             const topK = parseInt(document.getElementById('kb-retrieve-topk').value || '5', 10);
@@ -3223,21 +3327,47 @@
                 document.getElementById('kb-retrieve-result').innerHTML = `<div class="bg-rose-50 border border-rose-200 text-rose-700 rounded p-4 text-sm whitespace-pre-wrap">${safeText(formatApiError(data, '检索测试失败'))}</div>`;
                 return;
             }
+            const tone = data.status === 'ok' ? 'bg-emerald-100 text-emerald-700' : (data.status === 'ambiguous_query' || data.status === 'low_confidence' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700');
+            const scoreDetails = hit => `
+                <div class="mt-2 grid grid-cols-2 md:grid-cols-6 gap-1 text-[10px] text-slate-500">
+                    <span>语义 ${safeText(hit.semantic_score ?? '-')}</span>
+                    <span>关键词 ${safeText(hit.keyword_score ?? '-')}</span>
+                    <span>精确 ${safeText(hit.exact_phrase_score ?? '-')}</span>
+                    <span>意图 ${safeText(hit.intent_score ?? '-')}</span>
+                    <span>元数据 ${safeText(hit.metadata_score ?? '-')}</span>
+                    <span>BM25 ${safeText(hit.bm25_score ?? '-')}</span>
+                </div>`;
+            const renderHit = (hit, extraClass = '') => `
+                <div class="border rounded p-3 text-xs ${extraClass}">
+                    <div class="font-bold flex items-start justify-between gap-2">
+                        <span>${safeText(hit.title)}</span>
+                        <span class="text-slate-400 shrink-0">score ${safeText(hit.score ?? '-')}</span>
+                    </div>
+                    <div class="text-slate-500 mt-1">${safeText(hit.knowledge_class_label || hit.knowledge_type_label)} · ${safeText(hit.business_line_label || hit.business_line || '-')} · ${safeText(hit.language_pair_label || hit.language_pair || '-')} · ${safeText(hit.service_scope_label || hit.service_scope || '-')}</div>
+                    ${scoreDetails(hit)}
+                    <div class="mt-2 whitespace-pre-wrap">${safeText(hit.content || hit.snippet || '')}</div>
+                    ${hit.pricing_rules && hit.pricing_rules.length ? `<pre class="mt-2 bg-emerald-50 border rounded p-2 overflow-auto">${safeText(JSON.stringify(hit.pricing_rules, null, 2))}</pre>` : ''}
+                </div>`;
+            const supportingHtml = (data.supporting_chunks || []).length
+                ? `<details class="mt-3 border rounded bg-emerald-50/40"><summary class="cursor-pointer px-3 py-2 text-xs font-bold text-emerald-700">补充证据 ${(data.supporting_chunks || []).length} 条</summary><div class="p-3 space-y-2">${(data.supporting_chunks || []).map(hit => renderHit(hit, 'bg-white')).join('')}</div></details>`
+                : '';
+            const relatedHtml = (data.related_chunks || []).length
+                ? `<details class="mt-3 border rounded bg-slate-50"><summary class="cursor-pointer px-3 py-2 text-xs font-bold text-slate-600">同文档关联切片 ${(data.related_chunks || []).length} 条（不作为自动回复证据）</summary><div class="p-3 space-y-2">${(data.related_chunks || []).map(hit => renderHit(hit, 'bg-white opacity-90')).join('')}</div></details>`
+                : '';
             document.getElementById('kb-retrieve-result').innerHTML = `
                 <div class="bg-white border rounded p-4">
                     <div class="flex gap-2 flex-wrap text-xs mb-3">
-                        <span class="px-2 py-1 rounded bg-slate-100">状态 ${safeText(data.status)}</span>
+                        <span class="px-2 py-1 rounded ${tone}">状态 ${safeText(data.status)}</span>
+                        <span class="px-2 py-1 rounded bg-slate-100">质量 ${safeText(data.retrieval_quality)}</span>
                         <span class="px-2 py-1 rounded bg-slate-100">置信 ${safeText(data.confidence_score)}</span>
                         <span class="px-2 py-1 rounded ${data.manual_review_required ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}">人工复核 ${safeText(data.manual_review_required)}</span>
                         <span class="px-2 py-1 rounded bg-slate-100">耗时 ${safeText(data.latency_ms)}ms</span>
+                        <span class="px-2 py-1 rounded bg-slate-100">候选 ${safeText(data.filters_used?.candidate_count)}</span>
                     </div>
-                    <div class="space-y-3">${(data.hits || []).map(hit => `
-                        <div class="border rounded p-3 text-xs">
-                            <div class="font-bold">${safeText(hit.title)} <span class="text-slate-400">score ${safeText(hit.score)}</span></div>
-                            <div class="text-slate-500 mt-1">${safeText(hit.knowledge_class_label || hit.knowledge_type_label)} · ${safeText(hit.business_line_label)} · ${safeText(hit.language_pair_label)} · ${safeText(hit.service_scope_label)}</div>
-                            <div class="mt-2 whitespace-pre-wrap">${safeText(hit.content)}</div>
-                            ${hit.pricing_rules && hit.pricing_rules.length ? `<pre class="mt-2 bg-emerald-50 border rounded p-2 overflow-auto">${safeText(JSON.stringify(hit.pricing_rules, null, 2))}</pre>` : ''}
-                        </div>`).join('') || '<div class="text-slate-400 text-sm">无命中</div>'}</div>
+                    ${data.no_hit_reason ? `<div class="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">${safeText(data.no_hit_reason)}</div>` : ''}
+                    <div class="space-y-3">${(data.hits || []).map(hit => renderHit(hit)).join('') || '<div class="text-slate-400 text-sm">无命中</div>'}</div>
+                    ${supportingHtml}
+                    ${relatedHtml}
                     <pre class="mt-4 bg-slate-900 text-slate-100 text-xs p-3 rounded overflow-auto max-h-80">${safeText(JSON.stringify(data.filters_used, null, 2))}</pre>
                 </div>`;
         }
@@ -3503,6 +3633,7 @@
                 </div>`;
         }
 
+        loadUiRuntimeConfig();
         fetchSessions();
     </script>
 </body>

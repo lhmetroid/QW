@@ -7,6 +7,7 @@ import logging
 import json
 import uuid
 import re
+import hashlib
 import requests
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -26,12 +27,28 @@ from email_import_service import EmailImportService
 from database import (
     SessionLocal, MessageLog, init_db, KnowledgeBase, IntentSummary, get_db,
     KnowledgeDocument, KnowledgeChunk, PricingRule, KnowledgeHitLog, KnowledgeCandidate,
-    KnowledgeVersionSnapshot, JobTask,
+    KnowledgeVersionSnapshot, JobTask, ThreadBusinessFact, EmailThreadAsset,
+    EmailFragmentAsset, EmailEffectFeedback, ModelTrainingSample,
 )
 from worker import start_job
+from knowledge_governance import (
+    build_thread_business_fact,
+    detect_mixed_knowledge,
+    infer_function_fragment,
+    infer_library_type,
+    infer_scenario_intent,
+    merge_tags,
+    score_content_governance,
+    validate_thread_state_consistency,
+)
 
 app = FastAPI(title="企微智能实时提醒后台")
 logger = logging.getLogger(__name__)
+_RUNTIME_ENV_CACHE: dict[str, Any] = {"mtime": None, "values": {}}
+LLM_COMPARE_RUNTIME_STATUS: dict[str, dict[str, Any]] = {}
+POSITIVE_FEEDBACK_STATUSES = {"useful", "adopted", "won", "advanced"}
+NEGATIVE_FEEDBACK_STATUSES = {"needs_fix", "rejected"}
+TRAINING_SAMPLE_TYPES = {"embedding_corpus", "reply_fragment_sft", "thread_reply_sft", "retrieval_pair"}
 
 @app.get("/")
 async def index_redirect():
@@ -88,6 +105,37 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE message_logs ALTER COLUMN user_id TYPE VARCHAR(120);"))
         db.execute(text("ALTER TABLE intent_summaries ALTER COLUMN user_id TYPE VARCHAR(120);"))
         db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS sales_advice_compare_v2 TEXT;"))
+        db.execute(text("ALTER TABLE knowledge_document ADD COLUMN IF NOT EXISTS library_type VARCHAR(20) DEFAULT 'reference';"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS library_type VARCHAR(20) DEFAULT 'reference';"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS allowed_for_generation BOOLEAN DEFAULT FALSE;"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS usable_for_reply BOOLEAN DEFAULT FALSE;"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS publishable BOOLEAN DEFAULT FALSE;"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS topic_clarity_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS completeness_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS reusability_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS evidence_reliability_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS useful_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS effect_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS feedback_count INTEGER DEFAULT 0;"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS positive_feedback_count INTEGER DEFAULT 0;"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS last_feedback_at TIMESTAMP;"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS quality_notes JSON;"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS library_type VARCHAR(20) DEFAULT 'reference';"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS allowed_for_generation BOOLEAN DEFAULT FALSE;"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS usable_for_reply BOOLEAN DEFAULT FALSE;"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS publishable BOOLEAN DEFAULT FALSE;"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS topic_clarity_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS completeness_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS reusability_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS evidence_reliability_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS useful_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS effect_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS feedback_count INTEGER DEFAULT 0;"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS positive_feedback_count INTEGER DEFAULT 0;"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS last_feedback_at TIMESTAMP;"))
+        db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS quality_notes JSON;"))
+        db.execute(text("ALTER TABLE thread_business_fact ADD COLUMN IF NOT EXISTS effect_score NUMERIC(6, 4);"))
+        db.execute(text("ALTER TABLE thread_business_fact ADD COLUMN IF NOT EXISTS outcome_feedback JSON;"))
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS retrieval_quality VARCHAR(50);"))
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS confidence_score NUMERIC(8, 6);"))
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS insufficient_info BOOLEAN DEFAULT FALSE;"))
@@ -96,10 +144,13 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS manual_feedback JSON;"))
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS feedback_status VARCHAR(50);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_active_effective ON knowledge_chunk (status, business_line, knowledge_type, effective_from, effective_to);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_replyable ON knowledge_chunk (status, usable_for_reply, allowed_for_generation, useful_score DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_priority ON knowledge_chunk (priority DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_pr_active_scope ON pricing_rule (status, business_line, language_pair, service_scope, customer_tier);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kd_effective_to ON knowledge_document (status, effective_to);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kcand_status_created ON knowledge_candidate (status, created_at DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_kcand_replyable ON knowledge_candidate (status, usable_for_reply, useful_score DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_effect_score ON knowledge_chunk (status, effect_score DESC, useful_score DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kcand_source ON knowledge_candidate (source_type, source_ref);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_khl_status_created ON knowledge_hit_logs (status, created_at DESC);"))
         if settings.KB_FULLTEXT_INDEX_ENABLED:
@@ -352,6 +403,24 @@ class AssistFeedback(BaseModel):
     manual_feedback: dict | None = None
     final_response: str | None = None
 
+class ExcellentReplyExtractRequest(BaseModel):
+    session_id: str
+    owner: str | None = None
+    operator: str | None = None
+    force: bool = False
+
+class TrainingSamplePrepareRequest(BaseModel):
+    sample_types: list[str] | None = None
+    min_quality_score: float = 0.65
+    min_effect_score: float = 0.55
+    limit_per_source: int = 200
+    operator: str | None = None
+
+class TrainingSampleExportRequest(BaseModel):
+    sample_types: list[str] | None = None
+    max_samples: int = 1000
+    operator: str | None = None
+
 class KnowledgeRegressionRunRequest(BaseModel):
     case_ids: list[str] | None = None
     groups: list[str] | None = None
@@ -489,6 +558,7 @@ KB_LABELS = {
         "message_extract": "会话抽取",
         "case_extract": "历史案例",
         "email_excel": "邮件整理表",
+        "excellent_reply": "优秀回复抽取",
     },
     "review_status": {
         "pending": "待审核",
@@ -744,6 +814,230 @@ def resolve_knowledge_class_fields(
     resolved_chunk_type = config["chunk_type"] if knowledge_class else (chunk_type or config["chunk_type"])
     resolved_risk = risk_level or config["risk_level"]
     return class_code, resolved_type, resolved_chunk_type, resolved_risk
+
+def _decimal_score(value: float | None) -> Decimal | None:
+    if value is None:
+        return None
+    return Decimal(str(round(float(value), 4)))
+
+def _governance_metadata(
+    *,
+    business_line: str | None = None,
+    language_pair: str | None = None,
+    service_scope: str | None = None,
+    customer_tier: str | None = None,
+) -> dict:
+    return {
+        "business_line": business_line,
+        "language_pair": language_pair,
+        "service_scope": service_scope,
+        "customer_tier": customer_tier,
+    }
+
+def _governance_tags(
+    tags: dict | None,
+    *,
+    source_type: str | None,
+    title: str | None,
+    content: str | None,
+) -> dict | None:
+    tags = dict(tags or {})
+    fragment = infer_function_fragment(title=title, content=content, source_type=source_type, tags=tags)
+    scenario_label, intent_label, language_style = infer_scenario_intent(title=title, content=content, tags=tags)
+    return merge_tags(
+        tags,
+        function_fragment=fragment,
+        scenario_label=scenario_label,
+        intent_label=intent_label,
+        language_style=language_style,
+        thread_id=tags.get("thread_id") or tags.get("session_id"),
+    )
+
+def _chunk_quality_payload(
+    *,
+    title: str,
+    content: str,
+    knowledge_type: str,
+    chunk_type: str,
+    source_type: str | None,
+    tags: dict | None,
+    pricing_rule: dict | None,
+    source_ref: str | None = None,
+    metadata: dict | None = None,
+) -> dict:
+    merged_tags = _governance_tags(tags, source_type=source_type, title=title, content=content)
+    return score_content_governance(
+        title=title,
+        content=content,
+        knowledge_type=knowledge_type,
+        chunk_type=chunk_type,
+        source_type=source_type,
+        tags=merged_tags,
+        pricing_rule=pricing_rule,
+        has_source_ref=bool(source_ref),
+        metadata=metadata,
+    ) | {"structured_tags": merged_tags}
+
+def _apply_chunk_governance(
+    chunk: KnowledgeChunk,
+    *,
+    source_type: str | None,
+    pricing_rule: dict | None = None,
+    source_ref: str | None = None,
+) -> dict:
+    quality = _chunk_quality_payload(
+        title=chunk.title,
+        content=chunk.content,
+        knowledge_type=chunk.knowledge_type,
+        chunk_type=chunk.chunk_type,
+        source_type=source_type,
+        tags=chunk.structured_tags,
+        pricing_rule=pricing_rule,
+        source_ref=source_ref,
+        metadata=_governance_metadata(
+            business_line=chunk.business_line,
+            language_pair=chunk.language_pair,
+            service_scope=chunk.service_scope,
+            customer_tier=chunk.customer_tier,
+        ),
+    )
+    chunk.structured_tags = quality["structured_tags"]
+    chunk.library_type = quality["library_type"]
+    chunk.allowed_for_generation = bool(quality["allowed_for_generation"])
+    chunk.usable_for_reply = bool(quality["usable_for_reply"])
+    chunk.publishable = bool(quality["publishable"])
+    chunk.topic_clarity_score = _decimal_score(quality["topic_clarity_score"])
+    chunk.completeness_score = _decimal_score(quality["completeness_score"])
+    chunk.reusability_score = _decimal_score(quality["reusability_score"])
+    chunk.evidence_reliability_score = _decimal_score(quality["evidence_reliability_score"])
+    chunk.useful_score = _decimal_score(quality["useful_score"])
+    chunk.quality_notes = quality["quality_notes"]
+    return quality
+
+def _apply_candidate_governance(candidate: KnowledgeCandidate) -> dict:
+    source_snapshot = dict(candidate.source_snapshot or {})
+    tags = dict(source_snapshot.get("tags") or {})
+    quality = _chunk_quality_payload(
+        title=candidate.title,
+        content=candidate.content,
+        knowledge_type=candidate.knowledge_type,
+        chunk_type=candidate.chunk_type,
+        source_type=candidate.source_type,
+        tags=tags,
+        pricing_rule=candidate.pricing_rule,
+        source_ref=candidate.source_ref,
+        metadata=_governance_metadata(
+            business_line=candidate.business_line,
+            language_pair=candidate.language_pair,
+            service_scope=candidate.service_scope,
+            customer_tier=candidate.customer_tier,
+        ),
+    )
+    source_snapshot["tags"] = quality["structured_tags"]
+    source_snapshot["quality_notes"] = quality["quality_notes"]
+    source_snapshot["mixed_knowledge"] = detect_mixed_knowledge(candidate.content, quality["structured_tags"])
+    candidate.source_snapshot = source_snapshot
+    candidate.library_type = quality["library_type"]
+    candidate.allowed_for_generation = bool(quality["allowed_for_generation"])
+    candidate.usable_for_reply = bool(quality["usable_for_reply"])
+    candidate.publishable = bool(quality["publishable"])
+    candidate.topic_clarity_score = _decimal_score(quality["topic_clarity_score"])
+    candidate.completeness_score = _decimal_score(quality["completeness_score"])
+    candidate.reusability_score = _decimal_score(quality["reusability_score"])
+    candidate.evidence_reliability_score = _decimal_score(quality["evidence_reliability_score"])
+    candidate.useful_score = _decimal_score(quality["useful_score"])
+    candidate.quality_notes = quality["quality_notes"]
+    return quality
+
+def _thread_fact_to_dict(item: ThreadBusinessFact | None) -> dict | None:
+    if not item:
+        return None
+    return {
+        "fact_id": str(item.fact_id),
+        "session_id": item.session_id,
+        "thread_id": item.thread_id,
+        "external_userid": item.external_userid,
+        "sales_userid": item.sales_userid,
+        "topic": item.topic,
+        "core_demand": item.core_demand,
+        "scenario_label": item.scenario_label,
+        "intent_label": item.intent_label,
+        "language_style": item.language_style,
+        "business_state": item.business_state,
+        "stage_signals": item.stage_signals,
+        "merged_facts": item.merged_facts,
+        "attachment_summary": item.attachment_summary,
+        "fact_source": item.fact_source,
+        "quality_score": float(item.quality_score) if item.quality_score is not None else None,
+        "effect_score": float(item.effect_score) if item.effect_score is not None else None,
+        "outcome_feedback": item.outcome_feedback,
+        "usable_for_reply": item.usable_for_reply,
+        "allowed_for_generation": item.allowed_for_generation,
+        "reply_guard_reason": item.reply_guard_reason,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    }
+
+def _upsert_thread_business_fact(
+    db: Session,
+    *,
+    session_id: str,
+    summary_json: dict | None,
+    crm_context: dict | None,
+    messages: list[dict] | None,
+    external_userid: str | None = None,
+    sales_userid: str | None = None,
+) -> ThreadBusinessFact:
+    payload = build_thread_business_fact(
+        session_id=session_id,
+        summary=summary_json,
+        crm_context=crm_context,
+        messages=messages,
+        external_userid=external_userid,
+        sales_userid=sales_userid,
+    )
+    latest_log = None
+    if session_id:
+        latest_log = db.query(KnowledgeHitLog).filter(KnowledgeHitLog.session_id == session_id).order_by(KnowledgeHitLog.created_at.desc()).first()
+    if latest_log:
+        merged_facts = dict(payload.get("merged_facts") or {})
+        merged_facts["latest_feedback_status"] = latest_log.feedback_status
+        merged_facts["latest_final_response"] = sanitize_text((latest_log.final_response or "")[:280]) if latest_log.final_response else None
+        merged_facts["latest_hit_chunk_ids"] = latest_log.hit_chunk_ids or []
+        payload["merged_facts"] = merged_facts
+        fact_source = dict(payload.get("fact_source") or {})
+        fact_source["feedback_status"] = latest_log.feedback_status
+        fact_source["has_final_response"] = bool(latest_log.final_response)
+        fact_source["latest_log_at"] = latest_log.created_at.isoformat() if latest_log.created_at else None
+        payload["fact_source"] = fact_source
+    item = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
+    if not item:
+        item = ThreadBusinessFact(session_id=session_id, thread_id=session_id)
+        db.add(item)
+        db.flush()
+    for field in [
+        "thread_id", "external_userid", "sales_userid", "topic", "core_demand",
+        "scenario_label", "intent_label", "language_style", "business_state",
+        "stage_signals", "merged_facts", "attachment_summary", "fact_source",
+        "reply_guard_reason",
+    ]:
+        setattr(item, field, payload.get(field))
+    item.quality_score = _decimal_score(payload.get("quality_score"))
+    if latest_log:
+        payload["outcome_feedback"] = {
+            "feedback_status": latest_log.feedback_status,
+            "manual_feedback": latest_log.manual_feedback,
+            "final_response": sanitize_text((latest_log.final_response or "")[:280]) if latest_log.final_response else None,
+        }
+        if latest_log.feedback_status in {"useful", "adopted", "won", "advanced"}:
+            payload["effect_score"] = 0.68
+        elif latest_log.feedback_status in {"needs_fix", "rejected"}:
+            payload["effect_score"] = 0.32
+    item.effect_score = _decimal_score(payload.get("effect_score"))
+    item.outcome_feedback = payload.get("outcome_feedback")
+    item.usable_for_reply = bool(payload.get("usable_for_reply"))
+    item.allowed_for_generation = bool(payload.get("allowed_for_generation"))
+    return item
 
 def _parse_auto_split_flag(value) -> bool:
     if value is None or value == "":
@@ -1268,6 +1562,7 @@ def _doc_to_dict(doc: KnowledgeDocument) -> dict:
         "review_required": doc.review_required,
         "review_status": doc.review_status,
         "review_status_label": label_for("review_status", doc.review_status),
+        "library_type": doc.library_type,
         "allowed_actions": document_allowed_actions(doc),
         "tags": doc.tags,
         "created_at": doc.created_at,
@@ -1298,6 +1593,20 @@ def _chunk_to_dict(chunk: KnowledgeChunk) -> dict:
         "customer_tier": chunk.customer_tier,
         "customer_tier_label": label_for("customer_tier", chunk.customer_tier),
         "priority": chunk.priority,
+        "library_type": chunk.library_type,
+        "allowed_for_generation": chunk.allowed_for_generation,
+        "usable_for_reply": chunk.usable_for_reply,
+        "publishable": chunk.publishable,
+        "topic_clarity_score": float(chunk.topic_clarity_score) if chunk.topic_clarity_score is not None else None,
+        "completeness_score": float(chunk.completeness_score) if chunk.completeness_score is not None else None,
+        "reusability_score": float(chunk.reusability_score) if chunk.reusability_score is not None else None,
+        "evidence_reliability_score": float(chunk.evidence_reliability_score) if chunk.evidence_reliability_score is not None else None,
+        "useful_score": float(chunk.useful_score) if chunk.useful_score is not None else None,
+        "effect_score": float(chunk.effect_score) if chunk.effect_score is not None else None,
+        "feedback_count": chunk.feedback_count,
+        "positive_feedback_count": chunk.positive_feedback_count,
+        "last_feedback_at": chunk.last_feedback_at,
+        "quality_notes": chunk.quality_notes,
         "structured_tags": chunk.structured_tags,
         "effective_from": chunk.effective_from,
         "effective_to": chunk.effective_to,
@@ -1422,6 +1731,20 @@ def _candidate_to_dict(candidate: KnowledgeCandidate) -> dict:
         "source_type_label": label_for("candidate_source_type", candidate.source_type),
         "source_ref": candidate.source_ref,
         "source_snapshot": candidate.source_snapshot,
+        "library_type": candidate.library_type,
+        "allowed_for_generation": candidate.allowed_for_generation,
+        "usable_for_reply": candidate.usable_for_reply,
+        "publishable": candidate.publishable,
+        "topic_clarity_score": float(candidate.topic_clarity_score) if candidate.topic_clarity_score is not None else None,
+        "completeness_score": float(candidate.completeness_score) if candidate.completeness_score is not None else None,
+        "reusability_score": float(candidate.reusability_score) if candidate.reusability_score is not None else None,
+        "evidence_reliability_score": float(candidate.evidence_reliability_score) if candidate.evidence_reliability_score is not None else None,
+        "useful_score": float(candidate.useful_score) if candidate.useful_score is not None else None,
+        "effect_score": float(candidate.effect_score) if candidate.effect_score is not None else None,
+        "feedback_count": candidate.feedback_count,
+        "positive_feedback_count": candidate.positive_feedback_count,
+        "last_feedback_at": candidate.last_feedback_at,
+        "quality_notes": candidate.quality_notes,
         "status": candidate.status,
         "status_label": label_for("candidate_status", candidate.status),
         "owner": candidate.owner,
@@ -1430,6 +1753,118 @@ def _candidate_to_dict(candidate: KnowledgeCandidate) -> dict:
         "promoted_document_id": str(candidate.promoted_document_id) if candidate.promoted_document_id else None,
         "created_at": candidate.created_at,
         "updated_at": candidate.updated_at,
+    }
+
+def _email_thread_asset_to_dict(item: EmailThreadAsset) -> dict:
+    return {
+        "email_id": str(item.email_id),
+        "source_type": item.source_type,
+        "source_ref": item.source_ref,
+        "import_batch": item.import_batch,
+        "session_id": item.session_id,
+        "thread_id": item.thread_id,
+        "external_userid": item.external_userid,
+        "sales_userid": item.sales_userid,
+        "fact_id": str(item.fact_id) if item.fact_id else None,
+        "subject": item.subject,
+        "content": item.content,
+        "sender": item.sender,
+        "receiver": item.receiver,
+        "sent_at": item.sent_at,
+        "sent_at_raw": item.sent_at_raw,
+        "scenario_label": item.scenario_label,
+        "intent_label": item.intent_label,
+        "language_style": item.language_style,
+        "business_state": item.business_state,
+        "library_type": item.library_type,
+        "quality_score": float(item.quality_score) if item.quality_score is not None else None,
+        "effect_score": float(item.effect_score) if item.effect_score is not None else None,
+        "feedback_count": item.feedback_count,
+        "positive_feedback_count": item.positive_feedback_count,
+        "last_feedback_at": item.last_feedback_at,
+        "usable_for_reply": item.usable_for_reply,
+        "allowed_for_generation": item.allowed_for_generation,
+        "publishable": item.publishable,
+        "source_snapshot": item.source_snapshot,
+        "status": item.status,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    }
+
+def _email_fragment_asset_to_dict(item: EmailFragmentAsset) -> dict:
+    return {
+        "fragment_id": str(item.fragment_id),
+        "email_id": str(item.email_id) if item.email_id else None,
+        "candidate_id": str(item.candidate_id) if item.candidate_id else None,
+        "log_id": str(item.log_id) if item.log_id else None,
+        "session_id": item.session_id,
+        "thread_id": item.thread_id,
+        "source_type": item.source_type,
+        "source_ref": item.source_ref,
+        "title": item.title,
+        "content": item.content,
+        "function_fragment": item.function_fragment,
+        "scenario_label": item.scenario_label,
+        "intent_label": item.intent_label,
+        "language_style": item.language_style,
+        "library_type": item.library_type,
+        "allowed_for_generation": item.allowed_for_generation,
+        "usable_for_reply": item.usable_for_reply,
+        "publishable": item.publishable,
+        "topic_clarity_score": float(item.topic_clarity_score) if item.topic_clarity_score is not None else None,
+        "completeness_score": float(item.completeness_score) if item.completeness_score is not None else None,
+        "reusability_score": float(item.reusability_score) if item.reusability_score is not None else None,
+        "evidence_reliability_score": float(item.evidence_reliability_score) if item.evidence_reliability_score is not None else None,
+        "useful_score": float(item.useful_score) if item.useful_score is not None else None,
+        "effect_score": float(item.effect_score) if item.effect_score is not None else None,
+        "feedback_count": item.feedback_count,
+        "positive_feedback_count": item.positive_feedback_count,
+        "last_feedback_at": item.last_feedback_at,
+        "quality_notes": item.quality_notes,
+        "source_snapshot": item.source_snapshot,
+        "status": item.status,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    }
+
+def _email_effect_feedback_to_dict(item: EmailEffectFeedback) -> dict:
+    return {
+        "feedback_id": str(item.feedback_id),
+        "email_id": str(item.email_id) if item.email_id else None,
+        "fragment_id": str(item.fragment_id) if item.fragment_id else None,
+        "candidate_id": str(item.candidate_id) if item.candidate_id else None,
+        "log_id": str(item.log_id) if item.log_id else None,
+        "session_id": item.session_id,
+        "thread_id": item.thread_id,
+        "feedback_status": item.feedback_status,
+        "feedback_note": item.feedback_note,
+        "feedback_payload": item.feedback_payload,
+        "delta_score": float(item.delta_score) if item.delta_score is not None else None,
+        "created_at": item.created_at,
+    }
+
+def _training_sample_to_dict(item: ModelTrainingSample) -> dict:
+    return {
+        "sample_id": str(item.sample_id),
+        "sample_key": item.sample_key,
+        "sample_type": item.sample_type,
+        "source_table": item.source_table,
+        "source_id": item.source_id,
+        "source_type": item.source_type,
+        "source_ref": item.source_ref,
+        "instruction": item.instruction,
+        "input_text": item.input_text,
+        "target_text": item.target_text,
+        "sample_metadata": item.sample_metadata,
+        "quality_score": float(item.quality_score) if item.quality_score is not None else None,
+        "effect_score": float(item.effect_score) if item.effect_score is not None else None,
+        "exportable": item.exportable,
+        "review_status": item.review_status,
+        "export_status": item.export_status,
+        "last_export_path": item.last_export_path,
+        "exported_at": item.exported_at,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
     }
 
 def _jsonable(value: Any) -> Any:
@@ -1589,6 +2024,19 @@ def _restore_document_from_snapshot(db: Session, doc: KnowledgeDocument, snapsho
         db.add(rule)
         recreated_rules.append(rule)
 
+    for chunk in recreated_chunks:
+        linked_rule_payload = next(
+            (item for item in pricing_payload if str(item.get("chunk_id") or "") in {str(chunk.chunk_id), ""}),
+            None,
+        )
+        _apply_chunk_governance(
+            chunk,
+            source_type=doc.source_type,
+            pricing_rule=linked_rule_payload,
+            source_ref=doc.source_ref,
+        )
+    doc.library_type = recreated_chunks[0].library_type if recreated_chunks else doc.library_type
+    doc.tags = merge_tags(doc.tags, library_type=doc.library_type)
     restore_meta = dict(doc.source_meta or {})
     restore_meta["restored_from_version"] = snapshot.version_no
     restore_meta["restored_at"] = datetime.utcnow().isoformat()
@@ -1678,6 +2126,7 @@ def _create_single_document_and_chunk(
         risk_level=resolved_risk,
         review_required=review_required,
         review_status="pending" if review_required else "auto_ready",
+        library_type=infer_library_type(source_type=source_type, knowledge_type=resolved_type, chunk_type=resolved_chunk_type, tags=merged_tags),
         tags=merged_tags,
     )
     db.add(document)
@@ -1721,6 +2170,9 @@ def _create_single_document_and_chunk(
             customer_tier,
         )
     rule = _create_pricing_rule(db, document, chunk, pricing_rule_payload)
+    _apply_chunk_governance(chunk, source_type=source_type, pricing_rule=pricing_rule_payload, source_ref=source_ref)
+    document.library_type = chunk.library_type
+    document.tags = merge_tags(document.tags, library_type=document.library_type)
     return document, chunk, rule
 
 def _extract_relevant_sentences(content: str, keywords: list[str], limit: int = 3) -> str:
@@ -1858,6 +2310,7 @@ def _create_candidate_record(
     operator: str | None = None,
     review_notes: str | None = None,
 ):
+    source_snapshot = dict(source_snapshot or {})
     candidate = KnowledgeCandidate(
         title=title,
         content=content,
@@ -1877,6 +2330,7 @@ def _create_candidate_record(
         source_type=source_type,
         source_ref=source_ref,
         source_snapshot=source_snapshot,
+        library_type=infer_library_type(source_type=source_type, knowledge_type=knowledge_type, chunk_type=chunk_type, tags=source_snapshot.get("tags")),
         status="candidate",
         owner=owner,
         operator=operator,
@@ -1884,7 +2338,660 @@ def _create_candidate_record(
     )
     db.add(candidate)
     db.flush()
+    _apply_candidate_governance(candidate)
     return candidate
+
+def _json_safe(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    return value
+
+def _parse_optional_datetime(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value
+    text_value = str(value).strip()
+    if not text_value:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(text_value, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text_value.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+def _feedback_delta(feedback_status: str | None) -> float:
+    if feedback_status in POSITIVE_FEEDBACK_STATUSES:
+        return 0.12
+    if feedback_status in NEGATIVE_FEEDBACK_STATUSES:
+        return -0.10
+    return 0.0
+
+def _build_email_asset_source_ref(record: dict, *, import_batch: str, index: int) -> str:
+    explicit = str(record.get("source_ref") or "").strip()
+    if explicit:
+        return explicit[:255]
+    thread_id = str(record.get("thread_id") or record.get("session_id") or "").strip()
+    if thread_id:
+        return thread_id[:255]
+    row_no = record.get("row") or index
+    return f"{import_batch}:{row_no}"[:255]
+
+def _rollup_email_thread_asset_stats(db: Session, email_ids: list[str]) -> None:
+    if not email_ids:
+        return
+    items = db.query(EmailThreadAsset).filter(EmailThreadAsset.email_id.in_(email_ids)).all()
+    for item in items:
+        fragments = db.query(EmailFragmentAsset).filter(EmailFragmentAsset.email_id == item.email_id).all()
+        if not fragments:
+            continue
+        scores = [float(fragment.effect_score) for fragment in fragments if fragment.effect_score is not None]
+        item.effect_score = _decimal_score(sum(scores) / len(scores)) if scores else item.effect_score
+        item.feedback_count = sum(int(fragment.feedback_count or 0) for fragment in fragments)
+        item.positive_feedback_count = sum(int(fragment.positive_feedback_count or 0) for fragment in fragments)
+        item.last_feedback_at = max((fragment.last_feedback_at for fragment in fragments if fragment.last_feedback_at), default=item.last_feedback_at)
+
+def _upsert_email_thread_asset(
+    db: Session,
+    *,
+    record: dict,
+    source_type: str,
+    source_ref: str,
+    import_batch: str,
+) -> EmailThreadAsset:
+    subject = str(record.get("subject") or "未命名邮件").strip()[:255]
+    content = sanitize_text(str(record.get("content") or "").strip())
+    session_id = str(record.get("session_id") or record.get("thread_id") or source_ref).strip() or None
+    thread_id = str(record.get("thread_id") or session_id or source_ref).strip() or source_ref
+    scenario_label, intent_label, language_style = infer_scenario_intent(
+        title=subject,
+        content=content,
+        tags={"thread_id": thread_id, "session_id": session_id},
+    )
+    governance = score_content_governance(
+        title=subject,
+        content=content,
+        knowledge_type="faq",
+        chunk_type="template",
+        source_type=source_type,
+        tags={"thread_id": thread_id, "session_id": session_id, "scenario_label": scenario_label, "intent_label": intent_label, "language_style": language_style},
+        has_source_ref=True,
+        metadata={"business_line": "general"},
+    )
+    business_state = {
+        "quotation": "formal_quote",
+        "payment": "payment",
+        "shipment": "shipment",
+        "after_sales": "after_sales",
+    }.get(scenario_label, "inquiry")
+    thread_fact = None
+    if session_id:
+        thread_fact = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
+    item = db.query(EmailThreadAsset).filter(EmailThreadAsset.source_ref == source_ref).first()
+    if not item:
+        item = EmailThreadAsset(source_ref=source_ref, source_type=source_type, thread_id=thread_id, subject=subject, content=content)
+        db.add(item)
+        db.flush()
+    item.source_type = source_type
+    item.import_batch = import_batch
+    item.session_id = session_id
+    item.thread_id = thread_id
+    item.external_userid = str(record.get("external_userid") or "").strip() or None
+    item.sales_userid = str(record.get("sales_userid") or "").strip() or None
+    item.fact_id = thread_fact.fact_id if thread_fact else None
+    item.subject = subject
+    item.content = content
+    item.sender = str(record.get("sender") or "").strip() or None
+    item.receiver = str(record.get("receiver") or "").strip() or None
+    item.sent_at_raw = str(record.get("sent_at") or "").strip() or None
+    item.sent_at = _parse_optional_datetime(record.get("sent_at"))
+    item.scenario_label = scenario_label
+    item.intent_label = intent_label
+    item.language_style = language_style
+    item.business_state = business_state
+    item.library_type = governance["library_type"]
+    item.quality_score = _decimal_score(governance["useful_score"])
+    item.effect_score = item.effect_score if item.effect_score is not None else _decimal_score(0.5)
+    item.usable_for_reply = False
+    item.allowed_for_generation = False
+    item.publishable = False
+    item.source_snapshot = _json_safe(record)
+    item.status = "ingested"
+    return item
+
+def _upsert_email_fragment_asset(
+    db: Session,
+    *,
+    source_type: str,
+    source_ref: str,
+    title: str,
+    content: str,
+    session_id: str | None = None,
+    thread_id: str | None = None,
+    email_asset: EmailThreadAsset | None = None,
+    candidate: KnowledgeCandidate | None = None,
+    log_id: str | None = None,
+    source_snapshot: dict | None = None,
+) -> EmailFragmentAsset:
+    raw_tags = {}
+    if email_asset:
+        raw_tags.update({
+            "thread_id": email_asset.thread_id,
+            "session_id": email_asset.session_id,
+            "scenario_label": email_asset.scenario_label,
+            "intent_label": email_asset.intent_label,
+            "language_style": email_asset.language_style,
+        })
+    if candidate and isinstance(candidate.source_snapshot, dict):
+        raw_tags.update((candidate.source_snapshot.get("tags") or {}))
+    raw_tags.update((source_snapshot or {}).get("tags") or {})
+    if session_id:
+        raw_tags["session_id"] = session_id
+    if thread_id:
+        raw_tags["thread_id"] = thread_id
+    fragment_kind = infer_function_fragment(title=title, content=content, source_type=source_type, tags=raw_tags)
+    scenario_label, intent_label, language_style = infer_scenario_intent(title=title, content=content, tags=raw_tags)
+    governance = score_content_governance(
+        title=title,
+        content=content,
+        knowledge_type=candidate.knowledge_type if candidate else "faq",
+        chunk_type=candidate.chunk_type if candidate else ("template" if fragment_kind in {"greeting", "cta", "closing", "core_answer"} else "example"),
+        source_type=source_type,
+        tags=merge_tags(raw_tags, scenario_label=scenario_label, intent_label=intent_label, language_style=language_style, function_fragment=fragment_kind),
+        has_source_ref=True,
+        metadata={
+            "business_line": candidate.business_line if candidate else "general",
+            "language_pair": candidate.language_pair if candidate else None,
+            "service_scope": candidate.service_scope if candidate else None,
+            "customer_tier": candidate.customer_tier if candidate else None,
+        },
+    )
+    item = db.query(EmailFragmentAsset).filter(
+        EmailFragmentAsset.source_type == source_type,
+        EmailFragmentAsset.source_ref == source_ref,
+    ).first()
+    if not item:
+        item = EmailFragmentAsset(source_type=source_type, source_ref=source_ref, thread_id=thread_id or (email_asset.thread_id if email_asset else source_ref), title=title, content=content)
+        db.add(item)
+        db.flush()
+    item.email_id = email_asset.email_id if email_asset else item.email_id
+    item.candidate_id = candidate.candidate_id if candidate else item.candidate_id
+    item.log_id = log_id or item.log_id
+    item.session_id = session_id or (email_asset.session_id if email_asset else None)
+    item.thread_id = thread_id or (email_asset.thread_id if email_asset else item.thread_id)
+    item.title = title[:255]
+    item.content = content
+    item.function_fragment = fragment_kind
+    item.scenario_label = scenario_label
+    item.intent_label = intent_label
+    item.language_style = language_style
+    item.library_type = governance["library_type"]
+    item.allowed_for_generation = candidate.allowed_for_generation if candidate and candidate.allowed_for_generation is not None else governance["allowed_for_generation"]
+    item.usable_for_reply = candidate.usable_for_reply if candidate and candidate.usable_for_reply is not None else governance["usable_for_reply"]
+    item.publishable = candidate.publishable if candidate and candidate.publishable is not None else governance["publishable"]
+    item.topic_clarity_score = candidate.topic_clarity_score if candidate and candidate.topic_clarity_score is not None else _decimal_score(governance["topic_clarity_score"])
+    item.completeness_score = candidate.completeness_score if candidate and candidate.completeness_score is not None else _decimal_score(governance["completeness_score"])
+    item.reusability_score = candidate.reusability_score if candidate and candidate.reusability_score is not None else _decimal_score(governance["reusability_score"])
+    item.evidence_reliability_score = candidate.evidence_reliability_score if candidate and candidate.evidence_reliability_score is not None else _decimal_score(governance["evidence_reliability_score"])
+    item.useful_score = candidate.useful_score if candidate and candidate.useful_score is not None else _decimal_score(governance["useful_score"])
+    item.effect_score = candidate.effect_score if candidate and candidate.effect_score is not None else (item.effect_score if item.effect_score is not None else _decimal_score(0.5))
+    item.feedback_count = candidate.feedback_count if candidate and candidate.feedback_count is not None else int(item.feedback_count or 0)
+    item.positive_feedback_count = candidate.positive_feedback_count if candidate and candidate.positive_feedback_count is not None else int(item.positive_feedback_count or 0)
+    item.last_feedback_at = candidate.last_feedback_at if candidate and candidate.last_feedback_at else item.last_feedback_at
+    item.quality_notes = candidate.quality_notes if candidate and candidate.quality_notes else governance["quality_notes"]
+    merged_snapshot = dict(source_snapshot or {})
+    if candidate:
+        merged_snapshot.setdefault("candidate_id", str(candidate.candidate_id))
+    if email_asset:
+        merged_snapshot.setdefault("email_id", str(email_asset.email_id))
+    item.source_snapshot = _json_safe(merged_snapshot)
+    item.status = "ready"
+    return item
+
+def _extract_email_assets_and_candidates(
+    db: Session,
+    *,
+    records: list[dict],
+    filename: str,
+    owner: str,
+    operator: str,
+    max_candidates: int,
+) -> dict:
+    created_assets: list[EmailThreadAsset] = []
+    created_candidates: list[KnowledgeCandidate] = []
+    created_fragments: list[EmailFragmentAsset] = []
+    seen_asset_ids: set[str] = set()
+    for index, record in enumerate(records, start=1):
+        source_ref = _build_email_asset_source_ref(record, import_batch=filename, index=index)
+        email_asset = _upsert_email_thread_asset(
+            db,
+            record=record,
+            source_type="email_excel",
+            source_ref=source_ref,
+            import_batch=filename,
+        )
+        if str(email_asset.email_id) not in seen_asset_ids:
+            created_assets.append(email_asset)
+            seen_asset_ids.add(str(email_asset.email_id))
+        if len(created_candidates) >= max_candidates:
+            continue
+        entries = _build_candidate_entries_from_record(record, "email_excel")
+        for offset, item in enumerate(entries, start=1):
+            if len(created_candidates) >= max_candidates:
+                break
+            snapshot = dict(item.get("source_snapshot") or {})
+            snapshot["email_asset_ref"] = source_ref
+            snapshot["tags"] = merge_tags(
+                snapshot.get("tags"),
+                thread_id=email_asset.thread_id,
+                session_id=email_asset.session_id,
+                scenario_label=email_asset.scenario_label,
+                intent_label=email_asset.intent_label,
+                language_style=email_asset.language_style,
+                source_email_ref=source_ref,
+            )
+            candidate = _create_candidate_record(
+                db,
+                title=item["title"],
+                content=item["content"],
+                knowledge_type=item["knowledge_type"],
+                chunk_type=item["chunk_type"],
+                business_line=item["business_line"],
+                sub_service=item.get("sub_service"),
+                language_pair=item.get("language_pair"),
+                service_scope=item.get("service_scope"),
+                region=item.get("region"),
+                customer_tier=item.get("customer_tier"),
+                priority=int(item.get("priority") or 60),
+                risk_level=item.get("risk_level") or "medium",
+                effective_from=item.get("effective_from"),
+                effective_to=item.get("effective_to"),
+                pricing_rule=item.get("pricing_rule"),
+                source_type="email_excel",
+                source_ref=f"{source_ref}_{offset}",
+                source_snapshot=snapshot,
+                owner=owner,
+                operator=operator,
+                review_notes=item.get("review_notes"),
+            )
+            fragment = _upsert_email_fragment_asset(
+                db,
+                source_type="email_excel",
+                source_ref=f"{source_ref}_{offset}",
+                title=candidate.title,
+                content=candidate.content,
+                session_id=email_asset.session_id,
+                thread_id=email_asset.thread_id,
+                email_asset=email_asset,
+                candidate=candidate,
+                source_snapshot=snapshot,
+            )
+            created_candidates.append(candidate)
+            created_fragments.append(fragment)
+    return {
+        "email_assets": created_assets,
+        "candidates": created_candidates,
+        "fragments": created_fragments,
+    }
+
+def _sync_email_effect_rollup_for_log(
+    db: Session,
+    *,
+    log: KnowledgeHitLog,
+    feedback_status: str,
+    manual_feedback: dict | None = None,
+) -> None:
+    delta = _feedback_delta(feedback_status)
+    conditions = []
+    if log.session_id:
+        conditions.append(EmailFragmentAsset.session_id == log.session_id)
+    if log.log_id:
+        conditions.append(EmailFragmentAsset.log_id == log.log_id)
+    fragments: list[EmailFragmentAsset] = []
+    if conditions:
+        fragments = db.query(EmailFragmentAsset).filter(or_(*conditions)).all()
+    now = datetime.utcnow()
+    touched_email_ids: list[str] = []
+    for fragment in fragments:
+        current = float(fragment.effect_score) if fragment.effect_score is not None else 0.5
+        fragment.feedback_count = int(fragment.feedback_count or 0) + 1
+        if feedback_status in POSITIVE_FEEDBACK_STATUSES:
+            fragment.positive_feedback_count = int(fragment.positive_feedback_count or 0) + 1
+        fragment.effect_score = _decimal_score(max(0.0, min(1.0, current + delta)))
+        fragment.last_feedback_at = now
+        db.add(EmailEffectFeedback(
+            email_id=fragment.email_id,
+            fragment_id=fragment.fragment_id,
+            candidate_id=fragment.candidate_id,
+            log_id=log.log_id,
+            session_id=log.session_id,
+            thread_id=fragment.thread_id,
+            feedback_status=feedback_status,
+            feedback_note=(manual_feedback or {}).get("note") if isinstance(manual_feedback, dict) else None,
+            feedback_payload=_json_safe(manual_feedback or {}),
+            delta_score=_decimal_score(delta) if delta else _decimal_score(0.0),
+        ))
+        if fragment.email_id:
+            touched_email_ids.append(str(fragment.email_id))
+    if not fragments and log.session_id:
+        assets = db.query(EmailThreadAsset).filter(EmailThreadAsset.session_id == log.session_id).all()
+        for asset in assets:
+            current = float(asset.effect_score) if asset.effect_score is not None else 0.5
+            asset.feedback_count = int(asset.feedback_count or 0) + 1
+            if feedback_status in POSITIVE_FEEDBACK_STATUSES:
+                asset.positive_feedback_count = int(asset.positive_feedback_count or 0) + 1
+            asset.effect_score = _decimal_score(max(0.0, min(1.0, current + delta)))
+            asset.last_feedback_at = now
+            db.add(EmailEffectFeedback(
+                email_id=asset.email_id,
+                log_id=log.log_id,
+                session_id=log.session_id,
+                thread_id=asset.thread_id,
+                feedback_status=feedback_status,
+                feedback_note=(manual_feedback or {}).get("note") if isinstance(manual_feedback, dict) else None,
+                feedback_payload=_json_safe(manual_feedback or {}),
+                delta_score=_decimal_score(delta) if delta else _decimal_score(0.0),
+            ))
+            touched_email_ids.append(str(asset.email_id))
+    _rollup_email_thread_asset_stats(db, touched_email_ids)
+
+def _normalize_training_sample_types(sample_types: list[str] | None) -> list[str]:
+    normalized = []
+    for item in sample_types or []:
+        value = str(item or "").strip()
+        if value in TRAINING_SAMPLE_TYPES and value not in normalized:
+            normalized.append(value)
+    return normalized or sorted(TRAINING_SAMPLE_TYPES)
+
+def _build_training_sample_key(*parts: Any) -> str:
+    payload = json.dumps([_json_safe(part) for part in parts], ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+def _upsert_training_sample(
+    db: Session,
+    *,
+    sample_type: str,
+    source_table: str,
+    source_id: str | None,
+    source_type: str | None,
+    source_ref: str | None,
+    instruction: str | None,
+    input_text: str,
+    target_text: str | None,
+    sample_metadata: dict | None,
+    quality_score: float | None,
+    effect_score: float | None,
+    exportable: bool,
+) -> tuple[ModelTrainingSample, bool]:
+    sample_key = _build_training_sample_key(sample_type, source_table, source_id, source_ref, instruction, input_text, target_text)
+    item = db.query(ModelTrainingSample).filter(ModelTrainingSample.sample_key == sample_key).first()
+    created = False
+    if not item:
+        item = ModelTrainingSample(sample_key=sample_key)
+        db.add(item)
+        created = True
+    item.sample_type = sample_type
+    item.source_table = source_table
+    item.source_id = source_id
+    item.source_type = source_type
+    item.source_ref = source_ref
+    item.instruction = instruction
+    item.input_text = input_text
+    item.target_text = target_text
+    item.sample_metadata = _json_safe(sample_metadata or {})
+    item.quality_score = _decimal_score(quality_score) if quality_score is not None else None
+    item.effect_score = _decimal_score(effect_score) if effect_score is not None else None
+    item.exportable = exportable
+    item.review_status = "ready" if exportable else "hold"
+    if item.export_status == "exported":
+        item.export_status = "stale"
+    elif item.export_status not in {"pending", "stale"}:
+        item.export_status = "pending"
+    db.flush()
+    return item, created
+
+def _prepare_training_samples(db: Session, payload: TrainingSamplePrepareRequest) -> dict:
+    sample_types = _normalize_training_sample_types(payload.sample_types)
+    limit = max(1, min(int(payload.limit_per_source or 200), 1000))
+    min_quality = max(0.0, min(float(payload.min_quality_score), 1.0))
+    min_effect = max(0.0, min(float(payload.min_effect_score), 1.0))
+    stats = {sample_type: {"created": 0, "updated": 0} for sample_type in sample_types}
+
+    if "embedding_corpus" in sample_types:
+        chunks = db.query(KnowledgeChunk).filter(
+            KnowledgeChunk.status == "active",
+            KnowledgeChunk.publishable.is_(True),
+            KnowledgeChunk.allowed_for_generation.is_(True),
+        ).order_by(KnowledgeChunk.useful_score.desc(), KnowledgeChunk.effect_score.desc()).limit(limit).all()
+        for chunk in chunks:
+            quality = float(chunk.useful_score) if chunk.useful_score is not None else 0.0
+            effect = float(chunk.effect_score) if chunk.effect_score is not None else 0.5
+            if quality < min_quality:
+                continue
+            sample, created = _upsert_training_sample(
+                db,
+                sample_type="embedding_corpus",
+                source_table="knowledge_chunk",
+                source_id=str(chunk.chunk_id),
+                source_type=chunk.library_type,
+                source_ref=str(chunk.document_id),
+                instruction=None,
+                input_text=f"{chunk.title}\n{chunk.content}".strip(),
+                target_text=None,
+                sample_metadata={
+                    "knowledge_type": chunk.knowledge_type,
+                    "chunk_type": chunk.chunk_type,
+                    "business_line": chunk.business_line,
+                    "structured_tags": chunk.structured_tags,
+                },
+                quality_score=quality,
+                effect_score=effect,
+                exportable=True,
+            )
+            stats["embedding_corpus"]["created" if created else "updated"] += 1
+
+    if "reply_fragment_sft" in sample_types:
+        fragments = db.query(EmailFragmentAsset).filter(
+            EmailFragmentAsset.publishable.is_(True),
+            EmailFragmentAsset.allowed_for_generation.is_(True),
+            EmailFragmentAsset.usable_for_reply.is_(True),
+        ).order_by(EmailFragmentAsset.useful_score.desc(), EmailFragmentAsset.effect_score.desc()).limit(limit).all()
+        for fragment in fragments:
+            quality = float(fragment.useful_score) if fragment.useful_score is not None else 0.0
+            effect = float(fragment.effect_score) if fragment.effect_score is not None else 0.5
+            if quality < min_quality or effect < min_effect:
+                continue
+            sample, created = _upsert_training_sample(
+                db,
+                sample_type="reply_fragment_sft",
+                source_table="email_fragment_asset",
+                source_id=str(fragment.fragment_id),
+                source_type=fragment.source_type,
+                source_ref=fragment.source_ref,
+                instruction="根据业务场景、意图、风格和片段类型输出一个可直接复用的回复片段。",
+                input_text=(
+                    f"场景:{fragment.scenario_label or 'general'}\n"
+                    f"意图:{fragment.intent_label or 'general'}\n"
+                    f"风格:{fragment.language_style or 'general'}\n"
+                    f"片段:{fragment.function_fragment or 'core_answer'}"
+                ),
+                target_text=fragment.content,
+                sample_metadata={
+                    "title": fragment.title,
+                    "thread_id": fragment.thread_id,
+                    "session_id": fragment.session_id,
+                    "quality_notes": fragment.quality_notes,
+                },
+                quality_score=quality,
+                effect_score=effect,
+                exportable=True,
+            )
+            stats["reply_fragment_sft"]["created" if created else "updated"] += 1
+
+    positive_logs = []
+    if {"thread_reply_sft", "retrieval_pair"} & set(sample_types):
+        positive_logs = db.query(KnowledgeHitLog).filter(
+            KnowledgeHitLog.feedback_status.in_(tuple(POSITIVE_FEEDBACK_STATUSES)),
+            KnowledgeHitLog.final_response.isnot(None),
+        ).order_by(KnowledgeHitLog.created_at.desc()).limit(limit).all()
+
+    if "thread_reply_sft" in sample_types:
+        for log in positive_logs:
+            thread_fact = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == log.session_id).first() if log.session_id else None
+            quality = float(thread_fact.quality_score) if thread_fact and thread_fact.quality_score is not None else 0.6
+            effect = 0.8 if log.feedback_status in {"won", "advanced"} else 0.7
+            if quality < min_quality or effect < min_effect:
+                continue
+            sample, created = _upsert_training_sample(
+                db,
+                sample_type="thread_reply_sft",
+                source_table="knowledge_hit_logs",
+                source_id=str(log.log_id),
+                source_type="assist_feedback",
+                source_ref=log.session_id,
+                instruction="根据客户问题、线程业务事实和当前阶段生成安全、可执行的销售回复。",
+                input_text=(
+                    f"客户问题:{log.query_text}\n"
+                    f"线程事实:{json.dumps(_json_safe(thread_fact.merged_facts if thread_fact else {}), ensure_ascii=False)}\n"
+                    f"当前阶段:{thread_fact.business_state if thread_fact else 'unknown'}"
+                ),
+                target_text=log.final_response,
+                sample_metadata={
+                    "feedback_status": log.feedback_status,
+                    "thread_fact_id": str(thread_fact.fact_id) if thread_fact else None,
+                    "hit_chunk_ids": log.hit_chunk_ids,
+                },
+                quality_score=quality,
+                effect_score=effect,
+                exportable=True,
+            )
+            stats["thread_reply_sft"]["created" if created else "updated"] += 1
+
+    if "retrieval_pair" in sample_types:
+        for log in positive_logs:
+            chunk_ids = [item for item in (log.hit_chunk_ids or []) if item]
+            if not chunk_ids:
+                continue
+            chunk = db.query(KnowledgeChunk).filter(KnowledgeChunk.chunk_id == chunk_ids[0]).first()
+            if not chunk:
+                continue
+            quality = float(chunk.useful_score) if chunk.useful_score is not None else 0.0
+            effect = float(chunk.effect_score) if chunk.effect_score is not None else 0.7
+            if quality < min_quality or effect < min_effect:
+                continue
+            sample, created = _upsert_training_sample(
+                db,
+                sample_type="retrieval_pair",
+                source_table="knowledge_hit_logs",
+                source_id=str(log.log_id),
+                source_type="retrieval_feedback",
+                source_ref=log.session_id,
+                instruction="为检索训练提供高质量 query-positive pair。",
+                input_text=log.query_text,
+                target_text=f"{chunk.title}\n{chunk.content}".strip(),
+                sample_metadata={
+                    "chunk_id": str(chunk.chunk_id),
+                    "feedback_status": log.feedback_status,
+                    "business_line": chunk.business_line,
+                    "knowledge_type": chunk.knowledge_type,
+                },
+                quality_score=quality,
+                effect_score=effect,
+                exportable=True,
+            )
+            stats["retrieval_pair"]["created" if created else "updated"] += 1
+
+    return {
+        "sample_types": sample_types,
+        "min_quality_score": min_quality,
+        "min_effect_score": min_effect,
+        "limit_per_source": limit,
+        "stats": stats,
+    }
+
+def _training_sample_export_line(item: ModelTrainingSample) -> dict:
+    if item.sample_type == "embedding_corpus":
+        return {
+            "id": item.sample_key,
+            "text": item.input_text,
+            "metadata": item.sample_metadata,
+        }
+    if item.sample_type in {"reply_fragment_sft", "thread_reply_sft"}:
+        user_text = item.input_text
+        if item.instruction:
+            user_text = f"{item.instruction}\n\n{item.input_text}"
+        return {
+            "id": item.sample_key,
+            "messages": [
+                {"role": "system", "content": "你是企业销售回复训练数据整理助手。"},
+                {"role": "user", "content": user_text},
+                {"role": "assistant", "content": item.target_text or ""},
+            ],
+            "metadata": item.sample_metadata,
+        }
+    return {
+        "id": item.sample_key,
+        "query": item.input_text,
+        "positive_passage": item.target_text,
+        "metadata": item.sample_metadata,
+    }
+
+def _export_training_samples(db: Session, payload: TrainingSampleExportRequest) -> dict:
+    sample_types = _normalize_training_sample_types(payload.sample_types)
+    max_samples = max(1, min(int(payload.max_samples or 1000), 5000))
+    run_id = f"train_export_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    export_dir = os.path.join(os.getcwd(), "scratch", "training_exports", run_id)
+    os.makedirs(export_dir, exist_ok=True)
+    files = []
+    exported_counts = {}
+    now = datetime.utcnow()
+    for sample_type in sample_types:
+        items = db.query(ModelTrainingSample).filter(
+            ModelTrainingSample.sample_type == sample_type,
+            ModelTrainingSample.exportable.is_(True),
+            ModelTrainingSample.review_status == "ready",
+        ).order_by(ModelTrainingSample.quality_score.desc(), ModelTrainingSample.effect_score.desc(), ModelTrainingSample.created_at.desc()).limit(max_samples).all()
+        if not items:
+            continue
+        filepath = os.path.join(export_dir, f"{sample_type}.jsonl")
+        with open(filepath, "w", encoding="utf-8") as fh:
+            for item in items:
+                fh.write(json.dumps(_training_sample_export_line(item), ensure_ascii=False) + "\n")
+                item.export_status = "exported"
+                item.last_export_path = filepath
+                item.exported_at = now
+        files.append({"sample_type": sample_type, "path": filepath, "count": len(items)})
+        exported_counts[sample_type] = len(items)
+    manifest_path = os.path.join(export_dir, "manifest.json")
+    with open(manifest_path, "w", encoding="utf-8") as fh:
+        json.dump(
+            {
+                "run_id": run_id,
+                "created_at": now.isoformat(),
+                "files": files,
+                "sample_types": sample_types,
+            },
+            fh,
+            ensure_ascii=False,
+            indent=2,
+        )
+    return {
+        "run_id": run_id,
+        "export_dir": export_dir,
+        "manifest_path": manifest_path,
+        "files": files,
+        "exported_counts": exported_counts,
+    }
 
 def _create_candidate_from_feedback_log(
     db: Session,
@@ -1996,6 +3103,125 @@ def _extract_candidates_from_records(
             created.append(candidate)
     return created
 
+def _update_effect_rollup_for_log(
+    db: Session,
+    *,
+    log: KnowledgeHitLog,
+    feedback_status: str,
+    manual_feedback: dict | None = None,
+) -> None:
+    hit_chunk_ids = [item for item in (log.hit_chunk_ids or []) if item]
+    if not hit_chunk_ids:
+        _sync_email_effect_rollup_for_log(db, log=log, feedback_status=feedback_status, manual_feedback=manual_feedback)
+        return
+    delta = _feedback_delta(feedback_status)
+    chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.chunk_id.in_(hit_chunk_ids)).all()
+    now = datetime.utcnow()
+    for chunk in chunks:
+        current = float(chunk.effect_score) if chunk.effect_score is not None else 0.5
+        chunk.feedback_count = int(chunk.feedback_count or 0) + 1
+        if feedback_status in POSITIVE_FEEDBACK_STATUSES:
+            chunk.positive_feedback_count = int(chunk.positive_feedback_count or 0) + 1
+        chunk.effect_score = _decimal_score(max(0.0, min(1.0, current + delta)))
+        chunk.last_feedback_at = now
+    if log.session_id:
+        thread_fact = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == log.session_id).first()
+        if thread_fact:
+            outcome = dict(thread_fact.outcome_feedback or {})
+            outcome.update({
+                "last_feedback_status": feedback_status,
+                "last_feedback_note": (manual_feedback or {}).get("note") if isinstance(manual_feedback, dict) else None,
+                "last_feedback_at": now.isoformat(),
+                "hit_chunk_ids": hit_chunk_ids,
+            })
+            thread_fact.outcome_feedback = outcome
+            current_effect = float(thread_fact.effect_score) if thread_fact.effect_score is not None else 0.5
+            thread_fact.effect_score = _decimal_score(max(0.0, min(1.0, current_effect + delta)))
+    _sync_email_effect_rollup_for_log(db, log=log, feedback_status=feedback_status, manual_feedback=manual_feedback)
+
+def _split_reply_into_candidate_fragments(reply_text: str) -> list[dict]:
+    raw_parts = [part.strip() for part in re.split(r"\n{2,}|[。！？]\s*", reply_text or "") if part.strip()]
+    if not raw_parts and reply_text:
+        raw_parts = [reply_text.strip()]
+    fragments = []
+    for index, part in enumerate(raw_parts[:6], start=1):
+        fragment = infer_function_fragment(title=f"reply_fragment_{index}", content=part, source_type="excellent_reply", tags={})
+        fragments.append({
+            "title": f"优秀回复片段{index}",
+            "content": part,
+            "function_fragment": fragment or "core_answer",
+        })
+    return fragments
+
+def _extract_excellent_reply_candidates(
+    db: Session,
+    *,
+    session_id: str,
+    owner: str | None = None,
+    operator: str | None = None,
+    force: bool = False,
+) -> list[KnowledgeCandidate]:
+    log = db.query(KnowledgeHitLog).filter(KnowledgeHitLog.session_id == session_id).order_by(KnowledgeHitLog.created_at.desc()).first()
+    if not log or not (log.final_response or "").strip():
+        raise HTTPException(status_code=404, detail="当前会话没有可抽取的最终回复")
+    if not force and log.feedback_status not in {"useful", "adopted", "won", "advanced"}:
+        raise HTTPException(status_code=422, detail="仅在反馈为 useful/adopted/won/advanced 时允许抽取优秀回复；如需跳过请使用 force=true")
+    summary = db.query(IntentSummary).filter(IntentSummary.user_id == session_id).order_by(IntentSummary.id.desc()).first()
+    thread_fact = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
+    query_features = log.query_features or {}
+    knowledge_type = (query_features.get("knowledge_type") or ["faq"])[0] if isinstance(query_features.get("knowledge_type"), list) else (query_features.get("knowledge_type") or "faq")
+    business_line = query_features.get("business_line") or "general"
+    created: list[KnowledgeCandidate] = []
+    for idx, item in enumerate(_split_reply_into_candidate_fragments(log.final_response or ""), start=1):
+        source_snapshot = {
+            "session_id": session_id,
+            "log_id": str(log.log_id),
+            "summary_topic": summary.topic if summary else None,
+            "summary_core_demand": summary.core_demand if summary else None,
+            "feedback_status": log.feedback_status,
+            "hit_chunk_ids": log.hit_chunk_ids,
+            "tags": {
+                "thread_id": session_id,
+                "function_fragment": item["function_fragment"],
+                "scenario_label": thread_fact.scenario_label if thread_fact else None,
+                "intent_label": thread_fact.intent_label if thread_fact else None,
+                "language_style": "concise_wechat",
+            },
+        }
+        candidate = _create_candidate_record(
+            db,
+            title=f"{item['title']} · {item['function_fragment']}",
+            content=item["content"],
+            knowledge_type=knowledge_type if knowledge_type in KB_LABELS["knowledge_type"] else "faq",
+            chunk_type="template" if item["function_fragment"] in {"greeting", "cta", "closing", "core_answer"} else "example",
+            business_line=business_line if business_line in KB_LABELS["business_line"] else "general",
+            language_pair=query_features.get("language_pair"),
+            service_scope=query_features.get("service_scope"),
+            customer_tier=query_features.get("customer_tier"),
+            priority=85,
+            risk_level="medium",
+            source_type="excellent_reply",
+            source_ref=f"{session_id}_{idx}",
+            source_snapshot=source_snapshot,
+            owner=owner or "excellent_reply_extract",
+            operator=operator or "excellent_reply_extract",
+            review_notes=f"来源会话 {session_id} 的优秀回复片段抽取",
+        )
+        _upsert_email_fragment_asset(
+            db,
+            source_type="excellent_reply",
+            source_ref=f"{session_id}_{idx}",
+            title=candidate.title,
+            content=candidate.content,
+            session_id=session_id,
+            thread_id=session_id,
+            candidate=candidate,
+            log_id=str(log.log_id),
+            source_snapshot=source_snapshot,
+        )
+        created.append(candidate)
+    return created
+
 def _load_regression_cases() -> list[dict]:
     filepath = os.path.join(os.path.dirname(__file__), "kb_regression_cases.json")
     with open(filepath, "r", encoding="utf-8") as f:
@@ -2062,11 +3288,18 @@ def _evaluate_regression_case(case: dict, result: dict) -> dict:
     if must_type and not any(hit.get("knowledge_type") == must_type for hit in hits):
         failures.append(f"未命中要求的知识类型：{label('knowledge_type', must_type)}")
 
+    must_class = expected.get("must_hit_knowledge_class")
+    if must_class and not any(hit.get("knowledge_class") == must_class for hit in hits):
+        failures.append(f"未命中要求的知识分类：{label('knowledge_class', must_class)}")
+
     if expected.get("must_hit_pricing_rule") and not any(hit.get("pricing_rules") for hit in hits):
         failures.append("未命中结构化报价规则")
 
     if expected.get("manual_review_required") is True and not result.get("manual_review_required"):
         failures.append("本用例要求触发人工复核，但检索结果没有触发")
+
+    if expected.get("must_clarify_query") and result.get("status") not in {"ambiguous_query", "low_confidence", "manual_review_required"}:
+        failures.append("宽泛问题未触发澄清、低置信或人工复核状态")
 
     if expected.get("manual_review_allowed") is False and result.get("manual_review_required"):
         failures.append("本用例不允许触发人工复核，但检索结果触发了人工复核")
@@ -2190,14 +3423,37 @@ def _select_publish_gate_case_ids(doc: KnowledgeDocument, chunks: list[Knowledge
         ]
     return list(dict.fromkeys(selected))
 
+def _governance_gate_failures_for_doc(doc: KnowledgeDocument, chunks: list[KnowledgeChunk]) -> list[str]:
+    failures: list[str] = []
+    if not chunks:
+        failures.append("文档没有可发布切片")
+        return failures
+    replyable_reference_chunks = [
+        chunk for chunk in chunks
+        if chunk.library_type == "reference" and bool(chunk.usable_for_reply)
+    ]
+    if doc.library_type == "reference" and not replyable_reference_chunks:
+        failures.append("参考型文档没有任何可自动回复切片")
+    for chunk in chunks:
+        mixed = detect_mixed_knowledge(chunk.content, chunk.structured_tags)
+        if mixed.get("mixed"):
+            failures.append(f"切片《{chunk.title}》存在混合知识点，分类过多：{', '.join(mixed.get('categories') or [])}")
+        if not chunk.publishable:
+            failures.append(f"切片《{chunk.title}》未通过 publishable 门禁")
+        if chunk.library_type == "reference" and not chunk.allowed_for_generation:
+            failures.append(f"切片《{chunk.title}》未通过自动回复许可门禁")
+    return list(dict.fromkeys(failures))
+
 async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Session) -> dict:
     case_ids = []
     docs_report = []
     selected_case_category_counts: dict[str, int] = {}
     case_meta = {case["case_id"]: case for case in _load_regression_cases()}
+    governance_failures = []
     for doc in docs:
         chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc.document_id).all()
         selected_ids = _select_publish_gate_case_ids(doc, chunks, db)
+        doc_failures = _governance_gate_failures_for_doc(doc, chunks)
         case_ids.extend(selected_ids)
         category_counts: dict[str, int] = {}
         for case_id in selected_ids:
@@ -2212,7 +3468,16 @@ async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Ses
             "selected_case_ids": selected_ids,
             "selected_case_count": len(selected_ids),
             "selected_case_category_counts": category_counts,
+            "governance_failures": doc_failures,
         })
+        if doc_failures:
+            governance_failures.append({
+                "case_id": f"governance_{doc.document_id}",
+                "document_id": str(doc.document_id),
+                "title": doc.title,
+                "failures": doc_failures,
+                "passed": False,
+            })
 
     case_ids = list(dict.fromkeys(case_ids))
     if not case_ids:
@@ -2221,11 +3486,11 @@ async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Ses
             "target_document_ids": [str(doc.document_id) for doc in docs],
             "target_document_count": len(docs),
             "documents": docs_report,
-            "passed": True,
-            "summary": {"selected": 0, "passed": 0, "failed": 0},
+            "passed": not governance_failures,
+            "summary": {"selected": 0, "passed": 0, "failed": len(governance_failures)},
             "selected_case_category_counts": {},
             "results": [],
-            "failed_cases": [],
+            "failed_cases": governance_failures,
         }
 
     regression = await run_kb_regression_cases(
@@ -2238,6 +3503,7 @@ async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Ses
         )
     )
     failed_cases = [item for item in regression.get("results", []) if not item.get("passed")]
+    failed_cases.extend(governance_failures)
     return {
         "selected_case_ids": case_ids,
         "target_document_ids": [str(doc.document_id) for doc in docs],
@@ -2247,7 +3513,7 @@ async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Ses
         "summary": {
             "selected": len(case_ids),
             "passed": regression.get("passed", 0),
-            "failed": regression.get("failed", 0),
+            "failed": regression.get("failed", 0) + len(governance_failures),
         },
         "selected_case_category_counts": selected_case_category_counts,
         "results": regression.get("results", []),
@@ -2617,7 +3883,8 @@ def _sync_single_chunk_document_from_chunk(db: Session, chunk: KnowledgeChunk) -
     doc.title = chunk.title
     doc.knowledge_type = chunk.knowledge_type
     doc.business_line = chunk.business_line
-    doc.tags = merge_knowledge_class_tags(doc.tags, class_code)
+    doc.tags = merge_tags(merge_knowledge_class_tags(doc.tags, class_code), library_type=chunk.library_type)
+    doc.library_type = chunk.library_type
     if class_code:
         config = KB_KNOWLEDGE_CLASS_CONFIG.get(class_code)
         if config:
@@ -2654,6 +3921,7 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
         risk_level=resolved_risk,
         review_required=payload.review_required,
         review_status="pending" if payload.review_required else "auto_ready",
+        library_type=infer_library_type(source_type=payload.source_type, knowledge_type=resolved_type, chunk_type=resolved_chunk_type, tags=merged_tags),
         tags=merged_tags,
     )
     db.add(document)
@@ -2696,6 +3964,9 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
             payload.customer_tier,
         )
     pricing_rule = _create_pricing_rule(db, document, chunk, pricing_rule_payload)
+    _apply_chunk_governance(chunk, source_type=payload.source_type, pricing_rule=pricing_rule_payload, source_ref=payload.source_ref)
+    document.library_type = chunk.library_type
+    document.tags = merge_tags(document.tags, library_type=document.library_type)
     db.commit()
     db.refresh(document)
     db.refresh(chunk)
@@ -2736,6 +4007,7 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
         risk_level=resolved_doc_risk,
         review_required=payload.review_required,
         review_status="pending" if payload.review_required else "auto_ready",
+        library_type=infer_library_type(source_type=payload.source_type, knowledge_type=resolved_doc_type, chunk_type=None, tags=merged_doc_tags),
         tags=merged_doc_tags,
     )
     db.add(document)
@@ -2792,10 +4064,19 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
                 item.customer_tier,
             )
         pricing_rule = _create_pricing_rule(db, document, chunk, pricing_rule_payload)
+        _apply_chunk_governance(
+            chunk,
+            source_type=payload.source_type,
+            pricing_rule=pricing_rule_payload,
+            source_ref=payload.source_ref,
+        )
         if pricing_rule:
             created_pricing_rules.append(pricing_rule)
         created_chunks.append(chunk)
 
+    if created_chunks:
+        document.library_type = created_chunks[0].library_type if all(item.library_type == created_chunks[0].library_type for item in created_chunks) else "reference"
+        document.tags = merge_tags(document.tags, library_type=document.library_type)
     db.commit()
     db.refresh(document)
     for chunk in created_chunks:
@@ -2908,6 +4189,7 @@ async def update_kb_candidate(candidate_id: str, payload: KnowledgeCandidateUpda
         value = getattr(payload, field)
         if value is not None:
             setattr(candidate, field, value)
+    _apply_candidate_governance(candidate)
     db.commit()
     db.refresh(candidate)
     return {"status": "success", "candidate": _candidate_to_dict(candidate)}
@@ -3194,6 +4476,12 @@ async def update_kb_chunk(chunk_id: str, payload: KnowledgeChunkUpdate, db: Sess
         chunk.embedding_model = settings.EMBEDDING_MODEL
         chunk.embedding_dim = settings.EMBEDDING_DIM
 
+    doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == chunk.document_id).first()
+    _apply_chunk_governance(
+        chunk,
+        source_type=doc.source_type if doc else "manual",
+        source_ref=doc.source_ref if doc else None,
+    )
     _sync_single_chunk_document_from_chunk(db, chunk)
     db.commit()
     db.refresh(chunk)
@@ -3209,6 +4497,8 @@ async def create_kb_chunk_pricing_rule(chunk_id: str, payload: PricingRulePayloa
     if not doc:
         raise HTTPException(status_code=404, detail="Knowledge document not found")
     rule = _create_pricing_rule(db, doc, chunk, payload)
+    _apply_chunk_governance(chunk, source_type=doc.source_type, pricing_rule=payload.model_dump(), source_ref=doc.source_ref)
+    _sync_single_chunk_document_from_chunk(db, chunk)
     db.commit()
     db.refresh(rule)
     return {"status": "success", "pricing_rule": _pricing_rule_to_dict(rule)}
@@ -3261,6 +4551,20 @@ async def update_kb_pricing_rule(rule_id: str, payload: PricingRulePayload, db: 
         value = getattr(payload, field)
         if value is not None:
             setattr(rule, field, _decimal_or_none(value))
+    chunk = None
+    if rule.chunk_id:
+        chunk = db.query(KnowledgeChunk).filter(KnowledgeChunk.chunk_id == rule.chunk_id).first()
+    elif rule.document_id:
+        chunk = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == rule.document_id).order_by(KnowledgeChunk.chunk_no.asc()).first()
+    if chunk:
+        doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == chunk.document_id).first()
+        _apply_chunk_governance(
+            chunk,
+            source_type=doc.source_type if doc else "manual",
+            pricing_rule=payload.model_dump(),
+            source_ref=doc.source_ref if doc else None,
+        )
+        _sync_single_chunk_document_from_chunk(db, chunk)
     db.commit()
     db.refresh(rule)
     return {"status": "success", "pricing_rule": _pricing_rule_to_dict(rule)}
@@ -3338,6 +4642,7 @@ async def update_kb_hit_log_feedback(log_id: str, payload: KnowledgeHitFeedback,
             operator="kb_hit_log_feedback",
             note=(payload.manual_feedback or {}).get("note") if isinstance(payload.manual_feedback, dict) else None,
         )
+    _update_effect_rollup_for_log(db, log=log, feedback_status=payload.feedback_status, manual_feedback=payload.manual_feedback)
     db.commit()
     db.refresh(log)
     if candidate:
@@ -3364,6 +4669,7 @@ async def submit_assist_feedback(payload: AssistFeedback, db: Session = Depends(
             operator="frontend_sidebar",
             note=(payload.manual_feedback or {}).get("note") if isinstance(payload.manual_feedback, dict) else None,
         )
+    _update_effect_rollup_for_log(db, log=log, feedback_status=payload.feedback_status, manual_feedback=payload.manual_feedback)
     db.commit()
     db.refresh(log)
     if candidate:
@@ -3372,6 +4678,24 @@ async def submit_assist_feedback(payload: AssistFeedback, db: Session = Depends(
         "status": "success",
         "log": _hit_log_to_dict(log, redact=True),
         "candidate": _candidate_to_dict(candidate) if candidate else None,
+    }
+
+@app.post("/api/assist/extract_excellent_reply")
+async def extract_excellent_reply(payload: ExcellentReplyExtractRequest, db: Session = Depends(get_db)):
+    created = _extract_excellent_reply_candidates(
+        db,
+        session_id=payload.session_id,
+        owner=payload.owner,
+        operator=payload.operator,
+        force=payload.force,
+    )
+    db.commit()
+    for item in created:
+        db.refresh(item)
+    return {
+        "status": "success",
+        "created_count": len(created),
+        "candidates": [_candidate_to_dict(item) for item in created],
     }
 
 def _execute_regression_cases(payload: KnowledgeRegressionRunRequest, report: Any = None) -> dict:
@@ -3650,36 +4974,120 @@ def _mask_config_value(value: str | None, keep: int = 4) -> str | None:
         return "*" * len(text_value)
     return f"{text_value[:keep]}***"
 
+def _load_runtime_env_file() -> dict[str, str]:
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    try:
+        mtime = os.path.getmtime(env_path)
+    except OSError:
+        return {}
+    if _RUNTIME_ENV_CACHE.get("mtime") == mtime:
+        return dict(_RUNTIME_ENV_CACHE.get("values") or {})
+    values: dict[str, str] = {}
+    try:
+        with open(env_path, "r", encoding="utf-8-sig") as env_file:
+            for raw_line in env_file:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                    value = value[1:-1]
+                values[key] = value
+    except OSError:
+        return {}
+    _RUNTIME_ENV_CACHE["mtime"] = mtime
+    _RUNTIME_ENV_CACHE["values"] = values
+    return dict(values)
+
+def _runtime_setting(name: str, current: Any = None) -> str:
+    env_value = os.environ.get(name)
+    if str(env_value or "").strip():
+        return str(env_value).strip()
+    current_value = str(current or "").strip()
+    if current_value and not _is_placeholder_value(current_value):
+        return current_value
+    file_value = str(_load_runtime_env_file().get(name) or "").strip()
+    if file_value and not _is_placeholder_value(file_value):
+        return file_value
+    return current_value
+
+def _runtime_int_setting(name: str, current: Any = None, default: int = 100) -> int:
+    value = _runtime_setting(name, current)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            return int(current)
+        except (TypeError, ValueError):
+            return default
+
+def _runtime_llm_values(prefix: str) -> dict:
+    return {
+        "api_url": _runtime_setting(f"{prefix}_API_URL", getattr(settings, f"{prefix}_API_URL", "")),
+        "api_key": _runtime_setting(f"{prefix}_API_KEY", getattr(settings, f"{prefix}_API_KEY", "")),
+        "model": _runtime_setting(f"{prefix}_MODEL", getattr(settings, f"{prefix}_MODEL", "")),
+        "timeout_seconds": _runtime_int_setting(
+            f"{prefix}_TIMEOUT_SECONDS",
+            getattr(settings, f"{prefix}_TIMEOUT_SECONDS", 100),
+            100,
+        ),
+    }
+
+def _runtime_llm_configured(config: dict) -> bool:
+    return not any(
+        _is_placeholder_value(config.get(field))
+        for field in ("api_url", "api_key", "model")
+    )
+
+def _set_llm_compare_status(session_id: str, status: str, reason: str = "", config: dict | None = None):
+    payload = {
+        "status": status,
+        "reason": sanitize_text(reason or ""),
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    if config:
+        payload.update({
+            "model": config.get("model") or "",
+            "provider": _llm_provider_label(config.get("api_key")),
+            "url": config.get("api_url") or "",
+        })
+    LLM_COMPARE_RUNTIME_STATUS[session_id] = payload
+
 def _llm_provider_label(api_key: str | None) -> str:
     if not str(api_key or "").strip():
         return "未配置"
     return "Dify" if str(api_key or "").startswith("app-") else "OpenAI-compatible"
 
 def _llm_runtime_config() -> dict:
+    llm1 = _runtime_llm_values("LLM1")
+    llm2 = _runtime_llm_values("LLM2")
+    llm2_compare = _runtime_llm_values("LLM2_COMPARE")
     return {
         "llm1": {
             "id": "LLM-1",
             "role": "第一阶段特征提取",
-            "model": settings.LLM1_MODEL,
-            "provider": _llm_provider_label(settings.LLM1_API_KEY),
-            "url": settings.LLM1_API_URL,
-            "display_name": f"LLM-1 / {settings.LLM1_MODEL or '未配置'}",
+            "model": llm1["model"],
+            "provider": _llm_provider_label(llm1["api_key"]),
+            "url": llm1["api_url"],
+            "display_name": f"LLM-1 / {llm1['model'] or '未配置'}",
         },
         "llm2": {
             "id": "LLM-2",
             "role": "第二阶段主回复生成",
-            "model": settings.LLM2_MODEL,
-            "provider": _llm_provider_label(settings.LLM2_API_KEY),
-            "url": settings.LLM2_API_URL,
-            "display_name": f"LLM-2 / {settings.LLM2_MODEL or '未配置'}",
+            "model": llm2["model"],
+            "provider": _llm_provider_label(llm2["api_key"]),
+            "url": llm2["api_url"],
+            "display_name": f"LLM-2 / {llm2['model'] or '未配置'}",
         },
         "llm2_compare": {
             "id": "LLM-2 对比",
             "role": "第二阶段对比回复生成",
-            "model": settings.LLM2_COMPARE_MODEL,
-            "provider": _llm_provider_label(settings.LLM2_COMPARE_API_KEY),
-            "url": settings.LLM2_COMPARE_API_URL,
-            "display_name": f"LLM-2 对比 / {settings.LLM2_COMPARE_MODEL or '未配置'}",
+            "model": llm2_compare["model"],
+            "provider": _llm_provider_label(llm2_compare["api_key"]),
+            "url": llm2_compare["api_url"],
+            "display_name": f"LLM-2 对比 / {llm2_compare['model'] or '未配置'}",
         },
     }
 
@@ -3760,7 +5168,7 @@ def _system_config_check() -> dict:
     }
 
     def build_llm_check(name: str, api_url: str, api_key: str, model: str):
-        configured = not _is_placeholder_value(api_url) and not _is_placeholder_value(api_key)
+        configured = not any(_is_placeholder_value(value) for value in [api_url, api_key, model])
         headers = {"Authorization": f"Bearer {api_key}"} if api_key and not api_key.startswith("app-") else {}
         probe_url = api_url.rstrip("/")
         if api_key.startswith("app-"):
@@ -3786,13 +5194,16 @@ def _system_config_check() -> dict:
             "suggestions": suggestions,
         }
 
-    checks["llm1"] = build_llm_check("llm1", settings.LLM1_API_URL, settings.LLM1_API_KEY, settings.LLM1_MODEL)
-    checks["llm2"] = build_llm_check("llm2", settings.LLM2_API_URL, settings.LLM2_API_KEY, settings.LLM2_MODEL)
+    llm1 = _runtime_llm_values("LLM1")
+    llm2 = _runtime_llm_values("LLM2")
+    llm2_compare = _runtime_llm_values("LLM2_COMPARE")
+    checks["llm1"] = build_llm_check("llm1", llm1["api_url"], llm1["api_key"], llm1["model"])
+    checks["llm2"] = build_llm_check("llm2", llm2["api_url"], llm2["api_key"], llm2["model"])
     checks["llm2_compare"] = build_llm_check(
         "llm2_compare",
-        settings.LLM2_COMPARE_API_URL,
-        settings.LLM2_COMPARE_API_KEY,
-        settings.LLM2_COMPARE_MODEL,
+        llm2_compare["api_url"],
+        llm2_compare["api_key"],
+        llm2_compare["model"],
     )
 
     crm_configured = not any(
@@ -4330,7 +5741,7 @@ async def retrieve_kb(payload: KnowledgeRetrieveRequest):
         request_id=payload.request_id,
         session_id=payload.session_id,
     )
-    for hit in result.get("hits", []):
+    for hit in (result.get("hits", []) + result.get("supporting_chunks", []) + result.get("related_chunks", [])):
         hit["knowledge_class_label"] = label_for("knowledge_class", hit.get("knowledge_class"))
         hit["business_line_label"] = label_for("business_line", hit.get("business_line"))
         hit["knowledge_type_label"] = label_for("knowledge_type", hit.get("knowledge_type"))
@@ -4574,6 +5985,14 @@ def _commit_kb_excel_import_raw(
                         chunk_payload.customer_tier,
                     )
                 pricing_rule = _create_pricing_rule(db, document, chunk, pricing_rule_payload)
+                _apply_chunk_governance(
+                    chunk,
+                    source_type=document.source_type,
+                    pricing_rule=pricing_rule_payload,
+                    source_ref=document.source_ref,
+                )
+                document.library_type = chunk.library_type
+                document.tags = merge_tags(document.tags, library_type=document.library_type)
                 if pricing_rule:
                     split_pricing_count += 1
                 created_chunk_ids.append(str(chunk.chunk_id))
@@ -4659,6 +6078,16 @@ def _commit_kb_excel_import_raw(
             pricing_rule_payload = dict(item["pricing_rule"])
             pricing_rule_payload["source_ref"] = pricing_rule_payload.get("source_ref") or document.source_ref
             pricing_rule = _create_pricing_rule(db, document, chunk, pricing_rule_payload)
+        else:
+            pricing_rule_payload = None
+        _apply_chunk_governance(
+            chunk,
+            source_type=document.source_type,
+            pricing_rule=pricing_rule_payload,
+            source_ref=document.source_ref,
+        )
+        document.library_type = chunk.library_type
+        document.tags = merge_tags(document.tags, library_type=document.library_type)
 
         created.append({
             "row": item["row"],
@@ -4833,25 +6262,110 @@ async def extract_kb_candidates_from_email_excel(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not records:
         raise HTTPException(status_code=400, detail="未解析到可抽取邮件记录")
-    created = _extract_candidates_from_records(
+    result = _extract_email_assets_and_candidates(
         db,
-        records,
-        source_type="email_excel",
+        records=records,
+        filename=filename,
         owner=owner,
         operator=operator,
-        source_ref_prefix=filename,
         max_candidates=max(1, min(int(max_candidates or 20), 100)),
     )
     db.commit()
-    for item in created:
+    for item in result["email_assets"]:
+        db.refresh(item)
+    for item in result["candidates"]:
+        db.refresh(item)
+    for item in result["fragments"]:
         db.refresh(item)
     return {
         "status": "success",
         "filename": filename,
         "source_rows": len(records),
-        "created_count": len(created),
-        "candidates": [_candidate_to_dict(item) for item in created],
+        "email_asset_count": len(result["email_assets"]),
+        "created_count": len(result["candidates"]),
+        "fragment_count": len(result["fragments"]),
+        "email_assets": [_email_thread_asset_to_dict(item) for item in result["email_assets"]],
+        "candidates": [_candidate_to_dict(item) for item in result["candidates"]],
+        "fragments": [_email_fragment_asset_to_dict(item) for item in result["fragments"]],
     }
+
+@app.get("/api/email_assets")
+async def list_email_assets(
+    source_type: str | None = None,
+    status: str | None = None,
+    session_id: str | None = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    query = db.query(EmailThreadAsset)
+    if source_type:
+        query = query.filter(EmailThreadAsset.source_type == source_type)
+    if status:
+        query = query.filter(EmailThreadAsset.status == status)
+    if session_id:
+        query = query.filter(EmailThreadAsset.session_id == session_id)
+    items = query.order_by(EmailThreadAsset.created_at.desc()).limit(max(1, min(limit, 500))).all()
+    return {"status": "success", "items": [_email_thread_asset_to_dict(item) for item in items]}
+
+@app.get("/api/email_fragments")
+async def list_email_fragments(
+    source_type: str | None = None,
+    function_fragment: str | None = None,
+    session_id: str | None = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    query = db.query(EmailFragmentAsset)
+    if source_type:
+        query = query.filter(EmailFragmentAsset.source_type == source_type)
+    if function_fragment:
+        query = query.filter(EmailFragmentAsset.function_fragment == function_fragment)
+    if session_id:
+        query = query.filter(EmailFragmentAsset.session_id == session_id)
+    items = query.order_by(EmailFragmentAsset.created_at.desc()).limit(max(1, min(limit, 500))).all()
+    return {"status": "success", "items": [_email_fragment_asset_to_dict(item) for item in items]}
+
+@app.get("/api/email_effect_feedback")
+async def list_email_effect_feedback(
+    session_id: str | None = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    query = db.query(EmailEffectFeedback)
+    if session_id:
+        query = query.filter(EmailEffectFeedback.session_id == session_id)
+    items = query.order_by(EmailEffectFeedback.created_at.desc()).limit(max(1, min(limit, 500))).all()
+    return {"status": "success", "items": [_email_effect_feedback_to_dict(item) for item in items]}
+
+@app.post("/api/ml/prepare_training_samples")
+async def prepare_training_samples(payload: TrainingSamplePrepareRequest, db: Session = Depends(get_db)):
+    result = _prepare_training_samples(db, payload)
+    db.commit()
+    return {"status": "success", **result}
+
+@app.get("/api/ml/training_samples")
+async def list_training_samples(
+    sample_type: str | None = None,
+    review_status: str | None = None,
+    export_status: str | None = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    query = db.query(ModelTrainingSample)
+    if sample_type:
+        query = query.filter(ModelTrainingSample.sample_type == sample_type)
+    if review_status:
+        query = query.filter(ModelTrainingSample.review_status == review_status)
+    if export_status:
+        query = query.filter(ModelTrainingSample.export_status == export_status)
+    items = query.order_by(ModelTrainingSample.created_at.desc()).limit(max(1, min(limit, 500))).all()
+    return {"status": "success", "items": [_training_sample_to_dict(item) for item in items]}
+
+@app.post("/api/ml/export_training_samples")
+async def export_training_samples(payload: TrainingSampleExportRequest, db: Session = Depends(get_db)):
+    result = _export_training_samples(db, payload)
+    db.commit()
+    return {"status": "success", **result}
 
 @app.post("/api/kb/import/faq_excel")
 async def import_faq_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
@@ -4949,6 +6463,14 @@ async def import_faq_excel(file: UploadFile = File(...), db: Session = Depends(g
             status="draft",
         )
         db.add(chunk)
+        db.flush()
+        _apply_chunk_governance(
+            chunk,
+            source_type=document.source_type,
+            source_ref=document.source_ref,
+        )
+        document.library_type = chunk.library_type
+        document.tags = merge_tags(document.tags, library_type=document.library_type)
         created.append({
             "row": row_index,
             "document_id": str(document.document_id),
@@ -5142,10 +6664,19 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
                 item.customer_tier,
             )
         pricing_rule = _create_pricing_rule(db, document, chunk, pricing_rule_payload)
+        _apply_chunk_governance(
+            chunk,
+            source_type=document.source_type,
+            pricing_rule=pricing_rule_payload,
+            source_ref=document.source_ref,
+        )
         if pricing_rule:
             created_pricing_rules.append(pricing_rule)
         created_chunks.append(chunk)
 
+    if created_chunks:
+        document.library_type = created_chunks[0].library_type if all(item.library_type == created_chunks[0].library_type for item in created_chunks) else "reference"
+        document.tags = merge_tags(document.tags, library_type=document.library_type)
     db.commit()
     db.refresh(document)
     for chunk in created_chunks:
@@ -5172,10 +6703,16 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
 async def get_ai_scripts():
     import os, json
     filepath = os.path.join(os.path.dirname(__file__), "ai_settings.json")
+    defaults = {
+        "WECOM_RECENT_MESSAGE_LIMIT": 6,
+    }
     try:
         if os.path.exists(filepath):
             with open(filepath, "r", encoding="utf-8") as f:
-                return json.load(f)
+                stored = json.load(f)
+                if not isinstance(stored, dict):
+                    raise HTTPException(status_code=500, detail="ai_settings.json 格式错误")
+                return {**defaults, **stored}
         raise HTTPException(status_code=500, detail="ai_settings.json 不存在")
     except HTTPException:
         raise
@@ -5186,10 +6723,24 @@ async def get_ai_scripts():
 async def save_ai_scripts(payload: dict):
     import os, json
     filepath = os.path.join(os.path.dirname(__file__), "ai_settings.json")
+    defaults = {
+        "WECOM_RECENT_MESSAGE_LIMIT": 6,
+    }
     try:
+        existing = {}
+        if os.path.exists(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                existing = json.load(f) or {}
+                if not isinstance(existing, dict):
+                    existing = {}
+        merged = {**defaults, **existing, **(payload or {})}
+        try:
+            merged["WECOM_RECENT_MESSAGE_LIMIT"] = max(1, min(30, int(merged.get("WECOM_RECENT_MESSAGE_LIMIT", 6))))
+        except (TypeError, ValueError):
+            merged["WECOM_RECENT_MESSAGE_LIMIT"] = 6
         with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=4)
-        return {"status": "success"}
+            json.dump(merged, f, ensure_ascii=False, indent=4)
+        return {"status": "success", "saved": merged}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -5226,6 +6777,23 @@ def build_single_session_id(userid: str, external_userid: str) -> str:
     """保持与会话存档 1v1 session_id 生成规则一致"""
     participants = sorted([userid.strip(), external_userid.strip()])
     return f"single_{'_'.join(participants)}"
+
+def find_existing_single_session_id(db: Session, userid: str, external_userid: str, limit: int = 15) -> tuple[str, list[MessageLog], str]:
+    """Prefer the full session_id, but fall back to historical 50-char-truncated ids."""
+    session_id = build_single_session_id(userid, external_userid)
+    candidate_ids = [session_id]
+    legacy_truncated_session_id = session_id[:50]
+    if legacy_truncated_session_id not in candidate_ids:
+        candidate_ids.append(legacy_truncated_session_id)
+
+    for index, candidate_id in enumerate(candidate_ids):
+        logs = db.query(MessageLog).filter(
+            MessageLog.user_id == candidate_id,
+            MessageLog.is_mock.is_(False),
+        ).order_by(MessageLog.id.desc()).limit(limit).all()
+        if logs:
+            return candidate_id, logs, ("exact" if index == 0 else "legacy_truncated_fallback")
+    return session_id, [], "exact"
 
 def extract_external_userid(value: str) -> str:
     """从单聊 session_id 中取真实外部联系人 ID；群聊没有 CRM external_userid。"""
@@ -5331,10 +6899,20 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                 summary_json = {
                     "topic": summary.topic, "core_demand": summary.core_demand, "key_facts": summary.key_facts,
                     "todo_items": summary.todo_items, "risks": summary.risks, "to_be_confirmed": summary.to_be_confirmed,
+                    "status": summary.status,
                     "fast_track_signals": fast_track_signals
                 }
                 # CRM Context
                 crm_context = IntentEngine.get_crm_context(extract_external_userid(user_id))
+                _upsert_thread_business_fact(
+                    db,
+                    session_id=user_id,
+                    summary_json=summary_json,
+                    crm_context=crm_context,
+                    messages=[{"content": item.content, "sender_type": item.sender_type} for item in recent_logs],
+                    external_userid=extract_external_userid(user_id),
+                )
+                db.commit()
                 # RAG V2
                 knowledge = {"status": "skipped_no_core_demand", "hits": [], "evidence_context": {"rules": [], "faqs": [], "cases": []}}
                 if summary.core_demand and summary.core_demand != "未明确":
@@ -5354,16 +6932,18 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                     summary.sales_advice_v2 = assist_content
                     db.commit()
                     compare_result = "not_configured"
-                    if settings.LLM2_COMPARE_API_URL and settings.LLM2_COMPARE_API_KEY and settings.LLM2_COMPARE_MODEL:
+                    compare_config = _runtime_llm_values("LLM2_COMPARE")
+                    if _runtime_llm_configured(compare_config):
+                        _set_llm_compare_status(user_id, "running", "对比模型正在生成", compare_config)
                         try:
                             compare_bundle = IntentEngine.generate_sales_assist_bundle(
                                 summary_json,
                                 knowledge,
                                 crm_context,
-                                api_url=settings.LLM2_COMPARE_API_URL,
-                                api_key=settings.LLM2_COMPARE_API_KEY,
-                                model=settings.LLM2_COMPARE_MODEL,
-                                timeout_seconds=settings.LLM2_COMPARE_TIMEOUT_SECONDS,
+                                api_url=compare_config["api_url"],
+                                api_key=compare_config["api_key"],
+                                model=compare_config["model"],
+                                timeout_seconds=compare_config["timeout_seconds"],
                                 label="LLM2_COMPARE",
                             )
                             compare_content = compare_bundle.get("content")
@@ -5371,9 +6951,21 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                                 summary.sales_advice_compare_v2 = compare_content
                                 db.commit()
                                 compare_result = "success"
+                                _set_llm_compare_status(user_id, "done", "对比模型已生成", compare_config)
+                            else:
+                                compare_result = "failed_no_content"
+                                _set_llm_compare_status(user_id, "failed_no_content", "对比模型返回空内容", compare_config)
                         except Exception as compare_exc:
-                            compare_result = f"error: {compare_exc}"
+                            compare_result = f"error: {sanitize_text(str(compare_exc))}"
+                            _set_llm_compare_status(user_id, "error", str(compare_exc), compare_config)
                             logger.error("LLM-2 对比模型调用失败: %s", compare_exc)
+                    else:
+                        _set_llm_compare_status(
+                            user_id,
+                            "not_configured",
+                            "LLM2_COMPARE_API_URL / API_KEY / MODEL 未完整配置",
+                            compare_config,
+                        )
                     title = f"💡 [AI销售辅助更新] - {summary.topic}"
                     QYWXUtils.send_text_card(user_id, title, assist_content)
                     logger.info("✅ 实战建议(V2)指令下发完成！")
@@ -5430,12 +7022,16 @@ async def get_latest_analysis(user_id: str):
         # 2. 获取 V1 及 V2 结果
         summary = db.query(IntentSummary).filter(IntentSummary.user_id == user_id).order_by(IntentSummary.id.desc()).first()
         
+        compare_config = _runtime_llm_values("LLM2_COMPARE")
+        compare_runtime_status = LLM_COMPARE_RUNTIME_STATUS.get(user_id) or {}
         result = {
             "fast_track": fast_track_signals,
             "has_v1": False,
             "has_v2": False,
             "has_v2_compare": False,
             "llm_runtime": _llm_runtime_config(),
+            "llm2_compare_configured": _runtime_llm_configured(compare_config),
+            "llm2_compare_runtime_status": compare_runtime_status,
             "latest_dialog_count": len(recent_logs),
             "stage_status": {
                 "conversation_input": "done" if recent_logs else "empty",
@@ -5468,6 +7064,29 @@ async def get_latest_analysis(user_id: str):
                 result["stage_status"]["llm2_compare"] = "done"
                 result["has_v2_compare"] = True
                 result["sales_advice_compare_v2"] = summary.sales_advice_compare_v2
+            elif compare_runtime_status.get("status"):
+                result["stage_status"]["llm2_compare"] = compare_runtime_status.get("status")
+            elif not result["llm2_compare_configured"]:
+                result["stage_status"]["llm2_compare"] = "not_configured"
+
+            thread_fact = _upsert_thread_business_fact(
+                db,
+                session_id=user_id,
+                summary_json={
+                    "topic": summary.topic,
+                    "core_demand": summary.core_demand,
+                    "key_facts": summary.key_facts,
+                    "todo_items": summary.todo_items,
+                    "risks": summary.risks,
+                    "to_be_confirmed": summary.to_be_confirmed,
+                    "status": summary.status,
+                },
+                crm_context=crm_context,
+                messages=[{"content": item.content, "sender_type": item.sender_type} for item in recent_logs],
+                external_userid=extract_external_userid(user_id),
+            )
+            db.commit()
+            result["thread_business_fact"] = _thread_fact_to_dict(thread_fact)
 
             if summary.core_demand and summary.core_demand != "未明确":
                 summary_json = {
@@ -5503,6 +7122,13 @@ async def get_latest_analysis(user_id: str):
     finally:
         db.close()
 
+@app.get("/api/thread_facts/{session_id}")
+async def get_thread_business_fact(session_id: str, db: Session = Depends(get_db)):
+    item = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Thread business fact not found")
+    return {"status": "success", "thread_business_fact": _thread_fact_to_dict(item)}
+
 from pydantic import BaseModel
 class TriggerReq(BaseModel):
     step: int
@@ -5521,7 +7147,13 @@ async def trigger_llm_post(user_id: str, req: TriggerReq, background_tasks: Back
     log_reply_chain_event("TRIGGER_REQUEST", payload)
     logger.info(f"收到前台发起的 LLM 手动指令！正在执行阶段 {req.step} ...")
     background_tasks.add_task(reanalyze_session_task, user_id, req.step)
-    return {"status": "success", "msg": f"已将步骤 {req.step} 投入后台大模型运算池"}
+    compare_config = _runtime_llm_values("LLM2_COMPARE")
+    return {
+        "status": "success",
+        "msg": f"已将步骤 {req.step} 投入后台大模型运算池",
+        "llm_runtime": _llm_runtime_config(),
+        "llm2_compare_configured": _runtime_llm_configured(compare_config),
+    }
 
 class SidebarAssistRequest(BaseModel):
     external_userid: str
@@ -5568,17 +7200,14 @@ async def sidebar_assist(request: SidebarAssistRequest):
             }
 
         stage_started = perf_counter()
-        session_id = build_single_session_id(sales_userid, external_userid)
+        requested_session_id = build_single_session_id(sales_userid, external_userid)
         mark_timing("build_session_id_ms", stage_started)
-        logger.info(f"🔰 收到侧边栏辅助请求：客服[{sales_userid}] -> 客户[{external_userid}] -> 会话[{session_id}]")
-        
-        # 获取当前销售与客户这条 1v1 会话的最近消息
+
         stage_started = perf_counter()
-        recent_logs = db.query(MessageLog).filter(
-            MessageLog.user_id == session_id,
-            MessageLog.is_mock.is_(False),
-        ).order_by(MessageLog.id.desc()).limit(15).all()
+        session_id, recent_logs, session_lookup = find_existing_single_session_id(db, sales_userid, external_userid, limit=15)
         mark_timing("load_recent_messages_ms", stage_started)
+        stage_status["session_lookup"] = session_lookup
+        logger.info(f"🔰 收到侧边栏辅助请求：客服[{sales_userid}] -> 客户[{external_userid}] -> 请求会话[{requested_session_id}] -> 命中会话[{session_id}]")
 
         # Fast-Track 前置扫描：既返回给侧边栏展示，也作为 LLM-2 的输入信号
         stage_started = perf_counter()
@@ -5621,6 +7250,16 @@ async def sidebar_assist(request: SidebarAssistRequest):
             stage_started = perf_counter()
             crm_context = IntentEngine.get_crm_context(external_userid)
             mark_timing("crm_profile_ms", stage_started)
+            thread_fact = _upsert_thread_business_fact(
+                db,
+                session_id=session_id,
+                summary_json={**summary_json, "status": summary.status},
+                crm_context=crm_context,
+                messages=[{"content": item.content, "sender_type": item.sender_type} for item in recent_logs],
+                external_userid=external_userid,
+                sales_userid=sales_userid,
+            )
+            db.commit()
 
             if summary.core_demand and summary.core_demand != "未明确":
                 stage_started = perf_counter()
@@ -5652,30 +7291,45 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 db.commit()
                 mark_timing("persist_llm2_ms", stage_started)
                 stage_status["llm2"] = "done"
-                if settings.LLM2_COMPARE_API_URL and settings.LLM2_COMPARE_API_KEY and settings.LLM2_COMPARE_MODEL:
-                    stage_started = perf_counter()
-                    compare_bundle = IntentEngine.generate_sales_assist_bundle(
-                        summary_json,
-                        knowledge_v2,
-                        crm_context,
-                        api_url=settings.LLM2_COMPARE_API_URL,
-                        api_key=settings.LLM2_COMPARE_API_KEY,
-                        model=settings.LLM2_COMPARE_MODEL,
-                        timeout_seconds=settings.LLM2_COMPARE_TIMEOUT_SECONDS,
-                        label="LLM2_COMPARE",
-                    )
-                    compare_content = compare_bundle.get("content")
-                    mark_timing("llm2_compare_generate_ms", stage_started)
-                    if compare_content:
+                compare_config = _runtime_llm_values("LLM2_COMPARE")
+                if _runtime_llm_configured(compare_config):
+                    _set_llm_compare_status(session_id, "running", "对比模型正在生成", compare_config)
+                    try:
                         stage_started = perf_counter()
-                        summary.sales_advice_compare_v2 = compare_content
-                        db.commit()
-                        mark_timing("persist_llm2_compare_ms", stage_started)
-                        stage_status["llm2_compare"] = "done"
-                    else:
-                        stage_status["llm2_compare"] = "failed_no_content"
+                        compare_bundle = IntentEngine.generate_sales_assist_bundle(
+                            summary_json,
+                            knowledge_v2,
+                            crm_context,
+                            api_url=compare_config["api_url"],
+                            api_key=compare_config["api_key"],
+                            model=compare_config["model"],
+                            timeout_seconds=compare_config["timeout_seconds"],
+                            label="LLM2_COMPARE",
+                        )
+                        compare_content = compare_bundle.get("content")
+                        mark_timing("llm2_compare_generate_ms", stage_started)
+                        if compare_content:
+                            stage_started = perf_counter()
+                            summary.sales_advice_compare_v2 = compare_content
+                            db.commit()
+                            mark_timing("persist_llm2_compare_ms", stage_started)
+                            stage_status["llm2_compare"] = "done"
+                            _set_llm_compare_status(session_id, "done", "对比模型已生成", compare_config)
+                        else:
+                            stage_status["llm2_compare"] = "failed_no_content"
+                            _set_llm_compare_status(session_id, "failed_no_content", "对比模型返回空内容", compare_config)
+                    except Exception as compare_exc:
+                        stage_status["llm2_compare"] = "error"
+                        _set_llm_compare_status(session_id, "error", str(compare_exc), compare_config)
+                        logger.error("侧边栏 LLM-2 对比模型调用失败: %s", compare_exc)
                 else:
                     stage_status["llm2_compare"] = "not_configured"
+                    _set_llm_compare_status(
+                        session_id,
+                        "not_configured",
+                        "LLM2_COMPARE_API_URL / API_KEY / MODEL 未完整配置",
+                        compare_config,
+                    )
             else:
                 stage_status["llm2"] = "failed_no_content"
         else:
@@ -5683,17 +7337,22 @@ async def sidebar_assist(request: SidebarAssistRequest):
             stage_status["llm2_compare"] = "skipped_advice_exists" if summary and summary.sales_advice_compare_v2 else "skipped_no_summary"
 
         # 3. 封装全量字段给侧边栏前端
+        compare_config = _runtime_llm_values("LLM2_COMPARE")
+        compare_runtime_status = LLM_COMPARE_RUNTIME_STATUS.get(session_id) or {}
         result = {
             "status": "success",
             "external_userid": external_userid,
             "sales_userid": sales_userid,
             "session_id": session_id,
+            "requested_session_id": requested_session_id,
             "latest_dialog_count": len(recent_logs),
             "fast_track": fast_track_signals,
             "has_v1": False,
             "has_v2": False,
             "has_v2_compare": False,
             "llm_runtime": _llm_runtime_config(),
+            "llm2_compare_configured": _runtime_llm_configured(compare_config),
+            "llm2_compare_runtime_status": compare_runtime_status,
             "stage_status": stage_status
         }
         
@@ -5757,6 +7416,10 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 result["sales_advice_compare_v2"] = summary.sales_advice_compare_v2
                 if compare_bundle:
                     result["assist_compare_validation"] = compare_bundle.get("validation")
+            elif compare_runtime_status.get("status") and not stage_status.get("llm2_compare"):
+                stage_status["llm2_compare"] = compare_runtime_status.get("status")
+            elif not result["llm2_compare_configured"] and not stage_status.get("llm2_compare"):
+                stage_status["llm2_compare"] = "not_configured"
             
             # 始终回传 CRM 画像供前端显示
             if crm_context is None:
@@ -5764,12 +7427,36 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 crm_context = IntentEngine.get_crm_context(external_userid)
                 mark_timing("crm_profile_ms", stage_started)
             result["crm_info"] = crm_context
+            current_thread_fact = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
+            if not current_thread_fact:
+                current_thread_fact = _upsert_thread_business_fact(
+                    db,
+                    session_id=session_id,
+                    summary_json={
+                        "topic": summary.topic,
+                        "core_demand": summary.core_demand,
+                        "key_facts": summary.key_facts,
+                        "todo_items": summary.todo_items,
+                        "risks": summary.risks,
+                        "to_be_confirmed": summary.to_be_confirmed,
+                        "status": summary.status,
+                    },
+                    crm_context=crm_context,
+                    messages=[{"content": item.content, "sender_type": item.sender_type} for item in recent_logs],
+                    external_userid=external_userid,
+                    sales_userid=sales_userid,
+                )
+                db.commit()
+            result["thread_business_fact"] = _thread_fact_to_dict(current_thread_fact)
         else:
             if crm_context is None:
                 stage_started = perf_counter()
                 crm_context = IntentEngine.get_crm_context(external_userid)
                 mark_timing("crm_profile_ms", stage_started)
             result["crm_info"] = crm_context
+            result["thread_business_fact"] = _thread_fact_to_dict(
+                db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
+            )
 
         result["crm_status"] = (crm_context or {}).get("crm_profile_status", "unknown")
         result["knowledge_status"] = knowledge_status
@@ -5779,6 +7466,8 @@ async def sidebar_assist(request: SidebarAssistRequest):
             "external_userid": external_userid,
             "sales_userid": sales_userid,
             "session_id": session_id,
+            "requested_session_id": requested_session_id,
+            "session_lookup": session_lookup,
             "latest_dialog_count": len(recent_logs),
             "has_v1": result.get("has_v1"),
             "has_v2": result.get("has_v2"),

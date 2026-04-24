@@ -8,7 +8,12 @@ class EmailImportService:
     SUBJECT_ALIASES = ["主题", "邮件主题", "subject", "title"]
     CONTENT_ALIASES = ["正文", "内容", "邮件内容", "摘要", "body", "content", "本次邮件内容提纯后", "PureEmailText", "原始邮件内容", "OriThisEmail"]
     SENDER_ALIASES = ["发件人", "sender", "from", "from_email"]
+    RECEIVER_ALIASES = ["收件人", "receiver", "to", "to_email"]
     SENT_AT_ALIASES = ["发送时间", "日期", "时间", "sent_at", "date", "created_at"]
+    THREAD_ID_ALIASES = ["thread_id", "会话ID", "线程ID", "邮件线程ID", "conversation_id"]
+    SESSION_ID_ALIASES = ["session_id", "企微会话ID", "会话标识", "session"]
+    EXTERNAL_USERID_ALIASES = ["external_userid", "客户ID", "外部联系人ID", "external_user_id"]
+    SALES_USERID_ALIASES = ["sales_userid", "销售ID", "跟进人ID", "userid", "user_id"]
 
     @classmethod
     def _normalize_header(cls, value) -> str:
@@ -40,7 +45,12 @@ class EmailImportService:
         subject_idx = cls._find_column_index(headers, cls.SUBJECT_ALIASES)
         content_idx = cls._find_column_index(headers, cls.CONTENT_ALIASES)
         sender_idx = cls._find_column_index(headers, cls.SENDER_ALIASES)
+        receiver_idx = cls._find_column_index(headers, cls.RECEIVER_ALIASES)
         sent_at_idx = cls._find_column_index(headers, cls.SENT_AT_ALIASES)
+        thread_id_idx = cls._find_column_index(headers, cls.THREAD_ID_ALIASES)
+        session_id_idx = cls._find_column_index(headers, cls.SESSION_ID_ALIASES)
+        external_userid_idx = cls._find_column_index(headers, cls.EXTERNAL_USERID_ALIASES)
+        sales_userid_idx = cls._find_column_index(headers, cls.SALES_USERID_ALIASES)
         if subject_idx is None and content_idx is None:
             raise ValueError("未找到邮件主题或正文列")
 
@@ -58,7 +68,12 @@ class EmailImportService:
                     "subject": str(subject or "").strip(),
                     "content": str(content or "").strip(),
                     "sender": cls._cell(row, sender_idx),
+                    "receiver": cls._cell(row, receiver_idx),
                     "sent_at": cls._cell(row, sent_at_idx),
+                    "thread_id": cls._cell(row, thread_id_idx),
+                    "session_id": cls._cell(row, session_id_idx),
+                    "external_userid": cls._cell(row, external_userid_idx),
+                    "sales_userid": cls._cell(row, sales_userid_idx),
                 }
             )
         return records

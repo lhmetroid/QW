@@ -72,6 +72,7 @@ class KnowledgeDocument(Base):
     risk_level = Column(String(20), nullable=False, default="medium")
     review_required = Column(Boolean, nullable=False, default=True)
     review_status = Column(String(20), nullable=False, default="pending")
+    library_type = Column(String(20), nullable=False, default="reference")
     tags = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
@@ -106,6 +107,20 @@ class KnowledgeChunk(Base):
     region = Column(String(80), nullable=True)
     customer_tier = Column(String(80), nullable=True)
     structured_tags = Column(JSON, nullable=True)
+    library_type = Column(String(20), nullable=False, default="reference")
+    allowed_for_generation = Column(Boolean, nullable=False, default=False)
+    usable_for_reply = Column(Boolean, nullable=False, default=False)
+    publishable = Column(Boolean, nullable=False, default=False)
+    topic_clarity_score = Column(Numeric(6, 4), nullable=True)
+    completeness_score = Column(Numeric(6, 4), nullable=True)
+    reusability_score = Column(Numeric(6, 4), nullable=True)
+    evidence_reliability_score = Column(Numeric(6, 4), nullable=True)
+    useful_score = Column(Numeric(6, 4), nullable=True)
+    effect_score = Column(Numeric(6, 4), nullable=True)
+    feedback_count = Column(Integer, nullable=False, default=0)
+    positive_feedback_count = Column(Integer, nullable=False, default=0)
+    last_feedback_at = Column(DateTime, nullable=True)
+    quality_notes = Column(JSON, nullable=True)
     status = Column(String(20), nullable=False, default="draft")
     effective_from = Column(DateTime, nullable=True)
     effective_to = Column(DateTime, nullable=True)
@@ -174,6 +189,20 @@ class KnowledgeCandidate(Base):
     source_type = Column(String(50), nullable=False, default="feedback")
     source_ref = Column(String(255), nullable=True)
     source_snapshot = Column(JSON, nullable=True)
+    library_type = Column(String(20), nullable=False, default="reference")
+    allowed_for_generation = Column(Boolean, nullable=False, default=False)
+    usable_for_reply = Column(Boolean, nullable=False, default=False)
+    publishable = Column(Boolean, nullable=False, default=False)
+    topic_clarity_score = Column(Numeric(6, 4), nullable=True)
+    completeness_score = Column(Numeric(6, 4), nullable=True)
+    reusability_score = Column(Numeric(6, 4), nullable=True)
+    evidence_reliability_score = Column(Numeric(6, 4), nullable=True)
+    useful_score = Column(Numeric(6, 4), nullable=True)
+    effect_score = Column(Numeric(6, 4), nullable=True)
+    feedback_count = Column(Integer, nullable=False, default=0)
+    positive_feedback_count = Column(Integer, nullable=False, default=0)
+    last_feedback_at = Column(DateTime, nullable=True)
+    quality_notes = Column(JSON, nullable=True)
     status = Column(String(20), nullable=False, default="candidate")
     owner = Column(String(100), nullable=True)
     operator = Column(String(100), nullable=True)
@@ -216,6 +245,179 @@ class KnowledgeHitLog(Base):
         Index("idx_khl_created_at", "created_at"),
         Index("idx_khl_request", "request_id"),
         Index("idx_khl_session", "session_id"),
+    )
+
+class ThreadBusinessFact(Base):
+    """线程业务事实层：沉淀业务状态、关键事实、附件汇总与自动回复门禁。"""
+    __tablename__ = "thread_business_fact"
+
+    fact_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    session_id = Column(String(120), nullable=False, unique=True)
+    thread_id = Column(String(120), nullable=False)
+    external_userid = Column(String(120), nullable=True)
+    sales_userid = Column(String(120), nullable=True)
+    topic = Column(String(255), nullable=True)
+    core_demand = Column(Text, nullable=True)
+    scenario_label = Column(String(80), nullable=True)
+    intent_label = Column(String(80), nullable=True)
+    language_style = Column(String(80), nullable=True)
+    business_state = Column(String(50), nullable=True)
+    stage_signals = Column(JSON, nullable=True)
+    merged_facts = Column(JSON, nullable=True)
+    attachment_summary = Column(JSON, nullable=True)
+    fact_source = Column(JSON, nullable=True)
+    quality_score = Column(Numeric(6, 4), nullable=True)
+    effect_score = Column(Numeric(6, 4), nullable=True)
+    outcome_feedback = Column(JSON, nullable=True)
+    usable_for_reply = Column(Boolean, nullable=False, default=False)
+    allowed_for_generation = Column(Boolean, nullable=False, default=False)
+    reply_guard_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_tbf_session", "session_id"),
+        Index("idx_tbf_state_updated", "business_state", "updated_at"),
+    )
+
+class EmailThreadAsset(Base):
+    """邮件兼容主表：承接邮件原始资产并与线程事实层打通。"""
+    __tablename__ = "email_thread_asset"
+
+    email_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    source_type = Column(String(50), nullable=False, default="email_excel")
+    source_ref = Column(String(255), nullable=False, unique=True)
+    import_batch = Column(String(120), nullable=True)
+    session_id = Column(String(120), nullable=True)
+    thread_id = Column(String(120), nullable=False)
+    external_userid = Column(String(120), nullable=True)
+    sales_userid = Column(String(120), nullable=True)
+    fact_id = Column(UUID(as_uuid=False), ForeignKey("thread_business_fact.fact_id"), nullable=True)
+    subject = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    sender = Column(String(255), nullable=True)
+    receiver = Column(String(255), nullable=True)
+    sent_at = Column(DateTime, nullable=True)
+    sent_at_raw = Column(String(80), nullable=True)
+    scenario_label = Column(String(80), nullable=True)
+    intent_label = Column(String(80), nullable=True)
+    language_style = Column(String(80), nullable=True)
+    business_state = Column(String(50), nullable=True)
+    library_type = Column(String(20), nullable=False, default="reference")
+    quality_score = Column(Numeric(6, 4), nullable=True)
+    effect_score = Column(Numeric(6, 4), nullable=True)
+    feedback_count = Column(Integer, nullable=False, default=0)
+    positive_feedback_count = Column(Integer, nullable=False, default=0)
+    last_feedback_at = Column(DateTime, nullable=True)
+    usable_for_reply = Column(Boolean, nullable=False, default=False)
+    allowed_for_generation = Column(Boolean, nullable=False, default=False)
+    publishable = Column(Boolean, nullable=False, default=False)
+    source_snapshot = Column(JSON, nullable=True)
+    status = Column(String(20), nullable=False, default="ingested")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_eta_session", "session_id"),
+        Index("idx_eta_thread", "thread_id"),
+        Index("idx_eta_status_created", "status", "created_at"),
+    )
+
+class EmailFragmentAsset(Base):
+    """邮件兼容切片表：承接邮件功能片段与优秀回复片段。"""
+    __tablename__ = "email_fragment_asset"
+
+    fragment_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    email_id = Column(UUID(as_uuid=False), ForeignKey("email_thread_asset.email_id"), nullable=True)
+    candidate_id = Column(UUID(as_uuid=False), ForeignKey("knowledge_candidate.candidate_id"), nullable=True)
+    log_id = Column(UUID(as_uuid=False), ForeignKey("knowledge_hit_logs.log_id"), nullable=True)
+    session_id = Column(String(120), nullable=True)
+    thread_id = Column(String(120), nullable=False)
+    source_type = Column(String(50), nullable=False, default="email_excel")
+    source_ref = Column(String(255), nullable=False)
+    title = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    function_fragment = Column(String(50), nullable=True)
+    scenario_label = Column(String(80), nullable=True)
+    intent_label = Column(String(80), nullable=True)
+    language_style = Column(String(80), nullable=True)
+    library_type = Column(String(20), nullable=False, default="reference")
+    allowed_for_generation = Column(Boolean, nullable=False, default=False)
+    usable_for_reply = Column(Boolean, nullable=False, default=False)
+    publishable = Column(Boolean, nullable=False, default=False)
+    topic_clarity_score = Column(Numeric(6, 4), nullable=True)
+    completeness_score = Column(Numeric(6, 4), nullable=True)
+    reusability_score = Column(Numeric(6, 4), nullable=True)
+    evidence_reliability_score = Column(Numeric(6, 4), nullable=True)
+    useful_score = Column(Numeric(6, 4), nullable=True)
+    effect_score = Column(Numeric(6, 4), nullable=True)
+    feedback_count = Column(Integer, nullable=False, default=0)
+    positive_feedback_count = Column(Integer, nullable=False, default=0)
+    last_feedback_at = Column(DateTime, nullable=True)
+    quality_notes = Column(JSON, nullable=True)
+    source_snapshot = Column(JSON, nullable=True)
+    status = Column(String(20), nullable=False, default="ready")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_efa_email", "email_id"),
+        Index("idx_efa_session", "session_id"),
+        Index("idx_efa_source_ref", "source_type", "source_ref"),
+        Index("idx_efa_status_quality", "status", "usable_for_reply", "useful_score"),
+    )
+
+class EmailEffectFeedback(Base):
+    """邮件效果表：记录片段与线程级反馈回流。"""
+    __tablename__ = "email_effect_feedback"
+
+    feedback_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    email_id = Column(UUID(as_uuid=False), ForeignKey("email_thread_asset.email_id"), nullable=True)
+    fragment_id = Column(UUID(as_uuid=False), ForeignKey("email_fragment_asset.fragment_id"), nullable=True)
+    candidate_id = Column(UUID(as_uuid=False), ForeignKey("knowledge_candidate.candidate_id"), nullable=True)
+    log_id = Column(UUID(as_uuid=False), ForeignKey("knowledge_hit_logs.log_id"), nullable=True)
+    session_id = Column(String(120), nullable=True)
+    thread_id = Column(String(120), nullable=True)
+    feedback_status = Column(String(50), nullable=False)
+    feedback_note = Column(Text, nullable=True)
+    feedback_payload = Column(JSON, nullable=True)
+    delta_score = Column(Numeric(6, 4), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_eef_session_created", "session_id", "created_at"),
+        Index("idx_eef_fragment_created", "fragment_id", "created_at"),
+    )
+
+class ModelTrainingSample(Base):
+    """训练样本准备表：为 embedding 与小模型微调积累高质量导出样本。"""
+    __tablename__ = "model_training_sample"
+
+    sample_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    sample_key = Column(String(64), nullable=False, unique=True)
+    sample_type = Column(String(50), nullable=False)
+    source_table = Column(String(50), nullable=False)
+    source_id = Column(String(64), nullable=True)
+    source_type = Column(String(50), nullable=True)
+    source_ref = Column(String(255), nullable=True)
+    instruction = Column(Text, nullable=True)
+    input_text = Column(Text, nullable=False)
+    target_text = Column(Text, nullable=True)
+    sample_metadata = Column(JSON, nullable=True)
+    quality_score = Column(Numeric(6, 4), nullable=True)
+    effect_score = Column(Numeric(6, 4), nullable=True)
+    exportable = Column(Boolean, nullable=False, default=False)
+    review_status = Column(String(20), nullable=False, default="ready")
+    export_status = Column(String(20), nullable=False, default="pending")
+    last_export_path = Column(String(500), nullable=True)
+    exported_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_mts_type_review", "sample_type", "review_status"),
+        Index("idx_mts_export_status", "export_status", "created_at"),
+        Index("idx_mts_source_ref", "source_table", "source_ref"),
     )
 
 class KnowledgeVersionSnapshot(Base):

@@ -10,9 +10,10 @@ from fastapi import HTTPException
 from sqlalchemy import or_
 from config import settings
 from qywx_utils import QYWXUtils
-from database import SessionLocal, KnowledgeBase, IntentSummary, KnowledgeChunk, KnowledgeHitLog, PricingRule
+from database import SessionLocal, KnowledgeBase, IntentSummary, KnowledgeChunk, KnowledgeHitLog, PricingRule, ThreadBusinessFact
 from embedding_service import EmbeddingService
 from logging_config import sanitize_text
+from knowledge_governance import validate_thread_state_consistency
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +209,68 @@ class IntentEngine:
         return dot / (norm1 * norm2) if norm1 and norm2 else 0.0
 
     @staticmethod
+    def _knowledge_class_for_chunk(chunk: KnowledgeChunk) -> str | None:
+        tags = chunk.structured_tags if isinstance(chunk.structured_tags, dict) else {}
+        class_code = tags.get("knowledge_class")
+        if class_code:
+            return class_code
+        if chunk.knowledge_type == "pricing" and chunk.chunk_type == "constraint":
+            return "pricing_constraint"
+        if chunk.knowledge_type == "capability":
+            return "capability"
+        if chunk.knowledge_type == "process":
+            return "process"
+        if chunk.chunk_type == "example":
+            return "example"
+        if chunk.chunk_type == "template":
+            return "email_template"
+        if chunk.chunk_type == "definition":
+            return "definition"
+        if chunk.knowledge_type == "faq":
+            return "faq"
+        return None
+
+    @staticmethod
+    def _knowledge_class_fields(class_code: str | None) -> dict | None:
+        return {
+            "pricing_constraint": {"knowledge_type": "pricing", "chunk_type": "constraint"},
+            "capability": {"knowledge_type": "capability", "chunk_type": "rule"},
+            "process": {"knowledge_type": "process", "chunk_type": "rule"},
+            "faq": {"knowledge_type": "faq", "chunk_type": "faq"},
+            "example": {"knowledge_type": "faq", "chunk_type": "example"},
+            "email_template": {"knowledge_type": "faq", "chunk_type": "template"},
+            "definition": {"knowledge_type": "faq", "chunk_type": "definition"},
+        }.get(class_code or "")
+
+    @staticmethod
+    def _tokenize_query_text(query_text: str) -> list[str]:
+        text = (query_text or "").lower().strip()
+        if not text:
+            return []
+        terms: list[str] = []
+        domain_terms = [
+            "医药", "医学", "医疗", "药物", "注册资料", "临床", "说明书", "冠脉", "球囊", "导管",
+            "案例", "客户案例", "项目案例", "翻译", "笔译", "口译", "同传", "资料", "合同",
+            "法律", "技术", "报价", "收费", "价格", "流程", "交付", "发票", "含税", "加急",
+            "客户", "经验", "能力", "服务范围", "质检", "审校",
+        ]
+        for term in domain_terms:
+            if term.lower() in text and term.lower() not in terms:
+                terms.append(term.lower())
+        for token in re.split(r"[\s,，。；;、/？?！!：:（）()《》\"']+", text):
+            token = token.strip()
+            if len(token) >= 2 and token not in terms:
+                terms.append(token)
+        chinese_chars = re.sub(r"[^\u4e00-\u9fa5A-Za-z0-9]+", "", text)
+        if len(chinese_chars) <= 12:
+            for size in (4, 3, 2):
+                for idx in range(0, max(len(chinese_chars) - size + 1, 0)):
+                    gram = chinese_chars[idx:idx + size]
+                    if len(gram) >= 2 and gram not in terms:
+                        terms.append(gram)
+        return terms[:16]
+
+    @staticmethod
     def _keyword_score(query_text: str, chunk: KnowledgeChunk) -> float:
         query = (query_text or "").lower()
         haystack = "\n".join([
@@ -222,8 +285,7 @@ class IntentEngine:
             return 0.0
 
         score = 0.0
-        for token in re.split(r"[\s,，。；;、/？?！!：:]+", query):
-            token = token.strip()
+        for token in IntentEngine._tokenize_query_text(query):
             if len(token) >= 2 and token in haystack:
                 score += 1.0
         for field in [chunk.title, chunk.language_pair, chunk.service_scope]:
@@ -234,12 +296,173 @@ class IntentEngine:
 
     @staticmethod
     def _query_terms(query_text: str) -> List[str]:
-        terms = []
-        for token in re.split(r"[\s,，。；;、/？?！!：:（）()《》\"']+", query_text or ""):
-            token = token.strip().lower()
-            if len(token) >= 2 and token not in terms:
-                terms.append(token)
-        return terms[:8]
+        return IntentEngine._tokenize_query_text(query_text)[:10]
+
+    @staticmethod
+    def _exact_phrase_score(query_text: str, chunk: KnowledgeChunk) -> float:
+        query = (query_text or "").lower().strip()
+        haystack = "\n".join([chunk.title or "", chunk.content or "", chunk.keyword_text or ""]).lower()
+        if not query or not haystack:
+            return 0.0
+        if len(query) >= 4 and query in haystack:
+            return 1.0
+        terms = IntentEngine._tokenize_query_text(query)
+        if not terms:
+            return 0.0
+        matched = sum(1 for term in terms if len(term) >= 2 and term in haystack)
+        return min(matched / max(len(terms), 1), 1.0)
+
+    @staticmethod
+    def _bm25ish_score(query_terms: list[str], chunk: KnowledgeChunk) -> float:
+        haystack = "\n".join([chunk.title or "", chunk.content or "", chunk.keyword_text or ""]).lower()
+        if not query_terms or not haystack:
+            return 0.0
+        score = 0.0
+        for term in query_terms:
+            if len(term) < 2:
+                continue
+            count = haystack.count(term)
+            if count:
+                score += min(1.0, 0.45 + (count * 0.18))
+        return min(score / max(len(query_terms), 1), 1.0)
+
+    @staticmethod
+    def _metadata_match_score(features: Dict[str, Any], chunk: KnowledgeChunk) -> float:
+        checks = [
+            ("business_line", chunk.business_line),
+            ("language_pair", chunk.language_pair),
+            ("service_scope", chunk.service_scope),
+            ("customer_tier", chunk.customer_tier),
+        ]
+        matched = 0
+        total = 0
+        for key, value in checks:
+            expected = features.get(key)
+            if not expected:
+                continue
+            total += 1
+            if value in {expected, None, ""}:
+                matched += 1
+        return matched / total if total else 0.5
+
+    @classmethod
+    def _query_intent_profile(cls, query_text: str, features: Dict[str, Any]) -> dict:
+        query = (query_text or "").lower().strip()
+        desired_classes: list[str] = []
+        desired_types: list[str] = []
+        reasons: list[str] = []
+        if any(word in query for word in ["案例", "客户案例", "项目案例", "做过", "经验", "客户有哪些", "客户有"]):
+            desired_classes.append("example")
+            desired_types.append("faq")
+            reasons.append("case_intent")
+        if any(word in query for word in ["能做", "可做", "是否支持", "能不能", "服务范围", "资料类型", "可以翻译", "能翻译"]):
+            desired_classes.append("capability")
+            desired_types.append("capability")
+            reasons.append("capability_intent")
+        if any(word in query for word in ["流程", "怎么", "如何", "步骤", "交付", "下单", "多久", "进度"]):
+            desired_classes.append("process")
+            desired_types.append("process")
+            reasons.append("process_intent")
+        if any(word in query for word in ["多少钱", "报价", "价格", "收费", "费用", "最低", "加急", "含税", "发票", "折扣"]):
+            desired_classes.extend(["pricing_constraint"])
+            desired_types.append("pricing")
+            reasons.append("pricing_intent")
+        if any(word in query for word in ["话术", "邮件", "怎么回复"]):
+            desired_classes.append("email_template")
+            desired_types.append("faq")
+            reasons.append("template_intent")
+
+        explicit_class = features.get("knowledge_class")
+        if explicit_class:
+            explicit_values = explicit_class if isinstance(explicit_class, list) else [explicit_class]
+            desired_classes = [value for value in explicit_values if value]
+            reasons.append("explicit_knowledge_class")
+
+        domain_terms = [term for term in ["医药", "医学", "医疗", "药物", "注册资料", "临床", "说明书", "法律", "合同", "技术"] if term in query]
+        generic_terms = {"医药", "医学", "医疗", "翻译", "报价", "案例", "客户", "资料", "流程", "价格"}
+        query_terms = cls._query_terms(query)
+        meaningful_terms = [term for term in query_terms if term not in generic_terms]
+        has_actionable_intent = bool(desired_classes or desired_types)
+        ambiguous = (
+            bool(query)
+            and len(query) <= 6
+            and len(meaningful_terms) <= 1
+            and not (has_actionable_intent and domain_terms)
+        )
+        return {
+            "desired_knowledge_classes": list(dict.fromkeys(desired_classes)),
+            "desired_knowledge_types": list(dict.fromkeys(desired_types)),
+            "domain_terms": domain_terms,
+            "ambiguous_query": ambiguous,
+            "intent_reasons": reasons,
+            "query_terms": query_terms,
+        }
+
+    @classmethod
+    def _intent_score(cls, profile: dict, chunk: KnowledgeChunk) -> float:
+        desired_classes = set(profile.get("desired_knowledge_classes") or [])
+        desired_types = set(profile.get("desired_knowledge_types") or [])
+        chunk_class = cls._knowledge_class_for_chunk(chunk)
+        score = 0.0
+        if desired_classes:
+            score = 1.0 if chunk_class in desired_classes else 0.0
+            if "example" in desired_classes and chunk.chunk_type == "example":
+                score = 1.0
+        elif desired_types:
+            score = 0.8 if chunk.knowledge_type in desired_types else 0.0
+        else:
+            score = 0.5
+        haystack = "\n".join([chunk.title or "", chunk.content or "", chunk.keyword_text or ""]).lower()
+        if profile.get("domain_terms"):
+            domain_hit = any(term in haystack for term in profile["domain_terms"])
+            score = (score * 0.75) + (0.25 if domain_hit else 0.0)
+        return min(score, 1.0)
+
+    @staticmethod
+    def _commercial_thresholds(features: Dict[str, Any]) -> dict:
+        return {
+            "min_score": float(features.get("min_score", 0.45) or 0.45),
+            "auto_ok_score": float(features.get("auto_ok_score", 0.70) or 0.70),
+            "supporting_score": float(features.get("supporting_score", 0.35) or 0.35),
+        }
+
+    @classmethod
+    def _chunk_summary(cls, chunk: KnowledgeChunk, score_payload: dict | None = None, relation: str = "related") -> dict:
+        score_payload = score_payload or {}
+        content = chunk.content or ""
+        return {
+            "chunk_id": str(chunk.chunk_id),
+            "document_id": str(chunk.document_id),
+            "chunk_no": chunk.chunk_no,
+            "knowledge_class": cls._knowledge_class_for_chunk(chunk),
+            "knowledge_type": chunk.knowledge_type,
+            "chunk_type": chunk.chunk_type,
+            "title": chunk.title,
+            "content": content,
+            "snippet": content[:240],
+            "score": score_payload.get("score"),
+            "semantic_score": score_payload.get("semantic_score"),
+            "keyword_score": score_payload.get("keyword_score"),
+            "exact_phrase_score": score_payload.get("exact_phrase_score"),
+            "intent_score": score_payload.get("intent_score"),
+            "metadata_score": score_payload.get("metadata_score"),
+            "bm25_score": score_payload.get("bm25_score"),
+            "business_line": chunk.business_line,
+            "sub_service": chunk.sub_service,
+            "language_pair": chunk.language_pair,
+            "service_scope": chunk.service_scope,
+            "region": chunk.region,
+            "customer_tier": chunk.customer_tier,
+            "library_type": chunk.library_type,
+            "allowed_for_generation": chunk.allowed_for_generation,
+            "usable_for_reply": chunk.usable_for_reply,
+            "publishable": chunk.publishable,
+            "useful_score": float(chunk.useful_score) if chunk.useful_score is not None else None,
+            "effect_score": float(chunk.effect_score) if getattr(chunk, "effect_score", None) is not None else None,
+            "feedback_count": getattr(chunk, "feedback_count", 0),
+            "relation": relation,
+            "applicability": "supporting" if relation == "supporting" else "same_document_context",
+        }
 
     @staticmethod
     def _constraint_applies(query_text: str, chunk: KnowledgeChunk, keyword_score: float) -> bool:
@@ -377,6 +600,7 @@ class IntentEngine:
         filters_used = {
             "status": "active",
             "business_line": features.get("business_line"),
+            "knowledge_class": features.get("knowledge_class"),
             "knowledge_type": features.get("knowledge_type"),
             "language_pair": features.get("language_pair"),
             "service_scope": features.get("service_scope"),
@@ -391,6 +615,25 @@ class IntentEngine:
             normalized_query_text = cls._normalize_query_with_alias_hints(db, query_text)
             vector = cls.get_embedding(normalized_query_text)
             now = datetime.utcnow()
+            thread_fact_model = None
+            thread_fact = None
+            if session_id:
+                thread_fact_model = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
+                if thread_fact_model:
+                    thread_fact = {
+                        "session_id": thread_fact_model.session_id,
+                        "business_state": thread_fact_model.business_state,
+                        "scenario_label": thread_fact_model.scenario_label,
+                        "intent_label": thread_fact_model.intent_label,
+                        "language_style": thread_fact_model.language_style,
+                        "stage_signals": thread_fact_model.stage_signals or {},
+                        "merged_facts": thread_fact_model.merged_facts or {},
+                        "attachment_summary": thread_fact_model.attachment_summary or [],
+                        "quality_score": float(thread_fact_model.quality_score) if thread_fact_model.quality_score is not None else None,
+                        "usable_for_reply": thread_fact_model.usable_for_reply,
+                        "allowed_for_generation": thread_fact_model.allowed_for_generation,
+                        "reply_guard_reason": thread_fact_model.reply_guard_reason,
+                    }
             query = db.query(KnowledgeChunk).filter(
                 KnowledgeChunk.status == "active",
                 or_(KnowledgeChunk.effective_from.is_(None), KnowledgeChunk.effective_from <= now),
@@ -405,6 +648,23 @@ class IntentEngine:
                 query = query.filter(KnowledgeChunk.knowledge_type.in_(knowledge_type))
             elif knowledge_type:
                 query = query.filter(KnowledgeChunk.knowledge_type == knowledge_type)
+
+            explicit_knowledge_classes = []
+            knowledge_class = features.get("knowledge_class")
+            if isinstance(knowledge_class, list):
+                explicit_knowledge_classes = [item for item in knowledge_class if item]
+            elif knowledge_class:
+                explicit_knowledge_classes = [knowledge_class]
+            explicit_class_fields = [
+                class_fields
+                for class_fields in (cls._knowledge_class_fields(item) for item in explicit_knowledge_classes)
+                if class_fields
+            ]
+            if len(explicit_class_fields) == 1:
+                query = query.filter(KnowledgeChunk.knowledge_type == explicit_class_fields[0]["knowledge_type"])
+                query = query.filter(KnowledgeChunk.chunk_type == explicit_class_fields[0]["chunk_type"])
+            elif explicit_class_fields:
+                query = query.filter(KnowledgeChunk.knowledge_type.in_({item["knowledge_type"] for item in explicit_class_fields}))
 
             if features.get("language_pair"):
                 query = query.filter(or_(
@@ -425,10 +685,35 @@ class IntentEngine:
                 ))
 
             candidate_limit = max(20, min(int(settings.KB_CANDIDATE_LIMIT or 500), 2000))
-            candidate_source = "structured_filters"
             candidate_query = query
             query_terms = cls._query_terms(normalized_query_text)
+            intent_profile = cls._query_intent_profile(normalized_query_text, features)
+            thresholds = cls._commercial_thresholds(features)
             filters_used["normalized_query_text"] = normalized_query_text
+            filters_used["query_terms"] = query_terms
+            filters_used["intent_profile"] = {
+                "desired_knowledge_classes": intent_profile.get("desired_knowledge_classes"),
+                "desired_knowledge_types": intent_profile.get("desired_knowledge_types"),
+                "domain_terms": intent_profile.get("domain_terms"),
+                "ambiguous_query": intent_profile.get("ambiguous_query"),
+                "intent_reasons": intent_profile.get("intent_reasons"),
+            }
+            filters_used["thresholds"] = thresholds
+            filters_used["thread_business_state"] = thread_fact.get("business_state") if thread_fact else None
+            filters_used["thread_fact_available"] = bool(thread_fact)
+
+            candidate_sources_by_id: dict[str, set[str]] = {}
+            candidates_by_id: dict[str, KnowledgeChunk] = {}
+
+            def add_candidates(items, source: str):
+                for item in items:
+                    chunk_id = str(item.chunk_id)
+                    candidates_by_id[chunk_id] = item
+                    candidate_sources_by_id.setdefault(chunk_id, set()).add(source)
+
+            structured_candidates = candidate_query.order_by(KnowledgeChunk.priority.desc()).limit(candidate_limit).all()
+            add_candidates(structured_candidates, "structured_filters")
+            keyword_candidates = []
             if settings.KB_KEYWORD_PREFILTER_ENABLED and query_terms:
                 keyword_conditions = []
                 for term in query_terms:
@@ -438,31 +723,89 @@ class IntentEngine:
                         KnowledgeChunk.keyword_text.ilike(like_term),
                         KnowledgeChunk.content.ilike(like_term),
                     ])
-                keyword_query = query.filter(or_(*keyword_conditions))
-                keyword_candidates = keyword_query.order_by(KnowledgeChunk.priority.desc()).limit(candidate_limit).all()
-                if keyword_candidates:
-                    candidates = keyword_candidates
-                    candidate_source = "keyword_prefilter"
-                else:
-                    candidates = candidate_query.order_by(KnowledgeChunk.priority.desc()).limit(candidate_limit).all()
-                    candidate_source = "keyword_prefilter_fallback"
-            else:
-                candidates = candidate_query.order_by(KnowledgeChunk.priority.desc()).limit(candidate_limit).all()
-            filters_used["candidate_source"] = candidate_source
+                if keyword_conditions:
+                    keyword_candidates = (
+                        query.filter(or_(*keyword_conditions))
+                        .order_by(KnowledgeChunk.priority.desc())
+                        .limit(candidate_limit)
+                        .all()
+                    )
+                    add_candidates(keyword_candidates, "keyword_prefilter")
+
+            candidates = list(candidates_by_id.values())
+            if explicit_knowledge_classes:
+                candidates = [
+                    chunk for chunk in candidates
+                    if cls._knowledge_class_for_chunk(chunk) in set(explicit_knowledge_classes)
+                ]
+            filters_used["candidate_source"] = "hybrid_structured_keyword"
+            filters_used["candidate_counts_by_source"] = {
+                "structured_filters": len(structured_candidates),
+                "keyword_prefilter": len(keyword_candidates),
+                "merged": len(candidates),
+            }
             filters_used["candidate_count"] = len(candidates)
             scored = []
             for chunk in candidates:
                 semantic_score = cls._cosine_sim(vector, chunk.embedding) if vector and chunk.embedding else 0.0
                 keyword_score = cls._keyword_score(normalized_query_text, chunk)
+                exact_phrase_score = cls._exact_phrase_score(normalized_query_text, chunk)
+                bm25_score = cls._bm25ish_score(query_terms, chunk)
+                intent_score = cls._intent_score(intent_profile, chunk)
+                metadata_score = cls._metadata_match_score(features, chunk)
                 priority_score = min((chunk.priority or 50) / 100.0, 1.0)
+                quality_score = float(chunk.useful_score) if chunk.useful_score is not None else 0.45
+                effect_score = float(chunk.effect_score) if getattr(chunk, "effect_score", None) is not None else 0.5
+                generation_score = 1.0 if chunk.usable_for_reply else (0.75 if chunk.allowed_for_generation else 0.45)
                 definition_multiplier = cls._definition_score_multiplier(normalized_query_text, chunk)
-                final_score = round(((semantic_score * 0.75) + (keyword_score * 0.15) + (priority_score * 0.10)) * definition_multiplier, 6)
-                if semantic_score > 0 or keyword_score > 0:
-                    scored.append((cls._score_bucket(normalized_query_text, chunk), final_score, semantic_score, keyword_score, chunk))
+                final_score = round((
+                    (semantic_score * 0.45)
+                    + (keyword_score * 0.12)
+                    + (bm25_score * 0.10)
+                    + (exact_phrase_score * 0.12)
+                    + (intent_score * 0.12)
+                    + (metadata_score * 0.04)
+                    + (priority_score * 0.05)
+                    + (quality_score * 0.06)
+                    + (effect_score * 0.03)
+                    + (generation_score * 0.04)
+                ) * definition_multiplier, 6)
+                if semantic_score > 0 or keyword_score > 0 or exact_phrase_score > 0 or bm25_score > 0:
+                    source_tags = sorted(candidate_sources_by_id.get(str(chunk.chunk_id), set()))
+                    scored.append((
+                        cls._score_bucket(normalized_query_text, chunk),
+                        final_score,
+                        semantic_score,
+                        keyword_score,
+                        exact_phrase_score,
+                        intent_score,
+                        metadata_score,
+                        bm25_score,
+                        quality_score,
+                        effect_score,
+                        generation_score,
+                        source_tags,
+                        chunk,
+                    ))
 
-            scored.sort(key=lambda item: (item[0], -item[1], -item[2], -item[3]))
+            scored.sort(key=lambda item: (item[0], -item[1], -item[2], -item[4], -item[5]))
             hits = []
-            for _bucket, final_score, semantic_score, keyword_score, chunk in scored[:top_k]:
+            score_by_chunk_id: dict[str, dict[str, Any]] = {}
+            for _bucket, final_score, semantic_score, keyword_score, exact_phrase_score, intent_score, metadata_score, bm25_score, quality_score, effect_score, generation_score, source_tags, chunk in scored:
+                score_by_chunk_id[str(chunk.chunk_id)] = {
+                    "score": final_score,
+                    "semantic_score": round(semantic_score, 6),
+                    "keyword_score": round(keyword_score, 6),
+                    "exact_phrase_score": round(exact_phrase_score, 6),
+                    "intent_score": round(intent_score, 6),
+                    "metadata_score": round(metadata_score, 6),
+                    "bm25_score": round(bm25_score, 6),
+                    "candidate_sources": source_tags,
+                    "quality_score": round(quality_score, 6),
+                    "effect_score": round(effect_score, 6),
+                    "generation_score": round(generation_score, 6),
+                }
+            for _bucket, final_score, semantic_score, keyword_score, exact_phrase_score, intent_score, metadata_score, bm25_score, quality_score, effect_score, generation_score, source_tags, chunk in scored[:top_k]:
                 is_constraint = chunk.chunk_type == "constraint" or bool((chunk.structured_tags or {}).get("manual_review_required"))
                 constraint_applies = is_constraint and cls._constraint_applies(query_text, chunk, keyword_score)
                 pricing_rules = []
@@ -502,7 +845,7 @@ class IntentEngine:
                 hits.append({
                     "chunk_id": str(chunk.chunk_id),
                     "document_id": str(chunk.document_id),
-                    "knowledge_class": (chunk.structured_tags or {}).get("knowledge_class"),
+                    "knowledge_class": cls._knowledge_class_for_chunk(chunk),
                     "knowledge_type": chunk.knowledge_type,
                     "chunk_type": chunk.chunk_type,
                     "title": chunk.title,
@@ -510,6 +853,20 @@ class IntentEngine:
                     "score": final_score,
                     "semantic_score": round(semantic_score, 6),
                     "keyword_score": round(keyword_score, 6),
+                    "exact_phrase_score": round(exact_phrase_score, 6),
+                    "intent_score": round(intent_score, 6),
+                    "metadata_score": round(metadata_score, 6),
+                    "bm25_score": round(bm25_score, 6),
+                    "candidate_sources": source_tags,
+                    "library_type": chunk.library_type,
+                    "allowed_for_generation": chunk.allowed_for_generation,
+                    "usable_for_reply": chunk.usable_for_reply,
+                    "publishable": chunk.publishable,
+                    "useful_score": float(chunk.useful_score) if chunk.useful_score is not None else None,
+                    "effect_score": float(chunk.effect_score) if getattr(chunk, "effect_score", None) is not None else None,
+                    "feedback_count": getattr(chunk, "feedback_count", 0),
+                    "positive_feedback_count": getattr(chunk, "positive_feedback_count", 0),
+                    "quality_notes": chunk.quality_notes,
                     "priority": chunk.priority,
                     "business_line": chunk.business_line,
                     "sub_service": chunk.sub_service,
@@ -521,25 +878,79 @@ class IntentEngine:
                     "embedding_dim": chunk.embedding_dim,
                     "pricing_rules": pricing_rules,
                     "pricing_rule_missing": pricing_rule_missing,
-                    "insufficient_info": pricing_rule_missing or constraint_applies,
-                    "manual_review_required": pricing_rule_missing or constraint_applies,
+                    "insufficient_info": pricing_rule_missing or constraint_applies or not bool(chunk.usable_for_reply),
+                    "manual_review_required": pricing_rule_missing or constraint_applies or not bool(chunk.usable_for_reply),
                     "applicability": "constraint" if constraint_applies else "matched",
                 })
 
-            confidence_score = hits[0]["score"] if hits else 0.0
-            min_score = float(features.get("min_score", 0.18) or 0.18)
-            any_manual_review = any(hit.get("manual_review_required") for hit in hits)
-            any_insufficient = any(hit.get("insufficient_info") for hit in hits)
+            replyable_hits = [hit for hit in hits if hit.get("usable_for_reply") and hit.get("allowed_for_generation")]
+            human_only_hits = [hit for hit in hits if hit not in replyable_hits]
+            filters_used["replyable_hit_count"] = len(replyable_hits)
+            filters_used["human_only_hit_count"] = len(human_only_hits)
+
+            hit_chunk_ids = {hit["chunk_id"] for hit in hits}
+            hit_document_ids = list(dict.fromkeys(hit["document_id"] for hit in hits))
+            related_chunks = []
+            supporting_chunks = []
+            if hit_document_ids:
+                siblings = (
+                    db.query(KnowledgeChunk)
+                    .filter(
+                        KnowledgeChunk.status == "active",
+                        KnowledgeChunk.document_id.in_(hit_document_ids),
+                        or_(KnowledgeChunk.effective_from.is_(None), KnowledgeChunk.effective_from <= now),
+                        or_(KnowledgeChunk.effective_to.is_(None), KnowledgeChunk.effective_to >= now),
+                    )
+                    .order_by(KnowledgeChunk.document_id.asc(), KnowledgeChunk.chunk_no.asc())
+                    .limit(max(40, top_k * 8))
+                    .all()
+                )
+                for sibling in siblings:
+                    sibling_id = str(sibling.chunk_id)
+                    if sibling_id in hit_chunk_ids:
+                        continue
+                    score_payload = score_by_chunk_id.get(sibling_id)
+                    if score_payload and (score_payload.get("score") or 0) >= thresholds["supporting_score"]:
+                        supporting_chunks.append(cls._chunk_summary(sibling, score_payload, relation="supporting"))
+                    else:
+                        related_chunks.append(cls._chunk_summary(sibling, score_payload, relation="related"))
+            filters_used["related_chunk_count"] = len(related_chunks)
+            filters_used["supporting_chunk_count"] = len(supporting_chunks)
+
+            effective_hits = replyable_hits or hits
+            confidence_score = effective_hits[0]["score"] if effective_hits else 0.0
+            min_score = thresholds["min_score"]
+            auto_ok_score = thresholds["auto_ok_score"]
+            any_manual_review = any(hit.get("manual_review_required") for hit in effective_hits)
+            any_insufficient = any(hit.get("insufficient_info") for hit in effective_hits)
             if not hits:
-                status = "empty_or_unavailable"
+                status = "no_applicable_knowledge"
                 no_hit_reason = "未命中符合 active 状态、适用范围与有效期过滤条件的知识"
                 retrieval_quality = "no_hit"
+                insufficient_info = True
+                manual_review_required = True
+            elif not replyable_hits:
+                status = "manual_review_required"
+                no_hit_reason = "命中知识存在，但当前都只适合人工参考，未达到自动回复可用标准"
+                retrieval_quality = "human_only_evidence"
+                insufficient_info = False
+                manual_review_required = True
+            elif intent_profile.get("ambiguous_query"):
+                status = "ambiguous_query"
+                no_hit_reason = "客户问题过于宽泛，需要先澄清要查案例、能力、报价、流程还是话术"
+                retrieval_quality = "needs_clarification"
                 insufficient_info = True
                 manual_review_required = True
             elif confidence_score < min_score:
                 status = "low_confidence"
                 no_hit_reason = f"最高命中分 {confidence_score} 低于阈值 {min_score}"
                 retrieval_quality = "low_confidence"
+                insufficient_info = True
+                manual_review_required = True
+            elif confidence_score < auto_ok_score:
+                status = "manual_review_required"
+                no_hit_reason = f"最高命中分 {confidence_score} 未达到自动可用阈值 {auto_ok_score}"
+                retrieval_quality = "needs_review"
                 insufficient_info = True
                 manual_review_required = True
             elif any_manual_review or any_insufficient:
@@ -559,14 +970,17 @@ class IntentEngine:
                 "rules": [],
                 "faqs": [],
                 "cases": [],
+                "supporting": [],
+                "human_only": human_only_hits,
             }
-            for hit in hits:
+            for hit in replyable_hits:
                 if hit.get("chunk_type") in {"rule", "constraint"} or hit["knowledge_type"] == "pricing" or hit.get("pricing_rules"):
                     evidence_context["rules"].append(hit)
                 elif hit.get("chunk_type") in {"example", "template"}:
                     evidence_context["cases"].append(hit)
                 else:
                     evidence_context["faqs"].append(hit)
+            evidence_context["supporting"] = supporting_chunks
             latency_ms = round((perf_counter() - started) * 1000)
 
             log = KnowledgeHitLog(
@@ -594,8 +1008,12 @@ class IntentEngine:
                 "query_features": features,
                 "filters_used": filters_used,
                 "hits": hits,
+                "replyable_hits": replyable_hits,
+                "human_only_hits": human_only_hits,
+                "supporting_chunks": supporting_chunks,
+                "related_chunks": related_chunks,
                 "evidence_context": evidence_context,
-                "evidence_refs": cls.build_evidence_refs({"hits": hits}),
+                "evidence_refs": cls.build_evidence_refs({"hits": replyable_hits}),
                 "confidence_score": confidence_score,
                 "retrieval_quality": retrieval_quality,
                 "insufficient_info": insufficient_info,
@@ -603,6 +1021,7 @@ class IntentEngine:
                 "no_hit_reason": no_hit_reason,
                 "latency_ms": latency_ms,
                 "log_id": str(log.log_id),
+                "thread_business_fact": thread_fact,
             }
         except Exception as e:
             db.rollback()
@@ -629,10 +1048,12 @@ class IntentEngine:
         knowledge_types = []
         if any(word in text for word in ["报价", "价格", "多少钱", "收费", "费用", "最低收费", "折扣", "税", "发票"]):
             knowledge_types.append("pricing")
-        if any(word in text for word in ["能做", "可做", "是否支持", "业务范围", "服务范围"]):
+        if any(word in text for word in ["能做", "可做", "是否支持", "业务范围", "服务范围", "能不能", "可以翻译", "能翻译"]):
             knowledge_types.append("capability")
         if any(word in text for word in ["流程", "怎么", "如何", "步骤", "周期", "交付"]):
             knowledge_types.append("process")
+        if any(word in text for word in ["案例", "客户案例", "项目案例", "做过", "经验"]):
+            features["knowledge_class"] = "example"
         knowledge_types.append("faq")
         features["knowledge_type"] = list(dict.fromkeys(knowledge_types))
 
@@ -685,7 +1106,7 @@ class IntentEngine:
 
         if any(word in text for word in ["法律", "合同", "法务"]):
             features["service_scope"] = "legal"
-        elif any(word in text for word in ["医学", "医疗", "药品"]):
+        elif any(word in text for word in ["医药", "医学", "医疗", "药品", "药物", "注册资料", "临床"]):
             features["service_scope"] = "medical"
         elif any(word in text for word in ["技术", "说明书", "工程"]):
             features["service_scope"] = "technical"
@@ -738,16 +1159,31 @@ class IntentEngine:
             ("[规则型知识]", evidence.get("rules") or []),
             ("[FAQ型知识]", evidence.get("faqs") or []),
             ("[案例型知识]", evidence.get("cases") or []),
+            ("[补充证据]", evidence.get("supporting") or []),
         ]
         rendered = []
         for title, hits in sections:
             rendered.append(title)
             rendered.append("\n".join(render_hit(hit) for hit in hits) if hits else "- 无")
+        if knowledge_payload.get("related_chunks"):
+            rendered.append("[同文档关联资料]")
+            rendered.append("- 已检索到同文档关联切片，但未注入自动回复证据；仅供人工展开核对。")
+        if knowledge_payload.get("human_only_hits"):
+            rendered.append("[仅人工参考证据]")
+            rendered.append(f"- 已命中 {len(knowledge_payload.get('human_only_hits') or [])} 条人工参考证据，不直接注入自动回复。")
+        if knowledge_payload.get("thread_business_fact"):
+            fact = knowledge_payload.get("thread_business_fact") or {}
+            rendered.append("[线程业务事实]")
+            rendered.append(
+                f"- 当前线程状态: {fact.get('business_state') or 'unknown'} / 场景: {fact.get('scenario_label') or 'general'} / 意图: {fact.get('intent_label') or 'general'}"
+            )
+            if fact.get("reply_guard_reason"):
+                rendered.append(f"- 门禁提示: {fact.get('reply_guard_reason')}")
         if knowledge_payload.get("manual_review_required"):
             rendered.append("[低命中保护]")
             rendered.append(f"- 当前状态: {knowledge_payload.get('status')}")
             rendered.append(f"- 原因: {knowledge_payload.get('no_hit_reason') or '命中证据需要人工确认'}")
-            rendered.append("- 要求: 涉及报价、承诺或规则时必须提示人工确认，不得编造。")
+            rendered.append("- 要求: 涉及报价、承诺、能力或流程时必须保守回复；证据不足时先请客户补充资料类型、语种、用途、交付要求，并提示人工确认，不得编造。")
         return "\n".join(rendered)
 
     @staticmethod
@@ -813,6 +1249,7 @@ class IntentEngine:
     def validate_sales_assist_output(cls, response_text: str | None, knowledge_payload, crm_context: dict | None = None) -> Dict[str, Any]:
         text = (response_text or "").strip()
         hits = knowledge_payload.get("hits") if isinstance(knowledge_payload, dict) else []
+        thread_fact = knowledge_payload.get("thread_business_fact") if isinstance(knowledge_payload, dict) else None
         evidence_refs = cls.build_evidence_refs(knowledge_payload)
         warnings: List[str] = []
         blocking_issues: List[str] = []
@@ -861,6 +1298,9 @@ class IntentEngine:
             warnings.append("CRM 中存在历史报价记录，当前价格承诺需以现行 pricing_rule 为准。")
         if crm.get("payment_risk_level") == "high" and (mentioned_numbers or capability_claimed):
             warnings.append("当前客户存在较高回款/跟进风险，报价或能力承诺建议人工复核。")
+        thread_state_validation = validate_thread_state_consistency(text, thread_fact)
+        warnings.extend(thread_state_validation.get("warnings") or [])
+        blocking_issues.extend(thread_state_validation.get("blocking_issues") or [])
 
         manual_review_required = bool(blocking_issues) or bool(knowledge_payload.get("manual_review_required")) if isinstance(knowledge_payload, dict) else bool(blocking_issues)
         if crm.get("payment_risk_level") == "high" and (mentioned_numbers or capability_claimed):
@@ -871,6 +1311,7 @@ class IntentEngine:
             "warnings": warnings,
             "blocking_issues": blocking_issues,
             "evidence_refs": evidence_refs,
+            "thread_business_fact": thread_fact,
         }
 
     @staticmethod
@@ -911,6 +1352,7 @@ class IntentEngine:
     def get_crm_context(cls, external_userid: str, strict: bool = False) -> dict:
         """从 CRM 数据库拉取最新商机、合同、跟进和生命周期信息"""
         empty_profile = {
+            "crm_external_userid": external_userid or None,
             "crm_contact_name": None,
             "company_name": None,
             "company_industry": None,
@@ -943,6 +1385,7 @@ class IntentEngine:
 
             data = profile_model.model_dump()
             return {
+                "crm_external_userid": data.get("crm_external_userid") or external_userid,
                 "crm_contact_name": data.get("crm_contact_name"),
                 "company_name": data.get("company_name"),
                 "company_industry": data.get("company_industry"),
@@ -996,6 +1439,29 @@ class IntentEngine:
         label: str = "LLM2",
     ):
         """调用 LLM-2 生成销售辅助建议"""
+        if isinstance(knowledge_list, dict):
+            retrieval_status = str(knowledge_list.get("status") or "").strip()
+            retrieval_manual_review = bool(knowledge_list.get("manual_review_required"))
+            if retrieval_status in {"manual_review_required", "low_confidence", "ambiguous_query", "no_applicable_knowledge"} or retrieval_manual_review:
+                blocking_issues = []
+                no_hit_reason = str(knowledge_list.get("no_hit_reason") or "").strip()
+                if no_hit_reason:
+                    blocking_issues.append(no_hit_reason)
+                blocking_issues.append(f"知识检索状态为 {retrieval_status or 'manual_review_required'}，未达到自动回复标准。")
+                validation = {
+                    "status": "manual_review_required",
+                    "manual_review_required": True,
+                    "warnings": ["知识检索未达到自动回复标准，已跳过 LLM-2 证据注入并直接输出保守回复。"],
+                    "blocking_issues": blocking_issues,
+                    "evidence_refs": cls.build_evidence_refs(knowledge_list),
+                }
+                return {
+                    "content": cls.build_safe_assist_response(summary_json, validation),
+                    "raw_content": "",
+                    "validation": validation,
+                    "evidence_refs": validation.get("evidence_refs") or [],
+                }
+
         knowledge_context = cls.format_knowledge_context(knowledge_list)
         prompt2 = cls.get_prompt2()
         api_url = api_url if api_url is not None else settings.LLM2_API_URL
@@ -1043,9 +1509,10 @@ class IntentEngine:
                 raw_content = response.json().get("answer", "")
                 if raw_content:
                     validation = cls.validate_sales_assist_output(raw_content, knowledge_list, crm_context=crm_context)
-                    content = raw_content
-                    if validation.get("blocking_issues"):
-                        raise RuntimeError("LLM-2 输出未通过证据校验: " + "; ".join(validation.get("blocking_issues") or []))
+                    if validation.get("blocking_issues") or validation.get("manual_review_required"):
+                        content = cls.build_safe_assist_response(summary_json, validation)
+                    else:
+                        content = raw_content
                     return {
                         "content": content,
                         "raw_content": raw_content,
@@ -1070,9 +1537,10 @@ class IntentEngine:
             raw_content = res_data["choices"][0]["message"]["content"] if "choices" in res_data else ""
             if raw_content:
                 validation = cls.validate_sales_assist_output(raw_content, knowledge_list, crm_context=crm_context)
-                content = raw_content
-                if validation.get("blocking_issues"):
-                    raise RuntimeError("LLM-2 输出未通过证据校验: " + "; ".join(validation.get("blocking_issues") or []))
+                if validation.get("blocking_issues") or validation.get("manual_review_required"):
+                    content = cls.build_safe_assist_response(summary_json, validation)
+                else:
+                    content = raw_content
                 return {
                     "content": content,
                     "raw_content": raw_content,
