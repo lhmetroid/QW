@@ -74,7 +74,7 @@ ROW_OVERRIDES = {
     34: {"knowledge_class": "script", "business_line": "general", "service_scope": "objection_handling"},
     35: {"knowledge_class": "script", "business_line": "general", "service_scope": "demand_probe"},
     36: {"knowledge_class": "script", "business_line": "general", "service_scope": "demand_probe"},
-    37: {"knowledge_class": "faq", "business_line": "general", "service_scope": "contact_discovery"},
+    37: {"knowledge_class": "script", "business_line": "general", "service_scope": "contact_discovery"},
     38: {"knowledge_class": "script", "business_line": "general", "service_scope": "contact_discovery"},
     39: {"knowledge_class": "script", "business_line": "general", "service_scope": "contact_discovery"},
     40: {"knowledge_class": "script", "business_line": "general", "service_scope": "contact_discovery"},
@@ -215,6 +215,10 @@ def build_tags(
     }
 
 
+def strip_leading_list_marker(text: str) -> str:
+    return re.sub(r"^\s*(?:\d+|[一二三四五六七八九十]+)[\.\)）．、]\s*", "", str(text or "").strip())
+
+
 def split_numbered_sections(content: str) -> list[tuple[str, str]]:
     lines = [line.strip() for line in content.split("\n") if line.strip()]
     sections: list[tuple[str, list[str]]] = []
@@ -239,10 +243,31 @@ def split_numbered_sections(content: str) -> list[tuple[str, str]]:
     return result
 
 
+def split_numbered_points(
+    content: str,
+    *,
+    title_map: dict[int, str] | None = None,
+    default_title_prefix: str = "要点",
+) -> list[tuple[str, str]]:
+    matches = re.findall(
+        r"(?:^|\n)\s*((?:\d+|[一二三四五六七八九十]+)[\.\)）．、])\s*(.*?)(?=(?:\n\s*(?:\d+|[一二三四五六七八九十]+)[\.\)）．、])|\Z)",
+        content.strip(),
+        flags=re.S,
+    )
+    chunks: list[tuple[str, str]] = []
+    for idx, (_marker, body) in enumerate(matches, start=1):
+        block = strip_leading_list_marker(body)
+        if not block:
+            continue
+        title = (title_map or {}).get(idx, f"{default_title_prefix}{idx}")
+        chunks.append((title, block))
+    return chunks
+
+
 def split_formula_example(content: str) -> list[tuple[str, str]]:
     parts = re.split(r"话术示例[:：]", content, maxsplit=1)
     if len(parts) == 2:
-        formula = parts[0].strip()
+        formula = re.sub(r"^公式[:：]\s*", "", parts[0].strip())
         sample = parts[1].strip()
         chunks: list[tuple[str, str]] = []
         if formula:
@@ -254,22 +279,66 @@ def split_formula_example(content: str) -> list[tuple[str, str]]:
 
 
 def split_security_points(content: str) -> list[tuple[str, str]]:
-    bullets = re.findall(r"(?:^|\n)\s*(\d+)\)\s*(.*?)(?=(?:\n\s*\d+\))|\Z)", content.strip(), flags=re.S)
-    chunks: list[tuple[str, str]] = []
-    for seq_text, body in bullets:
-        point_no = int(seq_text)
-        block = body.strip()
-        if not block:
-            continue
-        title = {
+    return split_numbered_points(
+        content,
+        title_map={
             1: "保密协议与长期合作承诺",
             2: "ERP 权限隔离说明",
             3: "译员与员工保密约束",
             4: "长期外企客户与零事故记录",
             5: "客户仍担心时可补签保密协议",
-        }.get(point_no, f"保密回复要点{point_no}")
-        chunks.append((title, block))
-    return chunks or [("保密回复", content.strip())]
+        },
+        default_title_prefix="保密回复要点",
+    ) or [("保密回复", content.strip())]
+
+
+def split_capability_points(row_no: int, content: str) -> list[tuple[str, str]]:
+    title_map_by_row = {
+        8: {
+            1: "长期合作客户背书",
+            2: "可提供的一体化业务范围",
+        },
+        11: {
+            1: "ERP 自研与长期建设",
+            2: "海量语料与术语资源积累",
+        },
+    }
+    return split_numbered_points(
+        content,
+        title_map=title_map_by_row.get(row_no),
+        default_title_prefix="能力要点",
+    )
+
+
+def split_follow_up_points(row_no: int, content: str) -> list[tuple[str, str]]:
+    if row_no == 41:
+        points = split_numbered_points(
+            content,
+            title_map={
+                1: "KP 基础身份信息",
+                2: "需求情况确认",
+            },
+            default_title_prefix="跟进要点",
+        )
+        if len(points) >= 2 and len(points[1][1]) < 12:
+            merged = f"{points[0][1]}，并同步确认{points[1][1].rstrip('。；;，,')}"
+            return [("KP 基础信息与需求情况确认", merged)]
+        return points
+    title_map_by_row = {
+        23: {
+            1: "企微邀请留档",
+            2: "邮件资料与转介绍请求",
+        },
+        42: {
+            1: "未来需求探询",
+            2: "过往需求回溯",
+        },
+    }
+    return split_numbered_points(
+        content,
+        title_map=title_map_by_row.get(row_no),
+        default_title_prefix="跟进要点",
+    )
 
 
 def build_chunks(row_no: int, title: str, content: str, knowledge_class: str) -> list[dict]:
@@ -289,12 +358,14 @@ def build_chunks(row_no: int, title: str, content: str, knowledge_class: str) ->
     raw_chunks: list[tuple[str, str]] = []
     if knowledge_class == "process":
         raw_chunks = split_numbered_sections(content)
+    elif row_no in {8, 11}:
+        raw_chunks = split_capability_points(row_no, content)
     elif row_no in {24, 25, 26, 27}:
         raw_chunks = split_formula_example(content)
     elif row_no == 49:
         raw_chunks = split_security_points(content)
-    elif row_no in {8, 11, 18}:
-        raw_chunks = split_numbered_sections(content)
+    elif row_no in {23, 41, 42}:
+        raw_chunks = split_follow_up_points(row_no, content)
     else:
         raw_chunks = [(title, content)]
 
