@@ -2123,16 +2123,18 @@ def _restore_document_from_snapshot(db: Session, doc: KnowledgeDocument, snapsho
     recreated_chunks = []
     recreated_rules = []
     for chunk_payload in sorted(chunks_payload, key=lambda item: int(item.get("chunk_no") or 1)):
-        embedding = EmbeddingService.embed(f"{chunk_payload.get('title') or ''}\n{chunk_payload.get('content') or ''}")
+        retrieval_title = _strip_retrieval_title_prefix(chunk_payload.get("title") or doc.title)
+        retrieval_text = _build_chunk_retrieval_text(chunk_payload.get("title") or doc.title, chunk_payload.get("content") or "")
+        embedding = EmbeddingService.embed(retrieval_text)
         if not embedding:
             raise HTTPException(status_code=500, detail=f"Embedding failed when restoring chunk: {chunk_payload.get('title')}")
         chunk = KnowledgeChunk(
             document_id=doc.document_id,
             chunk_no=int(chunk_payload.get("chunk_no") or 1),
             chunk_type=chunk_payload.get("chunk_type") or "faq",
-            title=chunk_payload.get("title") or doc.title,
+            title=retrieval_title,
             content=chunk_payload.get("content") or "",
-            keyword_text=chunk_payload.get("keyword_text") or f"{chunk_payload.get('title') or ''}\n{chunk_payload.get('content') or ''}",
+            keyword_text=chunk_payload.get("keyword_text") or retrieval_text,
             embedding=embedding,
             embedding_provider=settings.EMBEDDING_PROVIDER,
             embedding_model=settings.EMBEDDING_MODEL,
@@ -2265,7 +2267,9 @@ def _create_single_document_and_chunk(
         risk_level=risk_level,
     )
     merged_tags = merge_knowledge_class_tags(tags, resolved_class)
-    embedding = EmbeddingService.embed(f"{title}\n{content}")
+    retrieval_title = _strip_retrieval_title_prefix(title)
+    retrieval_text = _build_chunk_retrieval_text(title, content)
+    embedding = EmbeddingService.embed(retrieval_text)
     if not embedding:
         raise HTTPException(status_code=500, detail="Embedding failed")
 
@@ -2295,9 +2299,9 @@ def _create_single_document_and_chunk(
         document_id=document.document_id,
         chunk_no=1,
         chunk_type=resolved_chunk_type,
-        title=title,
+        title=retrieval_title,
         content=content,
-        keyword_text=f"{title}\n{content}",
+        keyword_text=retrieval_text,
         embedding=embedding,
         embedding_provider=settings.EMBEDDING_PROVIDER,
         embedding_model=settings.EMBEDDING_MODEL,
@@ -2510,6 +2514,34 @@ def _json_safe(value):
     if isinstance(value, list):
         return [_json_safe(item) for item in value]
     return value
+
+
+def _strip_retrieval_title_prefix(title: str | None) -> str:
+    text = str(title or "").strip()
+    if not text:
+        return ""
+    for prefix in ("开发邮件", "业务资料"):
+        if not text.startswith(prefix):
+            continue
+        rest = text[len(prefix):].lstrip()
+        index = 0
+        while index < len(rest) and rest[index].isdigit():
+            index += 1
+        if index == 0:
+            continue
+        rest = rest[index:].lstrip()
+        if rest and rest[0] in {"·", "•", "・", ".", "-", "_", ":", "：", "/"}:
+            cleaned = rest[1:].strip()
+            return cleaned or text
+    return text
+
+
+def _build_chunk_retrieval_text(title: str | None, content: str | None) -> str:
+    retrieval_title = _strip_retrieval_title_prefix(title)
+    body = str(content or "").strip()
+    if retrieval_title and body:
+        return f"{retrieval_title}\n{body}"
+    return retrieval_title or body
 
 def _email_asset_source_ref_from_candidate_source_ref(source_ref: str | None) -> str:
     value = str(source_ref or "").strip()
@@ -2940,14 +2972,16 @@ def _create_email_excel_document(
     created_chunks: list[KnowledgeChunk] = []
     created_fragments: list[EmailFragmentAsset] = []
     for chunk_no, payload in enumerate(chunks_payload, start=1):
-        embedding = EmbeddingService.embed(f"{payload['title']}\n{payload['content']}") if payload["content"] else None
+        retrieval_title = _strip_retrieval_title_prefix(payload["title"])
+        retrieval_text = _build_chunk_retrieval_text(payload["title"], payload["content"])
+        embedding = EmbeddingService.embed(retrieval_text) if payload["content"] else None
         chunk = KnowledgeChunk(
             document_id=document.document_id,
             chunk_no=chunk_no,
             chunk_type=payload["chunk_type"],
-            title=payload["title"],
+            title=retrieval_title,
             content=payload["content"],
-            keyword_text=f"{payload['title']}\n{payload['content']}",
+            keyword_text=retrieval_text,
             embedding=embedding,
             embedding_provider=settings.EMBEDDING_PROVIDER if embedding else None,
             embedding_model=settings.EMBEDDING_MODEL if embedding else None,
@@ -4967,7 +5001,7 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
         risk_level=payload.risk_level,
     )
     merged_tags = merge_knowledge_class_tags(payload.tags, resolved_class)
-    embedding_text = f"{payload.title}\n{payload.content}"
+    embedding_text = _build_chunk_retrieval_text(payload.title, payload.content)
     embedding = EmbeddingService.embed(embedding_text)
     if not embedding:
         raise HTTPException(status_code=500, detail="Embedding failed")
@@ -4997,9 +5031,9 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
         document_id=document.document_id,
         chunk_no=1,
         chunk_type=resolved_chunk_type,
-        title=payload.title,
+        title=_strip_retrieval_title_prefix(payload.title),
         content=payload.content,
-        keyword_text=f"{payload.title}\n{payload.content}",
+        keyword_text=_build_chunk_retrieval_text(payload.title, payload.content),
         embedding=embedding,
         embedding_provider=settings.EMBEDDING_PROVIDER,
         embedding_model=settings.EMBEDDING_MODEL,
@@ -5090,16 +5124,18 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
             risk_level=None,
         )
         merged_chunk_tags = merge_knowledge_class_tags(item.tags, resolved_chunk_class)
-        embedding = EmbeddingService.embed(f"{item.title}\n{item.content}")
+        retrieval_title = _strip_retrieval_title_prefix(item.title)
+        retrieval_text = _build_chunk_retrieval_text(item.title, item.content)
+        embedding = EmbeddingService.embed(retrieval_text)
         if not embedding:
             raise HTTPException(status_code=500, detail=f"Embedding failed at chunk {idx}: {item.title}")
         chunk = KnowledgeChunk(
             document_id=document.document_id,
             chunk_no=idx,
             chunk_type=resolved_chunk_chunk_type,
-            title=item.title,
+            title=retrieval_title,
             content=item.content,
-            keyword_text=f"{item.title}\n{item.content}",
+            keyword_text=retrieval_text,
             embedding=embedding,
             embedding_provider=settings.EMBEDDING_PROVIDER,
             embedding_model=settings.EMBEDDING_MODEL,
@@ -5475,7 +5511,7 @@ async def update_kb_chunk(chunk_id: str, payload: KnowledgeChunkUpdate, db: Sess
     old_title = chunk.title
     old_content = chunk.content
     if payload.title is not None:
-        chunk.title = payload.title
+        chunk.title = _strip_retrieval_title_prefix(payload.title)
     if payload.content is not None:
         chunk.content = payload.content
     if payload.business_line is not None:
@@ -5516,10 +5552,11 @@ async def update_kb_chunk(chunk_id: str, payload: KnowledgeChunkUpdate, db: Sess
             chunk.structured_tags = payload.structured_tags
 
     if chunk.title != old_title or chunk.content != old_content:
-        embedding = EmbeddingService.embed(f"{chunk.title}\n{chunk.content}")
+        retrieval_text = _build_chunk_retrieval_text(chunk.title, chunk.content)
+        embedding = EmbeddingService.embed(retrieval_text)
         if not embedding:
             raise HTTPException(status_code=500, detail="Embedding failed")
-        chunk.keyword_text = f"{chunk.title}\n{chunk.content}"
+        chunk.keyword_text = retrieval_text
         chunk.embedding = embedding
         chunk.embedding_provider = settings.EMBEDDING_PROVIDER
         chunk.embedding_model = settings.EMBEDDING_MODEL
@@ -7030,7 +7067,9 @@ def _commit_kb_excel_import_raw(
             created_chunk_ids = []
             split_pricing_count = 0
             for chunk_index, chunk_payload in enumerate(split_chunks, start=1):
-                embedding = EmbeddingService.embed(f"{chunk_payload.title}\n{chunk_payload.content}")
+                retrieval_title = _strip_retrieval_title_prefix(chunk_payload.title)
+                retrieval_text = _build_chunk_retrieval_text(chunk_payload.title, chunk_payload.content)
+                embedding = EmbeddingService.embed(retrieval_text)
                 if not embedding:
                     failed.append({"row": item["row"], "title": chunk_payload.title, "errors": [f"embedding_failed_at_split_chunk_{chunk_index}"]})
                     continue
@@ -7038,9 +7077,9 @@ def _commit_kb_excel_import_raw(
                     document_id=document.document_id,
                     chunk_no=chunk_index,
                     chunk_type=chunk_payload.chunk_type,
-                    title=chunk_payload.title,
+                    title=retrieval_title,
                     content=chunk_payload.content,
-                    keyword_text=f"{chunk_payload.title}\n{chunk_payload.content}",
+                    keyword_text=retrieval_text,
                     embedding=embedding,
                     embedding_provider=settings.EMBEDDING_PROVIDER,
                     embedding_model=settings.EMBEDDING_MODEL,
@@ -7103,7 +7142,9 @@ def _commit_kb_excel_import_raw(
                 "auto_split": True,
             })
             continue
-        embedding = EmbeddingService.embed(f"{title}\n{content}")
+        retrieval_title = _strip_retrieval_title_prefix(title)
+        retrieval_text = _build_chunk_retrieval_text(title, content)
+        embedding = EmbeddingService.embed(retrieval_text)
 
         document = KnowledgeDocument(
             title=title,
@@ -7136,9 +7177,9 @@ def _commit_kb_excel_import_raw(
             document_id=document.document_id,
             chunk_no=1,
             chunk_type=item["chunk_type"],
-            title=title,
+            title=retrieval_title,
             content=content,
-            keyword_text=f"{title}\n{content}",
+            keyword_text=retrieval_text,
             embedding=embedding,
             embedding_provider=settings.EMBEDDING_PROVIDER,
             embedding_model=settings.EMBEDDING_MODEL,
@@ -7557,7 +7598,9 @@ async def import_faq_excel(file: UploadFile = File(...), db: Session = Depends(g
 
         business_line = infer_faq_business_line(title, content)
         risk_level = infer_faq_risk_level(title, content)
-        embedding = EmbeddingService.embed(f"{title}\n{content}")
+        retrieval_title = _strip_retrieval_title_prefix(title)
+        retrieval_text = _build_chunk_retrieval_text(title, content)
+        embedding = EmbeddingService.embed(retrieval_text)
         if not embedding:
             failed.append({"row": row_index, "title": title, "reason": "embedding_failed"})
             continue
@@ -7585,9 +7628,9 @@ async def import_faq_excel(file: UploadFile = File(...), db: Session = Depends(g
             document_id=document.document_id,
             chunk_no=1,
             chunk_type="faq",
-            title=title,
+            title=retrieval_title,
             content=content,
-            keyword_text=f"{title}\n{content}",
+            keyword_text=retrieval_text,
             embedding=embedding,
             embedding_provider=settings.EMBEDDING_PROVIDER,
             embedding_model=settings.EMBEDDING_MODEL,
@@ -7764,16 +7807,18 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
     created_chunks = []
     created_pricing_rules = []
     for idx, item in enumerate(chunks_payload, start=1):
-        embedding = EmbeddingService.embed(f"{item.title}\n{item.content}")
+        retrieval_title = _strip_retrieval_title_prefix(item.title)
+        retrieval_text = _build_chunk_retrieval_text(item.title, item.content)
+        embedding = EmbeddingService.embed(retrieval_text)
         if not embedding:
             raise HTTPException(status_code=500, detail=f"Embedding failed at assisted chunk {idx}: {item.title}")
         chunk = KnowledgeChunk(
             document_id=document.document_id,
             chunk_no=idx,
             chunk_type=item.chunk_type,
-            title=item.title,
+            title=retrieval_title,
             content=item.content,
-            keyword_text=f"{item.title}\n{item.content}",
+            keyword_text=retrieval_text,
             embedding=embedding,
             embedding_provider=settings.EMBEDDING_PROVIDER,
             embedding_model=settings.EMBEDDING_MODEL,
