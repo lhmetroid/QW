@@ -25,6 +25,7 @@ from qywx_utils import QYWXUtils
 from intent_engine import IntentEngine
 from embedding_service import EmbeddingService
 from email_import_service import EmailImportService
+from business_csv_import import DEFAULT_BUSINESS_CSV_FILENAME, DEFAULT_ROW_LIMIT as DEFAULT_BUSINESS_CSV_ROW_LIMIT, DEFAULT_SOURCE_TYPE as BUSINESS_CSV_SOURCE_TYPE, run_business_csv_import
 from database import (
     SessionLocal, MessageLog, init_db, KnowledgeBase, IntentSummary, get_db,
     KnowledgeDocument, KnowledgeChunk, PricingRule, KnowledgeHitLog, KnowledgeCandidate,
@@ -7543,6 +7544,51 @@ async def complete_partial_items_async(payload: AnalysisCompletionRequest, db: S
     db.refresh(job)
     start_job(str(job.job_id), _run_complete_analysis_items_job, payload.model_dump())
     return {"status": "queued", "job": _job_to_dict(job)}
+
+@app.post("/api/kb/import/business_csv")
+async def import_business_csv(
+    file: UploadFile = File(...),
+    row_limit: int = Form(DEFAULT_BUSINESS_CSV_ROW_LIMIT),
+    db: Session = Depends(get_db),
+):
+    filename = file.filename or DEFAULT_BUSINESS_CSV_FILENAME
+    if os.path.basename(filename) != DEFAULT_BUSINESS_CSV_FILENAME:
+        raise HTTPException(status_code=400, detail=f"当前正式导入口径仅适用于 {DEFAULT_BUSINESS_CSV_FILENAME}")
+    if not filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="仅支持 .csv 文件")
+    if row_limit != DEFAULT_BUSINESS_CSV_ROW_LIMIT:
+        raise HTTPException(status_code=400, detail=f"当前正式 business_csv 导入口径仅覆盖前 {DEFAULT_BUSINESS_CSV_ROW_LIMIT} 条")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="CSV 文件为空")
+
+    try:
+        result = run_business_csv_import(
+            db,
+            raw=raw,
+            filename=os.path.basename(filename),
+            row_limit=row_limit,
+            source_type=BUSINESS_CSV_SOURCE_TYPE,
+            owner="business_csv_import_api",
+        )
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"CSV 编码解析失败，请使用 UTF-8/UTF-8-SIG: {exc}") from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"business_csv 导入失败: {exc}") from exc
+
+    logger.info("KB_BUSINESS_CSV_IMPORT %s", json.dumps({
+        "filename": os.path.basename(filename),
+        "row_limit": row_limit,
+        "import_batch": result.get("import_batch"),
+        "created_documents": result.get("created_documents"),
+        "created_chunks": result.get("created_chunks"),
+        "skipped_count": result.get("skipped_count"),
+        "purged": result.get("purged"),
+    }, ensure_ascii=False))
+    return result
+
 
 @app.post("/api/kb/import/faq_excel")
 async def import_faq_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
