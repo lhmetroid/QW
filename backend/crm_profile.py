@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api", tags=["crm_profile"])
 
 class CRMProfileResponse(BaseModel):
     """客户画像响应模型"""
+    crm_external_userid: Optional[str] = None
     crm_contact_name: Optional[str] = None
     company_name: Optional[str] = None
     company_industry: Optional[str] = None
@@ -30,9 +31,51 @@ class CRMProfileResponse(BaseModel):
     high_risk_flags: Optional[list[str]] = None
 
 
+def resolve_crm_external_userid(external_userid: str, db: Session) -> str:
+    """Allow a unique prefix match so historical truncated ids can still resolve to CRM."""
+    normalized = (external_userid or "").strip()
+    if not normalized:
+        return ""
+
+    exact_row = db.execute(
+        text(
+            """
+            SELECT TOP 1 external_userid
+            FROM usrCustomerContactWebChartList
+            WHERE external_userid = :external_userid
+            """
+        ),
+        {"external_userid": normalized},
+    ).fetchone()
+    if exact_row and exact_row[0]:
+        return str(exact_row[0])
+
+    if not normalized.startswith(("wm", "wo", "wb")):
+        return normalized
+
+    prefix_rows = db.execute(
+        text(
+            """
+            SELECT DISTINCT TOP 5 external_userid
+            FROM usrCustomerContactWebChartList
+            WHERE external_userid LIKE :prefix
+            ORDER BY external_userid
+            """
+        ),
+        {"prefix": f"{normalized}%"},
+    ).fetchall()
+    candidates = [str(row[0]) for row in prefix_rows if row[0]]
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        raise HTTPException(status_code=409, detail=f"external_userid 前缀匹配到多个 CRM 联系人: {normalized}")
+    return normalized
+
+
 def fetch_crm_profile(external_userid: str, db: Session) -> CRMProfileResponse:
     """根据 external_userid 获取客户 CRM 画像信息"""
     try:
+        resolved_external_userid = resolve_crm_external_userid(external_userid, db)
         contact_query = text("""
             SELECT TOP 1
                 c.ContactId,
@@ -46,10 +89,10 @@ def fetch_crm_profile(external_userid: str, db: Session) -> CRMProfileResponse:
             WHERE b.external_userid = :external_userid
         """)
 
-        contact_result = db.execute(contact_query, {"external_userid": external_userid}).fetchone()
+        contact_result = db.execute(contact_query, {"external_userid": resolved_external_userid}).fetchone()
 
         if not contact_result:
-            raise HTTPException(status_code=404, detail=f"未找到 external_userid: {external_userid} 的客户信息")
+            raise HTTPException(status_code=404, detail=f"未找到 external_userid: {resolved_external_userid} 的客户信息")
 
         contact_id = contact_result[0]
         contact_name = contact_result[1]
@@ -149,6 +192,7 @@ def fetch_crm_profile(external_userid: str, db: Session) -> CRMProfileResponse:
         high_risk_flags = _build_high_risk_flags(payment_risk_level, customer_tier, recent_opportunities)
 
         return CRMProfileResponse(
+            crm_external_userid=resolved_external_userid,
             crm_contact_name=contact_name,
             company_name=company_name,
             company_industry=company_industry,

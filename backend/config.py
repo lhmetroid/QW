@@ -82,6 +82,11 @@ class Settings(BaseSettings):
     KB_FULLTEXT_INDEX_ENABLED: bool = True
     KB_HEALTHCHECK_TIMEOUT_SECONDS: int = 5
 
+    # Offline training pipeline runner.
+    TRAINING_RUNNER_COMMAND: str = ""
+    TRAINING_RUNNER_WORKDIR: str = ""
+    TRAINING_RUNNER_TIMEOUT_SECONDS: int = 7200
+
     # CRM MSSQL configuration.
     CRM_DBHost: str = ""
     CRM_DBPort: int = 1433

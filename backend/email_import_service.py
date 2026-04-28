@@ -14,6 +14,13 @@ class EmailImportService:
     SESSION_ID_ALIASES = ["session_id", "企微会话ID", "会话标识", "session"]
     EXTERNAL_USERID_ALIASES = ["external_userid", "客户ID", "外部联系人ID", "external_user_id"]
     SALES_USERID_ALIASES = ["sales_userid", "销售ID", "跟进人ID", "userid", "user_id"]
+    ATTACHMENT_NAMES_ALIASES = ["attachment_names", "attachment_name", "attachments", "files", "附件", "附件名", "文件名"]
+    ATTACHMENT_SUMMARY_ALIASES = ["attachment_summary", "attachment_desc", "attachment_note", "附件说明", "附件摘要", "文件说明"]
+    ATTACHMENT_CONTENT_ALIASES = ["attachment_content", "attachment_text", "附件内容", "文件内容", "附件文本"]
+    ATTACHMENT_TIME_ALIASES = ["attachment_time", "file_time", "附件时间", "文件时间"]
+    USE_RANGE_ALIASES = ["CorrectUseRange", "人工最终确认本次邮件的用途", "用途范围", "use_range"]
+    INTENT_TYPE_ALIASES = ["IntentType", "最终用途类别", "意图类别", "intent_type"]
+    EMAIL_STAGE_ALIASES = ["EmailStage", "邮件阶段", "阶段", "email_stage"]
 
     @classmethod
     def _normalize_header(cls, value) -> str:
@@ -37,6 +44,18 @@ class EmailImportService:
             return None
         return str(value).strip() if isinstance(value, str) else value
 
+    @staticmethod
+    def _normalize_attachment_names(value) -> list[str]:
+        text = str(value or "").strip()
+        if not text:
+            return []
+        normalized: list[str] = []
+        for block in text.replace("；", ";").replace("，", ",").split(";"):
+            for token in [item.strip() for item in block.split(",") if item.strip()]:
+                if token and token not in normalized:
+                    normalized.append(token[:120])
+        return normalized
+
     @classmethod
     def _rows_to_records(cls, rows: list[tuple]) -> list[dict]:
         if not rows:
@@ -51,6 +70,13 @@ class EmailImportService:
         session_id_idx = cls._find_column_index(headers, cls.SESSION_ID_ALIASES)
         external_userid_idx = cls._find_column_index(headers, cls.EXTERNAL_USERID_ALIASES)
         sales_userid_idx = cls._find_column_index(headers, cls.SALES_USERID_ALIASES)
+        attachment_names_idx = cls._find_column_index(headers, cls.ATTACHMENT_NAMES_ALIASES)
+        attachment_summary_idx = cls._find_column_index(headers, cls.ATTACHMENT_SUMMARY_ALIASES)
+        attachment_content_idx = cls._find_column_index(headers, cls.ATTACHMENT_CONTENT_ALIASES)
+        attachment_time_idx = cls._find_column_index(headers, cls.ATTACHMENT_TIME_ALIASES)
+        use_range_idx = cls._find_column_index(headers, cls.USE_RANGE_ALIASES)
+        intent_type_idx = cls._find_column_index(headers, cls.INTENT_TYPE_ALIASES)
+        email_stage_idx = cls._find_column_index(headers, cls.EMAIL_STAGE_ALIASES)
         if subject_idx is None and content_idx is None:
             raise ValueError("未找到邮件主题或正文列")
 
@@ -74,6 +100,13 @@ class EmailImportService:
                     "session_id": cls._cell(row, session_id_idx),
                     "external_userid": cls._cell(row, external_userid_idx),
                     "sales_userid": cls._cell(row, sales_userid_idx),
+                    "attachment_names": cls._normalize_attachment_names(cls._cell(row, attachment_names_idx)),
+                    "attachment_summary": cls._cell(row, attachment_summary_idx),
+                    "attachment_content": cls._cell(row, attachment_content_idx),
+                    "attachment_time": cls._cell(row, attachment_time_idx),
+                    "use_range_label": cls._cell(row, use_range_idx),
+                    "intent_type_label": cls._cell(row, intent_type_idx),
+                    "email_stage_label": cls._cell(row, email_stage_idx),
                 }
             )
         return records

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
 FACT_SOURCE_TYPES = {"message_extract", "thread_fact", "crm_fact", "attachment_fact"}
-EMAILISH_SOURCE_TYPES = {"email_excel", "email_digest", "excellent_reply_extract"}
+EMAILISH_SOURCE_TYPES = {"email_excel", "email_digest", "excellent_reply_extract", "excellent_reply"}
 REPLYABLE_LIBRARY_TYPES = {"reference"}
 ATTACHMENT_KEYWORDS = ["附件", "报价单", "合同", "PO", "pdf", "doc", "docx", "xls", "xlsx", "zip", "文件"]
 QUOTE_KEYWORDS = ["报价", "quote", "含税", "未税", "单价", "价格", "费用", "PO", "采购单"]
@@ -240,16 +241,217 @@ def score_content_governance(
     }
 
 
-def extract_attachment_mentions(messages: list[dict] | None) -> list[str]:
-    mentions: list[str] = []
+def _attachment_kind_from_text(text: str) -> str:
+    lower = text.lower()
+    if any(ext in lower for ext in [".pdf", " pdf"]):
+        return "pdf"
+    if any(ext in lower for ext in [".doc", ".docx", " doc", " docx"]):
+        return "word"
+    if any(ext in lower for ext in [".xls", ".xlsx", " xls", " xlsx"]):
+        return "excel"
+    if any(ext in lower for ext in [".zip", ".rar", " zip", " rar"]):
+        return "archive"
+    if "po" in lower:
+        return "po"
+    if "鍚堝悓" in text:
+        return "contract"
+    if "鎶ヤ环" in text:
+        return "quote"
+    if "鍥剧墖" in text or "image" in lower or "jpg" in lower or "png" in lower:
+        return "image"
+    return "file"
+
+
+def _extract_attachment_filenames(text: str) -> list[str]:
+    filenames = re.findall(
+        r"([A-Za-z0-9_\-\u4e00-\u9fa5]+\.(?:pdf|docx?|xlsx?|zip|rar|png|jpg|jpeg))",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return list(dict.fromkeys(name[:120] for name in filenames))
+
+
+def sanitize_attachment_text(text: str) -> str:
+    compact = re.sub(r"\s+", " ", _text(text))
+    return compact[:180]
+
+def _split_attachment_names(value: Any) -> list[str]:
+    text = _text(value)
+    if not text:
+        return []
+    items: list[str] = []
+    for block in text.replace("；", ";").replace("，", ",").split(";"):
+        for token in [part.strip() for part in block.split(",") if part.strip()]:
+            if token and token not in items:
+                items.append(token[:120])
+    return items
+
+
+def _attachment_signals(text: str) -> list[str]:
+    lower = text.lower()
+    signals: list[str] = []
+    if any(word.lower() in lower for word in QUOTE_KEYWORDS):
+        signals.append("pricing")
+    if any(word.lower() in lower for word in PAYMENT_KEYWORDS):
+        signals.append("payment")
+    if any(word.lower() in lower for word in SHIPMENT_KEYWORDS):
+        signals.append("shipment")
+    if any(word.lower() in lower for word in AFTER_SALES_KEYWORDS):
+        signals.append("after_sales")
+    if "po" in lower:
+        signals.append("po")
+    if "合同" in text:
+        signals.append("contract")
+    if "发票" in text or "invoice" in lower:
+        signals.append("invoice")
+    return list(dict.fromkeys(signals))
+
+
+def _attachment_summary_text(text: str) -> str:
+    compact = sanitize_attachment_text(text)
+    if len(compact) <= 90:
+        return compact
+    return compact[:87] + "..."
+
+
+def extract_attachment_mentions(
+    messages: list[dict] | None,
+    extra_texts: list[str] | None = None,
+    attachment_items: list[dict] | None = None,
+) -> list[dict[str, Any]]:
+    mentions: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add_attachment(raw_text: Any, source: str, *, filename: str | None = None, kind: str | None = None) -> None:
+        text = _text(raw_text)
+        filename_value = _text(filename) or None
+        if not text and not filename_value:
+            return
+        lower = text.lower()
+        matched = any(keyword.lower() in lower for keyword in ATTACHMENT_KEYWORDS) or bool(filename_value)
+        filenames = [filename_value] if filename_value else _extract_attachment_filenames(text)
+        if not matched and not filenames:
+            return
+
+        if filenames:
+            for filename_item in filenames:
+                key = (source, filename_item.lower())
+                if key in seen:
+                    continue
+                seen.add(key)
+                payload_text = text or filename_item
+                mentions.append(
+                    {
+                        "source": source,
+                        "kind": kind or _attachment_kind_from_text(filename_item),
+                        "filename": filename_item,
+                        "raw": sanitize_attachment_text(payload_text),
+                        "summary": _attachment_summary_text(payload_text),
+                        "signals": _attachment_signals(payload_text),
+                    }
+                )
+            return
+
+        key = (source, text[:80].lower())
+        if key in seen:
+            return
+        seen.add(key)
+        mentions.append(
+            {
+                "source": source,
+                "kind": kind or _attachment_kind_from_text(text),
+                "filename": None,
+                "raw": sanitize_attachment_text(text),
+                "summary": _attachment_summary_text(text),
+                "signals": _attachment_signals(text),
+            }
+        )
+
     for item in messages or []:
-        content = _text(item.get("content"))
-        if not content:
+        add_attachment(item.get("content"), "message")
+        raw_attachments = item.get("attachments") or []
+        if isinstance(raw_attachments, dict):
+            raw_attachments = [raw_attachments]
+        for attachment in raw_attachments:
+            if not isinstance(attachment, dict):
+                add_attachment(attachment, "message_attachment")
+                continue
+            attachment_text = (
+                attachment.get("text")
+                or attachment.get("content")
+                or attachment.get("summary")
+                or attachment.get("raw")
+            )
+            attachment_names = _split_attachment_names(
+                attachment.get("filename")
+                or attachment.get("name")
+                or attachment.get("attachment_name")
+                or attachment.get("attachment_names")
+            )
+            if attachment_names:
+                for filename_item in attachment_names:
+                    add_attachment(
+                        attachment_text or filename_item,
+                        "message_attachment",
+                        filename=filename_item,
+                        kind=_text(attachment.get("kind")) or None,
+                    )
+                continue
+            add_attachment(attachment_text, "message_attachment", kind=_text(attachment.get("kind")) or None)
+    for attachment in attachment_items or []:
+        if not isinstance(attachment, dict):
+            add_attachment(attachment, "attachment_item")
             continue
-        for keyword in ATTACHMENT_KEYWORDS:
-            if keyword.lower() in content.lower() and keyword not in mentions:
-                mentions.append(keyword)
+        attachment_text = (
+            attachment.get("text")
+            or attachment.get("content")
+            or attachment.get("summary")
+            or attachment.get("raw")
+        )
+        attachment_names = _split_attachment_names(
+            attachment.get("filename")
+            or attachment.get("name")
+            or attachment.get("attachment_name")
+            or attachment.get("attachment_names")
+        )
+        if attachment_names:
+            for filename_item in attachment_names:
+                add_attachment(
+                    attachment_text or filename_item,
+                    "attachment_item",
+                    filename=filename_item,
+                    kind=_text(attachment.get("kind")) or None,
+                )
+            continue
+        add_attachment(attachment_text, "attachment_item", kind=_text(attachment.get("kind")) or None)
+    for text in extra_texts or []:
+        add_attachment(text, "summary")
     return mentions[:12]
+
+
+def summarize_attachment_mentions(mentions: list[dict[str, Any]] | None) -> dict[str, Any]:
+    mentions = mentions or []
+    kind_counter: dict[str, int] = defaultdict(int)
+    signal_counter: dict[str, int] = defaultdict(int)
+    filenames: list[str] = []
+    for item in mentions:
+        kind = _text(item.get("kind"))
+        if kind:
+            kind_counter[kind] += 1
+        for signal in item.get("signals") or []:
+            signal_value = _text(signal)
+            if signal_value:
+                signal_counter[signal_value] += 1
+        filename = _text(item.get("filename"))
+        if filename and filename not in filenames:
+            filenames.append(filename)
+    return {
+        "count": len(mentions),
+        "kinds": dict(sorted(kind_counter.items())),
+        "signals": dict(sorted(signal_counter.items())),
+        "filenames": filenames[:10],
+        "has_structured_attachments": any(bool(item.get("filename")) for item in mentions),
+    }
 
 
 def build_thread_business_fact(
@@ -264,6 +466,14 @@ def build_thread_business_fact(
     summary = summary or {}
     crm_context = crm_context or {}
     key_facts = summary.get("key_facts") or {}
+    attachment_records: list[dict[str, Any]] = []
+    for item in messages or []:
+        raw_attachments = item.get("attachments") or []
+        if isinstance(raw_attachments, dict):
+            raw_attachments = [raw_attachments]
+        for attachment in raw_attachments:
+            if isinstance(attachment, dict):
+                attachment_records.append(dict(attachment))
     content_blob = "\n".join(_text(item.get("content")) for item in (messages or []))
     fact_blob = "\n".join([
         _text(summary.get("topic")),
@@ -320,7 +530,16 @@ def build_thread_business_fact(
     elif stage_signals["has_formal_quote"]:
         intent_label = "pricing"
 
-    attachment_summary = extract_attachment_mentions(messages)
+    attachment_summary = extract_attachment_mentions(
+        messages,
+        extra_texts=[
+            _text(summary.get("core_demand")),
+            _text(summary.get("to_be_confirmed")),
+            _text(key_facts),
+        ],
+        attachment_items=attachment_records,
+    )
+    attachment_rollup = summarize_attachment_mentions(attachment_summary)
     avg_len = 0.0
     if messages:
         avg_len = sum(len(_text(item.get("content"))) for item in messages) / len(messages)
@@ -345,6 +564,8 @@ def build_thread_business_fact(
         "crm_customer_tier": crm_context.get("customer_tier"),
         "crm_payment_risk_level": crm_context.get("payment_risk_level"),
         "attachment_summary": attachment_summary,
+        "attachment_rollup": attachment_rollup,
+        "attachment_types": sorted({item.get("kind") for item in attachment_summary if item.get("kind")}),
     }
     return {
         "session_id": session_id,
@@ -368,6 +589,7 @@ def build_thread_business_fact(
             "summary_status": summary.get("status"),
             "crm_profile_status": crm_context.get("crm_profile_status"),
             "message_count": len(messages or []),
+            "attachment_count": attachment_rollup["count"],
             "updated_at": datetime.utcnow().isoformat(),
         },
     }

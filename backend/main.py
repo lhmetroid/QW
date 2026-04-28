@@ -8,6 +8,7 @@ import json
 import uuid
 import re
 import hashlib
+import subprocess
 import requests
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -421,6 +422,37 @@ class TrainingSampleExportRequest(BaseModel):
     max_samples: int = 1000
     operator: str | None = None
 
+
+class TrainingExecutionRequest(BaseModel):
+    sample_types: list[str] | None = None
+    min_quality_score: float = 0.45
+    min_effect_score: float = 0.45
+    limit_per_source: int = 200
+    max_samples: int = 1000
+    execute_runner: bool = True
+    runner_command: str | None = None
+    runner_workdir: str | None = None
+    runner_timeout_seconds: int | None = None
+    operator: str | None = None
+
+
+class AnalysisCompletionRequest(BaseModel):
+    source_type: str = "email_excel"
+    rebuild_candidate_governance: bool = True
+    backfill_email_assets: bool = True
+    backfill_thread_facts: bool = True
+    bootstrap_positive_feedback_count: int = 3
+    bootstrap_feedback_status: str = "adopted"
+    extract_excellent_replies: bool = True
+    prepare_training_samples: bool = True
+    export_training_samples: bool = True
+    sample_types: list[str] | None = None
+    min_quality_score: float = 0.45
+    min_effect_score: float = 0.45
+    limit_per_source: int = 200
+    max_samples: int = 500
+    operator: str | None = None
+
 class KnowledgeRegressionRunRequest(BaseModel):
     case_ids: list[str] | None = None
     groups: list[str] | None = None
@@ -652,6 +684,7 @@ KB_LABELS = {
         "process": "流程规则",
         "faq": "FAQ常见问答",
         "example": "案例",
+        "script": "话术模板",
         "email_template": "邮件模板",
         "definition": "名词定义",
     },
@@ -757,6 +790,7 @@ KB_KNOWLEDGE_CLASS_CONFIG = {
     "process": {"knowledge_type": "process", "chunk_type": "rule", "risk_level": "medium"},
     "faq": {"knowledge_type": "faq", "chunk_type": "faq", "risk_level": "medium"},
     "example": {"knowledge_type": "faq", "chunk_type": "example", "risk_level": "medium"},
+    "script": {"knowledge_type": "faq", "chunk_type": "template", "risk_level": "medium"},
     "email_template": {"knowledge_type": "faq", "chunk_type": "template", "risk_level": "medium"},
     "definition": {"knowledge_type": "faq", "chunk_type": "definition", "risk_level": "low"},
 }
@@ -1010,6 +1044,33 @@ def _upsert_thread_business_fact(
         fact_source["has_final_response"] = bool(latest_log.final_response)
         fact_source["latest_log_at"] = latest_log.created_at.isoformat() if latest_log.created_at else None
         payload["fact_source"] = fact_source
+    if session_id:
+        email_assets = db.query(EmailThreadAsset).filter(
+            or_(EmailThreadAsset.session_id == session_id, EmailThreadAsset.thread_id == session_id)
+        ).order_by(EmailThreadAsset.created_at.desc()).limit(5).all()
+        email_fragments = db.query(EmailFragmentAsset).filter(
+            or_(EmailFragmentAsset.session_id == session_id, EmailFragmentAsset.thread_id == session_id)
+        ).order_by(EmailFragmentAsset.created_at.desc()).limit(12).all()
+        if email_assets or email_fragments:
+            merged_facts = dict(payload.get("merged_facts") or {})
+            if email_assets:
+                merged_facts["email_subjects"] = [item.subject for item in email_assets if item.subject][:5]
+                merged_facts["email_source_refs"] = [item.source_ref for item in email_assets if item.source_ref][:5]
+            if email_fragments:
+                merged_facts["email_fragment_count"] = len(email_fragments)
+                merged_facts["email_fragment_types"] = sorted({item.function_fragment for item in email_fragments if item.function_fragment})
+                merged_facts["email_fragment_samples"] = [
+                    {
+                        "fragment": item.function_fragment,
+                        "content": sanitize_text((item.content or "")[:120]),
+                    }
+                    for item in email_fragments[:4]
+                ]
+            payload["merged_facts"] = merged_facts
+            fact_source = dict(payload.get("fact_source") or {})
+            fact_source["email_asset_count"] = len(email_assets)
+            fact_source["email_fragment_count"] = len(email_fragments)
+            payload["fact_source"] = fact_source
     item = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
     if not item:
         item = ThreadBusinessFact(session_id=session_id, thread_id=session_id)
@@ -1207,7 +1268,53 @@ KB_UNIFIED_TEMPLATE_SAMPLE_ROWS = [
     ["客户问公司主要做什么", "公司提供翻译、口译、多媒体、印刷、展会与礼品等企业服务。", "FAQ常见问答", 0, "通用", "", "普通资料", "", 50, "中", "", "", "", "", "", "", "", "", "", "公司介绍"],
     ["翻译下单流程", "收文件、确认语种用途、评估报价交期、付款立项、译审交付。", "流程规则", 1, "翻译", "", "普通资料", "", 80, "中", "", "", "", "", "", "", "", "", "", "流程"],
     ["加急费用确认规则", "加急费用需根据交付时间和项目量另行确认，不能直接承诺固定加急价。", "报价限制条件", 0, "翻译", "", "普通资料", "", 90, "高", "", "", "", "", "", "", "", "", "", "报价限制"],
+    ["英译法能力说明", "可承接英译法普通商务资料，支持标准译审流程和按需润色。", "能力知识", 0, "翻译", "英译法", "普通资料", "", 80, "中", "", "", "", "", "", "", "", "", "", "能力,英译法"],
+    ["价格异议案例", "客户质疑价格高，销售先解释译审流程和交付保障，再补充历史交付经验，最终推进成交。", "案例", 0, "翻译", "", "普通资料", "重点客户", 65, "中", "", "", "", "", "", "", "", "", "", "案例,价格异议"],
+    ["询价回复邮件模板", "您好，请您先发送需翻译文件，并说明语种、用途、交付时间和质量要求，我们收到后尽快评估报价。", "邮件模板", 0, "翻译", "", "普通资料", "", 70, "中", "", "", "", "", "", "", "", "", "", "邮件模板,询价"],
+    ["1000中文字符定义", "1000中文字符通常指中文原文字符数量，用于按千字计价的翻译报价口径。", "名词定义", 0, "翻译", "", "普通资料", "", 55, "低", "", "", "", "", "", "", "", "", "", "定义,报价口径"],
     ["英译法普通商务资料报价", "英译法普通商务资料按220元/千字报价，最低收费300元。", "", 0, "翻译", "英译法", "普通资料", "", 95, "高", "2026-04-20", "2030-12-31", "每千中文字符", "CNY", 220, 220, 300, "", "不含税", "结构化报价"],
+    ["邮件询价整理", "客户邮件询问英译法报价和交期，需先确认文件字数、用途、交付时间和是否需要盖章。", "FAQ常见问答", 1, "翻译", "英译法", "认证/盖章文件", "普通客户", 72, "中", "", "", "", "", "", "", "", "", "", "邮件,询价整理"],
+]
+
+KB_TEMPLATE_FIELD_GUIDE = [
+    ["标题", "是", "全部知识", "建议写成可被审核人快速判断用途的主题，避免过短或过泛。", "翻译下单流程"],
+    ["内容", "是", "全部知识", "填写可复用的业务说明、流程、问答、模板或规则正文。", "收文件、确认语种用途、评估报价交期、付款立项、译审交付。"],
+    ["知识分类", "普通知识必填；结构化报价留空", "FAQ/流程/能力/案例/邮件模板/名词定义/报价限制条件", "统一模板用它判断落入哪类知识；结构化报价规则行请保持留空。", "流程规则"],
+    ["切分", "否", "全部知识", "填 1 时会调用 LLM 按业务知识点拆成多条草稿切片；填 0 或留空则按单条导入。", "1"],
+    ["服务", "建议填写", "全部知识", "用于限定业务线，常见值：翻译、印刷、同传、多媒体译制、展台搭建、礼品、通用。", "翻译"],
+    ["语种", "按需填写", "语言相关知识或报价", "建议使用系统标准值，例如中译英、英译法、英译中。", "英译法"],
+    ["服务范围", "按需填写", "全部知识", "限定资料范围，例如普通资料、法律资料、认证/盖章文件。", "普通资料"],
+    ["客户层级", "按需填写", "全部知识", "用于限定知识适用对象，例如普通客户、重点客户、VIP客户。", "重点客户"],
+    ["优先级", "否", "全部知识", "数值越大代表排序时越靠前，建议 1-100。", "80"],
+    ["风险等级", "建议填写", "全部知识", "低/中/高；涉及报价承诺、限制条件、例外说明时建议填高。", "高"],
+    ["生效日期", "结构化报价建议填写", "结构化报价规则", "价格开始生效日期，支持 yyyy-mm-dd。", "2026-04-20"],
+    ["失效日期", "结构化报价建议填写", "结构化报价规则", "价格失效日期，支持 yyyy-mm-dd。", "2030-12-31"],
+    ["单位", "结构化报价建议填写", "结构化报价规则", "建议使用模板示例口径，例如每千中文字符、每项目、每小时。", "每千中文字符"],
+    ["币种", "结构化报价建议填写", "结构化报价规则", "如 CNY、USD。", "CNY"],
+    ["价格", "结构化报价建议填写", "结构化报价规则", "最低价格或单价；若只有一个价格，最高价格可与之相同或留空。", "220"],
+    ["最高价格", "否", "结构化报价规则", "用于价格区间上限；单点价格可留空或与价格相同。", "220"],
+    ["最低收费", "按需填写", "结构化报价规则", "项目低于最低收费时按该金额执行。", "300"],
+    ["加急倍率", "按需填写", "结构化报价规则", "只写明确可执行的倍率；不确定时应改写为报价限制条件。", "1.5"],
+    ["税费", "按需填写", "结构化报价规则", "记录含税/不含税、发票要求等。", "不含税"],
+    ["标签", "否", "全部知识", "多个标签用逗号分隔，方便后续筛选和审核。", "流程,下单"],
+]
+
+KB_TEMPLATE_RULE_GUIDE = [
+    ["统一模板适用范围", "同一份模板同时支持 FAQ常见问答、流程规则、能力知识、案例、邮件模板、名词定义、报价限制条件，以及结构化报价规则。"],
+    ["普通知识导入规则", "普通业务知识必须填写知识分类；系统会根据知识分类自动映射到底层 knowledge_type 和 chunk_type。"],
+    ["结构化报价规则导入规则", "结构化报价规则行的知识分类留空，同时补齐价格、单位、币种、生效日期、失效日期等字段。"],
+    ["切分规则", "切分=1 会调用 LLM 自动拆成多条草稿切片；结构化报价规则固定按单条导入。"],
+    ["审核发布规则", "所有导入结果先进入 draft，仍需提交审核、审核同意并通过发布门禁后才能进入正式检索。"],
+    ["样例使用方式", "模板首个工作表中的示例行可直接另存为内部样例，删除示例后再填正式数据。"],
+]
+
+KB_TEMPLATE_ENUM_GROUPS = [
+    ("knowledge_class", "知识分类", "统一模板里普通知识必填；结构化报价规则留空。"),
+    ("business_line", "服务", "用于限定业务线，推荐直接使用系统标准值。"),
+    ("language_pair", "语种", "只在与语言方向强相关的知识或报价里填写。"),
+    ("service_scope", "服务范围", "限定资料类型、项目范围或场景边界。"),
+    ("customer_tier", "客户层级", "按客户重要度控制知识适用范围。"),
+    ("risk_level", "风险等级", "影响审核与发布门禁，报价与限制条件一般为高风险。"),
 ]
 
 KB_EXCEL_COLUMN_ALIASES = {
@@ -1236,6 +1343,58 @@ KB_EXCEL_COLUMN_ALIASES = {
     "tax_policy": ["税费", "税点", "发票", "tax_policy"],
     "tags": ["标签", "tags"],
 }
+
+def _set_worksheet_widths(sheet, rows: list[list[object]]):
+    from openpyxl.utils import get_column_letter
+
+    if not rows:
+        return
+    column_count = max(len(row) for row in rows)
+    for column_index in range(1, column_count + 1):
+        width = max(
+            len(str(row[column_index - 1])) if column_index - 1 < len(row) and row[column_index - 1] is not None else 0
+            for row in rows
+        )
+        sheet.column_dimensions[get_column_letter(column_index)].width = max(12, min(width + 4, 40))
+
+def _build_kb_import_template_workbook(template_type: str):
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = KB_EXCEL_IMPORT_TYPES[template_type]["label"][:31]
+    main_rows = [KB_EXCEL_TEMPLATE_COLUMNS]
+    sample_rows = KB_UNIFIED_TEMPLATE_SAMPLE_ROWS if template_type == "unified" else [KB_EXCEL_TEMPLATE_SAMPLE[template_type]]
+    main_rows.extend(sample_rows)
+    for row in main_rows:
+        sheet.append(row)
+    sheet.freeze_panes = "A2"
+    _set_worksheet_widths(sheet, main_rows)
+
+    if template_type == "unified":
+        guide_sheet = workbook.create_sheet("填写说明")
+        guide_rows = [["规则", "说明"], *KB_TEMPLATE_RULE_GUIDE]
+        for row in guide_rows:
+            guide_sheet.append(row)
+        _set_worksheet_widths(guide_sheet, guide_rows)
+
+        field_sheet = workbook.create_sheet("字段说明")
+        field_rows = [["字段", "是否必填", "适用范围", "填写说明", "示例"], *KB_TEMPLATE_FIELD_GUIDE]
+        for row in field_rows:
+            field_sheet.append(row)
+        _set_worksheet_widths(field_sheet, field_rows)
+
+        enum_sheet = workbook.create_sheet("枚举参考")
+        enum_rows = [["字段", "编码", "显示值", "说明"]]
+        for dict_name, field_label, note in KB_TEMPLATE_ENUM_GROUPS:
+            for code, label in KB_LABELS.get(dict_name, {}).items():
+                enum_rows.append([field_label, code, label, note])
+        for row in enum_rows:
+            enum_sheet.append(row)
+        _set_worksheet_widths(enum_sheet, enum_rows)
+
+    workbook.active = 0
+    return workbook
 
 def _parse_datetime_or_none(value):
     if value is None or value == "":
@@ -2352,6 +2511,39 @@ def _json_safe(value):
         return [_json_safe(item) for item in value]
     return value
 
+def _email_asset_source_ref_from_candidate_source_ref(source_ref: str | None) -> str:
+    value = str(source_ref or "").strip()
+    if not value:
+        return f"email_candidate_{uuid.uuid4().hex[:12]}"
+    head, sep, tail = value.rpartition("_")
+    if sep and tail.isdigit():
+        return head
+    return value
+
+def _split_email_into_function_fragments(subject: str, content: str) -> list[dict]:
+    text = sanitize_text(content or "")
+    if not text:
+        return []
+    paragraphs = [part.strip() for part in re.split(r"\n{2,}", text) if part.strip()]
+    if not paragraphs:
+        paragraphs = [text]
+    fragments: list[dict] = []
+    for index, paragraph in enumerate(paragraphs[:8], start=1):
+        fragment_kind = infer_function_fragment(
+            title=subject,
+            content=paragraph,
+            source_type="email_excel",
+            tags={"paragraph_index": index},
+        ) or ("core_answer" if index == len(paragraphs) else "background")
+        fragments.append(
+            {
+                "title": f"{subject[:80]} / {fragment_kind} / {index}",
+                "content": paragraph,
+                "function_fragment": fragment_kind,
+            }
+        )
+    return fragments
+
 def _parse_optional_datetime(value):
     if value in (None, ""):
         return None
@@ -2385,7 +2577,435 @@ def _build_email_asset_source_ref(record: dict, *, import_batch: str, index: int
     if thread_id:
         return thread_id[:255]
     row_no = record.get("row") or index
-    return f"{import_batch}:{row_no}"[:255]
+    if str(record.get("use_range_label") or "").strip() == "开发推广触达":
+        return f"dev_email_row_{row_no}"[:255]
+    file_fingerprint = hashlib.md5(str(import_batch or "").strip().lower().encode("utf-8")).hexdigest()[:8]
+    return f"email_excel_{file_fingerprint}_row_{row_no}"[:255]
+
+
+DEV_EMAIL_ROW_SEQUENCE = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+]
+DEV_EMAIL_SKIP_ROWS = {15, 18}
+DEV_EMAIL_ROW_META = {
+    3: {"name": "国际展会服务英文触达模板", "business_line": "exhibition", "service_scope": "marketing"},
+    4: {"name": "国际化活动一站式服务模板", "business_line": "exhibition", "service_scope": "marketing"},
+    5: {"name": "年终活动与礼品服务模板", "business_line": "exhibition", "service_scope": "marketing"},
+    6: {"name": "年末感谢与多服务拓展模板", "business_line": "general", "service_scope": "marketing"},
+    7: {"name": "生命科学语言服务介绍模板", "business_line": "translation", "service_scope": "medical"},
+    8: {"name": "有限空间活动方案模板", "business_line": "exhibition", "service_scope": "marketing"},
+    9: {"name": "新春问候与服务更新模板", "business_line": "general", "service_scope": "marketing"},
+    10: {"name": "翻译+综合服务介绍模板", "business_line": "general", "service_scope": "marketing"},
+    11: {"name": "新年致谢与新服务引导模板", "business_line": "general", "service_scope": "marketing"},
+    12: {"name": "培训资料本地化能力模板", "business_line": "translation", "service_scope": "training"},
+    13: {"name": "老客户回访与合作回顾模板", "business_line": "translation", "service_scope": "general"},
+    14: {"name": "医药注册翻译能力模板", "business_line": "translation", "service_scope": "medical"},
+    16: {"name": "设计印刷服务介绍模板", "business_line": "printing", "service_scope": "marketing"},
+    17: {"name": "未接来电后跟进模板", "business_line": "translation", "service_scope": "medical"},
+    19: {"name": "活动策划与多语沟通方案模板", "business_line": "exhibition", "service_scope": "marketing"},
+    20: {"name": "老客户新年回访与赠礼模板", "business_line": "general", "service_scope": "marketing"},
+    21: {"name": "英文综合服务开发模板", "business_line": "general", "service_scope": "marketing"},
+    22: {"name": "展会筹备指南触达模板", "business_line": "exhibition", "service_scope": "marketing"},
+    23: {"name": "医药翻译跟进与案例触达模板", "business_line": "translation", "service_scope": "medical"},
+    24: {"name": "AI大会展会服务触达模板", "business_line": "exhibition", "service_scope": "marketing"},
+    25: {"name": "AI大会展会服务触达模板（含账号引导）", "business_line": "exhibition", "service_scope": "marketing"},
+    26: {"name": "AI大会展会服务触达模板", "business_line": "exhibition", "service_scope": "marketing"},
+    27: {"name": "定制笔记本推广模板", "business_line": "gifts", "service_scope": "marketing"},
+    28: {"name": "轨交标书翻译案例触达模板", "business_line": "translation", "service_scope": "railway"},
+}
+DEV_EMAIL_LINE_SPECS = {
+    4: [("背景与行业痛点", 1, 2, "background", "template"), ("一站式活动方案", 3, 4, "core_answer", "template"), ("实战案例表现", 5, 10, "highlight", "example"), ("服务清单", 11, 16, "core_answer", "template"), ("SPEED三省优势", 17, 20, "highlight", "template"), ("合作场景与邀约", 21, 26, "cta", "template")],
+    5: [("年终活动场景引入", 1, 1, "background", "template"), ("公司经验与整体价值", 2, 3, "highlight", "template"), ("活动策划与场地布置", 4, 6, "core_answer", "template"), ("印刷与视觉物料", 7, 8, "core_answer", "template"), ("口译与多媒体支持", 9, 12, "core_answer", "template"), ("礼品定制方案", 13, 14, "core_answer", "template"), ("档期提醒与合作邀约", 15, 18, "cta", "template")],
+    6: [("年终问候与感谢", 1, 2, "background", "template"), ("年度服务成果", 3, 7, "highlight", "example"), ("客户信任与能力延展", 8, 9, "highlight", "template"), ("新年合作展望", 10, 12, "cta", "template")],
+    7: [("HMOs项目服务背景", 1, 1, "background", "template"), ("HMOs领域理解", 2, 5, "highlight", "example"), ("翻译质量与合规要求", 6, 6, "core_answer", "template"), ("保密机制与沟通邀约", 7, 8, "cta", "template")],
+    8: [("活动痛点引入", 1, 1, "background", "template"), ("一站式方案定位", 2, 3, "core_answer", "template"), ("案例效果证明", 4, 7, "highlight", "example"), ("服务清单", 8, 14, "core_answer", "template"), ("三省优势", 15, 18, "highlight", "template"), ("合作预期与伙伴定位", 19, 23, "cta", "template")],
+    9: [("新春问候与合作回顾", 1, 2, "background", "template"), ("扩展服务一览", 3, 8, "core_answer", "template"), ("首批体验邀请", 9, 9, "cta", "template"), ("全流程合作伙伴定位", 10, 10, "highlight", "template"), ("推荐与新年祝福", 11, 12, "cta", "template")],
+    10: [("服务组合价值引入", 1, 4, "background", "template"), ("同传服务能力", 5, 5, "core_answer", "template"), ("翻译设计印刷一体化方案", 6, 10, "core_answer", "template"), ("多媒体译制优势", 11, 11, "highlight", "example"), ("软件网站本地化能力", 12, 16, "core_answer", "template"), ("合作邀约与祝福", 17, 18, "cta", "template")],
+    11: [("新年致谢与长期合作", 1, 2, "background", "template"), ("样册与案例附件说明", 3, 3, "highlight", "example"), ("AI视频面试平台引导", 4, 4, "core_answer", "template"), ("纪念笔记本赠送邀约", 5, 5, "cta", "template"), ("2026合作展望与致意", 6, 7, "cta", "template")],
+    12: [("培训本地化挑战场景", 1, 1, "background", "template"), ("交付方案与客户结果", 2, 2, "highlight", "example"), ("AI培训系统价值延展", 3, 3, "core_answer", "template")],
+    13: [("再次联系与背景铺垫", 1, 1, "background", "template"), ("公司简介与服务范围", 2, 4, "highlight", "template"), ("快速响应与技术质量", 5, 9, "core_answer", "template"), ("语言覆盖与行业案例", 10, 13, "highlight", "example"), ("项目管理与一站式方案", 14, 17, "core_answer", "template"), ("需求邀约与祝福", 18, 20, "cta", "template")],
+    14: [("医药出海风险引入", 1, 1, "background", "template"), ("公司资历与多语种能力", 2, 3, "highlight", "template"), ("六大优势上半部分", 4, 7, "core_answer", "template"), ("六大优势下半部分", 8, 10, "core_answer", "template"), ("资料范围覆盖", 11, 17, "highlight", "example"), ("合作邀约", 18, 18, "cta", "template")],
+    16: [("翻译印刷一体化定位", 1, 4, "background", "template"), ("省时优势", 5, 7, "highlight", "template"), ("省心优势", 8, 9, "highlight", "template"), ("省力优势与合作邀约", 10, 12, "cta", "template")],
+    17: [("未接来电与合作延续", 1, 1, "background", "template"), ("历史合作基础", 2, 2, "highlight", "example"), ("医疗翻译能力", 3, 3, "core_answer", "template"), ("需求探询与联系", 4, 4, "cta", "template")],
+    19: [("场景痛点与一站式定位", 1, 2, "background", "template"), ("三省优势", 3, 6, "highlight", "template"), ("客户案例证明", 7, 11, "highlight", "example"), ("适用诉求清单", 12, 15, "core_answer", "template"), ("合作定位与邀约", 16, 17, "cta", "template")],
+    20: [("新年问候与对接变更", 1, 1, "background", "template"), ("化工行业案例能力", 2, 2, "highlight", "example"), ("服务范围与合作邀约", 3, 3, "core_answer", "template"), ("赠礼说明与祝福", 4, 5, "cta", "template")],
+    21: [("Introduction and Connection", 1, 2, "background", "template"), ("Translation and Finance Credentials", 3, 3, "highlight", "example"), ("Gift and Merchandise Examples", 4, 4, "highlight", "example"), ("Service Breadth and CTA", 5, 7, "cta", "template")],
+    22: [("指南价值说明", 1, 1, "highlight", "template"), ("查阅与咨询引导", 2, 2, "cta", "template")],
+    23: [("沟通背景与现状理解", 1, 1, "background", "template"), ("合作基础与专业经验", 2, 2, "highlight", "template"), ("擅长方向示例", 3, 6, "core_answer", "template"), ("优势说明与后续跟进", 7, 8, "cta", "template"), ("医学翻译成功案例清单", 9, 22, "highlight", "example")],
+    24: [("问候与大会引入", 1, 2, "background", "template"), ("已签约展会案例", 3, 8, "highlight", "example"), ("展会配套服务清单", 9, 14, "core_answer", "template"), ("公司积累与服务覆盖", 15, 16, "highlight", "template"), ("合作邀约", 17, 17, "cta", "template")],
+    25: [("问候与大会引入", 1, 2, "background", "template"), ("已签约展会案例", 3, 8, "highlight", "example"), ("展会配套服务清单", 9, 14, "core_answer", "template"), ("公司积累与服务覆盖", 15, 16, "highlight", "template"), ("合作邀约", 17, 17, "cta", "template"), ("官方账号引导", 18, 21, "cta", "template")],
+    26: [("问候与大会引入", 1, 2, "background", "template"), ("已签约展会案例", 3, 8, "highlight", "example"), ("展会配套服务清单", 9, 14, "core_answer", "template"), ("公司积累与服务覆盖", 15, 16, "highlight", "template"), ("合作邀约", 17, 17, "cta", "template")],
+    27: [("定制笔记本整体价值", 1, 1, "core_answer", "template"), ("为什么选择我们", 2, 4, "highlight", "template"), ("材质选择卖点", 5, 8, "core_answer", "template"), ("工艺细节卖点", 9, 12, "core_answer", "template"), ("创意组合方案", 13, 17, "core_answer", "template"), ("行动引导与合作期待", 18, 20, "cta", "template")],
+    28: [("轨交项目案例与交付结果", 1, 1, "highlight", "example"), ("专业领域与交付能力", 2, 2, "core_answer", "template"), ("专业语料积累", 3, 6, "highlight", "example"), ("轨交文档类型示例", 7, 14, "highlight", "example"), ("翻译支持邀约", 15, 16, "cta", "template")],
+}
+
+
+def _normalize_email_import_line(line: str) -> str:
+    text = str(line or "").strip().replace("\u3000", " ")
+    if not text:
+        return ""
+    if text.startswith("?") or text.startswith("？"):
+        text = "○" + text[1:]
+    text = re.sub(r"^[\-\*\u2022\u25cf\u25e6\u30fb]\s*", "○", text)
+    text = re.sub(r"^[tC]\s*(?=[\u4e00-\u9fffA-Za-z0-9])", "○", text)
+    return text
+
+
+def _normalize_email_import_text(value: str) -> str:
+    text = str(value or "").replace("_x000D_", "\n").replace("\r\n", "\n").replace("\r", "\n")
+    return "\n".join(line for line in (_normalize_email_import_line(part) for part in text.split("\n")) if line).strip()
+
+
+def _is_dev_email_template_record(record: dict) -> bool:
+    return str(record.get("use_range_label") or "").strip() == "开发推广触达" and str(record.get("intent_type_label") or "").strip() == "售前触达"
+
+
+def _dev_email_seq_no(row_no: int) -> int:
+    return DEV_EMAIL_ROW_SEQUENCE.index(row_no) + 1
+
+
+def _dev_email_doc_title(row_no: int) -> str:
+    return f"开发邮件{_dev_email_seq_no(row_no):02d}·{DEV_EMAIL_ROW_META[row_no]['name']}"
+
+
+def _email_chunk_priority(function_fragment: str, chunk_type: str) -> int:
+    if chunk_type == "example":
+        return 82
+    return {"core_answer": 80, "highlight": 78, "cta": 74, "background": 72}.get(function_fragment, 70)
+
+
+def _email_import_join_lines(lines: list[str], start: int, end: int) -> str:
+    return "\n".join(lines[start - 1:end]).strip()
+
+
+def _make_email_chunk(title: str, content: str, *, function_fragment: str, chunk_type: str, business_line: str, service_scope: str) -> dict:
+    return {
+        "title": title,
+        "content": content.strip(),
+        "function_fragment": function_fragment,
+        "chunk_type": chunk_type,
+        "business_line": business_line,
+        "service_scope": service_scope,
+    }
+
+
+def _split_dev_email_row_3(content: str, *, business_line: str, service_scope: str) -> list[dict]:
+    text = content.replace("''", "'")
+    anchors = [
+        "This is Joyce Sheng form SPEED.",
+        "With the Chinaplas exhibition in Shanghai coming up this April,",
+        "Beyond our past collaborations in printing and translation, our team also offers a range of other services that you may not have experienced before:",
+        "Event Planning & Execution:",
+        "If any of these services align with your current needs,",
+    ]
+    try:
+        a1 = text.index(anchors[0]) + len(anchors[0])
+        a2 = text.index(anchors[1])
+        a3 = text.index(anchors[2])
+        a4 = text.index(anchors[3])
+        a5 = text.index(anchors[4])
+    except ValueError:
+        payloads = _split_email_into_function_fragments("development_email_01", text)
+        return [
+            _make_email_chunk(item["title"], item["content"], function_fragment=item["function_fragment"], chunk_type="template", business_line=business_line, service_scope=service_scope)
+            for item in payloads
+        ]
+    return [
+        _make_email_chunk("Greeting and Reconnection", text[:a1], function_fragment="background", chunk_type="template", business_line=business_line, service_scope=service_scope),
+        _make_email_chunk("Past Collaboration and New Location", text[a1:a2], function_fragment="highlight", chunk_type="template", business_line=business_line, service_scope=service_scope),
+        _make_email_chunk("Chinaplas Support Inquiry", text[a2:a3], function_fragment="cta", chunk_type="template", business_line=business_line, service_scope=service_scope),
+        _make_email_chunk("Expanded Service Portfolio", text[a3:a4], function_fragment="core_answer", chunk_type="template", business_line=business_line, service_scope=service_scope),
+        _make_email_chunk("Event and Gift Support", text[a4:a5], function_fragment="core_answer", chunk_type="template", business_line=business_line, service_scope=service_scope),
+        _make_email_chunk("Call to Action", text[a5:], function_fragment="cta", chunk_type="template", business_line=business_line, service_scope=service_scope),
+    ]
+
+
+def _build_email_excel_document_title(record: dict, *, fallback_index: int) -> str:
+    row_no = int(record.get("row") or fallback_index)
+    if _is_dev_email_template_record(record) and row_no in DEV_EMAIL_ROW_META:
+        return _dev_email_doc_title(row_no)
+    subject = str(record.get("subject") or "").strip()
+    if subject:
+        return subject[:255]
+    return f"邮件模板{fallback_index:02d}"
+
+
+def _build_email_excel_business_scope(record: dict) -> tuple[str, str]:
+    row_no = int(record.get("row") or 0)
+    if _is_dev_email_template_record(record) and row_no in DEV_EMAIL_ROW_META:
+        meta = DEV_EMAIL_ROW_META[row_no]
+        return meta["business_line"], meta["service_scope"]
+    return "general", "marketing"
+
+
+def _build_email_excel_chunks(record: dict, *, fallback_index: int) -> list[dict]:
+    row_no = int(record.get("row") or fallback_index)
+    content = _normalize_email_import_text(str(record.get("content") or ""))
+    business_line, service_scope = _build_email_excel_business_scope(record)
+    if _is_dev_email_template_record(record):
+        if row_no == 3:
+            return _split_dev_email_row_3(content, business_line=business_line, service_scope=service_scope)
+        if row_no in DEV_EMAIL_LINE_SPECS:
+            lines = [line.strip() for line in content.split("\n") if line.strip()]
+            return [
+                _make_email_chunk(
+                    title,
+                    _email_import_join_lines(lines, start, end),
+                    function_fragment=function_fragment,
+                    chunk_type=chunk_type,
+                    business_line=business_line,
+                    service_scope=service_scope,
+                )
+                for title, start, end, function_fragment, chunk_type in DEV_EMAIL_LINE_SPECS[row_no]
+            ]
+    subject = str(record.get("subject") or _build_email_excel_document_title(record, fallback_index=fallback_index)).strip() or f"email_{fallback_index}"
+    payloads = _split_email_into_function_fragments(subject, content)
+    chunks: list[dict] = []
+    for idx, item in enumerate(payloads, start=1):
+        chunks.append(
+            _make_email_chunk(
+                f"{subject[:40]} / {idx}",
+                item["content"],
+                function_fragment=item["function_fragment"],
+                chunk_type="template" if item["function_fragment"] in {"background", "core_answer", "cta", "greeting", "closing"} else "example",
+                business_line=business_line,
+                service_scope=service_scope,
+            )
+        )
+    return chunks
+
+
+def _build_email_excel_doc_source_ref(record: dict, *, filename: str, fallback_index: int) -> str:
+    row_no = int(record.get("row") or fallback_index)
+    if _is_dev_email_template_record(record):
+        return f"dev_email_row_{row_no}"[:255]
+    file_fingerprint = hashlib.md5(str(filename or "").strip().lower().encode("utf-8")).hexdigest()[:8]
+    return f"email_excel_{file_fingerprint}_row_{row_no}"[:255]
+
+
+def _merge_stage_labels(values: list[str]) -> list[str]:
+    merged: list[str] = []
+    for raw in values:
+        for part in [item.strip() for item in str(raw or "").split(",") if item and item.strip()]:
+            if part not in merged:
+                merged.append(part)
+    return merged
+
+
+def _prepare_email_excel_import_entries(records: list[dict], *, filename: str) -> tuple[list[dict], list[dict]]:
+    prepared: list[dict] = []
+    skipped: list[dict] = []
+    seen_by_hash: dict[str, dict] = {}
+    for index, original in enumerate(records, start=1):
+        record = dict(original)
+        record["content"] = _normalize_email_import_text(str(record.get("content") or ""))
+        record["subject"] = sanitize_text(str(record.get("subject") or "").strip())
+        row_no = int(record.get("row") or index)
+        if _is_dev_email_template_record(record) and row_no in DEV_EMAIL_SKIP_ROWS:
+            skipped.append({"row": row_no, "reason": "too_short_generic"})
+            continue
+        if len(record["content"]) < 60:
+            skipped.append({"row": row_no, "reason": "too_short_generic"})
+            continue
+        fingerprint = hashlib.md5(record["content"].encode("utf-8")).hexdigest()
+        if fingerprint in seen_by_hash:
+            existing = seen_by_hash[fingerprint]
+            existing["source_rows"].append(row_no)
+            existing["stage_values"].append(str(record.get("email_stage_label") or "").strip())
+            existing["duplicate_rows"].append(row_no)
+            skipped.append({"row": row_no, "reason": f"duplicate_of_row_{existing['source_rows'][0]}"})
+            continue
+        entry = {
+            "record": record,
+            "source_rows": [row_no],
+            "stage_values": [str(record.get("email_stage_label") or "").strip()],
+            "duplicate_rows": [],
+            "source_ref": _build_email_excel_doc_source_ref(record, filename=filename, fallback_index=index),
+            "sequence_no": 0,
+        }
+        seen_by_hash[fingerprint] = entry
+        prepared.append(entry)
+    for seq, entry in enumerate(prepared, start=1):
+        entry["sequence_no"] = seq
+    return prepared, skipped
+
+
+def _purge_email_excel_history(db: Session, *, filename: str, source_refs: list[str]) -> dict:
+    prefixes = tuple(source_refs + [f"{filename}:"])
+    doc_count = 0
+    chunk_count = 0
+    frag_count = 0
+    cand_count = 0
+
+    docs = db.query(KnowledgeDocument).filter(KnowledgeDocument.source_type == "email_excel").all()
+    for doc in docs:
+        source_meta = dict(doc.source_meta or {})
+        if doc.source_ref in source_refs or str(source_meta.get("source_filename") or "").strip() == filename:
+            chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc.document_id).all()
+            for chunk in chunks:
+                db.delete(chunk)
+                chunk_count += 1
+            db.delete(doc)
+            doc_count += 1
+
+    fragments = db.query(EmailFragmentAsset).filter(EmailFragmentAsset.source_type == "email_excel").all()
+    for fragment in fragments:
+        source_snapshot = dict(fragment.source_snapshot or {})
+        if any(str(fragment.source_ref or "").startswith(prefix) for prefix in prefixes) or str(source_snapshot.get("source_filename") or "").strip() == filename:
+            db.delete(fragment)
+            frag_count += 1
+
+    candidates = db.query(KnowledgeCandidate).filter(KnowledgeCandidate.source_type == "email_excel").all()
+    for candidate in candidates:
+        source_snapshot = dict(candidate.source_snapshot or {})
+        if any(str(candidate.source_ref or "").startswith(prefix) for prefix in prefixes) or str(source_snapshot.get("source_filename") or "").strip() == filename:
+            db.delete(candidate)
+            cand_count += 1
+
+    db.flush()
+    return {
+        "deleted_documents": doc_count,
+        "deleted_chunks": chunk_count,
+        "deleted_fragments": frag_count,
+        "deleted_candidates": cand_count,
+    }
+
+
+def _create_email_excel_document(
+    db: Session,
+    *,
+    email_asset: EmailThreadAsset,
+    entry: dict,
+    filename: str,
+    import_batch: str,
+    owner: str,
+) -> tuple[KnowledgeDocument, list[KnowledgeChunk], list[EmailFragmentAsset]]:
+    record = dict(entry["record"])
+    row_no = int(record.get("row") or entry["sequence_no"])
+    source_rows = list(entry["source_rows"])
+    stage_labels = _merge_stage_labels(entry["stage_values"])
+    document_title = _build_email_excel_document_title(record, fallback_index=entry["sequence_no"])
+    if not str(record.get("subject") or "").strip():
+        email_asset.subject = document_title[:255]
+    chunks_payload = _build_email_excel_chunks(record, fallback_index=entry["sequence_no"])
+    business_line, service_scope = _build_email_excel_business_scope(record)
+    doc_tags = {
+        "knowledge_class": "email_template",
+        "scenario_label": email_asset.scenario_label or "development_outreach",
+        "intent_label": email_asset.intent_label or "pre_sales_touch",
+        "language_style": email_asset.language_style or "formal_email",
+        "thread_id": email_asset.thread_id,
+        "session_id": email_asset.session_id,
+        "source_filename": filename,
+        "source_row": row_no,
+        "source_rows": source_rows,
+        "sequence_no": entry["sequence_no"],
+        "use_range_label": record.get("use_range_label"),
+        "intent_type_label": record.get("intent_type_label"),
+        "email_stage_labels": stage_labels,
+        "import_batch": import_batch,
+    }
+    document = KnowledgeDocument(
+        title=document_title,
+        knowledge_type="faq",
+        business_line=business_line,
+        sub_service=None,
+        source_type="email_excel",
+        source_ref=entry["source_ref"],
+        source_meta={
+            "source_filename": filename,
+            "source_row": row_no,
+            "source_rows": source_rows,
+            "sequence_no": entry["sequence_no"],
+            "raw_labels": {
+                "column_b": record.get("use_range_label"),
+                "column_c": record.get("intent_type_label"),
+                "column_d_list": stage_labels,
+            },
+            "duplicate_rows": entry["duplicate_rows"],
+            "chunk_count": len(chunks_payload),
+        },
+        status="review",
+        owner=owner,
+        import_batch=import_batch,
+        risk_level="medium",
+        review_required=True,
+        review_status="in_review",
+        library_type=infer_library_type(source_type="email_excel", knowledge_type="faq", chunk_type="template", tags=doc_tags),
+        tags=doc_tags,
+    )
+    db.add(document)
+    db.flush()
+
+    created_chunks: list[KnowledgeChunk] = []
+    created_fragments: list[EmailFragmentAsset] = []
+    for chunk_no, payload in enumerate(chunks_payload, start=1):
+        embedding = EmbeddingService.embed(f"{payload['title']}\n{payload['content']}") if payload["content"] else None
+        chunk = KnowledgeChunk(
+            document_id=document.document_id,
+            chunk_no=chunk_no,
+            chunk_type=payload["chunk_type"],
+            title=payload["title"],
+            content=payload["content"],
+            keyword_text=f"{payload['title']}\n{payload['content']}",
+            embedding=embedding,
+            embedding_provider=settings.EMBEDDING_PROVIDER if embedding else None,
+            embedding_model=settings.EMBEDDING_MODEL if embedding else None,
+            embedding_dim=settings.EMBEDDING_DIM if embedding else None,
+            priority=_email_chunk_priority(payload["function_fragment"], payload["chunk_type"]),
+            retrieval_weight=Decimal("1.000"),
+            business_line=payload["business_line"],
+            sub_service=None,
+            knowledge_type="faq",
+            language_pair=None,
+            service_scope=payload["service_scope"],
+            region=None,
+            customer_tier=None,
+            structured_tags=merge_tags(doc_tags, function_fragment=payload["function_fragment"], chunk_no=chunk_no, chunk_type=payload["chunk_type"], business_line=payload["business_line"], service_scope=payload["service_scope"]),
+            status="review",
+        )
+        db.add(chunk)
+        db.flush()
+        quality = _apply_chunk_governance(chunk, source_type="email_excel", source_ref=document.source_ref)
+        document.library_type = chunk.library_type
+        document.tags = merge_tags(document.tags, library_type=document.library_type)
+        created_chunks.append(chunk)
+
+        fragment = EmailFragmentAsset(
+            email_id=email_asset.email_id,
+            session_id=email_asset.session_id,
+            thread_id=email_asset.thread_id,
+            source_type="email_excel",
+            source_ref=f"dev_email_seq_{entry['sequence_no']:02d}__fragment__{chunk_no}" if _is_dev_email_template_record(record) else f"{entry['source_ref']}__fragment__{chunk_no}",
+            title=payload["title"],
+            content=payload["content"],
+            function_fragment=payload["function_fragment"],
+            scenario_label=email_asset.scenario_label,
+            intent_label=email_asset.intent_label,
+            language_style=email_asset.language_style,
+            library_type=quality["library_type"],
+            allowed_for_generation=bool(quality["allowed_for_generation"]),
+            usable_for_reply=bool(quality["usable_for_reply"]),
+            publishable=bool(quality["publishable"]),
+            topic_clarity_score=_decimal_score(quality["topic_clarity_score"]),
+            completeness_score=_decimal_score(quality["completeness_score"]),
+            reusability_score=_decimal_score(quality["reusability_score"]),
+            evidence_reliability_score=_decimal_score(quality["evidence_reliability_score"]),
+            useful_score=_decimal_score(quality["useful_score"]),
+            effect_score=_decimal_score(0.5),
+            quality_notes=quality["quality_notes"],
+            source_snapshot={
+                "source_filename": filename,
+                "source_row": row_no,
+                "source_rows": source_rows,
+                "sequence_no": entry["sequence_no"],
+                "tags": chunk.structured_tags,
+            },
+            status="ready",
+        )
+        db.add(fragment)
+        created_fragments.append(fragment)
+    return document, created_chunks, created_fragments
 
 def _rollup_email_thread_asset_stats(db: Session, email_ids: list[str]) -> None:
     if not email_ids:
@@ -2459,10 +3079,10 @@ def _upsert_email_thread_asset(
     item.intent_label = intent_label
     item.language_style = language_style
     item.business_state = business_state
-    item.library_type = governance["library_type"]
+    item.library_type = "fact"
     item.quality_score = _decimal_score(governance["useful_score"])
     item.effect_score = item.effect_score if item.effect_score is not None else _decimal_score(0.5)
-    item.usable_for_reply = False
+    item.usable_for_reply = bool(float(governance["useful_score"]) >= 0.45)
     item.allowed_for_generation = False
     item.publishable = False
     item.source_snapshot = _json_safe(record)
@@ -2567,82 +3187,279 @@ def _extract_email_assets_and_candidates(
     operator: str,
     max_candidates: int,
 ) -> dict:
+    import_batch = f"email_excel_{uuid.uuid4().hex[:12]}"
+    prepared_entries, skipped = _prepare_email_excel_import_entries(records, filename=filename)
+    purge_summary = _purge_email_excel_history(db, filename=filename, source_refs=[item["source_ref"] for item in prepared_entries])
+
     created_assets: list[EmailThreadAsset] = []
-    created_candidates: list[KnowledgeCandidate] = []
+    created_documents: list[KnowledgeDocument] = []
+    created_chunks: list[KnowledgeChunk] = []
     created_fragments: list[EmailFragmentAsset] = []
     seen_asset_ids: set[str] = set()
-    for index, record in enumerate(records, start=1):
-        source_ref = _build_email_asset_source_ref(record, import_batch=filename, index=index)
+
+    for entry in prepared_entries:
+        record = dict(entry["record"])
+        record.setdefault("source_ref", entry["source_ref"])
+        if not record.get("subject"):
+            record["subject"] = _build_email_excel_document_title(record, fallback_index=entry["sequence_no"])
         email_asset = _upsert_email_thread_asset(
             db,
             record=record,
             source_type="email_excel",
-            source_ref=source_ref,
-            import_batch=filename,
+            source_ref=entry["source_ref"],
+            import_batch=import_batch,
         )
         if str(email_asset.email_id) not in seen_asset_ids:
             created_assets.append(email_asset)
             seen_asset_ids.add(str(email_asset.email_id))
-        if len(created_candidates) >= max_candidates:
-            continue
-        entries = _build_candidate_entries_from_record(record, "email_excel")
-        for offset, item in enumerate(entries, start=1):
-            if len(created_candidates) >= max_candidates:
-                break
-            snapshot = dict(item.get("source_snapshot") or {})
-            snapshot["email_asset_ref"] = source_ref
-            snapshot["tags"] = merge_tags(
-                snapshot.get("tags"),
-                thread_id=email_asset.thread_id,
-                session_id=email_asset.session_id,
-                scenario_label=email_asset.scenario_label,
-                intent_label=email_asset.intent_label,
-                language_style=email_asset.language_style,
-                source_email_ref=source_ref,
+        document, chunks, fragments = _create_email_excel_document(
+            db,
+            email_asset=email_asset,
+            entry=entry,
+            filename=filename,
+            import_batch=import_batch,
+            owner=owner,
+        )
+        created_documents.append(document)
+        created_chunks.extend(chunks)
+        created_fragments.extend(fragments)
+    return {
+        "import_batch": import_batch,
+        "email_assets": created_assets,
+        "documents": created_documents,
+        "chunks": created_chunks,
+        "fragments": created_fragments,
+        "candidates": [],
+        "skipped": skipped,
+        "purged": purge_summary,
+    }
+
+def _rebuild_candidate_governance(db: Session, *, source_type: str | None = None) -> dict:
+    query = db.query(KnowledgeCandidate)
+    if source_type:
+        query = query.filter(KnowledgeCandidate.source_type == source_type)
+    items = query.all()
+    updated = 0
+    for item in items:
+        _apply_candidate_governance(item)
+        updated += 1
+    return {"updated": updated}
+
+
+def _build_email_record_from_candidate(candidate: KnowledgeCandidate) -> dict:
+    snapshot = dict(candidate.source_snapshot or {})
+    content = sanitize_text(str(snapshot.get("content") or candidate.content or "").strip())
+    subject = str(snapshot.get("subject") or candidate.title or "历史邮件资产").strip()[:255]
+    thread_id = str(snapshot.get("thread_id") or snapshot.get("session_id") or _email_asset_source_ref_from_candidate_source_ref(candidate.source_ref)).strip()
+    session_id = str(snapshot.get("session_id") or "").strip() or None
+    return {
+        "subject": subject,
+        "content": content,
+        "thread_id": thread_id,
+        "session_id": session_id,
+        "external_userid": snapshot.get("external_userid"),
+        "sales_userid": snapshot.get("sales_userid"),
+        "sender": snapshot.get("sender"),
+        "receiver": snapshot.get("receiver"),
+        "sent_at": snapshot.get("sent_at"),
+        "attachment_names": snapshot.get("attachment_names"),
+        "attachment_summary": snapshot.get("attachment_summary"),
+        "attachment_content": snapshot.get("attachment_content"),
+        "attachment_time": snapshot.get("attachment_time"),
+    }
+
+
+def _attachment_payloads_from_snapshot(snapshot: dict | None) -> list[dict[str, Any]]:
+    snapshot = dict(snapshot or {})
+    names = snapshot.get("attachment_names") or []
+    if isinstance(names, str):
+        names = [item.strip() for item in re.split(r"[;,；，]", names) if item.strip()]
+    attachments: list[dict[str, Any]] = []
+    text_payload = snapshot.get("attachment_content") or snapshot.get("attachment_summary")
+    if names:
+        for name in names:
+            attachments.append(
+                {
+                    "filename": str(name).strip()[:120],
+                    "summary": text_payload,
+                    "file_time": snapshot.get("attachment_time"),
+                }
             )
-            candidate = _create_candidate_record(
+    elif text_payload:
+        attachments.append(
+            {
+                "summary": text_payload,
+                "file_time": snapshot.get("attachment_time"),
+            }
+        )
+    return attachments
+
+
+def _build_summary_from_email_assets(
+    email_assets: list[EmailThreadAsset],
+    email_fragments: list[EmailFragmentAsset],
+) -> dict | None:
+    if not email_assets and not email_fragments:
+        return None
+    latest_asset = email_assets[0] if email_assets else None
+    fragment_types = sorted({item.function_fragment for item in email_fragments if item.function_fragment})
+    key_facts: dict[str, Any] = {}
+    if latest_asset:
+        key_facts["latest_email_subject"] = latest_asset.subject
+    if fragment_types:
+        key_facts["email_fragment_types"] = fragment_types
+    attachment_names: list[str] = []
+    for asset in email_assets:
+        for attachment in _attachment_payloads_from_snapshot(asset.source_snapshot):
+            filename = str(attachment.get("filename") or "").strip()
+            if filename and filename not in attachment_names:
+                attachment_names.append(filename)
+    if attachment_names:
+        key_facts["attachment_names"] = attachment_names[:10]
+    demand_parts = [asset.subject for asset in email_assets if asset.subject][:3]
+    fragment_samples = [sanitize_text((fragment.content or "")[:120]) for fragment in email_fragments[:3] if fragment.content]
+    if fragment_samples:
+        key_facts["fragment_samples"] = fragment_samples
+    return {
+        "topic": latest_asset.subject if latest_asset else "email_thread",
+        "core_demand": " / ".join(demand_parts) if demand_parts else None,
+        "key_facts": key_facts,
+        "todo_items": None,
+        "risks": None,
+        "to_be_confirmed": None,
+        "status": "email_backfill",
+    }
+
+
+def _collect_thread_fact_session_ids(db: Session, session_ids: list[str] | None = None) -> list[str]:
+    if session_ids:
+        return sorted({str(item).strip() for item in session_ids if str(item).strip()})
+
+    collected: set[str] = set()
+    for value, in db.query(KnowledgeHitLog.session_id).filter(KnowledgeHitLog.session_id.isnot(None)).distinct().all():
+        if value:
+            collected.add(str(value).strip())
+    for value, in db.query(IntentSummary.user_id).filter(IntentSummary.user_id.isnot(None)).distinct().all():
+        if value:
+            collected.add(str(value).strip())
+    for value, in db.query(MessageLog.user_id).filter(MessageLog.user_id.isnot(None)).distinct().all():
+        if value:
+            collected.add(str(value).strip())
+    for value, in db.query(EmailThreadAsset.session_id).filter(EmailThreadAsset.session_id.isnot(None)).distinct().all():
+        if value:
+            collected.add(str(value).strip())
+    for value, in db.query(EmailThreadAsset.thread_id).filter(EmailThreadAsset.thread_id.isnot(None)).distinct().all():
+        if value:
+            collected.add(str(value).strip())
+    return sorted(collected)
+
+
+def _backfill_email_assets_from_candidates(db: Session, *, source_type: str = "email_excel") -> dict:
+    groups: dict[str, list[KnowledgeCandidate]] = {}
+    candidates = db.query(KnowledgeCandidate).filter(KnowledgeCandidate.source_type == source_type).order_by(KnowledgeCandidate.created_at.asc()).all()
+    for candidate in candidates:
+        asset_ref = _email_asset_source_ref_from_candidate_source_ref(candidate.source_ref)
+        groups.setdefault(asset_ref, []).append(candidate)
+
+    created_assets = 0
+    created_fragments = 0
+    for asset_ref, grouped_candidates in groups.items():
+        first = grouped_candidates[0]
+        email_asset = _upsert_email_thread_asset(
+            db,
+            record=_build_email_record_from_candidate(first),
+            source_type=source_type,
+            source_ref=asset_ref,
+            import_batch="historical_email_candidate_backfill",
+        )
+        created_assets += 1
+
+        raw_fragments = _split_email_into_function_fragments(email_asset.subject, email_asset.content)
+        for index, fragment_payload in enumerate(raw_fragments, start=1):
+            _upsert_email_fragment_asset(
                 db,
-                title=item["title"],
-                content=item["content"],
-                knowledge_type=item["knowledge_type"],
-                chunk_type=item["chunk_type"],
-                business_line=item["business_line"],
-                sub_service=item.get("sub_service"),
-                language_pair=item.get("language_pair"),
-                service_scope=item.get("service_scope"),
-                region=item.get("region"),
-                customer_tier=item.get("customer_tier"),
-                priority=int(item.get("priority") or 60),
-                risk_level=item.get("risk_level") or "medium",
-                effective_from=item.get("effective_from"),
-                effective_to=item.get("effective_to"),
-                pricing_rule=item.get("pricing_rule"),
-                source_type="email_excel",
-                source_ref=f"{source_ref}_{offset}",
-                source_snapshot=snapshot,
-                owner=owner,
-                operator=operator,
-                review_notes=item.get("review_notes"),
-            )
-            fragment = _upsert_email_fragment_asset(
-                db,
-                source_type="email_excel",
-                source_ref=f"{source_ref}_{offset}",
-                title=candidate.title,
-                content=candidate.content,
+                source_type=source_type,
+                source_ref=f"{asset_ref}__fragment__{index}",
+                title=fragment_payload["title"],
+                content=fragment_payload["content"],
                 session_id=email_asset.session_id,
                 thread_id=email_asset.thread_id,
                 email_asset=email_asset,
-                candidate=candidate,
-                source_snapshot=snapshot,
+                source_snapshot={
+                    "email_asset_ref": asset_ref,
+                    "tags": {
+                        "thread_id": email_asset.thread_id,
+                        "session_id": email_asset.session_id,
+                        "scenario_label": email_asset.scenario_label,
+                        "intent_label": email_asset.intent_label,
+                        "language_style": email_asset.language_style,
+                        "function_fragment": fragment_payload["function_fragment"],
+                    },
+                },
             )
-            created_candidates.append(candidate)
-            created_fragments.append(fragment)
+            created_fragments += 1
+
     return {
-        "email_assets": created_assets,
-        "candidates": created_candidates,
-        "fragments": created_fragments,
+        "candidate_groups": len(groups),
+        "assets_touched": created_assets,
+        "raw_fragments_touched": created_fragments,
     }
+
+
+def _backfill_thread_business_facts(db: Session, *, session_ids: list[str] | None = None) -> dict:
+    candidate_session_ids = _collect_thread_fact_session_ids(db, session_ids)
+    touched = 0
+    for session_id in candidate_session_ids:
+        if not session_id:
+            continue
+        summary_model = db.query(IntentSummary).filter(IntentSummary.user_id == session_id).order_by(IntentSummary.id.desc()).first()
+        summary_json = None
+        if summary_model:
+            summary_json = {
+                "topic": summary_model.topic,
+                "core_demand": summary_model.core_demand,
+                "key_facts": summary_model.key_facts,
+                "todo_items": summary_model.todo_items,
+                "risks": summary_model.risks,
+                "to_be_confirmed": summary_model.to_be_confirmed,
+                "status": summary_model.status,
+            }
+        email_assets = db.query(EmailThreadAsset).filter(
+            or_(EmailThreadAsset.session_id == session_id, EmailThreadAsset.thread_id == session_id)
+        ).order_by(EmailThreadAsset.created_at.desc()).all()
+        email_fragments = db.query(EmailFragmentAsset).filter(
+            or_(EmailFragmentAsset.session_id == session_id, EmailFragmentAsset.thread_id == session_id)
+        ).order_by(EmailFragmentAsset.created_at.desc()).all()
+        if not summary_json:
+            summary_json = _build_summary_from_email_assets(email_assets, email_fragments)
+        messages = db.query(MessageLog).filter(MessageLog.user_id == session_id).order_by(MessageLog.timestamp.asc()).all()
+        payload_messages = [
+            {
+                "content": item.content,
+                "sender_type": item.sender_type,
+                "timestamp": item.timestamp.isoformat() if item.timestamp else None,
+            }
+            for item in messages
+        ]
+        for asset in email_assets[:5]:
+            payload_messages.append(
+                {
+                    "content": asset.content,
+                    "sender_type": "email",
+                    "timestamp": asset.sent_at.isoformat() if asset.sent_at else None,
+                    "attachments": _attachment_payloads_from_snapshot(asset.source_snapshot),
+                }
+            )
+        _upsert_thread_business_fact(
+            db,
+            session_id=session_id,
+            summary_json=summary_json,
+            crm_context={},
+            messages=payload_messages,
+            external_userid=extract_external_userid(session_id),
+        )
+        touched += 1
+    return {"touched": touched}
 
 def _sync_email_effect_rollup_for_log(
     db: Session,
@@ -2993,6 +3810,230 @@ def _export_training_samples(db: Session, payload: TrainingSampleExportRequest) 
         "exported_counts": exported_counts,
     }
 
+
+def _analysis_completion_counts(db: Session) -> dict[str, Any]:
+    return {
+        "thread_business_fact": db.query(func.count(ThreadBusinessFact.fact_id)).scalar(),
+        "email_thread_asset": db.query(func.count(EmailThreadAsset.email_id)).scalar(),
+        "email_fragment_asset": db.query(func.count(EmailFragmentAsset.fragment_id)).scalar(),
+        "email_effect_feedback": db.query(func.count(EmailEffectFeedback.feedback_id)).scalar(),
+        "model_training_sample": db.query(func.count(ModelTrainingSample.sample_id)).scalar(),
+        "knowledge_chunk_library_types": {
+            str(key): count
+            for key, count in db.query(KnowledgeChunk.library_type, func.count(KnowledgeChunk.chunk_id))
+            .group_by(KnowledgeChunk.library_type)
+            .all()
+        },
+        "knowledge_candidate_library_types": {
+            str(key): count
+            for key, count in db.query(KnowledgeCandidate.library_type, func.count(KnowledgeCandidate.candidate_id))
+            .group_by(KnowledgeCandidate.library_type)
+            .all()
+        },
+    }
+
+
+def _run_training_pipeline(db: Session, payload: TrainingExecutionRequest, report: Any = None) -> dict:
+    prepare_payload = TrainingSamplePrepareRequest(
+        sample_types=payload.sample_types,
+        min_quality_score=payload.min_quality_score,
+        min_effect_score=payload.min_effect_score,
+        limit_per_source=payload.limit_per_source,
+        operator=payload.operator,
+    )
+    if report:
+        report(progress=10, summary="prepare training samples")
+    prepare_result = _prepare_training_samples(db, prepare_payload)
+
+    export_payload = TrainingSampleExportRequest(
+        sample_types=prepare_result["sample_types"],
+        max_samples=payload.max_samples,
+        operator=payload.operator,
+    )
+    if report:
+        report(progress=45, summary="export training samples")
+    export_result = _export_training_samples(db, export_payload)
+
+    runner_command = (payload.runner_command or settings.TRAINING_RUNNER_COMMAND or "").strip()
+    runner_workdir = payload.runner_workdir or settings.TRAINING_RUNNER_WORKDIR or os.getcwd()
+    timeout_seconds = payload.runner_timeout_seconds or settings.TRAINING_RUNNER_TIMEOUT_SECONDS
+    runner_result = {
+        "executed": False,
+        "command": runner_command,
+        "workdir": runner_workdir,
+        "timeout_seconds": timeout_seconds,
+    }
+    if payload.execute_runner and runner_command:
+        stdout_path = os.path.join(export_result["export_dir"], "runner.stdout.log")
+        stderr_path = os.path.join(export_result["export_dir"], "runner.stderr.log")
+        env = os.environ.copy()
+        env.update(
+            {
+                "TRAINING_EXPORT_DIR": export_result["export_dir"],
+                "TRAINING_MANIFEST_PATH": export_result["manifest_path"],
+                "TRAINING_RUN_ID": export_result["run_id"],
+                "TRAINING_SAMPLE_TYPES": ",".join(export_result["exported_counts"].keys()),
+            }
+        )
+        if report:
+            report(progress=70, summary="execute training runner")
+        with open(stdout_path, "w", encoding="utf-8") as stdout_fh, open(stderr_path, "w", encoding="utf-8") as stderr_fh:
+            completed = subprocess.run(
+                runner_command,
+                cwd=runner_workdir,
+                shell=True,
+                env=env,
+                stdout=stdout_fh,
+                stderr=stderr_fh,
+                timeout=max(60, int(timeout_seconds)),
+                check=False,
+            )
+        runner_result = {
+            "executed": True,
+            "command": runner_command,
+            "workdir": runner_workdir,
+            "timeout_seconds": timeout_seconds,
+            "returncode": completed.returncode,
+            "stdout_path": stdout_path,
+            "stderr_path": stderr_path,
+        }
+    elif report:
+        report(progress=70, summary="skip external training runner")
+
+    if report:
+        report(progress=90, summary="training pipeline ready")
+    return {
+        "prepare": prepare_result,
+        "export": export_result,
+        "runner": runner_result,
+    }
+
+
+def _run_training_pipeline_job(report: Any, payload_data: dict) -> dict:
+    payload = TrainingExecutionRequest(**payload_data)
+    db = SessionLocal()
+    try:
+        result = _run_training_pipeline(db, payload, report=report)
+        db.commit()
+        return result
+    finally:
+        db.close()
+
+
+def _complete_analysis_items(db: Session, payload: AnalysisCompletionRequest, report: Any = None) -> dict:
+    summary: dict[str, Any] = {
+        "before_counts": _analysis_completion_counts(db),
+        "source_type": payload.source_type,
+    }
+
+    if payload.rebuild_candidate_governance:
+        if report:
+            report(progress=10, summary="rebuild candidate governance")
+        summary["candidate_governance"] = _rebuild_candidate_governance(db, source_type=payload.source_type)
+    if payload.backfill_email_assets:
+        if report:
+            report(progress=25, summary="backfill email assets")
+        summary["email_asset_backfill"] = _backfill_email_assets_from_candidates(db, source_type=payload.source_type)
+    if payload.backfill_thread_facts:
+        if report:
+            report(progress=40, summary="backfill thread facts")
+        summary["thread_fact_backfill_before_feedback"] = _backfill_thread_business_facts(db)
+
+    positive_limit = max(0, min(int(payload.bootstrap_positive_feedback_count or 0), 20))
+    positive_logs = (
+        db.query(KnowledgeHitLog)
+        .filter(KnowledgeHitLog.final_response.isnot(None), KnowledgeHitLog.status == "ok")
+        .order_by(KnowledgeHitLog.created_at.desc())
+        .limit(positive_limit)
+        .all()
+    )
+    touched_sessions = sorted({log.session_id for log in positive_logs if log.session_id})
+    feedback_updated = 0
+    extracted_reply_fragments = 0
+    if positive_logs:
+        if report:
+            report(progress=55, summary="bootstrap positive feedback")
+        for log in positive_logs:
+            bootstrap_applied = False
+            if log.feedback_status not in POSITIVE_FEEDBACK_STATUSES:
+                log.feedback_status = payload.bootstrap_feedback_status
+                log.manual_feedback = {
+                    "note": "system bootstrap: historical positive feedback backfill",
+                    "operator": payload.operator or "analysis_completion",
+                }
+                _update_effect_rollup_for_log(
+                    db,
+                    log=log,
+                    feedback_status=log.feedback_status,
+                    manual_feedback=log.manual_feedback,
+                )
+                feedback_updated += 1
+                bootstrap_applied = True
+            if payload.extract_excellent_replies and log.session_id:
+                created = _extract_excellent_reply_candidates(
+                    db,
+                    session_id=log.session_id,
+                    owner="system_backfill",
+                    operator=payload.operator or "analysis_completion",
+                    force=True,
+                )
+                extracted_reply_fragments += len(created)
+                existing_email_feedback = db.query(EmailEffectFeedback.feedback_id).filter(
+                    EmailEffectFeedback.log_id == log.log_id
+                ).first()
+                if bootstrap_applied or not existing_email_feedback:
+                    _sync_email_effect_rollup_for_log(
+                        db,
+                        log=log,
+                        feedback_status=log.feedback_status or payload.bootstrap_feedback_status,
+                        manual_feedback=log.manual_feedback,
+                    )
+    summary["positive_feedback_bootstrap"] = {
+        "logs_touched": feedback_updated,
+        "sessions": touched_sessions,
+        "excellent_reply_candidates_created": extracted_reply_fragments,
+    }
+
+    if payload.backfill_thread_facts:
+        if report:
+            report(progress=70, summary="refresh thread facts")
+        summary["thread_fact_backfill_after_feedback"] = _backfill_thread_business_facts(db, session_ids=touched_sessions or None)
+
+    if payload.prepare_training_samples:
+        if report:
+            report(progress=82, summary="prepare training samples")
+        prepare_payload = TrainingSamplePrepareRequest(
+            sample_types=payload.sample_types,
+            min_quality_score=payload.min_quality_score,
+            min_effect_score=payload.min_effect_score,
+            limit_per_source=payload.limit_per_source,
+            operator=payload.operator,
+        )
+        summary["training_prepare"] = _prepare_training_samples(db, prepare_payload)
+    if payload.export_training_samples:
+        if report:
+            report(progress=92, summary="export training samples")
+        export_payload = TrainingSampleExportRequest(
+            sample_types=payload.sample_types,
+            max_samples=payload.max_samples,
+            operator=payload.operator,
+        )
+        summary["training_export"] = _export_training_samples(db, export_payload)
+
+    summary["after_counts"] = _analysis_completion_counts(db)
+    return summary
+
+
+def _run_complete_analysis_items_job(report: Any, payload_data: dict) -> dict:
+    payload = AnalysisCompletionRequest(**payload_data)
+    db = SessionLocal()
+    try:
+        result = _complete_analysis_items(db, payload, report=report)
+        db.commit()
+        return result
+    finally:
+        db.close()
+
 def _create_candidate_from_feedback_log(
     db: Session,
     log: KnowledgeHitLog,
@@ -3161,7 +4202,10 @@ def _extract_excellent_reply_candidates(
     operator: str | None = None,
     force: bool = False,
 ) -> list[KnowledgeCandidate]:
-    log = db.query(KnowledgeHitLog).filter(KnowledgeHitLog.session_id == session_id).order_by(KnowledgeHitLog.created_at.desc()).first()
+    log = db.query(KnowledgeHitLog).filter(
+        KnowledgeHitLog.session_id == session_id,
+        KnowledgeHitLog.final_response.isnot(None),
+    ).order_by(KnowledgeHitLog.created_at.desc()).first()
     if not log or not (log.final_response or "").strip():
         raise HTTPException(status_code=404, detail="当前会话没有可抽取的最终回复")
     if not force and log.feedback_status not in {"useful", "adopted", "won", "advanced"}:
@@ -3173,6 +4217,7 @@ def _extract_excellent_reply_candidates(
     business_line = query_features.get("business_line") or "general"
     created: list[KnowledgeCandidate] = []
     for idx, item in enumerate(_split_reply_into_candidate_fragments(log.final_response or ""), start=1):
+        source_ref = f"{session_id}_{idx}"
         source_snapshot = {
             "session_id": session_id,
             "log_id": str(log.log_id),
@@ -3188,29 +4233,50 @@ def _extract_excellent_reply_candidates(
                 "language_style": "concise_wechat",
             },
         }
-        candidate = _create_candidate_record(
-            db,
-            title=f"{item['title']} · {item['function_fragment']}",
-            content=item["content"],
-            knowledge_type=knowledge_type if knowledge_type in KB_LABELS["knowledge_type"] else "faq",
-            chunk_type="template" if item["function_fragment"] in {"greeting", "cta", "closing", "core_answer"} else "example",
-            business_line=business_line if business_line in KB_LABELS["business_line"] else "general",
-            language_pair=query_features.get("language_pair"),
-            service_scope=query_features.get("service_scope"),
-            customer_tier=query_features.get("customer_tier"),
-            priority=85,
-            risk_level="medium",
-            source_type="excellent_reply",
-            source_ref=f"{session_id}_{idx}",
-            source_snapshot=source_snapshot,
-            owner=owner or "excellent_reply_extract",
-            operator=operator or "excellent_reply_extract",
-            review_notes=f"来源会话 {session_id} 的优秀回复片段抽取",
-        )
+        candidate = db.query(KnowledgeCandidate).filter(
+            KnowledgeCandidate.source_type == "excellent_reply",
+            KnowledgeCandidate.source_ref == source_ref,
+        ).first()
+        if candidate:
+            candidate.title = f"{item['title']} · {item['function_fragment']}"
+            candidate.content = item["content"]
+            candidate.knowledge_type = knowledge_type if knowledge_type in KB_LABELS["knowledge_type"] else "faq"
+            candidate.chunk_type = "template" if item["function_fragment"] in {"greeting", "cta", "closing", "core_answer"} else "example"
+            candidate.business_line = business_line if business_line in KB_LABELS["business_line"] else "general"
+            candidate.language_pair = query_features.get("language_pair")
+            candidate.service_scope = query_features.get("service_scope")
+            candidate.customer_tier = query_features.get("customer_tier")
+            candidate.priority = 85
+            candidate.risk_level = "medium"
+            candidate.source_snapshot = source_snapshot
+            candidate.owner = owner or candidate.owner or "excellent_reply_extract"
+            candidate.operator = operator or "excellent_reply_extract"
+            candidate.review_notes = f"来源会话 {session_id} 的优秀回复片段抽取"
+            _apply_candidate_governance(candidate)
+        else:
+            candidate = _create_candidate_record(
+                db,
+                title=f"{item['title']} · {item['function_fragment']}",
+                content=item["content"],
+                knowledge_type=knowledge_type if knowledge_type in KB_LABELS["knowledge_type"] else "faq",
+                chunk_type="template" if item["function_fragment"] in {"greeting", "cta", "closing", "core_answer"} else "example",
+                business_line=business_line if business_line in KB_LABELS["business_line"] else "general",
+                language_pair=query_features.get("language_pair"),
+                service_scope=query_features.get("service_scope"),
+                customer_tier=query_features.get("customer_tier"),
+                priority=85,
+                risk_level="medium",
+                source_type="excellent_reply",
+                source_ref=source_ref,
+                source_snapshot=source_snapshot,
+                owner=owner or "excellent_reply_extract",
+                operator=operator or "excellent_reply_extract",
+                review_notes=f"来源会话 {session_id} 的优秀回复片段抽取",
+            )
         _upsert_email_fragment_asset(
             db,
             source_type="excellent_reply",
-            source_ref=f"{session_id}_{idx}",
+            source_ref=source_ref,
             title=candidate.title,
             content=candidate.content,
             session_id=session_id,
@@ -4103,6 +5169,10 @@ async def list_kb_import_templates():
         "knowledge_type": KB_EXCEL_IMPORT_TYPES["unified"]["knowledge_type"],
         "chunk_type": KB_EXCEL_IMPORT_TYPES["unified"]["chunk_type"],
         "risk_level": KB_EXCEL_IMPORT_TYPES["unified"]["risk_level"],
+        "required_columns": ["标题", "内容"],
+        "guide_sheets": ["填写说明", "字段说明", "枚举参考"],
+        "sample_row_count": len(KB_UNIFIED_TEMPLATE_SAMPLE_ROWS),
+        "supports": [item["label"] for key, item in KB_EXCEL_IMPORT_TYPES.items() if key != "unified"],
     }
     return {
         "status": "success",
@@ -4120,30 +5190,9 @@ async def download_kb_import_template(template_type: str):
     if template_type not in KB_EXCEL_IMPORT_TYPES:
         raise HTTPException(status_code=404, detail="Template type not found")
     try:
-        from openpyxl import Workbook
+        workbook = _build_kb_import_template_workbook(template_type)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"openpyxl 未安装或不可用: {e}")
-
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = KB_EXCEL_IMPORT_TYPES[template_type]["label"][:31]
-    sheet.append(KB_EXCEL_TEMPLATE_COLUMNS)
-    sample_rows = KB_UNIFIED_TEMPLATE_SAMPLE_ROWS if template_type == "unified" else [KB_EXCEL_TEMPLATE_SAMPLE[template_type]]
-    for row in sample_rows:
-        sheet.append(row)
-    for idx, column_name in enumerate(KB_EXCEL_TEMPLATE_COLUMNS, start=1):
-        sheet.cell(row=1, column=idx).value = column_name
-        sheet.column_dimensions[sheet.cell(row=1, column=idx).column_letter].width = max(12, min(len(column_name) + 8, 24))
-
-    if template_type == "unified":
-        guide = workbook.create_sheet("填写说明")
-        guide.append(["规则", "说明"])
-        guide.append(["统一模板", "该模板同时支持 7 类业务知识和结构化报价规则，无需先选择导入类型。"])
-        guide.append(["知识分类", "除结构化报价规则外，其余业务知识必须填写知识分类。"])
-        guide.append(["结构化报价规则", "结构化报价规则行的知识分类留空，填写价格/单位/币种/生效时间/失效时间等字段。"])
-        guide.append(["切分", "切分=1 时会调用 LLM 自动拆成多条草稿 chunk；结构化报价规则固定按单条导入。"])
-        guide.append(["审核发布", "所有导入结果先进入 draft，后续仍需提交审核、审核同意和发布门禁。"])
-    workbook.active = 0
 
     buffer = BytesIO()
     workbook.save(buffer)
@@ -4670,14 +5719,39 @@ async def submit_assist_feedback(payload: AssistFeedback, db: Session = Depends(
             note=(payload.manual_feedback or {}).get("note") if isinstance(payload.manual_feedback, dict) else None,
         )
     _update_effect_rollup_for_log(db, log=log, feedback_status=payload.feedback_status, manual_feedback=payload.manual_feedback)
+    excellent_reply_candidates: list[KnowledgeCandidate] = []
+    auto_training = None
+    if payload.feedback_status in POSITIVE_FEEDBACK_STATUSES:
+        _backfill_thread_business_facts(db, session_ids=[payload.session_id])
+        excellent_reply_candidates = _extract_excellent_reply_candidates(
+            db,
+            session_id=payload.session_id,
+            owner="assist_feedback_auto",
+            operator="assist_feedback_auto",
+            force=True,
+        )
+        auto_training = _prepare_training_samples(
+            db,
+            TrainingSamplePrepareRequest(
+                sample_types=["reply_fragment_sft", "thread_reply_sft", "retrieval_pair"],
+                min_quality_score=0.45,
+                min_effect_score=0.45,
+                limit_per_source=50,
+                operator="assist_feedback_auto",
+            ),
+        )
     db.commit()
     db.refresh(log)
     if candidate:
         db.refresh(candidate)
+    for item in excellent_reply_candidates:
+        db.refresh(item)
     return {
         "status": "success",
         "log": _hit_log_to_dict(log, redact=True),
         "candidate": _candidate_to_dict(candidate) if candidate else None,
+        "excellent_reply_candidates": [_candidate_to_dict(item) for item in excellent_reply_candidates],
+        "auto_training": auto_training,
     }
 
 @app.post("/api/assist/extract_excellent_reply")
@@ -4896,6 +5970,10 @@ async def retry_job(job_id: str, payload: JobRetryRequest | None = None, db: Ses
         start_job(str(retry_job_record.job_id), _run_regression_job, retry_payload)
     elif job.job_type == "kb_excel_import":
         start_job(str(retry_job_record.job_id), _run_excel_import_job, retry_payload)
+    elif job.job_type == "training_pipeline":
+        start_job(str(retry_job_record.job_id), _run_training_pipeline_job, retry_payload)
+    elif job.job_type == "analysis_completion":
+        start_job(str(retry_job_record.job_id), _run_complete_analysis_items_job, retry_payload)
     else:
         raise HTTPException(status_code=422, detail=f"Retry not supported for job_type={job.job_type}")
     return {"status": "queued", "job": _job_to_dict(retry_job_record)}
@@ -5216,17 +6294,25 @@ def _system_config_check() -> dict:
         "database": settings.CRM_DBName,
         "user": settings.CRM_DBUserId,
         "suggestions": [],
+        "fallback_enabled": True,
     }
     if crm_configured:
+        crm_db = None
         try:
-            from crm_database import CRMSessionLocal
+            from crm_database import CRMSessionLocal, get_crm_connection_debug_info
             crm_db = CRMSessionLocal()
             crm_db.execute(text("SELECT 1"))
             crm_check["status"] = "ok"
+            crm_check.update(get_crm_connection_debug_info())
         except Exception as exc:
             crm_check["status"] = "error"
             crm_check["error"] = sanitize_text(str(exc))
             crm_check["suggestions"].append("检查 SQL Server 地址、ODBC Driver、账号密码和网络连通性。")
+            try:
+                from crm_database import get_crm_connection_debug_info
+                crm_check.update(get_crm_connection_debug_info())
+            except Exception:
+                pass
         finally:
             try:
                 crm_db.close()
@@ -6273,19 +7359,27 @@ async def extract_kb_candidates_from_email_excel(
     db.commit()
     for item in result["email_assets"]:
         db.refresh(item)
-    for item in result["candidates"]:
+    for item in result["documents"]:
+        db.refresh(item)
+    for item in result["chunks"]:
         db.refresh(item)
     for item in result["fragments"]:
         db.refresh(item)
     return {
         "status": "success",
         "filename": filename,
+        "import_batch": result["import_batch"],
         "source_rows": len(records),
         "email_asset_count": len(result["email_assets"]),
-        "created_count": len(result["candidates"]),
+        "created_count": 0,
+        "document_count": len(result["documents"]),
+        "chunk_count": len(result["chunks"]),
         "fragment_count": len(result["fragments"]),
+        "purged": result["purged"],
+        "skipped": result["skipped"],
         "email_assets": [_email_thread_asset_to_dict(item) for item in result["email_assets"]],
-        "candidates": [_candidate_to_dict(item) for item in result["candidates"]],
+        "documents": [_knowledge_document_to_dict(item, db) for item in result["documents"]],
+        "candidates": [],
         "fragments": [_email_fragment_asset_to_dict(item) for item in result["fragments"]],
     }
 
@@ -6366,6 +7460,48 @@ async def export_training_samples(payload: TrainingSampleExportRequest, db: Sess
     result = _export_training_samples(db, payload)
     db.commit()
     return {"status": "success", **result}
+
+
+@app.post("/api/ml/run_training_pipeline")
+async def run_training_pipeline(payload: TrainingExecutionRequest, db: Session = Depends(get_db)):
+    result = _run_training_pipeline(db, payload)
+    db.commit()
+    return {"status": "success", **result}
+
+
+@app.post("/api/ml/run_training_pipeline_async")
+async def run_training_pipeline_async(payload: TrainingExecutionRequest, db: Session = Depends(get_db)):
+    job = _create_job_task(
+        db,
+        job_type="training_pipeline",
+        task_payload=payload.model_dump(),
+        summary="queued training pipeline",
+    )
+    db.commit()
+    db.refresh(job)
+    start_job(str(job.job_id), _run_training_pipeline_job, payload.model_dump())
+    return {"status": "queued", "job": _job_to_dict(job)}
+
+
+@app.post("/api/kb/complete_partial_items")
+async def complete_partial_items(payload: AnalysisCompletionRequest, db: Session = Depends(get_db)):
+    result = _complete_analysis_items(db, payload)
+    db.commit()
+    return {"status": "success", **result}
+
+
+@app.post("/api/kb/complete_partial_items_async")
+async def complete_partial_items_async(payload: AnalysisCompletionRequest, db: Session = Depends(get_db)):
+    job = _create_job_task(
+        db,
+        job_type="analysis_completion",
+        task_payload=payload.model_dump(),
+        summary="queued analysis completion",
+    )
+    db.commit()
+    db.refresh(job)
+    start_job(str(job.job_id), _run_complete_analysis_items_job, payload.model_dump())
+    return {"status": "queued", "job": _job_to_dict(job)}
 
 @app.post("/api/kb/import/faq_excel")
 async def import_faq_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):

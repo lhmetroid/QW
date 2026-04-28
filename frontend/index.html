@@ -87,6 +87,52 @@
             padding: 5px 8px;
         }
         .script-btn:hover { background: #f8fafc; border-color: #94a3b8; }
+        .help-target {
+            position: relative;
+            cursor: help;
+        }
+        .help-inline {
+            text-decoration: underline dotted #94a3b8;
+            text-underline-offset: 3px;
+        }
+        .help-target[data-help]:focus-visible {
+            outline: 2px solid #93c5fd;
+            outline-offset: 2px;
+            border-radius: 6px;
+        }
+        @media (hover: hover) {
+            .help-target[data-help]:hover::after,
+            .help-target[data-help]:focus-visible::after {
+                content: attr(data-help);
+                position: absolute;
+                left: 0;
+                top: calc(100% + 8px);
+                z-index: 90;
+                width: max-content;
+                max-width: min(340px, 72vw);
+                padding: 9px 11px;
+                border-radius: 10px;
+                background: rgba(15, 23, 42, 0.96);
+                color: #f8fafc;
+                font-size: 11px;
+                line-height: 1.55;
+                white-space: normal;
+                box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+                pointer-events: none;
+            }
+            .help-target[data-help]:hover::before,
+            .help-target[data-help]:focus-visible::before {
+                content: "";
+                position: absolute;
+                left: 14px;
+                top: calc(100% + 2px);
+                z-index: 91;
+                border-width: 6px;
+                border-style: solid;
+                border-color: transparent transparent rgba(15, 23, 42, 0.96) transparent;
+                pointer-events: none;
+            }
+        }
         @media (max-width: 1100px) {
             .analysis-panel { min-width: 460px; max-width: 82vw; }
         }
@@ -309,6 +355,9 @@
             '回归测试': '按分组执行商业验收回归，用真实知识库检索结果校验发布质量。',
             '运行状态': '查看知识库数据库、向量模型、大模型、客户画像库、企业微信组件等真实配置状态。',
             '命中日志': '查看真实检索命中记录，可将问题反馈转为候选知识。',
+            '文档阶段': '筛选草稿、审核中、审核同意、已发布、已归档或已驳回文档。',
+            '候选状态': '筛选候选池里不同处理状态的候选知识。',
+            '来源类型': '区分候选来自销售反馈、会话抽取、邮件整理或优秀回复抽取。',
             '新增知识': '手工新增一条草稿知识，会立即调用真实向量模型写入向量。',
             '刷新': '重新加载当前列表。',
             '详情': '查看该记录的完整字段、切片、报价规则和可执行操作。',
@@ -331,12 +380,27 @@
             '下载模板': '下载当前导入类型的标准表格模板。',
             '预览': '只解析和校验表格，不写入数据库。',
             '确认导入': '将预览通过的表格行写入真实知识库草稿，并生成批次。',
+            '表格文件': '上传 .xlsx 或 .xlsm 文件；表头需与模板字段一致或使用兼容别名。',
+            '异步导入任务': '查看导入任务的排队、执行、完成和失败状态。',
+            '历史抽取': '把企微历史会话、历史案例或邮件整理表内容提炼为候选知识。',
+            '企微会话 ID': '填写真实会话编号后，可直接从该会话抽取候选知识。',
+            '历史案例 / 补充文本': '粘贴历史案例、人工整理摘要或补充上下文，每行一条更利于抽取。',
             '会话抽取': '从真实企微会话抽取候选知识，需配置真实大模型。',
             '历史案例抽取': '从粘贴的历史案例文本抽取候选知识，需配置真实大模型。',
             '邮件整理表抽取': '从邮件整理表格抽取候选知识，需配置真实大模型。',
             '回滚': '非破坏性回滚该批次：将批次知识归档并标记 rolled_back。',
             '转候选': '把该命中日志的纠错信息创建为知识候选。',
+            '客户问题': '输入一条真实客户问题，用当前条件测试知识检索和证据命中。',
+            '服务': '限定业务线，减少跨服务误命中。',
+            '知识分类': '限定知识用途，例如 FAQ、流程规则、能力知识、邮件模板等。',
+            '语种': '限定语言方向，例如中译英、英译法等。',
+            '服务范围': '限定资料类型或服务边界，例如普通资料、法律资料、认证文件。',
+            '返回条数': '控制本次测试返回的命中数量，便于排查排序质量。',
             '检索': '按当前筛选条件调用真实知识库检索。',
+            '分组': '用于组织回归用例，便于按业务主题批量执行。',
+            '类别': '用于区分回归用例的能力、报价、流程等问题类别。',
+            '风险': '表示业务风险等级，高风险用例应重点人工复核。',
+            '保留命中日志': '执行回归时保留每条 case 的命中日志，便于追查问题。',
             '文档': '打开关联文档详情。',
             '知识切片': '查看关联知识切片。',
             '规则': '查看关联报价规则。',
@@ -345,8 +409,101 @@
             '停用规则': '停用过期或冲突报价规则。',
             '筛选': '按当前筛选条件刷新回归 case 列表。',
             '异步执行回归': '创建后台回归任务，进度和结果在任务面板查看。',
-            '重试': '重试失败的后台任务。'
+            '异步回归任务': '查看回归任务执行状态、结果摘要和失败重试入口。',
+            '重试': '重试失败的后台任务。',
+            '标题': '该列或字段记录知识主题，需能让审核人一眼判断内容用途。',
+            '内容': '填写可复用的业务说明、规则、问答或模板正文。',
+            '状态': '显示当前记录所处流程阶段，例如草稿、审核中或已发布。',
+            '操作': '这里提供查看详情、编辑、发布、归档等可执行动作。',
+            '模板': '显示当前导入模板名称或使用的模板类型。',
+            '可导入': '预览后通过校验、可以正式写入数据库的记录数。',
+            '跳过': '预览时被识别为空行或无效行，因此不会导入的记录数。',
+            '错误': '预览时发现缺字段、分类不合法或结构化信息异常的记录数。',
+            '行': '对应 Excel 原始行号，方便回表修正。',
+            '切分': '1 表示允许大模型进一步拆成多条知识切片；0 表示按单条导入。',
+            '底层映射': '展示该行最终落入的 knowledge_type 与 chunk_type。',
+            '范围': '这里通常指服务范围或资料范围，用于限制适用场景。',
+            '报价': '展示结构化报价内容或与价格相关的命中信息。',
+            '编号': '系统内部记录编号或回归 case 编号。',
+            '时间': '记录创建、命中或任务执行的时间点。',
+            'Query': '展示原始检索问题文本，用于复盘为什么命中或未命中。',
+            '命中': '显示本次检索或回归命中的知识条数。',
+            '耗时': '显示接口处理耗时，便于排查性能问题。',
+            '原因': '未命中、失败或告警的直接解释。',
+            '标题/范围': '质量问题对应的文档标题或问题作用范围。',
+            '说明': '补充解释该问题、规则或字段应该如何使用。',
+            '等级': '质量问题或风险的严重程度。',
+            '类型': '说明当前记录属于哪种问题、哪类知识或哪类规则。',
+            '单位': '结构化报价的计价单位，例如每千中文字符、每项目。',
+            '价格': '结构化报价的单价或价格区间起点。',
+            '最低收费': '低于该金额时按最低收费执行。',
+            '会话概况': '展示当前企微会话的摘要、业务判断和关键上下文。',
+            '线程业务事实层': '展示系统从线程中提炼出的业务状态、事实字段和附件汇总。',
+            '最新消息': '显示当前线程最近的真实消息，便于核对上下文。',
+            '客户画像摘要': '显示 CRM 与历史行为汇总出的客户背景和风险提示。',
+            '来源': '展示这条知识、候选或日志来自哪个入口。',
+            '来源类型': '说明来源属于反馈、抽取、导入还是训练沉淀。',
+            '来源快照': '保存候选或事实生成时的原始上下文片段，便于审核复盘。',
+            '切片': '展示从文档拆出的知识片段及其治理字段。',
+            '版本历史': '查看知识文档每次编辑后的历史快照和可恢复版本。',
+            '保存控制项': '保存当前文档或切片的治理字段、门禁开关和状态。',
+            '保存切片': '保存当前知识切片的内容和结构化字段。',
+            '保存报价规则': '保存当前结构化报价规则，供发布门禁和检索使用。',
+            '执行发布上线': '对当前记录执行门禁校验并正式发布到检索面。',
+            '打开配置编辑': '打开配置弹窗，调整引擎参数或提示词。',
+            '发布门禁说明': '查看当前文档为何可以发布，或被哪些规则阻断。',
+            '查看文档': '直接跳到对应知识文档详情。',
+            '补规则': '为当前记录补充结构化规则，常用于报价或限制条件。',
+            '关闭': '关闭当前侧栏、弹窗或说明面板。',
+            '确定': '确认当前输入并提交操作。',
+            '返回企微实时智能': '离开知识库管理页，回到企微实时会话工作区。',
+            '输入用途': '补充当前问题、报价或文档的业务用途，帮助系统更准确判断。',
+            '复制对比版': '复制对比模型生成的建议文本，便于人工比对。',
+            '线程业务事实层': '集中查看线程事实、阶段信号、附件摘要和效果回流。'
         };
+
+        function normalizeTooltipKey(text = '') {
+            return String(text || '')
+                .replace(/\s+/g, ' ')
+                .replace(/[：:]+$/g, '')
+                .replace(/^[^A-Za-z0-9\u4e00-\u9fa5]+/g, '')
+                .trim();
+        }
+
+        function tooltipFor(label = '') {
+            const normalized = normalizeTooltipKey(label);
+            if (!normalized) return '';
+            return TOOLTIP_TEXT[normalized] || TOOLTIP_TEXT[normalized.replace(/^全部/, '')] || '';
+        }
+
+        function setHelpAttributes(el, label, tip) {
+            const finalTip = el.getAttribute('title') || tip;
+            if (!finalTip) return;
+            el.dataset.help = finalTip;
+            el.classList.add('help-target');
+            if (!['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) {
+                el.classList.add('help-inline');
+            }
+            el.title = finalTip;
+            if (label) {
+                el.setAttribute('aria-label', `${label}：${finalTip}`);
+            }
+        }
+
+        function extractControlLabel(el) {
+            const wrapperLabel = el.closest('label');
+            const labelSpan = wrapperLabel?.querySelector('span');
+            if (labelSpan) return normalizeTooltipKey(labelSpan.textContent);
+            if (el.id) {
+                const explicitLabel = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+                const explicitText = normalizeTooltipKey(explicitLabel?.textContent || '');
+                if (explicitText) return explicitText;
+            }
+            const previous = el.previousElementSibling;
+            const previousText = normalizeTooltipKey(previous?.textContent || '');
+            if (previousText) return previousText;
+            return normalizeTooltipKey(el.getAttribute('placeholder') || '');
+        }
 
         function switchMainApp(app) {
             const normalized = app === 'kb' ? 'kb' : 'wecom';
@@ -371,21 +528,16 @@
         }
 
         function applyTooltips(root = document) {
-            root.querySelectorAll('button').forEach(btn => {
-                const label = (btn.textContent || '').replace(/\s+/g, ' ').trim();
-                const tip = TOOLTIP_TEXT[label] || TOOLTIP_TEXT[label.replace(/^▶️ |^🔄 |^⛔ /, '')];
-                if (tip && !btn.title) {
-                    btn.title = tip;
-                    btn.setAttribute('aria-label', `${label}：${tip}`);
-                }
+            root.querySelectorAll('button, th, td > b, div > b, label > span:first-child, h1, h2, h3, .font-bold').forEach(el => {
+                const label = normalizeTooltipKey(el.textContent || '');
+                const tip = tooltipFor(label) || el.getAttribute('title') || '';
+                if (tip) setHelpAttributes(el, label, tip);
             });
             root.querySelectorAll('select, input, textarea').forEach(el => {
-                if (el.title) return;
-                const placeholder = el.getAttribute('placeholder');
-                if (placeholder) {
-                    el.title = placeholder;
-                    el.setAttribute('aria-label', placeholder);
-                }
+                const label = extractControlLabel(el);
+                const placeholder = normalizeTooltipKey(el.getAttribute('placeholder') || '');
+                const tip = tooltipFor(label) || tooltipFor(placeholder) || el.getAttribute('title') || placeholder;
+                if (tip) setHelpAttributes(el, label || placeholder, tip);
             });
         }
 
@@ -2999,7 +3151,7 @@
                             <button onclick="previewKbExcelImport()" class="px-4 py-2 bg-slate-800 text-white rounded text-sm">预览</button>
                             <button onclick="commitKbExcelImport()" class="px-4 py-2 bg-emerald-600 text-white rounded text-sm">确认导入</button>
                         </div>
-                        <div id="kb-template-info" class="text-xs text-slate-500 mb-4">必填列：标题、内容。推荐填写知识分类；切分=1 会自动拆分，切分=0 或空值直接导入。结构化报价规则需补价格、计价单位、币种、生效日期和失效日期。</div>
+                        <div id="kb-template-info" class="text-xs text-slate-500 mb-4">必填列：标题、内容。模板内已附完整样例行、填写说明、字段说明和枚举参考；普通业务知识推荐填写知识分类，结构化报价规则行保持知识分类留空并补价格、计价单位、币种、生效日期和失效日期。</div>
                         <div id="kb-import-summary" class="mb-4"></div>
                         <div id="kb-import-preview" class="overflow-auto max-h-[420px] border rounded bg-white"></div>
                         <pre id="kb-import-result" class="mt-4 bg-slate-900 text-slate-100 text-xs p-3 rounded overflow-auto max-h-72"></pre>
@@ -3051,6 +3203,7 @@
                 统一模板同时支持 7 类业务知识和结构化报价规则，无需选择导入类型。
                 普通业务知识需填写 <b>知识分类</b>；结构化报价规则行保持知识分类留空，并填写价格、计价单位、币种、生效时间和失效时间。
                 切分=1 会调用大模型拆成多条草稿切片；结构化报价规则固定按单条导入。
+                模板工作簿内已附带 <b>${safeText((item.guide_sheets || []).join(' / '))}</b> 和 <b>${safeText(item.sample_row_count)}</b> 条完整样例。
             `;
         }
 

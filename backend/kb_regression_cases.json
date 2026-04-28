@@ -1707,5 +1707,67 @@
     },
     "expected": {},
     "case_id": "kb_reg_100"
+  },
+  {
+    "group": "medical_case",
+    "category": "case",
+    "risk_level": "medium",
+    "query_text": "医药案例",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_class": "example",
+      "service_scope": "medical"
+    },
+    "expected": {
+      "must_hit_knowledge_class": "example",
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_101"
+  },
+  {
+    "group": "medical_case",
+    "category": "case",
+    "risk_level": "medium",
+    "query_text": "药物涂层冠脉球囊导管产品注册资料项目案例",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_class": "example",
+      "service_scope": "medical"
+    },
+    "expected": {
+      "must_hit_knowledge_class": "example",
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_102"
+  },
+  {
+    "group": "ambiguity_guard",
+    "category": "ambiguous_query",
+    "risk_level": "medium",
+    "query_text": "医药",
+    "query_features": {
+      "business_line": "translation"
+    },
+    "expected": {
+      "manual_review_required": true,
+      "must_clarify_query": true
+    },
+    "case_id": "kb_reg_103"
+  },
+  {
+    "group": "medical_capability",
+    "category": "capability",
+    "risk_level": "medium",
+    "query_text": "医学注册资料可以翻译吗？",
+    "query_features": {
+      "business_line": "translation",
+      "knowledge_class": "capability",
+      "service_scope": "medical"
+    },
+    "expected": {
+      "must_hit_knowledge_class": "capability",
+      "manual_review_allowed": true
+    },
+    "case_id": "kb_reg_104"
   }
 ]
