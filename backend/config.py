@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     LLM1_API_KEY: str = ""
     LLM1_MODEL: str = ""
     LLM1_TIMEOUT_SECONDS: int = 100
+    LLM1_COMPARE_API_URL: str = ""
+    LLM1_COMPARE_API_KEY: str = ""
+    LLM1_COMPARE_MODEL: str = ""
+    LLM1_COMPARE_TIMEOUT_SECONDS: int = 100
 
     # LLM-2 configuration: sales-assist comparison/generation.
     LLM2_API_URL: str = ""

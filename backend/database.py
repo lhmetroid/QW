@@ -1,6 +1,6 @@
 from sqlalchemy import (
     create_engine, Column, Integer, String, Text, DateTime, JSON, text, Boolean,
-    ForeignKey, Numeric, Index
+    ForeignKey, Numeric, Index, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
@@ -37,8 +37,13 @@ class IntentSummary(Base):
     risks = Column(Text)                 # 风险/顾虑
     to_be_confirmed = Column(Text)       # 待确认信息
     status = Column(String(50))          # 对话状态 (枚举)
+    llm1_compare_summary = Column(JSON, nullable=True)  # LLM1 对比模型结构化摘要
+    llm1_compare_prompt_trace = Column(JSON, nullable=True)  # LLM1 对比模型 prompt 存证
     sales_advice_v2 = Column(Text)       # LLM2 的金牌销售话术持久化
     sales_advice_compare_v2 = Column(Text)  # LLM2 对比模型话术持久化
+    sales_advice_compare_prompt_trace_v2 = Column(JSON)  # LLM2 对比模型最终 prompt 存证
+    reply_style_results_v2 = Column(JSON, nullable=True)  # 多风格 x 多模型候选结果
+    reply_scores_v2 = Column(JSON, nullable=True)  # 候选与实际销售回复评分结果
 
 class KnowledgeBase(Base):
     """销售知识库/回复模板"""
@@ -278,6 +283,58 @@ class ThreadBusinessFact(Base):
     __table_args__ = (
         Index("idx_tbf_session", "session_id"),
         Index("idx_tbf_state_updated", "business_state", "updated_at"),
+    )
+
+class ReplyChainSnapshot(Base):
+    """企微回复链路节点快照：按客户气泡保留最后一版 7 步结果。"""
+    __tablename__ = "reply_chain_snapshot"
+
+    snapshot_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    session_id = Column(String(120), nullable=False)
+    anchor_message_id = Column(Integer, nullable=False)
+    anchor_sender_type = Column(String(20), nullable=False, default="customer")
+    anchor_message_time = Column(DateTime, nullable=True)
+    anchor_message_text = Column(Text, nullable=True)
+    visible_message_ids = Column(JSON, nullable=True)
+    latest_dialog_count = Column(Integer, nullable=False, default=0)
+    fast_track = Column(JSON, nullable=True)
+
+    topic = Column(String(200), nullable=True)
+    core_demand = Column(Text, nullable=True)
+    key_facts = Column(JSON, nullable=True)
+    todo_items = Column(JSON, nullable=True)
+    risks = Column(Text, nullable=True)
+    to_be_confirmed = Column(Text, nullable=True)
+    status = Column(String(50), nullable=True)
+    summarized_at = Column(DateTime, nullable=True)
+
+    crm_info = Column(JSON, nullable=True)
+    crm_status = Column(String(50), nullable=True)
+    thread_business_fact = Column(JSON, nullable=True)
+
+    knowledge_log_id = Column(String(120), nullable=True)
+    knowledge_v2 = Column(JSON, nullable=True)
+    knowledge_status = Column(String(50), nullable=True)
+    knowledge_confidence_score = Column(Numeric(8, 6), nullable=True)
+    knowledge_manual_review_required = Column(Boolean, nullable=False, default=False)
+
+    llm1_compare_summary = Column(JSON, nullable=True)
+    llm1_compare_prompt_trace = Column(JSON, nullable=True)
+    sales_advice_v2 = Column(Text, nullable=True)
+    sales_advice_compare_v2 = Column(Text, nullable=True)
+    sales_advice_compare_prompt_trace_v2 = Column(JSON, nullable=True)
+    reply_style_results_v2 = Column(JSON, nullable=True)
+    reply_scores_v2 = Column(JSON, nullable=True)
+    assist_validation = Column(JSON, nullable=True)
+    assist_compare_validation = Column(JSON, nullable=True)
+    actual_sales_replies = Column(JSON, nullable=True)
+    stage_status = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("session_id", "anchor_message_id", name="uq_reply_chain_snapshot_anchor"),
+        Index("idx_reply_chain_snapshot_session_updated", "session_id", "updated_at"),
     )
 
 class EmailThreadAsset(Base):

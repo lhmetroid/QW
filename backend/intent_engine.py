@@ -58,6 +58,384 @@ class IntentEngine:
             raise RuntimeError("ai_settings.json 缺少 SYSTEM_PROMPT_LLM2")
         return prompt
 
+    @classmethod
+    def get_reply_style_options(cls, enabled_only: bool = True) -> list[dict]:
+        raw_options = cls.get_ai_settings().get("REPLY_STYLE_OPTIONS") or []
+        options: list[dict] = []
+        for idx, item in enumerate(raw_options):
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or f"风格 {idx + 1}").strip()
+            content = str(item.get("content") or "").strip()
+            if not title and not content:
+                continue
+            style_id = str(item.get("id") or f"style_{idx + 1}").strip().lower()
+            style_id = re.sub(r"[^a-z0-9_]+", "_", style_id).strip("_") or f"style_{idx + 1}"
+            options.append({
+                "id": style_id,
+                "title": title,
+                "content": content,
+                "enabled": bool(item.get("enabled", True)),
+            })
+        if enabled_only:
+            options = [item for item in options if item.get("enabled")]
+        if options:
+            return options
+        return [{
+            "id": "default_style",
+            "title": "默认微信风格",
+            "content": "微信口语化、简洁、自然，适合直接复制发送。",
+            "enabled": True,
+        }]
+
+    @staticmethod
+    def _llm_provider_label(api_key: str) -> str:
+        return "Dify" if str(api_key or "").startswith("app-") else "OpenAI-compatible"
+
+    @staticmethod
+    def _is_meaningful_prompt_value(value) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            text = value.strip()
+            return text not in {"", "无", "null", "None", "[]", "{}"}
+        if isinstance(value, (list, tuple, set, dict)):
+            return len(value) > 0
+        return True
+
+    @classmethod
+    def sanitize_crm_context_for_prompt(cls, crm_context: dict | None) -> dict:
+        crm = crm_context or {}
+        allowed_keys = [
+            "crm_contact_name",
+            "company_name",
+            "company_industry",
+            "recent_opportunities",
+            "recent_quote_summary",
+            "ongoing_contracts",
+            "contact_recent_followup",
+            "customer_lifecycle_stage",
+            "customer_tier",
+            "payment_risk_level",
+            "high_risk_flags",
+        ]
+        sanitized = {}
+        for key in allowed_keys:
+            value = crm.get(key)
+            if cls._is_meaningful_prompt_value(value):
+                sanitized[key] = value
+        return sanitized
+
+    @classmethod
+    def sanitize_thread_fact_for_prompt(cls, thread_fact: dict | None) -> dict:
+        fact = thread_fact or {}
+        stage_signals = fact.get("stage_signals") or {}
+        merged_facts = fact.get("merged_facts") or {}
+        sanitized = {}
+        for key in ["scenario_label", "intent_label", "language_style", "business_state", "reply_guard_reason"]:
+            value = fact.get(key)
+            if cls._is_meaningful_prompt_value(value):
+                sanitized[key] = value
+        allowed_stage_keys = [
+            "has_formal_quote",
+            "crm_has_quote_history",
+            "waiting_customer_material",
+            "awaiting_customer_reply",
+            "sales_only_conversation",
+            "followup_after_no_reply",
+        ]
+        filtered_stage_signals = {
+            key: stage_signals.get(key)
+            for key in allowed_stage_keys
+            if key in stage_signals
+        }
+        if filtered_stage_signals:
+            sanitized["stage_signals"] = filtered_stage_signals
+        allowed_merged_keys = [
+            "summary_status",
+            "last_sender",
+            "sales_message_count",
+            "customer_message_count",
+            "consecutive_sales_messages",
+            "awaiting_customer_reply",
+            "sales_only_conversation",
+            "followup_after_no_reply",
+            "latest_sales_message",
+            "recent_sales_messages",
+            "latest_customer_message",
+            "crm_has_quote_history",
+        ]
+        filtered_merged_facts = {
+            key: merged_facts.get(key)
+            for key in allowed_merged_keys
+            if cls._is_meaningful_prompt_value(merged_facts.get(key))
+        }
+        if filtered_merged_facts:
+            sanitized["merged_facts"] = filtered_merged_facts
+        return sanitized
+
+    @classmethod
+    def _followup_retrieval_hints(cls, thread_fact: dict | None) -> list[str]:
+        merged_facts = (thread_fact or {}).get("merged_facts") or {}
+        sales_messages = merged_facts.get("recent_sales_messages") or []
+        if not sales_messages:
+            latest_sales_message = str(merged_facts.get("latest_sales_message") or "").strip()
+            if latest_sales_message:
+                sales_messages = [latest_sales_message]
+        hint_text = "\n".join(str(item or "") for item in sales_messages)
+        hints = [
+            "客户未回复后的跟进话术",
+            "降低回复门槛",
+            "二选一短问题",
+            "补一个具体价值点",
+            "避免重复上一轮外联",
+        ]
+        if any(word in hint_text for word in ["我是", "这边是", "负责", "Tiffany", "tiffany", "岚汇"]):
+            hints.append("避免再次自我介绍")
+        if any(word in hint_text for word in ["合作", "合作过", "合作记录"]):
+            hints.append("避免重复合作背景")
+        if any(word in hint_text for word in ["还负责", "是否负责", "您现在", "对接"]):
+            hints.append("避免重复确认联系人是否负责")
+            hints.append("若对方已不负责，礼貌获取当前对接人")
+        if any(word in hint_text for word in ["项目资料", "资料", "整理"]):
+            hints.append("不要围绕历史资料寒暄")
+        return list(dict.fromkeys(item for item in hints if item))
+
+    @classmethod
+    def build_retrieval_query(cls, summary_json: dict | None, thread_fact: dict | None = None) -> str:
+        summary = summary_json or {}
+        parts: list[str] = []
+        for key in ["core_demand", "topic", "status"]:
+            value = str(summary.get(key) or "").strip()
+            if value and value not in {"未明确", "[]", "{}"} and value not in parts:
+                parts.append(value)
+        stage_signals = (thread_fact or {}).get("stage_signals") or {}
+        merged_facts = (thread_fact or {}).get("merged_facts") or {}
+        latest_customer_message = str(merged_facts.get("latest_customer_message") or "").strip()
+        if merged_facts.get("last_sender") == "customer" and latest_customer_message:
+            parts.insert(0, f"优先回应客户最后一句：{latest_customer_message}")
+            if re.search(r"(已有|已经有|我们有|现有).*(报告|资料|英文版|中英文|文档|译文|文件)", latest_customer_message):
+                parts.insert(1, "客户已说明已有现成资料或双语内容，优先承接现状，不要跳回旧推进问题")
+        if stage_signals.get("followup_after_no_reply") or stage_signals.get("awaiting_customer_reply"):
+            for value in cls._followup_retrieval_hints(thread_fact):
+                if value not in parts:
+                    parts.append(value)
+        if merged_facts.get("sales_only_conversation") and "初次触达后的二次跟进" not in parts:
+            parts.append("初次触达后的二次跟进")
+        return "；".join(dict.fromkeys(part for part in parts if part))
+
+    @classmethod
+    def build_sales_assist_request(
+        cls,
+        summary_json: dict,
+        knowledge_list,
+        crm_context: dict = None,
+        *,
+        api_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        timeout_seconds: int | None = None,
+        label: str = "LLM2",
+        reply_style: dict | None = None,
+    ) -> dict:
+        knowledge_context = cls.format_knowledge_context(knowledge_list)
+        prompt2 = cls.get_prompt2()
+        api_url = api_url if api_url is not None else settings.LLM2_API_URL
+        api_key = api_key if api_key is not None else settings.LLM2_API_KEY
+        model = model if model is not None else settings.LLM2_MODEL
+        api_url = api_url or ""
+        api_key = api_key or ""
+        model = model or ""
+        timeout_seconds = timeout_seconds if timeout_seconds is not None else settings.LLM2_TIMEOUT_SECONDS
+
+        summary_str = json.dumps(summary_json, ensure_ascii=False)
+        crm_str = json.dumps(cls.sanitize_crm_context_for_prompt(crm_context), ensure_ascii=False)
+        thread_fact = knowledge_list.get("thread_business_fact") if isinstance(knowledge_list, dict) else None
+        thread_fact_str = json.dumps(cls.sanitize_thread_fact_for_prompt(thread_fact), ensure_ascii=False)
+        style = reply_style or cls.get_reply_style_options(enabled_only=True)[0]
+        style_title = str(style.get("title") or "默认微信风格").strip()
+        style_content = str(style.get("content") or "").strip()
+        style_prompt = f"{style_title}\n{style_content}".strip()
+        merged_facts = (thread_fact or {}).get("merged_facts") or {}
+        latest_customer_message = str(merged_facts.get("latest_customer_message") or "").strip()
+        focus_note = ""
+        if merged_facts.get("last_sender") == "customer" and latest_customer_message:
+            focus_note = (
+                f"\n\n【当前回复焦点】当前要直接回应的客户最后一句是：{latest_customer_message}"
+                "\n请先直接回应这句客户消息，再决定是否补充下一步推进；不要跳回更早的旧追问或旧目标。"
+            )
+            if re.search(r"(已有|已经有|我们有|现有).*(报告|资料|英文版|中英文|文档|译文|文件)", latest_customer_message):
+                focus_note += (
+                    "\n客户最后一句是在说明现有资料/报告/双语版本的现状。"
+                    "这类情况下请先做承接和确认，不要立刻改问负责人、报价或更早的旧推进问题。"
+                    "\n不要把客户原话自动升级成更强判断，例如把“有中英文报告”扩写成“内部能搞定”“不需要”“婉拒当前需求”。"
+                    "只承接客户已经明确说出的事实。"
+                )
+
+        final_prompt = prompt2
+        if (
+            "{{summary_json}}" in final_prompt
+            or "{{knowledge_context}}" in final_prompt
+            or "{{crm_context_json}}" in final_prompt
+            or "{{thread_context_json}}" in final_prompt
+            or "{{reply_style_prompt}}" in final_prompt
+        ):
+            final_prompt = final_prompt.replace("{{summary_json}}", summary_str)
+            final_prompt = final_prompt.replace("{{knowledge_context}}", knowledge_context or "无相关参考")
+            final_prompt = final_prompt.replace("{{crm_context_json}}", crm_str)
+            final_prompt = final_prompt.replace("{{thread_context_json}}", thread_fact_str)
+            final_prompt = final_prompt.replace("{{reply_style_prompt}}", style_prompt or "默认微信风格：微信口语化、简洁、自然。")
+            final_prompt = f"{final_prompt}{focus_note}"
+        else:
+            final_prompt = (
+                f"{prompt2}\n\n会话摘要档案：{summary_str}\n\n线程推进状态：{thread_fact_str}"
+                f"\n\n本次回复风格要求：{style_prompt or '默认微信风格：微信口语化、简洁、自然。'}"
+                f"\n\n内部 CRM 客户标签：{crm_str}\n\n参考知识库匹配：\n{knowledge_context or '无相关参考'}"
+                f"{focus_note}"
+            )
+
+        return {
+            "final_prompt": final_prompt,
+            "api_url": api_url,
+            "api_key": api_key,
+            "model": model,
+            "timeout_seconds": timeout_seconds,
+            "label": label,
+            "prompt_trace": {
+                "label": label,
+                "model": model,
+                "provider": cls._llm_provider_label(api_key),
+                "api_url": api_url,
+                "prompt": final_prompt,
+                "prompt_chars": len(final_prompt or ""),
+                "reply_style": style,
+                "status": "ready",
+                "sent_to_ai": True,
+                "reason": "",
+                "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            },
+        }
+
+    @classmethod
+    def build_llm1_request(
+        cls,
+        context: List[dict],
+        *,
+        user_id: str,
+        api_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        timeout_seconds: int | None = None,
+        label: str = "LLM1",
+    ) -> dict:
+        conversation_text = ""
+        for msg in context:
+            speaker = "客户" if msg.get("sender_type") == "customer" else "销售"
+            conversation_text += f"[{speaker}]: {msg.get('content', '')}\n"
+
+        prompt1 = cls.get_prompt1()
+        if "{{conversation_text}}" in prompt1:
+            full_prompt = prompt1.replace("{{conversation_text}}", conversation_text)
+        else:
+            full_prompt = f"{prompt1}\n\n请分析以下企微真实对话记录：\n{conversation_text}"
+
+        api_url = api_url if api_url is not None else settings.LLM1_API_URL
+        api_key = api_key if api_key is not None else settings.LLM1_API_KEY
+        model = model if model is not None else settings.LLM1_MODEL
+        timeout_seconds = timeout_seconds if timeout_seconds is not None else settings.LLM1_TIMEOUT_SECONDS
+        return {
+            "user_id": user_id,
+            "full_prompt": full_prompt,
+            "api_url": api_url or "",
+            "api_key": api_key or "",
+            "model": model or "",
+            "timeout_seconds": timeout_seconds,
+            "label": label,
+            "prompt_trace": {
+                "label": label,
+                "model": model or "",
+                "provider": cls._llm_provider_label(api_key),
+                "api_url": api_url or "",
+                "prompt": full_prompt,
+                "prompt_chars": len(full_prompt or ""),
+                "status": "ready",
+                "sent_to_ai": True,
+                "reason": "",
+                "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            },
+        }
+
+    @classmethod
+    def run_llm1_request(cls, request_spec: dict) -> dict:
+        headers = {
+            "Authorization": f"Bearer {request_spec.get('api_key') or ''}",
+            "Content-Type": "application/json"
+        }
+        full_prompt = request_spec.get("full_prompt") or ""
+        api_key = request_spec.get("api_key") or ""
+        api_url = request_spec.get("api_url") or ""
+        model = request_spec.get("model") or ""
+        timeout_seconds = request_spec.get("timeout_seconds") or settings.LLM1_TIMEOUT_SECONDS
+        user_id = request_spec.get("user_id") or "llm1"
+        label = request_spec.get("label") or "LLM1"
+        prompt_trace = dict(request_spec.get("prompt_trace") or {})
+        raw_text = ""
+
+        try:
+            prompt_trace["request_started_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+            if api_key.startswith("app-"):
+                url = api_url.rstrip('/') + "/chat-messages"
+                payload = {
+                    "inputs": {},
+                    "query": full_prompt,
+                    "response_mode": "blocking",
+                    "user": user_id
+                }
+                cls._log_llm_prompt(f"{label}_DIFY", model, url, full_prompt)
+                response = cls._post_json(url, headers, payload, timeout_seconds)
+                if response.status_code == 404:
+                    url = api_url.rstrip('/') + "/completion-messages"
+                    cls._log_llm_prompt(f"{label}_DIFY_COMPLETION", model, url, full_prompt)
+                    response = cls._post_json(url, headers, payload, timeout_seconds)
+                prompt_trace["response_status_code"] = response.status_code
+                prompt_trace["response_received_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+                if response.status_code != 200:
+                    raise RuntimeError(f"Dify 接口错误: HTTP {response.status_code}")
+                raw_text = response.json().get("answer", "")
+            else:
+                url = api_url.rstrip('/') + "/chat/completions"
+                payload = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": full_prompt}],
+                    "temperature": 0.1
+                }
+                cls._log_llm_prompt(f"{label}_OPENAI", model, url, full_prompt)
+                response = cls._post_json(url, headers, payload, timeout_seconds)
+                prompt_trace["response_status_code"] = response.status_code
+                prompt_trace["response_received_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+                if response.status_code != 200:
+                    raise RuntimeError(f"OpenAI 协议接口错误: HTTP {response.status_code}")
+                res_data = response.json()
+                raw_text = res_data["choices"][0]["message"]["content"] if "choices" in res_data else ""
+
+            parsed = json.loads(cls._strip_json_fences(raw_text))
+            prompt_trace["result"] = "success"
+            return {
+                "summary": parsed,
+                "raw_text": raw_text,
+                "prompt_trace": prompt_trace,
+            }
+        except json.JSONDecodeError as e:
+            prompt_trace["result"] = "json_error"
+            prompt_trace["reason"] = sanitize_text(str(e))
+            logger.error("LLM-1 返回 JSON 解析失败: %s", e)
+            raise RuntimeError(f"LLM-1 最终提取的 JSON 无法解析: {e}") from e
+        except Exception as e:
+            prompt_trace["result"] = "error"
+            prompt_trace["reason"] = sanitize_text(str(e))
+            logger.error("LLM-1 调用彻底失败: %s", e)
+            raise
+
     @staticmethod
     def _log_llm_prompt(label: str, model: str, url: str, prompt: str):
         if not settings.LOG_LLM_PROMPTS:
@@ -77,7 +455,7 @@ class IntentEngine:
                     "truncated": truncated,
                     "prompt": logged_prompt,
                 },
-                ensure_ascii=False,
+                ensure_ascii=True,
             ),
         )
 
@@ -213,6 +591,8 @@ class IntentEngine:
         tags = chunk.structured_tags if isinstance(chunk.structured_tags, dict) else {}
         class_code = tags.get("knowledge_class")
         if class_code:
+            if class_code == "script":
+                return "email_template"
             return class_code
         if chunk.knowledge_type == "pricing" and chunk.chunk_type == "constraint":
             return "pricing_constraint"
@@ -238,6 +618,7 @@ class IntentEngine:
             "process": {"knowledge_type": "process", "chunk_type": "rule"},
             "faq": {"knowledge_type": "faq", "chunk_type": "faq"},
             "example": {"knowledge_type": "faq", "chunk_type": "example"},
+            "script": {"knowledge_type": "faq", "chunk_type": "template"},
             "email_template": {"knowledge_type": "faq", "chunk_type": "template"},
             "definition": {"knowledge_type": "faq", "chunk_type": "definition"},
         }.get(class_code or "")
@@ -371,6 +752,10 @@ class IntentEngine:
             desired_classes.append("email_template")
             desired_types.append("faq")
             reasons.append("template_intent")
+        if any(word in query for word in ["未回复", "没回", "跟进", "二次跟进", "再联系", "轻一点"]):
+            desired_classes.extend(["email_template", "process", "faq"])
+            desired_types.extend(["faq", "process"])
+            reasons.append("followup_intent")
 
         explicit_class = features.get("knowledge_class")
         if explicit_class:
@@ -425,6 +810,64 @@ class IntentEngine:
             "auto_ok_score": float(features.get("auto_ok_score", 0.70) or 0.70),
             "supporting_score": float(features.get("supporting_score", 0.35) or 0.35),
         }
+
+    @staticmethod
+    def _followup_strategy_score(features: Dict[str, Any], chunk: KnowledgeChunk) -> float:
+        if features.get("followup_strategy") != "awaiting_customer_reply":
+            return 0.0
+        haystack = "\n".join([chunk.title or "", chunk.content or "", chunk.keyword_text or ""]).lower()
+        followup_focus = str(features.get("followup_focus") or "").strip()
+        scope = str(chunk.service_scope or "").strip().lower()
+        owner_terms = ["负责人", "对口负责人", "负责", "不负责", "对接人", "对接", "同事", "转给", "转达", "联系人"]
+        low_threshold_terms = ["二选一", "方便", "短问题", "顺手回", "回复", "回应", "跟进", "提醒"]
+        generic_intro_terms = [
+            "公司简介", "服务范围", "感谢您", "很高兴能再次", "期待能", "祝您", "优势", "背景铺垫", "再次联系",
+            "专业可靠", "满怀期待", "回想起过去的合作",
+        ]
+        score = 0.0
+        if scope in {"contact_discovery", "contact_follow_up", "sales_outreach"}:
+            score = max(score, 0.85)
+        if any(term in haystack for term in owner_terms):
+            score = max(score, 1.2)
+        elif any(term in haystack for term in low_threshold_terms):
+            score = max(score, 0.55)
+
+        if followup_focus == "owner_confirmation":
+            if scope == "contact_discovery":
+                score = max(score, 1.25)
+            elif scope == "contact_follow_up":
+                score = max(score, 0.8)
+            elif scope == "sales_outreach":
+                score -= 1.0
+            if any(term in haystack for term in owner_terms):
+                score = max(score, 1.25)
+            else:
+                score -= 0.55
+            if any(term in haystack for term in ["很早就有合作", "20多年", "资深项目负责人", "我是上海交大事必达的", "加微信", "供应商信息"]):
+                score -= 0.8
+
+        if any(term in haystack for term in generic_intro_terms) and not any(term in haystack for term in owner_terms):
+            score -= 1.0
+
+        return max(min(score, 1.25), -1.25)
+
+    @staticmethod
+    def _structured_pricing_auto_ready(features: Dict[str, Any], hit: Dict[str, Any] | None, min_score: float) -> bool:
+        if not hit or hit.get("knowledge_type") != "pricing":
+            return False
+        if not hit.get("usable_for_reply") or not hit.get("allowed_for_generation"):
+            return False
+        if not hit.get("pricing_rules") or hit.get("pricing_rule_missing"):
+            return False
+        if (hit.get("score") or 0.0) < max(min_score, 0.5):
+            return False
+        expected_language_pair = features.get("language_pair")
+        if expected_language_pair and hit.get("language_pair") != expected_language_pair:
+            return False
+        expected_service_scope = features.get("service_scope")
+        if expected_service_scope and hit.get("service_scope") != expected_service_scope:
+            return False
+        return True
 
     @classmethod
     def _chunk_summary(cls, chunk: KnowledgeChunk, score_payload: dict | None = None, relation: str = "related") -> dict:
@@ -604,6 +1047,7 @@ class IntentEngine:
             "knowledge_type": features.get("knowledge_type"),
             "language_pair": features.get("language_pair"),
             "service_scope": features.get("service_scope"),
+            "service_scope_allowlist": features.get("service_scope_allowlist"),
             "customer_tier": features.get("customer_tier"),
             "effective_time": "now",
             "candidate_limit": settings.KB_CANDIDATE_LIMIT,
@@ -677,6 +1121,13 @@ class IntentEngine:
                     KnowledgeChunk.service_scope == features["service_scope"],
                     KnowledgeChunk.service_scope.is_(None),
                 ))
+            elif isinstance(features.get("service_scope_allowlist"), list) and features.get("service_scope_allowlist"):
+                allowlist = [item for item in features["service_scope_allowlist"] if item]
+                if allowlist:
+                    query = query.filter(or_(
+                        KnowledgeChunk.service_scope.in_(allowlist),
+                        KnowledgeChunk.service_scope.is_(None),
+                    ))
 
             if features.get("customer_tier"):
                 query = query.filter(or_(
@@ -757,6 +1208,7 @@ class IntentEngine:
                 quality_score = float(chunk.useful_score) if chunk.useful_score is not None else 0.45
                 effect_score = float(chunk.effect_score) if getattr(chunk, "effect_score", None) is not None else 0.5
                 generation_score = 1.0 if chunk.usable_for_reply else (0.75 if chunk.allowed_for_generation else 0.45)
+                followup_strategy_score = cls._followup_strategy_score(features, chunk)
                 definition_multiplier = cls._definition_score_multiplier(normalized_query_text, chunk)
                 final_score = round((
                     (semantic_score * 0.45)
@@ -769,6 +1221,7 @@ class IntentEngine:
                     + (quality_score * 0.06)
                     + (effect_score * 0.03)
                     + (generation_score * 0.04)
+                    + (followup_strategy_score * 0.08)
                 ) * definition_multiplier, 6)
                 if semantic_score > 0 or keyword_score > 0 or exact_phrase_score > 0 or bm25_score > 0:
                     source_tags = sorted(candidate_sources_by_id.get(str(chunk.chunk_id), set()))
@@ -784,6 +1237,7 @@ class IntentEngine:
                         quality_score,
                         effect_score,
                         generation_score,
+                        followup_strategy_score,
                         source_tags,
                         chunk,
                     ))
@@ -791,7 +1245,7 @@ class IntentEngine:
             scored.sort(key=lambda item: (item[0], -item[1], -item[2], -item[4], -item[5]))
             hits = []
             score_by_chunk_id: dict[str, dict[str, Any]] = {}
-            for _bucket, final_score, semantic_score, keyword_score, exact_phrase_score, intent_score, metadata_score, bm25_score, quality_score, effect_score, generation_score, source_tags, chunk in scored:
+            for _bucket, final_score, semantic_score, keyword_score, exact_phrase_score, intent_score, metadata_score, bm25_score, quality_score, effect_score, generation_score, followup_strategy_score, source_tags, chunk in scored:
                 score_by_chunk_id[str(chunk.chunk_id)] = {
                     "score": final_score,
                     "semantic_score": round(semantic_score, 6),
@@ -804,8 +1258,9 @@ class IntentEngine:
                     "quality_score": round(quality_score, 6),
                     "effect_score": round(effect_score, 6),
                     "generation_score": round(generation_score, 6),
+                    "followup_strategy_score": round(followup_strategy_score, 6),
                 }
-            for _bucket, final_score, semantic_score, keyword_score, exact_phrase_score, intent_score, metadata_score, bm25_score, quality_score, effect_score, generation_score, source_tags, chunk in scored[:top_k]:
+            for _bucket, final_score, semantic_score, keyword_score, exact_phrase_score, intent_score, metadata_score, bm25_score, quality_score, effect_score, generation_score, followup_strategy_score, source_tags, chunk in scored[:top_k]:
                 is_constraint = chunk.chunk_type == "constraint" or bool((chunk.structured_tags or {}).get("manual_review_required"))
                 constraint_applies = is_constraint and cls._constraint_applies(query_text, chunk, keyword_score)
                 pricing_rules = []
@@ -868,6 +1323,7 @@ class IntentEngine:
                     "positive_feedback_count": getattr(chunk, "positive_feedback_count", 0),
                     "quality_notes": chunk.quality_notes,
                     "priority": chunk.priority,
+                    "followup_strategy_score": round(followup_strategy_score, 6),
                     "business_line": chunk.business_line,
                     "sub_service": chunk.sub_service,
                     "language_pair": chunk.language_pair,
@@ -921,6 +1377,11 @@ class IntentEngine:
             confidence_score = effective_hits[0]["score"] if effective_hits else 0.0
             min_score = thresholds["min_score"]
             auto_ok_score = thresholds["auto_ok_score"]
+            structured_pricing_auto_ready = cls._structured_pricing_auto_ready(
+                features,
+                replyable_hits[0] if replyable_hits else None,
+                min_score,
+            )
             any_manual_review = any(hit.get("manual_review_required") for hit in effective_hits)
             any_insufficient = any(hit.get("insufficient_info") for hit in effective_hits)
             if not hits:
@@ -947,7 +1408,7 @@ class IntentEngine:
                 retrieval_quality = "low_confidence"
                 insufficient_info = True
                 manual_review_required = True
-            elif confidence_score < auto_ok_score:
+            elif confidence_score < auto_ok_score and not structured_pricing_auto_ready:
                 status = "manual_review_required"
                 no_hit_reason = f"最高命中分 {confidence_score} 未达到自动可用阈值 {auto_ok_score}"
                 retrieval_quality = "needs_review"
@@ -1031,9 +1492,17 @@ class IntentEngine:
             db.close()
 
     @staticmethod
-    def infer_query_features(summary_json: Dict[str, Any], crm_context: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    def infer_query_features(
+        summary_json: Dict[str, Any],
+        crm_context: Dict[str, Any] | None = None,
+        thread_fact: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         """从 V1 摘要生成知识库 V2 检索过滤字段；宁可少过滤，不误伤候选。"""
         text = json.dumps(summary_json or {}, ensure_ascii=False)
+        merged_facts = (thread_fact or {}).get("merged_facts") or {}
+        latest_customer_message = str(merged_facts.get("latest_customer_message") or "").strip()
+        if latest_customer_message:
+            text = f"{text}\n{latest_customer_message}"
         features: Dict[str, Any] = {}
 
         if any(word in text for word in ["翻译", "口译", "同传", "字幕", "配音", "语种", "英译", "中译"]):
@@ -1122,11 +1591,36 @@ class IntentEngine:
         if crm.get("payment_risk_level") == "high":
             features["manual_review_hint"] = True
 
+        stage_signals = (thread_fact or {}).get("stage_signals") or {}
+        if stage_signals.get("followup_after_no_reply") or stage_signals.get("awaiting_customer_reply"):
+            features["followup_strategy"] = "awaiting_customer_reply"
+            features["knowledge_class"] = ["email_template", "process", "faq"]
+            if features.get("service_scope") == "general":
+                features.pop("service_scope", None)
+            features["service_scope_allowlist"] = ["general", "contact_discovery", "contact_follow_up", "sales_outreach"]
+            followup_knowledge_types = ["faq", "process"]
+            existing_types = features.get("knowledge_type") or []
+            if not isinstance(existing_types, list):
+                existing_types = [existing_types]
+            features["knowledge_type"] = list(dict.fromkeys(followup_knowledge_types + [item for item in existing_types if item]))
+            role_focus_text = " ".join(
+                str(item or "")
+                for item in [
+                    (summary_json or {}).get("core_demand"),
+                    (summary_json or {}).get("topic"),
+                    latest_customer_message,
+                    merged_facts.get("latest_sales_message"),
+                    " ".join(merged_facts.get("recent_sales_messages") or []),
+                ]
+            )
+            if any(word in role_focus_text for word in ["负责", "负责人", "对接", "同事", "转给"]):
+                features["followup_focus"] = "owner_confirmation"
+
         return features
 
     @staticmethod
     def format_knowledge_context(knowledge_payload) -> str:
-        """把 V2 证据包按规则/FAQ/案例三段格式化，兼容旧 list[str]。"""
+        """把 V2 证据包按规则/FAQ/案例三段格式化为 AI 可用上下文，兼容旧 list[str]。"""
         if not knowledge_payload:
             return ""
         if isinstance(knowledge_payload, list):
@@ -1141,7 +1635,6 @@ class IntentEngine:
             lines = [
                 f"- 标题: {hit.get('title')}",
                 f"  内容: {hit.get('content')}",
-                f"  分数: {hit.get('score')}",
             ]
             for rule in hit.get("pricing_rules") or []:
                 lines.append(
@@ -1165,25 +1658,6 @@ class IntentEngine:
         for title, hits in sections:
             rendered.append(title)
             rendered.append("\n".join(render_hit(hit) for hit in hits) if hits else "- 无")
-        if knowledge_payload.get("related_chunks"):
-            rendered.append("[同文档关联资料]")
-            rendered.append("- 已检索到同文档关联切片，但未注入自动回复证据；仅供人工展开核对。")
-        if knowledge_payload.get("human_only_hits"):
-            rendered.append("[仅人工参考证据]")
-            rendered.append(f"- 已命中 {len(knowledge_payload.get('human_only_hits') or [])} 条人工参考证据，不直接注入自动回复。")
-        if knowledge_payload.get("thread_business_fact"):
-            fact = knowledge_payload.get("thread_business_fact") or {}
-            rendered.append("[线程业务事实]")
-            rendered.append(
-                f"- 当前线程状态: {fact.get('business_state') or 'unknown'} / 场景: {fact.get('scenario_label') or 'general'} / 意图: {fact.get('intent_label') or 'general'}"
-            )
-            if fact.get("reply_guard_reason"):
-                rendered.append(f"- 门禁提示: {fact.get('reply_guard_reason')}")
-        if knowledge_payload.get("manual_review_required"):
-            rendered.append("[低命中保护]")
-            rendered.append(f"- 当前状态: {knowledge_payload.get('status')}")
-            rendered.append(f"- 原因: {knowledge_payload.get('no_hit_reason') or '命中证据需要人工确认'}")
-            rendered.append("- 要求: 涉及报价、承诺、能力或流程时必须保守回复；证据不足时先请客户补充资料类型、语种、用途、交付要求，并提示人工确认，不得编造。")
         return "\n".join(rendered)
 
     @staticmethod
@@ -1327,6 +1801,321 @@ class IntentEngine:
         )
 
     @staticmethod
+    def _needs_followup_rewrite_retry(validation: dict | None) -> bool:
+        issues = validation.get("blocking_issues") or [] if isinstance(validation, dict) else []
+        return any("客户未回复后的跟进" in item or "不能复述旧话术" in item for item in issues)
+
+    @staticmethod
+    def build_followup_guard_response(summary_json: dict | None = None) -> str:
+        return (
+            "【企微回复参考】\n"
+            "不多打扰，想确认下这块近期还有在推进吗？您回我“有/暂时没有”都行。\n\n"
+            "【跟进思路说明】\n"
+            "客户未回复时先降门槛，不重复自我介绍和旧问题，用最短确认口拿状态信号。"
+        )
+
+    @staticmethod
+    def extract_reply_reference_text(response_text: str | None) -> str:
+        text = str(response_text or "").strip()
+        if not text:
+            return ""
+        match = re.search(r"【企微回复参考】\s*(.*?)\s*(?:【跟进思路说明】|$)", text, flags=re.S)
+        if match:
+            return match.group(1).strip()
+        return text.splitlines()[0].strip()
+
+    @staticmethod
+    def _char_ngram_set(text: str, size: int = 2) -> set[str]:
+        normalized = re.sub(r"\s+", "", str(text or ""))
+        if not normalized:
+            return set()
+        if len(normalized) <= size:
+            return {normalized}
+        return {normalized[idx:idx + size] for idx in range(0, len(normalized) - size + 1)}
+
+    @classmethod
+    def _text_overlap_ratio(cls, left: str | None, right: str | None) -> float:
+        left_set = cls._char_ngram_set(left or "")
+        right_set = cls._char_ngram_set(right or "")
+        if not left_set or not right_set:
+            return 0.0
+        union = left_set | right_set
+        if not union:
+            return 0.0
+        return len(left_set & right_set) / len(union)
+
+    @staticmethod
+    def _clamp_score(value: float, minimum: int = 0, maximum: int = 100) -> int:
+        return int(max(minimum, min(maximum, round(value))))
+
+    @classmethod
+    def _reply_dimension_scores(
+        cls,
+        *,
+        reply_text: str,
+        validation: dict | None,
+        summary_json: dict | None,
+        thread_fact: dict | None,
+        style: dict | None,
+    ) -> dict:
+        validation = validation or {}
+        style = style or {}
+        merged_facts = (thread_fact or {}).get("merged_facts") or {}
+        latest_sales_message = str(merged_facts.get("latest_sales_message") or "").strip()
+        recent_sales_messages = [str(item or "").strip() for item in (merged_facts.get("recent_sales_messages") or []) if str(item or "").strip()]
+        reply_len = len(re.sub(r"\s+", "", reply_text))
+        style_text = f"{style.get('title', '')} {style.get('content', '')}".strip()
+
+        conciseness = 96
+        if reply_len <= 8:
+            conciseness = 70
+        elif reply_len <= 16:
+            conciseness = 90
+        elif reply_len <= 50:
+            conciseness = 96
+        elif reply_len <= 80:
+            conciseness = 82
+        else:
+            conciseness = 62
+
+        low_barrier = 72
+        if any(token in reply_text for token in ["还是", "有/没有", "有或没有", "有的话", "没有的话"]):
+            low_barrier += 12
+        if any(token in reply_text for token in ["吗", "呢", "可否", "方便", "是否", "?","？"]):
+            low_barrier += 10
+        if any(token in reply_text for token in ["回我", "回个", "确认下", "简单说", "短答"]):
+            low_barrier += 6
+        low_barrier = cls._clamp_score(low_barrier)
+
+        max_overlap = 0.0
+        for old_message in recent_sales_messages[:3] or ([latest_sales_message] if latest_sales_message else []):
+            max_overlap = max(max_overlap, cls._text_overlap_ratio(reply_text, old_message))
+        non_repetition = cls._clamp_score(100 - max_overlap * 90)
+
+        safety = 94
+        safety -= len(validation.get("warnings") or []) * 6
+        safety -= len(validation.get("blocking_issues") or []) * 18
+        if validation.get("manual_review_required"):
+            safety -= 10
+        safety = cls._clamp_score(safety)
+
+        style_match = 82
+        if "商务" in style_text or "正式" in style_text or "稳重" in style_text:
+            if any(token in reply_text for token in ["您好", "请问", "请教", "确认", "是否", "方便"]):
+                style_match += 10
+            if any(token in reply_text for token in ["哈", "啦", "呐"]):
+                style_match -= 8
+        elif "亲和" in style_text or "自然" in style_text or "微信" in style_text:
+            if any(token in reply_text for token in ["最近", "忙吗", "辛苦", "回我", "就行"]):
+                style_match += 10
+            if reply_len > 48:
+                style_match -= 8
+        style_match = cls._clamp_score(style_match)
+
+        context_alignment = 80
+        focus_text = " ".join([
+            str((summary_json or {}).get("topic") or ""),
+            str((summary_json or {}).get("core_demand") or ""),
+            str(merged_facts.get("latest_customer_message") or ""),
+        ])
+        keyword_hits = 0
+        for token in ["负责", "项目", "翻译", "报价", "资料", "对接", "确认", "推进"]:
+            if token in focus_text and token in reply_text:
+                keyword_hits += 1
+        context_alignment = cls._clamp_score(context_alignment + keyword_hits * 4)
+
+        overall = cls._clamp_score(
+            conciseness * 0.18
+            + low_barrier * 0.24
+            + non_repetition * 0.22
+            + safety * 0.22
+            + style_match * 0.08
+            + context_alignment * 0.06
+        )
+        return {
+            "conciseness": conciseness,
+            "low_barrier": low_barrier,
+            "non_repetition": non_repetition,
+            "safety": safety,
+            "style_match": style_match,
+            "context_alignment": context_alignment,
+            "overall": overall,
+        }
+
+    @classmethod
+    def score_reply_candidates(
+        cls,
+        *,
+        summary_json: dict | None,
+        knowledge_payload,
+        crm_context: dict | None = None,
+        candidates: list[dict] | None = None,
+        actual_sales_replies: list[dict] | None = None,
+    ) -> dict:
+        thread_fact = knowledge_payload.get("thread_business_fact") if isinstance(knowledge_payload, dict) else None
+        ai_candidates: list[dict] = []
+        heuristic_by_ai_id: dict[str, dict] = {}
+        for item in candidates or []:
+            if item.get("status") != "done" or not item.get("content"):
+                continue
+            validation = item.get("validation") or cls.validate_sales_assist_output(item.get("content"), knowledge_payload, crm_context=crm_context)
+            reply_text = cls.extract_reply_reference_text(item.get("content"))
+            heuristic_scores = cls._reply_dimension_scores(
+                reply_text=reply_text,
+                validation=validation,
+                summary_json=summary_json,
+                thread_fact=thread_fact,
+                style=item.get("reply_style"),
+            )
+            entry = {
+                "candidate_id": item.get("candidate_id"),
+                "model_slot": item.get("model_slot"),
+                "model_display_name": item.get("model_display_name"),
+                "style_id": item.get("style_id"),
+                "style_title": item.get("style_title"),
+                "reply_text": reply_text,
+                "overall_score": heuristic_scores["overall"],
+                "scores": heuristic_scores,
+                "validation_status": validation.get("status"),
+                "manual_review_required": bool(validation.get("manual_review_required")),
+                "score_reason": "heuristic_fallback",
+            }
+            ai_candidates.append(entry)
+            if entry["candidate_id"]:
+                heuristic_by_ai_id[entry["candidate_id"]] = entry
+
+        sales_scores: list[dict] = []
+        heuristic_by_sales_id: dict[str, dict] = {}
+        for item in actual_sales_replies or []:
+            content = str(item.get("content") or "").strip()
+            if not content:
+                continue
+            validation = cls.validate_sales_assist_output(content, knowledge_payload, crm_context=crm_context)
+            heuristic_scores = cls._reply_dimension_scores(
+                reply_text=content,
+                validation=validation,
+                summary_json=summary_json,
+                thread_fact=thread_fact,
+                style=None,
+            )
+            entry = {
+                "reply_id": item.get("id"),
+                "time": item.get("time"),
+                "content": content,
+                "overall_score": heuristic_scores["overall"],
+                "scores": heuristic_scores,
+                "validation_status": validation.get("status"),
+                "manual_review_required": bool(validation.get("manual_review_required")),
+                "score_reason": "heuristic_fallback",
+            }
+            sales_scores.append(entry)
+            heuristic_by_sales_id[str(item.get("id"))] = entry
+
+        evaluation_payload = {
+            "summary": {
+                "topic": (summary_json or {}).get("topic"),
+                "core_demand": (summary_json or {}).get("core_demand"),
+                "status": (summary_json or {}).get("status"),
+            },
+            "thread_context": cls.sanitize_thread_fact_for_prompt(thread_fact),
+            "crm_context": cls.sanitize_crm_context_for_prompt(crm_context),
+            "candidates": [
+                {
+                    "candidate_id": item.get("candidate_id"),
+                    "model_slot": item.get("model_slot"),
+                    "model_display_name": item.get("model_display_name"),
+                    "style_title": item.get("style_title"),
+                    "reply_text": item.get("reply_text"),
+                }
+                for item in ai_candidates
+            ],
+            "actual_sales_replies": [
+                {
+                    "reply_id": item.get("reply_id"),
+                    "time": item.get("time"),
+                    "content": item.get("content"),
+                }
+                for item in sales_scores
+            ],
+            "dimensions": [
+                "overall",
+                "low_barrier",
+                "non_repetition",
+                "safety",
+                "conciseness",
+                "style_match",
+                "context_alignment",
+            ],
+        }
+        if ai_candidates or sales_scores:
+            score_prompt = (
+                "你是销售回复评分器。请使用当前 LLM-1 模型，对下列候选回复和销售实发回复分别打分。\n"
+                "评分维度：overall, low_barrier, non_repetition, safety, conciseness, style_match, context_alignment。\n"
+                "每个维度取 0-100 的整数。评分要结合线程历史、最近我方已发内容、客户最后状态、风格要求和 CRM 风险。\n"
+                "请只返回 JSON 对象，不要输出 markdown。\n"
+                "JSON 结构：\n"
+                "{\n"
+                "  \"ai_candidates\": [{\"candidate_id\": \"...\", \"scores\": {...}, \"reason\": \"一句话原因\"}],\n"
+                "  \"actual_sales_replies\": [{\"reply_id\": \"...\", \"scores\": {...}, \"reason\": \"一句话原因\"}]\n"
+                "}\n\n"
+                f"评分输入：{json.dumps(evaluation_payload, ensure_ascii=False)}"
+            )
+            try:
+                llm_scores = cls.run_llm1_json_prompt(score_prompt, user_id="reply_score")
+                for item in llm_scores.get("ai_candidates") or []:
+                    candidate_id = str(item.get("candidate_id") or "").strip()
+                    target = heuristic_by_ai_id.get(candidate_id)
+                    if not target:
+                        continue
+                    score_block = item.get("scores") or {}
+                    normalized = {}
+                    for key in ["overall", "low_barrier", "non_repetition", "safety", "conciseness", "style_match", "context_alignment"]:
+                        base_value = score_block.get(key, target["scores"].get(key))
+                        normalized[key] = cls._clamp_score(float(base_value))
+                    target["scores"] = normalized
+                    target["overall_score"] = normalized["overall"]
+                    target["score_reason"] = str(item.get("reason") or "llm1_scored").strip()
+                for item in llm_scores.get("actual_sales_replies") or []:
+                    reply_id = str(item.get("reply_id") or "").strip()
+                    target = heuristic_by_sales_id.get(reply_id)
+                    if not target:
+                        continue
+                    score_block = item.get("scores") or {}
+                    normalized = {}
+                    for key in ["overall", "low_barrier", "non_repetition", "safety", "conciseness", "style_match", "context_alignment"]:
+                        base_value = score_block.get(key, target["scores"].get(key))
+                        normalized[key] = cls._clamp_score(float(base_value))
+                    target["scores"] = normalized
+                    target["overall_score"] = normalized["overall"]
+                    target["score_reason"] = str(item.get("reason") or "llm1_scored").strip()
+            except Exception as exc:
+                logger.error("LLM-1 评分失败，回退启发式评分: %s", exc)
+
+        ai_candidates.sort(key=lambda item: item.get("overall_score", 0), reverse=True)
+        sales_scores.sort(key=lambda item: item.get("overall_score", 0), reverse=True)
+
+        return {
+            "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "scored_by": {
+                "model": settings.LLM1_MODEL,
+                "provider": cls._llm_provider_label(settings.LLM1_API_KEY),
+                "score_mode": "llm1_with_heuristic_fallback",
+            },
+            "dimensions": [
+                {"key": "overall", "label": "总分"},
+                {"key": "low_barrier", "label": "易回复"},
+                {"key": "non_repetition", "label": "差异化"},
+                {"key": "safety", "label": "稳妥度"},
+                {"key": "conciseness", "label": "微信感"},
+                {"key": "style_match", "label": "风格匹配"},
+                {"key": "context_alignment", "label": "上下文贴合"},
+            ],
+            "ai_candidates": ai_candidates,
+            "actual_sales_replies": sales_scores,
+            "best_ai_candidate_id": ai_candidates[0]["candidate_id"] if ai_candidates else None,
+        }
+
+    @staticmethod
     def update_knowledge_hit_log_outcome(log_id: str | None, final_response: str | None = None, manual_feedback: dict | None = None, feedback_status: str | None = None):
         if not log_id:
             return
@@ -1437,51 +2226,28 @@ class IntentEngine:
         model: str | None = None,
         timeout_seconds: int | None = None,
         label: str = "LLM2",
+        prepared_request: dict | None = None,
     ):
         """调用 LLM-2 生成销售辅助建议"""
-        if isinstance(knowledge_list, dict):
-            retrieval_status = str(knowledge_list.get("status") or "").strip()
-            retrieval_manual_review = bool(knowledge_list.get("manual_review_required"))
-            if retrieval_status in {"manual_review_required", "low_confidence", "ambiguous_query", "no_applicable_knowledge"} or retrieval_manual_review:
-                blocking_issues = []
-                no_hit_reason = str(knowledge_list.get("no_hit_reason") or "").strip()
-                if no_hit_reason:
-                    blocking_issues.append(no_hit_reason)
-                blocking_issues.append(f"知识检索状态为 {retrieval_status or 'manual_review_required'}，未达到自动回复标准。")
-                validation = {
-                    "status": "manual_review_required",
-                    "manual_review_required": True,
-                    "warnings": ["知识检索未达到自动回复标准，已跳过 LLM-2 证据注入并直接输出保守回复。"],
-                    "blocking_issues": blocking_issues,
-                    "evidence_refs": cls.build_evidence_refs(knowledge_list),
-                }
-                return {
-                    "content": cls.build_safe_assist_response(summary_json, validation),
-                    "raw_content": "",
-                    "validation": validation,
-                    "evidence_refs": validation.get("evidence_refs") or [],
-                }
-
-        knowledge_context = cls.format_knowledge_context(knowledge_list)
-        prompt2 = cls.get_prompt2()
-        api_url = api_url if api_url is not None else settings.LLM2_API_URL
-        api_key = api_key if api_key is not None else settings.LLM2_API_KEY
-        model = model if model is not None else settings.LLM2_MODEL
-        api_url = api_url or ""
-        api_key = api_key or ""
-        model = model or ""
-        timeout_seconds = timeout_seconds if timeout_seconds is not None else settings.LLM2_TIMEOUT_SECONDS
-        
-        summary_str = json.dumps(summary_json, ensure_ascii=False)
-        crm_str = json.dumps(crm_context or {}, ensure_ascii=False)
-        
-        final_prompt = prompt2
-        if "{{summary_json}}" in final_prompt or "{{knowledge_context}}" in final_prompt or "{{crm_context_json}}" in final_prompt:
-            final_prompt = final_prompt.replace("{{summary_json}}", summary_str)
-            final_prompt = final_prompt.replace("{{knowledge_context}}", knowledge_context or '无相关参考')
-            final_prompt = final_prompt.replace("{{crm_context_json}}", crm_str)
-        else:
-            final_prompt = f"{prompt2}\n\n会话摘要档案：{summary_str}\n\n内部 CRM 客户标签：{crm_str}\n\n参考知识库匹配：\n{knowledge_context or '无相关参考'}"
+        request_spec = prepared_request or cls.build_sales_assist_request(
+            summary_json,
+            knowledge_list,
+            crm_context,
+            api_url=api_url,
+            api_key=api_key,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            label=label,
+        )
+        final_prompt = request_spec.get("final_prompt") or ""
+        api_url = request_spec.get("api_url") or ""
+        api_key = request_spec.get("api_key") or ""
+        model = request_spec.get("model") or ""
+        timeout_seconds = request_spec.get("timeout_seconds") or settings.LLM2_TIMEOUT_SECONDS
+        prompt_trace = dict(request_spec.get("prompt_trace") or {})
+        prompt_trace.setdefault("status", "ready")
+        prompt_trace.setdefault("sent_to_ai", True)
+        retry_forbidden = bool(request_spec.get("retry_forbidden"))
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -1490,6 +2256,7 @@ class IntentEngine:
 
         try:
             logger.info("正在调用 %s 生成回复建议...", label)
+            prompt_trace["request_started_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
             if api_key.startswith("app-"):
                 url = api_url.rstrip("/") + "/chat-messages"
                 payload = {
@@ -1504,20 +2271,52 @@ class IntentEngine:
                     url = api_url.rstrip("/") + "/completion-messages"
                     cls._log_llm_prompt(f"{label}_DIFY_COMPLETION", model, url, final_prompt)
                     response = cls._post_json(url, headers=headers, timeout=timeout_seconds, payload=payload)
+                prompt_trace["response_status_code"] = response.status_code
+                prompt_trace["response_received_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
                 if response.status_code != 200:
                     raise RuntimeError(f"Dify 接口错误: HTTP {response.status_code}")
                 raw_content = response.json().get("answer", "")
                 if raw_content:
                     validation = cls.validate_sales_assist_output(raw_content, knowledge_list, crm_context=crm_context)
-                    if validation.get("blocking_issues") or validation.get("manual_review_required"):
-                        content = cls.build_safe_assist_response(summary_json, validation)
-                    else:
-                        content = raw_content
+                    if cls._needs_followup_rewrite_retry(validation):
+                        if not retry_forbidden:
+                            retry_request = dict(request_spec)
+                            retry_request["retry_forbidden"] = True
+                            retry_request["final_prompt"] = (
+                                f"{final_prompt}\n\n"
+                                "【纠偏重写】上一版仍然重复了我方刚发过的话。请完全重写，只保留同一业务目标，"
+                                "不要再次自我介绍，不要再问是否负责，不要再提合作记录；"
+                                "请改成更低门槛的一句话跟进，最好是短确认或二选一。"
+                            )
+                            return cls.generate_sales_assist_bundle(
+                                summary_json,
+                                knowledge_list,
+                                crm_context,
+                                prepared_request=retry_request,
+                            )
+                        guarded_content = cls.build_followup_guard_response(summary_json)
+                        guarded_validation = cls.validate_sales_assist_output(guarded_content, knowledge_list, crm_context=crm_context)
+                        prompt_trace["result"] = "success_guarded"
+                        prompt_trace["post_validation_status"] = guarded_validation.get("status") or "ok"
+                        prompt_trace["post_validation_manual_review_required"] = bool(guarded_validation.get("manual_review_required"))
+                        prompt_trace["post_validation_reason"] = "followup_repetition_guard"
+                        return {
+                            "content": guarded_content,
+                            "raw_content": raw_content,
+                            "validation": guarded_validation,
+                            "evidence_refs": guarded_validation.get("evidence_refs") or [],
+                            "prompt_trace": prompt_trace,
+                        }
+                    prompt_trace["result"] = "success"
+                    prompt_trace["post_validation_status"] = validation.get("status") or "ok"
+                    prompt_trace["post_validation_manual_review_required"] = bool(validation.get("manual_review_required"))
+                    prompt_trace["post_validation_reason"] = "；".join(validation.get("blocking_issues") or validation.get("warnings") or []) or ""
                     return {
-                        "content": content,
+                        "content": raw_content,
                         "raw_content": raw_content,
                         "validation": validation,
                         "evidence_refs": validation.get("evidence_refs") or [],
+                        "prompt_trace": prompt_trace,
                     }
                 raise RuntimeError("Dify 返回缺少 answer 字段")
 
@@ -1531,23 +2330,56 @@ class IntentEngine:
             }
             cls._log_llm_prompt(f"{label}_OPENAI", model, url, final_prompt)
             response = cls._post_json(url, headers=headers, timeout=timeout_seconds, payload=payload)
+            prompt_trace["response_status_code"] = response.status_code
+            prompt_trace["response_received_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
             if response.status_code != 200:
                 raise RuntimeError(f"OpenAI 协议接口错误: HTTP {response.status_code}")
             res_data = response.json()
             raw_content = res_data["choices"][0]["message"]["content"] if "choices" in res_data else ""
             if raw_content:
                 validation = cls.validate_sales_assist_output(raw_content, knowledge_list, crm_context=crm_context)
-                if validation.get("blocking_issues") or validation.get("manual_review_required"):
-                    content = cls.build_safe_assist_response(summary_json, validation)
-                else:
-                    content = raw_content
+                if cls._needs_followup_rewrite_retry(validation):
+                    if not retry_forbidden:
+                        retry_request = dict(request_spec)
+                        retry_request["retry_forbidden"] = True
+                        retry_request["final_prompt"] = (
+                            f"{final_prompt}\n\n"
+                            "【纠偏重写】上一版仍然重复了我方刚发过的话。请完全重写，只保留同一业务目标，"
+                            "不要再次自我介绍，不要再问是否负责，不要再提合作记录；"
+                            "请改成更低门槛的一句话跟进，最好是短确认或二选一。"
+                        )
+                        return cls.generate_sales_assist_bundle(
+                            summary_json,
+                            knowledge_list,
+                            crm_context,
+                            prepared_request=retry_request,
+                        )
+                    guarded_content = cls.build_followup_guard_response(summary_json)
+                    guarded_validation = cls.validate_sales_assist_output(guarded_content, knowledge_list, crm_context=crm_context)
+                    prompt_trace["result"] = "success_guarded"
+                    prompt_trace["post_validation_status"] = guarded_validation.get("status") or "ok"
+                    prompt_trace["post_validation_manual_review_required"] = bool(guarded_validation.get("manual_review_required"))
+                    prompt_trace["post_validation_reason"] = "followup_repetition_guard"
+                    return {
+                        "content": guarded_content,
+                        "raw_content": raw_content,
+                        "validation": guarded_validation,
+                        "evidence_refs": guarded_validation.get("evidence_refs") or [],
+                        "prompt_trace": prompt_trace,
+                    }
+                prompt_trace["result"] = "success"
+                prompt_trace["post_validation_status"] = validation.get("status") or "ok"
+                prompt_trace["post_validation_manual_review_required"] = bool(validation.get("manual_review_required"))
+                prompt_trace["post_validation_reason"] = "；".join(validation.get("blocking_issues") or validation.get("warnings") or []) or ""
                 return {
-                    "content": content,
+                    "content": raw_content,
                     "raw_content": raw_content,
                     "validation": validation,
                     "evidence_refs": validation.get("evidence_refs") or [],
+                    "prompt_trace": prompt_trace,
                 }
         except Exception as e:
+            prompt_trace["result"] = "error"
             logger.error(f"LLM-2 调用异常: {e}")
             raise RuntimeError(f"LLM-2 调用异常: {e}") from e
         raise RuntimeError("LLM-2 返回缺少有效内容")
@@ -1581,7 +2413,7 @@ class IntentEngine:
                 todo_items=summary.get("todo_items", []),
                 risks=_safe_str(summary.get("risks")),
                 to_be_confirmed=_safe_str(summary.get("to_be_confirmed")),
-                status=_safe_str(summary.get("status"), 50)
+                status=_safe_str(summary.get("status"), 50),
             )
             db.add(summary_record)
             db.commit()
@@ -1596,84 +2428,6 @@ class IntentEngine:
     @classmethod
     def _run_llm1(cls, user_id, context):
         """内部 LLM-1 调用实现逻辑 (剥离原 slow_track_analyze 内容)"""
-        conversation_text = ""
-        for msg in context:
-            speaker = "客户" if msg["sender_type"] == "customer" else "销售"
-            conversation_text += f"[{speaker}]: {msg['content']}\n"
-
-        headers = {
-            "Authorization": f"Bearer {settings.LLM1_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        prompt1 = cls.get_prompt1()
-        if "{{conversation_text}}" in prompt1:
-            full_prompt = prompt1.replace("{{conversation_text}}", conversation_text)
-        else:
-            full_prompt = f"{prompt1}\n\n请分析以下企微真实对话记录：\n{conversation_text}"
-        
-        try:
-            # Dify API 兼容判定
-            if settings.LLM1_API_KEY.startswith("app-"):
-                url = settings.LLM1_API_URL.rstrip('/') + "/chat-messages"
-                payload = {
-                    "inputs": {},
-                    "query": full_prompt,
-                    "response_mode": "blocking",
-                    "user": user_id
-                }
-                cls._log_llm_prompt("LLM1_DIFY", settings.LLM1_MODEL, url, full_prompt)
-                response = cls._post_json(url, headers, payload, settings.LLM1_TIMEOUT_SECONDS)
-                
-                # 兼容 Dify 文本生成应用 (如果不幸是 Workflow/Text Generator类型)
-                if response.status_code == 404:
-                    url = settings.LLM1_API_URL.rstrip('/') + "/completion-messages"
-                    cls._log_llm_prompt("LLM1_DIFY_COMPLETION", settings.LLM1_MODEL, url, full_prompt)
-                    response = cls._post_json(url, headers, payload, settings.LLM1_TIMEOUT_SECONDS)
-                    
-                if response.status_code != 200:
-                    raise RuntimeError(f"Dify 接口错误: HTTP {response.status_code}")
-                    
-                res_data = response.json()
-                raw_text = res_data.get("answer", "")
-            else:
-                # 兼容标准 OpenAI 协议
-                url = settings.LLM1_API_URL.rstrip('/') + "/chat/completions"
-                payload = {
-                    "model": settings.LLM1_MODEL,
-                    "messages": [
-                        {"role": "user", "content": full_prompt}
-                    ],
-                    "temperature": 0.1
-                }
-                cls._log_llm_prompt("LLM1_OPENAI", settings.LLM1_MODEL, url, full_prompt)
-                response = cls._post_json(url, headers, payload, settings.LLM1_TIMEOUT_SECONDS)
-                if response.status_code != 200:
-                    raise RuntimeError(f"OpenAI 协议接口错误: HTTP {response.status_code}")
-                
-                try:
-                    res_data = response.json()
-                except Exception:
-                    raise RuntimeError("LLM 接口返回了无法解析的错误报文")
-                    
-                raw_text = res_data["choices"][0]["message"]["content"] if "choices" in res_data else ""
-            
-            # 强化 JSON 解析保护，防止 LLM 返回时带有 Markdown block (比如 ```json ...)
-            raw_text = raw_text.strip()
-            if raw_text.startswith("```json"):
-                raw_text = raw_text[7:]
-            if raw_text.startswith("```"):
-                raw_text = raw_text[3:]
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3]
-                
-            return json.loads(raw_text.strip())
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"LLM-1 最终提取的 JSON 无法解析: {e}\n原文: {raw_text[:200]}")
-            raise RuntimeError(f"LLM-1 最终提取的 JSON 无法解析: {e}") from e
-        except Exception as e:
-            logger.error(f"LLM-1 调用彻底失败: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            raise
+        request_spec = cls.build_llm1_request(context, user_id=user_id, label="LLM1")
+        bundle = cls.run_llm1_request(request_spec)
+        return bundle.get("summary")

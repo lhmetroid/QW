@@ -189,6 +189,18 @@
                     <div id="sync-progress-bar" class="bg-emerald-500 h-full transition-all duration-500" style="width: 0%"></div>
                 </div>
             </div>
+            <label class="flex items-center gap-2 text-[11px] text-slate-600 select-none">
+                <input id="filter-hide-group-chat" type="checkbox" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                <span>不显示群聊，仅显示员工与客户</span>
+            </label>
+            <div class="space-y-2">
+                <label for="session-search-input" class="block text-[11px] font-medium text-slate-600">查询对话</label>
+                <div class="flex gap-2">
+                    <input id="session-search-input" type="text" class="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="支持 external_userid / session_id / 员工名">
+                    <button id="session-search-clear" type="button" class="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50">清空</button>
+                </div>
+                <div id="session-search-meta" class="text-[10px] text-slate-400">输入完整 external_userid 可快速过滤定位对应会话</div>
+            </div>
         </div>
         <div id="session-list" class="flex-1 overflow-y-auto p-2 space-y-1">
             <!-- Loading -->
@@ -214,9 +226,12 @@
 
     <!-- 右侧分析区：回复生成链路 -->
     <div id="analysis-panel" class="analysis-panel border-l bg-white flex flex-col p-5 overflow-y-auto space-y-5">
-        <div class="flex items-center space-x-2 pb-2 border-b">
-            <div class="w-1 h-4 bg-blue-600 rounded"></div>
-            <h2 class="font-bold text-slate-700 tracking-wider text-sm">回复生成链路</h2>
+        <div class="pb-2 border-b space-y-2">
+            <div class="flex items-center space-x-2">
+                <div class="w-1 h-4 bg-blue-600 rounded"></div>
+                <h2 class="font-bold text-slate-700 tracking-wider text-sm">回复生成链路</h2>
+            </div>
+            <div id="analysis-version-tabs" class="flex flex-wrap gap-2"></div>
         </div>
 
         <div id="analysis-content" class="space-y-6">
@@ -264,13 +279,214 @@
         const AI_SCRIPT_LABELS = {
             FAST_TRACK_RULES: '强信号扫描规则脚本',
             SYSTEM_PROMPT_LLM1: '第一阶段特征提取脚本',
-            SYSTEM_PROMPT_LLM2: '第二阶段话术生成脚本'
+            SYSTEM_PROMPT_LLM2: '第二阶段话术生成脚本',
+            REPLY_STYLE_OPTIONS: '回复语句风格配置'
         };
         let currentSessionMessages = [];
+        let allSessions = [];
         let currentSelectedSessionId = '';
+        let currentSelectedAnalysisVersionId = 'current_tail';
+        const analysisSnapshotByUserId = {};
+        const analysisVersionsByUserId = {};
         let uiRuntimeConfig = {
             wecomRecentMessageLimit: 6,
         };
+        const defaultCurrentUserTitle = document.getElementById('current-user-title')?.innerText || '';
+        const defaultStatusText = document.getElementById('status-text')?.innerText || '';
+        const defaultAnalysisContent = document.getElementById('analysis-content')?.innerHTML || '';
+        const defaultAssistContent = document.getElementById('assist-content')?.innerHTML || '';
+
+        function analysisCacheKey(userId, versionId = 'current_tail') {
+            return `${String(userId || '')}::${String(versionId || 'current_tail')}`;
+        }
+
+        function getActiveAnalysisSnapshot(userId = currentSelectedSessionId, versionId = currentSelectedAnalysisVersionId) {
+            return analysisSnapshotByUserId[analysisCacheKey(userId, versionId)] || {};
+        }
+
+        function getAnalysisVersions(userId = currentSelectedSessionId) {
+            return analysisVersionsByUserId[String(userId || '')] || [];
+        }
+
+        function getCurrentAnalysisVersionMeta() {
+            return getAnalysisVersions().find(item => String(item.snapshot_id) === String(currentSelectedAnalysisVersionId)) || null;
+        }
+
+        function getHideGroupChatFilter() {
+            return localStorage.getItem('hideGroupChatSessions') !== '0';
+        }
+
+        function setHideGroupChatFilter(enabled) {
+            localStorage.setItem('hideGroupChatSessions', enabled ? '1' : '0');
+        }
+
+        function getSessionSearchQuery() {
+            return String(document.getElementById('session-search-input')?.value || '').trim();
+        }
+
+        function normalizeSearchText(value) {
+            return String(value || '').trim().toLowerCase();
+        }
+
+        function isGroupSession(userId) {
+            return String(userId || '').startsWith('group_');
+        }
+
+        function sessionMatchesSearch(session, queryText) {
+            const query = normalizeSearchText(queryText);
+            if (!query) return true;
+            const userId = String(session?.user_id || '').trim();
+            const actors = getSessionActors(userId);
+            const haystack = [
+                userId,
+                getDisplayName(userId),
+                getDisplayName(userId, {showFullExternal: true}),
+                actors.internalDisplay,
+                actors.internalRaw,
+                actors.externalUserId,
+            ].map(normalizeSearchText).filter(Boolean);
+            return haystack.some(item => item.includes(query));
+        }
+
+        function shouldDisplaySession(session) {
+            if (!session || !session.user_id) return false;
+            if (getHideGroupChatFilter() && isGroupSession(session.user_id)) return false;
+            return sessionMatchesSearch(session, getSessionSearchQuery());
+        }
+
+        function resetSessionDetailState() {
+            currentSelectedSessionId = '';
+            currentSelectedAnalysisVersionId = 'current_tail';
+            currentSessionMessages = [];
+            document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active-session'));
+            document.getElementById('current-user-title').innerText = defaultCurrentUserTitle;
+            document.getElementById('status-text').innerText = defaultStatusText;
+            document.getElementById('msg-container').innerHTML = '';
+            document.getElementById('analysis-content').innerHTML = defaultAnalysisContent;
+            document.getElementById('analysis-version-tabs').innerHTML = '';
+            document.getElementById('assist-content').innerHTML = defaultAssistContent;
+            document.getElementById('assist-content').parentElement.style.display = '';
+            document.getElementById('status-badge').className = 'px-3 py-1 rounded-full text-[10px] font-bold hidden';
+            document.getElementById('status-badge').innerText = '';
+        }
+
+        function renderAnalysisVersionTabs() {
+            const host = document.getElementById('analysis-version-tabs');
+            if (!host) return;
+            const versions = getAnalysisVersions();
+            if (!versions.length) {
+                host.innerHTML = '';
+                return;
+            }
+            host.innerHTML = versions.map(version => {
+                const isActive = String(version.snapshot_id) === String(currentSelectedAnalysisVersionId);
+                const isCurrent = version.kind === 'current_tail';
+                const label = isCurrent ? '当前末尾' : (version.label || '历史节点');
+                return `
+                    <button
+                        type="button"
+                        onclick="switchAnalysisVersion('${String(version.snapshot_id).replace(/'/g, '&#39;')}')"
+                        class="px-3 py-1 rounded-full border text-[10px] font-bold transition ${isActive ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-700'}"
+                        title="${safeText(label)}"
+                    >${safeText(label)}</button>
+                `;
+            }).join('');
+        }
+
+        function renderConversationMessages() {
+            const container = document.getElementById('msg-container');
+            if (!container) return;
+            const versions = getAnalysisVersions();
+            const versionByAnchorId = new Map(
+                versions
+                    .filter(item => item.kind !== 'current_tail' && item.anchor_message_id)
+                    .map(item => [Number(item.anchor_message_id), item])
+            );
+            container.innerHTML = currentSessionMessages.map(message => {
+                const nodeVersion = versionByAnchorId.get(Number(message.id));
+                const isSelectedNode = nodeVersion && String(nodeVersion.snapshot_id) === String(currentSelectedAnalysisVersionId);
+                const isCustomer = message.sender === 'customer';
+                const nodeButton = isCustomer ? `
+                    <button
+                        type="button"
+                        onclick="${nodeVersion ? `switchAnalysisVersion('${String(nodeVersion.snapshot_id).replace(/'/g, '&#39;')}')` : `createAnalysisVersionFromEncoded('${encodedArg(currentSelectedSessionId)}', ${Number(message.id)})`}"
+                        class="shrink-0 px-2 py-1 rounded-full border text-[10px] font-bold transition ${nodeVersion ? (isSelectedNode ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100') : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:text-blue-700'}"
+                    >${nodeVersion ? '打开节点链路' : '发起节点链路'}</button>
+                ` : '';
+                return `
+                    <div class="max-w-[85%] mb-4 p-4 ${message.sender === 'customer' ? 'msg-customer' : (message.sender==='system' ? 'msg-system px-4 py-1 text-xs' : 'msg-sales')} ${isSelectedNode ? 'ring-2 ring-blue-300 ring-offset-2' : ''}">
+                        ${message.sender !== 'system' ? `
+                            <div class="mb-2 flex items-start justify-between gap-3">
+                                <div class="text-[9px] text-slate-400 font-bold uppercase">${message.sender === 'customer' ? '客户' : '我方营销'} · ${formatDateTime(message.time)}</div>
+                                ${nodeButton}
+                            </div>` : ''}
+                        <div class="text-[13px] leading-relaxed whitespace-pre-wrap">${safeText(message.content)}</div>
+                    </div>
+                `;
+            }).join('');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function renderSessions() {
+            const list = document.getElementById('session-list');
+            const meta = document.getElementById('session-search-meta');
+            const visibleSessions = allSessions.filter(shouldDisplaySession);
+            if (meta) {
+                const query = getSessionSearchQuery();
+                meta.innerText = query
+                    ? `共 ${allSessions.length} 条，当前命中 ${visibleSessions.length} 条`
+                    : `共 ${allSessions.length} 条；输入完整 external_userid 可快速过滤定位对应会话`;
+            }
+            if (visibleSessions.length === 0) {
+                list.innerHTML = '<div class="px-3 py-6 text-center text-[11px] text-slate-400">当前筛选条件下暂无会话</div>';
+            } else {
+                list.innerHTML = visibleSessions.map(s => `
+                    <div onclick="selectSession('${s.user_id}')" class="p-3 mb-1 rounded-lg cursor-pointer transition session-item hover:bg-white border border-transparent" id="session-${s.user_id}">
+                        <div class="flex items-center justify-between pointer-events-none">
+                            <span class="font-semibold text-xs text-slate-600 truncate" title="${getDisplayName(s.user_id, {showFullExternal: true})}">${getDisplayName(s.user_id)}</span>
+                            <span class="text-[7px] bg-emerald-500 text-white px-1 rounded font-bold animate-pulse">LIVE</span>
+                        </div>
+                        <div class="text-[9px] text-slate-400 mt-1 pointer-events-none">${new Date(s.last_msg).toLocaleTimeString()} · 已扫描完毕</div>
+                    </div>
+                `).join('');
+            }
+
+            const selectedStillVisible = visibleSessions.some(s => s.user_id === currentSelectedSessionId);
+            if (selectedStillVisible) {
+                const target = document.getElementById(`session-${currentSelectedSessionId}`);
+                if (target) target.classList.add('active-session');
+            } else if (currentSelectedSessionId) {
+                resetSessionDetailState();
+            }
+        }
+
+        function initSessionFilters() {
+            const checkbox = document.getElementById('filter-hide-group-chat');
+            if (checkbox) {
+                checkbox.checked = getHideGroupChatFilter();
+                checkbox.addEventListener('change', () => {
+                    setHideGroupChatFilter(checkbox.checked);
+                    renderSessions();
+                });
+            }
+            const searchInput = document.getElementById('session-search-input');
+            if (searchInput) {
+                searchInput.addEventListener('input', () => renderSessions());
+                searchInput.addEventListener('keydown', event => {
+                    if (event.key !== 'Enter') return;
+                    const visibleSessions = allSessions.filter(shouldDisplaySession);
+                    if (!visibleSessions.length) return;
+                    selectSession(visibleSessions[0].user_id);
+                });
+            }
+            const clearBtn = document.getElementById('session-search-clear');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    if (searchInput) searchInput.value = '';
+                    renderSessions();
+                });
+            }
+        }
 
         function clampWecomRecentMessageLimit(value) {
             const parsed = Number.parseInt(value, 10);
@@ -570,7 +786,23 @@
             }
         });
 
-        function getDisplayName(userId) {
+        function getSessionActors(userId) {
+            const text = String(userId || '').trim();
+            const externalUserId = extractExternalUserIdFromSession(text);
+            if (!text.startsWith('single_')) {
+                return {internalDisplay: '员工', internalRaw: '', externalUserId};
+            }
+            const body = text.replace('single_', '');
+            const internalRaw = externalUserId
+                ? body.replace(new RegExp(`_?${externalUserId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), '').replace(/_+$/g, '')
+                : body;
+            let internalDisplay = (internalRaw.split('_').filter(Boolean)[0] || internalRaw || '员工');
+            if (internalDisplay.length > 8) internalDisplay = internalDisplay.substring(0, 5) + '..';
+            return {internalDisplay, internalRaw, externalUserId};
+        }
+
+        function getDisplayName(userId, options = {}) {
+            const {showFullExternal = false} = options;
             const maps = {
                 "case_price_conflict": "💼 报价谈判: 折扣异议",
                 "group_after_sales_998": "🛠️ 物流损毁: 售后赔付",
@@ -583,15 +815,11 @@
                 return `👥 企微群聊 (群号 ${userId.substring(6, 12).toUpperCase()})`;
             }
             if(userId.startsWith('single_')) {
-                const arr = userId.replace('single_','').split('_');
-                // 通过前缀区分内外角色
-                let intl = arr.find(x => !x.startsWith('wm') && !x.startsWith('wo') && !x.startsWith('wb')) || '员工';
-                let extl = arr.find(x => x.startsWith('wm') || x.startsWith('wo') || x.startsWith('wb')) || '客户';
-                
-                // 为了消除长串乱码感，进行高雅截断
-                if(intl.length > 8) intl = intl.substring(0, 5) + '..';
-                const exStr = extl.length > 5 ? extl.substring(extl.length - 4) : extl;
-                return `👤 员工(${intl}) 与 客户(*${exStr})`;
+                const actors = getSessionActors(userId);
+                const externalLabel = showFullExternal
+                    ? (actors.externalUserId || '客户')
+                    : (actors.externalUserId && actors.externalUserId.length > 5 ? `*${actors.externalUserId.substring(actors.externalUserId.length - 4)}` : (actors.externalUserId || '客户'));
+                return `👤 员工(${actors.internalDisplay}) 与 客户(${externalLabel})`;
             }
             return `👤 企微对话: ${userId.substring(0,8)}...`;
         }
@@ -599,16 +827,8 @@
         async function fetchSessions() {
             const res = await fetch(`${API_BASE}/api/sessions`);
             const data = await res.json();
-            const list = document.getElementById('session-list');
-            list.innerHTML = data.map(s => `
-                <div onclick="selectSession('${s.user_id}')" class="p-3 mb-1 rounded-lg cursor-pointer transition session-item hover:bg-white border border-transparent" id="session-${s.user_id}">
-                    <div class="flex items-center justify-between pointer-events-none">
-                        <span class="font-semibold text-xs text-slate-600 truncate">${getDisplayName(s.user_id)}</span>
-                        <span class="text-[7px] bg-emerald-500 text-white px-1 rounded font-bold animate-pulse">LIVE</span>
-                    </div>
-                    <div class="text-[9px] text-slate-400 mt-1 pointer-events-none">${new Date(s.last_msg).toLocaleTimeString()} · 已扫描完毕</div>
-                </div>
-            `).join('');
+            allSessions = Array.isArray(data) ? data : [];
+            renderSessions();
         }
 
         function formatDateTime(dateStr) {
@@ -623,23 +843,57 @@
 
         async function selectSession(userId) {
             currentSelectedSessionId = userId;
+            currentSelectedAnalysisVersionId = 'current_tail';
             document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active-session'));
             const target = document.getElementById(`session-${userId}`);
             if(target) target.classList.add('active-session');
-            document.getElementById('current-user-title').innerText = getDisplayName(userId);
+            document.getElementById('current-user-title').innerText = getDisplayName(userId, {showFullExternal: true});
 
             const msgRes = await fetch(`${API_BASE}/api/sessions/${userId}/messages`);
             const msgs = await msgRes.json();
             currentSessionMessages = Array.isArray(msgs) ? msgs : [];
-            const container = document.getElementById('msg-container');
-            container.innerHTML = msgs.map(m => `
-                <div class="max-w-[85%] mb-4 p-4 ${m.sender === 'customer' ? 'msg-customer' : (m.sender==='system' ? 'msg-system px-4 py-1 text-xs' : 'msg-sales')}">
-                    ${m.sender !== 'system' ? `<div class="text-[9px] text-slate-400 mb-2 font-bold uppercase">${m.sender === 'customer' ? '客户' : '我方营销'} · ${formatDateTime(m.time)}</div>` : ''}
-                    <div class="text-[13px] leading-relaxed">${m.content}</div>
-                </div>
-            `).join('');
-            container.scrollTop = container.scrollHeight;
-            loadAnalysis(userId);
+            renderConversationMessages();
+            await loadAnalysisVersions(userId, {preserveSelection: false});
+            await loadAnalysis(userId, {versionId: 'current_tail'});
+        }
+
+        async function loadAnalysisVersions(userId, options = {}) {
+            const {preserveSelection = true} = options;
+            const res = await fetch(`${API_BASE}/api/sessions/${userId}/analysis_versions`);
+            const data = await res.json();
+            const versions = Array.isArray(data.versions) ? data.versions : [];
+            analysisVersionsByUserId[String(userId || '')] = versions;
+            const stillExists = versions.some(item => String(item.snapshot_id) === String(currentSelectedAnalysisVersionId));
+            if (!preserveSelection || !stillExists) {
+                currentSelectedAnalysisVersionId = 'current_tail';
+            }
+            renderAnalysisVersionTabs();
+            renderConversationMessages();
+            return versions;
+        }
+
+        async function switchAnalysisVersion(versionId) {
+            currentSelectedAnalysisVersionId = versionId || 'current_tail';
+            renderAnalysisVersionTabs();
+            renderConversationMessages();
+            if (currentSelectedSessionId) {
+                await loadAnalysis(currentSelectedSessionId, {versionId: currentSelectedAnalysisVersionId});
+            }
+        }
+
+        async function createAnalysisVersion(userId, anchorMessageId) {
+            const res = await fetch(`${API_BASE}/api/sessions/${userId}/analysis_versions`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({anchor_message_id: anchorMessageId})
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) return showApiError(data, '创建历史节点链路失败');
+            await loadAnalysisVersions(userId, {preserveSelection: true});
+            currentSelectedAnalysisVersionId = data.snapshot?.snapshot_id || 'current_tail';
+            renderAnalysisVersionTabs();
+            renderConversationMessages();
+            await loadAnalysis(userId, {versionId: currentSelectedAnalysisVersionId});
         }
 
         function gracefulStr(val) {
@@ -677,6 +931,68 @@
             return copyText(decodeURIComponent(encoded || ''));
         }
 
+        async function createAnalysisVersionFromEncoded(encodedUserId, anchorMessageId) {
+            return createAnalysisVersion(decodeURIComponent(encodedUserId || ''), anchorMessageId);
+        }
+
+        function safeFilePart(value) {
+            return String(value ?? '').replace(/[<>:"/\\|?*\s]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '') || 'session';
+        }
+
+        function downloadTextFile(filename, content) {
+            const blob = new Blob([String(content ?? '')], {type: 'text/plain;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = filename;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        function buildComparePromptDownloadContent(data) {
+            const trace = data?.sales_advice_compare_prompt_trace_v2 || {};
+            const generatedContent = String(data?.sales_advice_compare_v2 || '').trim();
+            const sentToAi = trace.sent_to_ai !== false;
+            let generationResult = trace.result || trace.status || '-';
+            if ((generationResult === 'skipped_manual_review' || generationResult === 'manual_review_required') && sentToAi && generatedContent) {
+                generationResult = 'success';
+            }
+            const postValidationStatus = trace.post_validation_status || (trace.post_validation_manual_review_required ? 'manual_review_required' : '');
+            const lines = [
+                'LLM-2 对比模型实发脚本存证',
+                `会话ID: ${data?.user_id || '-'}`,
+                `模型: ${trace.model || '-'}`,
+                `提供方: ${trace.provider || '-'}`,
+                `接口地址: ${trace.api_url || '-'}`,
+                `生成时间: ${trace.generated_at || '-'}`,
+                `阶段状态: ${data?.stage_status?.llm2_compare || '-'}`,
+                `发送状态: ${sentToAi ? '已发送给 AI' : '未实际发送给 AI'}`,
+                `生成结果: ${generationResult}`,
+                `后置校验: ${postValidationStatus || '-'}`,
+                `生成说明: ${trace.reason || '无'}`,
+                `校验说明: ${trace.post_validation_reason || '无'}`,
+                '',
+                '===== 最终脚本（变量已替换） =====',
+                trace.prompt || ''
+            ];
+            return lines.join('\n');
+        }
+
+        function downloadComparePromptTrace(userId) {
+            const data = getActiveAnalysisSnapshot(userId);
+            const trace = data.sales_advice_compare_prompt_trace_v2 || {};
+            if (!trace.prompt) {
+                alert('当前没有可下载的对比模型实发脚本。');
+                return;
+            }
+            const rawStamp = String(trace.generated_at || new Date().toISOString());
+            const fileStamp = safeFilePart(rawStamp.replace(/[:]/g, '-'));
+            const filename = `${safeFilePart(userId)}_llm2_compare_prompt_${fileStamp}.txt`;
+            downloadTextFile(filename, buildComparePromptDownloadContent(data));
+        }
+
         function renderScriptButton(scriptKey) {
             if (!scriptKey) return '';
             return `<button type="button" onclick="openScriptViewer('${scriptKey}')" class="script-btn">脚本</button>`;
@@ -685,28 +1001,29 @@
         function renderPipelineCard(index, title, subtitle, accent, body, options = {}) {
             return `
                 <section class="pipeline-card p-3 pl-3" style="--card-accent:${accent || '#64748b'}">
-                    <div class="flex items-start justify-between gap-3 mb-2">
-                        <div class="flex items-start gap-2 min-w-0">
+                    <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
+                        <div class="flex items-start gap-2 min-w-0 flex-1">
                             <span class="shrink-0 mt-0.5 rounded-full bg-slate-900 text-white text-[10px] font-bold px-2 py-1">${String(index).padStart(2, '0')}</span>
                             <div class="min-w-0">
                                 <div class="font-bold text-[12px] text-slate-800 tracking-wide">${safeText(title)}</div>
                                 ${subtitle ? `<div class="text-[10px] text-slate-500 mt-0.5">${safeText(subtitle)}</div>` : ''}
                             </div>
                         </div>
-                        <div class="shrink-0 flex items-center gap-1">
+                        ${options.centerHtml ? `<div class="order-3 w-full sm:order-none sm:w-auto sm:flex-1 flex justify-start sm:justify-center pt-0.5">${options.centerHtml}</div>` : '<div class="hidden sm:block sm:flex-1"></div>'}
+                        <div class="shrink-0 flex items-center gap-1 ml-auto">
                             ${options.actions || ''}
                             ${renderScriptButton(options.scriptKey)}
                         </div>
                     </div>
-                    <div class="text-xs text-slate-700 space-y-1">${body}</div>
+                    <div class="text-xs text-slate-700 space-y-1 min-w-0">${body}</div>
                 </section>`;
         }
 
         function renderPipelineRows(rows) {
             return rows.map(row => `
-                <div class="grid grid-cols-[88px_1fr] gap-2 items-start">
+                <div class="grid grid-cols-[88px_minmax(0,1fr)] gap-2 items-start min-w-0">
                     <span class="text-[11px] font-bold text-slate-400">${safeText(row.label)}:</span>
-                    <div class="text-[11px] leading-relaxed ${row.className || 'text-slate-700'}">${row.html ?? safeText(row.value)}</div>
+                    <div class="min-w-0 text-[11px] leading-relaxed break-words ${row.className || 'text-slate-700'}">${row.html ?? safeText(row.value)}</div>
                 </div>
             `).join('');
         }
@@ -735,6 +1052,331 @@
                     ${renderStatusPill(item.provider || '未配置', 'slate')}
                     ${renderStatusPill(item.role || '-', 'blue')}
                 </div>`;
+        }
+
+        function replyStyleCandidates(data) {
+            const items = Array.isArray(data?.reply_style_results_v2) ? data.reply_style_results_v2 : [];
+            if (items.length) return items;
+            const fallback = [];
+            if (data?.sales_advice_v2) {
+                fallback.push({
+                    candidate_id: 'legacy_llm2',
+                    model_slot: 'llm2',
+                    model_display_name: getLlmRuntime(data, 'llm2').display_name || 'LLM-2',
+                    style_title: '默认风格',
+                    style_content: '',
+                    status: 'done',
+                    content: data.sales_advice_v2,
+                    validation: data.assist_validation || null
+                });
+            }
+            if (data?.sales_advice_compare_v2) {
+                fallback.push({
+                    candidate_id: 'legacy_llm2_compare',
+                    model_slot: 'llm2_compare',
+                    model_display_name: getLlmRuntime(data, 'llm2_compare').display_name || 'LLM-2 对比',
+                    style_title: '默认风格',
+                    style_content: '',
+                    status: 'done',
+                    content: data.sales_advice_compare_v2,
+                    validation: data.assist_compare_validation || null
+                });
+            }
+            return fallback;
+        }
+
+        function getReplyScoreMap(scoreboard) {
+            const map = {};
+            const items = Array.isArray(scoreboard?.ai_candidates) ? scoreboard.ai_candidates : [];
+            items.forEach(item => {
+                if (item?.candidate_id) map[item.candidate_id] = item;
+            });
+            return map;
+        }
+
+        function scoreTone(score) {
+            const val = Number(score || 0);
+            if (val >= 85) return 'emerald';
+            if (val >= 70) return 'blue';
+            if (val >= 55) return 'amber';
+            return 'rose';
+        }
+
+        function renderCandidateScorePills(scoreEntry) {
+            if (!scoreEntry?.scores) return '';
+            const scores = scoreEntry.scores;
+            const scoreKeys = [
+                ['low_barrier', '易回复'],
+                ['non_repetition', '差异化'],
+                ['safety', '稳妥度'],
+                ['conciseness', '微信感'],
+                ['style_match', '风格匹配']
+            ];
+            return `
+                <div class="flex flex-wrap gap-1 mt-2">
+                    ${scoreKeys.map(([key, label]) => renderStatusPill(`${label} ${scores[key] ?? '-'}`, scoreTone(scores[key]))).join('')}
+                </div>`;
+        }
+
+        function renderReplyCandidateCard(data, candidate, scoreEntry) {
+            const isCompare = candidate.model_slot === 'llm2_compare';
+            const tone = isCompare ? 'blue' : 'amber';
+            const panelClass = isCompare ? 'border-blue-100 bg-blue-50' : 'border-amber-100 bg-amber-50';
+            const textClass = isCompare ? 'text-blue-950' : 'text-amber-900';
+            const content = candidate.content || `（${candidate.reason || '等待生成'}）`;
+            const copyLabel = isCompare ? '复制对比版' : '复制';
+            const contentCopy = candidate.content
+                ? `<button onclick="copyTextFromEncoded('${encodedArg(candidate.content)}')" class="px-2 py-1 bg-white border rounded text-[10px] text-slate-600">${copyLabel}</button>`
+                : '';
+            const feedback = !isCompare && candidate.content ? `
+                <button onclick='submitAssistFeedback(${jsArg(data.user_id)}, "useful")' class="px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-700">有用</button>
+                <button onclick='submitAssistFeedback(${jsArg(data.user_id)}, "needs_fix")' class="px-2 py-1 bg-rose-50 border border-rose-200 rounded text-[10px] text-rose-700">需修正</button>
+            ` : '';
+            return `
+                <div class="rounded-lg border ${panelClass} p-3">
+                    <div class="flex flex-wrap items-center gap-1 mb-2">
+                        ${renderStatusPill(candidate.model_display_name || candidate.model_slot || '-', tone)}
+                        ${renderStatusPill(candidate.style_title || '默认风格', 'slate')}
+                        ${renderStatusPill(candidate.status || '-', candidate.status === 'done' ? 'emerald' : (candidate.status === 'error' ? 'rose' : 'amber'))}
+                        ${scoreEntry ? renderStatusPill(`总分 ${scoreEntry.overall_score ?? '-'}`, scoreTone(scoreEntry.overall_score)) : ''}
+                        ${candidate.validation?.manual_review_required ? renderStatusPill('需人工复核', 'rose') : ''}
+                    </div>
+                    ${candidate.style_content ? `<div class="text-[10px] text-slate-500 mb-2">${safeText(candidate.style_content)}</div>` : ''}
+                    <div class="font-medium ${textClass} whitespace-pre-wrap leading-relaxed ${candidate.content ? '' : 'opacity-60'}">${safeText(content)}</div>
+                    ${renderCandidateScorePills(scoreEntry)}
+                    <div class="flex flex-wrap gap-1 pt-2">${contentCopy}${feedback}</div>
+                </div>`;
+        }
+
+        function renderReplyScoreboard(replyScores) {
+            if (!replyScores) return '';
+            const aiItems = Array.isArray(replyScores.ai_candidates) ? replyScores.ai_candidates : [];
+            const salesItems = Array.isArray(replyScores.actual_sales_replies) ? replyScores.actual_sales_replies : [];
+            const dims = Array.isArray(replyScores.dimensions) ? replyScores.dimensions : [];
+            const scorer = replyScores?.scored_by?.model ? `评分模型：${safeText(replyScores.scored_by.model)}` : '';
+            const header = dims.length
+                ? `<div class="text-[10px] text-slate-500 mb-2">评分维度：${dims.map(item => safeText(item.label)).join(' / ')}${scorer ? ` · ${scorer}` : ''}</div>`
+                : '';
+            const aiHtml = aiItems.length
+                ? aiItems.map(item => `
+                    <div class="rounded border border-slate-200 bg-white px-3 py-2">
+                        <div class="flex flex-wrap items-center gap-1 mb-1">
+                            ${renderStatusPill(item.model_display_name || '-', item.model_slot === 'llm2_compare' ? 'blue' : 'amber')}
+                            ${renderStatusPill(item.style_title || '-', 'slate')}
+                            ${renderStatusPill(`总分 ${item.overall_score ?? '-'}`, scoreTone(item.overall_score))}
+                        </div>
+                        <div class="text-[11px] text-slate-700 whitespace-pre-wrap">${safeText(item.reply_text || '')}</div>
+                    </div>
+                `).join('')
+                : '<div class="text-[11px] text-slate-400">暂无 AI 候选评分。</div>';
+            const salesHtml = salesItems.length
+                ? salesItems.map(item => `
+                    <div class="rounded border border-slate-200 bg-white px-3 py-2">
+                        <div class="flex flex-wrap items-center gap-1 mb-1">
+                            ${renderStatusPill(`销售实发 ${item.overall_score ?? '-'}`, scoreTone(item.overall_score))}
+                            ${renderStatusPill(formatDateTime(item.time), 'slate')}
+                        </div>
+                        <div class="text-[11px] text-slate-700 whitespace-pre-wrap">${safeText(item.content || '')}</div>
+                    </div>
+                `).join('')
+                : '<div class="text-[11px] text-slate-400">该节点后暂无销售实发回复评分。</div>';
+            return `
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 mt-3">
+                    <div class="text-[10px] font-bold text-slate-500 mb-2">多维度评分</div>
+                    ${header}
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                        <div>
+                            <div class="text-[10px] font-bold text-slate-400 mb-2">AI 候选</div>
+                            <div class="space-y-2">${aiHtml}</div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] font-bold text-slate-400 mb-2">实际销售回复</div>
+                            <div class="space-y-2">${salesHtml}</div>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        function replyGenerationStatusText(data, candidates, compareReason) {
+            const llm2Stage = data.stage_status?.llm2 || 'not_started';
+            const compareStage = data.stage_status?.llm2_compare || 'not_started';
+            if (candidates.length) return '已按启用风格分别生成主模型和对比模型候选。';
+            if (llm2Stage === 'running' && compareStage === 'running') return '主模型和对比模型正在生成候选，完成后会自动刷新显示。';
+            if (llm2Stage === 'running') return '主模型正在生成候选，对比模型会继续补齐。';
+            if (compareStage === 'running') return '主模型已完成，对比模型正在生成候选。';
+            return compareReason;
+        }
+
+        function renderReplyPendingPanel(data) {
+            const llm2Stage = data.stage_status?.llm2 || 'not_started';
+            const compareStage = data.stage_status?.llm2_compare || 'not_started';
+            const text = data.has_v1
+                ? ((llm2Stage === 'running' || compareStage === 'running')
+                    ? '候选生成中，页面会自动刷新，不需要重复点击。'
+                    : '点击右上角“生成全部候选”后，会按启用风格展示各模型结果。')
+                : '需要先完成第一阶段特征提取。';
+            const tone = (llm2Stage === 'running' || compareStage === 'running') ? 'border-blue-100 bg-blue-50 text-blue-700' : 'border-slate-200 bg-slate-50 text-slate-500';
+            return `<div class="rounded-lg border ${tone} p-3 text-[11px]">${safeText(text)}</div>`;
+        }
+
+        async function openReplyStyleConfig() {
+            let overlay = document.getElementById('reply-style-modal');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'reply-style-modal';
+                overlay.className = 'fixed inset-0 bg-slate-900/50 z-50 flex justify-center items-center';
+                document.body.appendChild(overlay);
+            }
+            overlay.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl w-[76%] max-h-[88vh] flex flex-col">
+                    <div class="flex justify-between items-center p-4 border-b border-slate-200">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-800">回复语句风格配置</h2>
+                            <div class="text-xs text-slate-400 mt-1">第二阶段会按启用风格逐个生成主模型和对比模型候选。</div>
+                        </div>
+                        <button onclick="document.getElementById('reply-style-modal').style.display='none'" class="text-slate-400 hover:text-slate-600 font-bold text-2xl leading-none">&times;</button>
+                    </div>
+                    <div class="p-5 overflow-y-auto flex-1">
+                        <div class="mb-3 flex justify-between items-center">
+                            <div class="text-xs text-slate-500">字段：序号 / 风格 / 描述 / 启用</div>
+                            <button type="button" onclick="appendReplyStyleRow()" class="px-3 py-1 rounded border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold">+ 新增风格</button>
+                        </div>
+                        <div id="reply-style-table-wrap" class="text-sm text-slate-500">正在读取配置...</div>
+                    </div>
+                    <div class="p-4 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 rounded-b-xl">
+                        <button onclick="document.getElementById('reply-style-modal').style.display='none'" class="px-4 py-2 rounded text-slate-600 font-bold border border-slate-300 bg-white hover:bg-slate-50 text-xs">取消</button>
+                        <button id="reply-style-save-btn" onclick="saveReplyStyleConfig()" class="px-4 py-2 rounded text-white bg-amber-600 hover:bg-amber-700 font-bold text-xs">保存风格配置</button>
+                    </div>
+                </div>`;
+            overlay.style.display = 'flex';
+            try {
+                const res = await fetch(`${API_BASE}/api/system/ai_scripts`);
+                const data = await res.json();
+                const rows = Array.isArray(data.REPLY_STYLE_OPTIONS) && data.REPLY_STYLE_OPTIONS.length ? data.REPLY_STYLE_OPTIONS : [];
+                renderReplyStyleTable(rows);
+            } catch (e) {
+                document.getElementById('reply-style-table-wrap').innerHTML = `<div class="text-rose-600 font-bold text-sm">读取风格配置失败：${safeText(translateApiMessage(e?.message || e))}</div>`;
+            }
+        }
+
+        function renderReplyStyleTable(rows) {
+            const items = (rows || []).map((item, idx) => ({
+                id: String(item?.id || `style_${idx + 1}`),
+                title: String(item?.title || ''),
+                content: String(item?.content || ''),
+                enabled: item?.enabled !== false
+            }));
+            const body = items.length ? items.map((item, idx) => `
+                <tr class="border-t reply-style-row">
+                    <td class="p-2 align-top text-center text-xs text-slate-500">${idx + 1}</td>
+                    <td class="p-2 align-top">
+                        <input type="text" class="reply-style-title w-full rounded border border-slate-300 px-2 py-1 text-xs" value="${safeText(item.title)}" placeholder="如：亲和微信风">
+                    </td>
+                    <td class="p-2 align-top">
+                        <textarea class="reply-style-content w-full rounded border border-slate-300 px-2 py-1 text-xs h-20" placeholder="描述该风格的语气、措辞、适用客户">${safeText(item.content)}</textarea>
+                    </td>
+                    <td class="p-2 align-top text-center">
+                        <div class="flex flex-col items-center gap-2">
+                            <input type="checkbox" class="reply-style-enabled" ${item.enabled ? 'checked' : ''}>
+                            <button type="button" onclick="this.closest('tr').remove(); refreshReplyStyleRowNumbers();" class="text-[10px] text-rose-600">删除</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('') : `
+                <tr class="reply-style-row">
+                    <td class="p-2 align-top text-center text-xs text-slate-500">1</td>
+                    <td class="p-2 align-top"><input type="text" class="reply-style-title w-full rounded border border-slate-300 px-2 py-1 text-xs" placeholder="如：亲和微信风"></td>
+                    <td class="p-2 align-top"><textarea class="reply-style-content w-full rounded border border-slate-300 px-2 py-1 text-xs h-20" placeholder="描述该风格的语气、措辞、适用客户"></textarea></td>
+                    <td class="p-2 align-top text-center"><input type="checkbox" class="reply-style-enabled" checked></td>
+                </tr>`;
+            document.getElementById('reply-style-table-wrap').innerHTML = `
+                <div class="overflow-auto border border-slate-200 rounded-lg">
+                    <table class="w-full bg-white">
+                        <thead class="bg-slate-100 text-slate-600 text-xs">
+                            <tr>
+                                <th class="p-2 w-16 text-center">序号</th>
+                                <th class="p-2 text-left">风格</th>
+                                <th class="p-2 text-left">描述</th>
+                                <th class="p-2 w-24 text-center">启用</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reply-style-table-body">${body}</tbody>
+                    </table>
+                </div>`;
+            refreshReplyStyleRowNumbers();
+        }
+
+        function refreshReplyStyleRowNumbers() {
+            document.querySelectorAll('#reply-style-table-body tr').forEach((row, idx) => {
+                const firstCell = row.querySelector('td');
+                if (firstCell) firstCell.textContent = String(idx + 1);
+            });
+        }
+
+        function appendReplyStyleRow() {
+            const tbody = document.getElementById('reply-style-table-body');
+            if (!tbody) return;
+            tbody.insertAdjacentHTML('beforeend', `
+                <tr class="border-t reply-style-row">
+                    <td class="p-2 align-top text-center text-xs text-slate-500"></td>
+                    <td class="p-2 align-top"><input type="text" class="reply-style-title w-full rounded border border-slate-300 px-2 py-1 text-xs" placeholder="如：商务克制风"></td>
+                    <td class="p-2 align-top"><textarea class="reply-style-content w-full rounded border border-slate-300 px-2 py-1 text-xs h-20" placeholder="描述该风格的语气、措辞、适用客户"></textarea></td>
+                    <td class="p-2 align-top text-center">
+                        <div class="flex flex-col items-center gap-2">
+                            <input type="checkbox" class="reply-style-enabled" checked>
+                            <button type="button" onclick="this.closest('tr').remove(); refreshReplyStyleRowNumbers();" class="text-[10px] text-rose-600">删除</button>
+                        </div>
+                    </td>
+                </tr>`);
+            refreshReplyStyleRowNumbers();
+        }
+
+        function collectReplyStyleRows() {
+            return [...document.querySelectorAll('#reply-style-table-body tr')].map((row, idx) => {
+                const title = String(row.querySelector('.reply-style-title')?.value || '').trim();
+                const content = String(row.querySelector('.reply-style-content')?.value || '').trim();
+                return {
+                    id: `style_${idx + 1}`,
+                    title,
+                    content,
+                    enabled: Boolean(row.querySelector('.reply-style-enabled')?.checked)
+                };
+            }).filter(item => item.title || item.content);
+        }
+
+        async function saveReplyStyleConfig() {
+            const btn = document.getElementById('reply-style-save-btn');
+            if (!btn) return;
+            btn.innerText = '保存中...';
+            try {
+                const styles = collectReplyStyleRows();
+                if (!styles.length) throw new Error('至少保留一条风格配置');
+                const scriptsRes = await fetch(`${API_BASE}/api/system/ai_scripts`);
+                const currentScripts = await scriptsRes.json();
+                const payload = {
+                    ...currentScripts,
+                    REPLY_STYLE_OPTIONS: styles
+                };
+                const res = await fetch(`${API_BASE}/api/system/ai_scripts`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    showApiError(data, '保存风格配置失败');
+                    return;
+                }
+                alert('风格配置已保存。重新生成第二阶段后，会按启用风格逐项输出。');
+                document.getElementById('reply-style-modal').style.display = 'none';
+                if (currentSelectedSessionId) {
+                    await loadAnalysis(currentSelectedSessionId);
+                }
+            } catch (e) {
+                alert(`保存风格配置失败：${translateApiMessage(e?.message || e)}`);
+            } finally {
+                btn.innerText = '保存风格配置';
+            }
         }
 
         function hasDisplayValue(value) {
@@ -785,7 +1427,7 @@
             return '';
         }
 
-        function renderConversationInputCard(messages) {
+        function renderConversationInputCard(messages, analysisVersion) {
             const limit = getWecomRecentMessageLimit();
             const recent = (messages || []).slice(-limit);
             const rows = recent.map(m => `
@@ -800,6 +1442,7 @@
                     <div class="flex flex-wrap gap-2 lg:content-start">
                         ${renderStatusPill(`已载入 ${messages?.length || 0} 条`, 'blue')}
                         ${renderStatusPill(`展示最近 ${limit} 条`, 'slate')}
+                        ${analysisVersion?.kind === 'anchored_customer_message' ? renderStatusPill('历史客户节点截断', 'amber') : renderStatusPill('当前末尾', 'emerald')}
                     </div>
                     <div class="grid grid-cols-1 gap-2 text-[10px] sm:grid-cols-2">
                         <div class="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
@@ -808,7 +1451,7 @@
                         </div>
                         <div class="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
                             <div class="font-bold text-slate-400">输入用途</div>
-                            <div class="mt-1 text-slate-700">供 Fast-Track、LLM-1 和知识检索使用</div>
+                            <div class="mt-1 text-slate-700">${safeText(analysisVersion?.kind === 'anchored_customer_message' ? '仅使用所选客户气泡及之前记录，后续消息不提供给 AI' : '供 Fast-Track、LLM-1 和知识检索使用')}</div>
                         </div>
                     </div>
                 </div>
@@ -842,7 +1485,7 @@
                     <span class="font-bold text-slate-500">实现原理：</span>${safeText(fastTrackHow)}
                 </div>`;
             const actions = `<button onclick='loadAnalysis(${jsArg(data.user_id || '')})' class="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded hover:bg-slate-100 transition">↺ 刷新</button>`;
-            return renderPipelineCard(2, '强信号扫描 (Fast-Track)', '旁路规则先行识别风险、报价、时间等强信号', '#64748b', body, {scriptKey: 'FAST_TRACK_RULES', actions});
+            return renderPipelineCard(2, '强信号扫描 (Fast-Track)', '旁路规则先行识别报价、时间、组织归口、决策链、暂无需求等强信号', '#64748b', body, {scriptKey: 'FAST_TRACK_RULES', actions});
         }
 
         function renderStageOneCard(data, userId) {
@@ -914,16 +1557,16 @@
         function renderKnowledgeHit(hit, idx) {
             const pricingRules = hit.pricing_rules || [];
             const pricingHtml = pricingRules.length
-                ? `<div class="mt-2 space-y-1">${pricingRules.map(rule => `<div class="rounded bg-amber-50 border border-amber-100 px-2 py-1 text-[10px] text-amber-800">报价规则：${safeText(rule.currency)} ${safeText(rule.price_min)}-${safeText(rule.price_max)} / ${safeText(rule.unit)} ${rule.min_charge ? ` · 最低 ${safeText(rule.min_charge)}` : ''}</div>`).join('')}</div>`
+                ? `<div class="mt-2 space-y-1 min-w-0">${pricingRules.map(rule => `<div class="rounded bg-amber-50 border border-amber-100 px-2 py-1 text-[10px] text-amber-800 break-words">报价规则：${safeText(rule.currency)} ${safeText(rule.price_min)}-${safeText(rule.price_max)} / ${safeText(rule.unit)} ${rule.min_charge ? ` · 最低 ${safeText(rule.min_charge)}` : ''}</div>`).join('')}</div>`
                 : '';
             const qualityTone = hit.usable_for_reply ? 'text-emerald-700' : 'text-amber-700';
             return `
-                <div class="rounded-lg border border-emerald-100 bg-white p-2">
+                <div class="rounded-lg border border-emerald-100 bg-white p-2 min-w-0 overflow-hidden">
                     <div class="flex items-start justify-between gap-2">
-                        <div class="font-bold text-[11px] text-slate-700">${idx + 1}. ${safeText(hit.title)}</div>
+                        <div class="font-bold text-[11px] text-slate-700 break-words min-w-0">${idx + 1}. ${safeText(hit.title)}</div>
                         <span class="text-[10px] font-bold text-emerald-700">score ${safeText(hit.score)}</span>
                     </div>
-                    <div class="text-[10px] text-slate-400 mt-1">${safeText(hit.knowledge_type_label || hit.knowledge_type)} · ${safeText(hit.chunk_type)} · ${safeText(hit.business_line_label || hit.business_line || '-')} · ${safeText(hit.service_scope_label || hit.service_scope || '-')}</div>
+                    <div class="text-[10px] text-slate-400 mt-1 break-words">${safeText(hit.knowledge_type_label || hit.knowledge_type)} · ${safeText(hit.chunk_type)} · ${safeText(hit.business_line_label || hit.business_line || '-')} · ${safeText(hit.service_scope_label || hit.service_scope || '-')}</div>
                     <div class="mt-1 text-[10px] ${qualityTone}">质量 ${safeText(hit.useful_score ?? '-')} · ${safeText(hit.usable_for_reply ? '可自动回复' : '仅人工参考')} · ${safeText(hit.library_type || 'reference')}</div>
                     <div class="text-[11px] text-slate-700 leading-relaxed mt-2 whitespace-pre-wrap">${safeText(hit.content)}</div>
                     ${hit.manual_review_required ? '<div class="mt-2 text-[10px] text-rose-700 font-bold">该证据要求人工复核</div>' : ''}
@@ -973,13 +1616,13 @@
                 </div>
                 ${renderPipelineRows([
                     {label: '检索问题', value: knowledge.query_text || data.core_demand || '-'},
-                    {label: '检索特征', html: `<pre class="bg-slate-50 border rounded p-2 overflow-auto max-h-36">${safeText(JSON.stringify(knowledge.query_features || {}, null, 2))}</pre>`},
-                    {label: '过滤条件', html: `<pre class="bg-slate-50 border rounded p-2 overflow-auto max-h-36">${safeText(JSON.stringify(filters, null, 2))}</pre>`},
+                    {label: '检索特征', html: `<pre class="w-full max-w-full bg-slate-50 border rounded p-2 overflow-x-auto overflow-y-auto max-h-36 text-[10px] leading-relaxed whitespace-pre-wrap break-all">${safeText(JSON.stringify(knowledge.query_features || {}, null, 2))}</pre>`},
+                    {label: '过滤条件', html: `<pre class="w-full max-w-full bg-slate-50 border rounded p-2 overflow-x-auto overflow-y-auto max-h-36 text-[10px] leading-relaxed whitespace-pre-wrap break-all">${safeText(JSON.stringify(filters, null, 2))}</pre>`},
                     {label: '证据分类', value: `规则 ${context.rules?.length || 0} / FAQ ${context.faqs?.length || 0} / 案例 ${context.cases?.length || 0} / 人工参考 ${knowledge.human_only_hits?.length || 0}`},
                     {label: '复核要求', value: knowledge.manual_review_required ? '需要人工复核' : '无需人工复核', className: knowledge.manual_review_required ? 'text-rose-700 font-bold' : 'text-emerald-700 font-bold'}
                 ])}
                 ${knowledge.no_hit_reason ? `<div class="rounded bg-rose-50 border border-rose-100 p-2 text-[11px] text-rose-700">${safeText(knowledge.no_hit_reason)}</div>` : ''}
-                <div class="space-y-2">${hits.length ? hits.map((hit, idx) => renderKnowledgeHit(hit, idx)).join('') : '<div class="text-slate-400 text-[11px]">无命中证据</div>'}</div>
+                <div class="space-y-2 min-w-0">${hits.length ? hits.map((hit, idx) => renderKnowledgeHit(hit, idx)).join('') : '<div class="text-slate-400 text-[11px]">无命中证据</div>'}</div>
                 <div class="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-2 text-[11px] text-emerald-900">
                     <span class="font-bold text-emerald-700">实现原理：</span>${safeText(knowledgeHow)}
                 </div>
@@ -989,16 +1632,26 @@
         }
 
         function renderFinalReplyCard(data, userId) {
-            const actionLabel = data.has_v2 && data.has_v2_compare ? '🔄 重新生成对比' : (data.has_v1 ? '▶️ 生成两版回复' : '⛔ 需先提取');
-            const actions = `<button onclick='triggerLLM(${jsArg(userId)}, 2)' ${data.has_v1 ? '' : 'disabled'} class="text-[10px] font-bold ${data.has_v1 ? 'text-white bg-amber-500 hover:bg-amber-600 border border-amber-600' : 'text-amber-400 bg-amber-100 border border-amber-200 cursor-not-allowed'} px-2 py-1 rounded transition">${actionLabel}</button>`;
+            const candidates = replyStyleCandidates(data);
+            const replyScores = data.reply_scores_v2 || null;
+            const scoreMap = getReplyScoreMap(replyScores);
+            const enabledStyleTitles = [...new Set(candidates.map(item => item.style_title).filter(Boolean))];
+            const styleConfigButton = `<button type="button" onclick="openReplyStyleConfig()" class="text-[10px] font-bold text-amber-700 bg-white border border-amber-300 px-3 py-1 rounded transition hover:bg-amber-50">风格配置</button>`;
+            const actionLabel = candidates.length ? '🔄 重新生成全部候选' : (data.has_v1 ? '▶️ 生成全部候选' : '⛔ 需先提取');
+            const comparePromptTrace = data.sales_advice_compare_prompt_trace_v2 || null;
+            const actualSalesReplies = Array.isArray(data.actual_sales_replies) ? data.actual_sales_replies : [];
+            const downloadPromptButton = comparePromptTrace?.prompt
+                ? `<button type="button" onclick='downloadComparePromptTrace(${jsArg(userId)})' class="text-[10px] font-bold text-slate-700 bg-white border border-slate-300 px-2 py-1 rounded transition hover:bg-slate-50">下载实发脚本</button>`
+                : '';
+            const actions = `<button onclick='triggerLLM(${jsArg(userId)}, 2)' ${data.has_v1 ? '' : 'disabled'} class="text-[10px] font-bold ${data.has_v1 ? 'text-white bg-amber-500 hover:bg-amber-600 border border-amber-600' : 'text-amber-400 bg-amber-100 border border-amber-200 cursor-not-allowed'} px-2 py-1 rounded transition">${actionLabel}</button>${downloadPromptButton}`;
             const llm2 = getLlmRuntime(data, 'llm2');
             const llm2Compare = getLlmRuntime(data, 'llm2_compare');
-            const advice = data.sales_advice_v2 || '';
-            const compareAdvice = data.sales_advice_compare_v2 || '';
+            const llm2Stage = data.stage_status?.llm2 || 'not_started';
             const compareStage = data.stage_status?.llm2_compare || 'not_started';
             const compareRuntime = data.llm2_compare_runtime_status || {};
             const compareConfigured = data.llm2_compare_configured !== false && Boolean(llm2Compare.model);
             const compareIsError = ['not_configured', 'failed_no_content', 'error'].includes(compareStage);
+            const primaryPillText = data.has_v2 ? '主模型已生成' : (llm2Stage === 'running' ? '主模型生成中' : '主模型等待生成');
             const comparePillText = data.has_v2_compare ? '对比模型已生成' : (
                 compareStage === 'not_configured' ? '对比模型未配置' :
                 compareStage === 'error' ? '对比模型失败' :
@@ -1012,52 +1665,58 @@
                 compareStage === 'failed_no_content' ? '对比模型接口返回空内容。' :
                 data.has_v1 ? '等待点击生成两版回复' : '需要先完成第一阶段特征提取'
             );
-            const feedback = data.has_v2 ? `
-                <div class="flex flex-wrap gap-1 pt-1">
-                    <button onclick="copyTextFromEncoded('${encodedArg(advice)}')" class="px-2 py-1 bg-white border rounded text-[10px] text-slate-600">复制</button>
-                    <button onclick='submitAssistFeedback(${jsArg(userId)}, "useful")' class="px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-700">有用</button>
-                    <button onclick='submitAssistFeedback(${jsArg(userId)}, "needs_fix")' class="px-2 py-1 bg-rose-50 border border-rose-200 rounded text-[10px] text-rose-700">需修正</button>
-                </div>` : '';
-            const compareCopy = data.has_v2_compare ? `
-                <div class="flex flex-wrap gap-1 pt-1">
-                    <button onclick="copyTextFromEncoded('${encodedArg(compareAdvice)}')" class="px-2 py-1 bg-white border rounded text-[10px] text-slate-600">复制对比版</button>
-                </div>` : '';
+            const summaryStatusText = replyGenerationStatusText(data, candidates, compareReason);
+            const candidateCardsHtml = candidates.length
+                ? candidates.map(item => renderReplyCandidateCard(data, item, scoreMap[item.candidate_id])).join('')
+                : renderReplyPendingPanel(data);
             const body = `
                 <div class="mb-2 flex flex-wrap gap-1">
-                    ${renderStatusPill(data.has_v2 ? '主模型已生成' : '主模型等待生成', data.has_v2 ? 'emerald' : 'amber')}
-                    ${renderStatusPill(comparePillText, data.has_v2_compare ? 'emerald' : (compareIsError ? 'rose' : 'amber'))}
+                    ${renderStatusPill(primaryPillText, data.has_v2 ? 'emerald' : (llm2Stage === 'running' ? 'blue' : 'amber'))}
+                    ${renderStatusPill(comparePillText, data.has_v2_compare ? 'emerald' : (compareStage === 'running' ? 'blue' : (compareIsError ? 'rose' : 'amber')))}
+                    ${renderStatusPill(`风格 ${enabledStyleTitles.length || 0} 项`, enabledStyleTitles.length ? 'blue' : 'slate')}
                 </div>
                 ${renderPipelineRows([
                     {label: '生成输入', value: data.has_v1 ? '结构化摘要 + CRM 客户画像 + 知识库证据' : '--待构建--', className: data.has_v1 ? 'text-slate-700' : 'text-slate-400'},
                     {label: '主模型', value: llm2.display_name || llm2.model || '--待配置--', className: data.has_v2 ? 'text-emerald-700 font-bold' : 'text-slate-400'},
                     {label: '对比模型', value: llm2Compare.display_name || llm2Compare.model || '--待配置--', className: data.has_v2_compare ? 'text-emerald-700 font-bold' : (compareConfigured ? 'text-slate-700' : 'text-rose-600 font-bold')},
-                    {label: '问题原因', value: data.has_v2 && data.has_v2_compare ? '已完成主模型与对比模型生成' : compareReason, className: data.has_v2 && data.has_v2_compare ? 'text-emerald-700' : (compareIsError ? 'text-rose-700' : 'text-amber-700')}
+                    {label: '已启用风格', value: enabledStyleTitles.length ? enabledStyleTitles.join(' / ') : '未读到风格配置', className: enabledStyleTitles.length ? 'text-slate-700' : 'text-amber-700'},
+                    {label: '当前状态', value: summaryStatusText, className: candidates.length ? 'text-emerald-700' : ((data.stage_status?.llm2 === 'running' || compareStage === 'running') ? 'text-blue-700' : (compareIsError ? 'text-rose-700' : 'text-amber-700'))}
                 ])}
-                <div class="grid grid-cols-1 xl:grid-cols-2 gap-2">
-                    <div class="rounded-lg border border-amber-100 bg-amber-50 p-3">
-                        ${renderLlmRuntimeStrip(data, 'llm2', 'amber')}
-                        <div class="font-medium text-amber-900 whitespace-pre-wrap leading-relaxed ${data.has_v2 ? '' : 'opacity-50'}">${safeText(advice || '（主模型空，等待生成）')}</div>
-                        ${feedback}
-                    </div>
-                    <div class="rounded-lg border border-blue-100 bg-blue-50 p-3">
-                        ${renderLlmRuntimeStrip(data, 'llm2_compare', 'blue')}
-                        <div class="font-medium text-blue-950 whitespace-pre-wrap leading-relaxed ${data.has_v2_compare ? '' : 'opacity-50'}">${safeText(compareAdvice || `（${compareReason}）`)}</div>
-                        ${compareCopy}
-                    </div>
-                </div>`;
-            return renderPipelineCard(6, '第二阶段话术生成（双模型对比）', `${llm2.model || '主模型未配置'} vs ${llm2Compare.model || '对比模型未配置'}`, '#f59e0b', body, {scriptKey: 'SYSTEM_PROMPT_LLM2', actions});
+                <div class="grid grid-cols-1 2xl:grid-cols-2 gap-2 min-w-0">
+                    ${candidateCardsHtml}
+                </div>
+                ${renderReplyScoreboard(replyScores)}
+                ${data.analysis_version?.kind === 'anchored_customer_message' ? `
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div class="text-[10px] font-bold text-slate-500 mb-2">实际销售后续回复</div>
+                        ${actualSalesReplies.length
+                            ? `<div class="space-y-2">${actualSalesReplies.map(item => `
+                                <div class="rounded border border-slate-200 bg-white px-3 py-2">
+                                    <div class="text-[10px] font-bold text-slate-400 mb-1">我方营销 · ${safeText(formatDateTime(item.time))}</div>
+                                    <div class="text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap">${safeText(item.content)}</div>
+                                </div>
+                            `).join('')}</div>`
+                            : '<div class="text-[11px] text-slate-400">该节点后暂无连续我方回复可对照。</div>'
+                        }
+                    </div>` : ''
+                }`;
+            return renderPipelineCard(6, '第二阶段话术生成（双模型对比）', `${llm2.model || '主模型未配置'} vs ${llm2Compare.model || '对比模型未配置'}`, '#f59e0b', body, {scriptKey: 'SYSTEM_PROMPT_LLM2', actions, centerHtml: styleConfigButton});
         }
 
-        function renderValidationCard(validation) {
+        function renderValidationCard(data) {
+            const validation = data?.assist_validation || null;
+            const llm2Stage = data?.stage_status?.llm2 || 'not_started';
+            const compareStage = data?.stage_status?.llm2_compare || 'not_started';
+            const generationRunning = llm2Stage === 'running' || compareStage === 'running';
             if (!validation) {
                 return renderPipelineCard(7, '输出校验与人工复核', '检查回复是否缺证据、越权承诺或需要人工复核', '#f43f5e', `
-                    <div class="mb-2">${renderStatusPill('等待校验', 'amber')}</div>
+                    <div class="mb-2">${renderStatusPill(generationRunning ? '生成中，待校验' : '等待校验', generationRunning ? 'blue' : 'amber')}</div>
                     ${renderPipelineRows([
-                        {label: '校验状态', value: '--待校验--', className: 'text-slate-400'},
+                        {label: '校验状态', value: generationRunning ? '第二阶段生成中' : '--待校验--', className: generationRunning ? 'text-blue-700' : 'text-slate-400'},
                         {label: '阻断问题', value: '--待校验--', className: 'text-slate-400'},
                         {label: '提醒事项', value: '--待校验--', className: 'text-slate-400'},
                         {label: '人工复核', value: '--待校验--', className: 'text-slate-400'},
-                        {label: '问题原因', value: '等待第二阶段生成后执行校验。', className: 'text-amber-700'}
+                        {label: '当前状态', value: generationRunning ? '第二阶段候选生成完成后，会自动执行输出校验。' : '等待第二阶段生成后执行校验。', className: generationRunning ? 'text-blue-700' : 'text-amber-700'}
                     ])}`);
             }
             const warnings = validation.warnings || [];
@@ -1113,10 +1772,13 @@
             }
         }
 
-        async function loadAnalysis(userId) {
-            const res = await fetch(`${API_BASE}/api/sessions/${userId}/analysis`);
+        async function loadAnalysis(userId, options = {}) {
+            const versionId = options.versionId || currentSelectedAnalysisVersionId || 'current_tail';
+            const query = versionId && versionId !== 'current_tail' ? `?snapshot_id=${encodeURIComponent(versionId)}` : '';
+            const res = await fetch(`${API_BASE}/api/sessions/${userId}/analysis${query}`);
             const data= await res.json() || { fast_track: [], has_v1: false, has_v2: false };
             data.user_id = userId;
+            analysisSnapshotByUserId[analysisCacheKey(userId, versionId)] = data;
             const area = document.getElementById('analysis-content');
             const badge = document.getElementById('status-badge');
 
@@ -1129,13 +1791,13 @@
 
             area.innerHTML = `
                 <div class="grid grid-cols-1 gap-3 pb-10">
-                    ${renderConversationInputCard(currentSessionMessages)}
+                    ${renderConversationInputCard(data.input_messages || currentSessionMessages, data.analysis_version)}
                     ${renderFastTrackCard(data)}
                     ${renderStageOneCard(data, userId)}
                     ${renderCrmContextCard(data.crm_info, userId)}
                     ${renderKnowledgeBaseCard(data, userId)}
                     ${renderFinalReplyCard(data, userId)}
-                    ${renderValidationCard(data.assist_validation)}
+                    ${renderValidationCard(data)}
                 </div>
             `;
             return data;
@@ -1293,7 +1955,12 @@
             const res = await fetch(`${API_BASE}/api/assist/feedback`, {
                 method:'POST',
                 headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({session_id: sessionId, feedback_status: status, manual_feedback: {note: note || '', source: 'frontend_sidebar'}})
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    snapshot_id: currentSelectedAnalysisVersionId !== 'current_tail' ? currentSelectedAnalysisVersionId : null,
+                    feedback_status: status,
+                    manual_feedback: {note: note || '', source: 'frontend_sidebar'}
+                })
             });
             const data = await res.json();
             if (!res.ok) return showApiError(data, '提交反馈失败');
@@ -1329,6 +1996,7 @@
         }
 
         async function triggerLLM(userId, step) {
+            const versionId = currentSelectedAnalysisVersionId || 'current_tail';
             const url = `${API_BASE}/api/sessions/${userId}/trigger_llm`;
             renderOperationStatus({
                 label: `阶段 ${step} 已发起，等待后端确认`,
@@ -1348,7 +2016,14 @@
                 </div>
             `;
             try {
-                const res = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({step: step}) });
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        step: step,
+                        snapshot_id: versionId !== 'current_tail' ? versionId : null
+                    })
+                });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) {
                     renderOperationStatus({
@@ -1367,7 +2042,7 @@
                     response: JSON.stringify(data),
                     next: '系统正在自动轮询刷新，完成后会立即更新右侧链路显示。'
                 });
-                await pollAnalysisUntilComplete(userId, step, url);
+                await pollAnalysisUntilComplete(userId, step, url, versionId);
             } catch (err) {
                 console.error("服务端暂时不可达或重启中:", err);
                 renderOperationStatus({
@@ -1384,20 +2059,22 @@
             if (!data) return false;
             if (step === 1) return Boolean(data.has_v1 || data.stage_status?.llm1 === 'done');
             if (step === 2) {
+                const llm2Stage = data.stage_status?.llm2;
                 const compareStage = data.stage_status?.llm2_compare;
+                const llm2Terminal = ['done', 'failed_no_content', 'error', 'skipped_no_summary'].includes(llm2Stage);
                 const compareTerminal = ['done', 'not_configured', 'failed_no_content', 'error'].includes(compareStage);
-                return Boolean(data.has_v2 && (data.has_v2_compare || compareTerminal));
+                return Boolean(llm2Terminal && compareTerminal);
             }
             return false;
         }
 
-        async function pollAnalysisUntilComplete(userId, step, url) {
+        async function pollAnalysisUntilComplete(userId, step, url, versionId = currentSelectedAnalysisVersionId) {
             const maxAttempts = 60;
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
                 await new Promise(resolve => setTimeout(resolve, attempt === 1 ? 2500 : 2000));
                 let data = null;
                 try {
-                    data = await loadAnalysis(userId);
+                    data = await loadAnalysis(userId, {versionId});
                 } catch (err) {
                     console.warn('自动刷新分析状态失败，继续重试', err);
                 }
@@ -1540,6 +2217,12 @@
                     <div>
                         <label class="block font-bold text-slate-700 mb-2">▶️ 第二阶段：实战话术风格指导与边界管控</label>
                         <textarea id="set_prompt2" class="w-full text-xs font-mono p-3 border border-amber-300 rounded-md focus:ring-2 focus:ring-amber-500 h-[130px] leading-relaxed bg-amber-50/30">${data.SYSTEM_PROMPT_LLM2 || ''}</textarea>
+                        <div class="text-[11px] text-slate-500 mt-2">第二阶段脚本支持 <code>{{reply_style_prompt}}</code> 通配符，会按已启用风格逐个生成。</div>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-2">🗂️ 回复语句风格配置（JSON 数组）</label>
+                        <textarea id="set_reply_styles" class="w-full text-[11px] font-mono p-3 border border-amber-300 rounded-md focus:ring-2 focus:ring-amber-500 h-[180px] bg-amber-50/30 whitespace-pre">${JSON.stringify(data.REPLY_STYLE_OPTIONS || [], null, 4)}</textarea>
+                        <div class="text-[11px] text-slate-500 mt-2">每项包含 <code>id</code>、<code>title</code>、<code>content</code>、<code>enabled</code>。启用几项，第二阶段就按每个风格分别跑主模型和对比模型。</div>
                     </div>
                     <div>
                         <label class="block font-bold text-slate-700 mb-2">📌 强旁路扫描规则字典（使用结构化数组格式）</label>
@@ -1559,6 +2242,7 @@
                     WECOM_RECENT_MESSAGE_LIMIT: clampWecomRecentMessageLimit(document.getElementById('set_recent_message_limit').value),
                     SYSTEM_PROMPT_LLM1: document.getElementById('set_prompt1').value,
                     SYSTEM_PROMPT_LLM2: document.getElementById('set_prompt2').value,
+                    REPLY_STYLE_OPTIONS: JSON.parse(document.getElementById('set_reply_styles').value),
                     FAST_TRACK_RULES: JSON.parse(document.getElementById('set_rules').value)
                 };
                 const res = await fetch(`${API_BASE}/api/system/ai_scripts`, {
@@ -1589,9 +2273,61 @@
             dictionaries: {},
             selectedDocumentId: null,
             selectedCandidateId: null,
+            selectedCandidateIds: [],
             qualityIssues: [],
-            reviewDocs: []
+            reviewDocs: [],
+            listStates: {}
         };
+        const KB_PAGE_SIZE = 100;
+
+        function getKbListState(key) {
+            if (!kbState.listStates[key]) {
+                kbState.listStates[key] = {
+                    offset: 0,
+                    limit: KB_PAGE_SIZE,
+                    total: 0,
+                    stage: '',
+                    knowledgeClass: '',
+                    businessLine: '',
+                    status: '',
+                    sourceType: '',
+                    titleKeyword: '',
+                    contentKeyword: ''
+                };
+            }
+            return kbState.listStates[key];
+        }
+
+        function renderKbPagination(tabKey) {
+            const state = getKbListState(tabKey);
+            const total = Number(state.total || 0);
+            const limit = Number(state.limit || KB_PAGE_SIZE);
+            const offset = Number(state.offset || 0);
+            const currentPage = total ? Math.floor(offset / limit) + 1 : 0;
+            const totalPages = total ? Math.ceil(total / limit) : 0;
+            return `
+                <div class="flex items-center justify-between gap-3 px-3 py-2 border-t bg-slate-50 text-xs text-slate-600">
+                    <div>共 ${safeText(total)} 条，每页 ${safeText(limit)} 条，当前第 ${safeText(currentPage)} / ${safeText(totalPages)} 页</div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="changeKbPage('${tabKey}', -1)" ${offset <= 0 ? 'disabled' : ''} class="px-3 py-1 rounded border bg-white text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">上一页</button>
+                        <button type="button" onclick="changeKbPage('${tabKey}', 1)" ${offset + limit >= total ? 'disabled' : ''} class="px-3 py-1 rounded border bg-white text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">下一页</button>
+                    </div>
+                </div>`;
+        }
+
+        function readTextInputValue(id, fallback = '') {
+            const el = document.getElementById(id);
+            const raw = el ? String(el.value || '').trim() : String(fallback || '').trim();
+            return raw === '-' ? '' : raw;
+        }
+
+        async function changeKbPage(tabKey, delta) {
+            const state = getKbListState(tabKey);
+            state.offset = Math.max(0, state.offset + delta * state.limit);
+            if (tabKey === 'documents') return refreshKbDocuments();
+            if (tabKey === 'review') return refreshKbReview();
+            if (tabKey === 'candidates') return refreshKbCandidates();
+        }
 
         const KNOWLEDGE_CLASS_HELP = [
             ['报价限制条件', '不能直接报价、需人工核价、加急另计、特殊范围另议。报价规则本身写入结构化报价规则，不作为知识分类。'],
@@ -1773,31 +2509,6 @@
             return phrase[text] || text;
         }
 
-        function formatGateReport(gateReport) {
-            if (!gateReport) return '';
-            const summary = gateReport.summary || {};
-            const documentCount = gateReport.target_document_count ?? gateReport.documents?.length ?? 0;
-            const lines = [
-                '知识发布门禁未通过',
-                `本次尝试发布知识 ${documentCount} 条。`,
-                `门禁回归用例：选中 ${summary.selected ?? (gateReport.selected_case_ids || []).length ?? 0} 条，通过 ${summary.passed ?? 0} 条，失败 ${summary.failed ?? 0} 条。`
-            ];
-            const failedCases = gateReport.failed_cases || (gateReport.results || []).filter(item => item && item.passed === false);
-            if (failedCases.length) {
-                lines.push('', '失败用例：');
-                failedCases.slice(0, 10).forEach((item, index) => {
-                    lines.push(`${index + 1}. ${item.case_id || '未命名用例'}${item.query_text ? `：${item.query_text}` : ''}`);
-                    (item.failures || []).forEach(reason => lines.push(`原因：${translateApiMessage(reason)}`));
-                    (item.warnings || []).forEach(reason => lines.push(`提醒：${translateApiMessage(reason)}`));
-                });
-                if (failedCases.length > 10) lines.push(`还有 ${failedCases.length - 10} 条失败用例未展示，请在回归测试页查看完整报告。`);
-            }
-            if (gateReport.selected_case_ids?.length) {
-                lines.push('', `本次门禁用例编号：${gateReport.selected_case_ids.join('、')}`);
-            }
-            return lines.join('\n');
-        }
-
         function formatApiError(payload, fallback = '操作失败') {
             const detail = payload?.detail ?? payload;
             if (!detail) return fallback;
@@ -1860,12 +2571,12 @@
             dialog.className = 'hidden fixed inset-0 z-[1000] items-center justify-center p-4';
             dialog.innerHTML = `
                 <div class="input-dialog-backdrop absolute inset-0" data-role="backdrop"></div>
-                <div class="relative z-[1001] w-full max-w-xl rounded-2xl bg-white shadow-2xl border border-slate-200">
-                    <div class="px-5 py-4 border-b border-slate-200">
+                <div class="relative z-[1001] flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
+                    <div class="shrink-0 px-5 py-4 border-b border-slate-200">
                         <div id="kb-text-input-title" class="text-base font-bold text-slate-900"></div>
-                        <div id="kb-text-input-description" class="mt-2 text-sm text-slate-500 leading-6 whitespace-pre-line"></div>
                     </div>
-                    <div class="px-5 py-4 space-y-3">
+                    <div class="min-h-0 overflow-y-auto px-5 py-4 space-y-3">
+                        <div id="kb-text-input-description" class="hidden text-sm text-slate-500 leading-6 whitespace-pre-line"></div>
                         <label id="kb-text-input-field-wrap" class="block">
                             <span id="kb-text-input-label" class="block text-xs font-bold text-slate-600 mb-2"></span>
                             <input id="kb-text-input-field" type="text" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
@@ -1876,7 +2587,7 @@
                         </label>
                         <div id="kb-text-input-error" class="hidden text-xs text-rose-600"></div>
                     </div>
-                    <div class="px-5 py-4 border-t border-slate-200 flex items-center justify-end gap-3">
+                    <div class="shrink-0 px-5 py-4 border-t border-slate-200 flex items-center justify-end gap-3">
                         <button id="kb-text-input-cancel" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-sm hover:bg-slate-50">取消</button>
                         <button id="kb-text-input-confirm" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700">确定</button>
                     </div>
@@ -1961,12 +2672,16 @@
             const languagePairs = [...new Set(chunks.map(item => item.language_pair_label).filter(Boolean).filter(label => label !== '-'))];
             const serviceScopes = [...new Set(chunks.map(item => item.service_scope_label).filter(Boolean).filter(label => label !== '-'))];
             const customerTiers = [...new Set(chunks.map(item => item.customer_tier_label).filter(Boolean).filter(label => label !== '-'))];
-            const pricingChunks = chunks.filter(item => item.knowledge_type === 'pricing');
+            const pricingRuleRequiredChunks = chunks.filter(item => item.knowledge_type === 'pricing' && item.chunk_type !== 'constraint');
+            const pricingConstraintChunks = chunks.filter(item => item.knowledge_type === 'pricing' && item.chunk_type === 'constraint');
             const taxPolicyCount = pricingRules.filter(rule => (rule.tax_policy || '').trim()).length;
             const warnings = [];
 
-            if (pricingChunks.length && !pricingRules.length) {
-                warnings.push('当前文档包含报价类切片，但还没有结构化报价规则，发布门禁会直接阻断。');
+            if (pricingRuleRequiredChunks.length && !pricingRules.length) {
+                warnings.push('当前文档包含报价规则型切片，但还没有结构化报价规则，发布门禁会直接阻断。');
+            }
+            if (!pricingRuleRequiredChunks.length && pricingConstraintChunks.length) {
+                warnings.push('当前文档只有“报价限制条件”切片。此类切片仍属于报价知识，但不要求单独补结构化报价规则；发布时主要检查分类、有效期和治理门禁。');
             }
             if (pricingRules.length && !taxPolicyCount) {
                 warnings.push('当前报价规则没有填写税费或发票说明。涉及“含税、税点、专票/普票”的门禁用例会按缺少税票证据处理。');
@@ -1979,7 +2694,8 @@
                 languagePairs,
                 serviceScopes,
                 customerTiers,
-                pricingChunkCount: pricingChunks.length,
+                pricingRuleRequiredChunkCount: pricingRuleRequiredChunks.length,
+                pricingConstraintChunkCount: pricingConstraintChunks.length,
                 pricingRuleCount: pricingRules.length,
                 taxPolicyCount,
                 warnings
@@ -1999,9 +2715,15 @@
                     </div>
                     <div class="grid grid-cols-2 gap-2">
                         <div class="rounded border border-emerald-200 bg-white px-3 py-2">
-                            <div class="text-[11px] text-slate-500">报价切片 / 规则</div>
-                            <div class="mt-1 font-bold text-slate-800">${safeText(metrics.pricingChunkCount)} / ${safeText(metrics.pricingRuleCount)}</div>
+                            <div class="text-[11px] text-slate-500">报价规则型切片 / 结构化规则</div>
+                            <div class="mt-1 font-bold text-slate-800">${safeText(metrics.pricingRuleRequiredChunkCount)} / ${safeText(metrics.pricingRuleCount)}</div>
                         </div>
+                        <div class="rounded border border-emerald-200 bg-white px-3 py-2">
+                            <div class="text-[11px] text-slate-500">报价限制条件切片</div>
+                            <div class="mt-1 font-bold text-slate-800">${safeText(metrics.pricingConstraintChunkCount)}</div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 gap-2">
                         <div class="rounded border border-emerald-200 bg-white px-3 py-2">
                             <div class="text-[11px] text-slate-500">税费/发票说明规则数</div>
                             <div class="mt-1 font-bold text-slate-800">${safeText(metrics.taxPolicyCount)}</div>
@@ -2072,57 +2794,33 @@
             return {selected, passed, failed, failedCases};
         }
 
-        function formatGateReport(gateReport) {
-            if (!gateReport) return '';
-            const documentCount = gateReport.target_document_count ?? gateReport.documents?.length ?? 0;
-            const stats = getGateCaseStats(gateReport);
-            const lines = [
-                '知识发布门禁未通过',
-                `本次尝试发布知识 ${documentCount} 条。`,
-                `本次共抽取门禁回归用例 ${stats.selected} 条：通过 ${stats.passed} 条，失败 ${stats.failed} 条。`
-            ];
-            const categoryText = Object.entries(gateReport.selected_case_category_counts || {})
-                .map(([key, count]) => `${safeText(key)} ${count} 条`)
-                .join('，');
-            if (categoryText) {
-                lines.push(`这里的“${stats.selected} 条”是门禁回归测试用例数，不是报价规则条数。分类为：${categoryText}。`);
+        function formatGateFailureTitle(item, index) {
+            const caseId = item?.case_id || '未命名用例';
+            if (caseId.startsWith('governance_')) {
+                return `${index + 1}. 文档治理校验：${safeText(item?.title || item?.document_id || caseId)}`;
             }
-            if (stats.failedCases.length) {
-                lines.push('', '失败用例：');
-                stats.failedCases.slice(0, 10).forEach((item, index) => {
-                    lines.push(`${index + 1}. ${item.case_id || '未命名用例'}${item.query_text ? `：${item.query_text}` : ''}`);
-                    (item.failures || []).forEach(reason => lines.push(`原因：${translateApiMessage(reason)}`));
-                    (item.warnings || []).forEach(reason => lines.push(`提醒：${translateApiMessage(reason)}`));
-                });
-                if (stats.failedCases.length > 10) {
-                    lines.push(`还有 ${stats.failedCases.length - 10} 条失败用例未展示，请到回归测试页查看完整报告。`);
-                }
-            }
-            if (gateReport.selected_case_ids?.length) {
-                lines.push('', `本次门禁用例编号：${gateReport.selected_case_ids.join('、')}`);
-            }
-            return lines.join('\n');
+            const extras = [];
+            if (item?.query_text) extras.push(item.query_text);
+            const categoryLabel = gateCategoryLabel(item?.category);
+            if (categoryLabel && categoryLabel !== '-') extras.push(categoryLabel);
+            return `${index + 1}. ${caseId}${extras.length ? `（${extras.join(' / ')}）` : ''}`;
         }
 
-        function gateSummaryText(gateReport, selectedDocCount = null) {
-            const docCount = selectedDocCount ?? gateReport?.target_document_count ?? gateReport?.documents?.length ?? 0;
-            const stats = getGateCaseStats(gateReport);
-            const statusStr = stats.failed > 0 ? "❌ 未通过门禁回归" : "✅ 门禁回归全部通过";
-            const categoryText = Object.entries(gateReport?.selected_case_category_counts || {})
-                .map(([key, count]) => `${safeText(key)} ${count} 条`)
-                .join('，');
-            return `${statusStr}\n本次尝试发布知识 ${docCount} 条。\n门禁回归用例共 ${stats.selected} 条，通过 ${stats.passed} 条，失败 ${stats.failed} 条。${categoryText ? `\n这些是测试用例分类统计：${categoryText}。` : ''}`;
-        }
-
-        function formatGateReport(gateReport) {
+        function formatGateReport(gateReport, options = {}) {
             if (!gateReport) return '';
+            const {
+                maxFailedCases = 8,
+                maxReasonsPerCase = 3,
+                includeCaseIds = false,
+                compact = false
+            } = options;
             const documentCount = gateReport.target_document_count ?? gateReport.documents?.length ?? 0;
             const stats = getGateCaseStats(gateReport);
             const lines = [
                 '知识发布门禁未通过',
                 `本次尝试发布知识 ${documentCount} 条。`,
                 `本次共抽取门禁回归用例 ${stats.selected} 条：通过 ${stats.passed} 条，失败 ${stats.failed} 条。`,
-                '这里的“条数”指回归测试题目数，不是报价规则数，也不是知识条目数。'
+                '这里的“条”是测试题目数，不是报价规则数，也不是知识条目数。'
             ];
             const categoryText = Object.entries(gateReport.selected_case_category_counts || {})
                 .map(([key, count]) => `${gateCategoryLabel(key)} ${safeText(count)} 条`)
@@ -2131,18 +2829,29 @@
                 lines.push(`本次选中的用例分类为：${categoryText}。`);
             }
             if (stats.failedCases.length) {
-                lines.push('', '失败用例：');
-                stats.failedCases.slice(0, 10).forEach((item, index) => {
-                    lines.push(`${index + 1}. ${item.case_id || '未命名用例'}${item.query_text ? `（${item.query_text}）` : ''}`);
-                    (item.failures || []).forEach(reason => lines.push(`原因：${translateApiMessage(reason)}`));
-                    (item.warnings || []).forEach(reason => lines.push(`提醒：${translateApiMessage(reason)}`));
+                const shown = Math.min(maxFailedCases, stats.failedCases.length);
+                lines.push('', compact ? `失败项示例（仅展示前 ${shown} 条）：` : '失败项：');
+                stats.failedCases.slice(0, shown).forEach((item, index) => {
+                    lines.push(formatGateFailureTitle(item, index));
+                    const reasons = (item.failures || []).slice(0, maxReasonsPerCase);
+                    reasons.forEach(reason => lines.push(`原因：${translateApiMessage(reason)}`));
+                    if ((item.failures || []).length > reasons.length) {
+                        lines.push(`还有 ${(item.failures || []).length - reasons.length} 条原因未展开。`);
+                    }
+                    const warnings = (item.warnings || []).slice(0, maxReasonsPerCase);
+                    warnings.forEach(reason => lines.push(`提醒：${translateApiMessage(reason)}`));
                 });
-                if (stats.failedCases.length > 10) {
-                    lines.push(`还有 ${stats.failedCases.length - 10} 条失败用例未展示，请到回归测试页查看完整报告。`);
+                if (stats.failedCases.length > shown) {
+                    lines.push(`还有 ${stats.failedCases.length - shown} 条失败项未展开，请到回归测试页查看完整报告。`);
                 }
             }
-            if (gateReport.selected_case_ids?.length) {
-                lines.push('', `本次门禁用例编号：${gateReport.selected_case_ids.join('、')}`);
+            if (includeCaseIds && gateReport.selected_case_ids?.length) {
+                const caseIds = gateReport.selected_case_ids;
+                if (caseIds.length <= 20) {
+                    lines.push('', `本次门禁用例编号：${caseIds.join('、')}`);
+                } else {
+                    lines.push('', `本次门禁用例编号共 ${caseIds.length} 个，已省略，请到回归测试页查看完整列表。`);
+                }
             }
             return lines.join('\n');
         }
@@ -2157,13 +2866,18 @@
             return `${statusStr}\n本次尝试发布知识 ${docCount} 条。\n门禁回归用例共 ${stats.selected} 条，通过 ${stats.passed} 条，失败 ${stats.failed} 条。\n这里的“条”是测试题目数，不是报价规则数。${categoryText ? `\n用例分类统计：${categoryText}。` : ''}`;
         }
 
-        function formatPublishValidationReport(report) {
+        function formatPublishValidationReport(report, options = {}) {
             if (!report || report.passed) return '';
+            const maxDocuments = options.maxDocuments ?? 8;
             const lines = ['发布前结构校验未通过：'];
-            Object.entries(report.documents || {}).forEach(([id, info]) => {
+            const entries = Object.entries(report.documents || {});
+            entries.slice(0, maxDocuments).forEach(([id, info]) => {
                 lines.push(`${info.title || id}`);
                 (info.errors || []).forEach(reason => lines.push(`原因：${translateApiMessage(reason)}`));
             });
+            if (entries.length > maxDocuments) {
+                lines.push(`还有 ${entries.length - maxDocuments} 条结构校验失败文档未展开。`);
+            }
             return lines.join('\n');
         }
 
@@ -2176,9 +2890,19 @@
 
         async function promptForcePublishReason(detail, selectedCount = 1) {
             const parts = [];
-            const validationText = formatPublishValidationReport(detail.publish_validation || (detail.documents ? {passed: false, documents: detail.documents} : null));
+            const validationText = formatPublishValidationReport(
+                detail.publish_validation || (detail.documents ? {passed: false, documents: detail.documents} : null),
+                {maxDocuments: 6}
+            );
             if (validationText) parts.push(validationText);
-            if (detail.gate_report) parts.push(formatGateReport(detail.gate_report));
+            if (detail.gate_report) {
+                parts.push(formatGateReport(detail.gate_report, {
+                    compact: true,
+                    maxFailedCases: 6,
+                    maxReasonsPerCase: 2,
+                    includeCaseIds: false
+                }));
+            }
             if (!parts.length) parts.push(formatApiError({detail}, '发布校验未通过'));
             return openTextInputDialog({
                 title: '强制人工通过',
@@ -2380,21 +3104,31 @@
         }
 
         async function loadKbDocuments() {
+            const state = getKbListState('documents');
             const filters = `
                 ${renderKbRuleGuide()}
                 <div class="flex flex-wrap gap-3 mb-3 items-end">
                     <label class="block text-xs text-slate-500">
                         <span class="block mb-1">文档阶段</span>
-                        <select id="kb-filter-stage" onchange="refreshKbDocuments()" class="ui-select text-xs">${optionTags('document_stage')}</select>
+                        <select id="kb-filter-stage" onchange="searchKbDocuments()" class="ui-select text-xs">${optionTags('document_stage', state.stage)}</select>
                     </label>
                     <label class="block text-xs text-slate-500">
                         <span class="block mb-1">知识分类</span>
-                        <select id="kb-filter-class" onchange="refreshKbDocuments()" class="ui-select text-xs">${optionTags('knowledge_class')}</select>
+                        <select id="kb-filter-class" onchange="searchKbDocuments()" class="ui-select text-xs">${optionTags('knowledge_class', state.knowledgeClass)}</select>
                     </label>
                     <label class="block text-xs text-slate-500">
                         <span class="block mb-1">服务</span>
-                        <select id="kb-filter-line" onchange="refreshKbDocuments()" class="ui-select text-xs">${optionTags('business_line')}</select>
+                        <select id="kb-filter-line" onchange="searchKbDocuments()" class="ui-select text-xs">${optionTags('business_line', state.businessLine)}</select>
                     </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">标题查询</span>
+                        <input id="kb-filter-title" value="${formValue(state.titleKeyword)}" class="border rounded px-3 py-2 text-xs bg-white min-w-52" placeholder="按标题关键词查询">
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">内容查询</span>
+                        <input id="kb-filter-content" value="${formValue(state.contentKeyword)}" class="border rounded px-3 py-2 text-xs bg-white min-w-56" placeholder="按正文关键词查询">
+                    </label>
+                    <button onclick="searchKbDocuments()" class="px-3 py-1 bg-blue-600 text-white rounded text-xs">查询</button>
                     <button onclick="showKbCreateForm()" class="px-3 py-1 bg-emerald-600 text-white rounded text-xs">新增知识</button>
                     <button onclick="refreshKbDocuments()" class="px-3 py-1 bg-slate-800 text-white rounded text-xs">刷新</button>
                 </div>
@@ -2403,22 +3137,42 @@
             await refreshKbDocuments();
         }
 
-        async function refreshKbDocuments(extra = {}) {
-            const listEl = document.getElementById('kb-doc-list');
-            if (!listEl) return;
-            const params = new URLSearchParams({limit: '200', ...extra});
-            const stage = document.getElementById('kb-filter-stage')?.value;
-            const knowledgeClass = document.getElementById('kb-filter-class')?.value;
-            const line = document.getElementById('kb-filter-line')?.value;
-            if (stage) params.set('stage', stage);
-            if (knowledgeClass) params.set('knowledge_class', knowledgeClass);
-            if (line) params.set('business_line', line);
-            const res = await fetch(`${API_BASE}/api/kb/documents?${params.toString()}`);
-            const docs = await res.json();
-            listEl.innerHTML = renderKbDocTable(docs);
+        async function searchKbDocuments() {
+            getKbListState('documents').offset = 0;
+            await refreshKbDocuments();
         }
 
-        function renderKbDocTable(docs) {
+        async function refreshKbDocuments() {
+            const listEl = document.getElementById('kb-doc-list');
+            if (!listEl) return;
+            const state = getKbListState('documents');
+            state.stage = readTextInputValue('kb-filter-stage', state.stage);
+            state.knowledgeClass = readTextInputValue('kb-filter-class', state.knowledgeClass);
+            state.businessLine = readTextInputValue('kb-filter-line', state.businessLine);
+            state.titleKeyword = readTextInputValue('kb-filter-title', state.titleKeyword);
+            state.contentKeyword = readTextInputValue('kb-filter-content', state.contentKeyword);
+            const params = new URLSearchParams({
+                limit: String(state.limit),
+                offset: String(state.offset),
+                include_meta: '1'
+            });
+            if (state.stage) params.set('stage', state.stage);
+            if (state.knowledgeClass) params.set('knowledge_class', state.knowledgeClass);
+            if (state.businessLine) params.set('business_line', state.businessLine);
+            if (state.titleKeyword) params.set('title_keyword', state.titleKeyword);
+            if (state.contentKeyword) params.set('content_keyword', state.contentKeyword);
+            const res = await fetch(`${API_BASE}/api/kb/documents?${params.toString()}`);
+            const payload = await res.json();
+            const docs = payload.items || [];
+            state.total = payload.total || 0;
+            if (state.total > 0 && state.offset >= state.total) {
+                state.offset = Math.max(0, Math.floor((state.total - 1) / state.limit) * state.limit);
+                return refreshKbDocuments();
+            }
+            listEl.innerHTML = renderKbDocTable(docs, 'documents');
+        }
+
+        function renderKbDocTable(docs, tabKey = 'documents') {
             if (!docs.length) return '<div class="text-sm text-slate-400 p-8 text-center bg-white rounded border">暂无知识记录</div>';
             return `
                 <div class="bg-white border rounded overflow-hidden">
@@ -2438,6 +3192,7 @@
                                 </td>
                             </tr>`).join('')}</tbody>
                     </table>
+                    ${renderKbPagination(tabKey)}
                 </div>`;
         }
 
@@ -2944,21 +3699,67 @@
         }
 
         async function loadKbReview() {
-            renderKbShell(`<div class="flex flex-wrap gap-2 mb-3"><button id="kb-review-submit-btn" onclick="bulkKbAction('submit_review')" class="px-3 py-1 bg-indigo-600 text-white rounded text-xs disabled:opacity-40" disabled>批量提交审核</button><button id="kb-review-approve-btn" onclick="bulkKbAction('approve')" class="px-3 py-1 bg-amber-600 text-white rounded text-xs disabled:opacity-40" disabled>批量审核同意</button><button id="kb-review-publish-btn" onclick="bulkKbAction('publish')" class="px-3 py-1 bg-emerald-600 text-white rounded text-xs disabled:opacity-40" disabled>批量发布</button><button id="kb-review-archive-btn" onclick="bulkKbAction('archive')" class="px-3 py-1 bg-slate-600 text-white rounded text-xs disabled:opacity-40" disabled>批量归档</button></div><div class="mb-3 text-xs text-slate-500">规则：草稿才能提交审核，审核中才能审核同意，审核同意后才能发布。</div><div id="kb-review-list"></div>`);
-            const res = await fetch(`${API_BASE}/api/kb/documents?stage=draft&limit=300`);
-            const draftDocs = await res.json();
-            const res2 = await fetch(`${API_BASE}/api/kb/documents?stage=review&limit=300`);
-            const reviewDocs = await res2.json();
-            const res3 = await fetch(`${API_BASE}/api/kb/documents?stage=approved&limit=300`);
-            const approvedDocs = await res3.json();
-            const docs = [...draftDocs, ...reviewDocs, ...approvedDocs];
+            const state = getKbListState('review');
+            renderKbShell(`
+                <div class="flex flex-wrap gap-2 mb-3">
+                    <button id="kb-review-submit-btn" onclick="bulkKbAction('submit_review')" class="px-3 py-1 bg-indigo-600 text-white rounded text-xs disabled:opacity-40" disabled>批量提交审核</button>
+                    <button id="kb-review-approve-btn" onclick="bulkKbAction('approve')" class="px-3 py-1 bg-amber-600 text-white rounded text-xs disabled:opacity-40" disabled>批量审核同意</button>
+                    <button id="kb-review-publish-btn" onclick="bulkKbAction('publish')" class="px-3 py-1 bg-emerald-600 text-white rounded text-xs disabled:opacity-40" disabled>批量发布</button>
+                    <button id="kb-review-archive-btn" onclick="bulkKbAction('archive')" class="px-3 py-1 bg-slate-600 text-white rounded text-xs disabled:opacity-40" disabled>批量归档</button>
+                </div>
+                <div class="mb-3 text-xs text-slate-500">规则：草稿才能提交审核，审核中才能审核同意，审核同意后才能发布。</div>
+                <div class="flex flex-wrap gap-3 mb-3 items-end">
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">标题查询</span>
+                        <input id="kb-review-title" value="${formValue(state.titleKeyword)}" class="border rounded px-3 py-2 text-xs bg-white min-w-52" placeholder="按标题关键词查询">
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">内容查询</span>
+                        <input id="kb-review-content" value="${formValue(state.contentKeyword)}" class="border rounded px-3 py-2 text-xs bg-white min-w-56" placeholder="按正文关键词查询">
+                    </label>
+                    <button onclick="searchKbReview()" class="px-3 py-1 bg-blue-600 text-white rounded text-xs">查询</button>
+                    <button onclick="refreshKbReview()" class="px-3 py-1 bg-slate-800 text-white rounded text-xs">刷新</button>
+                </div>
+                <div id="kb-review-list"></div>
+            `);
+            await refreshKbReview();
+        }
+
+        async function searchKbReview() {
+            getKbListState('review').offset = 0;
+            await refreshKbReview();
+        }
+
+        async function refreshKbReview() {
+            const listEl = document.getElementById('kb-review-list');
+            if (!listEl) return;
+            const state = getKbListState('review');
+            state.titleKeyword = readTextInputValue('kb-review-title', state.titleKeyword);
+            state.contentKeyword = readTextInputValue('kb-review-content', state.contentKeyword);
+            const params = new URLSearchParams({
+                stage: 'review_queue',
+                limit: String(state.limit),
+                offset: String(state.offset),
+                include_meta: '1'
+            });
+            if (state.titleKeyword) params.set('title_keyword', state.titleKeyword);
+            if (state.contentKeyword) params.set('content_keyword', state.contentKeyword);
+            const res = await fetch(`${API_BASE}/api/kb/documents?${params.toString()}`);
+            const payload = await res.json();
+            const docs = payload.items || [];
             kbState.reviewDocs = docs;
-            document.getElementById('kb-review-list').innerHTML = docs.length ? `
+            state.total = payload.total || 0;
+            if (state.total > 0 && state.offset >= state.total) {
+                state.offset = Math.max(0, Math.floor((state.total - 1) / state.limit) * state.limit);
+                return refreshKbReview();
+            }
+            listEl.innerHTML = docs.length ? `
                 <div class="bg-white border rounded overflow-hidden">
                     <table class="w-full text-xs">
                         <thead class="bg-slate-100"><tr><th class="p-2"><input type="checkbox" onchange="document.querySelectorAll('.kb-select-doc').forEach(x=>x.checked=this.checked); updateReviewBulkActions();"></th><th class="text-left p-2">标题</th><th class="text-left p-2">状态</th><th class="text-left p-2">风险</th><th class="text-left p-2">操作</th></tr></thead>
                         <tbody>${docs.map(doc => `<tr class="border-t"><td class="p-2"><input class="kb-select-doc" type="checkbox" value="${doc.document_id}" onchange="updateReviewBulkActions()"></td><td class="p-2 font-medium">${safeText(doc.title)}</td><td class="p-2">${fmtStatus(doc)}</td><td class="p-2">${safeText(doc.risk_level_label)}</td><td class="p-2"><button onclick="showKbDocument('${doc.document_id}')" class="text-emerald-700 font-bold mr-3">详情</button><button onclick="editKbDocument('${doc.document_id}')" class="text-indigo-700 font-bold">控制项</button></td></tr>`).join('')}</tbody>
                     </table>
+                    ${renderKbPagination('review')}
                 </div>` : '<div class="text-sm text-slate-400 p-8 text-center bg-white rounded border">暂无待审核知识</div>';
             updateReviewBulkActions();
         }
@@ -2996,30 +3797,40 @@
         }
 
         async function loadKbCandidates() {
+            const state = getKbListState('candidates');
             renderKbShell(`
                 ${renderCandidateStatusGuide()}
                 <div class="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">说明：候选中仍处于候选池，只能查看、编辑、筛选，不能检索、不能发布；点击“转为草稿知识”后，才进入正式知识流程。</div>
-                <div class="flex gap-3 mb-3 items-end">
+                <div class="flex flex-wrap gap-3 mb-3 items-end">
                     <label class="block text-xs text-slate-500">
                         <span class="block mb-1">候选状态</span>
-                        <select id="kb-candidate-status" class="border rounded px-2 py-1 text-xs">
+                        <select id="kb-candidate-status" class="border rounded px-2 py-1 text-xs" onchange="searchKbCandidates()">
                             <option value="">全部状态</option>
-                            <option value="candidate">候选中</option>
-                            <option value="promoted">已转为草稿知识</option>
-                            <option value="rejected">已拒绝</option>
-                            <option value="archived">已归档</option>
+                            <option value="candidate" ${state.status === 'candidate' ? 'selected' : ''}>候选中</option>
+                            <option value="promoted" ${state.status === 'promoted' ? 'selected' : ''}>已转为草稿知识</option>
+                            <option value="rejected" ${state.status === 'rejected' ? 'selected' : ''}>已拒绝</option>
+                            <option value="archived" ${state.status === 'archived' ? 'selected' : ''}>已归档</option>
                         </select>
                     </label>
                     <label class="block text-xs text-slate-500">
                         <span class="block mb-1">来源类型</span>
-                        <select id="kb-candidate-source" class="border rounded px-2 py-1 text-xs">
+                        <select id="kb-candidate-source" class="border rounded px-2 py-1 text-xs" onchange="searchKbCandidates()">
                             <option value="">全部来源</option>
-                            <option value="feedback">销售反馈</option>
-                            <option value="message_extract">会话抽取</option>
-                            <option value="case_extract">历史案例</option>
-                            <option value="email_excel">邮件整理表</option>
+                            <option value="feedback" ${state.sourceType === 'feedback' ? 'selected' : ''}>销售反馈</option>
+                            <option value="message_extract" ${state.sourceType === 'message_extract' ? 'selected' : ''}>会话抽取</option>
+                            <option value="case_extract" ${state.sourceType === 'case_extract' ? 'selected' : ''}>历史案例</option>
+                            <option value="email_excel" ${state.sourceType === 'email_excel' ? 'selected' : ''}>邮件整理表</option>
                         </select>
                     </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">标题查询</span>
+                        <input id="kb-candidate-title" value="${formValue(state.titleKeyword)}" class="border rounded px-3 py-2 text-xs bg-white min-w-52" placeholder="按标题关键词查询">
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">内容查询</span>
+                        <input id="kb-candidate-content" value="${formValue(state.contentKeyword)}" class="border rounded px-3 py-2 text-xs bg-white min-w-56" placeholder="按正文关键词查询">
+                    </label>
+                    <button onclick="searchKbCandidates()" class="px-3 py-1 bg-blue-600 text-white rounded text-xs">查询</button>
                     <button onclick="refreshKbCandidates()" class="px-3 py-1 bg-slate-800 text-white rounded text-xs">刷新</button>
                 </div>
                 <div id="kb-candidate-list"></div>
@@ -3027,22 +3838,115 @@
             await refreshKbCandidates();
         }
 
+        function getSelectedCandidateIds() {
+            return Array.isArray(kbState.selectedCandidateIds) ? [...kbState.selectedCandidateIds] : [];
+        }
+
+        function setSelectedCandidateIds(ids) {
+            kbState.selectedCandidateIds = [...new Set((ids || []).map(item => String(item || '').trim()).filter(Boolean))];
+        }
+
+        function toggleKbCandidateSelection(candidateId, checked) {
+            const selected = new Set(getSelectedCandidateIds());
+            if (checked) selected.add(String(candidateId));
+            else selected.delete(String(candidateId));
+            setSelectedCandidateIds([...selected]);
+            renderKbCandidateSelectionSummary();
+        }
+
+        function clearKbCandidateSelection() {
+            setSelectedCandidateIds([]);
+            document.querySelectorAll('.kb-select-candidate').forEach(el => {
+                el.checked = false;
+            });
+            const checkAll = document.getElementById('kb-candidate-check-all');
+            if (checkAll) checkAll.checked = false;
+            renderKbCandidateSelectionSummary();
+        }
+
+        function toggleAllKbCandidateCheckboxes(checked) {
+            document.querySelectorAll('.kb-select-candidate').forEach(el => {
+                if (el.disabled) return;
+                el.checked = checked;
+                const candidateId = el.getAttribute('data-candidate-id') || el.value;
+                toggleKbCandidateSelection(candidateId, checked);
+            });
+            renderKbCandidateSelectionSummary();
+        }
+
+        function renderKbCandidateSelectionSummary() {
+            const summaryEl = document.getElementById('kb-candidate-selection-summary');
+            if (!summaryEl) return;
+            const selectedIds = getSelectedCandidateIds();
+            const count = selectedIds.length;
+            summaryEl.innerHTML = `
+                <span>已选 ${safeText(count)} 条</span>
+                <button onclick="clearKbCandidateSelection()" class="text-slate-600 underline">清空</button>
+                <button onclick="batchPromoteKbCandidates()" class="px-3 py-1 rounded text-xs ${count ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500 cursor-not-allowed'}" ${count ? '' : 'disabled'}>批量转为草稿知识</button>
+            `;
+            const selectableBoxes = [...document.querySelectorAll('.kb-select-candidate:not([disabled])')];
+            const checkAll = document.getElementById('kb-candidate-check-all');
+            if (checkAll) {
+                checkAll.checked = selectableBoxes.length > 0 && selectableBoxes.every(el => el.checked);
+            }
+        }
+
+        async function searchKbCandidates() {
+            getKbListState('candidates').offset = 0;
+            await refreshKbCandidates();
+        }
+
         async function refreshKbCandidates() {
-            const params = new URLSearchParams({limit: '200'});
-            const status = document.getElementById('kb-candidate-status')?.value;
-            const source = document.getElementById('kb-candidate-source')?.value;
-            if (status) params.set('status', status);
-            if (source) params.set('source_type', source);
+            const listEl = document.getElementById('kb-candidate-list');
+            if (!listEl) return;
+            const state = getKbListState('candidates');
+            state.status = readTextInputValue('kb-candidate-status', state.status);
+            state.sourceType = readTextInputValue('kb-candidate-source', state.sourceType);
+            state.titleKeyword = readTextInputValue('kb-candidate-title', state.titleKeyword);
+            state.contentKeyword = readTextInputValue('kb-candidate-content', state.contentKeyword);
+            const params = new URLSearchParams({
+                limit: String(state.limit),
+                offset: String(state.offset),
+                include_meta: '1'
+            });
+            if (state.status) params.set('status', state.status);
+            if (state.sourceType) params.set('source_type', state.sourceType);
+            if (state.titleKeyword) params.set('title_keyword', state.titleKeyword);
+            if (state.contentKeyword) params.set('content_keyword', state.contentKeyword);
             const res = await fetch(`${API_BASE}/api/kb/candidates?${params.toString()}`);
-            const items = await res.json();
-            document.getElementById('kb-candidate-list').innerHTML = items.length ? `
+            const payload = await res.json();
+            const items = payload.items || [];
+            state.total = payload.total || 0;
+            if (state.total > 0 && state.offset >= state.total) {
+                state.offset = Math.max(0, Math.floor((state.total - 1) / state.limit) * state.limit);
+                return refreshKbCandidates();
+            }
+            listEl.innerHTML = items.length ? `
                 <div class="bg-white border rounded overflow-hidden">
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-b bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        <label class="inline-flex items-center gap-2">
+                            <input id="kb-candidate-check-all" type="checkbox" onchange="toggleAllKbCandidateCheckboxes(this.checked)">
+                            <span>当前页全选</span>
+                        </label>
+                        <div id="kb-candidate-selection-summary" class="flex flex-wrap items-center gap-3"></div>
+                    </div>
                     <table class="w-full text-xs">
                         <thead class="bg-slate-100">
-                            <tr><th class="text-left p-2">标题</th><th class="text-left p-2">来源</th><th class="text-left p-2">类型</th><th class="text-left p-2">服务</th><th class="text-left p-2">状态</th><th class="text-left p-2">操作</th></tr>
+                            <tr><th class="text-left p-2 w-10">选</th><th class="text-left p-2">标题</th><th class="text-left p-2">来源</th><th class="text-left p-2">类型</th><th class="text-left p-2">服务</th><th class="text-left p-2">状态</th><th class="text-left p-2">操作</th></tr>
                         </thead>
                         <tbody>${items.map(item => `
                             <tr class="border-t hover:bg-slate-50">
+                                <td class="p-2 align-top">
+                                    <input
+                                        class="kb-select-candidate"
+                                        type="checkbox"
+                                        value="${item.candidate_id}"
+                                        data-candidate-id="${item.candidate_id}"
+                                        ${item.status === 'candidate' ? '' : 'disabled'}
+                                        ${getSelectedCandidateIds().includes(item.candidate_id) ? 'checked' : ''}
+                                        onchange="toggleKbCandidateSelection('${item.candidate_id}', this.checked)"
+                                    >
+                                </td>
                                 <td class="p-2 font-medium">${safeText(item.title)}</td>
                                 <td class="p-2">${safeText(item.source_type_label || item.source_type)}</td>
                                 <td class="p-2">${safeText(item.knowledge_type_label)} / ${safeText(item.chunk_type_label || item.chunk_type)}</td>
@@ -3052,14 +3956,16 @@
                             </tr>`).join('')}
                         </tbody>
                     </table>
+                    ${renderKbPagination('candidates')}
                 </div>` : '<div class="text-sm text-slate-400 p-8 text-center bg-white rounded border">暂无知识候选</div>';
+            renderKbCandidateSelectionSummary();
         }
 
         async function showKbCandidate(candidateId) {
             kbState.selectedCandidateId = candidateId;
-            const res = await fetch(`${API_BASE}/api/kb/candidates?limit=200`);
-            const items = await res.json();
-            const item = (items || []).find(candidate => candidate.candidate_id === candidateId);
+            const res = await fetch(`${API_BASE}/api/kb/candidates/${candidateId}`);
+            const data = await res.json();
+            const item = data.candidate;
             if (!item) return alert('未找到候选记录');
             document.getElementById('kb-detail').innerHTML = `
                 <div class="space-y-4 text-xs">
@@ -3128,12 +4034,29 @@
             const data = await res.json();
             if (!res.ok) return showApiError(data, '候选转草稿失败');
             alert(`已转为草稿知识：${data.document?.title || ''}`);
+            setSelectedCandidateIds(getSelectedCandidateIds().filter(id => id !== candidateId));
             await refreshKbCandidates();
-            if (data.document?.document_id) {
-                kbState.tab = 'documents';
-                renderKbTabs();
-                await loadKbDocuments();
-                await showKbDocument(data.document.document_id);
+            if (kbState.selectedCandidateId === candidateId) {
+                await showKbCandidate(candidateId);
+            }
+        }
+
+        async function batchPromoteKbCandidates() {
+            const candidateIds = getSelectedCandidateIds();
+            if (!candidateIds.length) return alert('请先勾选候选知识');
+            if (!confirm(`确认将已选 ${candidateIds.length} 条候选转为草稿知识？`)) return;
+            const res = await fetch(`${API_BASE}/api/kb/candidates/batch_promote`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({candidate_ids: candidateIds, operator: 'frontend_admin', owner: 'frontend_admin'})
+            });
+            const data = await res.json();
+            if (!res.ok) return showApiError(data, '批量转草稿失败');
+            alert(`批量转草稿完成：成功 ${safeText(data.promoted_count || 0)} 条，已是草稿 ${safeText(data.already_promoted_count || 0)} 条，跳过 ${safeText(data.skipped_count || 0)} 条。`);
+            clearKbCandidateSelection();
+            await refreshKbCandidates();
+            if (kbState.selectedCandidateId) {
+                await showKbCandidate(kbState.selectedCandidateId);
             }
         }
 
@@ -3787,6 +4710,7 @@
         }
 
         loadUiRuntimeConfig();
+        initSessionFilters();
         fetchSessions();
     </script>
 </body>

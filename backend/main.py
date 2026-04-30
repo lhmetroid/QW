@@ -15,7 +15,7 @@ from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from time import perf_counter
 from typing import Any
-from sqlalchemy import or_, text, func
+from sqlalchemy import and_, or_, text, func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from config import settings
@@ -25,12 +25,18 @@ from qywx_utils import QYWXUtils
 from intent_engine import IntentEngine
 from embedding_service import EmbeddingService
 from email_import_service import EmailImportService
-from business_csv_import import DEFAULT_BUSINESS_CSV_FILENAME, DEFAULT_ROW_LIMIT as DEFAULT_BUSINESS_CSV_ROW_LIMIT, DEFAULT_SOURCE_TYPE as BUSINESS_CSV_SOURCE_TYPE, run_business_csv_import
+from business_csv_import import (
+    DEFAULT_BUSINESS_CSV_FILENAME,
+    DEFAULT_ROW_END as DEFAULT_BUSINESS_CSV_ROW_END,
+    DEFAULT_ROW_START as DEFAULT_BUSINESS_CSV_ROW_START,
+    DEFAULT_SOURCE_TYPE as BUSINESS_CSV_SOURCE_TYPE,
+    run_business_csv_import,
+)
 from database import (
     SessionLocal, MessageLog, init_db, KnowledgeBase, IntentSummary, get_db,
     KnowledgeDocument, KnowledgeChunk, PricingRule, KnowledgeHitLog, KnowledgeCandidate,
     KnowledgeVersionSnapshot, JobTask, ThreadBusinessFact, EmailThreadAsset,
-    EmailFragmentAsset, EmailEffectFeedback, ModelTrainingSample,
+    EmailFragmentAsset, EmailEffectFeedback, ModelTrainingSample, ReplyChainSnapshot,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -106,7 +112,12 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE message_logs ADD COLUMN IF NOT EXISTS is_mock BOOLEAN DEFAULT FALSE;"))
         db.execute(text("ALTER TABLE message_logs ALTER COLUMN user_id TYPE VARCHAR(120);"))
         db.execute(text("ALTER TABLE intent_summaries ALTER COLUMN user_id TYPE VARCHAR(120);"))
+        db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS llm1_compare_summary JSON;"))
+        db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS llm1_compare_prompt_trace JSON;"))
         db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS sales_advice_compare_v2 TEXT;"))
+        db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS sales_advice_compare_prompt_trace_v2 JSON;"))
+        db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS reply_style_results_v2 JSON;"))
+        db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS reply_scores_v2 JSON;"))
         db.execute(text("ALTER TABLE knowledge_document ADD COLUMN IF NOT EXISTS library_type VARCHAR(20) DEFAULT 'reference';"))
         db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS library_type VARCHAR(20) DEFAULT 'reference';"))
         db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS allowed_for_generation BOOLEAN DEFAULT FALSE;"))
@@ -145,6 +156,27 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS final_response TEXT;"))
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS manual_feedback JSON;"))
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS feedback_status VARCHAR(50);"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS visible_message_ids JSON;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS latest_dialog_count INTEGER DEFAULT 0;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS fast_track JSON;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS crm_info JSON;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS crm_status VARCHAR(50);"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS thread_business_fact JSON;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS knowledge_log_id VARCHAR(120);"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS knowledge_v2 JSON;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS knowledge_status VARCHAR(50);"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS knowledge_confidence_score NUMERIC(8, 6);"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS knowledge_manual_review_required BOOLEAN DEFAULT FALSE;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS llm1_compare_summary JSON;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS llm1_compare_prompt_trace JSON;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS reply_style_results_v2 JSON;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS reply_scores_v2 JSON;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS assist_validation JSON;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS assist_compare_validation JSON;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS actual_sales_replies JSON;"))
+        db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS stage_status JSON;"))
+        db.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_reply_chain_snapshot_anchor ON reply_chain_snapshot (session_id, anchor_message_id);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_reply_chain_snapshot_session_updated ON reply_chain_snapshot (session_id, updated_at DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_active_effective ON knowledge_chunk (status, business_line, knowledge_type, effective_from, effective_to);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_replyable ON knowledge_chunk (status, usable_for_reply, allowed_for_generation, useful_score DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_priority ON knowledge_chunk (priority DESC);"))
@@ -404,6 +436,7 @@ class AssistFeedback(BaseModel):
     feedback_status: str
     manual_feedback: dict | None = None
     final_response: str | None = None
+    snapshot_id: str | None = None
 
 class ExcellentReplyExtractRequest(BaseModel):
     session_id: str
@@ -521,6 +554,11 @@ class KnowledgeCandidatePromoteRequest(BaseModel):
     effective_to: datetime | None = None
     pricing_rule: dict | None = None
     review_notes: str | None = None
+
+class KnowledgeCandidateBatchPromoteRequest(BaseModel):
+    candidate_ids: list[str]
+    owner: str | None = None
+    operator: str | None = None
 
 class KnowledgeExtractFromMessagesRequest(BaseModel):
     session_id: str | None = None
@@ -1101,6 +1139,21 @@ def _upsert_thread_business_fact(
     item.allowed_for_generation = bool(payload.get("allowed_for_generation"))
     return item
 
+
+def _thread_fact_prompt_dict(item: ThreadBusinessFact | None) -> dict | None:
+    if not item:
+        return None
+    return {
+        "session_id": item.session_id,
+        "scenario_label": item.scenario_label,
+        "intent_label": item.intent_label,
+        "language_style": item.language_style,
+        "business_state": item.business_state,
+        "stage_signals": item.stage_signals or {},
+        "merged_facts": item.merged_facts or {},
+        "reply_guard_reason": item.reply_guard_reason,
+    }
+
 def _parse_auto_split_flag(value) -> bool:
     if value is None or value == "":
         return False
@@ -1147,10 +1200,48 @@ def infer_faq_risk_level(title: str, content: str) -> str:
     high_words = ["报价", "价格", "收费", "费用", "折扣", "合同", "赔付", "保证", "承诺", "税", "发票"]
     return "high" if any(word in text for word in high_words) else "medium"
 
-def is_pricing_text(title: str | None, content: str | None, knowledge_type: str | None = None) -> bool:
+DEFAULT_PRICING_EFFECTIVE_FROM = datetime(2026, 1, 1, 0, 0, 0)
+DEFAULT_PRICING_EFFECTIVE_TO = datetime(2036, 12, 31, 23, 59, 59)
+PRICING_TOPIC_WORDS = ["报价", "价格", "收费", "费用", "最低收费", "加急", "税点", "折扣", "发票"]
+STRUCTURED_PRICING_PATTERNS = [
+    r"(?:¥|￥|RMB|CNY|USD|EUR)?\s*\d+(?:\.\d+)?\s*(?:元|块|人民币|美元|欧元)",
+    r"\d+(?:\.\d+)?\s*(?:元|块|人民币|美元|欧元)\s*(?:/|每)\s*(?:千字|千中文字符|千英文单词|页|项目|小时|人天|场|次)",
+    r"(?:/|每)\s*(?:千字|千中文字符|千英文单词|页|项目|小时|人天|场|次)",
+    r"最低收费\s*\d",
+    r"加急倍率\s*\d",
+    r"税点\s*\d",
+    r"(?:含税|不含税|专票|普票)",
+]
+
+def mentions_pricing_topic(title: str | None, content: str | None) -> bool:
     text = f"{title or ''}\n{content or ''}"
-    pricing_words = ["报价", "价格", "收费", "费用", "最低收费", "加急", "税点", "折扣", "元/千字", "元每千字"]
-    return knowledge_type == "pricing" or any(word in text for word in pricing_words)
+    return any(word in text for word in PRICING_TOPIC_WORDS)
+
+def has_structured_pricing_signal(title: str | None, content: str | None) -> bool:
+    text = f"{title or ''}\n{content or ''}"
+    return any(re.search(pattern, text, re.IGNORECASE) for pattern in STRUCTURED_PRICING_PATTERNS)
+
+def is_pricing_related_knowledge(
+    knowledge_type: str | None = None,
+    *,
+    pricing_rule: dict | None = None,
+) -> bool:
+    return knowledge_type == "pricing" or bool(pricing_rule)
+
+def default_pricing_effective_window(
+    effective_from: datetime | None,
+    effective_to: datetime | None,
+    *,
+    knowledge_type: str | None = None,
+    pricing_rule: dict | None = None,
+) -> tuple[datetime | None, datetime | None]:
+    if is_pricing_related_knowledge(knowledge_type, pricing_rule=pricing_rule):
+        effective_from = effective_from or DEFAULT_PRICING_EFFECTIVE_FROM
+        effective_to = effective_to or DEFAULT_PRICING_EFFECTIVE_TO
+    return effective_from, effective_to
+
+def is_pricing_text(title: str | None, content: str | None, knowledge_type: str | None = None) -> bool:
+    return knowledge_type == "pricing" or has_structured_pricing_signal(title, content)
 
 def infer_pricing_rule_candidate(
     title: str,
@@ -1515,7 +1606,7 @@ def parse_kb_excel_import(raw: bytes, filename: str, import_type: str) -> dict:
         effective_import_config = import_config
         structured_pricing_row = _has_structured_pricing_cells(row, columns)
         if import_type == "unified":
-            if structured_pricing_row or (not knowledge_class and is_pricing_text(title, content, "pricing")):
+            if structured_pricing_row or (not knowledge_class and has_structured_pricing_signal(title, content)):
                 effective_import_type = "pricing"
                 effective_import_config = KB_EXCEL_IMPORT_TYPES["pricing"]
             elif knowledge_class:
@@ -1547,7 +1638,7 @@ def parse_kb_excel_import(raw: bytes, filename: str, import_type: str) -> dict:
             _cell(row, columns["risk_level"]) or (class_config or {}).get("risk_level") or effective_import_config["risk_level"],
         )
         risk_level = risk_level or effective_import_config["risk_level"]
-        if knowledge_type == "pricing" or is_pricing_text(title, content, knowledge_type):
+        if knowledge_type == "pricing" or mentions_pricing_topic(title, content):
             risk_level = "high"
         auto_split = _parse_auto_split_flag(_cell(row, columns["auto_split"]))
         if effective_import_type == "pricing":
@@ -1591,7 +1682,7 @@ def parse_kb_excel_import(raw: bytes, filename: str, import_type: str) -> dict:
             or (
                 knowledge_type == "pricing"
                 and chunk_type != "constraint"
-                and (any(value not in (None, "") for value in pricing_cells) or is_pricing_text(title, content, knowledge_type))
+                and (any(value not in (None, "") for value in pricing_cells) or has_structured_pricing_signal(title, content))
             )
         )
         if should_build_pricing_rule:
@@ -1617,6 +1708,15 @@ def parse_kb_excel_import(raw: bytes, filename: str, import_type: str) -> dict:
             if not any(pricing_rule.get(field) not in (None, "") for field in ["price_min", "price_max", "min_charge", "urgent_multiplier", "tax_policy"]):
                 row_errors.append("pricing_rule_missing_value")
 
+        effective_from = _parse_datetime_or_none(_cell(row, columns["effective_from"]))
+        effective_to = _parse_datetime_or_none(_cell(row, columns["effective_to"]))
+        effective_from, effective_to = default_pricing_effective_window(
+            effective_from,
+            effective_to,
+            knowledge_type=knowledge_type or effective_import_config["knowledge_type"],
+            pricing_rule=pricing_rule,
+        )
+
         item = {
             "row": row_index,
             "title": title,
@@ -1633,8 +1733,8 @@ def parse_kb_excel_import(raw: bytes, filename: str, import_type: str) -> dict:
             "customer_tier": customer_tier,
             "priority": _safe_int(_cell(row, columns["priority"]), 50),
             "risk_level": risk_level,
-            "effective_from": _parse_datetime_or_none(_cell(row, columns["effective_from"])),
-            "effective_to": _parse_datetime_or_none(_cell(row, columns["effective_to"])),
+            "effective_from": effective_from,
+            "effective_to": effective_to,
             "tags": tags,
             "pricing_rule": pricing_rule,
             "knowledge_class": tags["knowledge_class"],
@@ -2267,6 +2367,12 @@ def _create_single_document_and_chunk(
         chunk_type=chunk_type,
         risk_level=risk_level,
     )
+    effective_from, effective_to = default_pricing_effective_window(
+        effective_from,
+        effective_to,
+        knowledge_type=resolved_type,
+        pricing_rule=pricing_rule,
+    )
     merged_tags = merge_knowledge_class_tags(tags, resolved_class)
     retrieval_title = _strip_retrieval_title_prefix(title)
     retrieval_text = _build_chunk_retrieval_text(title, content)
@@ -2349,6 +2455,267 @@ def _extract_relevant_sentences(content: str, keywords: list[str], limit: int = 
     selected = matched[:limit] if matched else sentences[:limit]
     text = "。".join(selected).strip("。")
     return text or (content or "")[:500]
+
+
+def _infer_historical_email_business_line(title: str, content: str) -> str:
+    text = f"{title}\n{content}"
+    if any(word in text for word in ["翻译", "译员", "译文", "稿件", "定稿"]):
+        return "translation"
+    if any(word in text for word in ["印刷", "打样", "彩页", "名片", "纸张"]):
+        return "printing"
+    if any(word in text for word in ["展台", "展会", "搭建"]):
+        return "exhibition"
+    if any(word in text for word in ["视频", "字幕", "配音"]):
+        return "multimedia"
+    if any(word in text for word in ["礼品", "台历", "笔记本"]):
+        return "gifts"
+    return "general"
+
+
+def _historical_email_keywords(use_range_label: str) -> list[str]:
+    mapping = {
+        "商务沟通（方案+报价）": ["报价", "底价", "费用", "金额", "单价", "总金额", "折扣", "补充报价", "确认报价", "交稿", "提交"],
+        "发送合同/NDA": ["合同", "NDA", "协议", "预付款", "金额", "确认", "签章"],
+        "财务沟通": ["发票", "付款", "到账", "银行", "invoice", "payment", "结算", "清单"],
+        "发送发票": ["发票", "付款", "invoice", "寄出", "盖章件", "结算"],
+        "催款": ["催款", "付款", "到账", "invoice", "payment", "到期", "逾期"],
+        "到账确认": ["到账", "收到款", "payment"],
+        "成果交付": ["定稿", "下载", "评价", "修改", "交付", "完成", "反馈质量"],
+        "修改/打样": ["修改", "打样", "源文件", "清晰度", "重新报价", "二维码", "不清晰"],
+        "进度更新": ["进度", "完成", "安排", "修改", "重新报价", "源文件"],
+        "售后支持": ["修改", "问题", "不满意", "免费修改", "售后", "补偿"],
+        "催确认订单": ["确认订单", "签章合同", "当前报价", "价格上调", "本周", "风险"],
+        "询问/确认需求": ["预算", "时间", "周期", "方案", "效率", "视觉效果", "需求", "倾向"],
+    }
+    return mapping.get(use_range_label, [])
+
+
+def _historical_email_compact(text: str) -> str:
+    return re.sub(r"\s+", "", str(text or "")).lower()
+
+
+def _historical_email_has_any(text: str, tokens: list[str]) -> bool:
+    return any(token in text for token in tokens)
+
+
+def _historical_email_has_reusable_signal(record: dict, content: str) -> bool:
+    use_range_label = str(record.get("use_range_label") or "").strip()
+    compact = _historical_email_compact(content)
+
+    reusable_tokens = [
+        "银行手续费", "bankcharge", "含税", "净价", "单价", "工作日", "交稿", "排版参照原文",
+        "免费修改", "评价", "订单中心", "下载界面", "产能", "交货期", "启动生产", "纸张",
+        "成本增加", "重新报价", "是否需要翻译", "未包括", "模块化", "定制化", "有效期",
+        "续签", "预付款", "到期", "结算", "每月", "付款进度", "到期", "逾期", "付款状态",
+    ]
+    if _historical_email_has_any(compact, [token.lower() for token in reusable_tokens]):
+        return True
+
+    if use_range_label == "商务沟通（方案+报价）":
+        return _historical_email_has_any(compact, [
+            "单价", "千中文字符", "千英文单词", "千字", "每页", "交稿时间", "报价未包括", "底价",
+        ])
+    if use_range_label == "催确认订单":
+        return _historical_email_has_any(compact, [
+            "本周", "否则", "风险", "po", "签章合同", "当前报价", "启动生产",
+        ])
+    if use_range_label == "发送合同/NDA":
+        return _historical_email_has_any(compact, ["预付款", "续签", "有效期", "到期"])
+    if use_range_label in {"财务沟通", "发送发票", "催款"}:
+        return _historical_email_has_any(compact, [
+            "bankcharge", "银行手续费", "付款进度", "付款状态", "逾期", "到期", "结算", "系统收货确认",
+        ])
+    if use_range_label == "成果交付":
+        return _historical_email_has_any(compact, [
+            "订单中心", "下载", "评价", "免费修改", "反馈质量", "上传和下载",
+        ])
+    return False
+
+
+def _is_low_value_historical_email(record: dict, content: str) -> bool:
+    use_range_label = str(record.get("use_range_label") or "").strip()
+    compact = _historical_email_compact(content)
+    if use_range_label in {"收到确认", "到账确认"}:
+        return True
+    if len(compact) <= 18 and any(token in compact for token in ["收到", "谢谢", "请查收", "好的"]):
+        return True
+    if use_range_label == "时间/物流/现场协调":
+        logistics_tokens = ["快递", "单号", "收货地址", "收货人", "手机", "寄出", "派送", "顺丰", "中通"]
+        if any(token in content for token in logistics_tokens):
+            return True
+    if use_range_label in {"发送发票", "财务沟通", "成果交付"} and len(compact) <= 24:
+        return True
+    attachment_status_patterns = [
+        r"^附件.*请查收",
+        r"^请查收附件",
+        r"^发票请见附件",
+        r"^报价单请查收",
+        r"^合同.*请查收",
+        r"^nda.*请查收",
+        r"^已签字盖章寄出",
+        r"^已安排快递",
+        r"^thepaymenthasbeenreceived",
+        r"^thisisthe.*translationfile.*plscheckit",
+    ]
+    if any(re.search(pattern, compact) for pattern in attachment_status_patterns):
+        return not _historical_email_has_reusable_signal(record, content)
+    if use_range_label in {"发送合同/NDA", "发送发票", "成果交付", "财务沟通"} and not _historical_email_has_reusable_signal(record, content):
+        weak_action_tokens = ["请查收", "请安排", "已收到", "寄出", "附件", "发出", "invoice", "payment"]
+        if len(compact) <= 48 or _historical_email_has_any(compact, weak_action_tokens):
+            return True
+    return False
+
+
+def _build_deterministic_historical_email_items(title: str, content: str, record: dict) -> list[dict] | None:
+    use_range_label = str(record.get("use_range_label") or "").strip()
+    business_line = _infer_historical_email_business_line(title, content)
+    compact = _historical_email_compact(content)
+    pricing_rule = infer_pricing_rule_candidate(title, content, business_line) or {}
+    if use_range_label in {"商务沟通（方案+报价）", "催确认订单"} and not pricing_rule.get("price_min"):
+        generic_price_match = re.search(r"(?:RMB|人民币)?\s*(\d+(?:\.\d+)?)\s*元", content)
+        if generic_price_match:
+            pricing_rule = {
+                **pricing_rule,
+                "business_line": pricing_rule.get("business_line") or business_line,
+                "language_pair": pricing_rule.get("language_pair"),
+                "service_scope": pricing_rule.get("service_scope") or "general",
+                "customer_tier": pricing_rule.get("customer_tier"),
+                "currency": pricing_rule.get("currency") or "CNY",
+                "unit": pricing_rule.get("unit") or "per_project",
+                "price_min": pricing_rule.get("price_min") or generic_price_match.group(1),
+                "source_ref": pricing_rule.get("source_ref") or "auto_candidate_from_text",
+            }
+    has_price = bool(pricing_rule.get("price_min") or pricing_rule.get("price_max") or pricing_rule.get("min_charge"))
+
+    if use_range_label in {"财务沟通", "发送发票", "催款", "到账确认"}:
+        if "bankcharge" in compact or "银行手续费" in compact:
+            normalized_title = "国际付款场景下发票金额与银行手续费说明"
+        elif any(token in compact for token in ["付款进度", "付款状态", "逾期", "到期"]):
+            normalized_title = "逾期发票的付款状态跟进话术"
+        elif any(token in compact for token in ["结算", "每月", "清单确认"]):
+            normalized_title = "按月结算场景的清单确认与提交流程"
+        else:
+            return []
+        return [{
+            "title": normalized_title[:255],
+            "content": content,
+            "knowledge_type": "process",
+            "chunk_type": "rule",
+            "business_line": business_line,
+            "sub_service": None,
+            "language_pair": None,
+            "service_scope": "general",
+            "region": None,
+            "customer_tier": None,
+            "priority": 72,
+            "risk_level": "high",
+            "pricing_rule": None,
+        }]
+
+    if use_range_label == "发送合同/NDA":
+        if any(token in compact for token in ["到期", "续签", "有效期"]):
+            normalized_title = "长期协议到期后的续签提醒"
+        elif "预付款" in compact:
+            normalized_title = "合同中预付款条款的确认口径"
+        else:
+            return []
+        return [{
+            "title": normalized_title[:255],
+            "content": content,
+            "knowledge_type": "process",
+            "chunk_type": "constraint",
+            "business_line": business_line,
+            "sub_service": None,
+            "language_pair": None,
+            "service_scope": "general",
+            "region": None,
+            "customer_tier": None,
+            "priority": 78,
+            "risk_level": "high",
+            "pricing_rule": None,
+        }]
+
+    if use_range_label in {"商务沟通（方案+报价）", "催确认订单"}:
+        if "产能" in compact or "启动生产" in compact or ("po" in compact and "交货期" in compact):
+            normalized_title = "样稿确认后需PO启动生产并锁定产能"
+            item_type = ("process", "constraint", None)
+        elif any(token in compact for token in ["当前报价", "纸张", "成本增加", "否则", "本周"]):
+            normalized_title = "印刷报价确认时限与材料成本风险提示"
+            item_type = ("process", "constraint", None)
+        elif has_price and any(token in compact for token in ["单价", "含税", "净价", "工作日", "交稿", "千中文字符", "千英文单词", "排版参照原文"]):
+            normalized_title = "翻译报价模板：计价单位、含税净价、交付时效与文件格式"
+            item_type = ("pricing", "rule", pricing_rule)
+        else:
+            return []
+        return [{
+            "title": normalized_title[:255],
+            "content": content,
+            "knowledge_type": item_type[0],
+            "chunk_type": item_type[1],
+            "business_line": business_line,
+            "sub_service": None,
+            "language_pair": None,
+            "service_scope": "general",
+            "region": None,
+            "customer_tier": None,
+            "priority": 78,
+            "risk_level": "high",
+            "pricing_rule": item_type[2],
+        }]
+
+    if use_range_label == "成果交付":
+        if any(token in compact for token in ["订单中心", "下载", "评价", "免费修改", "反馈质量", "上传和下载"]):
+            normalized_title = "交付后的下载、评价与免费修改引导"
+        else:
+            return []
+        return [{
+            "title": normalized_title[:255],
+            "content": content,
+            "knowledge_type": "process",
+            "chunk_type": "rule",
+            "business_line": business_line,
+            "sub_service": None,
+            "language_pair": None,
+            "service_scope": "general",
+            "region": None,
+            "customer_tier": None,
+            "priority": 70,
+            "risk_level": "medium",
+            "pricing_rule": None,
+        }]
+
+    return None
+
+
+def _build_historical_email_candidate_entries(record: dict) -> list[dict]:
+    use_range_label = str(record.get("use_range_label") or "").strip()
+    intent_label = str(record.get("intent_type_label") or "").strip()
+    title = str(record.get("title") or record.get("subject") or "历史邮件候选").strip()
+    raw_content = sanitize_text(str(record.get("content") or "").strip())
+    if not raw_content or _is_low_value_historical_email(record, raw_content):
+        return []
+
+    keywords = _historical_email_keywords(use_range_label)
+    focused_content = _extract_relevant_sentences(raw_content, keywords, limit=5) if keywords else raw_content[:500]
+    focused_content = focused_content[:800]
+    if not focused_content.strip():
+        return []
+
+    deterministic_title = title
+    if not str(record.get("subject") or "").strip():
+        deterministic_title = f"{use_range_label or '历史邮件'}"
+        if intent_label:
+            deterministic_title += f"·{intent_label}"
+
+    deterministic_items = _build_deterministic_historical_email_items(deterministic_title, focused_content, record)
+    if deterministic_items is not None:
+        return deterministic_items
+
+    try:
+        return _llm_extract_candidate_items_from_text(deterministic_title, focused_content, "email_excel")
+    except Exception:
+        return []
+
 
 def _llm_extract_candidate_items_from_text(title: str, content: str, source_type: str) -> list[dict]:
     prompt = f"""
@@ -2439,7 +2806,10 @@ def _build_candidate_entries_from_record(record: dict, source_type: str) -> list
     content = sanitize_text(str(record.get("content") or "").strip())
     if not content:
         return []
-    items = _llm_extract_candidate_items_from_text(title, content, source_type)
+    if source_type == "email_excel":
+        items = _build_historical_email_candidate_entries(record)
+    else:
+        items = _llm_extract_candidate_items_from_text(title, content, source_type)
     snapshot = {
         key: sanitize_text(str(value)) if isinstance(value, str) else value
         for key, value in record.items()
@@ -2763,6 +3133,19 @@ def _build_email_excel_document_title(record: dict, *, fallback_index: int) -> s
     return f"邮件模板{fallback_index:02d}"
 
 
+def _build_historical_email_extract_title(record: dict, *, fallback_index: int) -> str:
+    subject = str(record.get("subject") or "").strip()
+    if subject:
+        return subject[:255]
+    row_no = int(record.get("row") or fallback_index)
+    use_range = str(record.get("use_range_label") or "").strip()
+    intent = str(record.get("intent_type_label") or "").strip()
+    parts = [part for part in [use_range, intent] if part]
+    if parts:
+        return f"历史邮件{row_no:03d}·{'·'.join(parts)}"[:255]
+    return f"历史邮件{row_no:03d}"
+
+
 def _build_email_excel_business_scope(record: dict) -> tuple[str, str]:
     row_no = int(record.get("row") or 0)
     if _is_dev_email_template_record(record) and row_no in DEV_EMAIL_ROW_META:
@@ -2837,7 +3220,8 @@ def _prepare_email_excel_import_entries(records: list[dict], *, filename: str) -
         if _is_dev_email_template_record(record) and row_no in DEV_EMAIL_SKIP_ROWS:
             skipped.append({"row": row_no, "reason": "too_short_generic"})
             continue
-        if len(record["content"]) < 60:
+        min_length = 60 if _is_dev_email_template_record(record) else 15
+        if len(record["content"]) < min_length:
             skipped.append({"row": row_no, "reason": "too_short_generic"})
             continue
         fingerprint = hashlib.md5(record["content"].encode("utf-8")).hexdigest()
@@ -3042,6 +3426,111 @@ def _create_email_excel_document(
         created_fragments.append(fragment)
     return document, created_chunks, created_fragments
 
+
+def _extract_historical_email_candidates_for_entry(
+    db: Session,
+    *,
+    entry: dict,
+    email_asset: EmailThreadAsset,
+    filename: str,
+    owner: str,
+    operator: str,
+    max_candidates: int,
+) -> tuple[list[KnowledgeCandidate], list[EmailFragmentAsset]]:
+    if max_candidates <= 0:
+        return [], []
+
+    record = dict(entry["record"])
+    row_no = int(record.get("row") or entry["sequence_no"])
+    source_rows = list(entry["source_rows"])
+    stage_labels = _merge_stage_labels(entry["stage_values"])
+    extract_title = _build_historical_email_extract_title(record, fallback_index=entry["sequence_no"])
+    extract_record = {
+        **record,
+        "title": extract_title,
+        "subject": extract_title,
+        "thread_id": email_asset.thread_id,
+        "session_id": email_asset.session_id,
+        "sent_at": email_asset.sent_at_raw or record.get("sent_at"),
+        "source_ref": entry["source_ref"],
+    }
+    candidate_items = _build_candidate_entries_from_record(extract_record, "email_excel")
+    created_candidates: list[KnowledgeCandidate] = []
+    created_fragments: list[EmailFragmentAsset] = []
+
+    for offset, item in enumerate(candidate_items[:max_candidates], start=1):
+        source_snapshot = dict(item.get("source_snapshot") or {})
+        source_snapshot.update({
+            "source_filename": filename,
+            "source_row": row_no,
+            "source_rows": source_rows,
+            "sequence_no": entry["sequence_no"],
+            "email_stage_labels": stage_labels,
+            "thread_id": email_asset.thread_id,
+            "session_id": email_asset.session_id,
+            "source_ref": entry["source_ref"],
+        })
+        source_snapshot["tags"] = merge_tags(
+            source_snapshot.get("tags"),
+            source_filename=filename,
+            source_row=row_no,
+            source_rows=source_rows,
+            sequence_no=entry["sequence_no"],
+            use_range_label=record.get("use_range_label"),
+            intent_type_label=record.get("intent_type_label"),
+            email_stage_labels=stage_labels,
+            scenario_label=email_asset.scenario_label,
+            intent_label=email_asset.intent_label,
+            language_style=email_asset.language_style,
+            thread_id=email_asset.thread_id,
+            session_id=email_asset.session_id,
+            email_source_kind="historical_transactional",
+        )
+        review_parts = [
+            f"来源日常往来邮件 row {row_no}",
+            f"用途={record.get('use_range_label')}" if record.get("use_range_label") else None,
+            f"意图={record.get('intent_type_label')}" if record.get("intent_type_label") else None,
+        ]
+        candidate = _create_candidate_record(
+            db,
+            title=item["title"],
+            content=item["content"],
+            knowledge_type=item["knowledge_type"],
+            chunk_type=item["chunk_type"],
+            business_line=item["business_line"],
+            sub_service=item.get("sub_service"),
+            language_pair=item.get("language_pair"),
+            service_scope=item.get("service_scope"),
+            region=item.get("region"),
+            customer_tier=item.get("customer_tier"),
+            priority=int(item.get("priority") or 60),
+            risk_level=item.get("risk_level") or "medium",
+            effective_from=item.get("effective_from"),
+            effective_to=item.get("effective_to"),
+            pricing_rule=item.get("pricing_rule"),
+            source_type="email_excel",
+            source_ref=f"{entry['source_ref']}__candidate__{offset}",
+            source_snapshot=source_snapshot,
+            owner=owner,
+            operator=operator,
+            review_notes="；".join(part for part in review_parts if part),
+        )
+        created_candidates.append(candidate)
+        fragment = _upsert_email_fragment_asset(
+            db,
+            source_type="email_excel",
+            source_ref=f"{entry['source_ref']}__candidate_fragment__{offset}",
+            title=candidate.title,
+            content=candidate.content,
+            session_id=email_asset.session_id,
+            thread_id=email_asset.thread_id,
+            email_asset=email_asset,
+            candidate=candidate,
+            source_snapshot=source_snapshot,
+        )
+        created_fragments.append(fragment)
+    return created_candidates, created_fragments
+
 def _rollup_email_thread_asset_stats(db: Session, email_ids: list[str]) -> None:
     if not email_ids:
         return
@@ -3230,13 +3719,18 @@ def _extract_email_assets_and_candidates(
     created_documents: list[KnowledgeDocument] = []
     created_chunks: list[KnowledgeChunk] = []
     created_fragments: list[EmailFragmentAsset] = []
+    created_candidates: list[KnowledgeCandidate] = []
     seen_asset_ids: set[str] = set()
+    remaining_candidate_slots = max_candidates
 
     for entry in prepared_entries:
         record = dict(entry["record"])
         record.setdefault("source_ref", entry["source_ref"])
         if not record.get("subject"):
-            record["subject"] = _build_email_excel_document_title(record, fallback_index=entry["sequence_no"])
+            if _is_dev_email_template_record(record):
+                record["subject"] = _build_email_excel_document_title(record, fallback_index=entry["sequence_no"])
+            else:
+                record["subject"] = _build_historical_email_extract_title(record, fallback_index=entry["sequence_no"])
         email_asset = _upsert_email_thread_asset(
             db,
             record=record,
@@ -3247,24 +3741,41 @@ def _extract_email_assets_and_candidates(
         if str(email_asset.email_id) not in seen_asset_ids:
             created_assets.append(email_asset)
             seen_asset_ids.add(str(email_asset.email_id))
-        document, chunks, fragments = _create_email_excel_document(
-            db,
-            email_asset=email_asset,
-            entry=entry,
-            filename=filename,
-            import_batch=import_batch,
-            owner=owner,
-        )
-        created_documents.append(document)
-        created_chunks.extend(chunks)
-        created_fragments.extend(fragments)
+
+        if _is_dev_email_template_record(record):
+            document, chunks, fragments = _create_email_excel_document(
+                db,
+                email_asset=email_asset,
+                entry=entry,
+                filename=filename,
+                import_batch=import_batch,
+                owner=owner,
+            )
+            created_documents.append(document)
+            created_chunks.extend(chunks)
+            created_fragments.extend(fragments)
+            continue
+
+        if remaining_candidate_slots > 0:
+            candidates, fragments = _extract_historical_email_candidates_for_entry(
+                db,
+                entry=entry,
+                email_asset=email_asset,
+                filename=filename,
+                owner=owner,
+                operator=operator,
+                max_candidates=remaining_candidate_slots,
+            )
+            created_candidates.extend(candidates)
+            created_fragments.extend(fragments)
+            remaining_candidate_slots = max(0, remaining_candidate_slots - len(candidates))
     return {
         "import_batch": import_batch,
         "email_assets": created_assets,
         "documents": created_documents,
         "chunks": created_chunks,
         "fragments": created_fragments,
-        "candidates": [],
+        "candidates": created_candidates,
         "skipped": skipped,
         "purged": purge_summary,
     }
@@ -4124,7 +4635,7 @@ def _create_candidate_from_feedback_log(
         service_scope=query_features.get("service_scope"),
         customer_tier=query_features.get("customer_tier"),
         priority=70,
-        risk_level="high" if knowledge_type == "pricing" or is_pricing_text(candidate_title, candidate_content, knowledge_type) else "medium",
+        risk_level="high" if knowledge_type == "pricing" or mentions_pricing_topic(candidate_title, candidate_content) else "medium",
         pricing_rule=pricing_rule,
         source_type="feedback",
         source_ref=str(log.log_id),
@@ -4494,8 +5005,6 @@ def _select_publish_gate_case_ids(doc: KnowledgeDocument, chunks: list[Knowledge
                 knowledge_match = True
             elif category == "customer_tier" and is_high_risk and customer_tiers:
                 knowledge_match = True
-            elif category == "cross_scope" and is_high_risk and service_scopes:
-                knowledge_match = True
             elif category == "template" and ("template" in chunk_types or {"pricing", "faq"} & knowledge_types):
                 knowledge_match = True
         if not knowledge_match:
@@ -4506,7 +5015,7 @@ def _select_publish_gate_case_ids(doc: KnowledgeDocument, chunks: list[Knowledge
             continue
 
         service_scope = query_features.get("service_scope")
-        if service_scope and service_scopes and service_scope not in service_scopes and category not in {"cross_scope", "capability"}:
+        if service_scope and service_scopes and service_scope not in service_scopes and category != "capability":
             continue
 
         customer_tier = query_features.get("customer_tier")
@@ -4525,15 +5034,30 @@ def _select_publish_gate_case_ids(doc: KnowledgeDocument, chunks: list[Knowledge
     return list(dict.fromkeys(selected))
 
 def _governance_gate_failures_for_doc(doc: KnowledgeDocument, chunks: list[KnowledgeChunk]) -> list[str]:
+    def auxiliary_reference_chunk(chunk: KnowledgeChunk) -> bool:
+        tags = chunk.structured_tags or {}
+        knowledge_class = str(tags.get("knowledge_class") or "").strip()
+        if knowledge_class in {"pricing_constraint", "definition", "process_constraint"}:
+            return True
+        if chunk.chunk_type == "definition":
+            return True
+        if chunk.chunk_type == "constraint" and chunk.knowledge_type in {"pricing", "process"}:
+            return True
+        return False
+
     failures: list[str] = []
     if not chunks:
         failures.append("文档没有可发布切片")
         return failures
-    replyable_reference_chunks = [
+    replyability_required_chunks = [
         chunk for chunk in chunks
-        if chunk.library_type == "reference" and bool(chunk.usable_for_reply)
+        if chunk.library_type == "reference" and not auxiliary_reference_chunk(chunk)
     ]
-    if doc.library_type == "reference" and not replyable_reference_chunks:
+    replyable_reference_chunks = [
+        chunk for chunk in replyability_required_chunks
+        if bool(chunk.usable_for_reply)
+    ]
+    if doc.library_type == "reference" and replyability_required_chunks and not replyable_reference_chunks:
         failures.append("参考型文档没有任何可自动回复切片")
     for chunk in chunks:
         mixed = detect_mixed_knowledge(chunk.content, chunk.structured_tags)
@@ -4541,14 +5065,13 @@ def _governance_gate_failures_for_doc(doc: KnowledgeDocument, chunks: list[Knowl
             failures.append(f"切片《{chunk.title}》存在混合知识点，分类过多：{', '.join(mixed.get('categories') or [])}")
         if not chunk.publishable:
             failures.append(f"切片《{chunk.title}》未通过 publishable 门禁")
-        if chunk.library_type == "reference" and not chunk.allowed_for_generation:
+        if chunk.library_type == "reference" and not auxiliary_reference_chunk(chunk) and not chunk.allowed_for_generation:
             failures.append(f"切片《{chunk.title}》未通过自动回复许可门禁")
     return list(dict.fromkeys(failures))
 
 async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Session) -> dict:
     case_ids = []
     docs_report = []
-    selected_case_category_counts: dict[str, int] = {}
     case_meta = {case["case_id"]: case for case in _load_regression_cases()}
     governance_failures = []
     for doc in docs:
@@ -4560,7 +5083,6 @@ async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Ses
         for case_id in selected_ids:
             category = case_meta.get(case_id, {}).get("category") or "uncategorized"
             category_counts[category] = category_counts.get(category, 0) + 1
-            selected_case_category_counts[category] = selected_case_category_counts.get(category, 0) + 1
         docs_report.append({
             "document_id": str(doc.document_id),
             "title": doc.title,
@@ -4581,6 +5103,11 @@ async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Ses
             })
 
     case_ids = list(dict.fromkeys(case_ids))
+    selected_case_category_counts: dict[str, int] = {}
+    for case_id in case_ids:
+        category = case_meta.get(case_id, {}).get("category") or "uncategorized"
+        selected_case_category_counts[category] = selected_case_category_counts.get(category, 0) + 1
+    governance_failed_documents = len(governance_failures)
     if not case_ids:
         return {
             "selected_case_ids": [],
@@ -4588,7 +5115,15 @@ async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Ses
             "target_document_count": len(docs),
             "documents": docs_report,
             "passed": not governance_failures,
-            "summary": {"selected": 0, "passed": 0, "failed": len(governance_failures)},
+            "summary": {
+                "selected": 0,
+                "passed": 0,
+                "failed": governance_failed_documents,
+                "regression_selected": 0,
+                "regression_passed": 0,
+                "regression_failed": 0,
+                "governance_failed_documents": governance_failed_documents,
+            },
             "selected_case_category_counts": {},
             "results": [],
             "failed_cases": governance_failures,
@@ -4603,7 +5138,10 @@ async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Ses
             run_id=f"publish_gate_{uuid.uuid4().hex[:10]}",
         )
     )
-    failed_cases = [item for item in regression.get("results", []) if not item.get("passed")]
+    regression_failed_cases = [item for item in regression.get("results", []) if not item.get("passed")]
+    regression_failed_count = len(regression_failed_cases)
+    regression_passed_count = regression.get("passed", 0)
+    failed_cases = list(regression_failed_cases)
     failed_cases.extend(governance_failures)
     return {
         "selected_case_ids": case_ids,
@@ -4613,8 +5151,12 @@ async def _run_publish_gate_for_documents(docs: list[KnowledgeDocument], db: Ses
         "passed": not failed_cases,
         "summary": {
             "selected": len(case_ids),
-            "passed": regression.get("passed", 0),
-            "failed": regression.get("failed", 0) + len(governance_failures),
+            "passed": regression_passed_count,
+            "failed": regression_failed_count + governance_failed_documents,
+            "regression_selected": len(case_ids),
+            "regression_passed": regression_passed_count,
+            "regression_failed": regression_failed_count,
+            "governance_failed_documents": governance_failed_documents,
         },
         "selected_case_category_counts": selected_case_category_counts,
         "results": regression.get("results", []),
@@ -5007,6 +5549,12 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
     if not embedding:
         raise HTTPException(status_code=500, detail="Embedding failed")
 
+    effective_from, effective_to = default_pricing_effective_window(
+        payload.effective_from,
+        payload.effective_to,
+        knowledge_type=resolved_type,
+        pricing_rule=payload.pricing_rule,
+    )
     now_status = "draft"
     document = KnowledgeDocument(
         title=payload.title,
@@ -5017,8 +5565,8 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
         source_ref=payload.source_ref,
         status=now_status,
         owner=payload.owner,
-        effective_from=payload.effective_from,
-        effective_to=payload.effective_to,
+        effective_from=effective_from,
+        effective_to=effective_to,
         risk_level=resolved_risk,
         review_required=payload.review_required,
         review_status="pending" if payload.review_required else "auto_ready",
@@ -5049,8 +5597,8 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
         customer_tier=payload.customer_tier,
         structured_tags=merged_tags,
         status=now_status,
-        effective_from=payload.effective_from,
-        effective_to=payload.effective_to,
+        effective_from=effective_from,
+        effective_to=effective_to,
     )
     db.add(chunk)
     db.flush()
@@ -5093,6 +5641,17 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
         chunk_type=None,
         risk_level=payload.risk_level,
     )
+    has_pricing_chunk = resolved_doc_type == "pricing" or any(
+        normalize_knowledge_class_or_raise(item.knowledge_class) == "pricing_constraint"
+        or item.knowledge_type == "pricing"
+        or bool(item.pricing_rule)
+        for item in payload.chunks
+    )
+    effective_from, effective_to = default_pricing_effective_window(
+        payload.effective_from,
+        payload.effective_to,
+        knowledge_type="pricing" if has_pricing_chunk else resolved_doc_type,
+    )
     merged_doc_tags = merge_knowledge_class_tags(payload.tags, resolved_doc_class)
     document = KnowledgeDocument(
         title=payload.title,
@@ -5103,8 +5662,8 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
         source_ref=payload.source_ref,
         status="draft",
         owner=payload.owner,
-        effective_from=payload.effective_from,
-        effective_to=payload.effective_to,
+        effective_from=effective_from,
+        effective_to=effective_to,
         risk_level=resolved_doc_risk,
         review_required=payload.review_required,
         review_status="pending" if payload.review_required else "auto_ready",
@@ -5151,8 +5710,8 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
             customer_tier=item.customer_tier,
             structured_tags=merged_chunk_tags,
             status="draft",
-            effective_from=payload.effective_from,
-            effective_to=payload.effective_to,
+            effective_from=effective_from,
+            effective_to=effective_to,
         )
         db.add(chunk)
         db.flush()
@@ -5247,7 +5806,11 @@ async def list_kb_candidates(
     source_type: str | None = None,
     business_line: str | None = None,
     knowledge_type: str | None = None,
+    title_keyword: str | None = None,
+    content_keyword: str | None = None,
     limit: int = 200,
+    offset: int = 0,
+    include_meta: bool = False,
     db: Session = Depends(get_db),
 ):
     query = db.query(KnowledgeCandidate)
@@ -5259,8 +5822,37 @@ async def list_kb_candidates(
         query = query.filter(KnowledgeCandidate.business_line == business_line)
     if knowledge_type:
         query = query.filter(KnowledgeCandidate.knowledge_type == knowledge_type)
-    items = query.order_by(KnowledgeCandidate.created_at.desc()).limit(max(1, min(limit, 500))).all()
-    return [_candidate_to_dict(item) for item in items]
+    if title_keyword:
+        query = query.filter(KnowledgeCandidate.title.ilike(f"%{title_keyword.strip()}%"))
+    if content_keyword:
+        query = query.filter(KnowledgeCandidate.content.ilike(f"%{content_keyword.strip()}%"))
+    query_limit = max(1, min(limit, 500))
+    query_offset = max(0, int(offset or 0))
+    total = query.order_by(None).count()
+    items = (
+        query.order_by(KnowledgeCandidate.created_at.desc())
+        .offset(query_offset)
+        .limit(query_limit)
+        .all()
+    )
+    result = [_candidate_to_dict(item) for item in items]
+    if include_meta:
+        return {
+            "items": result,
+            "total": total,
+            "limit": query_limit,
+            "offset": query_offset,
+            "has_more": query_offset + len(result) < total,
+            "next_offset": query_offset + len(result),
+        }
+    return result
+
+@app.get("/api/kb/candidates/{candidate_id}")
+async def get_kb_candidate(candidate_id: str, db: Session = Depends(get_db)):
+    candidate = db.query(KnowledgeCandidate).filter(KnowledgeCandidate.candidate_id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found")
+    return {"status": "success", "candidate": _candidate_to_dict(candidate)}
 
 @app.patch("/api/kb/candidates/{candidate_id}")
 async def update_kb_candidate(candidate_id: str, payload: KnowledgeCandidateUpdate, db: Session = Depends(get_db)):
@@ -5297,67 +5889,196 @@ async def create_kb_candidate_from_feedback(payload: KnowledgeCandidateFromFeedb
     db.refresh(candidate)
     return {"status": "success", "candidate": _candidate_to_dict(candidate)}
 
+def _promote_candidate_record(
+    db: Session,
+    candidate: KnowledgeCandidate,
+    *,
+    owner: str | None = None,
+    operator: str | None = None,
+    title: str | None = None,
+    content: str | None = None,
+    knowledge_type: str | None = None,
+    chunk_type: str | None = None,
+    business_line: str | None = None,
+    sub_service: str | None = None,
+    language_pair: str | None = None,
+    service_scope: str | None = None,
+    region: str | None = None,
+    customer_tier: str | None = None,
+    priority: int | None = None,
+    risk_level: str | None = None,
+    effective_from: datetime | None = None,
+    effective_to: datetime | None = None,
+    pricing_rule: dict | None = None,
+    review_notes: str | None = None,
+):
+    if candidate.promoted_document_id:
+        doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == candidate.promoted_document_id).first()
+        return {
+            "status": "success",
+            "candidate": candidate,
+            "document": doc,
+            "chunk": None,
+            "pricing_rule": None,
+            "message": "Candidate already promoted",
+        }
+
+    promoted_title = title or candidate.title
+    promoted_content = content or candidate.content
+    promoted_knowledge_type = knowledge_type or candidate.knowledge_type
+    promoted_business_line = business_line or candidate.business_line
+    promoted_chunk_type = chunk_type or candidate.chunk_type
+    doc, chunk, rule = _create_single_document_and_chunk(
+        db,
+        title=promoted_title,
+        content=promoted_content,
+        knowledge_type=promoted_knowledge_type,
+        business_line=promoted_business_line,
+        sub_service=sub_service if sub_service is not None else candidate.sub_service,
+        chunk_type=promoted_chunk_type,
+        language_pair=language_pair if language_pair is not None else candidate.language_pair,
+        service_scope=service_scope if service_scope is not None else candidate.service_scope,
+        region=region if region is not None else candidate.region,
+        customer_tier=customer_tier if customer_tier is not None else candidate.customer_tier,
+        source_type=f"candidate_{candidate.source_type}",
+        source_ref=str(candidate.candidate_id),
+        source_meta={"candidate_source_type": candidate.source_type, "candidate_source_ref": candidate.source_ref},
+        owner=owner or candidate.owner or "kb_candidate_promote",
+        priority=priority or candidate.priority,
+        risk_level=risk_level or candidate.risk_level,
+        review_required=True,
+        tags={"candidate_id": str(candidate.candidate_id), "candidate_source_type": candidate.source_type},
+        effective_from=effective_from if effective_from is not None else candidate.effective_from,
+        effective_to=effective_to if effective_to is not None else candidate.effective_to,
+        pricing_rule=pricing_rule if pricing_rule is not None else candidate.pricing_rule,
+    )
+    candidate.status = "promoted"
+    candidate.promoted_document_id = doc.document_id
+    if operator is not None:
+        candidate.operator = operator
+    if review_notes is not None:
+        candidate.review_notes = review_notes
+    return {
+        "status": "success",
+        "candidate": candidate,
+        "document": doc,
+        "chunk": chunk,
+        "pricing_rule": rule,
+        "message": "Candidate promoted",
+    }
+
 @app.post("/api/kb/candidates/{candidate_id}/promote")
 async def promote_kb_candidate(candidate_id: str, payload: KnowledgeCandidatePromoteRequest, db: Session = Depends(get_db)):
     candidate = db.query(KnowledgeCandidate).filter(KnowledgeCandidate.candidate_id == candidate_id).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Knowledge candidate not found")
-    if candidate.promoted_document_id:
-        doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == candidate.promoted_document_id).first()
-        return {
-            "status": "success",
-            "candidate": _candidate_to_dict(candidate),
-            "document": _doc_to_dict(doc) if doc else None,
-            "message": "Candidate already promoted",
-        }
-
-    title = payload.title or candidate.title
-    content = payload.content or candidate.content
-    knowledge_type = payload.knowledge_type or candidate.knowledge_type
-    business_line = payload.business_line or candidate.business_line
-    chunk_type = payload.chunk_type or candidate.chunk_type
-    doc, chunk, rule = _create_single_document_and_chunk(
+    result = _promote_candidate_record(
         db,
-        title=title,
-        content=content,
-        knowledge_type=knowledge_type,
-        business_line=business_line,
-        sub_service=payload.sub_service if payload.sub_service is not None else candidate.sub_service,
-        chunk_type=chunk_type,
-        language_pair=payload.language_pair if payload.language_pair is not None else candidate.language_pair,
-        service_scope=payload.service_scope if payload.service_scope is not None else candidate.service_scope,
-        region=payload.region if payload.region is not None else candidate.region,
-        customer_tier=payload.customer_tier if payload.customer_tier is not None else candidate.customer_tier,
-        source_type=f"candidate_{candidate.source_type}",
-        source_ref=str(candidate.candidate_id),
-        source_meta={"candidate_source_type": candidate.source_type, "candidate_source_ref": candidate.source_ref},
-        owner=payload.owner or candidate.owner or "kb_candidate_promote",
-        priority=payload.priority or candidate.priority,
-        risk_level=payload.risk_level or candidate.risk_level,
-        review_required=True,
-        tags={"candidate_id": str(candidate.candidate_id), "candidate_source_type": candidate.source_type},
-        effective_from=payload.effective_from if payload.effective_from is not None else candidate.effective_from,
-        effective_to=payload.effective_to if payload.effective_to is not None else candidate.effective_to,
-        pricing_rule=payload.pricing_rule if payload.pricing_rule is not None else candidate.pricing_rule,
+        candidate,
+        owner=payload.owner,
+        operator=payload.operator,
+        title=payload.title,
+        content=payload.content,
+        knowledge_type=payload.knowledge_type,
+        chunk_type=payload.chunk_type,
+        business_line=payload.business_line,
+        sub_service=payload.sub_service,
+        language_pair=payload.language_pair,
+        service_scope=payload.service_scope,
+        region=payload.region,
+        customer_tier=payload.customer_tier,
+        priority=payload.priority,
+        risk_level=payload.risk_level,
+        effective_from=payload.effective_from,
+        effective_to=payload.effective_to,
+        pricing_rule=payload.pricing_rule,
+        review_notes=payload.review_notes,
     )
-    candidate.status = "promoted"
-    candidate.promoted_document_id = doc.document_id
-    if payload.operator is not None:
-        candidate.operator = payload.operator
-    if payload.review_notes is not None:
-        candidate.review_notes = payload.review_notes
     db.commit()
     db.refresh(candidate)
-    db.refresh(doc)
-    db.refresh(chunk)
-    if rule:
-        db.refresh(rule)
+    if result["document"]:
+        db.refresh(result["document"])
+    if result["chunk"]:
+        db.refresh(result["chunk"])
+    if result["pricing_rule"]:
+        db.refresh(result["pricing_rule"])
     return {
         "status": "success",
         "candidate": _candidate_to_dict(candidate),
-        "document": _doc_to_dict(doc),
-        "chunk": _chunk_to_dict(chunk),
-        "pricing_rule": _pricing_rule_to_dict(rule) if rule else None,
+        "document": _doc_to_dict(result["document"]) if result["document"] else None,
+        "chunk": _chunk_to_dict(result["chunk"]) if result["chunk"] else None,
+        "pricing_rule": _pricing_rule_to_dict(result["pricing_rule"]) if result["pricing_rule"] else None,
+        "message": result["message"],
+    }
+
+@app.post("/api/kb/candidates/batch_promote")
+async def batch_promote_kb_candidates(payload: KnowledgeCandidateBatchPromoteRequest, db: Session = Depends(get_db)):
+    candidate_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for raw in payload.candidate_ids:
+        candidate_id = str(raw or "").strip()
+        if candidate_id and candidate_id not in seen_ids:
+            candidate_ids.append(candidate_id)
+            seen_ids.add(candidate_id)
+    if not candidate_ids:
+        raise HTTPException(status_code=400, detail="candidate_ids is required")
+
+    candidates = (
+        db.query(KnowledgeCandidate)
+        .filter(KnowledgeCandidate.candidate_id.in_(candidate_ids))
+        .all()
+    )
+    candidate_map = {str(item.candidate_id): item for item in candidates}
+    results: list[dict[str, Any]] = []
+    promoted_documents: list[KnowledgeDocument] = []
+
+    for candidate_id in candidate_ids:
+        candidate = candidate_map.get(candidate_id)
+        if not candidate:
+            results.append({"candidate_id": candidate_id, "status": "not_found"})
+            continue
+        if candidate.status != "candidate" and not candidate.promoted_document_id:
+            results.append({
+                "candidate_id": candidate_id,
+                "status": "skipped",
+                "reason": f"status={candidate.status}",
+                "candidate": _candidate_to_dict(candidate),
+            })
+            continue
+        result = _promote_candidate_record(
+            db,
+            candidate,
+            owner=payload.owner,
+            operator=payload.operator,
+        )
+        if result["document"]:
+            promoted_documents.append(result["document"])
+        results.append({
+            "candidate_id": candidate_id,
+            "status": "promoted" if result["chunk"] else "already_promoted",
+            "candidate": _candidate_to_dict(candidate),
+            "document": _doc_to_dict(result["document"]) if result["document"] else None,
+            "message": result["message"],
+        })
+
+    db.commit()
+    for item in candidates:
+        db.refresh(item)
+    for doc in promoted_documents:
+        db.refresh(doc)
+
+    promoted_count = sum(1 for item in results if item["status"] == "promoted")
+    already_promoted_count = sum(1 for item in results if item["status"] == "already_promoted")
+    skipped_count = sum(1 for item in results if item["status"] == "skipped")
+    not_found_count = sum(1 for item in results if item["status"] == "not_found")
+    return {
+        "status": "success",
+        "requested_count": len(candidate_ids),
+        "promoted_count": promoted_count,
+        "already_promoted_count": already_promoted_count,
+        "skipped_count": skipped_count,
+        "not_found_count": not_found_count,
+        "results": results,
     }
 
 @app.get("/api/kb/documents")
@@ -5371,7 +6092,11 @@ async def list_kb_documents(
     review_status: str | None = None,
     source_type: str | None = None,
     risk_level: str | None = None,
+    title_keyword: str | None = None,
+    content_keyword: str | None = None,
     limit: int = 200,
+    offset: int = 0,
+    include_meta: bool = False,
     db: Session = Depends(get_db),
 ):
     query = db.query(KnowledgeDocument)
@@ -5388,6 +6113,14 @@ async def list_kb_documents(
             query = query.filter(KnowledgeDocument.status == "review", KnowledgeDocument.review_status != "approved")
         elif stage == "approved":
             query = query.filter(KnowledgeDocument.status == "review", KnowledgeDocument.review_status == "approved")
+        elif stage in {"review_queue", "pending_review"}:
+            query = query.filter(
+                or_(
+                    KnowledgeDocument.status == "draft",
+                    and_(KnowledgeDocument.status == "review", KnowledgeDocument.review_status != "approved"),
+                    and_(KnowledgeDocument.status == "review", KnowledgeDocument.review_status == "approved"),
+                )
+            )
         elif stage == "active":
             query = query.filter(KnowledgeDocument.status == "active")
         elif stage == "archived":
@@ -5412,13 +6145,43 @@ async def list_kb_documents(
         query = query.filter(KnowledgeDocument.source_type == source_type)
     if risk_level:
         query = query.filter(KnowledgeDocument.risk_level == risk_level)
+    if title_keyword:
+        query = query.filter(KnowledgeDocument.title.ilike(f"%{title_keyword.strip()}%"))
+    if content_keyword:
+        content_pattern = f"%{content_keyword.strip()}%"
+        matched_document_ids = (
+            db.query(KnowledgeChunk.document_id)
+            .filter(KnowledgeChunk.content.ilike(content_pattern))
+            .distinct()
+        )
+        query = query.filter(KnowledgeDocument.document_id.in_(matched_document_ids))
+
     query_limit = max(1, min(limit, 500))
-    fetch_limit = max(query_limit * 5, query_limit) if knowledge_class_code else query_limit
-    docs = query.order_by(KnowledgeDocument.created_at.desc()).limit(min(fetch_limit, 1000)).all()
-    result = [_doc_to_dict(doc) for doc in docs]
+    query_offset = max(0, int(offset or 0))
+    ordered_query = query.order_by(KnowledgeDocument.created_at.desc())
+
     if knowledge_class_code:
-        result = [doc for doc in result if doc.get("knowledge_class") == knowledge_class_code]
-    return result[:query_limit]
+        result = [
+            item for item in (_doc_to_dict(doc) for doc in ordered_query.all())
+            if item.get("knowledge_class") == knowledge_class_code
+        ]
+        total = len(result)
+        items = result[query_offset:query_offset + query_limit]
+    else:
+        total = query.order_by(None).count()
+        docs = ordered_query.offset(query_offset).limit(query_limit).all()
+        items = [_doc_to_dict(doc) for doc in docs]
+
+    if include_meta:
+        return {
+            "items": items,
+            "total": total,
+            "limit": query_limit,
+            "offset": query_offset,
+            "has_more": query_offset + len(items) < total,
+            "next_offset": query_offset + len(items),
+        }
+    return items
 
 @app.get("/api/kb/documents/{document_id}")
 async def get_kb_document(document_id: str, db: Session = Depends(get_db)):
@@ -5496,6 +6259,19 @@ async def update_kb_document(document_id: str, payload: KnowledgeDocumentUpdate,
             doc.risk_level = payload.risk_level
         if payload.tags is not None:
             doc.tags = payload.tags
+    doc.effective_from, doc.effective_to = default_pricing_effective_window(
+        doc.effective_from,
+        doc.effective_to,
+        knowledge_type=doc.knowledge_type,
+    )
+    chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.document_id == doc.document_id).all()
+    for chunk in chunks:
+        chunk.effective_from = doc.effective_from
+        chunk.effective_to = doc.effective_to
+    pricing_rules = db.query(PricingRule).filter(PricingRule.document_id == doc.document_id).all()
+    for rule in pricing_rules:
+        rule.effective_from = doc.effective_from
+        rule.effective_to = doc.effective_to
     if doc.status == "draft":
         doc.review_status = "pending" if doc.review_required else "auto_ready"
     db.commit()
@@ -5738,9 +6514,20 @@ async def update_kb_hit_log_feedback(log_id: str, payload: KnowledgeHitFeedback,
 
 @app.post("/api/assist/feedback")
 async def submit_assist_feedback(payload: AssistFeedback, db: Session = Depends(get_db)):
-    log = db.query(KnowledgeHitLog).filter(
-        KnowledgeHitLog.session_id == payload.session_id
-    ).order_by(KnowledgeHitLog.created_at.desc()).first()
+    log = None
+    if payload.snapshot_id and payload.snapshot_id != "current_tail":
+        snapshot = db.query(ReplyChainSnapshot).filter(
+            ReplyChainSnapshot.snapshot_id == payload.snapshot_id,
+            ReplyChainSnapshot.session_id == payload.session_id,
+        ).first()
+        if snapshot and snapshot.knowledge_log_id:
+            log = db.query(KnowledgeHitLog).filter(
+                KnowledgeHitLog.log_id == snapshot.knowledge_log_id
+            ).first()
+    if not log:
+        log = db.query(KnowledgeHitLog).filter(
+            KnowledgeHitLog.session_id == payload.session_id
+        ).order_by(KnowledgeHitLog.created_at.desc()).first()
     if not log:
         raise HTTPException(status_code=404, detail="No knowledge hit log found for session")
     log.feedback_status = payload.feedback_status
@@ -6178,6 +6965,7 @@ def _llm_provider_label(api_key: str | None) -> str:
 
 def _llm_runtime_config() -> dict:
     llm1 = _runtime_llm_values("LLM1")
+    llm1_compare = _runtime_llm_values("LLM1_COMPARE")
     llm2 = _runtime_llm_values("LLM2")
     llm2_compare = _runtime_llm_values("LLM2_COMPARE")
     return {
@@ -6188,6 +6976,14 @@ def _llm_runtime_config() -> dict:
             "provider": _llm_provider_label(llm1["api_key"]),
             "url": llm1["api_url"],
             "display_name": f"LLM-1 / {llm1['model'] or '未配置'}",
+        },
+        "llm1_compare": {
+            "id": "LLM-1 对比",
+            "role": "第一阶段对比特征提取",
+            "model": llm1_compare["model"],
+            "provider": _llm_provider_label(llm1_compare["api_key"]),
+            "url": llm1_compare["api_url"],
+            "display_name": f"LLM-1 对比 / {llm1_compare['model'] or '未配置'}",
         },
         "llm2": {
             "id": "LLM-2",
@@ -6311,9 +7107,11 @@ def _system_config_check() -> dict:
         }
 
     llm1 = _runtime_llm_values("LLM1")
+    llm1_compare = _runtime_llm_values("LLM1_COMPARE")
     llm2 = _runtime_llm_values("LLM2")
     llm2_compare = _runtime_llm_values("LLM2_COMPARE")
     checks["llm1"] = build_llm_check("llm1", llm1["api_url"], llm1["api_key"], llm1["model"])
+    checks["llm1_compare"] = build_llm_check("llm1_compare", llm1_compare["api_url"], llm1_compare["api_key"], llm1_compare["model"])
     checks["llm2"] = build_llm_check("llm2", llm2["api_url"], llm2["api_key"], llm2["model"])
     checks["llm2_compare"] = build_llm_check(
         "llm2_compare",
@@ -6446,6 +7244,7 @@ def _runtime_health() -> dict:
         "status": "ok",
         "http_trust_env": settings.HTTP_TRUST_ENV,
         "llm1_timeout_seconds": settings.LLM1_TIMEOUT_SECONDS,
+        "llm1_compare_timeout_seconds": settings.LLM1_COMPARE_TIMEOUT_SECONDS,
         "llm2_timeout_seconds": settings.LLM2_TIMEOUT_SECONDS,
         "llm2_compare_timeout_seconds": settings.LLM2_COMPARE_TIMEOUT_SECONDS,
         "embedding_timeout_seconds": settings.EMBEDDING_TIMEOUT_SECONDS,
@@ -7028,7 +7827,7 @@ def _commit_kb_excel_import_raw(
             chunk_knowledge_types = {chunk_payload.knowledge_type for chunk_payload in split_chunks}
             document_knowledge_type = split_chunks[0].knowledge_type if len(chunk_knowledge_types) == 1 else item["knowledge_type"]
             document_risk_level = "high" if any(
-                chunk_payload.knowledge_type == "pricing" or is_pricing_text(chunk_payload.title, chunk_payload.content, chunk_payload.knowledge_type)
+                chunk_payload.knowledge_type == "pricing" or mentions_pricing_topic(chunk_payload.title, chunk_payload.content)
                 for chunk_payload in split_chunks
             ) else item["risk_level"]
             document_tags = dict(item["tags"] or {})
@@ -7413,7 +8212,7 @@ async def extract_kb_candidates_from_email_excel(
         "import_batch": result["import_batch"],
         "source_rows": len(records),
         "email_asset_count": len(result["email_assets"]),
-        "created_count": 0,
+        "created_count": len(result["candidates"]),
         "document_count": len(result["documents"]),
         "chunk_count": len(result["chunks"]),
         "fragment_count": len(result["fragments"]),
@@ -7421,7 +8220,7 @@ async def extract_kb_candidates_from_email_excel(
         "skipped": result["skipped"],
         "email_assets": [_email_thread_asset_to_dict(item) for item in result["email_assets"]],
         "documents": [_knowledge_document_to_dict(item, db) for item in result["documents"]],
-        "candidates": [],
+        "candidates": [_candidate_to_dict(item) for item in result["candidates"]],
         "fragments": [_email_fragment_asset_to_dict(item) for item in result["fragments"]],
     }
 
@@ -7548,7 +8347,8 @@ async def complete_partial_items_async(payload: AnalysisCompletionRequest, db: S
 @app.post("/api/kb/import/business_csv")
 async def import_business_csv(
     file: UploadFile = File(...),
-    row_limit: int = Form(DEFAULT_BUSINESS_CSV_ROW_LIMIT),
+    start_row: int = Form(DEFAULT_BUSINESS_CSV_ROW_START),
+    end_row: int = Form(DEFAULT_BUSINESS_CSV_ROW_END),
     db: Session = Depends(get_db),
 ):
     filename = file.filename or DEFAULT_BUSINESS_CSV_FILENAME
@@ -7556,8 +8356,8 @@ async def import_business_csv(
         raise HTTPException(status_code=400, detail=f"当前正式导入口径仅适用于 {DEFAULT_BUSINESS_CSV_FILENAME}")
     if not filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="仅支持 .csv 文件")
-    if row_limit != DEFAULT_BUSINESS_CSV_ROW_LIMIT:
-        raise HTTPException(status_code=400, detail=f"当前正式 business_csv 导入口径仅覆盖前 {DEFAULT_BUSINESS_CSV_ROW_LIMIT} 条")
+    if start_row < 1 or end_row < start_row:
+        raise HTTPException(status_code=400, detail=f"导入范围非法: {start_row}-{end_row}")
 
     raw = await file.read()
     if not raw:
@@ -7568,7 +8368,8 @@ async def import_business_csv(
             db,
             raw=raw,
             filename=os.path.basename(filename),
-            row_limit=row_limit,
+            start_row=start_row,
+            end_row=end_row,
             source_type=BUSINESS_CSV_SOURCE_TYPE,
             owner="business_csv_import_api",
         )
@@ -7580,7 +8381,9 @@ async def import_business_csv(
 
     logger.info("KB_BUSINESS_CSV_IMPORT %s", json.dumps({
         "filename": os.path.basename(filename),
-        "row_limit": row_limit,
+        "start_row": start_row,
+        "end_row": end_row,
+        "row_limit": end_row - start_row + 1,
         "import_batch": result.get("import_batch"),
         "created_documents": result.get("created_documents"),
         "created_chunks": result.get("created_chunks"),
@@ -7831,7 +8634,7 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
 
     import_batch = f"assist_text_{uuid.uuid4().hex[:12]}"
     document_knowledge_type = "pricing" if all(item.knowledge_type == "pricing" for item in chunks_payload) else "faq"
-    document_risk_level = "high" if any(item.knowledge_type == "pricing" or is_pricing_text(item.title, item.content, item.knowledge_type) for item in chunks_payload) else "medium"
+    document_risk_level = "high" if any(item.knowledge_type == "pricing" or mentions_pricing_topic(item.title, item.content) for item in chunks_payload) else "medium"
     document = KnowledgeDocument(
         title=payload.title,
         knowledge_type=document_knowledge_type,
@@ -8047,8 +8850,15 @@ def collect_fast_track_signals(logs) -> list:
         for rule in IntentEngine.get_rules():
             name = rule.get("name", "未命名规则")
             pattern = rule.get("pattern", "")
+            exclude_pattern = rule.get("exclude_pattern", "")
             try:
-                if pattern and re.search(pattern, content, re.IGNORECASE) and name not in fast_track_signals:
+                if not pattern:
+                    continue
+                if not re.search(pattern, content, re.IGNORECASE):
+                    continue
+                if exclude_pattern and re.search(exclude_pattern, content, re.IGNORECASE):
+                    continue
+                if name not in fast_track_signals:
                     fast_track_signals.append(name)
             except re.error as e:
                 logger.error(f"Fast-Track 正则规则异常 [{name}]: {e}")
@@ -8070,6 +8880,790 @@ def log_reply_chain_event(event: str, payload: dict):
         json.dumps(payload, ensure_ascii=False, default=str),
     )
 
+def _reply_chain_runtime_key(session_id: str, snapshot_id: str | None = None) -> str:
+    return snapshot_id or session_id
+
+def _message_ui_dict(item: MessageLog) -> dict:
+    return {
+        "id": item.id,
+        "sender": item.sender_type,
+        "content": item.content,
+        "time": item.timestamp,
+    }
+
+def _message_chain_dict(item: MessageLog) -> dict:
+    return {
+        "id": item.id,
+        "sender_type": item.sender_type,
+        "content": item.content,
+        "timestamp": item.timestamp,
+    }
+
+def _load_session_messages(db: Session, session_id: str) -> list[MessageLog]:
+    return db.query(MessageLog).filter(
+        MessageLog.user_id == session_id,
+        MessageLog.is_mock.is_(False),
+    ).order_by(MessageLog.id.asc()).all()
+
+def _visible_messages_until_anchor(messages: list[MessageLog], anchor_message_id: int | None = None) -> list[MessageLog]:
+    if not anchor_message_id:
+        return list(messages)
+    return [item for item in messages if item.id <= anchor_message_id]
+
+def _collect_actual_sales_replies(messages: list[MessageLog], anchor_message_id: int) -> list[dict]:
+    replies: list[dict] = []
+    collecting = False
+    for item in messages:
+        if item.id <= anchor_message_id:
+            continue
+        if item.sender_type == "sales":
+            collecting = True
+            replies.append({
+                "id": item.id,
+                "sender": item.sender_type,
+                "content": item.content,
+                "time": item.timestamp.isoformat() if item.timestamp else None,
+            })
+            continue
+        if collecting and item.sender_type == "customer":
+            break
+    return replies
+
+def _summary_json_from_source(source: Any) -> dict:
+    if not source:
+        return {}
+    return {
+        "topic": source.topic,
+        "core_demand": source.core_demand,
+        "key_facts": source.key_facts,
+        "todo_items": source.todo_items,
+        "risks": source.risks,
+        "to_be_confirmed": source.to_be_confirmed,
+        "status": source.status,
+    }
+
+def _safe_summary_text(value: Any, default: str = "未明确", max_len: int | None = None) -> str:
+    if value is None or value == "":
+        text_value = default
+    elif isinstance(value, (dict, list)):
+        text_value = json.dumps(value, ensure_ascii=False)
+    else:
+        text_value = str(value)
+    return text_value[:max_len] if max_len else text_value
+
+def _apply_summary_fields(target: Any, summary: dict | None):
+    payload = summary or {}
+    target.topic = _safe_summary_text(payload.get("topic"), max_len=200)
+    target.core_demand = _safe_summary_text(payload.get("core_demand"))
+    target.key_facts = payload.get("key_facts") or {}
+    target.todo_items = payload.get("todo_items") or []
+    target.risks = _safe_summary_text(payload.get("risks"))
+    target.to_be_confirmed = _safe_summary_text(payload.get("to_be_confirmed"))
+    target.status = _safe_summary_text(payload.get("status"), max_len=50)
+
+def _run_llm1_compare_bundle(context: list[dict], user_id: str) -> dict:
+    compare_config = _runtime_llm_values("LLM1_COMPARE")
+    if not _runtime_llm_configured(compare_config):
+        return {
+            "configured": False,
+            "status": "not_configured",
+            "summary": None,
+            "prompt_trace": None,
+        }
+    request_spec = IntentEngine.build_llm1_request(
+        context,
+        user_id=user_id,
+        api_url=compare_config["api_url"],
+        api_key=compare_config["api_key"],
+        model=compare_config["model"],
+        timeout_seconds=compare_config["timeout_seconds"],
+        label="LLM1_COMPARE",
+    )
+    prompt_trace = dict(request_spec.get("prompt_trace") or {})
+    prompt_trace["result"] = "running"
+    try:
+        bundle = IntentEngine.run_llm1_request(request_spec)
+        prompt_trace = dict(bundle.get("prompt_trace") or prompt_trace)
+        prompt_trace["result"] = prompt_trace.get("result") or "success"
+        return {
+            "configured": True,
+            "status": "done",
+            "summary": bundle.get("summary"),
+            "prompt_trace": prompt_trace,
+        }
+    except Exception as exc:
+        prompt_trace["result"] = "error"
+        prompt_trace["reason"] = sanitize_text(str(exc))
+        logger.error("LLM-1 对比模型调用失败: %s", exc)
+        return {
+            "configured": True,
+            "status": "error",
+            "summary": None,
+            "prompt_trace": prompt_trace,
+        }
+
+def _select_candidate(candidates: list[dict] | None, model_slot: str) -> dict | None:
+    for item in candidates or []:
+        if item.get("model_slot") == model_slot and item.get("status") == "done" and item.get("content"):
+            return item
+    return None
+
+def _first_model_candidate_entry(candidates: list[dict] | None, model_slot: str) -> dict | None:
+    for item in candidates or []:
+        if item.get("model_slot") == model_slot:
+            return item
+    return None
+
+def _reply_scores_need_refresh(
+    stored_scores: dict | None,
+    *,
+    candidates: list[dict] | None,
+    actual_sales_replies: list[dict] | None,
+) -> bool:
+    if not isinstance(stored_scores, dict):
+        return True
+
+    stored_ai = stored_scores.get("ai_candidates") or []
+    stored_sales = stored_scores.get("actual_sales_replies") or []
+
+    done_candidates = [
+        item for item in (candidates or [])
+        if item.get("status") == "done" and str(item.get("content") or "").strip()
+    ]
+    sales_replies = [
+        item for item in (actual_sales_replies or [])
+        if str(item.get("content") or "").strip()
+    ]
+
+    stored_ai_ids = {
+        str(item.get("candidate_id") or "").strip()
+        for item in stored_ai
+        if str(item.get("candidate_id") or "").strip()
+    }
+    current_ai_ids = {
+        str(item.get("candidate_id") or "").strip()
+        for item in done_candidates
+        if str(item.get("candidate_id") or "").strip()
+    }
+    if stored_ai_ids != current_ai_ids:
+        return True
+
+    stored_sales_ids = {
+        str(item.get("reply_id") or "").strip()
+        for item in stored_sales
+        if str(item.get("reply_id") or "").strip()
+    }
+    current_sales_ids = {
+        str(item.get("id") or "").strip()
+        for item in sales_replies
+        if str(item.get("id") or "").strip()
+    }
+    if stored_sales_ids != current_sales_ids:
+        return True
+
+    return False
+
+def _load_or_refresh_reply_scores(
+    *,
+    stored_scores: dict | None,
+    summary_json: dict | None,
+    knowledge_payload: dict | None,
+    crm_context: dict | None,
+    candidates: list[dict] | None,
+    actual_sales_replies: list[dict] | None,
+) -> dict | None:
+    if not candidates:
+        return stored_scores if isinstance(stored_scores, dict) else None
+    if not _reply_scores_need_refresh(
+        stored_scores,
+        candidates=candidates,
+        actual_sales_replies=actual_sales_replies,
+    ):
+        return stored_scores
+    return IntentEngine.score_reply_candidates(
+        summary_json=summary_json,
+        knowledge_payload=knowledge_payload or {},
+        crm_context=crm_context,
+        candidates=candidates or [],
+        actual_sales_replies=actual_sales_replies or [],
+    )
+
+def _generate_reply_style_candidates(
+    *,
+    summary_json: dict,
+    knowledge: dict,
+    crm_context: dict | None,
+    actual_sales_replies: list[dict] | None,
+    runtime_key: str,
+) -> dict:
+    styles = IntentEngine.get_reply_style_options(enabled_only=True)
+    primary_config = _runtime_llm_values("LLM2")
+    compare_config = _runtime_llm_values("LLM2_COMPARE")
+    candidates: list[dict] = []
+    primary_done = 0
+    primary_failures = 0
+    compare_done = 0
+    compare_failures = 0
+
+    for style in styles:
+        candidate_id = f"llm2__{style['id']}"
+        try:
+            request_spec = IntentEngine.build_sales_assist_request(
+                summary_json,
+                knowledge,
+                crm_context,
+                api_url=primary_config["api_url"],
+                api_key=primary_config["api_key"],
+                model=primary_config["model"],
+                timeout_seconds=primary_config["timeout_seconds"],
+                label="LLM2",
+                reply_style=style,
+            )
+            bundle = IntentEngine.generate_sales_assist_bundle(
+                summary_json,
+                knowledge,
+                crm_context,
+                prepared_request=request_spec,
+            )
+            content = bundle.get("content")
+            if content:
+                primary_done += 1
+                candidates.append({
+                    "candidate_id": candidate_id,
+                    "model_slot": "llm2",
+                    "model_label": "LLM-2",
+                    "model_display_name": _llm_runtime_config()["llm2"]["display_name"],
+                    "model_provider": _llm_runtime_config()["llm2"]["provider"],
+                    "style_id": style["id"],
+                    "style_title": style["title"],
+                    "style_content": style["content"],
+                    "reply_style": style,
+                    "status": "done",
+                    "content": content,
+                    "validation": bundle.get("validation") or IntentEngine.validate_sales_assist_output(content, knowledge, crm_context=crm_context),
+                    "prompt_trace": bundle.get("prompt_trace"),
+                    "reason": "",
+                })
+            else:
+                primary_failures += 1
+                candidates.append({
+                    "candidate_id": candidate_id,
+                    "model_slot": "llm2",
+                    "model_label": "LLM-2",
+                    "model_display_name": _llm_runtime_config()["llm2"]["display_name"],
+                    "model_provider": _llm_runtime_config()["llm2"]["provider"],
+                    "style_id": style["id"],
+                    "style_title": style["title"],
+                    "style_content": style["content"],
+                    "reply_style": style,
+                    "status": "failed_no_content",
+                    "content": "",
+                    "validation": None,
+                    "prompt_trace": request_spec.get("prompt_trace"),
+                    "reason": "主模型返回空内容",
+                })
+        except Exception as exc:
+            primary_failures += 1
+            candidates.append({
+                "candidate_id": candidate_id,
+                "model_slot": "llm2",
+                "model_label": "LLM-2",
+                "model_display_name": _llm_runtime_config()["llm2"]["display_name"],
+                "model_provider": _llm_runtime_config()["llm2"]["provider"],
+                "style_id": style["id"],
+                "style_title": style["title"],
+                "style_content": style["content"],
+                "reply_style": style,
+                "status": "error",
+                "content": "",
+                "validation": None,
+                "prompt_trace": None,
+                "reason": sanitize_text(str(exc)),
+            })
+
+    compare_configured = _runtime_llm_configured(compare_config)
+    if compare_configured:
+        _set_llm_compare_status(runtime_key, "running", "对比模型正在生成", compare_config)
+        for style in styles:
+            candidate_id = f"llm2_compare__{style['id']}"
+            request_spec = IntentEngine.build_sales_assist_request(
+                summary_json,
+                knowledge,
+                crm_context,
+                api_url=compare_config["api_url"],
+                api_key=compare_config["api_key"],
+                model=compare_config["model"],
+                timeout_seconds=compare_config["timeout_seconds"],
+                label="LLM2_COMPARE",
+                reply_style=style,
+            )
+            try:
+                bundle = IntentEngine.generate_sales_assist_bundle(
+                    summary_json,
+                    knowledge,
+                    crm_context,
+                    prepared_request=request_spec,
+                )
+                content = bundle.get("content")
+                if content:
+                    compare_done += 1
+                    candidates.append({
+                        "candidate_id": candidate_id,
+                        "model_slot": "llm2_compare",
+                        "model_label": "LLM-2 对比",
+                        "model_display_name": _llm_runtime_config()["llm2_compare"]["display_name"],
+                        "model_provider": _llm_runtime_config()["llm2_compare"]["provider"],
+                        "style_id": style["id"],
+                        "style_title": style["title"],
+                        "style_content": style["content"],
+                        "reply_style": style,
+                        "status": "done",
+                        "content": content,
+                        "validation": bundle.get("validation") or IntentEngine.validate_sales_assist_output(content, knowledge, crm_context=crm_context),
+                        "prompt_trace": bundle.get("prompt_trace"),
+                        "reason": "",
+                    })
+                else:
+                    compare_failures += 1
+                    candidates.append({
+                        "candidate_id": candidate_id,
+                        "model_slot": "llm2_compare",
+                        "model_label": "LLM-2 对比",
+                        "model_display_name": _llm_runtime_config()["llm2_compare"]["display_name"],
+                        "model_provider": _llm_runtime_config()["llm2_compare"]["provider"],
+                        "style_id": style["id"],
+                        "style_title": style["title"],
+                        "style_content": style["content"],
+                        "reply_style": style,
+                        "status": "failed_no_content",
+                        "content": "",
+                        "validation": None,
+                        "prompt_trace": request_spec.get("prompt_trace"),
+                        "reason": "对比模型返回空内容",
+                    })
+            except Exception as exc:
+                compare_failures += 1
+                candidates.append({
+                    "candidate_id": candidate_id,
+                    "model_slot": "llm2_compare",
+                    "model_label": "LLM-2 对比",
+                    "model_display_name": _llm_runtime_config()["llm2_compare"]["display_name"],
+                    "model_provider": _llm_runtime_config()["llm2_compare"]["provider"],
+                    "style_id": style["id"],
+                    "style_title": style["title"],
+                    "style_content": style["content"],
+                    "reply_style": style,
+                    "status": "error",
+                    "content": "",
+                    "validation": None,
+                    "prompt_trace": request_spec.get("prompt_trace"),
+                    "reason": sanitize_text(str(exc)),
+                })
+        if compare_done:
+            _set_llm_compare_status(runtime_key, "done", "对比模型已生成", compare_config)
+        elif compare_failures:
+            _set_llm_compare_status(runtime_key, "error", "对比模型全部失败", compare_config)
+        else:
+            _set_llm_compare_status(runtime_key, "failed_no_content", "对比模型返回空内容", compare_config)
+    else:
+        _set_llm_compare_status(
+            runtime_key,
+            "not_configured",
+            "LLM2_COMPARE_API_URL / API_KEY / MODEL 未完整配置",
+            compare_config,
+        )
+
+    reply_scores = IntentEngine.score_reply_candidates(
+        summary_json=summary_json,
+        knowledge_payload=knowledge,
+        crm_context=crm_context,
+        candidates=candidates,
+        actual_sales_replies=actual_sales_replies,
+    )
+    primary_candidate = _select_candidate(candidates, "llm2")
+    compare_candidate = _select_candidate(candidates, "llm2_compare")
+    if primary_candidate and knowledge.get("log_id"):
+        IntentEngine.update_knowledge_hit_log_outcome(knowledge.get("log_id"), final_response=primary_candidate.get("content"))
+    return {
+        "candidates": candidates,
+        "reply_scores": reply_scores,
+        "primary_candidate": primary_candidate,
+        "compare_candidate": compare_candidate,
+        "llm2_status": "done" if primary_done else ("error" if primary_failures else "failed_no_content"),
+        "llm2_compare_status": (
+            "done" if compare_done else
+            ("not_configured" if not compare_configured else ("error" if compare_failures else "failed_no_content"))
+        ),
+    }
+
+def _parse_sales_userid_from_session(session_id: str) -> str | None:
+    text = str(session_id or "").strip()
+    if not text.startswith("single_"):
+        return None
+    body = text.replace("single_", "", 1)
+    external_userid = extract_external_userid(session_id)
+    if external_userid:
+        body = re.sub(rf"_?{re.escape(external_userid)}$", "", body).strip("_")
+    return body.split("_")[0] if body else None
+
+def _build_thread_fact_payload_for_context(
+    *,
+    session_id: str,
+    summary_json: dict | None,
+    crm_context: dict | None,
+    messages: list[MessageLog],
+) -> dict | None:
+    payload = build_thread_business_fact(
+        session_id=session_id,
+        summary=summary_json,
+        crm_context=crm_context,
+        messages=[{"content": item.content, "sender_type": item.sender_type} for item in messages],
+        external_userid=extract_external_userid(session_id),
+        sales_userid=_parse_sales_userid_from_session(session_id),
+    )
+    if not payload:
+        return None
+    return {
+        "session_id": payload.get("session_id"),
+        "scenario_label": payload.get("scenario_label"),
+        "intent_label": payload.get("intent_label"),
+        "language_style": payload.get("language_style"),
+        "business_state": payload.get("business_state"),
+        "stage_signals": payload.get("stage_signals") or {},
+        "merged_facts": payload.get("merged_facts") or {},
+        "reply_guard_reason": payload.get("reply_guard_reason"),
+    }
+
+def _reply_snapshot_label(snapshot: ReplyChainSnapshot) -> str:
+    ts = snapshot.anchor_message_time.strftime("%m-%d %H:%M") if snapshot.anchor_message_time else "历史节点"
+    text = sanitize_text(snapshot.anchor_message_text or "")
+    short = text[:18] + "..." if len(text) > 18 else text
+    return f"客户 {ts} {short or '未命名节点'}"
+
+def _reply_snapshot_meta(snapshot: ReplyChainSnapshot) -> dict:
+    return {
+        "snapshot_id": str(snapshot.snapshot_id),
+        "session_id": snapshot.session_id,
+        "anchor_message_id": snapshot.anchor_message_id,
+        "anchor_sender_type": snapshot.anchor_sender_type,
+        "anchor_message_time": snapshot.anchor_message_time,
+        "anchor_message_text": snapshot.anchor_message_text,
+        "label": _reply_snapshot_label(snapshot),
+        "kind": "anchored_customer_message",
+        "has_v1": bool(snapshot.topic or snapshot.core_demand or snapshot.status),
+        "has_v2": bool(snapshot.sales_advice_v2),
+        "updated_at": snapshot.updated_at,
+    }
+
+class TriggerReq(BaseModel):
+    step: int
+    snapshot_id: str | None = None
+
+
+class ReplyChainSnapshotCreateReq(BaseModel):
+    anchor_message_id: int
+
+
+def _upsert_reply_chain_snapshot(
+    db: Session,
+    *,
+    session_id: str,
+    anchor_message: MessageLog,
+    all_messages: list[MessageLog],
+) -> ReplyChainSnapshot:
+    visible_messages = _visible_messages_until_anchor(all_messages, anchor_message.id)
+    item = db.query(ReplyChainSnapshot).filter(
+        ReplyChainSnapshot.session_id == session_id,
+        ReplyChainSnapshot.anchor_message_id == anchor_message.id,
+    ).first()
+    if not item:
+        item = ReplyChainSnapshot(
+            session_id=session_id,
+            anchor_message_id=anchor_message.id,
+        )
+        db.add(item)
+        db.flush()
+    item.anchor_sender_type = anchor_message.sender_type or "customer"
+    item.anchor_message_time = anchor_message.timestamp
+    item.anchor_message_text = anchor_message.content
+    item.visible_message_ids = [msg.id for msg in visible_messages]
+    item.latest_dialog_count = len(visible_messages)
+    item.actual_sales_replies = _collect_actual_sales_replies(all_messages, anchor_message.id)
+    return item
+
+def _snapshot_result_payload(
+    *,
+    snapshot: ReplyChainSnapshot,
+    visible_messages: list[MessageLog],
+) -> dict:
+    compare_runtime_status = LLM_COMPARE_RUNTIME_STATUS.get(_reply_chain_runtime_key(snapshot.session_id, str(snapshot.snapshot_id))) or {}
+    compare_config = _runtime_llm_values("LLM2_COMPARE")
+    stage_status = dict(snapshot.stage_status or {})
+    result = {
+        "analysis_mode": "snapshot",
+        "analysis_version": _reply_snapshot_meta(snapshot),
+        "fast_track": snapshot.fast_track or [],
+        "has_v1": False,
+        "has_v2": False,
+        "has_v2_compare": False,
+        "llm_runtime": _llm_runtime_config(),
+        "llm2_compare_configured": _runtime_llm_configured(compare_config),
+        "llm2_compare_runtime_status": compare_runtime_status,
+        "latest_dialog_count": snapshot.latest_dialog_count or len(visible_messages),
+        "input_messages": [_message_ui_dict(item) for item in visible_messages],
+        "actual_sales_replies": snapshot.actual_sales_replies or [],
+        "stage_status": {
+            "conversation_input": "done" if visible_messages else "empty",
+            "fast_track": "done",
+            "llm1": "not_started",
+            "crm_profile": snapshot.crm_status or "not_started",
+            "knowledge_v2": "not_started",
+            "llm2": "not_started",
+            "llm2_compare": "not_started",
+            **stage_status,
+        },
+    }
+    if snapshot.crm_info:
+        result["crm_info"] = snapshot.crm_info
+        result["crm_status"] = snapshot.crm_status
+    if snapshot.topic or snapshot.core_demand or snapshot.status:
+        result["has_v1"] = True
+        result.update({
+            "topic": snapshot.topic,
+            "core_demand": snapshot.core_demand,
+            "key_facts": snapshot.key_facts,
+            "todo_items": snapshot.todo_items,
+            "risks": snapshot.risks,
+            "to_be_confirmed": snapshot.to_be_confirmed,
+            "status": snapshot.status,
+            "at": snapshot.summarized_at,
+        })
+        result["stage_status"]["llm1"] = "done"
+    if snapshot.thread_business_fact:
+        result["thread_business_fact"] = snapshot.thread_business_fact
+    if snapshot.knowledge_v2:
+        result["knowledge_v2"] = snapshot.knowledge_v2
+        result["knowledge_status"] = snapshot.knowledge_status
+        result["knowledge_confidence_score"] = float(snapshot.knowledge_confidence_score) if snapshot.knowledge_confidence_score is not None else None
+        result["knowledge_manual_review_required"] = bool(snapshot.knowledge_manual_review_required)
+        result["evidence_refs"] = (snapshot.knowledge_v2 or {}).get("evidence_refs") or []
+        result["knowledge_evidence_context"] = (snapshot.knowledge_v2 or {}).get("evidence_context")
+        result["stage_status"]["knowledge_v2"] = snapshot.knowledge_status or "done"
+    if snapshot.sales_advice_v2:
+        result["has_v2"] = True
+        result["sales_advice_v2"] = snapshot.sales_advice_v2
+        result["stage_status"]["llm2"] = "done"
+    if snapshot.sales_advice_compare_v2:
+        result["has_v2_compare"] = True
+        result["sales_advice_compare_v2"] = snapshot.sales_advice_compare_v2
+        result["stage_status"]["llm2_compare"] = "done"
+    if snapshot.sales_advice_compare_prompt_trace_v2:
+        result["sales_advice_compare_prompt_trace_v2"] = snapshot.sales_advice_compare_prompt_trace_v2
+        if not snapshot.sales_advice_compare_v2:
+            trace_result = str((snapshot.sales_advice_compare_prompt_trace_v2 or {}).get("result") or "")
+            trace_stage = {
+                "running": "running",
+                "failed_no_content": "failed_no_content",
+                "error": "error",
+            }.get(trace_result)
+            if trace_stage:
+                result["stage_status"]["llm2_compare"] = trace_stage
+    if snapshot.assist_validation:
+        result["assist_validation"] = snapshot.assist_validation
+    if snapshot.assist_compare_validation:
+        result["assist_compare_validation"] = snapshot.assist_compare_validation
+    if snapshot.reply_style_results_v2:
+        result["reply_style_results_v2"] = snapshot.reply_style_results_v2
+    if snapshot.reply_scores_v2:
+        result["reply_scores_v2"] = snapshot.reply_scores_v2
+    return result
+
+def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
+    db = SessionLocal()
+    runtime_key = _reply_chain_runtime_key(session_id, snapshot_id)
+    try:
+        snapshot = db.query(ReplyChainSnapshot).filter(
+            ReplyChainSnapshot.snapshot_id == snapshot_id,
+            ReplyChainSnapshot.session_id == session_id,
+        ).first()
+        if not snapshot:
+            raise RuntimeError(f"未找到历史节点快照: {snapshot_id}")
+
+        all_messages = _load_session_messages(db, session_id)
+        visible_messages = _visible_messages_until_anchor(all_messages, snapshot.anchor_message_id)
+        recent_visible_logs = visible_messages[-15:]
+        fast_track_signals = collect_fast_track_signals(recent_visible_logs)
+        snapshot.fast_track = fast_track_signals
+        snapshot.visible_message_ids = [msg.id for msg in visible_messages]
+        snapshot.latest_dialog_count = len(visible_messages)
+        snapshot.actual_sales_replies = _collect_actual_sales_replies(all_messages, snapshot.anchor_message_id)
+        stage_status = dict(snapshot.stage_status or {})
+        stage_status["conversation_input"] = "done" if visible_messages else "empty"
+        stage_status["fast_track"] = "done"
+        compare_config = _runtime_llm_values("LLM2_COMPARE")
+
+        if step == 1:
+            log_reply_chain_event("STEP_START", {
+                "source": "frontend",
+                "business_object": session_id,
+                "snapshot_id": snapshot_id,
+                "step": step,
+                "stage": "llm1_snapshot",
+            })
+            if not visible_messages:
+                stage_status["llm1"] = "skipped_no_messages"
+                snapshot.stage_status = stage_status
+                db.commit()
+                return
+            context = [{"content": item.content, "sender_type": item.sender_type} for item in visible_messages]
+            summary = IntentEngine._run_llm1(f"{session_id}#{snapshot.anchor_message_id}", context)
+            if not summary:
+                raise RuntimeError("LLM-1 未返回有效结构化摘要")
+            _apply_summary_fields(snapshot, summary)
+            snapshot.summarized_at = datetime.utcnow()
+            snapshot.llm1_compare_summary = None
+            snapshot.llm1_compare_prompt_trace = None
+            snapshot.reply_style_results_v2 = None
+            snapshot.reply_scores_v2 = None
+            snapshot.sales_advice_v2 = None
+            snapshot.sales_advice_compare_v2 = None
+            snapshot.sales_advice_compare_prompt_trace_v2 = None
+            snapshot.assist_validation = None
+            snapshot.assist_compare_validation = None
+            crm_context = IntentEngine.get_crm_context(extract_external_userid(session_id))
+            snapshot.crm_info = crm_context
+            snapshot.crm_status = crm_context.get("crm_profile_status")
+            snapshot.thread_business_fact = _build_thread_fact_payload_for_context(
+                session_id=session_id,
+                summary_json={**_summary_json_from_source(snapshot), "fast_track_signals": fast_track_signals},
+                crm_context=crm_context,
+                messages=visible_messages,
+            )
+            stage_status["llm1"] = "done"
+            stage_status["crm_profile"] = snapshot.crm_status or "unknown"
+            snapshot.stage_status = stage_status
+            db.commit()
+            log_reply_chain_event("STEP_RESULT", {
+                "source": "frontend",
+                "business_object": session_id,
+                "snapshot_id": snapshot_id,
+                "step": step,
+                "stage": "llm1_snapshot",
+                "result": "success",
+                "message_count": len(visible_messages),
+            })
+            return
+
+        if step != 2:
+            raise RuntimeError(f"不支持的阶段: {step}")
+
+        log_reply_chain_event("STEP_START", {
+            "source": "frontend",
+            "business_object": session_id,
+            "snapshot_id": snapshot_id,
+            "step": step,
+            "stage": "llm2_snapshot",
+        })
+        if not snapshot.topic and not snapshot.core_demand and not snapshot.status:
+            stage_status["llm2"] = "skipped_no_summary"
+            snapshot.stage_status = stage_status
+            db.commit()
+            return
+
+        summary_json = {**_summary_json_from_source(snapshot), "fast_track_signals": fast_track_signals}
+        crm_context = IntentEngine.get_crm_context(extract_external_userid(session_id))
+        snapshot.crm_info = crm_context
+        snapshot.crm_status = crm_context.get("crm_profile_status")
+        stage_status["crm_profile"] = snapshot.crm_status or "unknown"
+        thread_fact_payload = _build_thread_fact_payload_for_context(
+            session_id=session_id,
+            summary_json=summary_json,
+            crm_context=crm_context,
+            messages=visible_messages,
+        )
+        snapshot.thread_business_fact = thread_fact_payload
+
+        knowledge = {"status": "skipped_no_core_demand", "hits": [], "evidence_context": {"rules": [], "faqs": [], "cases": []}, "evidence_refs": []}
+        if snapshot.core_demand and snapshot.core_demand != "未明确":
+            query_features = IntentEngine.infer_query_features(summary_json, crm_context, thread_fact_payload)
+            retrieval_query = IntentEngine.build_retrieval_query(summary_json, thread_fact_payload)
+            knowledge = IntentEngine.retrieve_knowledge_v2(
+                retrieval_query,
+                query_features=query_features,
+                top_k=5,
+                request_id=f"snapshot_{snapshot_id[:12]}",
+                session_id=session_id,
+            )
+            knowledge["thread_business_fact"] = thread_fact_payload
+        snapshot.knowledge_log_id = knowledge.get("log_id")
+        snapshot.knowledge_v2 = knowledge
+        snapshot.knowledge_status = knowledge.get("status")
+        snapshot.knowledge_confidence_score = _decimal_score(knowledge.get("confidence_score"))
+        snapshot.knowledge_manual_review_required = bool(knowledge.get("manual_review_required"))
+        stage_status["knowledge_v2"] = snapshot.knowledge_status or "not_started"
+
+        generation_bundle = _generate_reply_style_candidates(
+            summary_json=summary_json,
+            knowledge=knowledge,
+            crm_context=crm_context,
+            actual_sales_replies=snapshot.actual_sales_replies or [],
+            runtime_key=runtime_key,
+        )
+        snapshot.reply_style_results_v2 = generation_bundle.get("candidates")
+        snapshot.reply_scores_v2 = generation_bundle.get("reply_scores")
+        primary_candidate = generation_bundle.get("primary_candidate")
+        compare_candidate = generation_bundle.get("compare_candidate")
+        first_compare_entry = _first_model_candidate_entry(generation_bundle.get("candidates"), "llm2_compare")
+        snapshot.sales_advice_v2 = primary_candidate.get("content") if primary_candidate else None
+        snapshot.assist_validation = primary_candidate.get("validation") if primary_candidate else None
+        snapshot.sales_advice_compare_v2 = compare_candidate.get("content") if compare_candidate else None
+        snapshot.assist_compare_validation = compare_candidate.get("validation") if compare_candidate else None
+        snapshot.sales_advice_compare_prompt_trace_v2 = (compare_candidate or first_compare_entry or {}).get("prompt_trace")
+        stage_status["llm2"] = generation_bundle.get("llm2_status") or "failed_no_content"
+        stage_status["llm2_compare"] = generation_bundle.get("llm2_compare_status") or "not_configured"
+        compare_result = (
+            (compare_candidate or first_compare_entry or {}).get("prompt_trace", {}) or {}
+        ).get("result") or generation_bundle.get("llm2_compare_status")
+
+        if not primary_candidate:
+            snapshot.stage_status = stage_status
+            db.commit()
+            log_reply_chain_event("STEP_RESULT", {
+                "source": "frontend",
+                "business_object": session_id,
+                "snapshot_id": snapshot_id,
+                "step": step,
+                "stage": "llm2_snapshot",
+                "result": stage_status["llm2"],
+            })
+            return
+
+        snapshot.stage_status = stage_status
+        db.commit()
+        log_reply_chain_event("STEP_RESULT", {
+            "source": "frontend",
+            "business_object": session_id,
+            "snapshot_id": snapshot_id,
+            "step": step,
+            "stage": "llm2_snapshot",
+            "result": "success",
+            "compare_result": compare_result,
+            "knowledge_status": snapshot.knowledge_status,
+            "knowledge_log_id": snapshot.knowledge_log_id,
+        })
+    except Exception as e:
+        logger.error("历史节点 AI 推理过程崩坏: %s", e)
+        log_reply_chain_event("STEP_RESULT", {
+            "source": "frontend",
+            "business_object": session_id,
+            "snapshot_id": snapshot_id,
+            "step": step,
+            "result": "error",
+            "reason": str(e),
+        })
+    finally:
+        db.close()
+
 def reanalyze_session_task(user_id: str, step: int = 1):
     """由界面主动测算触发：抓取特定会话并投递给 LLM 大语言模型进行意图重算"""
     db = SessionLocal()
@@ -8088,7 +9682,15 @@ def reanalyze_session_task(user_id: str, step: int = 1):
             ).order_by(MessageLog.id.desc()).limit(15).all()
             context = [{"content": l.content, "sender_type": l.sender_type} for l in reversed(context_logs)]
             if context:
-                IntentEngine.slow_track_analyze(user_id, context)
+                summary_payload = IntentEngine._run_llm1(user_id, context)
+                if not summary_payload:
+                    raise RuntimeError("LLM-1 未返回有效结构化摘要")
+                summary_record = IntentSummary(user_id=user_id)
+                _apply_summary_fields(summary_record, summary_payload)
+                summary_record.llm1_compare_summary = None
+                summary_record.llm1_compare_prompt_trace = None
+                db.add(summary_record)
+                db.commit()
                 logger.info(f"✅ 会话 {user_id} 的 AI 结构化特征(V1) 已生成完毕！")
                 log_reply_chain_event("STEP_RESULT", {
                     "source": "frontend",
@@ -8143,58 +9745,37 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                 # RAG V2
                 knowledge = {"status": "skipped_no_core_demand", "hits": [], "evidence_context": {"rules": [], "faqs": [], "cases": []}}
                 if summary.core_demand and summary.core_demand != "未明确":
-                    query_features = IntentEngine.infer_query_features(summary_json, crm_context)
+                    current_thread_fact = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == user_id).first()
+                    thread_fact_payload = _thread_fact_prompt_dict(current_thread_fact)
+                    query_features = IntentEngine.infer_query_features(summary_json, crm_context, thread_fact_payload)
+                    retrieval_query = IntentEngine.build_retrieval_query(summary_json, thread_fact_payload)
                     knowledge = IntentEngine.retrieve_knowledge_v2(
-                        summary.core_demand,
+                        retrieval_query,
                         query_features=query_features,
                         top_k=5,
                         request_id=f"manual_llm2_{uuid.uuid4().hex[:12]}",
                         session_id=user_id,
                     )
-                # LLM2 primary
-                assist_bundle = IntentEngine.generate_sales_assist_bundle(summary_json, knowledge, crm_context)
-                assist_content = assist_bundle.get("content")
-                if assist_content:
-                    IntentEngine.update_knowledge_hit_log_outcome(knowledge.get("log_id"), final_response=assist_content)
-                    summary.sales_advice_v2 = assist_content
-                    db.commit()
-                    compare_result = "not_configured"
-                    compare_config = _runtime_llm_values("LLM2_COMPARE")
-                    if _runtime_llm_configured(compare_config):
-                        _set_llm_compare_status(user_id, "running", "对比模型正在生成", compare_config)
-                        try:
-                            compare_bundle = IntentEngine.generate_sales_assist_bundle(
-                                summary_json,
-                                knowledge,
-                                crm_context,
-                                api_url=compare_config["api_url"],
-                                api_key=compare_config["api_key"],
-                                model=compare_config["model"],
-                                timeout_seconds=compare_config["timeout_seconds"],
-                                label="LLM2_COMPARE",
-                            )
-                            compare_content = compare_bundle.get("content")
-                            if compare_content:
-                                summary.sales_advice_compare_v2 = compare_content
-                                db.commit()
-                                compare_result = "success"
-                                _set_llm_compare_status(user_id, "done", "对比模型已生成", compare_config)
-                            else:
-                                compare_result = "failed_no_content"
-                                _set_llm_compare_status(user_id, "failed_no_content", "对比模型返回空内容", compare_config)
-                        except Exception as compare_exc:
-                            compare_result = f"error: {sanitize_text(str(compare_exc))}"
-                            _set_llm_compare_status(user_id, "error", str(compare_exc), compare_config)
-                            logger.error("LLM-2 对比模型调用失败: %s", compare_exc)
-                    else:
-                        _set_llm_compare_status(
-                            user_id,
-                            "not_configured",
-                            "LLM2_COMPARE_API_URL / API_KEY / MODEL 未完整配置",
-                            compare_config,
-                        )
+                    knowledge["thread_business_fact"] = thread_fact_payload
+                generation_bundle = _generate_reply_style_candidates(
+                    summary_json=summary_json,
+                    knowledge=knowledge,
+                    crm_context=crm_context,
+                    actual_sales_replies=[],
+                    runtime_key=user_id,
+                )
+                primary_candidate = generation_bundle.get("primary_candidate")
+                compare_candidate = generation_bundle.get("compare_candidate")
+                first_compare_entry = _first_model_candidate_entry(generation_bundle.get("candidates"), "llm2_compare")
+                summary.reply_style_results_v2 = generation_bundle.get("candidates")
+                summary.reply_scores_v2 = generation_bundle.get("reply_scores")
+                summary.sales_advice_v2 = primary_candidate.get("content") if primary_candidate else None
+                summary.sales_advice_compare_v2 = compare_candidate.get("content") if compare_candidate else None
+                summary.sales_advice_compare_prompt_trace_v2 = (compare_candidate or first_compare_entry or {}).get("prompt_trace")
+                db.commit()
+                if primary_candidate:
                     title = f"💡 [AI销售辅助更新] - {summary.topic}"
-                    QYWXUtils.send_text_card(user_id, title, assist_content)
+                    QYWXUtils.send_text_card(user_id, title, primary_candidate.get("content"))
                     logger.info("✅ 实战建议(V2)指令下发完成！")
                     log_reply_chain_event("STEP_RESULT", {
                         "source": "frontend",
@@ -8202,7 +9783,7 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                         "step": step,
                         "stage": "llm2",
                         "result": "success",
-                        "compare_result": compare_result,
+                        "compare_result": ((compare_candidate or first_compare_entry or {}).get("prompt_trace", {}) or {}).get("result") or generation_bundle.get("llm2_compare_status"),
                         "knowledge_status": knowledge.get("status"),
                         "knowledge_log_id": knowledge.get("log_id"),
                     })
@@ -8212,7 +9793,7 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                         "business_object": user_id,
                         "step": step,
                         "stage": "llm2",
-                        "result": "failed_no_content",
+                        "result": generation_bundle.get("llm2_status") or "failed_no_content",
                     })
             else:
                 log_reply_chain_event("STEP_RESULT", {
@@ -8235,10 +9816,122 @@ def reanalyze_session_task(user_id: str, step: int = 1):
     finally:
         db.close()
 
-@app.get("/api/sessions/{user_id}/analysis")
-async def get_latest_analysis(user_id: str):
+@app.get("/api/sessions/{user_id}/analysis_versions")
+async def list_reply_chain_versions(user_id: str):
     db = SessionLocal()
     try:
+        snapshots = db.query(ReplyChainSnapshot).filter(
+            ReplyChainSnapshot.session_id == user_id
+        ).order_by(ReplyChainSnapshot.anchor_message_time.desc(), ReplyChainSnapshot.updated_at.desc()).all()
+        return {
+            "session_id": user_id,
+            "versions": [
+                {
+                    "snapshot_id": "current_tail",
+                    "kind": "current_tail",
+                    "label": "当前末尾",
+                    "anchor_message_id": None,
+                    "anchor_message_time": None,
+                    "anchor_message_text": None,
+                    "has_v1": None,
+                    "has_v2": None,
+                },
+                *[_reply_snapshot_meta(item) for item in snapshots],
+            ],
+        }
+    finally:
+        db.close()
+
+@app.post("/api/sessions/{user_id}/analysis_versions")
+async def create_reply_chain_version(user_id: str, payload: ReplyChainSnapshotCreateReq):
+    db = SessionLocal()
+    try:
+        all_messages = _load_session_messages(db, user_id)
+        anchor_message = next((item for item in all_messages if item.id == payload.anchor_message_id), None)
+        if not anchor_message:
+            raise HTTPException(status_code=404, detail="未找到指定消息节点")
+        if anchor_message.sender_type != "customer":
+            raise HTTPException(status_code=400, detail="只能基于客户气泡创建历史节点")
+        snapshot = _upsert_reply_chain_snapshot(
+            db,
+            session_id=user_id,
+            anchor_message=anchor_message,
+            all_messages=all_messages,
+        )
+        db.commit()
+        db.refresh(snapshot)
+        return {
+            "status": "success",
+            "snapshot": _reply_snapshot_meta(snapshot),
+        }
+    finally:
+        db.close()
+
+@app.get("/api/sessions/{user_id}/analysis")
+async def get_latest_analysis(user_id: str, snapshot_id: str | None = Query(default=None)):
+    db = SessionLocal()
+    try:
+        if snapshot_id and snapshot_id != "current_tail":
+            snapshot = db.query(ReplyChainSnapshot).filter(
+                ReplyChainSnapshot.snapshot_id == snapshot_id,
+                ReplyChainSnapshot.session_id == user_id,
+            ).first()
+            if not snapshot:
+                raise HTTPException(status_code=404, detail="历史节点链路不存在")
+            all_messages = _load_session_messages(db, user_id)
+            visible_messages = _visible_messages_until_anchor(all_messages, snapshot.anchor_message_id)
+            recent_visible_logs = visible_messages[-15:]
+            snapshot.fast_track = collect_fast_track_signals(recent_visible_logs)
+            snapshot.latest_dialog_count = len(visible_messages)
+            snapshot.visible_message_ids = [msg.id for msg in visible_messages]
+            snapshot.actual_sales_replies = _collect_actual_sales_replies(all_messages, snapshot.anchor_message_id)
+            if snapshot.topic or snapshot.core_demand or snapshot.status:
+                crm_context = IntentEngine.get_crm_context(extract_external_userid(user_id))
+                snapshot.crm_info = crm_context
+                snapshot.crm_status = crm_context.get("crm_profile_status")
+                summary_json = {**_summary_json_from_source(snapshot), "fast_track_signals": snapshot.fast_track}
+                thread_fact_payload = _build_thread_fact_payload_for_context(
+                    session_id=user_id,
+                    summary_json=summary_json,
+                    crm_context=crm_context,
+                    messages=visible_messages,
+                )
+                snapshot.thread_business_fact = thread_fact_payload
+                if snapshot.core_demand and snapshot.core_demand != "未明确":
+                    query_features = IntentEngine.infer_query_features(summary_json, crm_context, thread_fact_payload)
+                    retrieval_query = IntentEngine.build_retrieval_query(summary_json, thread_fact_payload)
+                    knowledge_v2 = IntentEngine.retrieve_knowledge_v2(
+                        retrieval_query,
+                        query_features=query_features,
+                        top_k=5,
+                        request_id=f"analysis_snapshot_{uuid.uuid4().hex[:12]}",
+                        session_id=user_id,
+                    )
+                    knowledge_v2["thread_business_fact"] = thread_fact_payload
+                    snapshot.knowledge_log_id = knowledge_v2.get("log_id")
+                    snapshot.knowledge_v2 = knowledge_v2
+                    snapshot.knowledge_status = knowledge_v2.get("status")
+                    snapshot.knowledge_confidence_score = _decimal_score(knowledge_v2.get("confidence_score"))
+                    snapshot.knowledge_manual_review_required = bool(knowledge_v2.get("manual_review_required"))
+                    if snapshot.sales_advice_v2:
+                        snapshot.assist_validation = IntentEngine.validate_sales_assist_output(snapshot.sales_advice_v2, knowledge_v2, crm_context=crm_context)
+                    if snapshot.sales_advice_compare_v2:
+                        snapshot.assist_compare_validation = IntentEngine.validate_sales_assist_output(snapshot.sales_advice_compare_v2, knowledge_v2, crm_context=crm_context)
+                    if snapshot.reply_style_results_v2:
+                        snapshot.reply_scores_v2 = _load_or_refresh_reply_scores(
+                            stored_scores=snapshot.reply_scores_v2,
+                            summary_json=summary_json,
+                            knowledge_payload=knowledge_v2,
+                            crm_context=crm_context,
+                            candidates=snapshot.reply_style_results_v2 or [],
+                            actual_sales_replies=snapshot.actual_sales_replies or [],
+                        )
+                else:
+                    snapshot.knowledge_v2 = None
+                    snapshot.knowledge_status = "skipped_no_core_demand"
+            db.commit()
+            return _snapshot_result_payload(snapshot=snapshot, visible_messages=visible_messages)
+
         # 1. 实时扫描 Fast-Track 信号供前台色块展示
         recent_logs = db.query(MessageLog).filter(
             MessageLog.user_id == user_id,
@@ -8252,6 +9945,13 @@ async def get_latest_analysis(user_id: str):
         compare_config = _runtime_llm_values("LLM2_COMPARE")
         compare_runtime_status = LLM_COMPARE_RUNTIME_STATUS.get(user_id) or {}
         result = {
+            "analysis_mode": "current_tail",
+            "analysis_version": {
+                "snapshot_id": "current_tail",
+                "kind": "current_tail",
+                "label": "当前末尾",
+                "anchor_message_id": None,
+            },
             "fast_track": fast_track_signals,
             "has_v1": False,
             "has_v2": False,
@@ -8260,6 +9960,7 @@ async def get_latest_analysis(user_id: str):
             "llm2_compare_configured": _runtime_llm_configured(compare_config),
             "llm2_compare_runtime_status": compare_runtime_status,
             "latest_dialog_count": len(recent_logs),
+            "input_messages": [_message_ui_dict(item) for item in reversed(recent_logs)],
             "stage_status": {
                 "conversation_input": "done" if recent_logs else "empty",
                 "fast_track": "done",
@@ -8291,10 +9992,25 @@ async def get_latest_analysis(user_id: str):
                 result["stage_status"]["llm2_compare"] = "done"
                 result["has_v2_compare"] = True
                 result["sales_advice_compare_v2"] = summary.sales_advice_compare_v2
+            if summary.sales_advice_compare_prompt_trace_v2:
+                result["sales_advice_compare_prompt_trace_v2"] = summary.sales_advice_compare_prompt_trace_v2
+                if not summary.sales_advice_compare_v2:
+                    trace_result = str(summary.sales_advice_compare_prompt_trace_v2.get("result") or "")
+                    trace_stage = {
+                        "running": "running",
+                        "failed_no_content": "failed_no_content",
+                        "error": "error",
+                    }.get(trace_result)
+                    if trace_stage:
+                        result["stage_status"]["llm2_compare"] = trace_stage
             elif compare_runtime_status.get("status"):
                 result["stage_status"]["llm2_compare"] = compare_runtime_status.get("status")
             elif not result["llm2_compare_configured"]:
                 result["stage_status"]["llm2_compare"] = "not_configured"
+            if summary.reply_style_results_v2:
+                result["reply_style_results_v2"] = summary.reply_style_results_v2
+            if summary.reply_scores_v2:
+                result["reply_scores_v2"] = summary.reply_scores_v2
 
             thread_fact = _upsert_thread_business_fact(
                 db,
@@ -8321,16 +10037,20 @@ async def get_latest_analysis(user_id: str):
                     "core_demand": summary.core_demand,
                     "key_facts": summary.key_facts,
                     "risks": summary.risks,
+                    "status": summary.status,
                     "fast_track_signals": fast_track_signals,
                 }
-                query_features = IntentEngine.infer_query_features(summary_json, crm_context)
+                thread_fact_payload = _thread_fact_to_dict(thread_fact)
+                query_features = IntentEngine.infer_query_features(summary_json, crm_context, thread_fact_payload)
+                retrieval_query = IntentEngine.build_retrieval_query(summary_json, thread_fact_payload)
                 knowledge_v2 = IntentEngine.retrieve_knowledge_v2(
-                    summary.core_demand,
+                    retrieval_query,
                     query_features=query_features,
                     top_k=5,
                     request_id=f"analysis_{uuid.uuid4().hex[:12]}",
                     session_id=user_id,
                 )
+                knowledge_v2["thread_business_fact"] = thread_fact_payload
                 result["knowledge_v2"] = knowledge_v2
                 result["knowledge_status"] = knowledge_v2.get("status")
                 result["stage_status"]["knowledge_v2"] = result["knowledge_status"]
@@ -8342,6 +10062,18 @@ async def get_latest_analysis(user_id: str):
                     result["assist_validation"] = IntentEngine.validate_sales_assist_output(summary.sales_advice_v2, knowledge_v2, crm_context=crm_context)
                 if summary.sales_advice_compare_v2:
                     result["assist_compare_validation"] = IntentEngine.validate_sales_assist_output(summary.sales_advice_compare_v2, knowledge_v2, crm_context=crm_context)
+                if summary.reply_style_results_v2:
+                    result["reply_scores_v2"] = _load_or_refresh_reply_scores(
+                        stored_scores=summary.reply_scores_v2,
+                        summary_json=summary_json,
+                        knowledge_payload=knowledge_v2,
+                        crm_context=crm_context,
+                        candidates=summary.reply_style_results_v2 or [],
+                        actual_sales_replies=[],
+                    )
+                    if result["reply_scores_v2"] and result["reply_scores_v2"] != summary.reply_scores_v2:
+                        summary.reply_scores_v2 = result["reply_scores_v2"]
+                        db.commit()
             else:
                 result["stage_status"]["knowledge_v2"] = "skipped_no_core_demand"
                  
@@ -8356,28 +10088,30 @@ async def get_thread_business_fact(session_id: str, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Thread business fact not found")
     return {"status": "success", "thread_business_fact": _thread_fact_to_dict(item)}
 
-from pydantic import BaseModel
-class TriggerReq(BaseModel):
-    step: int
-
 @app.post("/api/sessions/{user_id}/trigger_llm")
 async def trigger_llm_post(user_id: str, req: TriggerReq, background_tasks: BackgroundTasks, request: Request):
     """前端手动拔枪按钮请求"""
+    runtime_key = _reply_chain_runtime_key(user_id, req.snapshot_id)
     payload = {
         "source": "frontend",
         "client_host": request.client.host if request.client else "",
         "user_agent": request.headers.get("user-agent", "")[:160],
         "business_object": user_id,
         "step": req.step,
+        "snapshot_id": req.snapshot_id,
         "result": "accepted",
     }
     log_reply_chain_event("TRIGGER_REQUEST", payload)
     logger.info(f"收到前台发起的 LLM 手动指令！正在执行阶段 {req.step} ...")
-    background_tasks.add_task(reanalyze_session_task, user_id, req.step)
+    if req.snapshot_id and req.snapshot_id != "current_tail":
+        background_tasks.add_task(reanalyze_snapshot_task, user_id, req.snapshot_id, req.step)
+    else:
+        background_tasks.add_task(reanalyze_session_task, user_id, req.step)
     compare_config = _runtime_llm_values("LLM2_COMPARE")
     return {
         "status": "success",
         "msg": f"已将步骤 {req.step} 投入后台大模型运算池",
+        "runtime_key": runtime_key,
         "llm_runtime": _llm_runtime_config(),
         "llm2_compare_configured": _runtime_llm_configured(compare_config),
     }
@@ -8451,10 +10185,17 @@ async def sidebar_assist(request: SidebarAssistRequest):
             stage_status["analysis_mode"] = "force_refresh" if request.force_refresh else "first_analyze"
             if recent_logs:
                 context = [{"content": l.content, "sender_type": l.sender_type} for l in reversed(recent_logs)]
-                # 同步执行 V1
                 stage_started = perf_counter()
-                IntentEngine.slow_track_analyze(session_id, context)
+                summary_payload = IntentEngine._run_llm1(session_id, context)
                 mark_timing("llm1_analyze_ms", stage_started)
+                if not summary_payload:
+                    raise RuntimeError("LLM-1 未返回有效结构化摘要")
+                summary_record = IntentSummary(user_id=session_id)
+                _apply_summary_fields(summary_record, summary_payload)
+                summary_record.llm1_compare_summary = None
+                summary_record.llm1_compare_prompt_trace = None
+                db.add(summary_record)
+                db.commit()
                 stage_status["llm1"] = "done"
             else:
                 stage_status["llm1"] = "skipped_no_recent_logs"
@@ -8490,14 +10231,17 @@ async def sidebar_assist(request: SidebarAssistRequest):
 
             if summary.core_demand and summary.core_demand != "未明确":
                 stage_started = perf_counter()
-                query_features = IntentEngine.infer_query_features(summary_json, crm_context)
+                thread_fact_payload = _thread_fact_to_dict(thread_fact)
+                query_features = IntentEngine.infer_query_features(summary_json, crm_context, thread_fact_payload)
+                retrieval_query = IntentEngine.build_retrieval_query(summary_json, thread_fact_payload)
                 knowledge_v2 = IntentEngine.retrieve_knowledge_v2(
-                    summary.core_demand,
+                    retrieval_query,
                     query_features=query_features,
                     top_k=5,
                     request_id=f"sidebar_{uuid.uuid4().hex[:12]}",
                     session_id=session_id,
                 )
+                knowledge_v2["thread_business_fact"] = thread_fact_payload
                 knowledge_base = knowledge_v2
                 mark_timing("knowledge_retrieve_ms", stage_started)
                 knowledge_status = knowledge_v2.get("status", "error")
@@ -8508,57 +10252,29 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 knowledge_status = "skipped_no_core_demand"
 
             stage_started = perf_counter()
-            assist_bundle = IntentEngine.generate_sales_assist_bundle(summary_json, knowledge_v2, crm_context)
-            assist_content = assist_bundle.get("content")
+            generation_bundle = _generate_reply_style_candidates(
+                summary_json=summary_json,
+                knowledge=knowledge_v2,
+                crm_context=crm_context,
+                actual_sales_replies=[],
+                runtime_key=session_id,
+            )
             mark_timing("llm2_generate_ms", stage_started)
-            if assist_content:
-                IntentEngine.update_knowledge_hit_log_outcome(knowledge_v2.get("log_id"), final_response=assist_content)
-                stage_started = perf_counter()
-                summary.sales_advice_v2 = assist_content
-                db.commit()
-                mark_timing("persist_llm2_ms", stage_started)
-                stage_status["llm2"] = "done"
-                compare_config = _runtime_llm_values("LLM2_COMPARE")
-                if _runtime_llm_configured(compare_config):
-                    _set_llm_compare_status(session_id, "running", "对比模型正在生成", compare_config)
-                    try:
-                        stage_started = perf_counter()
-                        compare_bundle = IntentEngine.generate_sales_assist_bundle(
-                            summary_json,
-                            knowledge_v2,
-                            crm_context,
-                            api_url=compare_config["api_url"],
-                            api_key=compare_config["api_key"],
-                            model=compare_config["model"],
-                            timeout_seconds=compare_config["timeout_seconds"],
-                            label="LLM2_COMPARE",
-                        )
-                        compare_content = compare_bundle.get("content")
-                        mark_timing("llm2_compare_generate_ms", stage_started)
-                        if compare_content:
-                            stage_started = perf_counter()
-                            summary.sales_advice_compare_v2 = compare_content
-                            db.commit()
-                            mark_timing("persist_llm2_compare_ms", stage_started)
-                            stage_status["llm2_compare"] = "done"
-                            _set_llm_compare_status(session_id, "done", "对比模型已生成", compare_config)
-                        else:
-                            stage_status["llm2_compare"] = "failed_no_content"
-                            _set_llm_compare_status(session_id, "failed_no_content", "对比模型返回空内容", compare_config)
-                    except Exception as compare_exc:
-                        stage_status["llm2_compare"] = "error"
-                        _set_llm_compare_status(session_id, "error", str(compare_exc), compare_config)
-                        logger.error("侧边栏 LLM-2 对比模型调用失败: %s", compare_exc)
-                else:
-                    stage_status["llm2_compare"] = "not_configured"
-                    _set_llm_compare_status(
-                        session_id,
-                        "not_configured",
-                        "LLM2_COMPARE_API_URL / API_KEY / MODEL 未完整配置",
-                        compare_config,
-                    )
-            else:
-                stage_status["llm2"] = "failed_no_content"
+            primary_candidate = generation_bundle.get("primary_candidate")
+            compare_candidate = generation_bundle.get("compare_candidate")
+            first_compare_entry = _first_model_candidate_entry(generation_bundle.get("candidates"), "llm2_compare")
+            summary.reply_style_results_v2 = generation_bundle.get("candidates")
+            summary.reply_scores_v2 = generation_bundle.get("reply_scores")
+            summary.sales_advice_v2 = primary_candidate.get("content") if primary_candidate else None
+            summary.sales_advice_compare_v2 = compare_candidate.get("content") if compare_candidate else None
+            summary.sales_advice_compare_prompt_trace_v2 = (compare_candidate or first_compare_entry or {}).get("prompt_trace")
+            db.commit()
+            stage_status["llm2"] = generation_bundle.get("llm2_status")
+            stage_status["llm2_compare"] = generation_bundle.get("llm2_compare_status")
+            if primary_candidate:
+                assist_bundle = {"validation": primary_candidate.get("validation")}
+            if compare_candidate:
+                compare_bundle = {"validation": compare_candidate.get("validation")}
         else:
             stage_status["llm2"] = "skipped_advice_exists" if summary and summary.sales_advice_v2 else "skipped_no_summary"
             stage_status["llm2_compare"] = "skipped_advice_exists" if summary and summary.sales_advice_compare_v2 else "skipped_no_summary"
@@ -8610,19 +10326,25 @@ async def sidebar_assist(request: SidebarAssistRequest):
                         result["knowledge_manual_review_required"] = knowledge_base.get("manual_review_required")
                 elif summary.core_demand and summary.core_demand != "未明确":
                     stage_started = perf_counter()
-                    query_features = IntentEngine.infer_query_features({
+                    current_thread_fact = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
+                    thread_fact_payload = _thread_fact_prompt_dict(current_thread_fact)
+                    summary_payload = {
                         "topic": summary.topic,
                         "core_demand": summary.core_demand,
                         "key_facts": summary.key_facts,
                         "risks": summary.risks,
-                    }, crm_context)
+                        "status": summary.status,
+                    }
+                    query_features = IntentEngine.infer_query_features(summary_payload, crm_context, thread_fact_payload)
+                    retrieval_query = IntentEngine.build_retrieval_query(summary_payload, thread_fact_payload)
                     knowledge_v2 = IntentEngine.retrieve_knowledge_v2(
-                        summary.core_demand,
+                        retrieval_query,
                         query_features=query_features,
                         top_k=5,
                         request_id=f"sidebar_cache_{uuid.uuid4().hex[:12]}",
                         session_id=session_id,
                     )
+                    knowledge_v2["thread_business_fact"] = thread_fact_payload
                     result["knowledge_v2"] = knowledge_v2
                     result["knowledge_base"] = [hit.get("content") for hit in knowledge_v2.get("hits", [])]
                     result["knowledge_evidence_context"] = knowledge_v2.get("evidence_context")
@@ -8643,6 +10365,21 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 result["sales_advice_compare_v2"] = summary.sales_advice_compare_v2
                 if compare_bundle:
                     result["assist_compare_validation"] = compare_bundle.get("validation")
+            if summary.reply_style_results_v2:
+                result["reply_style_results_v2"] = summary.reply_style_results_v2
+            if summary.reply_scores_v2:
+                result["reply_scores_v2"] = summary.reply_scores_v2
+            if summary.sales_advice_compare_prompt_trace_v2:
+                result["sales_advice_compare_prompt_trace_v2"] = summary.sales_advice_compare_prompt_trace_v2
+                if not summary.sales_advice_compare_v2:
+                    trace_result = str(summary.sales_advice_compare_prompt_trace_v2.get("result") or "")
+                    trace_stage = {
+                        "running": "running",
+                        "failed_no_content": "failed_no_content",
+                        "error": "error",
+                    }.get(trace_result)
+                    if trace_stage:
+                        stage_status["llm2_compare"] = trace_stage
             elif compare_runtime_status.get("status") and not stage_status.get("llm2_compare"):
                 stage_status["llm2_compare"] = compare_runtime_status.get("status")
             elif not result["llm2_compare_configured"] and not stage_status.get("llm2_compare"):
