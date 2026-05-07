@@ -319,52 +319,54 @@ def _get_customer_lifecycle_stage(contact_id, db: Session) -> Optional[str]:
         quotation_result = db.execute(quotation_count_query, params).fetchone()
         quotation_count = float(quotation_result[0]) if quotation_result else 0
 
+
+        old_contract_number=3
         if old_contract_number != -1:
             if old_quotation_number != -1:
                 if old_relation == "是":
                     if contract_count >= old_contract_number and quotation_count >= old_quotation_number:
-                        return "老联系人"
+                        return "熟联系人"
                 else:
                     if contract_count >= old_contract_number or quotation_count >= old_quotation_number:
-                        return "老联系人"
+                        return "熟联系人"
             else:
                 if contract_count >= old_contract_number:
-                    return "老联系人"
+                    return "熟联系人"
         else:
             if old_quotation_number != -1 and quotation_count >= old_quotation_number:
-                return "老联系人"
+                return "熟联系人"
 
         if new_contract_number != -1:
             if new_quotation_from != -1:
                 if new_relation == "是":
                     if contract_count >= new_contract_number and new_quotation_from <= quotation_count <= new_quotation_to:
-                        return "熟联系人"
+                        return "老联系人"
                 else:
                     if contract_count >= new_contract_number or (new_quotation_from <= quotation_count <= new_quotation_to):
-                        return "熟联系人"
+                        return "老联系人"
             else:
                 if contract_count >= new_contract_number:
-                    return "熟联系人"
+                    return "老联系人"
         else:
             if new_quotation_from != -1 and new_quotation_from <= quotation_count <= new_quotation_to:
-                return "熟联系人"
+                return "老联系人"
 
-        if qz_contract_checked == "是" or qz_quotation_checked == "是":
-            if qz_contract_checked == "是" and qz_quotation_checked == "是":
-                if qz_relation == "是":
-                    if contract_count >= 0 and qz_quotation_from <= quotation_count <= qz_quotation_to:
-                        return "新联系人"
-                else:
-                    if contract_count >= 0 or (qz_quotation_from <= quotation_count <= qz_quotation_to):
-                        return "新联系人"
-            elif qz_contract_checked == "是":
-                if contract_count >= 0:
-                    return "新联系人"
-            elif qz_quotation_checked == "是":
-                if qz_quotation_from <= quotation_count <= qz_quotation_to:
-                    return "新联系人"
+        # if qz_contract_checked == "是" or qz_quotation_checked == "是":
+        #     if qz_contract_checked == "是" and qz_quotation_checked == "是":
+        #         if qz_relation == "是":
+        #             if contract_count >= 0 and qz_quotation_from <= quotation_count <= qz_quotation_to:
+        #                 return "新联系人"
+        #         else:
+        #             if contract_count >= 0 or (qz_quotation_from <= quotation_count <= qz_quotation_to):
+        #                 return "新联系人"
+        #     elif qz_contract_checked == "是":
+        #         if contract_count >= 0:
+        #             return "新联系人"
+        #     elif qz_quotation_checked == "是":
+        #         if qz_quotation_from <= quotation_count <= qz_quotation_to:
+        #             return "新联系人"
 
-        return None
+        return "新联系人"
 
     except Exception:
         return None

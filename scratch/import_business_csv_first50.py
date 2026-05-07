@@ -16,7 +16,8 @@ from database import SessionLocal  # noqa: E402
 
 
 SOURCE_PATH = ROOT / "docs" / DEFAULT_BUSINESS_CSV_FILENAME
-ROW_LIMIT = 50
+ROW_START = 1
+ROW_END = 50
 OWNER = "codex_business_csv_import"
 
 
@@ -30,7 +31,8 @@ def main() -> None:
             db,
             raw=raw,
             filename=SOURCE_PATH.name,
-            row_limit=ROW_LIMIT,
+            start_row=ROW_START,
+            end_row=ROW_END,
             source_type=DEFAULT_SOURCE_TYPE,
             owner=OWNER,
         )

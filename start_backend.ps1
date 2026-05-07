@@ -2,12 +2,18 @@ param(
     [int]$Port = 8000,
     [switch]$Reload,
     [switch]$CheckOnly,
-    [switch]$KillPortOwner
+    [switch]$KillPortOwner,
+    [switch]$EnableHttps,
+    [switch]$EnsureDevCert
 )
 
 $ErrorActionPreference = "Stop"
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Backend = Join-Path $Root "backend"
+$EnvFile = Join-Path $Root ".env"
 
 function Stop-PortListeners {
     param(
@@ -15,35 +21,77 @@ function Stop-PortListeners {
         [int]$TargetPort
     )
 
-    $listeners = @(
-        Get-NetTCPConnection -LocalPort $TargetPort -State Listen -ErrorAction SilentlyContinue |
-            Sort-Object -Property OwningProcess -Unique
-    )
+    function Get-DescendantProcessIds {
+        param(
+            [Parameter(Mandatory = $true)]
+            [int]$ParentPid
+        )
 
-    if (-not $listeners) {
-        Write-Host "INFO: port $TargetPort is free."
-        return
+        $all = New-Object System.Collections.Generic.List[int]
+        $queue = New-Object System.Collections.Generic.Queue[int]
+        $queue.Enqueue($ParentPid)
+
+        while ($queue.Count -gt 0) {
+            $current = $queue.Dequeue()
+            $children = @(
+                Get-CimInstance Win32_Process -Filter "ParentProcessId = $current" -ErrorAction SilentlyContinue |
+                    Select-Object -ExpandProperty ProcessId
+            )
+            foreach ($child in $children) {
+                if (-not $all.Contains([int]$child)) {
+                    $all.Add([int]$child)
+                    $queue.Enqueue([int]$child)
+                }
+            }
+        }
+
+        return @($all)
     }
 
-    foreach ($listener in $listeners) {
-        $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)" -ErrorAction SilentlyContinue
-        $procName = if ($proc -and $proc.Name) { $proc.Name } else { "unknown" }
-        $commandLine = if ($proc -and $proc.CommandLine) { $proc.CommandLine } else { "" }
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        $listeners = @(
+            Get-NetTCPConnection -LocalPort $TargetPort -State Listen -ErrorAction SilentlyContinue |
+                Sort-Object -Property OwningProcess -Unique
+        )
 
-        Write-Host "INFO: stopping process on port $TargetPort (PID=$($listener.OwningProcess), Name=$procName)"
-        if ($commandLine) {
-            Write-Host "INFO: command line: $commandLine"
+        if (-not $listeners) {
+            if ($attempt -eq 1) {
+                Write-Host "INFO: port $TargetPort is free."
+            }
+            else {
+                Write-Host "INFO: port $TargetPort is free after cleanup."
+            }
+            return
         }
 
-        try {
-            Stop-Process -Id $listener.OwningProcess -Force -ErrorAction Stop
+        if ($attempt -gt 1) {
+            Write-Host "INFO: retrying cleanup for port $TargetPort (attempt $attempt/5)."
         }
-        catch {
-            throw "Failed to stop process $($listener.OwningProcess) on port $TargetPort. $_"
+
+        foreach ($listener in $listeners) {
+            $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)" -ErrorAction SilentlyContinue
+            $procName = if ($proc -and $proc.Name) { $proc.Name } else { "unknown" }
+            $commandLine = if ($proc -and $proc.CommandLine) { $proc.CommandLine } else { "" }
+
+            Write-Host "INFO: stopping process on port $TargetPort (PID=$($listener.OwningProcess), Name=$procName)"
+            if ($commandLine) {
+                Write-Host "INFO: command line: $commandLine"
+            }
+
+            try {
+                $childPids = @(Get-DescendantProcessIds -ParentPid $listener.OwningProcess)
+                foreach ($childPid in $childPids) {
+                    Stop-Process -Id $childPid -Force -ErrorAction SilentlyContinue
+                }
+                Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
+            }
+            catch {
+                throw "Failed to stop process $($listener.OwningProcess) on port $TargetPort. $_"
+            }
         }
+
+        Start-Sleep -Milliseconds 1200
     }
-
-    Start-Sleep -Milliseconds 800
 
     $remaining = @(
         Get-NetTCPConnection -LocalPort $TargetPort -State Listen -ErrorAction SilentlyContinue |
@@ -55,14 +103,74 @@ function Stop-PortListeners {
     }
 }
 
+function Get-DotEnvValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [string]$Default = ""
+    )
+
+    if (-not (Test-Path -LiteralPath $EnvFile)) {
+        return $Default
+    }
+
+    $line = Get-Content -LiteralPath $EnvFile -Encoding utf8 -ErrorAction SilentlyContinue |
+        Where-Object { $_ -match "^\s*$([Regex]::Escape($Name))\s*=" } |
+        Select-Object -First 1
+    if (-not $line) {
+        return $Default
+    }
+    return (($line -split "=", 2)[1]).Trim()
+}
+
+function Get-DotEnvBool {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [bool]$Default = $false
+    )
+
+    $value = (Get-DotEnvValue -Name $Name).ToLowerInvariant()
+    if ($value -in @("1", "true", "yes", "on")) {
+        return $true
+    }
+    if ($value -in @("0", "false", "no", "off")) {
+        return $false
+    }
+    return $Default
+}
+
+function Resolve-RepoPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PathValue
+    )
+
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return $PathValue
+    }
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        return $PathValue
+    }
+    return Join-Path $Root $PathValue
+}
+
 if (-not (Test-Path -LiteralPath (Join-Path $Backend "main.py"))) {
     throw "backend/main.py not found. Please run this script from the project root."
 }
 
 $env:PYTHONDONTWRITEBYTECODE = "1"
+$env:PYTHONIOENCODING = "utf-8"
+$env:PYTHONUTF8 = "1"
 
 Push-Location $Backend
 try {
+    $targetUrl = Get-DotEnvValue -Name "CLOUDFLARED_TARGET_URL"
+    $envHttpsEnabled = Get-DotEnvBool -Name "ENABLE_LOCAL_HTTPS"
+    $useHttps = $EnableHttps.IsPresent -or $envHttpsEnabled -or ($targetUrl -like "https://*")
+    $certFile = Resolve-RepoPath (Get-DotEnvValue -Name "LOCAL_HTTPS_CERT_FILE" -Default "backend/certs/localhost-cert.pem")
+    $keyFile = Resolve-RepoPath (Get-DotEnvValue -Name "LOCAL_HTTPS_KEY_FILE" -Default "backend/certs/localhost-key.pem")
+
     if ($KillPortOwner) {
         Stop-PortListeners -TargetPort $Port
     }
@@ -76,11 +184,28 @@ try {
         return
     }
 
-    $args = @("main:app", "--host", "0.0.0.0", "--port", "$Port")
+    $args = @("run_server.py", "--host", "localhost", "--port", "$Port")
+    if ($useHttps) {
+        if ($EnsureDevCert -or -not ((Test-Path -LiteralPath $certFile) -and (Test-Path -LiteralPath $keyFile))) {
+            python generate_dev_cert.py --cert-file $certFile --key-file $keyFile
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to generate local HTTPS certificate."
+            }
+        }
+        $args += @("--ssl-certfile", $certFile, "--ssl-keyfile", $keyFile)
+        Write-Host "INFO: local HTTPS enabled on port $Port."
+    }
+    else {
+        Write-Host "INFO: local HTTP enabled on port $Port."
+    }
     if ($Reload) {
         $args += "--reload"
+        Write-Host "INFO: hot reload enabled on port $Port."
     }
-    python -m uvicorn @args
+    else {
+        Write-Host "INFO: hot reload disabled. Use -Reload to enable it."
+    }
+    python @args
 }
 finally {
     Pop-Location

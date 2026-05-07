@@ -202,6 +202,19 @@ class IntentEngine:
         return list(dict.fromkeys(item for item in hints if item))
 
     @classmethod
+    def _normalize_customer_message_for_retrieval(cls, message: str | None) -> str:
+        text = str(message or "").strip()
+        if not text:
+            return ""
+        if re.match(r"^\[(?:文件|图片|语音|视频)消息\]", text):
+            return ""
+        if text in {"[表情包]", "[撤回了一条消息]", "[未知格式报文]"}:
+            return ""
+        if re.match(r"^\[[^\]]+类型报文\]$", text):
+            return ""
+        return text
+
+    @classmethod
     def build_retrieval_query(cls, summary_json: dict | None, thread_fact: dict | None = None) -> str:
         summary = summary_json or {}
         parts: list[str] = []
@@ -212,9 +225,10 @@ class IntentEngine:
         stage_signals = (thread_fact or {}).get("stage_signals") or {}
         merged_facts = (thread_fact or {}).get("merged_facts") or {}
         latest_customer_message = str(merged_facts.get("latest_customer_message") or "").strip()
-        if merged_facts.get("last_sender") == "customer" and latest_customer_message:
-            parts.insert(0, f"优先回应客户最后一句：{latest_customer_message}")
-            if re.search(r"(已有|已经有|我们有|现有).*(报告|资料|英文版|中英文|文档|译文|文件)", latest_customer_message):
+        retrieval_focus_message = cls._normalize_customer_message_for_retrieval(latest_customer_message)
+        if merged_facts.get("last_sender") == "customer" and retrieval_focus_message:
+            parts.insert(0, retrieval_focus_message)
+            if re.search(r"(已有|已经有|我们有|现有).*(报告|资料|英文版|中英文|文档|译文|文件)", retrieval_focus_message):
                 parts.insert(1, "客户已说明已有现成资料或双语内容，优先承接现状，不要跳回旧推进问题")
         if stage_signals.get("followup_after_no_reply") or stage_signals.get("awaiting_customer_reply"):
             for value in cls._followup_retrieval_hints(thread_fact):
@@ -429,7 +443,26 @@ class IntentEngine:
             prompt_trace["result"] = "json_error"
             prompt_trace["reason"] = sanitize_text(str(e))
             logger.error("LLM-1 返回 JSON 解析失败: %s", e)
-            raise RuntimeError(f"LLM-1 最终提取的 JSON 无法解析: {e}") from e
+            repair_prompt = (
+                "你是一个 JSON 修复器。下面是一段本应返回 JSON 的文本，但当前格式有误。"
+                "请在不补充新事实的前提下，把它修成一个合法 JSON 对象。"
+                "只允许输出 JSON，不要输出解释、markdown 或代码块。\n\n"
+                "必须保留这些顶层字段：topic, core_demand, key_facts, todo_items, risks, to_be_confirmed, status。\n\n"
+                f"待修复文本：\n{raw_text}"
+            )
+            try:
+                repaired = cls.run_llm1_json_prompt(repair_prompt, user_id=f"{user_id}_json_repair")
+                prompt_trace["result"] = "success_repaired_json"
+                prompt_trace["repair_reason"] = sanitize_text(str(e))
+                return {
+                    "summary": repaired,
+                    "raw_text": raw_text,
+                    "prompt_trace": prompt_trace,
+                }
+            except Exception as repair_error:
+                prompt_trace["repair_result"] = "error"
+                prompt_trace["repair_reason"] = sanitize_text(str(repair_error))
+                raise RuntimeError(f"LLM-1 最终提取的 JSON 无法解析: {e}") from e
         except Exception as e:
             prompt_trace["result"] = "error"
             prompt_trace["reason"] = sanitize_text(str(e))
@@ -1815,14 +1848,41 @@ class IntentEngine:
         )
 
     @staticmethod
-    def extract_reply_reference_text(response_text: str | None) -> str:
+    def split_sales_assist_output(response_text: str | None) -> dict[str, str]:
         text = str(response_text or "").strip()
         if not text:
-            return ""
-        match = re.search(r"【企微回复参考】\s*(.*?)\s*(?:【跟进思路说明】|$)", text, flags=re.S)
-        if match:
-            return match.group(1).strip()
-        return text.splitlines()[0].strip()
+            return {"reply_reference": "", "followup_rationale": ""}
+
+        reply_match = re.search(
+            r"【企微(?:微信)?回复参考】\s*(.*?)\s*(?=【跟进思路说明】|$)",
+            text,
+            flags=re.S,
+        )
+        rationale_match = re.search(r"【跟进思路说明】\s*(.*)$", text, flags=re.S)
+        reply_reference = reply_match.group(1).strip() if reply_match else ""
+        followup_rationale = rationale_match.group(1).strip() if rationale_match else ""
+
+        if not reply_reference and not followup_rationale:
+            paragraphs = [item.strip() for item in re.split(r"\n\s*\n", text) if item.strip()]
+            if len(paragraphs) >= 2:
+                reply_reference = paragraphs[0]
+                followup_rationale = "\n\n".join(paragraphs[1:]).strip()
+            else:
+                lines = [line.strip() for line in text.splitlines() if line.strip()]
+                reply_reference = lines[0] if lines else text
+                followup_rationale = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
+
+        if not reply_reference:
+            reply_reference = text.splitlines()[0].strip()
+
+        return {
+            "reply_reference": reply_reference.strip(),
+            "followup_rationale": followup_rationale.strip(),
+        }
+
+    @staticmethod
+    def extract_reply_reference_text(response_text: str | None) -> str:
+        return IntentEngine.split_sales_assist_output(response_text).get("reply_reference", "")
 
     @staticmethod
     def _char_ngram_set(text: str, size: int = 2) -> set[str]:

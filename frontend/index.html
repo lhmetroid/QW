@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>智能销售辅助看板</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script async src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: -apple-system, system-ui, sans-serif; background-color: #f1f5f9; }
         .session-item.active-session { background-color: #ffffff; border-left: 4px solid #3b82f6; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
@@ -271,7 +271,150 @@
     </main>
 
     <script>
-        const API_BASE = window.location.origin;
+        let API_BASE = '';
+        const RAW_FETCH = window.fetch.bind(window);
+        const API_BASE_STORAGE_KEY = 'qw_api_base_preferred';
+        const LOCAL_API_TIMEOUT_MS = 3500;
+        const REMOTE_API_TIMEOUT_MS = 8000;
+        let apiBaseCandidates = [];
+        let apiBaseReadyPromise = null;
+
+        function normalizeApiBase(value) {
+            const text = String(value || '').trim();
+            if (!text || text === 'null' || text === 'undefined') return '';
+            return text.replace(/\/+$/g, '');
+        }
+
+        function uniqueValues(values) {
+            return [...new Set((values || []).filter(Boolean))];
+        }
+
+        function buildLoopbackAlias(value) {
+            try {
+                const parsed = new URL(value);
+                const protocol = parsed.protocol || 'https:';
+                const port = parsed.port ? `:${parsed.port}` : '';
+                if (parsed.hostname === 'localhost') return `${protocol}//127.0.0.1${port}`;
+                if (parsed.hostname === '127.0.0.1') return `${protocol}//localhost${port}`;
+            } catch (_) {}
+            return '';
+        }
+
+        function isLocalApiBase(value) {
+            try {
+                const parsed = new URL(value);
+                return ['localhost', '127.0.0.1', '[::1]', '::1'].includes(parsed.hostname);
+            } catch (_) {
+                return false;
+            }
+        }
+
+        function setPreferredApiBase(value) {
+            const nextBase = normalizeApiBase(value);
+            if (!nextBase) return;
+            API_BASE = nextBase;
+            apiBaseCandidates = uniqueValues([nextBase, ...apiBaseCandidates]);
+            try {
+                localStorage.setItem(API_BASE_STORAGE_KEY, nextBase);
+            } catch (_) {}
+        }
+
+        function buildApiBaseCandidates(externalBase = '') {
+            const queryBase = normalizeApiBase(new URLSearchParams(window.location.search).get('api_base'));
+            let storedBase = '';
+            try {
+                storedBase = normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY));
+            } catch (_) {}
+            const locationBase = normalizeApiBase(window.location.origin);
+            const loopbackAlias = buildLoopbackAlias(locationBase);
+            const bases = uniqueValues([queryBase, storedBase, locationBase, loopbackAlias, externalBase]);
+            if (!queryBase && !storedBase && locationBase && externalBase && isLocalApiBase(locationBase)) {
+                return uniqueValues([locationBase, loopbackAlias, externalBase]);
+            }
+            return bases;
+        }
+
+        function rewriteApiUrl(input, targetBase) {
+            if (typeof input !== 'string') return input;
+            const normalizedBase = normalizeApiBase(targetBase);
+            if (!normalizedBase) return input;
+            try {
+                const parsed = new URL(input, window.location.href);
+                return `${normalizedBase}${parsed.pathname}${parsed.search}${parsed.hash}`;
+            } catch (_) {
+                return input;
+            }
+        }
+
+        async function discoverExternalApiBase() {
+            const locationBase = normalizeApiBase(window.location.origin);
+            if (!locationBase) return '';
+            try {
+                const res = await rawFetchWithTimeout(`${locationBase}/api/system/public_endpoints`, {
+                    headers: {'Cache-Control': 'no-cache'}
+                }, LOCAL_API_TIMEOUT_MS);
+                const data = await res.json().catch(() => ({}));
+                return normalizeApiBase(
+                    data?.public_access?.external_api_base_url ||
+                    data?.external_endpoints?.base_url
+                );
+            } catch (_) {
+                return '';
+            }
+        }
+
+        async function ensureApiBaseReady() {
+            if (apiBaseReadyPromise) return apiBaseReadyPromise;
+            apiBaseReadyPromise = (async () => {
+                const externalBase = await discoverExternalApiBase();
+                apiBaseCandidates = buildApiBaseCandidates(externalBase);
+                setPreferredApiBase(apiBaseCandidates[0] || normalizeApiBase(window.location.origin));
+                return API_BASE;
+            })();
+            return apiBaseReadyPromise;
+        }
+
+        async function rawFetchWithTimeout(input, init = {}, timeoutMs = REMOTE_API_TIMEOUT_MS) {
+            const supportsAbort = typeof AbortController !== 'undefined';
+            const requestInit = {...(init || {})};
+            let controller = null;
+            let timer = null;
+            if (supportsAbort && !requestInit.signal) {
+                controller = new AbortController();
+                requestInit.signal = controller.signal;
+                timer = window.setTimeout(() => controller.abort(new Error('timeout')), timeoutMs);
+            }
+            try {
+                return await RAW_FETCH(input, requestInit);
+            } finally {
+                if (timer) window.clearTimeout(timer);
+            }
+        }
+
+        async function apiFetch(input, init) {
+            await ensureApiBaseReady();
+            if (typeof input !== 'string') {
+                return rawFetchWithTimeout(input, init, LOCAL_API_TIMEOUT_MS);
+            }
+            const attempts = uniqueValues([API_BASE, ...apiBaseCandidates]);
+            let lastError = null;
+            for (const candidateBase of attempts) {
+                const requestUrl = rewriteApiUrl(input, candidateBase);
+                try {
+                    const response = await rawFetchWithTimeout(
+                        requestUrl,
+                        init,
+                        isLocalApiBase(candidateBase) ? LOCAL_API_TIMEOUT_MS : REMOTE_API_TIMEOUT_MS
+                    );
+                    setPreferredApiBase(candidateBase);
+                    return response;
+                } catch (err) {
+                    lastError = err;
+                }
+            }
+            throw lastError || new Error('API request failed');
+        }
+
         const MAIN_APP_LABELS = {
             wecom: '企微实时智能',
             kb: '知识库管理'
@@ -288,6 +431,8 @@
         let currentSelectedAnalysisVersionId = 'current_tail';
         const analysisSnapshotByUserId = {};
         const analysisVersionsByUserId = {};
+        let sessionSelectionRequestSeq = 0;
+        let analysisContextSeq = 0;
         let uiRuntimeConfig = {
             wecomRecentMessageLimit: 6,
         };
@@ -308,8 +453,22 @@
             return analysisVersionsByUserId[String(userId || '')] || [];
         }
 
-        function getCurrentAnalysisVersionMeta() {
-            return getAnalysisVersions().find(item => String(item.snapshot_id) === String(currentSelectedAnalysisVersionId)) || null;
+        function getCurrentAnalysisVersionMeta(versionId = currentSelectedAnalysisVersionId, userId = currentSelectedSessionId) {
+            return (analysisVersionsByUserId[String(userId || '')] || []).find(item => String(item.snapshot_id) === String(versionId)) || null;
+        }
+
+        function bumpAnalysisContextSeq() {
+            analysisContextSeq += 1;
+            return analysisContextSeq;
+        }
+
+        function isActiveAnalysisContext(userId, versionId = 'current_tail', contextSeq = null) {
+            const activeVersionId = currentSelectedAnalysisVersionId || 'current_tail';
+            const targetVersionId = versionId || 'current_tail';
+            if (String(currentSelectedSessionId || '') !== String(userId || '')) return false;
+            if (String(activeVersionId) !== String(targetVersionId)) return false;
+            if (contextSeq !== null && contextSeq !== undefined && Number(contextSeq) !== Number(analysisContextSeq)) return false;
+            return true;
         }
 
         function getHideGroupChatFilter() {
@@ -355,6 +514,7 @@
         }
 
         function resetSessionDetailState() {
+            bumpAnalysisContextSeq();
             currentSelectedSessionId = '';
             currentSelectedAnalysisVersionId = 'current_tail';
             currentSessionMessages = [];
@@ -500,7 +660,7 @@
 
         async function loadUiRuntimeConfig() {
             try {
-                const res = await fetch(`${API_BASE}/api/system/ai_scripts`);
+                const res = await apiFetch(`${API_BASE}/api/system/ai_scripts`);
                 const data = await res.json();
                 if (res.ok) {
                     uiRuntimeConfig.wecomRecentMessageLimit = clampWecomRecentMessageLimit(data.WECOM_RECENT_MESSAGE_LIMIT);
@@ -762,6 +922,7 @@
         const KB_HASH_TAB_MAP = {
             '#kb': 'documents',
             '#kb-documents': 'documents',
+            '#kb-chunks': 'chunks',
             '#kb-list': 'documents',
             '#kb-review': 'review',
             '#kb-candidates': 'candidates',
@@ -825,14 +986,30 @@
         }
 
         async function fetchSessions() {
-            const res = await fetch(`${API_BASE}/api/sessions`);
-            const data = await res.json();
-            allSessions = Array.isArray(data) ? data : [];
-            renderSessions();
+            try {
+                const res = await apiFetch(`${API_BASE}/api/sessions`);
+                const data = await res.json();
+                allSessions = Array.isArray(data) ? data : [];
+                renderSessions();
+            } catch (err) {
+                allSessions = [];
+                renderSessions();
+                const sessionList = document.getElementById('session-list');
+                if (sessionList) {
+                    sessionList.innerHTML = `
+                        <div class="m-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] text-rose-700">
+                            会话列表加载失败：${safeText(translateApiMessage(err?.message || err))}
+                            <div class="mt-1 break-all text-[10px] opacity-80">当前 API 地址：${safeText(API_BASE || '-')}</div>
+                        </div>
+                    `;
+                }
+            }
         }
 
         function formatDateTime(dateStr) {
+            if (!dateStr) return '';
             const d = new Date(dateStr);
+            if (Number.isNaN(d.getTime())) return '';
             const mm = (d.getMonth() + 1).toString().padStart(2, '0');
             const dd = d.getDate().toString().padStart(2, '0');
             const hh = d.getHours().toString().padStart(2, '0');
@@ -841,7 +1018,13 @@
             return `${mm}月${dd}日 ${hh}:${mi}:${ss}`;
         }
 
+        function formatKbCreatedAt(value) {
+            return formatDateTime(value) || '';
+        }
+
         async function selectSession(userId) {
+            const requestSeq = ++sessionSelectionRequestSeq;
+            const contextSeq = bumpAnalysisContextSeq();
             currentSelectedSessionId = userId;
             currentSelectedAnalysisVersionId = 'current_tail';
             document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active-session'));
@@ -849,18 +1032,23 @@
             if(target) target.classList.add('active-session');
             document.getElementById('current-user-title').innerText = getDisplayName(userId, {showFullExternal: true});
 
-            const msgRes = await fetch(`${API_BASE}/api/sessions/${userId}/messages`);
+            const msgRes = await apiFetch(`${API_BASE}/api/sessions/${userId}/messages`);
             const msgs = await msgRes.json();
+            if (requestSeq !== sessionSelectionRequestSeq || !isActiveAnalysisContext(userId, 'current_tail', contextSeq)) return;
             currentSessionMessages = Array.isArray(msgs) ? msgs : [];
             renderConversationMessages();
-            await loadAnalysisVersions(userId, {preserveSelection: false});
-            await loadAnalysis(userId, {versionId: 'current_tail'});
+            await loadAnalysis(userId, {versionId: 'current_tail', contextSeq});
+            if (requestSeq !== sessionSelectionRequestSeq || !isActiveAnalysisContext(userId, 'current_tail', contextSeq)) return;
+            await loadAnalysisVersions(userId, {preserveSelection: false, contextSeq});
         }
 
         async function loadAnalysisVersions(userId, options = {}) {
-            const {preserveSelection = true} = options;
-            const res = await fetch(`${API_BASE}/api/sessions/${userId}/analysis_versions`);
+            const {preserveSelection = true, contextSeq = null} = options;
+            const res = await apiFetch(`${API_BASE}/api/sessions/${userId}/analysis_versions`);
             const data = await res.json();
+            if (contextSeq !== null && !isActiveAnalysisContext(userId, currentSelectedAnalysisVersionId || 'current_tail', contextSeq)) {
+                return [];
+            }
             const versions = Array.isArray(data.versions) ? data.versions : [];
             analysisVersionsByUserId[String(userId || '')] = versions;
             const stillExists = versions.some(item => String(item.snapshot_id) === String(currentSelectedAnalysisVersionId));
@@ -874,49 +1062,82 @@
 
         async function switchAnalysisVersion(versionId) {
             currentSelectedAnalysisVersionId = versionId || 'current_tail';
+            const contextSeq = bumpAnalysisContextSeq();
             renderAnalysisVersionTabs();
             renderConversationMessages();
             if (currentSelectedSessionId) {
-                await loadAnalysis(currentSelectedSessionId, {versionId: currentSelectedAnalysisVersionId});
+                const cached = analysisSnapshotByUserId[analysisCacheKey(currentSelectedSessionId, currentSelectedAnalysisVersionId)];
+                if (cached && Object.keys(cached).length) {
+                    renderAnalysisPanel(cached, currentSelectedSessionId);
+                } else {
+                    renderAnalysisLoadingState(getCurrentAnalysisVersionMeta(currentSelectedAnalysisVersionId, currentSelectedSessionId));
+                }
+                await loadAnalysis(currentSelectedSessionId, {versionId: currentSelectedAnalysisVersionId, contextSeq});
             }
         }
 
         async function createAnalysisVersion(userId, anchorMessageId) {
-            const res = await fetch(`${API_BASE}/api/sessions/${userId}/analysis_versions`, {
+            const contextSeqBeforeCreate = analysisContextSeq;
+            const res = await apiFetch(`${API_BASE}/api/sessions/${userId}/analysis_versions`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({anchor_message_id: anchorMessageId})
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) return showApiError(data, '创建历史节点链路失败');
-            await loadAnalysisVersions(userId, {preserveSelection: true});
+            if (!isActiveAnalysisContext(userId, currentSelectedAnalysisVersionId || 'current_tail', contextSeqBeforeCreate)) return;
+            await loadAnalysisVersions(userId, {preserveSelection: true, contextSeq: contextSeqBeforeCreate});
+            if (!isActiveAnalysisContext(userId, currentSelectedAnalysisVersionId || 'current_tail', contextSeqBeforeCreate)) return;
             currentSelectedAnalysisVersionId = data.snapshot?.snapshot_id || 'current_tail';
+            const contextSeq = bumpAnalysisContextSeq();
             renderAnalysisVersionTabs();
             renderConversationMessages();
-            await loadAnalysis(userId, {versionId: currentSelectedAnalysisVersionId});
+            await loadAnalysis(userId, {versionId: currentSelectedAnalysisVersionId, contextSeq});
         }
 
-        function gracefulStr(val) {
-            if (!val || val === '未明确') return '--未明确--';
-            try {
-                let parsed = typeof val === 'string' ? JSON.parse(val) : val;
-                if (Array.isArray(parsed)) return parsed.join('、');
-                if (typeof parsed === 'object') return Object.entries(parsed).map(([k,v]) => `${k}: ${v}`).join('、');
-                return String(parsed);
-            } catch(e) {
-                return String(val).replace(/[\[\]"]/g, '');
+        function parseMaybeStructuredValue(value) {
+            if (typeof value !== 'string') return value;
+            const trimmed = value.trim();
+            if (!trimmed) return '';
+            if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+                try {
+                    return JSON.parse(trimmed);
+                } catch(e) {
+                    return value;
+                }
             }
+            return value;
+        }
+
+        function flattenStructuredValue(value) {
+            const parsed = parseMaybeStructuredValue(value);
+            if (parsed === null || parsed === undefined || parsed === '' || parsed === '未明确' || parsed === '无') return [];
+            if (Array.isArray(parsed)) {
+                return parsed.flatMap(item => flattenStructuredValue(item)).filter(Boolean);
+            }
+            if (typeof parsed === 'object') {
+                const parts = Object.entries(parsed)
+                    .flatMap(([key, item]) => {
+                        const nested = flattenStructuredValue(item);
+                        if (!nested.length) return [];
+                        return [`${key}: ${nested.join(' / ')}`];
+                    })
+                    .filter(Boolean);
+                return parts;
+            }
+            const text = String(parsed).replace(/[\r\n]+/g, ' ').trim();
+            return text && text !== '未明确' && text !== '无' ? [text] : [];
+        }
+
+        function gracefulStr(val, emptyText = '--未明确--') {
+            const parts = flattenStructuredValue(val);
+            return parts.length ? parts.join('、') : emptyText;
         }
 
         function renderKeyFacts(facts) {
-            if (!facts) return '<span class="text-[10px] text-slate-400 italic">暂无明确实事</span>';
-            if (typeof facts === 'object' && !Array.isArray(facts)) {
-                facts = Object.entries(facts).filter(([k, v]) => v && v !== '未明确' && v !== '无').map(([k, v]) => `${k}: ${v}`);
-            } else if (!Array.isArray(facts)) {
-                facts = [facts];
-            }
-            if (facts.length === 0) return '<span class="text-[10px] text-slate-400 italic">暂无明确实事</span>';
-            return facts.map(f => `<span class="bg-indigo-100 text-indigo-700 text-[9px] px-2 py-0.5 rounded-md font-medium border border-indigo-200">${safeText(f)}</span>`).join('');
+            const items = flattenStructuredValue(facts);
+            if (!items.length) return '<span class="text-[10px] text-slate-400 italic">暂无明确实事</span>';
+            return items.map(f => `<span class="bg-indigo-100 text-indigo-700 text-[9px] px-2 py-0.5 rounded-md font-medium border border-indigo-200">${safeText(f)}</span>`).join('');
         }
 
         function jsArg(value) {
@@ -953,7 +1174,7 @@
 
         function buildComparePromptDownloadContent(data) {
             const trace = data?.sales_advice_compare_prompt_trace_v2 || {};
-            const generatedContent = String(data?.sales_advice_compare_v2 || '').trim();
+            const generatedContent = String(data?.reply_reference_compare || data?.followup_rationale_compare || '').trim();
             const sentToAi = trace.sent_to_ai !== false;
             let generationResult = trace.result || trace.status || '-';
             if ((generationResult === 'skipped_manual_review' || generationResult === 'manual_review_required') && sentToAi && generatedContent) {
@@ -1058,7 +1279,7 @@
             const items = Array.isArray(data?.reply_style_results_v2) ? data.reply_style_results_v2 : [];
             if (items.length) return items;
             const fallback = [];
-            if (data?.sales_advice_v2) {
+            if (data?.reply_reference || data?.followup_rationale) {
                 fallback.push({
                     candidate_id: 'legacy_llm2',
                     model_slot: 'llm2',
@@ -1066,11 +1287,12 @@
                     style_title: '默认风格',
                     style_content: '',
                     status: 'done',
-                    content: data.sales_advice_v2,
+                    reply_reference: data.reply_reference || '',
+                    followup_rationale: data.followup_rationale || '',
                     validation: data.assist_validation || null
                 });
             }
-            if (data?.sales_advice_compare_v2) {
+            if (data?.reply_reference_compare || data?.followup_rationale_compare) {
                 fallback.push({
                     candidate_id: 'legacy_llm2_compare',
                     model_slot: 'llm2_compare',
@@ -1078,11 +1300,33 @@
                     style_title: '默认风格',
                     style_content: '',
                     status: 'done',
-                    content: data.sales_advice_compare_v2,
+                    reply_reference: data.reply_reference_compare || '',
+                    followup_rationale: data.followup_rationale_compare || '',
                     validation: data.assist_compare_validation || null
                 });
             }
             return fallback;
+        }
+
+        function candidateReplyReference(candidate) {
+            return String(candidate?.reply_reference || '').trim();
+        }
+
+        function candidateFollowupRationale(candidate) {
+            return String(candidate?.followup_rationale || '').trim();
+        }
+
+        function candidateDisplayText(candidate) {
+            const replyReference = candidateReplyReference(candidate);
+            const followupRationale = candidateFollowupRationale(candidate);
+            const blocks = [];
+            if (replyReference) {
+                blocks.push(`【企微回复参考】\n${replyReference}`);
+            }
+            if (followupRationale) {
+                blocks.push(`【跟进思路说明】\n${followupRationale}`);
+            }
+            return blocks.join('\n\n').trim();
         }
 
         function getReplyScoreMap(scoreboard) {
@@ -1123,12 +1367,14 @@
             const tone = isCompare ? 'blue' : 'amber';
             const panelClass = isCompare ? 'border-blue-100 bg-blue-50' : 'border-amber-100 bg-amber-50';
             const textClass = isCompare ? 'text-blue-950' : 'text-amber-900';
-            const content = candidate.content || `（${candidate.reason || '等待生成'}）`;
+            const content = candidateDisplayText(candidate);
+            const hasContent = Boolean(content);
+            const displayText = content || `（${candidate.reason || '等待生成'}）`;
             const copyLabel = isCompare ? '复制对比版' : '复制';
-            const contentCopy = candidate.content
-                ? `<button onclick="copyTextFromEncoded('${encodedArg(candidate.content)}')" class="px-2 py-1 bg-white border rounded text-[10px] text-slate-600">${copyLabel}</button>`
+            const contentCopy = content
+                ? `<button onclick="copyTextFromEncoded('${encodedArg(content)}')" class="px-2 py-1 bg-white border rounded text-[10px] text-slate-600">${copyLabel}</button>`
                 : '';
-            const feedback = !isCompare && candidate.content ? `
+            const feedback = !isCompare && hasContent ? `
                 <button onclick='submitAssistFeedback(${jsArg(data.user_id)}, "useful")' class="px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-700">有用</button>
                 <button onclick='submitAssistFeedback(${jsArg(data.user_id)}, "needs_fix")' class="px-2 py-1 bg-rose-50 border border-rose-200 rounded text-[10px] text-rose-700">需修正</button>
             ` : '';
@@ -1142,7 +1388,7 @@
                         ${candidate.validation?.manual_review_required ? renderStatusPill('需人工复核', 'rose') : ''}
                     </div>
                     ${candidate.style_content ? `<div class="text-[10px] text-slate-500 mb-2">${safeText(candidate.style_content)}</div>` : ''}
-                    <div class="font-medium ${textClass} whitespace-pre-wrap leading-relaxed ${candidate.content ? '' : 'opacity-60'}">${safeText(content)}</div>
+                    <div class="font-medium ${textClass} whitespace-pre-wrap leading-relaxed ${hasContent ? '' : 'opacity-60'}">${safeText(displayText)}</div>
                     ${renderCandidateScorePills(scoreEntry)}
                     <div class="flex flex-wrap gap-1 pt-2">${contentCopy}${feedback}</div>
                 </div>`;
@@ -1250,7 +1496,7 @@
                 </div>`;
             overlay.style.display = 'flex';
             try {
-                const res = await fetch(`${API_BASE}/api/system/ai_scripts`);
+                const res = await apiFetch(`${API_BASE}/api/system/ai_scripts`);
                 const data = await res.json();
                 const rows = Array.isArray(data.REPLY_STYLE_OPTIONS) && data.REPLY_STYLE_OPTIONS.length ? data.REPLY_STYLE_OPTIONS : [];
                 renderReplyStyleTable(rows);
@@ -1351,13 +1597,13 @@
             try {
                 const styles = collectReplyStyleRows();
                 if (!styles.length) throw new Error('至少保留一条风格配置');
-                const scriptsRes = await fetch(`${API_BASE}/api/system/ai_scripts`);
+                const scriptsRes = await apiFetch(`${API_BASE}/api/system/ai_scripts`);
                 const currentScripts = await scriptsRes.json();
                 const payload = {
                     ...currentScripts,
                     REPLY_STYLE_OPTIONS: styles
                 };
-                const res = await fetch(`${API_BASE}/api/system/ai_scripts`, {
+                const res = await apiFetch(`${API_BASE}/api/system/ai_scripts`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(payload)
@@ -1574,61 +1820,109 @@
                 </div>`;
         }
 
-        function renderKnowledgeBaseCard(data, userId) {
-            const knowledge = data.knowledge_v2;
-            if (!data.has_v1) {
-                return renderPipelineCard(5, '知识库检索证据', '基于核心诉求检索已发布知识、报价规则、案例和 FAQ', '#10b981', `
-                    <div class="mb-2">${renderStatusPill('等待一阶段', 'amber')}</div>
-                    ${renderPipelineRows([
-                        {label: '检索问题', value: '--待构建--', className: 'text-slate-400'},
-                        {label: '检索特征', value: '--待构建--', className: 'text-slate-400'},
-                        {label: '过滤条件', value: '--待检索--', className: 'text-slate-400'},
-                        {label: '命中证据', value: '--待检索--', className: 'text-slate-400'},
-                        {label: '复核要求', value: '--待检索--', className: 'text-slate-400'},
-                        {label: '问题原因', value: '等待第一阶段特征提取后形成检索条件', className: 'text-amber-700'}
-                    ])}`);
-            }
+        function knowledgeStatusTone(status, manualReviewRequired) {
+            if (status === 'ok') return 'emerald';
+            if (status === 'error' || status === 'not_configured') return 'rose';
+            if (manualReviewRequired) return 'rose';
+            return 'amber';
+        }
+
+        function renderKnowledgeChannelPlaceholder(title, toneClass, message) {
+            return `
+                <div class="rounded-lg border ${toneClass} p-3">
+                    <div class="text-[11px] font-bold text-slate-700 mb-2">${safeText(title)}</div>
+                    <div class="text-[11px] text-slate-500">${safeText(message)}</div>
+                </div>`;
+        }
+
+        function renderKnowledgeChannelPanel(title, knowledge, options = {}) {
+            const panelTone = options.panelTone || 'border-emerald-100 bg-white';
+            const sourcePillTone = options.sourcePillTone || 'emerald';
+            const fallbackQuery = options.fallbackQuery || '-';
+            const defaultHow = options.defaultHow || '基于核心诉求执行检索。';
             if (!knowledge) {
-                const actions = `<button onclick='loadAnalysis(${jsArg(userId)})' class="text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 border border-emerald-700 px-2 py-1 rounded transition">▶️ 执行检索</button>`;
-                return renderPipelineCard(5, '知识库检索证据', '基于核心诉求检索已发布知识、报价规则、案例和 FAQ', '#10b981', `
-                    <div class="mb-2">${renderStatusPill('待二阶段生成时检索', 'amber')}</div>
-                    ${renderPipelineRows([
-                        {label: '检索问题', value: gracefulStr(data.core_demand)},
-                        {label: '检索特征', value: '--待检索--', className: 'text-slate-400'},
-                        {label: '过滤条件', value: '--待检索--', className: 'text-slate-400'},
-                        {label: '命中证据', value: '--待检索--', className: 'text-slate-400'},
-                        {label: '复核要求', value: '--待检索--', className: 'text-slate-400'},
-                        {label: '问题原因', value: '点击执行检索，可先按核心诉求、客户画像和结构化过滤条件检索知识库；生成回复时也会再次检索。', className: 'text-amber-700'}
-                    ])}`, {actions});
+                return renderKnowledgeChannelPlaceholder(title, panelTone, '等待执行检索');
             }
             const hits = knowledge.hits || [];
             const filters = knowledge.filters_used || {};
             const context = knowledge.evidence_context || {};
-            const statusTone = knowledge.status === 'ok' ? 'emerald' : (knowledge.manual_review_required ? 'rose' : 'amber');
-            const knowledgeHow = `基于核心诉求做向量召回 Top 5，再叠加关键词预筛、业务线/语种/服务范围等结构化过滤条件，最后重排出当前证据。`;
+            const status = knowledge.status || 'unknown';
+            const statusTone = knowledgeStatusTone(status, knowledge.manual_review_required);
+            const hasStructuredContext = (context.rules?.length || context.faqs?.length || context.cases?.length);
+            const categoryText = hasStructuredContext
+                ? `规则 ${context.rules?.length || 0} / FAQ ${context.faqs?.length || 0} / 案例 ${context.cases?.length || 0} / 人工参考 ${knowledge.human_only_hits?.length || 0}`
+                : `可回复 ${knowledge.replyable_hits?.length || 0} / 仅参考 ${knowledge.human_only_hits?.length || 0}`;
+            const howText = knowledge.how || defaultHow;
             const body = `
-                <div class="flex flex-wrap gap-2 mb-2">
-                    ${renderStatusPill(knowledge.status || 'unknown', statusTone)}
-                    ${renderStatusPill(`置信 ${knowledge.confidence_score ?? '-'}`, statusTone)}
-                    ${renderStatusPill(`命中 ${hits.length} 条`, hits.length ? 'emerald' : 'rose')}
-                    ${renderStatusPill(`可回复 ${knowledge.replyable_hits?.length || 0} 条`, (knowledge.replyable_hits?.length || 0) ? 'emerald' : 'amber')}
-                    ${knowledge.latency_ms ? renderStatusPill(`${knowledge.latency_ms}ms`, 'slate') : ''}
+                <div class="rounded-lg border ${panelTone} p-3 min-w-0 overflow-hidden">
+                    <div class="flex flex-wrap gap-2 mb-2">
+                        ${renderStatusPill(title, sourcePillTone)}
+                        ${renderStatusPill(status, statusTone)}
+                        ${renderStatusPill(`置信 ${knowledge.confidence_score ?? '-'}`, statusTone)}
+                        ${renderStatusPill(`命中 ${hits.length} 条`, hits.length ? 'emerald' : 'rose')}
+                        ${renderStatusPill(`可回复 ${knowledge.replyable_hits?.length || 0} 条`, (knowledge.replyable_hits?.length || 0) ? 'emerald' : 'amber')}
+                        ${knowledge.latency_ms ? renderStatusPill(`${knowledge.latency_ms}ms`, 'slate') : ''}
+                    </div>
+                    ${renderPipelineRows([
+                        {label: '检索问题', value: knowledge.query_text || fallbackQuery || '-'},
+                        {label: '检索特征', html: `<pre class="w-full max-w-full bg-slate-50 border rounded p-2 overflow-x-auto overflow-y-auto max-h-36 text-[10px] leading-relaxed whitespace-pre-wrap break-all">${safeText(JSON.stringify(knowledge.query_features || {}, null, 2))}</pre>`},
+                        {label: '过滤条件', html: `<pre class="w-full max-w-full bg-slate-50 border rounded p-2 overflow-x-auto overflow-y-auto max-h-36 text-[10px] leading-relaxed whitespace-pre-wrap break-all">${safeText(JSON.stringify(filters, null, 2))}</pre>`},
+                        {label: '证据分类', value: categoryText},
+                        {label: '复核要求', value: knowledge.manual_review_required ? '需要人工复核' : '无需人工复核', className: knowledge.manual_review_required ? 'text-rose-700 font-bold' : 'text-emerald-700 font-bold'}
+                    ])}
+                    ${knowledge.error ? `<div class="rounded bg-rose-50 border border-rose-100 p-2 text-[11px] text-rose-700">${safeText(knowledge.error)}</div>` : ''}
+                    ${knowledge.no_hit_reason ? `<div class="rounded bg-amber-50 border border-amber-100 p-2 text-[11px] text-amber-700">${safeText(knowledge.no_hit_reason)}</div>` : ''}
+                    <div class="space-y-2 min-w-0">${hits.length ? hits.map((hit, idx) => renderKnowledgeHit(hit, idx)).join('') : '<div class="text-slate-400 text-[11px]">无命中证据</div>'}</div>
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-[11px] text-slate-700 mt-3">
+                        <span class="font-bold text-slate-600">实现原理：</span>${safeText(howText)}
+                    </div>
+                    ${renderEvidenceRefs(knowledge.evidence_refs || [])}
+                </div>`;
+            return body;
+        }
+
+        function renderKnowledgeBaseCard(data, userId) {
+            const knowledge = data.knowledge_v2;
+            const externalKnowledge = data.knowledge_external_api || null;
+            const refreshAction = `<button onclick='loadAnalysis(${jsArg(userId)})' class="text-[10px] font-bold text-emerald-700 bg-white border border-emerald-200 px-2 py-1 rounded hover:bg-emerald-50 transition">↺ 刷新读取</button>`;
+            if (!data.has_v1) {
+                const body = `
+                    <div class="mb-2">${renderStatusPill('等待一阶段', 'amber')}</div>
+                    <div class="grid grid-cols-1 2xl:grid-cols-2 gap-3">
+                        ${renderKnowledgeChannelPlaceholder('当前知识库流程', 'border-emerald-100 bg-white', '等待第一阶段特征提取后形成内部检索条件')}
+                        ${renderKnowledgeChannelPlaceholder('直连销售知识库 API', 'border-cyan-100 bg-white', '等待第一阶段特征提取后形成 API 检索条件')}
+                    </div>`;
+                return renderPipelineCard(5, '知识库检索证据（双通道对比）', '左侧保留当前知识库流程，右侧增加直连销售知识库 API 的检索结果用于对比', '#10b981', body, {actions: refreshAction});
+            }
+            if (!knowledge && !externalKnowledge) {
+                const body = `
+                    <div class="mb-2">${renderStatusPill('待执行检索', 'amber')}</div>
+                    <div class="grid grid-cols-1 2xl:grid-cols-2 gap-3">
+                        ${renderKnowledgeChannelPlaceholder('当前知识库流程', 'border-emerald-100 bg-white', '等待点击阶段按钮后生成并持久化知识证据；此处只刷新读取已有结果')}
+                        ${renderKnowledgeChannelPlaceholder('直连销售知识库 API', 'border-cyan-100 bg-white', '等待点击阶段按钮后生成并持久化外部知识对比结果；此处只刷新读取已有结果')}
+                    </div>`;
+                return renderPipelineCard(5, '知识库检索证据（双通道对比）', '左侧保留当前知识库流程，右侧增加直连销售知识库 API 的检索结果用于对比', '#10b981', body, {actions: refreshAction});
+            }
+            const body = `
+                <div class="mb-2 flex flex-wrap gap-2">
+                    ${renderStatusPill('双通道对比', 'blue')}
+                    ${renderStatusPill(`主线 ${safeText(data.core_demand || data.topic || '-')}`, 'slate')}
                 </div>
-                ${renderPipelineRows([
-                    {label: '检索问题', value: knowledge.query_text || data.core_demand || '-'},
-                    {label: '检索特征', html: `<pre class="w-full max-w-full bg-slate-50 border rounded p-2 overflow-x-auto overflow-y-auto max-h-36 text-[10px] leading-relaxed whitespace-pre-wrap break-all">${safeText(JSON.stringify(knowledge.query_features || {}, null, 2))}</pre>`},
-                    {label: '过滤条件', html: `<pre class="w-full max-w-full bg-slate-50 border rounded p-2 overflow-x-auto overflow-y-auto max-h-36 text-[10px] leading-relaxed whitespace-pre-wrap break-all">${safeText(JSON.stringify(filters, null, 2))}</pre>`},
-                    {label: '证据分类', value: `规则 ${context.rules?.length || 0} / FAQ ${context.faqs?.length || 0} / 案例 ${context.cases?.length || 0} / 人工参考 ${knowledge.human_only_hits?.length || 0}`},
-                    {label: '复核要求', value: knowledge.manual_review_required ? '需要人工复核' : '无需人工复核', className: knowledge.manual_review_required ? 'text-rose-700 font-bold' : 'text-emerald-700 font-bold'}
-                ])}
-                ${knowledge.no_hit_reason ? `<div class="rounded bg-rose-50 border border-rose-100 p-2 text-[11px] text-rose-700">${safeText(knowledge.no_hit_reason)}</div>` : ''}
-                <div class="space-y-2 min-w-0">${hits.length ? hits.map((hit, idx) => renderKnowledgeHit(hit, idx)).join('') : '<div class="text-slate-400 text-[11px]">无命中证据</div>'}</div>
-                <div class="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-2 text-[11px] text-emerald-900">
-                    <span class="font-bold text-emerald-700">实现原理：</span>${safeText(knowledgeHow)}
-                </div>
-                ${renderEvidenceRefs(knowledge.evidence_refs || [])}`;
-            const actions = `<button onclick='loadAnalysis(${jsArg(userId)})' class="text-[10px] font-bold text-emerald-700 bg-white border border-emerald-200 px-2 py-1 rounded hover:bg-emerald-50 transition">↺ 重新检索</button>`;
-            return renderPipelineCard(5, '知识库检索证据', '基于核心诉求检索已发布知识、报价规则、案例和 FAQ', '#10b981', body, {actions});
+                <div class="grid grid-cols-1 2xl:grid-cols-2 gap-3">
+                    ${renderKnowledgeChannelPanel('当前知识库流程', knowledge, {
+                        panelTone: 'border-emerald-100 bg-white',
+                        sourcePillTone: 'emerald',
+                        fallbackQuery: data.core_demand || data.topic || '-',
+                        defaultHow: '基于核心诉求做向量召回 Top 5，再叠加关键词预筛、业务线/语种/服务范围等结构化过滤条件，最后重排出当前证据。'
+                    })}
+                    ${renderKnowledgeChannelPanel('直连销售知识库 API', externalKnowledge, {
+                        panelTone: 'border-cyan-100 bg-white',
+                        sourcePillTone: 'blue',
+                        fallbackQuery: data.core_demand || data.topic || '-',
+                        defaultHow: '直接调用外部销售知识库 API 的 GET /kb-units/search 检索切片结果，不影响当前主知识库流程。'
+                    })}
+                </div>`;
+            return renderPipelineCard(5, '知识库检索证据（双通道对比）', '左侧保留当前知识库流程，右侧增加直连销售知识库 API 的检索结果用于对比', '#10b981', body, {actions: refreshAction});
         }
 
         function renderFinalReplyCard(data, userId) {
@@ -1760,7 +2054,7 @@
                 </div>`;
             overlay.style.display = 'flex';
             try {
-                const res = await fetch(`${API_BASE}/api/system/ai_scripts`);
+                const res = await apiFetch(`${API_BASE}/api/system/ai_scripts`);
                 const data = await res.json();
                 const value = data[scriptKey];
                 const content = Array.isArray(value) || (value && typeof value === 'object')
@@ -1772,16 +2066,35 @@
             }
         }
 
-        async function loadAnalysis(userId, options = {}) {
-            const versionId = options.versionId || currentSelectedAnalysisVersionId || 'current_tail';
-            const query = versionId && versionId !== 'current_tail' ? `?snapshot_id=${encodeURIComponent(versionId)}` : '';
-            const res = await fetch(`${API_BASE}/api/sessions/${userId}/analysis${query}`);
-            const data= await res.json() || { fast_track: [], has_v1: false, has_v2: false };
-            data.user_id = userId;
-            analysisSnapshotByUserId[analysisCacheKey(userId, versionId)] = data;
+        function renderAnalysisLoadingState(versionMeta = getCurrentAnalysisVersionMeta()) {
+            const area = document.getElementById('analysis-content');
+            if (!area) return;
+            const isSnapshot = versionMeta?.kind === 'anchored_customer_message';
+            const scopeLabel = isSnapshot ? '历史客户节点截断' : '当前末尾';
+            const scopeDesc = isSnapshot
+                ? '正在切换到所选历史节点，只保留该客户气泡及之前的上下文。'
+                : '正在刷新当前会话末尾分析。';
+            area.innerHTML = `
+                <div class="grid grid-cols-1 gap-3 pb-10">
+                    ${renderPipelineCard(1, '当前会话输入', '最终回复的原始上下文来源', '#2563eb', `
+                        <div class="grid gap-2">
+                            <div class="flex flex-wrap gap-2">
+                                ${renderStatusPill(scopeLabel, isSnapshot ? 'amber' : 'emerald')}
+                                ${renderStatusPill(versionMeta?.label || '正在切换', 'blue')}
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-[11px] text-slate-600">
+                                ${safeText(scopeDesc)}
+                            </div>
+                        </div>
+                    `)}
+                </div>
+            `;
+        }
+
+        function renderAnalysisPanel(data, userId = data?.user_id || currentSelectedSessionId) {
             const area = document.getElementById('analysis-content');
             const badge = document.getElementById('status-badge');
-
+            if (!area || !badge) return;
             badge.innerText = data.has_v1 ? (data.status || "特征就绪") : "等待指令";
             badge.className = data.has_v1 ? "px-3 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 block" : "px-3 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 block";
             
@@ -1800,6 +2113,18 @@
                     ${renderValidationCard(data)}
                 </div>
             `;
+        }
+
+        async function loadAnalysis(userId, options = {}) {
+            const versionId = options.versionId || currentSelectedAnalysisVersionId || 'current_tail';
+            const query = versionId && versionId !== 'current_tail' ? `?snapshot_id=${encodeURIComponent(versionId)}` : '';
+            const res = await apiFetch(`${API_BASE}/api/sessions/${userId}/analysis${query}`);
+            const data= await res.json() || { fast_track: [], has_v1: false, has_v2: false };
+            data.user_id = userId;
+            analysisSnapshotByUserId[analysisCacheKey(userId, versionId)] = data;
+            if (options.render === false) return data;
+            if (!isActiveAnalysisContext(userId, versionId, options.contextSeq ?? null)) return data;
+            renderAnalysisPanel(data, userId);
             return data;
         }
 
@@ -1903,13 +2228,13 @@
         }
 
         async function refreshJobList(jobType, targetId) {
-            const res = await fetch(`${API_BASE}/api/jobs?job_type=${encodeURIComponent(jobType)}&limit=20`);
+            const res = await apiFetch(`${API_BASE}/api/jobs?job_type=${encodeURIComponent(jobType)}&limit=20`);
             const data = await res.json();
             renderJobList(targetId, data.jobs || []);
         }
 
         async function retryJob(jobId, targetId) {
-            const res = await fetch(`${API_BASE}/api/jobs/${jobId}/retry`, {
+            const res = await apiFetch(`${API_BASE}/api/jobs/${jobId}/retry`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({operator: 'frontend_admin'})
@@ -1921,7 +2246,7 @@
 
         async function pollJob(jobId, resultTargetId, jobType, jobListTargetId) {
             for (let i = 0; i < 120; i++) {
-                const res = await fetch(`${API_BASE}/api/jobs/${jobId}`);
+                const res = await apiFetch(`${API_BASE}/api/jobs/${jobId}`);
                 const data = await res.json();
                 if (!res.ok) {
                     if (resultTargetId && document.getElementById(resultTargetId)) {
@@ -1952,7 +2277,7 @@
                 })
                 : '';
             if (status === 'needs_fix' && note === null) return;
-            const res = await fetch(`${API_BASE}/api/assist/feedback`, {
+            const res = await apiFetch(`${API_BASE}/api/assist/feedback`, {
                 method:'POST',
                 headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({
@@ -1995,28 +2320,23 @@
             `).join('');
         }
 
+        function renderOperationStatusIfActive(userId, versionId, contextSeq, status) {
+            if (!isActiveAnalysisContext(userId, versionId, contextSeq)) return;
+            renderOperationStatus(status);
+        }
+
         async function triggerLLM(userId, step) {
             const versionId = currentSelectedAnalysisVersionId || 'current_tail';
             const url = `${API_BASE}/api/sessions/${userId}/trigger_llm`;
-            renderOperationStatus({
+            const contextSeq = analysisContextSeq;
+            renderOperationStatusIfActive(userId, versionId, contextSeq, {
                 label: `阶段 ${step} 已发起，等待后端确认`,
                 url,
                 response: 'POST 请求发送中',
                 next: '保持当前页面，系统会自动刷新右侧链路状态。'
             });
-            document.getElementById('analysis-content').innerHTML = `
-                <div class="flex flex-col items-center justify-center py-20 text-slate-400">
-                    <svg class="animate-spin h-8 w-8 text-indigo-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <div class="text-xs font-bold uppercase tracking-widest text-indigo-500 animate-pulse">
-                        ⌛ 正在唤起强算力通道 (阶段 ${step})，请稍候...
-                    </div>
-                </div>
-            `;
             try {
-                const res = await fetch(url, {
+                const res = await apiFetch(url, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
@@ -2026,7 +2346,7 @@
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) {
-                    renderOperationStatus({
+                    renderOperationStatusIfActive(userId, versionId, contextSeq, {
                         ok: false,
                         label: `阶段 ${step} 发起失败：HTTP ${res.status}`,
                         url,
@@ -2035,17 +2355,17 @@
                     });
                     return;
                 }
-                renderOperationStatus({
+                renderOperationStatusIfActive(userId, versionId, contextSeq, {
                     ok: true,
                     label: `阶段 ${step} 已进入后台执行`,
                     url,
                     response: JSON.stringify(data),
                     next: '系统正在自动轮询刷新，完成后会立即更新右侧链路显示。'
                 });
-                await pollAnalysisUntilComplete(userId, step, url, versionId);
+                await pollAnalysisUntilComplete(userId, step, url, versionId, contextSeq);
             } catch (err) {
                 console.error("服务端暂时不可达或重启中:", err);
-                renderOperationStatus({
+                renderOperationStatusIfActive(userId, versionId, contextSeq, {
                     ok: false,
                     label: `阶段 ${step} 请求异常`,
                     url,
@@ -2068,18 +2388,18 @@
             return false;
         }
 
-        async function pollAnalysisUntilComplete(userId, step, url, versionId = currentSelectedAnalysisVersionId) {
+        async function pollAnalysisUntilComplete(userId, step, url, versionId = currentSelectedAnalysisVersionId, contextSeq = null) {
             const maxAttempts = 60;
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
                 await new Promise(resolve => setTimeout(resolve, attempt === 1 ? 2500 : 2000));
                 let data = null;
                 try {
-                    data = await loadAnalysis(userId, {versionId});
+                    data = await loadAnalysis(userId, {versionId, contextSeq});
                 } catch (err) {
                     console.warn('自动刷新分析状态失败，继续重试', err);
                 }
                 if (isAnalysisStepComplete(data, step)) {
-                    renderOperationStatus({
+                    renderOperationStatusIfActive(userId, versionId, contextSeq, {
                         ok: true,
                         label: `阶段 ${step} 已完成并刷新显示`,
                         url,
@@ -2089,7 +2409,7 @@
                     return data;
                 }
             }
-            renderOperationStatus({
+            renderOperationStatusIfActive(userId, versionId, contextSeq, {
                 ok: false,
                 label: `阶段 ${step} 自动刷新超时`,
                 url,
@@ -2130,7 +2450,7 @@
                     response: 'POST 请求发送中',
                     next: '等待企微会话存档 SDK 返回。'
                 });
-                const res = await fetch(url, {method: 'POST'});
+                const res = await apiFetch(url, {method: 'POST'});
                 const data = await res.json().catch(() => ({}));
                 
                 if(res.ok && data.status === 'success') {
@@ -2201,7 +2521,7 @@
             
             overlay.style.display = 'flex';
             try {
-                const res = await fetch(`${API_BASE}/api/system/ai_scripts`);
+                const res = await apiFetch(`${API_BASE}/api/system/ai_scripts`);
                 const data = await res.json();
                 uiRuntimeConfig.wecomRecentMessageLimit = clampWecomRecentMessageLimit(data.WECOM_RECENT_MESSAGE_LIMIT);
                 document.getElementById('settings-form').innerHTML = `
@@ -2245,7 +2565,7 @@
                     REPLY_STYLE_OPTIONS: JSON.parse(document.getElementById('set_reply_styles').value),
                     FAST_TRACK_RULES: JSON.parse(document.getElementById('set_rules').value)
                 };
-                const res = await fetch(`${API_BASE}/api/system/ai_scripts`, {
+                const res = await apiFetch(`${API_BASE}/api/system/ai_scripts`, {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(payload)
                 });
@@ -2290,6 +2610,11 @@
                     knowledgeClass: '',
                     businessLine: '',
                     status: '',
+                    chunkType: '',
+                    languagePair: '',
+                    serviceScope: '',
+                    customerTier: '',
+                    documentId: '',
                     sourceType: '',
                     titleKeyword: '',
                     contentKeyword: ''
@@ -2325,6 +2650,7 @@
             const state = getKbListState(tabKey);
             state.offset = Math.max(0, state.offset + delta * state.limit);
             if (tabKey === 'documents') return refreshKbDocuments();
+            if (tabKey === 'chunks') return refreshKbChunks();
             if (tabKey === 'review') return refreshKbReview();
             if (tabKey === 'candidates') return refreshKbCandidates();
         }
@@ -2944,13 +3270,14 @@
 
         async function loadKbDictionaries() {
             if (Object.keys(kbState.dictionaries).length) return;
-            const res = await fetch(`${API_BASE}/api/kb/dictionaries`);
+            const res = await apiFetch(`${API_BASE}/api/kb/dictionaries`);
             kbState.dictionaries = await res.json();
         }
 
         function renderKbTabs() {
             const tabs = [
                 ['documents', '列表'],
+                ['chunks', '切片'],
                 ['review', '待审核'],
                 ['candidates', '知识候选'],
                 ['import', '导入中心'],
@@ -2977,6 +3304,7 @@
             const body = document.getElementById('kb-body');
             body.innerHTML = `<div class="h-full flex items-center justify-center text-slate-400 text-sm">加载中...</div>`;
             if (tab === 'documents') return loadKbDocuments();
+            if (tab === 'chunks') return loadKbChunks();
             if (tab === 'review') return loadKbReview();
             if (tab === 'candidates') return loadKbCandidates();
             if (tab === 'import') return renderKbImport();
@@ -3161,7 +3489,7 @@
             if (state.businessLine) params.set('business_line', state.businessLine);
             if (state.titleKeyword) params.set('title_keyword', state.titleKeyword);
             if (state.contentKeyword) params.set('content_keyword', state.contentKeyword);
-            const res = await fetch(`${API_BASE}/api/kb/documents?${params.toString()}`);
+            const res = await apiFetch(`${API_BASE}/api/kb/documents?${params.toString()}`);
             const payload = await res.json();
             const docs = payload.items || [];
             state.total = payload.total || 0;
@@ -3178,13 +3506,14 @@
                 <div class="bg-white border rounded overflow-hidden">
                     <table class="w-full text-xs">
                         <thead class="bg-slate-100 text-slate-500">
-                            <tr><th class="text-left p-2">标题</th><th class="text-left p-2">知识分类</th><th class="text-left p-2">服务</th><th class="text-left p-2">状态</th><th class="text-left p-2">风险</th><th class="text-left p-2">操作</th></tr>
+                            <tr><th class="text-left p-2">标题</th><th class="text-left p-2">知识分类</th><th class="text-left p-2">服务</th><th class="text-left p-2">新增时间</th><th class="text-left p-2">状态</th><th class="text-left p-2">风险</th><th class="text-left p-2">操作</th></tr>
                         </thead>
                         <tbody>${docs.map(doc => `
                             <tr class="border-t hover:bg-slate-50">
                                 <td class="p-2 font-medium text-slate-700">${safeText(doc.title)}</td>
                                 <td class="p-2">${safeText(doc.knowledge_class_label || doc.knowledge_type_label)}</td>
                                 <td class="p-2">${safeText(doc.business_line_label)}</td>
+                                <td class="p-2 text-slate-500">${safeText(formatKbCreatedAt(doc.created_at))}</td>
                                 <td class="p-2">${fmtStatus(doc)}</td>
                                 <td class="p-2">${safeText(doc.risk_level_label)}</td>
                                 <td class="p-2">
@@ -3196,9 +3525,151 @@
                 </div>`;
         }
 
+        async function loadKbChunks() {
+            const state = getKbListState('chunks');
+            const filters = `
+                <div class="flex flex-wrap gap-3 mb-3 items-end">
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">状态</span>
+                        <select id="kb-chunk-filter-status" onchange="searchKbChunks()" class="ui-select text-xs">${optionTags('status', state.status)}</select>
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">知识分类</span>
+                        <select id="kb-chunk-filter-class" onchange="searchKbChunks()" class="ui-select text-xs">${optionTags('knowledge_class', state.knowledgeClass)}</select>
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">切片类型</span>
+                        <select id="kb-chunk-filter-type" onchange="searchKbChunks()" class="ui-select text-xs">${optionTags('chunk_type', state.chunkType)}</select>
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">服务</span>
+                        <select id="kb-chunk-filter-line" onchange="searchKbChunks()" class="ui-select text-xs">${optionTags('business_line', state.businessLine)}</select>
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">语种</span>
+                        <select id="kb-chunk-filter-language" onchange="searchKbChunks()" class="ui-select text-xs">${optionTags('language_pair', state.languagePair)}</select>
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">服务范围</span>
+                        <select id="kb-chunk-filter-scope" onchange="searchKbChunks()" class="ui-select text-xs">${optionTags('service_scope', state.serviceScope)}</select>
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">客户层级</span>
+                        <select id="kb-chunk-filter-tier" onchange="searchKbChunks()" class="ui-select text-xs">${optionTags('customer_tier', state.customerTier)}</select>
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">文档 ID</span>
+                        <input id="kb-chunk-filter-document" value="${formValue(state.documentId)}" class="border rounded px-3 py-2 text-xs bg-white min-w-56" placeholder="按 document_id 查询">
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">标题查询</span>
+                        <input id="kb-chunk-filter-title" value="${formValue(state.titleKeyword)}" class="border rounded px-3 py-2 text-xs bg-white min-w-52" placeholder="按切片标题关键词查询">
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">内容查询</span>
+                        <input id="kb-chunk-filter-content" value="${formValue(state.contentKeyword)}" class="border rounded px-3 py-2 text-xs bg-white min-w-56" placeholder="按切片正文关键词查询">
+                    </label>
+                    <button onclick="searchKbChunks()" class="px-3 py-1 bg-blue-600 text-white rounded text-xs">查询</button>
+                    <button onclick="refreshKbChunks()" class="px-3 py-1 bg-slate-800 text-white rounded text-xs">刷新</button>
+                </div>
+                <div id="kb-chunk-summary" class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3"></div>
+                <div id="kb-chunk-list"></div>`;
+            renderKbShell(filters);
+            await refreshKbChunks();
+        }
+
+        async function searchKbChunks() {
+            getKbListState('chunks').offset = 0;
+            await refreshKbChunks();
+        }
+
+        function renderKbChunkTable(chunks, tabKey = 'chunks') {
+            if (!chunks.length) return '<div class="text-sm text-slate-400 p-8 text-center bg-white rounded border">暂无知识切片</div>';
+            return `
+                <div class="bg-white border rounded overflow-hidden">
+                    <table class="w-full text-xs">
+                        <thead class="bg-slate-100 text-slate-500">
+                            <tr><th class="text-left p-2">切片标题</th><th class="text-left p-2">文档 ID</th><th class="text-left p-2">知识分类</th><th class="text-left p-2">服务</th><th class="text-left p-2">新增时间</th><th class="text-left p-2">状态</th><th class="text-left p-2">操作</th></tr>
+                        </thead>
+                        <tbody>${chunks.map(chunk => `
+                            <tr class="border-t hover:bg-slate-50">
+                                <td class="p-2 font-medium text-slate-700">
+                                    <div>${safeText(chunk.title)}</div>
+                                    <div class="mt-1 text-[10px] text-slate-400" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${safeText(chunk.content || '')}</div>
+                                </td>
+                                <td class="p-2 text-slate-500">${safeText(chunk.document_id)}</td>
+                                <td class="p-2">${safeText(chunk.knowledge_class_label || chunk.knowledge_type_label)}</td>
+                                <td class="p-2">${safeText(chunk.business_line_label || chunk.business_line)}</td>
+                                <td class="p-2 text-slate-500">${safeText(formatKbCreatedAt(chunk.created_at))}</td>
+                                <td class="p-2">${safeText(chunk.status_label || chunk.status)}</td>
+                                <td class="p-2">
+                                    <button onclick="showQualityChunk('${chunk.chunk_id}')" class="text-emerald-700 font-bold">详情</button>
+                                </td>
+                            </tr>`).join('')}</tbody>
+                    </table>
+                    ${renderKbPagination(tabKey)}
+                </div>`;
+        }
+
+        async function refreshKbChunks() {
+            const listEl = document.getElementById('kb-chunk-list');
+            if (!listEl) return;
+            const state = getKbListState('chunks');
+            state.status = readTextInputValue('kb-chunk-filter-status', state.status);
+            state.knowledgeClass = readTextInputValue('kb-chunk-filter-class', state.knowledgeClass);
+            state.chunkType = readTextInputValue('kb-chunk-filter-type', state.chunkType);
+            state.businessLine = readTextInputValue('kb-chunk-filter-line', state.businessLine);
+            state.languagePair = readTextInputValue('kb-chunk-filter-language', state.languagePair);
+            state.serviceScope = readTextInputValue('kb-chunk-filter-scope', state.serviceScope);
+            state.customerTier = readTextInputValue('kb-chunk-filter-tier', state.customerTier);
+            state.documentId = readTextInputValue('kb-chunk-filter-document', state.documentId);
+            state.titleKeyword = readTextInputValue('kb-chunk-filter-title', state.titleKeyword);
+            state.contentKeyword = readTextInputValue('kb-chunk-filter-content', state.contentKeyword);
+            const params = new URLSearchParams({
+                limit: String(state.limit),
+                offset: String(state.offset),
+                include_meta: '1'
+            });
+            if (state.status) params.set('status', state.status);
+            if (state.knowledgeClass) params.set('knowledge_class', state.knowledgeClass);
+            if (state.chunkType) params.set('chunk_type', state.chunkType);
+            if (state.businessLine) params.set('business_line', state.businessLine);
+            if (state.languagePair) params.set('language_pair', state.languagePair);
+            if (state.serviceScope) params.set('service_scope', state.serviceScope);
+            if (state.customerTier) params.set('customer_tier', state.customerTier);
+            if (state.documentId) params.set('document_id', state.documentId);
+            if (state.titleKeyword) params.set('title_keyword', state.titleKeyword);
+            if (state.contentKeyword) params.set('content_keyword', state.contentKeyword);
+            const res = await apiFetch(`${API_BASE}/api/kb/chunks?${params.toString()}`);
+            const payload = await res.json();
+            const chunks = payload.items || [];
+            state.total = payload.total || 0;
+            if (state.total > 0 && state.offset >= state.total) {
+                state.offset = Math.max(0, Math.floor((state.total - 1) / state.limit) * state.limit);
+                return refreshKbChunks();
+            }
+            const summaryEl = document.getElementById('kb-chunk-summary');
+            if (summaryEl) {
+                summaryEl.innerHTML = `
+                    <div class="bg-white border rounded p-3">
+                        <div class="text-xs text-slate-500">当前切片总数</div>
+                        <div class="mt-2 text-2xl font-bold text-slate-800">${safeText(state.total)}</div>
+                    </div>
+                    <div class="bg-white border rounded p-3">
+                        <div class="text-xs text-slate-500">当前页数量</div>
+                        <div class="mt-2 text-2xl font-bold text-emerald-600">${safeText(chunks.length)}</div>
+                    </div>
+                    <div class="bg-white border rounded p-3">
+                        <div class="text-xs text-slate-500">分页</div>
+                        <div class="mt-2 text-sm font-bold text-slate-700">每页 ${safeText(state.limit)} 条</div>
+                    </div>`;
+            }
+            listEl.innerHTML = renderKbChunkTable(chunks, 'chunks');
+        }
+
         async function showKbDocument(documentId) {
             kbState.selectedDocumentId = documentId;
-            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}`);
+            const res = await apiFetch(`${API_BASE}/api/kb/documents/${documentId}`);
             const data = await res.json();
             const doc = data.document;
             document.getElementById('kb-detail').innerHTML = `
@@ -3276,7 +3747,7 @@
 
         async function showKbDocument(documentId) {
             kbState.selectedDocumentId = documentId;
-            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}`);
+            const res = await apiFetch(`${API_BASE}/api/kb/documents/${documentId}`);
             const data = await res.json();
             const doc = data.document;
             const gatePreviewHtml = renderDocGatePreview(doc, data.chunks || [], data.pricing_rules || []);
@@ -3361,7 +3832,7 @@
 
         async function restoreKbDocumentVersion(documentId, versionNo) {
             if (!confirm(`确认将当前文档恢复到 v${versionNo} 并重新进入审核？`)) return;
-            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}/restore/${versionNo}`, {method: 'POST'});
+            const res = await apiFetch(`${API_BASE}/api/kb/documents/${documentId}/restore/${versionNo}`, {method: 'POST'});
             const data = await res.json();
             if (!res.ok) return showApiError(data, '恢复版本失败');
             await showKbDocument(documentId);
@@ -3375,14 +3846,14 @@
                 options.headers = {'Content-Type': 'application/json'};
                 options.body = JSON.stringify({operator: 'frontend_admin'});
             }
-            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}/${action}`, options);
+            const res = await apiFetch(`${API_BASE}/api/kb/documents/${documentId}/${action}`, options);
             const data = await res.json();
             if (!res.ok) {
                 const forceDetail = action === 'publish' ? getForceablePublishDetail(data) : null;
                 if (forceDetail) {
                     const reason = await promptForcePublishReason(forceDetail, 1);
                     if (!reason) return;
-                    const forceRes = await fetch(`${API_BASE}/api/kb/documents/${documentId}/publish`, {
+                    const forceRes = await apiFetch(`${API_BASE}/api/kb/documents/${documentId}/publish`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({force: true, force_reason: reason, operator: 'frontend_admin'})
@@ -3455,7 +3926,7 @@
                 risk_level: mapping.risk_level,
                 owner: 'frontend_admin'
             };
-            const res = await fetch(`${API_BASE}/api/kb/documents/manual`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+            const res = await apiFetch(`${API_BASE}/api/kb/documents/manual`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
             const data = await res.json();
             if (!res.ok) return showApiError(data, '新增知识失败');
             await refreshKbDocuments();
@@ -3478,7 +3949,7 @@
         }
 
         async function editKbDocument(documentId) {
-            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}`);
+            const res = await apiFetch(`${API_BASE}/api/kb/documents/${documentId}`);
             const data = await res.json();
             if (!res.ok) return showApiError(data, '编辑文档失败');
             const doc = data.document;
@@ -3528,7 +3999,7 @@
                 effective_from: effectiveFrom || null,
                 effective_to: effectiveTo || null
             };
-            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+            const res = await apiFetch(`${API_BASE}/api/kb/documents/${documentId}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
             const data = await res.json();
             if (!res.ok) return showApiError(data, '编辑文档失败');
             await showKbDocument(documentId);
@@ -3537,7 +4008,7 @@
         }
 
         async function editKbChunk(chunkId, documentId) {
-            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}`);
+            const res = await apiFetch(`${API_BASE}/api/kb/documents/${documentId}`);
             const data = await res.json();
             if (!res.ok) return showApiError(data, '编辑切片失败');
             const chunk = (data.chunks || []).find(item => item.chunk_id === chunkId);
@@ -3589,7 +4060,7 @@
                 customer_tier: emptyToNull(document.getElementById('kb-edit-chunk-customer-tier').value),
                 priority: priorityRaw === '' ? null : Number(priorityRaw)
             };
-            const res = await fetch(`${API_BASE}/api/kb/chunks/${chunkId}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+            const res = await apiFetch(`${API_BASE}/api/kb/chunks/${chunkId}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
             const data = await res.json();
             if (!res.ok) return showApiError(data, '编辑切片失败');
             await showKbDocument(documentId);
@@ -3605,14 +4076,14 @@
             });
             if (price === null) return;
             const payload = {unit:'per_project', currency:'CNY', price_min: price || null, price_max: price || null, source_ref:'frontend_manual'};
-            const res = await fetch(`${API_BASE}/api/kb/chunks/${chunkId}/pricing_rule`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+            const res = await apiFetch(`${API_BASE}/api/kb/chunks/${chunkId}/pricing_rule`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
             const data = await res.json();
             if (!res.ok) return showApiError(data, '补充报价规则失败');
             await showKbDocument(documentId);
         }
 
         async function editKbPricingRule(ruleId, documentId) {
-            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}`);
+            const res = await apiFetch(`${API_BASE}/api/kb/documents/${documentId}`);
             const data = await res.json();
             if (!res.ok) return showApiError(data, '编辑报价规则失败');
             const rule = (data.pricing_rules || []).find(item => item.rule_id === ruleId);
@@ -3667,7 +4138,7 @@
                 tax_policy: emptyToNull(document.getElementById('kb-edit-rule-tax-policy').value),
                 source_ref: 'frontend_manual_review'
             };
-            const res = await fetch(`${API_BASE}/api/kb/pricing_rules/${ruleId}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+            const res = await apiFetch(`${API_BASE}/api/kb/pricing_rules/${ruleId}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
             const data = await res.json();
             if (!res.ok) return showApiError(data, '编辑报价规则失败');
             await showKbDocument(documentId);
@@ -3675,7 +4146,7 @@
 
         async function archiveKbPricingRule(ruleId, documentId) {
             if (!confirm('确认停用这条报价规则？')) return;
-            const res = await fetch(`${API_BASE}/api/kb/pricing_rules/${ruleId}/archive`, {method:'POST'});
+            const res = await apiFetch(`${API_BASE}/api/kb/pricing_rules/${ruleId}/archive`, {method:'POST'});
             const data = await res.json();
             if (!res.ok) return showApiError(data, '停用报价规则失败');
             await showKbDocument(documentId);
@@ -3744,7 +4215,7 @@
             });
             if (state.titleKeyword) params.set('title_keyword', state.titleKeyword);
             if (state.contentKeyword) params.set('content_keyword', state.contentKeyword);
-            const res = await fetch(`${API_BASE}/api/kb/documents?${params.toString()}`);
+            const res = await apiFetch(`${API_BASE}/api/kb/documents?${params.toString()}`);
             const payload = await res.json();
             const docs = payload.items || [];
             kbState.reviewDocs = docs;
@@ -3756,8 +4227,8 @@
             listEl.innerHTML = docs.length ? `
                 <div class="bg-white border rounded overflow-hidden">
                     <table class="w-full text-xs">
-                        <thead class="bg-slate-100"><tr><th class="p-2"><input type="checkbox" onchange="document.querySelectorAll('.kb-select-doc').forEach(x=>x.checked=this.checked); updateReviewBulkActions();"></th><th class="text-left p-2">标题</th><th class="text-left p-2">状态</th><th class="text-left p-2">风险</th><th class="text-left p-2">操作</th></tr></thead>
-                        <tbody>${docs.map(doc => `<tr class="border-t"><td class="p-2"><input class="kb-select-doc" type="checkbox" value="${doc.document_id}" onchange="updateReviewBulkActions()"></td><td class="p-2 font-medium">${safeText(doc.title)}</td><td class="p-2">${fmtStatus(doc)}</td><td class="p-2">${safeText(doc.risk_level_label)}</td><td class="p-2"><button onclick="showKbDocument('${doc.document_id}')" class="text-emerald-700 font-bold mr-3">详情</button><button onclick="editKbDocument('${doc.document_id}')" class="text-indigo-700 font-bold">控制项</button></td></tr>`).join('')}</tbody>
+                        <thead class="bg-slate-100"><tr><th class="p-2"><input type="checkbox" onchange="document.querySelectorAll('.kb-select-doc').forEach(x=>x.checked=this.checked); updateReviewBulkActions();"></th><th class="text-left p-2">标题</th><th class="text-left p-2">新增时间</th><th class="text-left p-2">状态</th><th class="text-left p-2">风险</th><th class="text-left p-2">操作</th></tr></thead>
+                        <tbody>${docs.map(doc => `<tr class="border-t"><td class="p-2"><input class="kb-select-doc" type="checkbox" value="${doc.document_id}" onchange="updateReviewBulkActions()"></td><td class="p-2 font-medium">${safeText(doc.title)}</td><td class="p-2 text-slate-500">${safeText(formatKbCreatedAt(doc.created_at))}</td><td class="p-2">${fmtStatus(doc)}</td><td class="p-2">${safeText(doc.risk_level_label)}</td><td class="p-2"><button onclick="showKbDocument('${doc.document_id}')" class="text-emerald-700 font-bold mr-3">详情</button><button onclick="editKbDocument('${doc.document_id}')" class="text-indigo-700 font-bold">控制项</button></td></tr>`).join('')}</tbody>
                     </table>
                     ${renderKbPagination('review')}
                 </div>` : '<div class="text-sm text-slate-400 p-8 text-center bg-white rounded border">暂无待审核知识</div>';
@@ -3768,14 +4239,14 @@
             const ids = [...document.querySelectorAll('.kb-select-doc:checked')].map(x => x.value);
             if (!ids.length) return alert('请选择知识');
             const payload = {document_ids: ids, operator: 'frontend_admin'};
-            const res = await fetch(`${API_BASE}/api/kb/bulk/documents/${action}`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+            const res = await apiFetch(`${API_BASE}/api/kb/bulk/documents/${action}`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
             const data = await res.json();
             if (!res.ok) {
                 const forceDetail = action === 'publish' ? getForceablePublishDetail(data) : null;
                 if (forceDetail) {
                     const reason = await promptForcePublishReason(forceDetail, ids.length);
                     if (!reason) return;
-                    const forceRes = await fetch(`${API_BASE}/api/kb/bulk/documents/publish`, {
+                    const forceRes = await apiFetch(`${API_BASE}/api/kb/bulk/documents/publish`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({document_ids: ids, force: true, force_reason: reason, operator: 'frontend_admin'})
@@ -3913,7 +4384,7 @@
             if (state.sourceType) params.set('source_type', state.sourceType);
             if (state.titleKeyword) params.set('title_keyword', state.titleKeyword);
             if (state.contentKeyword) params.set('content_keyword', state.contentKeyword);
-            const res = await fetch(`${API_BASE}/api/kb/candidates?${params.toString()}`);
+            const res = await apiFetch(`${API_BASE}/api/kb/candidates?${params.toString()}`);
             const payload = await res.json();
             const items = payload.items || [];
             state.total = payload.total || 0;
@@ -3932,7 +4403,7 @@
                     </div>
                     <table class="w-full text-xs">
                         <thead class="bg-slate-100">
-                            <tr><th class="text-left p-2 w-10">选</th><th class="text-left p-2">标题</th><th class="text-left p-2">来源</th><th class="text-left p-2">类型</th><th class="text-left p-2">服务</th><th class="text-left p-2">状态</th><th class="text-left p-2">操作</th></tr>
+                            <tr><th class="text-left p-2 w-10">选</th><th class="text-left p-2">标题</th><th class="text-left p-2">来源</th><th class="text-left p-2">类型</th><th class="text-left p-2">服务</th><th class="text-left p-2">新增时间</th><th class="text-left p-2">状态</th><th class="text-left p-2">操作</th></tr>
                         </thead>
                         <tbody>${items.map(item => `
                             <tr class="border-t hover:bg-slate-50">
@@ -3951,6 +4422,7 @@
                                 <td class="p-2">${safeText(item.source_type_label || item.source_type)}</td>
                                 <td class="p-2">${safeText(item.knowledge_type_label)} / ${safeText(item.chunk_type_label || item.chunk_type)}</td>
                                 <td class="p-2">${safeText(item.business_line_label)}</td>
+                                <td class="p-2 text-slate-500">${safeText(formatKbCreatedAt(item.created_at))}</td>
                                 <td class="p-2"><span class="text-[10px] px-2 py-0.5 rounded border bg-slate-50 text-slate-700">${safeText(item.status_label || item.status)}</span></td>
                                 <td class="p-2"><button onclick="showKbCandidate('${item.candidate_id}')" class="text-emerald-700 font-bold">详情</button></td>
                             </tr>`).join('')}
@@ -3963,7 +4435,7 @@
 
         async function showKbCandidate(candidateId) {
             kbState.selectedCandidateId = candidateId;
-            const res = await fetch(`${API_BASE}/api/kb/candidates/${candidateId}`);
+            const res = await apiFetch(`${API_BASE}/api/kb/candidates/${candidateId}`);
             const data = await res.json();
             const item = data.candidate;
             if (!item) return alert('未找到候选记录');
@@ -4013,7 +4485,7 @@
                 multiline: true
             });
             if (content === null) return;
-            const res = await fetch(`${API_BASE}/api/kb/candidates/${candidateId}`, {
+            const res = await apiFetch(`${API_BASE}/api/kb/candidates/${candidateId}`, {
                 method:'PATCH',
                 headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({title, content, operator: 'frontend_admin'})
@@ -4026,7 +4498,7 @@
 
         async function promoteKbCandidate(candidateId) {
             if (!confirm('确认将该候选转为草稿知识？')) return;
-            const res = await fetch(`${API_BASE}/api/kb/candidates/${candidateId}/promote`, {
+            const res = await apiFetch(`${API_BASE}/api/kb/candidates/${candidateId}/promote`, {
                 method:'POST',
                 headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({operator: 'frontend_admin', owner: 'frontend_admin'})
@@ -4045,7 +4517,7 @@
             const candidateIds = getSelectedCandidateIds();
             if (!candidateIds.length) return alert('请先勾选候选知识');
             if (!confirm(`确认将已选 ${candidateIds.length} 条候选转为草稿知识？`)) return;
-            const res = await fetch(`${API_BASE}/api/kb/candidates/batch_promote`, {
+            const res = await apiFetch(`${API_BASE}/api/kb/candidates/batch_promote`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({candidate_ids: candidateIds, operator: 'frontend_admin', owner: 'frontend_admin'})
@@ -4117,7 +4589,7 @@
         }
 
         async function loadKbTemplateInfo() {
-            const res = await fetch(`${API_BASE}/api/kb/import/templates`);
+            const res = await apiFetch(`${API_BASE}/api/kb/import/templates`);
             const data = await res.json();
             const item = data.default_template || (data.templates || []).find(x => x.type === 'unified') || null;
             if (!item) return;
@@ -4139,7 +4611,7 @@
             if (!sessionId && !lines.length) return alert('请填写会话 ID 或历史文本');
             const target = document.getElementById('kb-extract-result');
             target.textContent = '正在抽取候选知识...';
-            const res = await fetch(`${API_BASE}/api/kb/extract/from_messages`, {
+            const res = await apiFetch(`${API_BASE}/api/kb/extract/from_messages`, {
                 method:'POST',
                 headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({
@@ -4167,7 +4639,7 @@
             form.append('file', fileInput.files[0]);
             form.append('owner', 'frontend_extract');
             form.append('operator', 'frontend_extract');
-            const res = await fetch(`${API_BASE}/api/kb/extract/from_email_excel`, {method:'POST', body: form});
+            const res = await apiFetch(`${API_BASE}/api/kb/extract/from_email_excel`, {method:'POST', body: form});
             const data = await res.json();
             target.textContent = res.ok ? JSON.stringify(data, null, 2) : formatApiError(data, '邮件整理表抽取失败');
             if (!res.ok) return showApiError(data, '邮件整理表抽取失败');
@@ -4193,7 +4665,7 @@
             const form = buildKbImportForm();
             if (!form) return;
             document.getElementById('kb-import-result').textContent = '正在预览并校验表格...';
-            const res = await fetch(`${API_BASE}/api/kb/import/excel/preview`, {method: 'POST', body: form});
+            const res = await apiFetch(`${API_BASE}/api/kb/import/excel/preview`, {method: 'POST', body: form});
             const data = await res.json();
             if (!res.ok) {
                 document.getElementById('kb-import-result').textContent = formatApiError(data, '预览导入失败');
@@ -4214,7 +4686,7 @@
             if (!form) return;
             if (!confirm('确认将预览中的合法行导入为草稿知识？')) return;
             document.getElementById('kb-import-result').textContent = '正在创建异步导入任务...';
-            const res = await fetch(`${API_BASE}/api/kb/import/excel/commit_async`, {method: 'POST', body: form});
+            const res = await apiFetch(`${API_BASE}/api/kb/import/excel/commit_async`, {method: 'POST', body: form});
             const data = await res.json();
             if (!res.ok) {
                 document.getElementById('kb-import-result').textContent = formatApiError(data, '提交导入任务失败');
@@ -4257,7 +4729,7 @@
 
         async function loadKbBatches() {
             document.getElementById('kb-body').innerHTML = `<div class="h-full grid grid-cols-[minmax(520px,1fr)_420px] overflow-hidden"><div class="overflow-y-auto p-4 bg-slate-50" id="kb-batches-list"></div><div class="overflow-y-auto border-l bg-white p-4" id="kb-detail"><div class="text-sm text-slate-400 pt-12 text-center">选择批次查看结果</div></div></div>`;
-            const res = await fetch(`${API_BASE}/api/kb/import_batches`);
+            const res = await apiFetch(`${API_BASE}/api/kb/import_batches`);
             const batches = await res.json();
             document.getElementById('kb-batches-list').innerHTML = batches.length ? batches.map(batch => `
                 <div class="bg-white border rounded p-3 mb-2 text-xs hover:border-emerald-300 cursor-pointer" onclick="showKbBatch('${batch.import_batch}')">
@@ -4267,7 +4739,7 @@
         }
 
         async function showKbBatch(batchId) {
-            const res = await fetch(`${API_BASE}/api/kb/import_batches/${batchId}`);
+            const res = await apiFetch(`${API_BASE}/api/kb/import_batches/${batchId}`);
             const data = await res.json();
             document.getElementById('kb-detail').innerHTML = `
                 <h3 class="font-bold text-slate-800">${safeText(batchId)}</h3>
@@ -4283,7 +4755,7 @@
         }
 
         async function kbBatchAction(batchId, action) {
-            const res = await fetch(`${API_BASE}/api/kb/import_batches/${batchId}/${action}`, {method: 'POST'});
+            const res = await apiFetch(`${API_BASE}/api/kb/import_batches/${batchId}/${action}`, {method: 'POST'});
             const data = await res.json();
             if (!res.ok) return showApiError(data, '批次操作失败');
             if (action === 'publish' && data.gate_report) {
@@ -4294,7 +4766,7 @@
         }
 
         async function loadKbPricing() {
-            const res = await fetch(`${API_BASE}/api/kb/pricing_rules?limit=300`);
+            const res = await apiFetch(`${API_BASE}/api/kb/pricing_rules?limit=300`);
             const rules = await res.json();
             document.getElementById('kb-body').innerHTML = `
                 <div class="h-full overflow-y-auto p-4 bg-slate-50">
@@ -4308,7 +4780,7 @@
         }
 
         async function loadKbLogs() {
-            const res = await fetch(`${API_BASE}/api/kb/hit_logs?limit=100&redact=true`);
+            const res = await apiFetch(`${API_BASE}/api/kb/hit_logs?limit=100&redact=true`);
             const logs = await res.json();
             document.getElementById('kb-body').innerHTML = `
                 <div class="h-full overflow-y-auto p-4 bg-slate-50">
@@ -4330,7 +4802,7 @@
                 multiline: true,
                 required: false
             }) || '';
-            const res = await fetch(`${API_BASE}/api/kb/candidates/from_feedback`, {
+            const res = await apiFetch(`${API_BASE}/api/kb/candidates/from_feedback`, {
                 method:'POST',
                 headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({log_id: logId, note, operator: 'frontend_log', owner: 'frontend_log'})
@@ -4393,7 +4865,7 @@
             if (scope) features.service_scope = scope;
             const topK = parseInt(document.getElementById('kb-retrieve-topk').value || '5', 10);
             document.getElementById('kb-retrieve-result').innerHTML = '<div class="text-sm text-slate-400">检索中...</div>';
-            const res = await fetch(`${API_BASE}/api/kb/retrieve`, {
+            const res = await apiFetch(`${API_BASE}/api/kb/retrieve`, {
                 method:'POST',
                 headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({query_text: query, query_features: features, top_k: topK, request_id: 'frontend_retrieve_' + Date.now(), session_id: 'frontend_retrieve'})
@@ -4449,7 +4921,7 @@
         }
 
         async function loadKbQuality() {
-            const res = await fetch(`${API_BASE}/api/kb/quality/report?days=30&limit=300`);
+            const res = await apiFetch(`${API_BASE}/api/kb/quality/report?days=30&limit=300`);
             const data = await res.json();
             const issues = data.issues || [];
             kbState.qualityIssues = issues;
@@ -4498,7 +4970,7 @@
             if (!issue) return;
             let extraHtml = '';
             if (issue.rule_ids?.length) {
-                const res = await fetch(`${API_BASE}/api/kb/pricing_rules?rule_ids=${encodeURIComponent(issue.rule_ids.join(','))}&limit=50`);
+                const res = await apiFetch(`${API_BASE}/api/kb/pricing_rules?rule_ids=${encodeURIComponent(issue.rule_ids.join(','))}&limit=50`);
                 const rules = await res.json();
                 extraHtml = `<div class="space-y-2">${rules.map(rule => `<div class="border rounded p-2 bg-emerald-50/40"><div class="font-bold">${safeText(rule.rule_id)}</div><div class="mt-1">${safeText(unitLabel(rule.unit))} / ${safeText(rule.currency)} / ${safeText(rule.price_min)}-${safeText(rule.price_max)} / 最低收费 ${safeText(rule.min_charge)}</div></div>`).join('')}</div>`;
             }
@@ -4514,7 +4986,7 @@
         }
 
         async function showQualityChunk(chunkId) {
-            const res = await fetch(`${API_BASE}/api/kb/chunks/${chunkId}`);
+            const res = await apiFetch(`${API_BASE}/api/kb/chunks/${chunkId}`);
             const data = await res.json();
             if (!res.ok) return showApiError(data, '读取知识切片失败');
             document.getElementById('kb-detail').innerHTML = `
@@ -4523,6 +4995,20 @@
                         <div class="text-slate-400">${safeText(data.chunk.chunk_id)}</div>
                         <h3 class="font-bold text-slate-800 text-sm">${safeText(data.chunk.title)}</h3>
                         <div class="mt-2">${safeText(data.chunk.knowledge_class_label || data.chunk.knowledge_type_label)} · ${safeText(labelOf('chunk_type', data.chunk.chunk_type))}</div>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-3 text-xs">
+                        <div><b>文档 ID</b><br>${safeText(data.chunk.document_id)}</div>
+                        <div><b>文档标题</b><br>${safeText(data.document?.title || '-')}</div>
+                        <div><b>服务</b><br>${safeText(data.chunk.business_line_label || data.chunk.business_line || '-')}</div>
+                        <div><b>语种</b><br>${safeText(data.chunk.language_pair_label || data.chunk.language_pair || '-')}</div>
+                        <div><b>服务范围</b><br>${safeText(data.chunk.service_scope_label || data.chunk.service_scope || '-')}</div>
+                        <div><b>客户层级</b><br>${safeText(data.chunk.customer_tier_label || data.chunk.customer_tier || '-')}</div>
+                        <div><b>状态</b><br>${safeText(data.chunk.status_label || data.chunk.status || '-')}</div>
+                        <div><b>优先级</b><br>${safeText(data.chunk.priority ?? '-')}</div>
+                        <div><b>可自动回复</b><br>${safeText(data.chunk.usable_for_reply)}</div>
+                        <div><b>允许生成</b><br>${safeText(data.chunk.allowed_for_generation)}</div>
+                        <div><b>质量分</b><br>${safeText(data.chunk.useful_score ?? '-')}</div>
+                        <div><b>创建时间</b><br>${safeText(formatKbCreatedAt(data.chunk.created_at))}</div>
                     </div>
                     <div class="whitespace-pre-wrap border rounded p-3 bg-slate-50">${safeText(data.chunk.content)}</div>
                     <div class="flex gap-2">
@@ -4535,7 +5021,7 @@
         }
 
         async function showQualityRules(ruleIds) {
-            const res = await fetch(`${API_BASE}/api/kb/pricing_rules?rule_ids=${encodeURIComponent(ruleIds)}&limit=50`);
+            const res = await apiFetch(`${API_BASE}/api/kb/pricing_rules?rule_ids=${encodeURIComponent(ruleIds)}&limit=50`);
             const rules = await res.json();
             document.getElementById('kb-detail').innerHTML = `
                 <div class="space-y-3 text-xs">
@@ -4560,7 +5046,7 @@
             if (ids.length < 2) return;
             if (!confirm(`确认归档重复规则？将保留第一条，归档其余 ${ids.length - 1} 条。`)) return;
             for (const ruleId of ids.slice(1)) {
-                const res = await fetch(`${API_BASE}/api/kb/pricing_rules/${ruleId}/archive`, {method:'POST'});
+                const res = await apiFetch(`${API_BASE}/api/kb/pricing_rules/${ruleId}/archive`, {method:'POST'});
                 const data = await res.json();
                 if (!res.ok) return showApiError(data, '归档重复报价规则失败');
             }
@@ -4575,7 +5061,7 @@
                 placeholder: '例如 2030-12-31'
             });
             if (!effectiveTo) return;
-            const res = await fetch(`${API_BASE}/api/kb/documents/${documentId}`, {
+            const res = await apiFetch(`${API_BASE}/api/kb/documents/${documentId}`, {
                 method:'PATCH',
                 headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({effective_to: `${effectiveTo}T23:59:59`})
@@ -4587,7 +5073,7 @@
         }
 
         async function loadKbRegression() {
-            const res = await fetch(`${API_BASE}/api/kb/regression_cases`);
+            const res = await apiFetch(`${API_BASE}/api/kb/regression_cases`);
             const data = await res.json();
             document.getElementById('kb-body').innerHTML = `
                 <div class="h-full overflow-y-auto p-4 bg-slate-50">
@@ -4649,7 +5135,7 @@
             if (category) params.set('category', category);
             if (risk) params.set('risk_level', risk);
             if (businessLine) params.set('business_line', businessLine);
-            const res = await fetch(`${API_BASE}/api/kb/regression_cases?${params.toString()}`);
+            const res = await apiFetch(`${API_BASE}/api/kb/regression_cases?${params.toString()}`);
             const data = await res.json();
             document.getElementById('kb-regression-table').innerHTML = `
                 <table class="w-full text-xs">
@@ -4666,7 +5152,7 @@
             const businessLine = document.getElementById('kb-reg-business-line')?.value;
             const target = document.getElementById('kb-regression-result');
             target.textContent = '正在创建异步回归任务...';
-            const res = await fetch(`${API_BASE}/api/kb/regression_cases/run_async`, {
+            const res = await apiFetch(`${API_BASE}/api/kb/regression_cases/run_async`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({groups: group ? [group] : null, category: category || null, risk_level: risk || null, business_line: businessLine || null, top_k: 5, cleanup_logs: !keepLogs, include_hits: false})
@@ -4683,9 +5169,9 @@
 
         async function loadKbOps() {
             const [healthRes, perfRes, configRes] = await Promise.all([
-                fetch(`${API_BASE}/api/health/ready`),
-                fetch(`${API_BASE}/api/kb/performance/status`),
-                fetch(`${API_BASE}/api/system/config_check`)
+                apiFetch(`${API_BASE}/api/health/ready`),
+                apiFetch(`${API_BASE}/api/kb/performance/status`),
+                apiFetch(`${API_BASE}/api/system/config_check`)
             ]);
             const health = await healthRes.json();
             const perf = await perfRes.json();
@@ -4709,9 +5195,16 @@
                 </div>`;
         }
 
-        loadUiRuntimeConfig();
-        initSessionFilters();
-        fetchSessions();
+        async function bootstrapApp() {
+            await ensureApiBaseReady();
+            await loadUiRuntimeConfig();
+            initSessionFilters();
+            await fetchSessions();
+        }
+
+        bootstrapApp().catch(err => {
+            console.error('应用初始化失败:', err);
+        });
     </script>
 </body>
 </html>

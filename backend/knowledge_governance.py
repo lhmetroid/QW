@@ -25,6 +25,11 @@ PRICE_COMMITMENT_PATTERNS = [
 PAYMENT_DONE_PATTERNS = [r"已到账", r"已经收到款", r"款已经到了", r"回款已确认"]
 SHIPMENT_DONE_PATTERNS = [r"已发货", r"已经寄出", r"在路上了", r"物流已安排"]
 AFTER_SALES_DONE_PATTERNS = [r"售后已经处理", r"补偿已经安排", r"问题已经解决"]
+WAITING_CUSTOMER_MATERIAL_PATTERNS = [
+    r"请(?:先)?(?:发送|提供|补充|发下|发我).{0,12}(?:文件|资料|附件|源文件|稿件|内容)",
+    r"(?:收到|看下).{0,12}(?:文件|资料|附件|源文件).{0,12}(?:后|再)",
+    r"待(?:客户)?(?:补充|提供|发送|确认).{0,12}(?:文件|资料|附件|源文件|内容)",
+]
 
 
 def _text(value: Any) -> str:
@@ -161,6 +166,26 @@ def detect_mixed_knowledge(content: str | None, tags: dict | None = None) -> dic
     return {"mixed": mixed, "categories": sorted(categories)}
 
 
+def _has_explicit_pricing_signal(text: str | None, pricing_rule: dict | None) -> bool:
+    if not pricing_rule:
+        return False
+    normalized = _text(text)
+    if any(pricing_rule.get(key) is not None for key in ["price_min", "price_max", "min_charge", "urgent_multiplier"]):
+        return True
+    haystack = "\n".join(
+        [
+            normalized,
+            _text(pricing_rule.get("unit")),
+            _text(pricing_rule.get("currency")),
+            _text(pricing_rule.get("tax_policy")),
+            _text(pricing_rule.get("source_ref")),
+        ]
+    ).lower()
+    if any(term in haystack for term in ["最低收费", "起步价", "min charge", "per_", "千字", "字符", "单词", "word", "words", "页", "小时", "天", "项目"]):
+        return bool(re.search(r"\d+(?:\.\d+)?", haystack))
+    return False
+
+
 def score_content_governance(
     *,
     title: str | None,
@@ -213,6 +238,16 @@ def score_content_governance(
         clarity -= 0.12
         completeness -= 0.08
         reusability -= 0.15
+    structured_pricing_ready = (
+        _text(knowledge_type) == "pricing"
+        and library_type == "reference"
+        and not mixed["mixed"]
+        and _has_explicit_pricing_signal(text, pricing_rule)
+    )
+    if structured_pricing_ready:
+        completeness = max(completeness, 0.55)
+        evidence = max(evidence, 0.6)
+        reusability = max(reusability, 0.58)
     clarity = clamp_score(clarity)
     completeness = clamp_score(completeness)
     evidence = clamp_score(evidence)
@@ -220,7 +255,9 @@ def score_content_governance(
     useful = clamp_score((clarity * 0.25) + (completeness * 0.3) + (reusability * 0.2) + (evidence * 0.25))
     publishable = useful >= 0.58 and evidence >= 0.5 and not mixed["mixed"]
     allowed_for_generation = library_type in REPLYABLE_LIBRARY_TYPES and useful >= 0.65 and not mixed["mixed"]
-    usable_for_reply = allowed_for_generation and reusability >= 0.55 and evidence >= 0.58
+    usable_for_reply = allowed_for_generation and (
+        structured_pricing_ready or (reusability >= 0.55 and evidence >= 0.58)
+    )
     return {
         "library_type": library_type,
         "function_fragment": fragment,
@@ -465,35 +502,64 @@ def build_thread_business_fact(
 ) -> dict[str, Any]:
     summary = summary or {}
     crm_context = crm_context or {}
+    normalized_messages = list(messages or [])
     key_facts = summary.get("key_facts") or {}
     attachment_records: list[dict[str, Any]] = []
-    for item in messages or []:
+    for item in normalized_messages:
         raw_attachments = item.get("attachments") or []
         if isinstance(raw_attachments, dict):
             raw_attachments = [raw_attachments]
         for attachment in raw_attachments:
             if isinstance(attachment, dict):
                 attachment_records.append(dict(attachment))
-    content_blob = "\n".join(_text(item.get("content")) for item in (messages or []))
-    fact_blob = "\n".join([
+    content_blob = "\n".join(_text(item.get("content")) for item in normalized_messages)
+    current_fact_blob = "\n".join([
         _text(summary.get("topic")),
         _text(summary.get("core_demand")),
         _text(summary.get("status")),
         _text(summary.get("risks")),
         _text(summary.get("to_be_confirmed")),
         _text(key_facts),
+        content_blob,
+    ])
+    fact_blob = "\n".join([
+        current_fact_blob,
         _text(crm_context.get("recent_quote_summary")),
         _text(crm_context.get("ongoing_contracts")),
+    ])
+    sales_message_count = sum(1 for item in normalized_messages if _text(item.get("sender_type")) == "sales")
+    customer_message_count = sum(1 for item in normalized_messages if _text(item.get("sender_type")) == "customer")
+    latest_sender = _text(normalized_messages[-1].get("sender_type")) if normalized_messages else ""
+    consecutive_sales_messages = 0
+    for item in reversed(normalized_messages):
+        if _text(item.get("sender_type")) == "sales":
+            consecutive_sales_messages += 1
+            continue
+        break
+    sales_messages = [_text(item.get("content")) for item in normalized_messages if _text(item.get("sender_type")) == "sales" and _text(item.get("content"))]
+    latest_sales_message = sales_messages[-1] if sales_messages else ""
+    recent_sales_messages = sales_messages[-2:] if sales_messages else []
+    latest_customer_message = next((_text(item.get("content")) for item in reversed(normalized_messages) if _text(item.get("sender_type")) == "customer"), "")
+    awaiting_customer_reply = latest_sender == "sales" and sales_message_count > 0
+    sales_only_conversation = sales_message_count > 0 and customer_message_count == 0
+    followup_after_no_reply = awaiting_customer_reply and consecutive_sales_messages >= 2
+    material_wait_blob = "\n".join([
+        _text(summary.get("core_demand")),
+        _text(summary.get("to_be_confirmed")),
         content_blob,
     ])
     stage_signals = {
-        "has_formal_quote": any(word.lower() in fact_blob.lower() for word in QUOTE_KEYWORDS) or bool(crm_context.get("recent_quote_summary")),
+        "has_formal_quote": any(word.lower() in current_fact_blob.lower() for word in QUOTE_KEYWORDS),
+        "crm_has_quote_history": bool(crm_context.get("recent_quote_summary")),
         "payment_discussed": any(word in fact_blob for word in PAYMENT_KEYWORDS),
         "payment_confirmed": any(word in fact_blob for word in ["已到账", "到账", "打款完成", "已付款"]),
         "shipment_discussed": any(word in fact_blob for word in SHIPMENT_KEYWORDS),
         "shipment_confirmed": any(word in fact_blob for word in ["已发货", "已经寄出", "在途", "到货"]),
         "after_sales_open": any(word in fact_blob for word in AFTER_SALES_KEYWORDS),
-        "waiting_customer_material": any(word in fact_blob for word in ["附件", "资料", "源文件", "待确认", "待补充", "请提供"]),
+        "waiting_customer_material": any(re.search(pattern, material_wait_blob, re.IGNORECASE) for pattern in WAITING_CUSTOMER_MATERIAL_PATTERNS),
+        "awaiting_customer_reply": awaiting_customer_reply,
+        "sales_only_conversation": sales_only_conversation,
+        "followup_after_no_reply": followup_after_no_reply,
     }
     if stage_signals["after_sales_open"]:
         business_state = "after_sales"
@@ -509,6 +575,8 @@ def build_thread_business_fact(
     scenario_label = "general"
     if stage_signals["after_sales_open"]:
         scenario_label = "after_sales"
+    elif stage_signals["followup_after_no_reply"]:
+        scenario_label = "followup"
     elif stage_signals["shipment_discussed"]:
         scenario_label = "shipment"
     elif stage_signals["payment_discussed"]:
@@ -523,6 +591,8 @@ def build_thread_business_fact(
     intent_label = scenario_label
     if any(word in fact_blob for word in ["案例", "经验", "项目案例"]):
         intent_label = "example"
+    elif stage_signals["followup_after_no_reply"]:
+        intent_label = "followup"
     elif any(word in fact_blob for word in CAPABILITY_KEYWORDS):
         intent_label = "capability"
     elif any(word in fact_blob for word in PROCESS_KEYWORDS):
@@ -541,8 +611,8 @@ def build_thread_business_fact(
     )
     attachment_rollup = summarize_attachment_mentions(attachment_summary)
     avg_len = 0.0
-    if messages:
-        avg_len = sum(len(_text(item.get("content"))) for item in messages) / len(messages)
+    if normalized_messages:
+        avg_len = sum(len(_text(item.get("content"))) for item in normalized_messages) / len(normalized_messages)
     language_style = "wechat_brief" if avg_len and avg_len < 60 else "consultative"
     fact_count = sum(1 for value in stage_signals.values() if value)
     quality_score = clamp_score(0.28 + (fact_count * 0.09) + (0.12 if _text(summary.get("core_demand")) else 0.0) + (0.1 if attachment_summary else 0.0))
@@ -553,6 +623,8 @@ def build_thread_business_fact(
         guard_reasons.append("未识别到正式报价事实，禁止给确定性成交价格承诺")
     if stage_signals["waiting_customer_material"]:
         guard_reasons.append("线程仍依赖客户补充资料或附件确认")
+    if stage_signals["followup_after_no_reply"]:
+        guard_reasons.append("当前属于我方已触达但客户未回复，下一条话术必须换角度推进，不能重复上一条原话")
     if quality_score < 0.45:
         guard_reasons.append("线程事实完整度不足")
     merged_facts = {
@@ -563,6 +635,17 @@ def build_thread_business_fact(
         "crm_recent_quote_summary": crm_context.get("recent_quote_summary"),
         "crm_customer_tier": crm_context.get("customer_tier"),
         "crm_payment_risk_level": crm_context.get("payment_risk_level"),
+        "last_sender": latest_sender or None,
+        "sales_message_count": sales_message_count,
+        "customer_message_count": customer_message_count,
+        "consecutive_sales_messages": consecutive_sales_messages,
+        "awaiting_customer_reply": awaiting_customer_reply,
+        "sales_only_conversation": sales_only_conversation,
+        "followup_after_no_reply": followup_after_no_reply,
+        "latest_sales_message": latest_sales_message[:160] if latest_sales_message else None,
+        "recent_sales_messages": [item[:160] for item in recent_sales_messages if item][:2],
+        "latest_customer_message": latest_customer_message[:160] if latest_customer_message else None,
+        "crm_has_quote_history": bool(crm_context.get("recent_quote_summary")),
         "attachment_summary": attachment_summary,
         "attachment_rollup": attachment_rollup,
         "attachment_types": sorted({item.get("kind") for item in attachment_summary if item.get("kind")}),
@@ -588,7 +671,8 @@ def build_thread_business_fact(
         "fact_source": {
             "summary_status": summary.get("status"),
             "crm_profile_status": crm_context.get("crm_profile_status"),
-            "message_count": len(messages or []),
+            "message_count": len(normalized_messages),
+            "last_sender": latest_sender or None,
             "attachment_count": attachment_rollup["count"],
             "updated_at": datetime.utcnow().isoformat(),
         },
@@ -602,6 +686,7 @@ def validate_thread_state_consistency(response_text: str | None, thread_fact: di
     warnings: list[str] = []
     blocking_issues: list[str] = []
     stage_signals = thread_fact.get("stage_signals") or {}
+    merged_facts = thread_fact.get("merged_facts") or {}
     if not stage_signals.get("has_formal_quote") and any(re.search(pattern, text) for pattern in PRICE_COMMITMENT_PATTERNS):
         blocking_issues.append("线程事实未进入正式报价阶段，回复中不应给出确定性报价承诺。")
     if not stage_signals.get("payment_confirmed") and any(re.search(pattern, text) for pattern in PAYMENT_DONE_PATTERNS):
@@ -610,6 +695,52 @@ def validate_thread_state_consistency(response_text: str | None, thread_fact: di
         blocking_issues.append("线程事实未确认发货，回复中不应表述为已发货。")
     if not stage_signals.get("after_sales_open") and any(re.search(pattern, text) for pattern in AFTER_SALES_DONE_PATTERNS):
         warnings.append("线程事实未识别为售后处理中，售后结论型表述需要人工确认。")
+    if stage_signals.get("followup_after_no_reply") or stage_signals.get("awaiting_customer_reply"):
+        compact_response = re.sub(r"\s+", "", text)
+        recent_sales_messages = merged_facts.get("recent_sales_messages") or []
+        if not recent_sales_messages:
+            latest_sales_message = _text(merged_facts.get("latest_sales_message"))
+            if latest_sales_message:
+                recent_sales_messages = [latest_sales_message]
+        repeated_cues = [
+            "之前合作", "合作记录", "项目资料", "现在还负责", "是否还负责", "您还负责", "也想了解一下",
+            "最近在整理", "想简单问一下", "我是负责", "我是岚汇", "我是tiffany",
+        ]
+        responsibility_patterns = [
+            r"还.*负责", r"是否.*负责", r"谁.*负责", r"哪位.*负责", r"现在.*负责",
+            r"其他同事.*对接", r"谁在对接", r"对接.*同事", r"负责人",
+        ]
+        response_hit_count = sum(1 for cue in repeated_cues if cue in compact_response)
+        response_repeats_responsibility = any(re.search(pattern, compact_response) for pattern in responsibility_patterns)
+        for previous_message in recent_sales_messages:
+            previous_compact = re.sub(r"\s+", "", _text(previous_message))
+            if not previous_compact:
+                continue
+            shared_substrings = [
+                cue for cue in repeated_cues
+                if cue in compact_response and cue in previous_compact
+            ]
+            previous_tokens = {
+                token for token in re.findall(r"[\u4e00-\u9fff]{2,}", previous_compact)
+                if len(token) >= 2
+            }
+            response_tokens = {
+                token for token in re.findall(r"[\u4e00-\u9fff]{2,}", compact_response)
+                if len(token) >= 2
+            }
+            shared_tokens = {
+                token for token in previous_tokens & response_tokens
+                if token not in {"您好", "打扰了", "如果方便", "辛苦了", "这边", "目前", "项目", "合作"}
+            }
+            previous_asked_responsibility = any(re.search(pattern, previous_compact) for pattern in responsibility_patterns)
+            if (
+                shared_substrings
+                or response_hit_count >= 2
+                or len(shared_tokens) >= 4
+                or (response_repeats_responsibility and previous_asked_responsibility)
+            ):
+                blocking_issues.append("当前属于客户未回复后的跟进，回复与最近我方外联过于相似，必须换角度推进，不能复述旧话术。")
+                break
     if not thread_fact.get("allowed_for_generation"):
         warnings.append(thread_fact.get("reply_guard_reason") or "线程事实层未通过自动回复门禁。")
     return {"warnings": warnings, "blocking_issues": blocking_issues}

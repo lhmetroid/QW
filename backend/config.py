@@ -13,6 +13,17 @@ class Settings(BaseSettings):
     # The defaults below are placeholders only, so stale credentials do not
     # appear configured when .env is missing.
 
+    # External deployment base URL.
+    EXTERNAL_API_BASE_URL: str = ""
+    CLOUDFLARED_TUNNEL_TOKEN: str = ""
+    CLOUDFLARED_PUBLIC_HOSTNAME: str = ""
+    CLOUDFLARED_TARGET_URL: str = ""
+    CLOUDFLARED_BIN: str = ""
+    CLOUDFLARED_LOG_FILE: str = "logs/cloudflared.log"
+    ENABLE_LOCAL_HTTPS: bool = False
+    LOCAL_HTTPS_CERT_FILE: str = "backend/certs/localhost-cert.pem"
+    LOCAL_HTTPS_KEY_FILE: str = "backend/certs/localhost-key.pem"
+
     # WeCom app configuration.
     CORP_ID: str = ""
     CORP_SECRET: str = ""
@@ -25,6 +36,7 @@ class Settings(BaseSettings):
     PRIVATE_KEY_PATH: str = ""
     PUBLIC_KEY_VER: int = 2
     ENABLE_ARCHIVE_POLLING: bool = False
+    ARCHIVE_SYNC_TIMEOUT_SECONDS: int = 300
 
     # PostgreSQL configuration.
     DATABASE_URL: str | None = None
@@ -33,6 +45,7 @@ class Settings(BaseSettings):
     DB_NAME: str = ""
     DB_USER: str = ""
     DB_PASSWORD: str = ""
+    DATABASE_CONNECT_TIMEOUT_SECONDS: int = 15
 
     # LLM-1 configuration: structured extraction.
     LLM1_API_URL: str = ""
@@ -55,6 +68,8 @@ class Settings(BaseSettings):
     LLM2_COMPARE_API_KEY: str = ""
     LLM2_COMPARE_MODEL: str = ""
     LLM2_COMPARE_TIMEOUT_SECONDS: int = 100
+    API_REPLY_SINGLE_MODEL_SINGLE_STYLE: bool = True
+    API_REPLY_ENABLE_SCORING: bool = False
     LOG_LLM_PROMPTS: bool = True
     LOG_LLM_PROMPT_MAX_CHARS: int = 12000
     LOG_DESENSITIZE_ENABLED: bool = True
@@ -85,6 +100,8 @@ class Settings(BaseSettings):
     KB_KEYWORD_PREFILTER_ENABLED: bool = True
     KB_FULLTEXT_INDEX_ENABLED: bool = True
     KB_HEALTHCHECK_TIMEOUT_SECONDS: int = 5
+    SALES_KB_API_BASE_URL: str = "http://192.168.31.124:8000"
+    SALES_KB_API_TIMEOUT_SECONDS: int = 8
 
     # Offline training pipeline runner.
     TRAINING_RUNNER_COMMAND: str = ""

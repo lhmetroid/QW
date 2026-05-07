@@ -20,6 +20,8 @@ class MessageLog(Base):
     content = Column(Text)                         # 消息原文
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     is_mock = Column(Boolean, default=False)       # 是否为模拟数据
+    archive_msg_id = Column(String(120), index=True, nullable=True)  # 企微存档原始消息唯一键
+    archive_seq = Column(String(40), index=True, nullable=True)      # 企微存档增量游标 seq
 
 class IntentSummary(Base):
     """Schema V1 结构化摘要表"""
@@ -39,11 +41,23 @@ class IntentSummary(Base):
     status = Column(String(50))          # 对话状态 (枚举)
     llm1_compare_summary = Column(JSON, nullable=True)  # LLM1 对比模型结构化摘要
     llm1_compare_prompt_trace = Column(JSON, nullable=True)  # LLM1 对比模型 prompt 存证
+    crm_info = Column(JSON, nullable=True)
+    crm_status = Column(String(50), nullable=True)
+    thread_business_fact = Column(JSON, nullable=True)
+    knowledge_log_id = Column(String(120), nullable=True)
+    knowledge_v2 = Column(JSON, nullable=True)
+    knowledge_external_api = Column(JSON, nullable=True)
+    knowledge_status = Column(String(50), nullable=True)
+    knowledge_confidence_score = Column(Numeric(8, 6), nullable=True)
+    knowledge_manual_review_required = Column(Boolean, nullable=False, default=False)
     sales_advice_v2 = Column(Text)       # LLM2 的金牌销售话术持久化
     sales_advice_compare_v2 = Column(Text)  # LLM2 对比模型话术持久化
     sales_advice_compare_prompt_trace_v2 = Column(JSON)  # LLM2 对比模型最终 prompt 存证
     reply_style_results_v2 = Column(JSON, nullable=True)  # 多风格 x 多模型候选结果
     reply_scores_v2 = Column(JSON, nullable=True)  # 候选与实际销售回复评分结果
+    assist_validation = Column(JSON, nullable=True)
+    assist_compare_validation = Column(JSON, nullable=True)
+    stage_status = Column(JSON, nullable=True)
 
 class KnowledgeBase(Base):
     """销售知识库/回复模板"""
@@ -314,6 +328,7 @@ class ReplyChainSnapshot(Base):
 
     knowledge_log_id = Column(String(120), nullable=True)
     knowledge_v2 = Column(JSON, nullable=True)
+    knowledge_external_api = Column(JSON, nullable=True)
     knowledge_status = Column(String(50), nullable=True)
     knowledge_confidence_score = Column(Numeric(8, 6), nullable=True)
     knowledge_manual_review_required = Column(Boolean, nullable=False, default=False)
@@ -519,7 +534,16 @@ class JobTask(Base):
     )
 
 # 初始化数据库连接
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+_engine_kwargs = {
+    "pool_pre_ping": True,
+}
+_db_connect_timeout = max(3, int(getattr(settings, "DATABASE_CONNECT_TIMEOUT_SECONDS", 15) or 15))
+if settings.database_url.startswith("postgresql"):
+    _engine_kwargs["connect_args"] = {
+        "connect_timeout": _db_connect_timeout,
+    }
+
+engine = create_engine(settings.database_url, **_engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
