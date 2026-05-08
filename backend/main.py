@@ -9641,15 +9641,20 @@ def _run_llm1_compare_bundle(context: list[dict], user_id: str) -> dict:
             "prompt_trace": prompt_trace,
         }
 
-def _select_candidate(candidates: list[dict] | None, model_slot: str) -> dict | None:
+def _select_candidate(candidates: list[dict] | None, model_slot: str, knowledge_source: str | None = None) -> dict | None:
     for item in candidates or []:
-        if item.get("model_slot") == model_slot and item.get("status") == "done" and item.get("content"):
+        if (
+            item.get("model_slot") == model_slot
+            and (knowledge_source is None or item.get("knowledge_source") == knowledge_source)
+            and item.get("status") == "done"
+            and item.get("content")
+        ):
             return item
     return None
 
-def _first_model_candidate_entry(candidates: list[dict] | None, model_slot: str) -> dict | None:
+def _first_model_candidate_entry(candidates: list[dict] | None, model_slot: str, knowledge_source: str | None = None) -> dict | None:
     for item in candidates or []:
-        if item.get("model_slot") == model_slot:
+        if item.get("model_slot") == model_slot and (knowledge_source is None or item.get("knowledge_source") == knowledge_source):
             return item
     return None
 
@@ -9795,213 +9800,205 @@ def _generate_reply_style_candidates(
     if single_model_single_style and styles:
         styles = styles[:1]
     primary_config = _runtime_llm_values("LLM2")
+    compare_config = _runtime_llm_values("LLM2_COMPARE")
+    compare_model_configured = _runtime_llm_configured(compare_config)
     candidates: list[dict] = []
-    primary_done = 0
-    primary_failures = 0
-    compare_done = 0
-    compare_failures = 0
+    llm_runtime = _llm_runtime_config()
+    model_specs = [
+        {
+            "slot": "llm2",
+            "label": "主模型",
+            "display_name": llm_runtime["llm2"]["display_name"],
+            "provider": llm_runtime["llm2"]["provider"],
+            "config": primary_config,
+        }
+    ]
+    if not single_model_single_style:
+        model_specs.append({
+            "slot": "llm2_compare",
+            "label": "对比模型",
+            "display_name": llm_runtime["llm2_compare"]["display_name"] or llm_runtime["llm2_compare"]["model"] or "对比模型",
+            "provider": llm_runtime["llm2_compare"]["provider"],
+            "config": compare_config,
+        })
 
-    for style in styles:
-        candidate_id = f"llm2__{style['id']}"
-        try:
-            request_spec = IntentEngine.build_sales_assist_request(
-                summary_json,
-                knowledge,
-                crm_context,
-                api_url=primary_config["api_url"],
-                api_key=primary_config["api_key"],
-                model=primary_config["model"],
-                timeout_seconds=primary_config["timeout_seconds"],
-                label="LLM2",
-                reply_style=style,
-            )
-            bundle = IntentEngine.generate_sales_assist_bundle(
-                summary_json,
-                knowledge,
-                crm_context,
-                prepared_request=request_spec,
-            )
-            content = bundle.get("content")
-            if content:
-                primary_done += 1
-                candidates.append({
-                    "candidate_id": candidate_id,
-                    "model_slot": "llm2",
-                    "model_label": "知识库1",
-                    "model_display_name": f"知识库1 / {_llm_runtime_config()['llm2']['display_name']}",
-                    "model_provider": _llm_runtime_config()["llm2"]["provider"],
-                    "style_id": style["id"],
-                    "style_title": style["title"],
-                    "style_content": style["content"],
-                    "reply_style": style,
-                    "status": "done",
-                    "content": content,
-                    "validation": bundle.get("validation") or IntentEngine.validate_sales_assist_output(content, knowledge, crm_context=crm_context),
-                    "prompt_trace": bundle.get("prompt_trace"),
-                    "reason": "",
-                })
-            else:
-                primary_failures += 1
-                candidates.append({
-                    "candidate_id": candidate_id,
-                    "model_slot": "llm2",
-                    "model_label": "知识库1",
-                    "model_display_name": f"知识库1 / {_llm_runtime_config()['llm2']['display_name']}",
-                    "model_provider": _llm_runtime_config()["llm2"]["provider"],
-                    "style_id": style["id"],
-                    "style_title": style["title"],
-                    "style_content": style["content"],
-                    "reply_style": style,
-                    "status": "failed_no_content",
-                    "content": "",
-                    "validation": None,
-                    "prompt_trace": request_spec.get("prompt_trace"),
-                    "reason": "主模型返回空内容",
-                })
-        except Exception as exc:
-            primary_failures += 1
-            candidates.append({
-                "candidate_id": candidate_id,
-                "model_slot": "llm2",
-                "model_label": "知识库1",
-                "model_display_name": f"知识库1 / {_llm_runtime_config()['llm2']['display_name']}",
-                "model_provider": _llm_runtime_config()["llm2"]["provider"],
-                "style_id": style["id"],
-                "style_title": style["title"],
-                "style_content": style["content"],
-                "reply_style": style,
-                "status": "error",
-                "content": "",
-                "validation": None,
-                "prompt_trace": None,
-                "reason": sanitize_text(str(exc)),
-            })
+    knowledge_specs = [
+        {
+            "key": "knowledge_v2",
+            "label": "知识库1",
+            "payload": knowledge if isinstance(knowledge, dict) else {},
+            "status": str((knowledge or {}).get("status") or "not_started"),
+        },
+        {
+            "key": "knowledge_external_api",
+            "label": "知识库2",
+            "payload": knowledge_compare if isinstance(knowledge_compare, dict) else {},
+            "status": str((knowledge_compare or {}).get("status") or "not_started"),
+        },
+    ]
 
-    compare_enabled = isinstance(knowledge_compare, dict) and bool(knowledge_compare)
-    compare_status_hint = str((knowledge_compare or {}).get("status") or "").strip()
-    compare_skip_reason = ""
-    if compare_enabled and compare_status_hint in {"error", "not_configured", "skipped_no_query", "skipped_missing_knowledge"}:
-        compare_skip_reason = sanitize_text(str((knowledge_compare or {}).get("error") or "")) or {
-            "error": "知识库2检索失败",
-            "not_configured": "知识库2未配置",
-            "skipped_no_query": "知识库2缺少检索问题",
-            "skipped_missing_knowledge": "知识库2证据未准备好",
-        }.get(compare_status_hint, "知识库2不可用")
-        _set_llm_compare_status(runtime_key, compare_status_hint, compare_skip_reason, primary_config)
-        for style in styles:
-            candidate_id = f"llm2_compare__{style['id']}"
-            candidates.append({
-                "candidate_id": candidate_id,
-                "model_slot": "llm2_compare",
-                "model_label": "知识库2",
-                "model_display_name": f"知识库2 / {_llm_runtime_config()['llm2']['display_name']}",
-                "model_provider": _llm_runtime_config()["llm2"]["provider"],
-                "style_id": style["id"],
-                "style_title": style["title"],
-                "style_content": style["content"],
-                "reply_style": style,
-                "status": compare_status_hint,
-                "content": "",
-                "validation": None,
-                "prompt_trace": None,
-                "reason": compare_skip_reason,
-            })
-    elif compare_enabled:
-        _set_llm_compare_status(runtime_key, "running", "知识库2通道正在生成", primary_config)
-        for style in styles:
-            candidate_id = f"llm2_compare__{style['id']}"
-            request_spec = IntentEngine.build_sales_assist_request(
-                summary_json,
-                knowledge_compare,
-                crm_context,
-                api_url=primary_config["api_url"],
-                api_key=primary_config["api_key"],
-                model=primary_config["model"],
-                timeout_seconds=primary_config["timeout_seconds"],
-                label="LLM2_KB2",
-                reply_style=style,
-            )
-            try:
-                bundle = IntentEngine.generate_sales_assist_bundle(
-                    summary_json,
-                    knowledge_compare,
-                    crm_context,
-                    prepared_request=request_spec,
-                )
-                content = bundle.get("content")
-                if content:
-                    compare_done += 1
-                    candidates.append({
-                        "candidate_id": candidate_id,
-                        "model_slot": "llm2_compare",
-                        "model_label": "知识库2",
-                        "model_display_name": f"知识库2 / {_llm_runtime_config()['llm2']['display_name']}",
-                        "model_provider": _llm_runtime_config()["llm2"]["provider"],
-                        "style_id": style["id"],
-                        "style_title": style["title"],
-                        "style_content": style["content"],
-                        "reply_style": style,
-                        "status": "done",
-                        "content": content,
-                        "validation": bundle.get("validation") or IntentEngine.validate_sales_assist_output(content, knowledge_compare, crm_context=crm_context),
-                        "prompt_trace": bundle.get("prompt_trace"),
-                        "reason": "",
-                    })
-                else:
-                    compare_failures += 1
-                    candidates.append({
-                        "candidate_id": candidate_id,
-                        "model_slot": "llm2_compare",
-                        "model_label": "知识库2",
-                        "model_display_name": f"知识库2 / {_llm_runtime_config()['llm2']['display_name']}",
-                        "model_provider": _llm_runtime_config()["llm2"]["provider"],
-                        "style_id": style["id"],
-                        "style_title": style["title"],
-                        "style_content": style["content"],
-                        "reply_style": style,
-                        "status": "failed_no_content",
-                        "content": "",
-                        "validation": None,
-                        "prompt_trace": request_spec.get("prompt_trace"),
-                        "reason": "知识库2通道返回空内容",
-                    })
-            except Exception as exc:
-                compare_failures += 1
-                candidates.append({
-                    "candidate_id": candidate_id,
-                    "model_slot": "llm2_compare",
-                    "model_label": "知识库2",
-                    "model_display_name": f"知识库2 / {_llm_runtime_config()['llm2']['display_name']}",
-                    "model_provider": _llm_runtime_config()["llm2"]["provider"],
-                    "style_id": style["id"],
-                    "style_title": style["title"],
-                    "style_content": style["content"],
-                    "reply_style": style,
-                    "status": "error",
-                    "content": "",
-                    "validation": None,
-                    "prompt_trace": request_spec.get("prompt_trace"),
-                    "reason": sanitize_text(str(exc)),
-                })
-        if compare_done:
-            _set_llm_compare_status(runtime_key, "done", "知识库2已生成", primary_config)
-        elif compare_failures:
-            _set_llm_compare_status(runtime_key, "error", "知识库2全部失败", primary_config)
+    model_stats: dict[str, dict[str, int]] = {}
+
+    def ensure_model_stats(slot: str) -> dict[str, int]:
+        return model_stats.setdefault(slot, {"done": 0, "failures": 0, "placeholders": 0})
+
+    def append_candidate(
+        *,
+        candidate_id: str,
+        model_spec: dict,
+        knowledge_spec: dict,
+        style: dict,
+        status: str,
+        content: str = "",
+        validation: dict | None = None,
+        prompt_trace: dict | None = None,
+        reason: str = "",
+    ) -> None:
+        candidates.append({
+            "candidate_id": candidate_id,
+            "model_slot": model_spec["slot"],
+            "model_label": model_spec["label"],
+            "model_display_name": model_spec["display_name"],
+            "model_provider": model_spec["provider"],
+            "knowledge_source": knowledge_spec["key"],
+            "knowledge_source_label": knowledge_spec["label"],
+            "style_id": style["id"],
+            "style_title": style["title"],
+            "style_content": style["content"],
+            "reply_style": style,
+            "status": status,
+            "content": content,
+            "validation": validation,
+            "prompt_trace": prompt_trace,
+            "reason": reason,
+        })
+
+    def knowledge_skip_reason(spec: dict) -> tuple[str, str] | None:
+        status = str(spec.get("status") or "").strip() or "not_started"
+        payload = spec.get("payload") if isinstance(spec.get("payload"), dict) else {}
+        if status in {"error", "not_configured", "skipped_no_query", "skipped_missing_knowledge"}:
+            reason = sanitize_text(str(payload.get("error") or "")) or {
+                "error": f"{spec['label']}检索失败",
+                "not_configured": f"{spec['label']}未配置",
+                "skipped_no_query": f"{spec['label']}缺少检索问题",
+                "skipped_missing_knowledge": f"{spec['label']}证据未准备好",
+            }.get(status, f"{spec['label']}不可用")
+            return status, reason
+        if status in {"not_started", "queued", "running"}:
+            return "skipped_missing_knowledge", f"{spec['label']}证据未准备好"
+        return None
+
+    for model_spec in model_specs:
+        slot = model_spec["slot"]
+        stats = ensure_model_stats(slot)
+        config = model_spec["config"]
+        if slot == "llm2_compare" and not compare_model_configured:
+            for knowledge_spec in knowledge_specs:
+                for style in styles:
+                    candidate_id = f"{slot}__{knowledge_spec['key']}__{style['id']}"
+                    append_candidate(
+                        candidate_id=candidate_id,
+                        model_spec=model_spec,
+                        knowledge_spec=knowledge_spec,
+                        style=style,
+                        status="not_configured",
+                        reason="LLM2_COMPARE_API_URL / API_KEY / MODEL 未完整配置",
+                    )
+                    stats["placeholders"] += 1
+            continue
+
+        if slot == "llm2_compare":
+            _set_llm_compare_status(runtime_key, "running", "对比模型正在生成", config)
+
+        for knowledge_spec in knowledge_specs:
+            skip_meta = knowledge_skip_reason(knowledge_spec)
+            for style in styles:
+                candidate_id = f"{slot}__{knowledge_spec['key']}__{style['id']}"
+                if skip_meta:
+                    status, reason = skip_meta
+                    append_candidate(
+                        candidate_id=candidate_id,
+                        model_spec=model_spec,
+                        knowledge_spec=knowledge_spec,
+                        style=style,
+                        status=status,
+                        reason=reason,
+                    )
+                    stats["placeholders"] += 1
+                    continue
+
+                label_suffix = "KB1" if knowledge_spec["key"] == "knowledge_v2" else "KB2"
+                prompt_label = f"{slot.upper()}_{label_suffix}"
+                request_spec = None
+                try:
+                    request_spec = IntentEngine.build_sales_assist_request(
+                        summary_json,
+                        knowledge_spec["payload"],
+                        crm_context,
+                        api_url=config["api_url"],
+                        api_key=config["api_key"],
+                        model=config["model"],
+                        timeout_seconds=config["timeout_seconds"],
+                        label=prompt_label,
+                        reply_style=style,
+                    )
+                    bundle = IntentEngine.generate_sales_assist_bundle(
+                        summary_json,
+                        knowledge_spec["payload"],
+                        crm_context,
+                        prepared_request=request_spec,
+                    )
+                    content = bundle.get("content")
+                    if content:
+                        stats["done"] += 1
+                        append_candidate(
+                            candidate_id=candidate_id,
+                            model_spec=model_spec,
+                            knowledge_spec=knowledge_spec,
+                            style=style,
+                            status="done",
+                            content=content,
+                            validation=bundle.get("validation") or IntentEngine.validate_sales_assist_output(content, knowledge_spec["payload"], crm_context=crm_context),
+                            prompt_trace=bundle.get("prompt_trace"),
+                        )
+                    else:
+                        stats["failures"] += 1
+                        append_candidate(
+                            candidate_id=candidate_id,
+                            model_spec=model_spec,
+                            knowledge_spec=knowledge_spec,
+                            style=style,
+                            status="failed_no_content",
+                            prompt_trace=request_spec.get("prompt_trace"),
+                            reason=f"{model_spec['label']}在{knowledge_spec['label']}上返回空内容",
+                        )
+                except Exception as exc:
+                    stats["failures"] += 1
+                    append_candidate(
+                        candidate_id=candidate_id,
+                        model_spec=model_spec,
+                        knowledge_spec=knowledge_spec,
+                        style=style,
+                        status="error",
+                        prompt_trace=request_spec.get("prompt_trace") if isinstance(request_spec, dict) else None,
+                        reason=sanitize_text(str(exc)),
+                    )
+
+    primary_stats = ensure_model_stats("llm2")
+    compare_stats = ensure_model_stats("llm2_compare")
+    if compare_model_configured and not single_model_single_style:
+        if compare_stats["done"]:
+            _set_llm_compare_status(runtime_key, "done", "对比模型已生成", compare_config)
+        elif compare_stats["failures"]:
+            _set_llm_compare_status(runtime_key, "error", "对比模型全部失败", compare_config)
         else:
-            _set_llm_compare_status(runtime_key, "failed_no_content", "知识库2返回空内容", primary_config)
-    elif single_model_single_style:
-        _set_llm_compare_status(
-            runtime_key,
-            "not_started",
-            "知识库2待触发",
-            primary_config,
-        )
+            _set_llm_compare_status(runtime_key, "failed_no_content", "对比模型无可用输出", compare_config)
     else:
         _set_llm_compare_status(
             runtime_key,
             "not_started",
-            "知识库2结果暂不可用",
-            primary_config,
+            "API 当前仅输出主模型首个风格结果" if single_model_single_style else "对比模型未启用",
+            compare_config if compare_model_configured else None,
         )
 
     reply_scores = None
@@ -10013,8 +10010,8 @@ def _generate_reply_style_candidates(
             candidates=candidates,
             actual_sales_replies=actual_sales_replies,
         )
-    primary_candidate = _select_candidate(candidates, "llm2")
-    compare_candidate = _select_candidate(candidates, "llm2_compare")
+    primary_candidate = _select_candidate(candidates, "llm2", "knowledge_v2")
+    compare_candidate = _select_candidate(candidates, "llm2", "knowledge_external_api")
     if primary_candidate and knowledge.get("log_id"):
         IntentEngine.update_knowledge_hit_log_outcome(knowledge.get("log_id"), final_response=primary_candidate.get("content"))
     return {
@@ -10022,12 +10019,12 @@ def _generate_reply_style_candidates(
         "reply_scores": reply_scores,
         "primary_candidate": primary_candidate,
         "compare_candidate": compare_candidate,
-        "llm2_status": "done" if primary_done else ("error" if primary_failures else "failed_no_content"),
+        "llm2_status": "done" if primary_stats["done"] else ("error" if primary_stats["failures"] else "failed_no_content"),
         "llm2_compare_status": (
-            "done" if compare_done else
-            (
-                compare_status_hint if compare_skip_reason else
-                ("not_started" if not compare_enabled else ("error" if compare_failures else "failed_no_content"))
+            "not_started" if single_model_single_style else (
+                "not_configured" if not compare_model_configured else (
+                    "done" if compare_stats["done"] else ("error" if compare_stats["failures"] else "failed_no_content")
+                )
             )
         ),
     }
@@ -10886,7 +10883,11 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
         snapshot.reply_scores_v2 = generation_bundle.get("reply_scores")
         primary_candidate = generation_bundle.get("primary_candidate")
         compare_candidate = generation_bundle.get("compare_candidate")
-        first_compare_entry = _first_model_candidate_entry(generation_bundle.get("candidates"), "llm2_compare")
+        first_compare_entry = _first_model_candidate_entry(
+            generation_bundle.get("candidates"),
+            "llm2",
+            "knowledge_external_api",
+        )
         snapshot.sales_advice_v2 = primary_candidate.get("content") if primary_candidate else None
         snapshot.assist_validation = primary_candidate.get("validation") if primary_candidate else None
         snapshot.sales_advice_compare_v2 = compare_candidate.get("content") if compare_candidate else None
@@ -11128,7 +11129,11 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                 )
                 primary_candidate = generation_bundle.get("primary_candidate")
                 compare_candidate = generation_bundle.get("compare_candidate")
-                first_compare_entry = _first_model_candidate_entry(generation_bundle.get("candidates"), "llm2_compare")
+                first_compare_entry = _first_model_candidate_entry(
+                    generation_bundle.get("candidates"),
+                    "llm2",
+                    "knowledge_external_api",
+                )
                 summary.reply_style_results_v2 = generation_bundle.get("candidates")
                 summary.reply_scores_v2 = generation_bundle.get("reply_scores")
                 summary.sales_advice_v2 = primary_candidate.get("content") if primary_candidate else None
@@ -11597,7 +11602,11 @@ async def sidebar_assist(request: SidebarAssistRequest):
             mark_timing("llm2_generate_ms", stage_started)
             primary_candidate = generation_bundle.get("primary_candidate")
             compare_candidate = generation_bundle.get("compare_candidate")
-            first_compare_entry = _first_model_candidate_entry(generation_bundle.get("candidates"), "llm2_compare")
+            first_compare_entry = _first_model_candidate_entry(
+                generation_bundle.get("candidates"),
+                "llm2",
+                "knowledge_external_api",
+            )
             summary.reply_style_results_v2 = generation_bundle.get("candidates")
             summary.reply_scores_v2 = generation_bundle.get("reply_scores")
             summary.sales_advice_v2 = primary_candidate.get("content") if primary_candidate else None

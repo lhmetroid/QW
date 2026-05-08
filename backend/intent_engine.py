@@ -2030,7 +2030,10 @@ class IntentEngine:
             entry = {
                 "candidate_id": item.get("candidate_id"),
                 "model_slot": item.get("model_slot"),
+                "model_label": item.get("model_label"),
                 "model_display_name": item.get("model_display_name"),
+                "knowledge_source": item.get("knowledge_source"),
+                "knowledge_source_label": item.get("knowledge_source_label"),
                 "style_id": item.get("style_id"),
                 "style_title": item.get("style_title"),
                 "reply_text": reply_text,
@@ -2083,7 +2086,10 @@ class IntentEngine:
                 {
                     "candidate_id": item.get("candidate_id"),
                     "model_slot": item.get("model_slot"),
+                    "model_label": item.get("model_label"),
                     "model_display_name": item.get("model_display_name"),
+                    "knowledge_source": item.get("knowledge_source"),
+                    "knowledge_source_label": item.get("knowledge_source_label"),
                     "style_title": item.get("style_title"),
                     "reply_text": item.get("reply_text"),
                 }
