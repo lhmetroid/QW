@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     KB_KEYWORD_PREFILTER_ENABLED: bool = True
     KB_FULLTEXT_INDEX_ENABLED: bool = True
     KB_HEALTHCHECK_TIMEOUT_SECONDS: int = 5
-    SALES_KB_API_BASE_URL: str = "http://192.168.31.124:8000"
+    SALES_KB_API_BASE_URL: str = "http://192.168.31.124:8100"
     SALES_KB_API_TIMEOUT_SECONDS: int = 8
 
     # Offline training pipeline runner.
