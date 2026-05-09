@@ -28,6 +28,8 @@ def assert_real_config(include_crm: bool = False) -> None:
         "LLM1_API_KEY": settings.LLM1_API_KEY,
         "LLM2_API_KEY": settings.LLM2_API_KEY,
     }
+    if EmbeddingService.provider_name() != "ollama":
+        required["EMBEDDING_API_KEY"] = settings.EMBEDDING_API_KEY
     if include_crm:
         required.update({
             "CRM_DBName": settings.CRM_DBName,
@@ -129,7 +131,7 @@ async def run_flow(args: argparse.Namespace) -> dict:
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Run real PostgreSQL/Ollama/LLM knowledge-base E2E check. CRM is optional.")
+    parser = argparse.ArgumentParser(description="Run real PostgreSQL/Embedding/LLM knowledge-base E2E check. CRM is optional.")
     parser.add_argument("--excel", required=True, help="真实业务 Excel 路径")
     parser.add_argument("--import-type", default="faq", choices=["faq", "pricing", "process", "capability", "case", "script", "email_digest"])
     parser.add_argument("--query", required=True, help="真实检索问题")

@@ -40,6 +40,7 @@ from database import (
     KnowledgeDocument, KnowledgeChunk, PricingRule, KnowledgeHitLog, KnowledgeCandidate,
     KnowledgeVersionSnapshot, JobTask, ThreadBusinessFact, EmailThreadAsset,
     EmailFragmentAsset, EmailEffectFeedback, ModelTrainingSample, ReplyChainSnapshot,
+    ApiAssistInvocation,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -212,8 +213,37 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS assist_compare_validation JSON;"))
         db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS actual_sales_replies JSON;"))
         db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS stage_status JSON;"))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS api_assist_invocation ("
+            "invocation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "session_id VARCHAR(120) NOT NULL,"
+            "requested_session_id VARCHAR(120),"
+            "external_userid VARCHAR(120),"
+            "sales_userid VARCHAR(120),"
+            "anchor_message_id INTEGER,"
+            "anchor_message_time TIMESTAMP,"
+            "anchor_message_text TEXT,"
+            "visible_message_ids JSON,"
+            "latest_dialog_count INTEGER DEFAULT 0,"
+            "triggered_at TIMESTAMP DEFAULT now(),"
+            "stage_status JSON,"
+            "result_payload JSON NOT NULL,"
+            "actual_sales_replies JSON,"
+            "actual_sales_reply_text TEXT,"
+            "actual_sales_reply_hash VARCHAR(64),"
+            "quality_similarity JSON,"
+            "quality_score NUMERIC(6, 2),"
+            "quality_status VARCHAR(50),"
+            "quality_scored_at TIMESTAMP,"
+            "created_at TIMESTAMP DEFAULT now(),"
+            "updated_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
         db.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_reply_chain_snapshot_anchor ON reply_chain_snapshot (session_id, anchor_message_id);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_reply_chain_snapshot_session_updated ON reply_chain_snapshot (session_id, updated_at DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_api_ai_session_triggered ON api_assist_invocation (session_id, triggered_at DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_api_ai_anchor_triggered ON api_assist_invocation (session_id, anchor_message_id, triggered_at DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_api_ai_quality_status ON api_assist_invocation (quality_status, triggered_at DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_message_logs_archive_msg_id ON message_logs (archive_msg_id);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_message_logs_archive_seq ON message_logs (archive_seq);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_active_effective ON knowledge_chunk (status, business_line, knowledge_type, effective_from, effective_to);"))
@@ -254,7 +284,7 @@ async def startup_event():
         logger.warning("企微会话存档自动轮询已请求但配置不完整，跳过启动: %s", archive_status["missing"])
         return
 
-    logger.info("启动企微会话存档 20 秒异步轮询任务")
+    logger.info("启动企微会话存档 15 分钟异步轮询任务")
     async def background_poll_worker():
         while True:
             try:
@@ -264,7 +294,7 @@ async def startup_event():
                     logger.warning("企微会话存档轮询未成功: %s", result.get("msg"))
             except Exception as e:
                 logger.error(f"企微会话存档自动轮询异常: {e}")
-            await asyncio.sleep(20)
+            await asyncio.sleep(900)
     
     asyncio.create_task(background_poll_worker())
 
@@ -7156,8 +7186,9 @@ def _search_sales_kb_api(query_text: str | None, top_k: int = 5) -> dict:
         )
         latency_ms = round((perf_counter() - started) * 1000, 2)
         if response.status_code != 200:
+            logger.warning("销售知识库 API 不可用，已跳过。 endpoint=%s status=%s", endpoint, response.status_code)
             return {
-                "status": "error",
+                "status": "skipped_unavailable",
                 "query_text": normalized_query,
                 "hits": [],
                 "replyable_hits": [],
@@ -7172,6 +7203,8 @@ def _search_sales_kb_api(query_text: str | None, top_k: int = 5) -> dict:
                 "evidence_refs": [],
                 "source": "sales_kb_api",
                 "latency_ms": latency_ms,
+                "skipped": True,
+                "skip_reason": f"HTTP {response.status_code}",
                 "error": f"HTTP {response.status_code}",
                 "how": "直接调用销售知识库 API 的 POST /kb-units/qa-retrieve 接口，返回候选销售回复。",
             }
@@ -7218,8 +7251,9 @@ def _search_sales_kb_api(query_text: str | None, top_k: int = 5) -> dict:
             "how": "直接调用销售知识库 API 的 POST /kb-units/qa-retrieve 接口，返回候选销售回复。",
         }
     except Exception as exc:
+        logger.warning("销售知识库 API 连接失败，已跳过。 endpoint=%s error=%s", endpoint, exc)
         return {
-            "status": "error",
+            "status": "skipped_unavailable",
             "query_text": normalized_query,
             "hits": [],
             "replyable_hits": [],
@@ -7234,6 +7268,8 @@ def _search_sales_kb_api(query_text: str | None, top_k: int = 5) -> dict:
             "evidence_refs": [],
             "source": "sales_kb_api",
             "latency_ms": round((perf_counter() - started) * 1000, 2),
+            "skipped": True,
+            "skip_reason": "connection_failed",
             "error": sanitize_text(str(exc)),
             "how": "直接调用销售知识库 API 的 POST /kb-units/qa-retrieve 接口，返回候选销售回复。",
         }
@@ -7378,6 +7414,21 @@ def _probe_http_status(url: str, headers: dict | None = None) -> dict:
             "error": sanitize_text(str(exc)),
         }
 
+
+def _embedding_probe_and_suggestions() -> tuple[dict, list[str]]:
+    probe_target = EmbeddingService.healthcheck_probe()
+    probe = _probe_http_status(probe_target["url"], probe_target.get("headers") or {})
+    provider = probe_target.get("provider") or EmbeddingService.provider_name()
+    if provider == "ollama":
+        suggestions = [] if probe.get("reachable") else ["检查 Ollama 服务是否启动、URL 是否正确、模型是否已拉取。"]
+    elif provider == "dify":
+        suggestions = [] if probe.get("reachable") else ["检查 Dify embedding 应用是否已发布、URL 是否正确、EMBEDDING_API_KEY 是否匹配该应用。"]
+    else:
+        suggestions = [] if probe.get("reachable") else ["检查 Embedding 网关 URL、API Key 和 /models 或 /embeddings 能力是否可用。"]
+    probe["mode"] = probe_target.get("mode")
+    probe["probe_url"] = probe_target.get("url")
+    return probe, suggestions
+
 def _system_config_check() -> dict:
     checks = {}
 
@@ -7424,8 +7475,7 @@ def _system_config_check() -> dict:
         db_check["suggestions"].append("补齐 DATABASE_URL，或 DB_HOST / DB_NAME / DB_USER / DB_PASSWORD。")
     checks["postgres"] = db_check
 
-    embedding_headers = {"Authorization": f"Bearer {settings.EMBEDDING_API_KEY}"} if settings.EMBEDDING_API_KEY else {}
-    embedding_probe = _probe_http_status(settings.EMBEDDING_API_URL.rstrip("/") + "/api/tags", embedding_headers)
+    embedding_probe, embedding_suggestions = _embedding_probe_and_suggestions()
     checks["embedding"] = {
         "status": embedding_probe["status"] if not _is_placeholder_value(settings.EMBEDDING_API_URL) else "error",
         "configured": not _is_placeholder_value(settings.EMBEDDING_API_URL),
@@ -7433,7 +7483,7 @@ def _system_config_check() -> dict:
         "url": settings.EMBEDDING_API_URL,
         "model": settings.EMBEDDING_MODEL,
         "probe": embedding_probe,
-        "suggestions": [] if embedding_probe.get("reachable") else ["检查 Ollama 服务是否启动、URL 是否正确、模型是否已拉取。"],
+        "suggestions": embedding_suggestions,
     }
 
     def build_llm_check(name: str, api_url: str, api_key: str, model: str):
@@ -7571,7 +7621,7 @@ def _runtime_health() -> dict:
     finally:
         db.close()
 
-    if (settings.EMBEDDING_PROVIDER or "").lower() == "ollama":
+    if EmbeddingService.provider_name() == "ollama":
         try:
             session = requests.Session()
             session.trust_env = settings.HTTP_TRUST_ENV
@@ -7600,11 +7650,16 @@ def _runtime_health() -> dict:
             }
             overall = "degraded"
     else:
+        embedding_probe, _ = _embedding_probe_and_suggestions()
         checks["embedding"] = {
-            "status": "configured",
+            "status": "ok" if embedding_probe.get("reachable") else "error",
             "provider": settings.EMBEDDING_PROVIDER,
+            "url": settings.EMBEDDING_API_URL,
             "model": settings.EMBEDDING_MODEL,
+            "probe": embedding_probe,
         }
+        if not embedding_probe.get("reachable"):
+            overall = "degraded"
 
     checks["runtime"] = {
         "status": "ok",
@@ -9168,19 +9223,149 @@ async def save_ai_scripts(payload: dict):
 
 # --- 会话查询 API (供前端使用) ---
 
+def _parse_filter_date(chat_date: str | None) -> tuple[datetime, datetime] | None:
+    raw = str(chat_date or "").strip()
+    if not raw:
+        return None
+    try:
+        day = datetime.strptime(raw, "%Y-%m-%d")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="chat_date 必须为 YYYY-MM-DD") from exc
+    return day, day + timedelta(days=1)
+
+def _build_api_day_stats(db: Session, *, day_start: datetime, day_end: datetime) -> dict:
+    invocations = db.query(ApiAssistInvocation).filter(
+        ApiAssistInvocation.triggered_at >= day_start,
+        ApiAssistInvocation.triggered_at < day_end,
+    ).order_by(ApiAssistInvocation.triggered_at.asc()).all()
+    if not invocations:
+        return {
+            "invocation_count": 0,
+            "avg_quality_score": None,
+            "quality_score_rule": "调用次数按同会话 + 同客户节点 + 同一天去重；质量均分仅统计最后一次有效质量分",
+        }
+
+    deduped: dict[tuple[str, int | None], ApiAssistInvocation] = {}
+    for item in invocations:
+        key = (item.session_id, item.anchor_message_id)
+        existing = deduped.get(key)
+        if existing is None or (item.triggered_at or datetime.min) >= (existing.triggered_at or datetime.min):
+            deduped[key] = item
+
+    valid_items = [
+        item for item in deduped.values()
+        if item.quality_status == "scored" and item.quality_score is not None
+    ]
+    avg_score = None
+    if valid_items:
+        avg_score = round(sum(float(item.quality_score) for item in valid_items) / len(valid_items), 2)
+    return {
+        "invocation_count": len(deduped),
+        "avg_quality_score": avg_score,
+        "quality_score_rule": "调用次数按同会话 + 同客户节点 + 同一天去重；质量均分仅统计最后一次有效质量分，且单次质量分取知识库1/知识库2两路较高分",
+    }
+
+
+def _build_api_session_marks(db: Session, *, day_start: datetime, day_end: datetime) -> dict[str, dict]:
+    invocations = db.query(ApiAssistInvocation).filter(
+        ApiAssistInvocation.triggered_at >= day_start,
+        ApiAssistInvocation.triggered_at < day_end,
+    ).order_by(ApiAssistInvocation.triggered_at.asc()).all()
+
+    session_stats: dict[str, dict[str, Any]] = {}
+    deduped: dict[tuple[str, int | None], ApiAssistInvocation] = {}
+    for item in invocations:
+        session_key = str(item.session_id or "")
+        if not session_key:
+            continue
+        stats = session_stats.setdefault(session_key, {
+            "invocation_count": 0,
+            "last_triggered_at": None,
+        })
+        stats["invocation_count"] += 1
+        last_triggered_at = stats.get("last_triggered_at")
+        if last_triggered_at is None or (item.triggered_at or datetime.min) >= (last_triggered_at or datetime.min):
+            stats["last_triggered_at"] = item.triggered_at
+        dedupe_key = (session_key, item.anchor_message_id)
+        existing = deduped.get(dedupe_key)
+        if existing is None or (item.triggered_at or datetime.min) >= (existing.triggered_at or datetime.min):
+            deduped[dedupe_key] = item
+
+    quality_by_session: dict[str, list[float]] = {}
+    for item in deduped.values():
+        if item.quality_status != "scored" or item.quality_score is None:
+            continue
+        quality_by_session.setdefault(str(item.session_id), []).append(float(item.quality_score))
+
+    result: dict[str, dict] = {}
+    for session_id, stats in session_stats.items():
+        quality_scores = quality_by_session.get(session_id) or []
+        avg_quality = round(sum(quality_scores) / len(quality_scores), 2) if quality_scores else None
+        result[session_id] = {
+            "has_api_invocation": True,
+            "api_invocation_count": int(stats.get("invocation_count") or 0),
+            "api_last_triggered_at": stats.get("last_triggered_at"),
+            "api_avg_quality_score": avg_quality,
+        }
+    return result
+
 @app.get("/api/sessions")
-async def get_sessions(db: Session = Depends(get_db)):
+async def get_sessions(chat_date: str | None = Query(default=None), db: Session = Depends(get_db)):
     """获取真实会话列表；模拟数据不会进入日常运行视图。"""
     from sqlalchemy import func, cast, Integer, text
+    date_range = _parse_filter_date(chat_date)
     results = db.query(
         MessageLog.user_id,
         func.max(MessageLog.timestamp).label("last_msg"),
         func.max(cast(MessageLog.is_mock, Integer)).label("is_mock_int")
-    ).filter(MessageLog.is_mock.is_(False)).group_by(MessageLog.user_id).order_by(text("last_msg DESC")).all()
-    
-    return [
-        {"user_id": r.user_id, "last_msg": r.last_msg, "is_mock": bool(r.is_mock_int)} for r in results
-    ]
+    ).filter(MessageLog.is_mock.is_(False))
+    if date_range:
+        day_start, day_end = date_range
+        results = results.filter(
+            MessageLog.timestamp >= day_start,
+            MessageLog.timestamp < day_end,
+        )
+    results = results.group_by(MessageLog.user_id).order_by(text("last_msg DESC")).all()
+
+    session_marks: dict[str, dict] = {}
+    stats_payload = None
+    if date_range:
+        try:
+            stats_payload = _build_api_day_stats(db, day_start=day_start, day_end=day_end)
+        except Exception as exc:
+            logger.warning("构建当日 API 统计失败，已降级跳过。 date=%s error=%s", chat_date, exc)
+            stats_payload = {
+                "invocation_count": 0,
+                "avg_quality_score": None,
+                "quality_score_rule": "统计降级：当日 API 质量统计构建失败，已跳过",
+                "status": "degraded",
+                "error": sanitize_text(str(exc)),
+            }
+        try:
+            session_marks = _build_api_session_marks(db, day_start=day_start, day_end=day_end)
+        except Exception as exc:
+            logger.warning("构建会话级 API 标记失败，已降级跳过。 date=%s error=%s", chat_date, exc)
+            session_marks = {}
+
+    payload = {
+        "sessions": [
+            {
+                "user_id": r.user_id,
+                "last_msg": r.last_msg,
+                "is_mock": bool(r.is_mock_int),
+                **(session_marks.get(str(r.user_id)) or {
+                    "has_api_invocation": False,
+                    "api_invocation_count": 0,
+                    "api_last_triggered_at": None,
+                    "api_avg_quality_score": None,
+                }),
+            }
+            for r in results
+        ],
+        "filter_date": chat_date or None,
+        "stats": stats_payload if date_range else None,
+    }
+    return payload
 
 @app.get("/api/sessions/{user_id}/messages")
 async def get_messages(user_id: str):
@@ -9568,6 +9753,159 @@ def _collect_actual_sales_replies(messages: list[MessageLog], anchor_message_id:
             break
     return replies
 
+def _reply_block_text(replies: list[dict] | None) -> str:
+    return "\n".join(
+        str(item.get("content") or "").strip()
+        for item in (replies or [])
+        if str(item.get("content") or "").strip()
+    ).strip()
+
+def _reply_block_hash(replies: list[dict] | None) -> str | None:
+    text = _reply_block_text(replies)
+    if not text:
+        return None
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+def _find_latest_customer_anchor(messages: list[MessageLog]) -> MessageLog | None:
+    for item in reversed(messages or []):
+        if item.sender_type == "customer":
+            return item
+    return None
+
+def _short_anchor_text(text_value: str | None, max_len: int = 18) -> str:
+    text_value = sanitize_text(str(text_value or "").strip())
+    if len(text_value) <= max_len:
+        return text_value
+    return text_value[:max_len] + "..."
+
+def _api_invocation_label(item: ApiAssistInvocation) -> str:
+    ts = item.anchor_message_time.strftime("%m-%d %H:%M") if item.anchor_message_time else (
+        item.triggered_at.strftime("%m-%d %H:%M") if item.triggered_at else "API节点"
+    )
+    return f"API {ts} {_short_anchor_text(item.anchor_message_text) or '未命名节点'}"
+
+def _api_invocation_meta(item: ApiAssistInvocation) -> dict:
+    return {
+        "snapshot_id": str(item.invocation_id),
+        "kind": "api_sidebar_assist",
+        "label": _api_invocation_label(item),
+        "anchor_message_id": item.anchor_message_id,
+        "anchor_message_time": item.anchor_message_time,
+        "anchor_message_text": item.anchor_message_text,
+        "triggered_at": item.triggered_at,
+        "has_v1": bool((item.result_payload or {}).get("has_v1")),
+        "has_v2": bool((item.result_payload or {}).get("has_v2")),
+        "source_label": "API调用",
+    }
+
+def _is_same_calendar_day(left: datetime | None, right: datetime | None) -> bool:
+    return bool(left and right and left.date() == right.date())
+
+def _build_api_similarity_payload(
+    *,
+    result_payload: dict,
+    actual_sales_replies: list[dict],
+    triggered_at: datetime | None,
+) -> tuple[dict, Decimal | None, str]:
+    if not actual_sales_replies:
+        return ({
+            "status": "pending_no_sales_reply",
+            "reason": "触发后尚无我方连续回复块，暂不能计算质量分。",
+            "scores": [],
+            "actual_sales_reply_text": "",
+        }, None, "pending_no_sales_reply")
+
+    first_reply_time = None
+    first_reply_raw = actual_sales_replies[0].get("time")
+    if first_reply_raw:
+        try:
+            first_reply_time = datetime.fromisoformat(str(first_reply_raw).replace("Z", "+00:00"))
+        except ValueError:
+            first_reply_time = None
+    if triggered_at and first_reply_time and not _is_same_calendar_day(triggered_at, first_reply_time):
+        return ({
+            "status": "ignored_cross_day",
+            "reason": "触发后的第一条我方回复发生在次日，该次 API 调用按误触发处理，不纳入统计。",
+            "scores": [],
+            "actual_sales_reply_text": _reply_block_text(actual_sales_replies),
+        }, None, "ignored_cross_day")
+
+    similarity = IntentEngine.score_reply_similarity_to_sales_block(
+        kb1_reply_text=result_payload.get("reply_reference"),
+        kb2_reply_text=result_payload.get("reply_reference_compare"),
+        actual_sales_reply_text=_reply_block_text(actual_sales_replies),
+        summary_json={
+            "topic": result_payload.get("topic"),
+            "core_demand": result_payload.get("core_demand"),
+            "status": result_payload.get("status"),
+        },
+    )
+    similarity["quality_score_rule"] = "取知识库1/知识库2两路相似度较高者作为该次调用质量分"
+    best_score = similarity.get("best_score")
+    return similarity, _decimal_score(best_score) if best_score is not None else None, similarity.get("status") or "scored"
+
+def _refresh_api_invocation_quality(
+    db: Session,
+    item: ApiAssistInvocation,
+    *,
+    all_messages: list[MessageLog] | None = None,
+) -> None:
+    messages = all_messages if all_messages is not None else _load_session_messages(db, item.session_id)
+    actual_sales_replies = _collect_actual_sales_replies(messages, int(item.anchor_message_id or 0)) if item.anchor_message_id else []
+    reply_hash = _reply_block_hash(actual_sales_replies)
+    if (
+        item.actual_sales_reply_hash == reply_hash
+        and item.quality_similarity
+        and item.quality_status
+    ):
+        return
+
+    similarity_payload, best_score, quality_status = _build_api_similarity_payload(
+        result_payload=dict(item.result_payload or {}),
+        actual_sales_replies=actual_sales_replies,
+        triggered_at=item.triggered_at,
+    )
+    item.actual_sales_replies = _jsonable(actual_sales_replies)
+    item.actual_sales_reply_text = _reply_block_text(actual_sales_replies)
+    item.actual_sales_reply_hash = reply_hash
+    item.quality_similarity = _jsonable(similarity_payload)
+    item.quality_score = best_score
+    item.quality_status = quality_status
+    item.quality_scored_at = datetime.utcnow()
+
+def _store_api_assist_invocation(
+    db: Session,
+    *,
+    result_payload: dict,
+    session_id: str,
+    requested_session_id: str,
+    external_userid: str,
+    sales_userid: str,
+    messages: list[MessageLog],
+) -> ApiAssistInvocation | None:
+    anchor_message = _find_latest_customer_anchor(messages)
+    if not anchor_message:
+        return None
+    visible_messages = _visible_messages_until_anchor(messages, anchor_message.id)
+    item = ApiAssistInvocation(
+        session_id=session_id,
+        requested_session_id=requested_session_id,
+        external_userid=external_userid,
+        sales_userid=sales_userid,
+        anchor_message_id=anchor_message.id,
+        anchor_message_time=anchor_message.timestamp,
+        anchor_message_text=anchor_message.content,
+        visible_message_ids=[msg.id for msg in visible_messages],
+        latest_dialog_count=len(visible_messages),
+        triggered_at=datetime.utcnow(),
+        stage_status=_jsonable(result_payload.get("stage_status") or {}),
+        result_payload=_jsonable(result_payload),
+    )
+    db.add(item)
+    db.flush()
+    _refresh_api_invocation_quality(db, item, all_messages=messages)
+    return item
+
 def _summary_json_from_source(source: Any) -> dict:
     if not source:
         return {}
@@ -9786,6 +10124,7 @@ def _generate_reply_style_candidates(
     single_model_single_style: bool | None = None,
     enable_scoring: bool | None = None,
 ) -> dict:
+    stage_started = perf_counter()
     single_model_single_style = (
         settings.API_REPLY_SINGLE_MODEL_SINGLE_STYLE
         if single_model_single_style is None
@@ -9838,6 +10177,7 @@ def _generate_reply_style_candidates(
     ]
 
     model_stats: dict[str, dict[str, int]] = {}
+    stage_parts_ms: dict[str, float] = {}
 
     def ensure_model_stats(slot: str) -> dict[str, int]:
         return model_stats.setdefault(slot, {"done": 0, "failures": 0, "placeholders": 0})
@@ -9889,6 +10229,7 @@ def _generate_reply_style_candidates(
         return None
 
     for model_spec in model_specs:
+        slot_started = perf_counter()
         slot = model_spec["slot"]
         stats = ensure_model_stats(slot)
         config = model_spec["config"]
@@ -9905,6 +10246,7 @@ def _generate_reply_style_candidates(
                         reason="LLM2_COMPARE_API_URL / API_KEY / MODEL 未完整配置",
                     )
                     stats["placeholders"] += 1
+            stage_parts_ms["llm2_compare_ms"] = round((perf_counter() - slot_started) * 1000, 2)
             continue
 
         if slot == "llm2_compare":
@@ -9983,6 +10325,8 @@ def _generate_reply_style_candidates(
                         prompt_trace=request_spec.get("prompt_trace") if isinstance(request_spec, dict) else None,
                         reason=sanitize_text(str(exc)),
                     )
+        part_key = "llm2_compare_ms" if slot == "llm2_compare" else "llm2_ms"
+        stage_parts_ms[part_key] = round((perf_counter() - slot_started) * 1000, 2)
 
     primary_stats = ensure_model_stats("llm2")
     compare_stats = ensure_model_stats("llm2_compare")
@@ -10003,6 +10347,7 @@ def _generate_reply_style_candidates(
 
     reply_scores = None
     if enable_scoring:
+        score_started = perf_counter()
         reply_scores = IntentEngine.score_reply_candidates(
             summary_json=summary_json,
             knowledge_payload=knowledge,
@@ -10010,6 +10355,7 @@ def _generate_reply_style_candidates(
             candidates=candidates,
             actual_sales_replies=actual_sales_replies,
         )
+        stage_parts_ms["reply_scoring_ms"] = round((perf_counter() - score_started) * 1000, 2)
     primary_candidate = _select_candidate(candidates, "llm2", "knowledge_v2")
     compare_candidate = _select_candidate(candidates, "llm2", "knowledge_external_api")
     if primary_candidate and knowledge.get("log_id"):
@@ -10027,6 +10373,10 @@ def _generate_reply_style_candidates(
                 )
             )
         ),
+        "stage_timings_ms": {
+            "total_ms": round((perf_counter() - stage_started) * 1000, 2),
+            "parts_ms": stage_parts_ms,
+        },
     }
 
 def _parse_sales_userid_from_session(session_id: str) -> str | None:
@@ -10088,6 +10438,20 @@ def _reply_snapshot_meta(snapshot: ReplyChainSnapshot) -> dict:
         "updated_at": snapshot.updated_at,
     }
 
+def _api_invocation_result_payload(item: ApiAssistInvocation) -> dict:
+    payload = dict(item.result_payload or {})
+    payload["analysis_mode"] = "api_sidebar_assist_snapshot"
+    payload["analysis_version"] = _api_invocation_meta(item)
+    payload["actual_sales_replies"] = item.actual_sales_replies or []
+    payload["api_quality_similarity"] = item.quality_similarity or None
+    payload["api_quality_score"] = float(item.quality_score) if item.quality_score is not None else None
+    payload["api_quality_status"] = item.quality_status
+    payload["api_triggered_at"] = item.triggered_at
+    payload["user_id"] = item.session_id
+    payload["has_api_invocation"] = True
+    payload.setdefault("stage_status", item.stage_status or {})
+    return payload
+
 
 def _sales_advice_output_sections(raw_content: str | None) -> dict:
     sections = IntentEngine.split_sales_assist_output(raw_content)
@@ -10109,6 +10473,52 @@ def _apply_sales_advice_output_fields(target: dict, raw_content: str | None, *, 
 
 def _stage_is_in_progress(stage: str | None) -> bool:
     return str(stage or "").strip() in {"queued", "running"}
+
+
+def _round_timing_ms(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return round(float(value), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _clean_timing_parts(parts_ms: dict[str, Any] | None) -> dict[str, float]:
+    cleaned: dict[str, float] = {}
+    for key, raw_value in (parts_ms or {}).items():
+        rounded = _round_timing_ms(raw_value)
+        if rounded is not None:
+            cleaned[str(key)] = rounded
+    return cleaned
+
+
+def _set_node_timing(
+    stage_status: dict,
+    node_key: str,
+    *,
+    total_ms: Any = None,
+    parts_ms: dict[str, Any] | None = None,
+    status: str | None = None,
+) -> dict:
+    node_timings = dict(stage_status.get("node_timings_ms") or {})
+    payload = dict(node_timings.get(node_key) or {})
+    rounded_total = _round_timing_ms(total_ms)
+    if rounded_total is not None:
+        payload["total_ms"] = rounded_total
+    if parts_ms is not None:
+        payload["parts_ms"] = _clean_timing_parts(parts_ms)
+    if status is not None:
+        payload["status"] = str(status)
+    node_timings[node_key] = payload
+    stage_status["node_timings_ms"] = node_timings
+    return payload
+
+
+def _extract_node_timings(stage_status: dict | None) -> dict:
+    if not isinstance(stage_status, dict):
+        return {}
+    return _jsonable(stage_status.get("node_timings_ms") or {})
 
 
 def _serialize_reply_candidates_for_output(candidates: list[dict] | None) -> list[dict]:
@@ -10167,6 +10577,7 @@ def _read_only_current_tail_result(
             **stored_stage_status,
         },
     }
+    result["node_timings_ms"] = _extract_node_timings(result["stage_status"])
 
     crm_context = (summary.crm_info if summary and summary.crm_info else None) or IntentEngine.get_crm_context(extract_external_userid(user_id))
     if crm_context:
@@ -10320,6 +10731,7 @@ def _snapshot_result_payload(
             **stage_status,
         },
     }
+    result["node_timings_ms"] = _extract_node_timings(result["stage_status"])
     if snapshot.crm_info:
         result["crm_info"] = snapshot.crm_info
         result["crm_status"] = snapshot.crm_status
@@ -10389,10 +10801,14 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
         ).first()
         if not snapshot:
             raise RuntimeError(f"未找到历史节点快照: {snapshot_id}")
+        started = perf_counter()
         all_messages = _load_session_messages(db, session_id)
         visible_messages = _visible_messages_until_anchor(all_messages, snapshot.anchor_message_id)
+        conversation_input_ms = round((perf_counter() - started) * 1000, 2)
         recent_visible_logs = visible_messages[-15:]
+        started = perf_counter()
         fast_track_signals = collect_fast_track_signals(recent_visible_logs)
+        fast_track_ms = round((perf_counter() - started) * 1000, 2)
         snapshot.fast_track = fast_track_signals
         snapshot.visible_message_ids = [msg.id for msg in visible_messages]
         snapshot.latest_dialog_count = len(visible_messages)
@@ -10400,6 +10816,8 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
         stage_status = dict(snapshot.stage_status or {})
         stage_status["conversation_input"] = "done" if visible_messages else "empty"
         stage_status["fast_track"] = "done"
+        _set_node_timing(stage_status, "conversation_input", total_ms=conversation_input_ms, status="done" if visible_messages else "empty")
+        _set_node_timing(stage_status, "fast_track", total_ms=fast_track_ms, status="done")
         stage_status["last_requested_action"] = channel
         stage_status[channel] = "running"
         snapshot.stage_status = stage_status
@@ -10430,10 +10848,13 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
             return
 
         summary_json = {**_summary_json_from_source(snapshot), "fast_track_signals": fast_track_signals}
+        crm_started = perf_counter()
         crm_context = IntentEngine.get_crm_context(extract_external_userid(session_id))
+        crm_profile_ms = round((perf_counter() - crm_started) * 1000, 2)
         snapshot.crm_info = crm_context
         snapshot.crm_status = crm_context.get("crm_profile_status")
         stage_status["crm_profile"] = snapshot.crm_status or "unknown"
+        _set_node_timing(stage_status, "crm_profile", total_ms=crm_profile_ms, status=snapshot.crm_status or "unknown")
         thread_fact_payload = _build_thread_fact_payload_for_context(
             session_id=session_id,
             summary_json=summary_json,
@@ -10447,9 +10868,12 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
             query_features = IntentEngine.infer_query_features(summary_json, crm_context, thread_fact_payload)
             retrieval_query = IntentEngine.build_retrieval_query(summary_json, thread_fact_payload)
 
+        knowledge_stage_started = perf_counter()
+        knowledge_parts_ms: dict[str, float] = {}
         if channel == "knowledge_v2":
             if snapshot.core_demand and snapshot.core_demand != "未明确":
                 try:
+                    started = perf_counter()
                     knowledge = IntentEngine.retrieve_knowledge_v2(
                         retrieval_query,
                         query_features=query_features,
@@ -10457,6 +10881,7 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
                         request_id=f"snapshot_k1_{snapshot_id[:12]}",
                         session_id=session_id,
                     )
+                    knowledge_parts_ms["knowledge_v2_ms"] = round((perf_counter() - started) * 1000, 2)
                     knowledge["thread_business_fact"] = thread_fact_payload
                 except Exception as exc:
                     knowledge = _knowledge_v2_error_payload(
@@ -10485,10 +10910,19 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
                 snapshot.knowledge_manual_review_required = False
                 stage_status["knowledge_v2"] = "skipped_no_core_demand"
         else:
+            started = perf_counter()
             external_knowledge = _search_sales_kb_api(retrieval_query if retrieval_query else None, top_k=5)
+            knowledge_parts_ms["knowledge_external_api_ms"] = round((perf_counter() - started) * 1000, 2)
             snapshot.knowledge_external_api = external_knowledge
             stage_status["knowledge_external_api"] = external_knowledge.get("status") or "unknown"
 
+        _set_node_timing(
+            stage_status,
+            "knowledge",
+            total_ms=round((perf_counter() - knowledge_stage_started) * 1000, 2),
+            parts_ms=knowledge_parts_ms,
+            status=stage_status.get(channel) or "unknown",
+        )
         snapshot.stage_status = stage_status
         db.commit()
         knowledge_payload = snapshot.knowledge_v2 if channel == "knowledge_v2" else snapshot.knowledge_external_api
@@ -10553,11 +10987,15 @@ def refresh_session_knowledge_task(user_id: str, channel: str) -> None:
         summary = db.query(IntentSummary).filter(IntentSummary.user_id == user_id).order_by(IntentSummary.id.desc()).first()
         if not summary:
             raise RuntimeError(f"未找到会话摘要: {user_id}")
+        started = perf_counter()
         recent_logs = db.query(MessageLog).filter(
             MessageLog.user_id == user_id,
             MessageLog.is_mock.is_(False),
         ).order_by(MessageLog.id.desc()).limit(15).all()
+        conversation_input_ms = round((perf_counter() - started) * 1000, 2)
+        started = perf_counter()
         fast_track_signals = collect_fast_track_signals(recent_logs)
+        fast_track_ms = round((perf_counter() - started) * 1000, 2)
         summary_json = {
             "topic": summary.topic,
             "core_demand": summary.core_demand,
@@ -10573,6 +11011,8 @@ def refresh_session_knowledge_task(user_id: str, channel: str) -> None:
             "fast_track": "done",
             **dict(summary.stage_status or {}),
         }
+        _set_node_timing(stage_status, "conversation_input", total_ms=conversation_input_ms, status="done" if recent_logs else "empty")
+        _set_node_timing(stage_status, "fast_track", total_ms=fast_track_ms, status="done")
         stage_status["last_requested_action"] = channel
         stage_status[channel] = "running"
         summary.stage_status = stage_status
@@ -10602,10 +11042,13 @@ def refresh_session_knowledge_task(user_id: str, channel: str) -> None:
             db.commit()
             return
 
+        crm_started = perf_counter()
         crm_context = IntentEngine.get_crm_context(extract_external_userid(user_id))
+        crm_profile_ms = round((perf_counter() - crm_started) * 1000, 2)
         summary.crm_info = crm_context
         summary.crm_status = crm_context.get("crm_profile_status")
         stage_status["crm_profile"] = summary.crm_status or "unknown"
+        _set_node_timing(stage_status, "crm_profile", total_ms=crm_profile_ms, status=summary.crm_status or "unknown")
         current_thread_fact = _upsert_thread_business_fact(
             db,
             session_id=user_id,
@@ -10622,9 +11065,12 @@ def refresh_session_knowledge_task(user_id: str, channel: str) -> None:
             query_features = IntentEngine.infer_query_features(summary_json, crm_context, thread_fact_payload)
             retrieval_query = IntentEngine.build_retrieval_query(summary_json, thread_fact_payload)
 
+        knowledge_stage_started = perf_counter()
+        knowledge_parts_ms: dict[str, float] = {}
         if channel == "knowledge_v2":
             if summary.core_demand and summary.core_demand != "未明确":
                 try:
+                    started = perf_counter()
                     knowledge = IntentEngine.retrieve_knowledge_v2(
                         retrieval_query,
                         query_features=query_features,
@@ -10632,6 +11078,7 @@ def refresh_session_knowledge_task(user_id: str, channel: str) -> None:
                         request_id=f"manual_k1_{uuid.uuid4().hex[:12]}",
                         session_id=user_id,
                     )
+                    knowledge_parts_ms["knowledge_v2_ms"] = round((perf_counter() - started) * 1000, 2)
                     knowledge["thread_business_fact"] = thread_fact_payload
                 except Exception as exc:
                     knowledge = _knowledge_v2_error_payload(
@@ -10660,10 +11107,19 @@ def refresh_session_knowledge_task(user_id: str, channel: str) -> None:
                 summary.knowledge_manual_review_required = False
                 stage_status["knowledge_v2"] = "skipped_no_core_demand"
         else:
+            started = perf_counter()
             external_knowledge = _search_sales_kb_api(retrieval_query if retrieval_query else None, top_k=5)
+            knowledge_parts_ms["knowledge_external_api_ms"] = round((perf_counter() - started) * 1000, 2)
             summary.knowledge_external_api = external_knowledge
             stage_status["knowledge_external_api"] = external_knowledge.get("status") or "unknown"
 
+        _set_node_timing(
+            stage_status,
+            "knowledge",
+            total_ms=round((perf_counter() - knowledge_stage_started) * 1000, 2),
+            parts_ms=knowledge_parts_ms,
+            status=stage_status.get(channel) or "unknown",
+        )
         summary.stage_status = stage_status
         db.commit()
         knowledge_payload = summary.knowledge_v2 if channel == "knowledge_v2" else summary.knowledge_external_api
@@ -10729,10 +11185,14 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
         if not snapshot:
             raise RuntimeError(f"未找到历史节点快照: {snapshot_id}")
 
+        started = perf_counter()
         all_messages = _load_session_messages(db, session_id)
         visible_messages = _visible_messages_until_anchor(all_messages, snapshot.anchor_message_id)
+        conversation_input_ms = round((perf_counter() - started) * 1000, 2)
         recent_visible_logs = visible_messages[-15:]
+        started = perf_counter()
         fast_track_signals = collect_fast_track_signals(recent_visible_logs)
+        fast_track_ms = round((perf_counter() - started) * 1000, 2)
         snapshot.fast_track = fast_track_signals
         snapshot.visible_message_ids = [msg.id for msg in visible_messages]
         snapshot.latest_dialog_count = len(visible_messages)
@@ -10740,6 +11200,8 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
         stage_status = dict(snapshot.stage_status or {})
         stage_status["conversation_input"] = "done" if visible_messages else "empty"
         stage_status["fast_track"] = "done"
+        _set_node_timing(stage_status, "conversation_input", total_ms=conversation_input_ms, status="done" if visible_messages else "empty")
+        _set_node_timing(stage_status, "fast_track", total_ms=fast_track_ms, status="done")
         if step == 1:
             log_reply_chain_event("STEP_START", {
                 "source": "frontend",
@@ -10757,11 +11219,19 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
             db.commit()
             if not visible_messages:
                 stage_status["llm1"] = "skipped_no_messages"
+                _set_node_timing(stage_status, "llm1", total_ms=0, status="skipped_no_messages")
                 snapshot.stage_status = stage_status
                 db.commit()
                 return
             context = [{"content": item.content, "sender_type": item.sender_type} for item in visible_messages]
+            llm1_started = perf_counter()
             summary = IntentEngine._run_llm1(f"{session_id}#{snapshot.anchor_message_id}", context)
+            _set_node_timing(
+                stage_status,
+                "llm1",
+                total_ms=round((perf_counter() - llm1_started) * 1000, 2),
+                status="done" if summary else "error",
+            )
             if not summary:
                 raise RuntimeError("LLM-1 未返回有效结构化摘要")
             _apply_summary_fields(snapshot, summary)
@@ -10781,9 +11251,12 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
             snapshot.sales_advice_compare_prompt_trace_v2 = None
             snapshot.assist_validation = None
             snapshot.assist_compare_validation = None
+            crm_started = perf_counter()
             crm_context = IntentEngine.get_crm_context(extract_external_userid(session_id))
+            crm_profile_ms = round((perf_counter() - crm_started) * 1000, 2)
             snapshot.crm_info = crm_context
             snapshot.crm_status = crm_context.get("crm_profile_status")
+            _set_node_timing(stage_status, "crm_profile", total_ms=crm_profile_ms, status=snapshot.crm_status or "unknown")
             snapshot.thread_business_fact = _build_thread_fact_payload_for_context(
                 session_id=session_id,
                 summary_json={**_summary_json_from_source(snapshot), "fast_track_signals": fast_track_signals},
@@ -10830,10 +11303,13 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
         db.commit()
 
         summary_json = {**_summary_json_from_source(snapshot), "fast_track_signals": fast_track_signals}
+        crm_started = perf_counter()
         crm_context = IntentEngine.get_crm_context(extract_external_userid(session_id))
+        crm_profile_ms = round((perf_counter() - crm_started) * 1000, 2)
         snapshot.crm_info = crm_context
         snapshot.crm_status = crm_context.get("crm_profile_status")
         stage_status["crm_profile"] = snapshot.crm_status or "unknown"
+        _set_node_timing(stage_status, "crm_profile", total_ms=crm_profile_ms, status=snapshot.crm_status or "unknown")
         thread_fact_payload = _build_thread_fact_payload_for_context(
             session_id=session_id,
             summary_json=summary_json,
@@ -10893,6 +11369,14 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
         snapshot.sales_advice_compare_v2 = compare_candidate.get("content") if compare_candidate else None
         snapshot.assist_compare_validation = compare_candidate.get("validation") if compare_candidate else None
         snapshot.sales_advice_compare_prompt_trace_v2 = (compare_candidate or first_compare_entry or {}).get("prompt_trace")
+        llm2_stage_timing = generation_bundle.get("stage_timings_ms") or {}
+        _set_node_timing(
+            stage_status,
+            "llm2",
+            total_ms=llm2_stage_timing.get("total_ms"),
+            parts_ms=llm2_stage_timing.get("parts_ms"),
+            status=generation_bundle.get("llm2_status") or "failed_no_content",
+        )
         stage_status["llm2"] = generation_bundle.get("llm2_status") or "failed_no_content"
         stage_status["llm2_compare"] = generation_bundle.get("llm2_compare_status") or "not_started"
         compare_result = (
@@ -10981,23 +11465,31 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                 existing_stage_status["llm2_compare"] = "not_started"
                 existing_summary.stage_status = existing_stage_status
                 db.commit()
+            started = perf_counter()
             context_logs = db.query(MessageLog).filter(
                 MessageLog.user_id == user_id,
                 MessageLog.is_mock.is_(False),
             ).order_by(MessageLog.id.desc()).limit(15).all()
+            conversation_input_ms = round((perf_counter() - started) * 1000, 2)
             context = [{"content": l.content, "sender_type": l.sender_type} for l in reversed(context_logs)]
+            started = perf_counter()
+            fast_track_signals = collect_fast_track_signals(context_logs)
+            fast_track_ms = round((perf_counter() - started) * 1000, 2)
             if context:
+                llm1_started = perf_counter()
                 summary_payload = IntentEngine._run_llm1(user_id, context)
+                llm1_ms = round((perf_counter() - llm1_started) * 1000, 2)
                 if not summary_payload:
                     raise RuntimeError("LLM-1 未返回有效结构化摘要")
                 summary_record = IntentSummary(user_id=user_id)
                 _apply_summary_fields(summary_record, summary_payload)
                 summary_record.llm1_compare_summary = None
                 summary_record.llm1_compare_prompt_trace = None
+                crm_started = perf_counter()
                 crm_context = IntentEngine.get_crm_context(extract_external_userid(user_id))
+                crm_profile_ms = round((perf_counter() - crm_started) * 1000, 2)
                 summary_record.crm_info = crm_context
                 summary_record.crm_status = crm_context.get("crm_profile_status")
-                fast_track_signals = collect_fast_track_signals(context_logs)
                 thread_fact = _upsert_thread_business_fact(
                     db,
                     session_id=user_id,
@@ -11016,7 +11508,7 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                     external_userid=extract_external_userid(user_id),
                 )
                 summary_record.thread_business_fact = _thread_fact_to_dict(thread_fact)
-                summary_record.stage_status = {
+                stage_status_payload = {
                     "conversation_input": "done" if context else "empty",
                     "fast_track": "done",
                     "llm1": "done",
@@ -11026,6 +11518,11 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                     "llm2": "not_started",
                     "llm2_compare": "not_started",
                 }
+                _set_node_timing(stage_status_payload, "conversation_input", total_ms=conversation_input_ms, status="done" if context else "empty")
+                _set_node_timing(stage_status_payload, "fast_track", total_ms=fast_track_ms, status="done")
+                _set_node_timing(stage_status_payload, "llm1", total_ms=llm1_ms, status="done")
+                _set_node_timing(stage_status_payload, "crm_profile", total_ms=crm_profile_ms, status=summary_record.crm_status or "unknown")
+                summary_record.stage_status = stage_status_payload
                 db.add(summary_record)
                 db.commit()
                 logger.info("会话 %s 的 AI 结构化特征(V1) 已生成完毕", user_id)
@@ -11038,6 +11535,18 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                     "message_count": len(context),
                 })
             else:
+                summary = db.query(IntentSummary).filter(IntentSummary.user_id == user_id).order_by(IntentSummary.id.desc()).first()
+                if summary:
+                    stage_status_payload = {
+                        "conversation_input": "empty",
+                        "fast_track": "done",
+                        **dict(summary.stage_status or {}),
+                    }
+                    _set_node_timing(stage_status_payload, "conversation_input", total_ms=conversation_input_ms, status="empty")
+                    _set_node_timing(stage_status_payload, "fast_track", total_ms=fast_track_ms, status="done")
+                    _set_node_timing(stage_status_payload, "llm1", total_ms=0, status="skipped_no_messages")
+                    summary.stage_status = stage_status_payload
+                    db.commit()
                 log_reply_chain_event("STEP_RESULT", {
                     "source": "frontend",
                     "business_object": user_id,
@@ -11057,11 +11566,15 @@ def reanalyze_session_task(user_id: str, step: int = 1):
             summary = db.query(IntentSummary).filter(IntentSummary.user_id == user_id).order_by(IntentSummary.id.desc()).first()
             if summary:
                 # 重新构建 json 体传给 llm2
+                started = perf_counter()
                 recent_logs = db.query(MessageLog).filter(
                     MessageLog.user_id == user_id,
                     MessageLog.is_mock.is_(False),
                 ).order_by(MessageLog.id.desc()).limit(15).all()
+                conversation_input_ms = round((perf_counter() - started) * 1000, 2)
+                started = perf_counter()
                 fast_track_signals = collect_fast_track_signals(recent_logs)
+                fast_track_ms = round((perf_counter() - started) * 1000, 2)
                 summary_json = {
                     "topic": summary.topic, "core_demand": summary.core_demand, "key_facts": summary.key_facts,
                     "todo_items": summary.todo_items, "risks": summary.risks, "to_be_confirmed": summary.to_be_confirmed,
@@ -11073,15 +11586,20 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                     "fast_track": "done",
                     **dict(summary.stage_status or {}),
                 }
+                _set_node_timing(stage_status, "conversation_input", total_ms=conversation_input_ms, status="done" if recent_logs else "empty")
+                _set_node_timing(stage_status, "fast_track", total_ms=fast_track_ms, status="done")
                 stage_status["llm2"] = "running"
                 stage_status["llm2_compare"] = "running"
                 summary.stage_status = stage_status
                 db.commit()
                 # CRM Context
+                crm_started = perf_counter()
                 crm_context = IntentEngine.get_crm_context(extract_external_userid(user_id))
+                crm_profile_ms = round((perf_counter() - crm_started) * 1000, 2)
                 summary.crm_info = crm_context
                 summary.crm_status = crm_context.get("crm_profile_status")
                 stage_status["crm_profile"] = summary.crm_status or "unknown"
+                _set_node_timing(stage_status, "crm_profile", total_ms=crm_profile_ms, status=summary.crm_status or "unknown")
                 current_thread_fact = _upsert_thread_business_fact(
                     db,
                     session_id=user_id,
@@ -11142,6 +11660,14 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                 summary.assist_validation = primary_candidate.get("validation") if primary_candidate else None
                 summary.assist_compare_validation = compare_candidate.get("validation") if compare_candidate else None
                 stage_status["llm1"] = "done"
+                llm2_stage_timing = generation_bundle.get("stage_timings_ms") or {}
+                _set_node_timing(
+                    stage_status,
+                    "llm2",
+                    total_ms=llm2_stage_timing.get("total_ms"),
+                    parts_ms=llm2_stage_timing.get("parts_ms"),
+                    status=generation_bundle.get("llm2_status") or "failed_no_content",
+                )
                 stage_status["llm2"] = generation_bundle.get("llm2_status") or "failed_no_content"
                 stage_status["llm2_compare"] = generation_bundle.get("llm2_compare_status") or "not_started"
                 summary.stage_status = stage_status
@@ -11199,6 +11725,20 @@ async def list_reply_chain_versions(user_id: str):
         snapshots = db.query(ReplyChainSnapshot).filter(
             ReplyChainSnapshot.session_id == user_id
         ).order_by(ReplyChainSnapshot.anchor_message_time.desc(), ReplyChainSnapshot.updated_at.desc()).all()
+        api_invocations = db.query(ApiAssistInvocation).filter(
+            ApiAssistInvocation.session_id == user_id
+        ).order_by(ApiAssistInvocation.anchor_message_time.desc(), ApiAssistInvocation.triggered_at.desc()).all()
+        mixed_versions = [
+            *[_reply_snapshot_meta(item) for item in snapshots],
+            *[_api_invocation_meta(item) for item in api_invocations],
+        ]
+        mixed_versions.sort(
+            key=lambda item: (
+                item.get("anchor_message_time") or datetime.min,
+                item.get("triggered_at") or datetime.min,
+            ),
+            reverse=True,
+        )
         result = {
             "session_id": user_id,
             "versions": [
@@ -11212,7 +11752,7 @@ async def list_reply_chain_versions(user_id: str):
                     "has_v1": None,
                     "has_v2": None,
                 },
-                *[_reply_snapshot_meta(item) for item in snapshots],
+                *mixed_versions,
             ],
         }
         log_session_view_event("ANALYSIS_VERSIONS", {
@@ -11261,20 +11801,41 @@ async def get_latest_analysis(user_id: str, snapshot_id: str | None = Query(defa
                 ReplyChainSnapshot.snapshot_id == snapshot_id,
                 ReplyChainSnapshot.session_id == user_id,
             ).first()
-            if not snapshot:
+            if snapshot:
+                all_messages = _load_session_messages(db, user_id)
+                visible_messages = _visible_messages_until_anchor(all_messages, snapshot.anchor_message_id)
+                result = _snapshot_result_payload(snapshot=snapshot, visible_messages=visible_messages)
+                if not result.get("fast_track"):
+                    result["fast_track"] = collect_fast_track_signals(visible_messages[-15:])
+                if not result.get("actual_sales_replies"):
+                    result["actual_sales_replies"] = _collect_actual_sales_replies(all_messages, snapshot.anchor_message_id)
+                if (snapshot.topic or snapshot.core_demand or snapshot.status) and not result.get("crm_info"):
+                    crm_context = IntentEngine.get_crm_context(extract_external_userid(user_id))
+                    result["crm_info"] = crm_context
+                    result["crm_status"] = crm_context.get("crm_profile_status")
+                    result.setdefault("stage_status", {})["crm_profile"] = result["crm_status"] or "unknown"
+                log_session_view_event("ANALYSIS", {
+                    "user_id": user_id,
+                    "snapshot_id": snapshot_id,
+                    "analysis_mode": result.get("analysis_mode"),
+                    "has_v1": result.get("has_v1"),
+                    "has_v2": result.get("has_v2"),
+                    "has_v2_compare": result.get("has_v2_compare"),
+                    "stage_status": result.get("stage_status"),
+                    "timings_ms": {"total_ms": round((perf_counter() - total_started) * 1000, 2)},
+                })
+                return result
+
+            api_invocation = db.query(ApiAssistInvocation).filter(
+                ApiAssistInvocation.invocation_id == snapshot_id,
+                ApiAssistInvocation.session_id == user_id,
+            ).first()
+            if not api_invocation:
                 raise HTTPException(status_code=404, detail="历史节点链路不存在")
             all_messages = _load_session_messages(db, user_id)
-            visible_messages = _visible_messages_until_anchor(all_messages, snapshot.anchor_message_id)
-            result = _snapshot_result_payload(snapshot=snapshot, visible_messages=visible_messages)
-            if not result.get("fast_track"):
-                result["fast_track"] = collect_fast_track_signals(visible_messages[-15:])
-            if not result.get("actual_sales_replies"):
-                result["actual_sales_replies"] = _collect_actual_sales_replies(all_messages, snapshot.anchor_message_id)
-            if (snapshot.topic or snapshot.core_demand or snapshot.status) and not result.get("crm_info"):
-                crm_context = IntentEngine.get_crm_context(extract_external_userid(user_id))
-                result["crm_info"] = crm_context
-                result["crm_status"] = crm_context.get("crm_profile_status")
-                result.setdefault("stage_status", {})["crm_profile"] = result["crm_status"] or "unknown"
+            _refresh_api_invocation_quality(db, api_invocation, all_messages=all_messages)
+            db.commit()
+            result = _api_invocation_result_payload(api_invocation)
             log_session_view_event("ANALYSIS", {
                 "user_id": user_id,
                 "snapshot_id": snapshot_id,
@@ -11426,6 +11987,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
     knowledge_v2 = None
     assist_bundle = None
     compare_bundle = None
+    all_messages: list[MessageLog] = []
 
     def mark_timing(name: str, started_at: float):
         timings_ms[name] = round((perf_counter() - started_at) * 1000, 2)
@@ -11480,16 +12042,42 @@ async def sidebar_assist(request: SidebarAssistRequest):
             requested_session_id,
             session_id,
         )
+        stage_started = perf_counter()
+        all_messages = _load_session_messages(db, session_id) if session_id else []
+        mark_timing("load_all_messages_ms", stage_started)
+        _set_node_timing(
+            stage_status,
+            "conversation_input",
+            total_ms=(timings_ms.get("load_recent_messages_ms") or 0) + (timings_ms.get("load_all_messages_ms") or 0),
+            parts_ms={
+                "session_lookup_ms": timings_ms.get("load_recent_messages_ms"),
+                "full_session_load_ms": timings_ms.get("load_all_messages_ms"),
+            },
+            status="done" if recent_logs else "empty",
+        )
 
         # Fast-Track 前置扫描：既返回给侧边栏展示，也作为 LLM-2 的输入信号
         stage_started = perf_counter()
         fast_track_signals = collect_fast_track_signals(recent_logs)
         mark_timing("fast_track_scan_ms", stage_started)
+        _set_node_timing(
+            stage_status,
+            "fast_track",
+            total_ms=timings_ms.get("fast_track_scan_ms"),
+            status="done",
+        )
         
         # 1. 触发同步测算 (阶段1 和 阶段2)
         stage_started = perf_counter()
         summary = db.query(IntentSummary).filter(IntentSummary.user_id == session_id).order_by(IntentSummary.id.desc()).first()
         mark_timing("load_summary_ms", stage_started)
+        if summary and isinstance(summary.stage_status, dict) and summary.stage_status.get("node_timings_ms"):
+            stored_timings = _jsonable(summary.stage_status.get("node_timings_ms") or {})
+            current_timings = _jsonable(stage_status.get("node_timings_ms") or {})
+            stage_status["node_timings_ms"] = {
+                **stored_timings,
+                **current_timings,
+            }
         
         need_v1 = request.force_refresh or summary is None
         if need_v1:
@@ -11499,6 +12087,12 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 stage_started = perf_counter()
                 summary_payload = IntentEngine._run_llm1(session_id, context)
                 mark_timing("llm1_analyze_ms", stage_started)
+                _set_node_timing(
+                    stage_status,
+                    "llm1",
+                    total_ms=timings_ms.get("llm1_analyze_ms"),
+                    status="done" if summary_payload else "error",
+                )
                 if not summary_payload:
                     raise RuntimeError("LLM-1 未返回有效结构化摘要")
                 summary_record = IntentSummary(user_id=session_id)
@@ -11520,6 +12114,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 stage_status["llm1"] = "done"
             else:
                 stage_status["llm1"] = "skipped_no_recent_logs"
+                _set_node_timing(stage_status, "llm1", total_ms=0, status="skipped_no_recent_logs")
                 
             stage_started = perf_counter()
             summary = db.query(IntentSummary).filter(IntentSummary.user_id == session_id).order_by(IntentSummary.id.desc()).first()
@@ -11543,6 +12138,12 @@ async def sidebar_assist(request: SidebarAssistRequest):
             stage_started = perf_counter()
             crm_context = IntentEngine.get_crm_context(external_userid)
             mark_timing("crm_profile_ms", stage_started)
+            _set_node_timing(
+                stage_status,
+                "crm_profile",
+                total_ms=timings_ms.get("crm_profile_ms"),
+                status=(crm_context or {}).get("crm_profile_status") or "unknown",
+            )
             thread_fact = _upsert_thread_business_fact(
                 db,
                 session_id=session_id,
@@ -11557,7 +12158,9 @@ async def sidebar_assist(request: SidebarAssistRequest):
             summary.thread_business_fact = _thread_fact_to_dict(thread_fact)
             db.commit()
 
-            external_knowledge = _search_sales_kb_api(None, top_k=5)
+            knowledge_stage_started = perf_counter()
+            knowledge_parts_ms: dict[str, float] = {}
+            external_knowledge = None
             if summary.core_demand and summary.core_demand != "未明确":
                 stage_started = perf_counter()
                 thread_fact_payload = _thread_fact_to_dict(thread_fact)
@@ -11572,15 +12175,29 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 )
                 knowledge_v2["thread_business_fact"] = thread_fact_payload
                 knowledge_base = knowledge_v2
+                knowledge_parts_ms["knowledge_v2_ms"] = round((perf_counter() - stage_started) * 1000, 2)
+                stage_started = perf_counter()
                 external_knowledge = _search_sales_kb_api(retrieval_query, top_k=5)
-                mark_timing("knowledge_retrieve_ms", stage_started)
+                knowledge_parts_ms["knowledge_external_api_ms"] = round((perf_counter() - stage_started) * 1000, 2)
+                mark_timing("knowledge_retrieve_ms", knowledge_stage_started)
                 knowledge_status = knowledge_v2.get("status", "error")
                 stage_status["knowledge_v2"] = knowledge_status
             else:
                 knowledge_v2 = {"status": "skipped_no_core_demand", "hits": [], "evidence_context": {"rules": [], "faqs": [], "cases": []}, "evidence_refs": []}
                 knowledge_base = knowledge_v2
                 knowledge_status = "skipped_no_core_demand"
+                stage_started = perf_counter()
+                external_knowledge = _search_sales_kb_api(None, top_k=5)
+                knowledge_parts_ms["knowledge_external_api_ms"] = round((perf_counter() - stage_started) * 1000, 2)
+                mark_timing("knowledge_retrieve_ms", knowledge_stage_started)
             stage_status["knowledge_external_api"] = external_knowledge.get("status") or "unknown"
+            _set_node_timing(
+                stage_status,
+                "knowledge",
+                total_ms=timings_ms.get("knowledge_retrieve_ms"),
+                parts_ms=knowledge_parts_ms,
+                status=stage_status.get("knowledge_v2") or stage_status.get("knowledge_external_api") or "unknown",
+            )
             summary.knowledge_log_id = knowledge_v2.get("log_id")
             summary.knowledge_v2 = knowledge_v2
             summary.knowledge_external_api = external_knowledge
@@ -11614,6 +12231,14 @@ async def sidebar_assist(request: SidebarAssistRequest):
             summary.sales_advice_compare_prompt_trace_v2 = (compare_candidate or first_compare_entry or {}).get("prompt_trace")
             summary.assist_validation = primary_candidate.get("validation") if primary_candidate else None
             summary.assist_compare_validation = compare_candidate.get("validation") if compare_candidate else None
+            llm2_stage_timing = generation_bundle.get("stage_timings_ms") or {}
+            _set_node_timing(
+                stage_status,
+                "llm2",
+                total_ms=llm2_stage_timing.get("total_ms"),
+                parts_ms=llm2_stage_timing.get("parts_ms"),
+                status=generation_bundle.get("llm2_status") or "failed_no_content",
+            )
             summary.stage_status = {
                 **dict(summary.stage_status or {}),
                 **stage_status,
@@ -11744,6 +12369,12 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 stage_started = perf_counter()
                 crm_context = IntentEngine.get_crm_context(external_userid)
                 mark_timing("crm_profile_ms", stage_started)
+                _set_node_timing(
+                    stage_status,
+                    "crm_profile",
+                    total_ms=timings_ms.get("crm_profile_ms"),
+                    status=(crm_context or {}).get("crm_profile_status") or "unknown",
+                )
             result["crm_info"] = crm_context
             current_thread_fact = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
             if not current_thread_fact:
@@ -11771,6 +12402,12 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 stage_started = perf_counter()
                 crm_context = IntentEngine.get_crm_context(external_userid)
                 mark_timing("crm_profile_ms", stage_started)
+                _set_node_timing(
+                    stage_status,
+                    "crm_profile",
+                    total_ms=timings_ms.get("crm_profile_ms"),
+                    status=(crm_context or {}).get("crm_profile_status") or "unknown",
+                )
             result["crm_info"] = crm_context
             result["thread_business_fact"] = _thread_fact_to_dict(
                 db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
@@ -11780,7 +12417,18 @@ async def sidebar_assist(request: SidebarAssistRequest):
         result["knowledge_status"] = knowledge_status
         timings_ms["total_ms"] = round((perf_counter() - total_started) * 1000, 2)
         result["timings_ms"] = timings_ms
+        result["node_timings_ms"] = _extract_node_timings(stage_status)
         result = _jsonable(result)
+        api_invocation = _store_api_assist_invocation(
+            db,
+            result_payload=result,
+            session_id=session_id,
+            requested_session_id=requested_session_id,
+            external_userid=external_userid,
+            sales_userid=sales_userid,
+            messages=all_messages,
+        )
+        db.commit()
         log_sidebar_result("SUCCESS", {
             "external_userid": external_userid,
             "sales_userid": sales_userid,
@@ -11793,6 +12441,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
             "has_v2_compare": result.get("has_v2_compare"),
             "crm_status": result.get("crm_status"),
             "knowledge_status": result.get("knowledge_status"),
+            "api_invocation_id": str(api_invocation.invocation_id) if api_invocation else None,
             "stage_status": stage_status,
             "timings_ms": timings_ms,
         })

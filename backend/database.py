@@ -352,6 +352,39 @@ class ReplyChainSnapshot(Base):
         Index("idx_reply_chain_snapshot_session_updated", "session_id", "updated_at"),
     )
 
+class ApiAssistInvocation(Base):
+    """侧边栏 API 调用快照：按调用时刻固化输出，并在后续补充质量评分。"""
+    __tablename__ = "api_assist_invocation"
+
+    invocation_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    session_id = Column(String(120), nullable=False)
+    requested_session_id = Column(String(120), nullable=True)
+    external_userid = Column(String(120), nullable=True)
+    sales_userid = Column(String(120), nullable=True)
+    anchor_message_id = Column(Integer, nullable=True)
+    anchor_message_time = Column(DateTime, nullable=True)
+    anchor_message_text = Column(Text, nullable=True)
+    visible_message_ids = Column(JSON, nullable=True)
+    latest_dialog_count = Column(Integer, nullable=False, default=0)
+    triggered_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    stage_status = Column(JSON, nullable=True)
+    result_payload = Column(JSON, nullable=False)
+    actual_sales_replies = Column(JSON, nullable=True)
+    actual_sales_reply_text = Column(Text, nullable=True)
+    actual_sales_reply_hash = Column(String(64), nullable=True)
+    quality_similarity = Column(JSON, nullable=True)
+    quality_score = Column(Numeric(6, 2), nullable=True)
+    quality_status = Column(String(50), nullable=True)
+    quality_scored_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_api_ai_session_triggered", "session_id", "triggered_at"),
+        Index("idx_api_ai_anchor_triggered", "session_id", "anchor_message_id", "triggered_at"),
+        Index("idx_api_ai_quality_status", "quality_status", "triggered_at"),
+    )
+
 class EmailThreadAsset(Base):
     """邮件兼容主表：承接邮件原始资产并与线程事实层打通。"""
     __tablename__ = "email_thread_asset"

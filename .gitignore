@@ -1,6 +1,7 @@
 # Local test runs
 AI测试*/
 tests/
+test/
 test_*.py
 *_test.py
 

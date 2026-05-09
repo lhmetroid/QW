@@ -8,6 +8,9 @@
     <style>
         body { font-family: -apple-system, system-ui, sans-serif; background-color: #f1f5f9; }
         .session-item.active-session { background-color: #ffffff; border-left: 4px solid #3b82f6; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        .session-item.api-involved { background-color: #fff7ed; border-color: #fdba74; }
+        .session-item.api-involved:hover { background-color: #ffedd5; }
+        .session-item.api-involved.active-session { background-color: #fff1e6; border-color: #fdba74; }
         .msg-customer { background: #ffffff; border-radius: 0 16px 16px 16px; border: 1px solid #e2e8f0; }
         .msg-sales { background: #dcf8c6; border-radius: 16px 0 16px 16px; margin-left: auto; }
         .msg-system { background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; margin: 0 auto; text-align: center; width: fit-content; }
@@ -199,6 +202,14 @@
                     <input id="session-search-input" type="text" class="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="支持 external_userid / session_id / 员工名">
                     <button id="session-search-clear" type="button" class="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50">清空</button>
                 </div>
+                <div class="space-y-2">
+                    <label for="session-date-filter" class="block text-[11px] font-medium text-slate-600">按日期筛选</label>
+                    <div class="flex gap-2">
+                        <input id="session-date-filter" type="date" class="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        <button id="session-date-clear" type="button" class="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50">清除日期</button>
+                    </div>
+                </div>
+                <div id="session-date-stats" class="hidden rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] text-slate-600"></div>
                 <div id="session-search-meta" class="text-[10px] text-slate-400">输入完整 external_userid 可快速过滤定位对应会话</div>
             </div>
         </div>
@@ -275,7 +286,7 @@
         const RAW_FETCH = window.fetch.bind(window);
         const API_BASE_STORAGE_KEY = 'qw_api_base_preferred';
         const LOCAL_API_TIMEOUT_MS = 3500;
-        const REMOTE_API_TIMEOUT_MS = 8000;
+        const REMOTE_API_TIMEOUT_MS = 15000;
         let apiBaseCandidates = [];
         let apiBaseReadyPromise = null;
 
@@ -427,6 +438,8 @@
         };
         let currentSessionMessages = [];
         let allSessions = [];
+        let sessionDayStats = null;
+        let selectedSessionFilterDate = '';
         let currentSelectedSessionId = '';
         let currentSelectedAnalysisVersionId = 'current_tail';
         const analysisSnapshotByUserId = {};
@@ -483,6 +496,34 @@
             return String(document.getElementById('session-search-input')?.value || '').trim();
         }
 
+        function getSessionFilterDate() {
+            return String(document.getElementById('session-date-filter')?.value || '').trim();
+        }
+
+        function renderSessionDayStats() {
+            const box = document.getElementById('session-date-stats');
+            if (!box) return;
+            if (!selectedSessionFilterDate) {
+                box.classList.add('hidden');
+                box.innerHTML = '';
+                return;
+            }
+            const count = Number(sessionDayStats?.invocation_count || 0);
+            const avg = sessionDayStats?.avg_quality_score;
+            const avgText = avg === null || avg === undefined ? '--' : avg;
+            const degraded = sessionDayStats?.status === 'degraded';
+            box.classList.remove('hidden');
+            box.innerHTML = `
+                <div class="font-bold text-slate-700 mb-1">所选日期 ${safeText(selectedSessionFilterDate)}</div>
+                <div class="flex flex-wrap gap-2">
+                    ${renderStatusPill(`当日涉及调用节点 ${count}`, count ? 'blue' : 'slate')}
+                    ${renderStatusPill(`AI质量相似度平均分 ${avgText}`, avg !== null && avg !== undefined ? scoreTone(avg) : 'slate')}
+                    ${degraded ? renderStatusPill('统计已降级', 'amber') : ''}
+                </div>
+                <div class="mt-1 text-[10px] text-slate-400">${safeText(sessionDayStats?.quality_score_rule || '仅统计当日涉及调用节点')}</div>
+            `;
+        }
+
         function normalizeSearchText(value) {
             return String(value || '').trim().toLowerCase();
         }
@@ -513,6 +554,22 @@
             return sessionMatchesSearch(session, getSessionSearchQuery());
         }
 
+        function sortSessionsForDisplay(sessions) {
+            return [...(sessions || [])].sort((left, right) => {
+                const leftApi = Number(left?.api_invocation_count || 0);
+                const rightApi = Number(right?.api_invocation_count || 0);
+                if (rightApi !== leftApi) return rightApi - leftApi;
+
+                const leftApiTime = left?.api_last_triggered_at ? new Date(left.api_last_triggered_at).getTime() : 0;
+                const rightApiTime = right?.api_last_triggered_at ? new Date(right.api_last_triggered_at).getTime() : 0;
+                if (rightApiTime !== leftApiTime) return rightApiTime - leftApiTime;
+
+                const leftMsg = left?.last_msg ? new Date(left.last_msg).getTime() : 0;
+                const rightMsg = right?.last_msg ? new Date(right.last_msg).getTime() : 0;
+                return rightMsg - leftMsg;
+            });
+        }
+
         function resetSessionDetailState() {
             bumpAnalysisContextSeq();
             currentSelectedSessionId = '';
@@ -541,12 +598,16 @@
             host.innerHTML = versions.map(version => {
                 const isActive = String(version.snapshot_id) === String(currentSelectedAnalysisVersionId);
                 const isCurrent = version.kind === 'current_tail';
+                const isApi = version.kind === 'api_sidebar_assist';
                 const label = isCurrent ? '当前末尾' : (version.label || '历史节点');
+                const className = isActive
+                    ? (isApi ? 'bg-rose-600 text-white border-rose-600 shadow-sm' : 'bg-blue-600 text-white border-blue-600 shadow-sm')
+                    : (isApi ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-700');
                 return `
                     <button
                         type="button"
                         onclick="switchAnalysisVersion('${String(version.snapshot_id).replace(/'/g, '&#39;')}')"
-                        class="px-3 py-1 rounded-full border text-[10px] font-bold transition ${isActive ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-700'}"
+                        class="px-3 py-1 rounded-full border text-[10px] font-bold transition ${className}"
                         title="${safeText(label)}"
                     >${safeText(label)}</button>
                 `;
@@ -557,28 +618,45 @@
             const container = document.getElementById('msg-container');
             if (!container) return;
             const versions = getAnalysisVersions();
-            const versionByAnchorId = new Map(
-                versions
-                    .filter(item => item.kind !== 'current_tail' && item.anchor_message_id)
-                    .map(item => [Number(item.anchor_message_id), item])
-            );
+            const manualVersionByAnchorId = new Map();
+            const apiVersionsByAnchorId = new Map();
+            versions
+                .filter(item => item.kind !== 'current_tail' && item.anchor_message_id)
+                .forEach(item => {
+                    const anchorId = Number(item.anchor_message_id);
+                    if (item.kind === 'api_sidebar_assist') {
+                        if (!apiVersionsByAnchorId.has(anchorId)) apiVersionsByAnchorId.set(anchorId, []);
+                        apiVersionsByAnchorId.get(anchorId).push(item);
+                    } else if (!manualVersionByAnchorId.has(anchorId)) {
+                        manualVersionByAnchorId.set(anchorId, item);
+                    }
+                });
             container.innerHTML = currentSessionMessages.map(message => {
-                const nodeVersion = versionByAnchorId.get(Number(message.id));
-                const isSelectedNode = nodeVersion && String(nodeVersion.snapshot_id) === String(currentSelectedAnalysisVersionId);
+                const nodeVersion = manualVersionByAnchorId.get(Number(message.id));
+                const apiVersions = apiVersionsByAnchorId.get(Number(message.id)) || [];
+                const latestApiVersion = apiVersions[0] || null;
+                const isSelectedNode = [nodeVersion, ...apiVersions].some(item => item && String(item.snapshot_id) === String(currentSelectedAnalysisVersionId));
                 const isCustomer = message.sender === 'customer';
-                const nodeButton = isCustomer ? `
+                const manualNodeButton = isCustomer ? `
                     <button
                         type="button"
                         onclick="${nodeVersion ? `switchAnalysisVersion('${String(nodeVersion.snapshot_id).replace(/'/g, '&#39;')}')` : `createAnalysisVersionFromEncoded('${encodedArg(currentSelectedSessionId)}', ${Number(message.id)})`}"
                         class="shrink-0 px-2 py-1 rounded-full border text-[10px] font-bold transition ${nodeVersion ? (isSelectedNode ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100') : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:text-blue-700'}"
                     >${nodeVersion ? '打开节点链路' : '发起节点链路'}</button>
                 ` : '';
+                const apiNodeButton = isCustomer && latestApiVersion ? `
+                    <button
+                        type="button"
+                        onclick="switchAnalysisVersion('${String(latestApiVersion.snapshot_id).replace(/'/g, '&#39;')}')"
+                        class="shrink-0 px-2 py-1 rounded-full border text-[10px] font-bold transition ${String(latestApiVersion.snapshot_id) === String(currentSelectedAnalysisVersionId) ? 'bg-rose-600 text-white border-rose-600' : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'}"
+                    >${apiVersions.length > 1 ? `打开API链路(${apiVersions.length})` : '打开API链路'}</button>
+                ` : '';
                 return `
                     <div class="max-w-[85%] mb-4 p-4 ${message.sender === 'customer' ? 'msg-customer' : (message.sender==='system' ? 'msg-system px-4 py-1 text-xs' : 'msg-sales')} ${isSelectedNode ? 'ring-2 ring-blue-300 ring-offset-2' : ''}">
                         ${message.sender !== 'system' ? `
                             <div class="mb-2 flex items-start justify-between gap-3">
                                 <div class="text-[9px] text-slate-400 font-bold uppercase">${message.sender === 'customer' ? '客户' : '我方营销'} · ${formatDateTime(message.time)}</div>
-                                ${nodeButton}
+                                <div class="flex flex-wrap items-center gap-2">${manualNodeButton}${apiNodeButton}</div>
                             </div>` : ''}
                         <div class="text-[13px] leading-relaxed whitespace-pre-wrap">${safeText(message.content)}</div>
                     </div>
@@ -590,23 +668,34 @@
         function renderSessions() {
             const list = document.getElementById('session-list');
             const meta = document.getElementById('session-search-meta');
-            const visibleSessions = allSessions.filter(shouldDisplaySession);
+            const visibleSessions = sortSessionsForDisplay(allSessions.filter(shouldDisplaySession));
+            renderSessionDayStats();
             if (meta) {
                 const query = getSessionSearchQuery();
+                const apiInvolvedCount = visibleSessions.filter(item => Number(item?.api_invocation_count || 0) > 0).length;
+                const prefix = selectedSessionFilterDate
+                    ? `筛选日期 ${selectedSessionFilterDate}，共 ${allSessions.length} 条`
+                    : `共 ${allSessions.length} 条`;
                 meta.innerText = query
-                    ? `共 ${allSessions.length} 条，当前命中 ${visibleSessions.length} 条`
-                    : `共 ${allSessions.length} 条；输入完整 external_userid 可快速过滤定位对应会话`;
+                    ? `${prefix}，当前命中 ${visibleSessions.length} 条，其中涉及调用 ${apiInvolvedCount} 条`
+                    : `${prefix}；输入完整 external_userid 可快速过滤定位对应会话${selectedSessionFilterDate ? `；涉及调用 ${apiInvolvedCount} 条已优先置顶` : ''}`;
             }
             if (visibleSessions.length === 0) {
                 list.innerHTML = '<div class="px-3 py-6 text-center text-[11px] text-slate-400">当前筛选条件下暂无会话</div>';
             } else {
                 list.innerHTML = visibleSessions.map(s => `
-                    <div onclick="selectSession('${s.user_id}')" class="p-3 mb-1 rounded-lg cursor-pointer transition session-item hover:bg-white border border-transparent" id="session-${s.user_id}">
+                    <div onclick="selectSession('${s.user_id}')" class="p-3 mb-1 rounded-lg cursor-pointer transition session-item hover:bg-white border border-transparent ${Number(s.api_invocation_count || 0) > 0 ? 'api-involved' : ''}" id="session-${s.user_id}">
                         <div class="flex items-center justify-between pointer-events-none">
                             <span class="font-semibold text-xs text-slate-600 truncate" title="${getDisplayName(s.user_id, {showFullExternal: true})}">${getDisplayName(s.user_id)}</span>
-                            <span class="text-[7px] bg-emerald-500 text-white px-1 rounded font-bold animate-pulse">LIVE</span>
+                            <div class="flex items-center gap-1">
+                                ${Number(s.api_invocation_count || 0) > 0 ? `<span class="text-[7px] bg-amber-500 text-white px-1 rounded font-bold">API ${safeText(s.api_invocation_count)}</span>` : ''}
+                                <span class="text-[7px] bg-slate-500 text-white px-1 rounded font-bold">真实会话</span>
+                            </div>
                         </div>
-                        <div class="text-[9px] text-slate-400 mt-1 pointer-events-none">${new Date(s.last_msg).toLocaleTimeString()} · 已扫描完毕</div>
+                        <div class="text-[9px] text-slate-400 mt-1 pointer-events-none">
+                            ${new Date(s.last_msg).toLocaleTimeString()} · 真实消息
+                            ${Number(s.api_invocation_count || 0) > 0 ? ` · 当日涉及调用${s.api_avg_quality_score !== null && s.api_avg_quality_score !== undefined ? ` · 质量均分 ${safeText(s.api_avg_quality_score)}` : ''}` : ''}
+                        </div>
                     </div>
                 `).join('');
             }
@@ -634,7 +723,7 @@
                 searchInput.addEventListener('input', () => renderSessions());
                 searchInput.addEventListener('keydown', event => {
                     if (event.key !== 'Enter') return;
-                    const visibleSessions = allSessions.filter(shouldDisplaySession);
+                    const visibleSessions = sortSessionsForDisplay(allSessions.filter(shouldDisplaySession));
                     if (!visibleSessions.length) return;
                     selectSession(visibleSessions[0].user_id);
                 });
@@ -644,6 +733,21 @@
                 clearBtn.addEventListener('click', () => {
                     if (searchInput) searchInput.value = '';
                     renderSessions();
+                });
+            }
+            const dateInput = document.getElementById('session-date-filter');
+            if (dateInput) {
+                dateInput.addEventListener('change', async () => {
+                    selectedSessionFilterDate = getSessionFilterDate();
+                    await fetchSessions();
+                });
+            }
+            const dateClearBtn = document.getElementById('session-date-clear');
+            if (dateClearBtn) {
+                dateClearBtn.addEventListener('click', async () => {
+                    if (dateInput) dateInput.value = '';
+                    selectedSessionFilterDate = '';
+                    await fetchSessions();
                 });
             }
         }
@@ -987,18 +1091,28 @@
 
         async function fetchSessions() {
             try {
-                const res = await apiFetch(`${API_BASE}/api/sessions`);
+                selectedSessionFilterDate = getSessionFilterDate();
+                const params = new URLSearchParams();
+                if (selectedSessionFilterDate) params.set('chat_date', selectedSessionFilterDate);
+                const url = params.toString() ? `${API_BASE}/api/sessions?${params.toString()}` : `${API_BASE}/api/sessions`;
+                const res = await apiFetch(url);
                 const data = await res.json();
-                allSessions = Array.isArray(data) ? data : [];
+                allSessions = Array.isArray(data) ? data : (Array.isArray(data?.sessions) ? data.sessions : []);
+                sessionDayStats = data?.stats || null;
                 renderSessions();
             } catch (err) {
                 allSessions = [];
+                sessionDayStats = null;
                 renderSessions();
                 const sessionList = document.getElementById('session-list');
                 if (sessionList) {
+                    const timeoutHint = String(err?.message || err || '').toLowerCase().includes('timeout')
+                        ? '<div class="mt-1 text-[10px] opacity-80">当前更像是 `/api/sessions` 接口处理或反向代理超时，不是“新字段没数据”。</div>'
+                        : '';
                     sessionList.innerHTML = `
                         <div class="m-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] text-rose-700">
                             会话列表加载失败：${safeText(translateApiMessage(err?.message || err))}
+                            ${timeoutHint}
                             <div class="mt-1 break-all text-[10px] opacity-80">当前 API 地址：${safeText(API_BASE || '-')}</div>
                         </div>
                     `;
@@ -1226,7 +1340,10 @@
                         <div class="flex items-start gap-2 min-w-0 flex-1">
                             <span class="shrink-0 mt-0.5 rounded-full bg-slate-900 text-white text-[10px] font-bold px-2 py-1">${String(index).padStart(2, '0')}</span>
                             <div class="min-w-0">
-                                <div class="font-bold text-[12px] text-slate-800 tracking-wide">${safeText(title)}</div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <div class="font-bold text-[12px] text-slate-800 tracking-wide">${safeText(title)}</div>
+                                    ${options.timingHtml || ''}
+                                </div>
                                 ${subtitle ? `<div class="text-[10px] text-slate-500 mt-0.5">${safeText(subtitle)}</div>` : ''}
                             </div>
                         </div>
@@ -1258,6 +1375,58 @@
                 rose: 'bg-rose-50 text-rose-700 border-rose-200'
             };
             return `<span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${styles[tone] || styles.slate}">${safeText(text)}</span>`;
+        }
+
+        const NODE_TIMING_PART_LABELS = {
+            conversation_input: {
+                session_lookup_ms: '命中会话',
+                full_session_load_ms: '载入全量消息'
+            },
+            knowledge: {
+                knowledge_v2_ms: '知识库1',
+                knowledge_external_api_ms: '知识库2'
+            },
+            llm2: {
+                llm2_ms: '主模型候选',
+                llm2_compare_ms: '对比模型候选',
+                reply_scoring_ms: '统一评分'
+            }
+        };
+
+        function formatTimingMs(value) {
+            const num = Number(value);
+            if (!Number.isFinite(num)) return '';
+            if (num >= 1000) {
+                const seconds = num / 1000;
+                return seconds >= 10 ? `${seconds.toFixed(1)}s` : `${seconds.toFixed(2)}s`;
+            }
+            return num >= 100 ? `${Math.round(num)}ms` : `${num.toFixed(1)}ms`;
+        }
+
+        function getNodeTiming(data, nodeKey) {
+            return data?.node_timings_ms?.[nodeKey] || data?.stage_status?.node_timings_ms?.[nodeKey] || null;
+        }
+
+        function renderNodeTimingPill(data, nodeKey) {
+            const timing = getNodeTiming(data, nodeKey);
+            if (!timing || timing.total_ms === undefined || timing.total_ms === null) return '';
+            return renderStatusPill(`耗时 ${formatTimingMs(timing.total_ms)}`, 'slate');
+        }
+
+        function renderNodeTimingDetailBlock(data, nodeKey) {
+            const timing = getNodeTiming(data, nodeKey);
+            if (!timing || timing.total_ms === undefined || timing.total_ms === null) return '';
+            const labels = NODE_TIMING_PART_LABELS[nodeKey] || {};
+            const parts = Object.entries(timing.parts_ms || {})
+                .filter(([, value]) => Number.isFinite(Number(value)))
+                .map(([key, value]) => renderStatusPill(`${labels[key] || key} ${formatTimingMs(value)}`, 'blue'));
+            return `
+                <div class="flex flex-wrap gap-2 mb-2">
+                    ${renderStatusPill(`本节点 ${formatTimingMs(timing.total_ms)}`, 'slate')}
+                    ${parts.join('')}
+                </div>
+                ${parts.length ? '<div class="mb-2 text-[10px] text-slate-400">子项为并行/交叉环节拆分展示，不与本节点耗时相加。</div>' : ''}
+            `;
         }
 
         function getLlmRuntime(data, key) {
@@ -1761,9 +1930,11 @@
             return '';
         }
 
-        function renderConversationInputCard(messages, analysisVersion) {
+        function renderConversationInputCard(messages, analysisVersion, data = null) {
             const limit = getWecomRecentMessageLimit();
             const recent = (messages || []).slice(-limit);
+            const isAnchoredSnapshot = analysisVersion?.kind === 'anchored_customer_message';
+            const isApiSnapshot = analysisVersion?.kind === 'api_sidebar_assist';
             const rows = recent.map(m => `
                 <div class="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
                     <div class="text-[10px] font-bold text-slate-400 mb-1">${safeText(m.sender === 'customer' ? '客户' : (m.sender === 'system' ? '系统' : '我方销售'))} · ${safeText(formatDateTime(m.time))}</div>
@@ -1776,7 +1947,7 @@
                     <div class="flex flex-wrap gap-2 lg:content-start">
                         ${renderStatusPill(`已载入 ${messages?.length || 0} 条`, 'blue')}
                         ${renderStatusPill(`展示最近 ${limit} 条`, 'slate')}
-                        ${analysisVersion?.kind === 'anchored_customer_message' ? renderStatusPill('历史客户节点截断', 'amber') : renderStatusPill('当前末尾', 'emerald')}
+                        ${isAnchoredSnapshot ? renderStatusPill('历史客户节点截断', 'amber') : (isApiSnapshot ? renderStatusPill('API调用节点', 'rose') : renderStatusPill('当前末尾', 'emerald'))}
                     </div>
                     <div class="grid grid-cols-1 gap-2 text-[10px] sm:grid-cols-2">
                         <div class="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
@@ -1785,7 +1956,7 @@
                         </div>
                         <div class="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
                             <div class="font-bold text-slate-400">输入用途</div>
-                            <div class="mt-1 text-slate-700">${safeText(analysisVersion?.kind === 'anchored_customer_message' ? '仅使用所选客户气泡及之前记录，后续消息不提供给 AI' : '供 Fast-Track、LLM-1 和知识检索使用')}</div>
+                            <div class="mt-1 text-slate-700">${safeText(isAnchoredSnapshot ? '仅使用所选客户气泡及之前记录，后续消息不提供给 AI' : (isApiSnapshot ? '显示当次 API 调用时固化的完整链路结果，不重新测算' : '供 Fast-Track、LLM-1 和知识检索使用'))}</div>
                         </div>
                     </div>
                 </div>
@@ -1796,7 +1967,7 @@
                 <div class="max-h-48 overflow-y-auto space-y-1.5 pr-1">
                     ${rows || '<div class="text-slate-400 italic">暂无会话输入</div>'}
                 </div>`;
-            return renderPipelineCard(1, '当前会话输入', '最终回复的原始上下文来源', '#2563eb', body);
+            return renderPipelineCard(1, '当前会话输入', '最终回复的原始上下文来源', '#2563eb', body, {timingHtml: renderNodeTimingPill(data, 'conversation_input')});
         }
 
         function renderFastTrackCard(data) {
@@ -1819,7 +1990,7 @@
                     <span class="font-bold text-slate-500">实现原理：</span>${safeText(fastTrackHow)}
                 </div>`;
             const actions = `<button onclick='triggerLLM(${jsArg(data.user_id || '')}, 1)' class="text-[10px] font-bold text-slate-700 bg-white border border-slate-300 px-2 py-1 rounded hover:bg-slate-100 transition">↺ 重新扫描</button>`;
-            return renderPipelineCard(2, '强信号扫描 (Fast-Track)', '旁路规则先行识别报价、时间、组织归口、决策链、暂无需求等强信号', '#64748b', body, {scriptKey: 'FAST_TRACK_RULES', actions});
+            return renderPipelineCard(2, '强信号扫描 (Fast-Track)', '旁路规则先行识别报价、时间、组织归口、决策链、暂无需求等强信号', '#64748b', body, {scriptKey: 'FAST_TRACK_RULES', actions, timingHtml: renderNodeTimingPill(data, 'fast_track')});
         }
 
         function renderStageOneCard(data, userId) {
@@ -1851,11 +2022,11 @@
                     {label: '待确认项', value: data.has_v1 ? gracefulStr(data.to_be_confirmed) : '--待构建--', className: data.has_v1 ? 'text-amber-800 font-medium break-all' : 'text-slate-400'}
                 ])}
                 ${threadFactHtml}`;
-            return renderPipelineCard(3, '第一阶段特征提取（LLM-1）', `${llm1.model || '未配置'}：将会话压缩为可检索、可生成的结构化摘要`, '#6366f1', body, {scriptKey: 'SYSTEM_PROMPT_LLM1', actions});
+            return renderPipelineCard(3, '第一阶段特征提取（LLM-1）', `${llm1.model || '未配置'}：将会话压缩为可检索、可生成的结构化摘要`, '#6366f1', body, {scriptKey: 'SYSTEM_PROMPT_LLM1', actions, timingHtml: renderNodeTimingPill(data, 'llm1')});
         }
 
-        function renderCrmContextCard(info, sessionId = '') {
-            const profile = info || {};
+        function renderCrmContextCard(data, sessionId = '') {
+            const profile = data?.crm_info || data || {};
             const status = profile.crm_profile_status || 'empty';
             const reason = profile.crm_profile_error || (status === 'success' ? '' : '未读取到 CRM 客户画像');
             const lookupExternalUserId = profile.crm_external_userid || extractExternalUserIdFromSession(sessionId);
@@ -1867,6 +2038,7 @@
                 ? `<div class="flex flex-wrap gap-1">${flags.map(flag => `<span class="bg-cyan-50 border border-cyan-200 text-cyan-700 px-2 py-0.5 rounded text-[10px] font-bold">${safeText(flag)}</span>`).join('')}</div>`
                 : `<span class="${status === 'success' ? 'text-slate-400' : 'text-rose-600'}">${status === 'success' ? '无' : safeText(`未读取到：${reason}`)}</span>`;
             const body = `
+                ${renderNodeTimingDetailBlock(data, 'crm_profile')}
                 <div class="flex flex-wrap gap-2 mb-2">
                     ${renderStatusPill(status, crmStatusTone(status))}
                     ${status !== 'success' ? renderStatusPill(reason, 'rose') : ''}
@@ -1885,7 +2057,7 @@
                     {label: '风险标记', html: flagsHtml},
                     {label: '问题原因', value: status === 'success' ? '已读取 CRM；单项为空表示 CRM 暂无对应记录' : reason, className: status === 'success' ? 'text-emerald-700' : 'text-rose-600'}
                 ])}`;
-            return renderPipelineCard(4, '客户画像 / CRM', '客户等级、生命周期、风险和最近报价用于修正话术边界', '#06b6d4', body);
+            return renderPipelineCard(4, '客户画像 / CRM', '客户等级、生命周期、风险和最近报价用于修正话术边界', '#06b6d4', body, {timingHtml: renderNodeTimingPill(data, 'crm_profile')});
         }
 
         function renderKnowledgeHit(hit, idx) {
@@ -2022,25 +2194,28 @@
             }
             if (!data.has_v1) {
                 const body = `
+                    ${renderNodeTimingDetailBlock(data, 'knowledge')}
                     ${rerunTip}
                     <div class="mb-2">${renderStatusPill('等待一阶段', 'amber')}</div>
                     <div class="grid grid-cols-1 2xl:grid-cols-2 gap-3">
                         ${renderKnowledgeChannelPlaceholder('当前知识库流程', 'border-emerald-100 bg-white', '等待第一阶段特征提取后形成内部检索条件')}
                         ${renderKnowledgeChannelPlaceholder('直连销售知识库 API', 'border-cyan-100 bg-white', '等待第一阶段特征提取后形成 API 检索条件')}
                     </div>`;
-                return renderPipelineCard(5, '知识库检索证据（双通道对比）', '左侧保留当前知识库流程，右侧增加直连销售知识库 API 的检索结果用于对比', '#10b981', body, {actions: refreshAction});
+                return renderPipelineCard(5, '知识库检索证据（双通道对比）', '左侧保留当前知识库流程，右侧增加直连销售知识库 API 的检索结果用于对比', '#10b981', body, {actions: refreshAction, timingHtml: renderNodeTimingPill(data, 'knowledge')});
             }
             if (!knowledge && !externalKnowledge) {
                 const body = `
+                    ${renderNodeTimingDetailBlock(data, 'knowledge')}
                     ${rerunTip}
                     <div class="mb-2">${renderStatusPill('待执行检索', 'amber')}</div>
                     <div class="grid grid-cols-1 2xl:grid-cols-2 gap-3">
                         ${renderKnowledgeChannelPlaceholder('当前知识库流程', 'border-emerald-100 bg-white', '等待点击“重新检索”后生成知识证据')}
                         ${renderKnowledgeChannelPlaceholder('直连销售知识库 API', 'border-cyan-100 bg-white', '等待点击“重新检索”后生成外部知识对比结果')}
                     </div>`;
-                return renderPipelineCard(5, '知识库检索证据（双通道对比）', '左侧保留当前知识库流程，右侧增加直连销售知识库 API 的检索结果用于对比', '#10b981', body, {actions: refreshAction});
+                return renderPipelineCard(5, '知识库检索证据（双通道对比）', '左侧保留当前知识库流程，右侧增加直连销售知识库 API 的检索结果用于对比', '#10b981', body, {actions: refreshAction, timingHtml: renderNodeTimingPill(data, 'knowledge')});
             }
             const body = `
+                ${renderNodeTimingDetailBlock(data, 'knowledge')}
                 ${rerunTip}
                 <div class="mb-2 flex flex-wrap gap-2">
                     ${renderStatusPill('双通道对比', 'blue')}
@@ -2060,7 +2235,7 @@
                         defaultHow: '直接调用外部销售知识库 API 的 POST /kb-units/qa-retrieve 接口，返回候选销售回复，不影响当前主知识库流程。'
                     }) : renderKnowledgeChannelPlaceholder('直连销售知识库 API', 'border-cyan-100 bg-white', externalWaitingMessage, externalWaitingBadges)}
                 </div>`;
-            return renderPipelineCard(5, '知识库检索证据（双通道对比）', '左侧保留当前知识库流程，右侧增加直连销售知识库 API 的检索结果用于对比', '#10b981', body, {actions: refreshAction});
+            return renderPipelineCard(5, '知识库检索证据（双通道对比）', '左侧保留当前知识库流程，右侧增加直连销售知识库 API 的检索结果用于对比', '#10b981', body, {actions: refreshAction, timingHtml: renderNodeTimingPill(data, 'knowledge')});
         }
 
         function renderFinalReplyCard(data, userId) {
@@ -2120,6 +2295,7 @@
                 ? `${llm2.display_name || llm2.model || '主模型'} vs ${compareModelRuntime.display_name || compareModelRuntime.model || '对比模型'}`
                 : (llm2.display_name || llm2.model || '主模型未配置');
             const body = `
+                ${renderNodeTimingDetailBlock(data, 'llm2')}
                 <div class="mb-2 flex flex-wrap gap-1">
                     ${renderStatusPill(primaryPillText, candidates.some(item => item.model_slot === 'llm2' && item.status === 'done') ? 'emerald' : (llm2InProgress ? 'blue' : 'amber'))}
                     ${renderStatusPill(comparePillText, candidates.some(item => item.model_slot === 'llm2_compare' && item.status === 'done') ? 'emerald' : (compareInProgress ? 'blue' : (compareIsError ? 'rose' : 'amber')))}
@@ -2150,10 +2326,59 @@
                         }
                     </div>` : ''
                 }`;
-            return renderPipelineCard(6, '第二阶段话术生成（双模型双知识库对照）', subtitle, '#f59e0b', body, {scriptKey: 'SYSTEM_PROMPT_LLM2', actions, centerHtml: styleConfigButton});
+            return renderPipelineCard(6, '第二阶段话术生成（双模型双知识库对照）', subtitle, '#f59e0b', body, {scriptKey: 'SYSTEM_PROMPT_LLM2', actions, centerHtml: styleConfigButton, timingHtml: renderNodeTimingPill(data, 'llm2')});
+        }
+
+        function renderApiQualityReviewCard(data) {
+            const similarity = data?.api_quality_similarity || null;
+            const scoreMap = {};
+            (similarity?.scores || []).forEach(item => {
+                if (item?.key) scoreMap[item.key] = item;
+            });
+            const kb1 = scoreMap.knowledge_v2 || null;
+            const kb2 = scoreMap.knowledge_external_api || null;
+            const actualSalesReplies = Array.isArray(data.actual_sales_replies) ? data.actual_sales_replies : [];
+            const actualReplyText = similarity?.actual_sales_reply_text || actualSalesReplies.map(item => item?.content || '').filter(Boolean).join('\n');
+            const status = similarity?.status || data?.api_quality_status || 'pending_no_sales_reply';
+            const statusTone = status === 'scored' ? 'emerald' : (status === 'ignored_cross_day' ? 'rose' : 'amber');
+            const statusText = {
+                scored: '已生成质量分',
+                pending_no_sales_reply: '待销售后续回复',
+                ignored_cross_day: '跨天回复，不计统计'
+            }[status] || status;
+            const renderScoreBox = (title, replyText, scoreItem, tone) => `
+                <div class="rounded-lg border ${tone === 'blue' ? 'border-blue-100 bg-blue-50' : 'border-emerald-100 bg-emerald-50'} p-3">
+                    <div class="flex flex-wrap gap-1 mb-2">
+                        ${renderStatusPill(title, tone)}
+                        ${scoreItem?.score !== null && scoreItem?.score !== undefined ? renderStatusPill(`相似度 ${scoreItem.score}`, scoreTone(scoreItem.score)) : renderStatusPill('暂无评分', 'slate')}
+                    </div>
+                    <div class="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed">${safeText(replyText || '暂无可发回复')}</div>
+                    <div class="mt-2 text-[10px] text-slate-500">${safeText(scoreItem?.reason || '等待评分')}</div>
+                </div>`;
+            const body = `
+                <div class="flex flex-wrap gap-2 mb-3">
+                    ${renderStatusPill(statusText, statusTone)}
+                    ${similarity?.best_score !== null && similarity?.best_score !== undefined ? renderStatusPill(`质量分 ${similarity.best_score}`, scoreTone(similarity.best_score)) : ''}
+                </div>
+                ${renderPipelineRows([
+                    {label: '质量规则', value: similarity?.quality_score_rule || '取知识库1/知识库2 两路较高分作为单次质量分', className: 'text-slate-700'},
+                    {label: '统计口径', value: status === 'ignored_cross_day' ? '该次触发按误触发处理，不纳入当日统计' : (status === 'scored' ? '该次触发纳入当日统计' : '待我方在当日发出后续回复后再判断是否纳入统计'), className: status === 'scored' ? 'text-emerald-700' : (status === 'ignored_cross_day' ? 'text-rose-700' : 'text-amber-700')}
+                ])}
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-3 mt-3">
+                    ${renderScoreBox('知识库1 / 序号1风格 / 主模型', data.reply_reference || '', kb1, 'emerald')}
+                    ${renderScoreBox('知识库2 / 序号1风格 / 主模型', data.reply_reference_compare || '', kb2, 'blue')}
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 mt-3">
+                    <div class="text-[10px] font-bold text-slate-500 mb-2">实际销售连续回复块</div>
+                    <div class="text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap">${safeText(actualReplyText || '触发后尚无我方连续回复块')}</div>
+                </div>`;
+            return renderPipelineCard(7, '输出校验与人工复核', 'API 节点显示两路候选与实际销售连续回复块的相似度质量分', '#f43f5e', body);
         }
 
         function renderValidationCard(data) {
+            if (data?.analysis_version?.kind === 'api_sidebar_assist') {
+                return renderApiQualityReviewCard(data);
+            }
             const validation = data?.assist_validation || null;
             const llm2Stage = data?.stage_status?.llm2 || 'not_started';
             const compareStage = data?.stage_status?.llm2_compare || 'not_started';
@@ -2226,16 +2451,17 @@
             const area = document.getElementById('analysis-content');
             if (!area) return;
             const isSnapshot = versionMeta?.kind === 'anchored_customer_message';
-            const scopeLabel = isSnapshot ? '历史客户节点截断' : '当前末尾';
+            const isApiSnapshot = versionMeta?.kind === 'api_sidebar_assist';
+            const scopeLabel = isSnapshot ? '历史客户节点截断' : (isApiSnapshot ? 'API 调用节点' : '当前末尾');
             const scopeDesc = isSnapshot
                 ? '正在切换到所选历史节点，只保留该客户气泡及之前的上下文。'
-                : '正在刷新当前会话末尾分析。';
+                : (isApiSnapshot ? '正在加载当次 API 调用时固化的链路快照。' : '正在刷新当前会话末尾分析。');
             area.innerHTML = `
                 <div class="grid grid-cols-1 gap-3 pb-10">
                     ${renderPipelineCard(1, '当前会话输入', '最终回复的原始上下文来源', '#2563eb', `
                         <div class="grid gap-2">
                             <div class="flex flex-wrap gap-2">
-                                ${renderStatusPill(scopeLabel, isSnapshot ? 'amber' : 'emerald')}
+                                ${renderStatusPill(scopeLabel, isSnapshot ? 'amber' : (isApiSnapshot ? 'rose' : 'emerald'))}
                                 ${renderStatusPill(versionMeta?.label || '正在切换', 'blue')}
                             </div>
                             <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-[11px] text-slate-600">
@@ -2260,10 +2486,10 @@
 
             area.innerHTML = `
                 <div class="grid grid-cols-1 gap-3 pb-10">
-                    ${renderConversationInputCard(data.input_messages || currentSessionMessages, data.analysis_version)}
+                    ${renderConversationInputCard(data.input_messages || currentSessionMessages, data.analysis_version, data)}
                     ${renderFastTrackCard(data)}
                     ${renderStageOneCard(data, userId)}
-                    ${renderCrmContextCard(data.crm_info, userId)}
+                    ${renderCrmContextCard(data, userId)}
                     ${renderKnowledgeBaseCard(data, userId)}
                     ${renderFinalReplyCard(data, userId)}
                     ${renderValidationCard(data)}
@@ -3047,6 +3273,7 @@
             if (message === null || message === undefined || message === '') return '';
             const text = String(message);
             const exact = {
+                'timeout': '请求超时：请优先检查 /api/sessions 接口耗时、IIS/ARR 反向代理超时，或稍后重试',
                 'Knowledge publish gate blocked': '知识发布门禁未通过',
                 'Knowledge publish validation failed': '知识发布前结构校验未通过',
                 'force_reason is required when force publish': '强制发布时必须填写强制发布原因',

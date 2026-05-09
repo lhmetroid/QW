@@ -3,7 +3,7 @@
 当前项目已支持通过本地脚本同时拉起：
 
 - 本地 HTTPS 后端：`https://localhost:8016`
-- Cloudflare Tunnel 外网入口：`https://speedforce.cycleforce.cc`
+- Cloudflare Tunnel 外网入口：按 `.env` 中 `EXTERNAL_API_BASE_URL` / `CLOUDFLARED_PUBLIC_HOSTNAME` 决定
 
 ## 配置项
 
@@ -25,9 +25,9 @@
 .\start_public_backend.ps1 -KillPortOwner
 ```
 
-说明：当前你提供的 tunnel token 在 Cloudflare 远端配置里已将
-`speedforce.cycleforce.cc` 指向 `https://localhost:8016`，
-所以公网启动脚本会按 `8016` 拉起本地 HTTPS 后端。
+说明：当前脚本仍支持 Tunnel，但旧的 `speedforce.cycleforce.cc` 配置已建议停用。
+后续如果要在服务器上启用，请把 `.env` 中公网域名改为 `https://api.speedasia.net`，
+并配置对应的 Tunnel / 反向代理，再让它指向 `https://localhost:8016`。
 
 双击：
 
@@ -52,8 +52,8 @@
 
 ## 关键接口
 
-- `https://speedforce.cycleforce.cc/health`
-- `https://speedforce.cycleforce.cc/docs`
-- `https://speedforce.cycleforce.cc/openapi.json`
-- `https://speedforce.cycleforce.cc/api/system/config_check`
-- `https://speedforce.cycleforce.cc/api/system/public_endpoints`
+- `https://api.speedasia.net/health`
+- `https://api.speedasia.net/docs`
+- `https://api.speedasia.net/openapi.json`
+- `https://api.speedasia.net/api/system/config_check`
+- `https://api.speedasia.net/api/system/public_endpoints`

@@ -11,6 +11,15 @@ def is_placeholder(value: object) -> bool:
     return not text or text.startswith("your-")
 
 
+def normalized_embedding_provider() -> str:
+    provider = (settings.EMBEDDING_PROVIDER or "").strip().lower().replace("-", "_")
+    if provider == "ollama":
+        return "ollama"
+    if provider in {"dify", "dify_app"}:
+        return "dify"
+    return "openai_compatible"
+
+
 def main() -> int:
     db_configured = bool(settings.DATABASE_URL and not is_placeholder(settings.DATABASE_URL)) or not any(
         is_placeholder(value)
@@ -34,6 +43,8 @@ def main() -> int:
         "LLM2_COMPARE_API_KEY": settings.LLM2_COMPARE_API_KEY,
         "LLM2_COMPARE_MODEL": settings.LLM2_COMPARE_MODEL,
     }
+    if normalized_embedding_provider() != "ollama":
+        required["EMBEDDING_API_KEY"] = settings.EMBEDDING_API_KEY
     required_missing.extend(name for name, value in required.items() if is_placeholder(value))
 
     if required_missing:

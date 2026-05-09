@@ -2181,6 +2181,102 @@ class IntentEngine:
             "best_ai_candidate_id": ai_candidates[0]["candidate_id"] if ai_candidates else None,
         }
 
+    @classmethod
+    def score_reply_similarity_to_sales_block(
+        cls,
+        *,
+        kb1_reply_text: str | None,
+        kb2_reply_text: str | None,
+        actual_sales_reply_text: str | None,
+        summary_json: dict | None = None,
+    ) -> dict:
+        actual_text = str(actual_sales_reply_text or "").strip()
+        candidates = [
+            {
+                "key": "knowledge_v2",
+                "label": "知识库1 + 序号1风格 + 主模型",
+                "reply_text": str(kb1_reply_text or "").strip(),
+            },
+            {
+                "key": "knowledge_external_api",
+                "label": "知识库2 + 序号1风格 + 主模型",
+                "reply_text": str(kb2_reply_text or "").strip(),
+            },
+        ]
+
+        scored_items: list[dict] = []
+        heuristic_by_key: dict[str, dict] = {}
+        for item in candidates:
+            reply_text = item["reply_text"]
+            if not reply_text:
+                entry = {
+                    "key": item["key"],
+                    "label": item["label"],
+                    "score": None,
+                    "reason": "该路候选没有可发回复文本",
+                    "score_mode": "missing_reply_text",
+                }
+            else:
+                overlap_ratio = cls._text_overlap_ratio(reply_text, actual_text)
+                heuristic_score = cls._clamp_score(32 + overlap_ratio * 68)
+                entry = {
+                    "key": item["key"],
+                    "label": item["label"],
+                    "score": heuristic_score,
+                    "reason": f"启发式重合度 {round(overlap_ratio * 100, 1)}%",
+                    "score_mode": "heuristic_fallback",
+                }
+                heuristic_by_key[item["key"]] = entry
+            scored_items.append(entry)
+
+        if actual_text and heuristic_by_key:
+            similarity_prompt = (
+                "你是销售跟进质量评分器。请比较 AI 候选回复与销售实际发出的连续回复块，"
+                "判断两者在意图、推进方向、信息重点、语气和下一步动作上的相似度。"
+                "评分范围 0-100，越像越高。"
+                "请只返回 JSON，不要输出 markdown。\n"
+                "JSON 结构：\n"
+                "{\n"
+                "  \"scores\": [\n"
+                "    {\"key\": \"knowledge_v2\", \"score\": 0, \"reason\": \"一句话说明\"},\n"
+                "    {\"key\": \"knowledge_external_api\", \"score\": 0, \"reason\": \"一句话说明\"}\n"
+                "  ],\n"
+                "  \"summary\": \"一句话总结\"\n"
+                "}\n\n"
+                f"当前摘要：{json.dumps(summary_json or {}, ensure_ascii=False)}\n"
+                f"实际销售连续回复：{actual_text}\n"
+                f"候选回复：{json.dumps(candidates, ensure_ascii=False)}"
+            )
+            try:
+                llm_scores = cls.run_llm1_json_prompt(similarity_prompt, user_id="reply_similarity")
+                for item in llm_scores.get("scores") or []:
+                    key = str(item.get("key") or "").strip()
+                    target = heuristic_by_key.get(key)
+                    if not target:
+                        continue
+                    target["score"] = cls._clamp_score(float(item.get("score", target["score"])))
+                    target["reason"] = str(item.get("reason") or "llm1_similarity_scored").strip()
+                    target["score_mode"] = "llm1_scored"
+            except Exception as exc:
+                logger.error("LLM-1 相似度评分失败，回退启发式评分: %s", exc)
+
+        valid_scores = [item for item in scored_items if isinstance(item.get("score"), int)]
+        best_item = max(valid_scores, key=lambda item: item.get("score") or 0) if valid_scores else None
+        return {
+            "status": "scored" if actual_text else "pending_no_sales_reply",
+            "actual_sales_reply_text": actual_text,
+            "scores": scored_items,
+            "best_key": best_item.get("key") if best_item else None,
+            "best_label": best_item.get("label") if best_item else None,
+            "best_score": best_item.get("score") if best_item else None,
+            "summary": "",
+            "scored_by": {
+                "model": settings.LLM1_MODEL,
+                "provider": cls._llm_provider_label(settings.LLM1_API_KEY),
+                "score_mode": "llm1_with_heuristic_fallback",
+            },
+        }
+
     @staticmethod
     def update_knowledge_hit_log_outcome(log_id: str | None, final_response: str | None = None, manual_feedback: dict | None = None, feedback_status: str | None = None):
         if not log_id:
