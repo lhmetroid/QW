@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import json
+import logging
 import re
 import uuid
 from decimal import Decimal
@@ -14,6 +15,7 @@ from database import KnowledgeChunk, KnowledgeDocument
 from embedding_service import EmbeddingService
 from knowledge_governance import infer_library_type, infer_scenario_intent, merge_tags, score_content_governance
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_BUSINESS_CSV_FILENAME = "业务知识、业务流程、话术、案例.csv"
 DEFAULT_SOURCE_TYPE = "business_csv"
@@ -109,6 +111,18 @@ DEFAULT_SKIP_ROWS = {
     678: "pure_phone_low_increment",
     712: "too_short_generic",
 }
+
+
+def _optional_embedding_for_import(text: str, *, context: str) -> list[float] | None:
+    try:
+        embedding = EmbeddingService.embed(text)
+    except Exception as exc:
+        logger.warning("业务 CSV embedding 调用失败，继续按无向量模式入库。 context=%s error=%s", context, exc)
+        return None
+    if not embedding:
+        logger.warning("业务 CSV embedding 未返回向量，继续按无向量模式入库。 context=%s", context)
+        return None
+    return embedding
 TITLE_NORMALIZATION_OVERRIDES = {
     24: "推荐本人全业务",
     25: "推荐本人同传业务",
@@ -1453,9 +1467,10 @@ def create_document(
     chunks: list[KnowledgeChunk] = []
     for idx, payload in enumerate(chunks_payload, start=1):
         retrieval_text = f"{payload['title']}\n{payload['content']}"
-        embedding = EmbeddingService.embed(retrieval_text)
-        if not embedding:
-            raise RuntimeError(f"embedding_failed row={row_no} chunk={idx}")
+        embedding = _optional_embedding_for_import(
+            retrieval_text,
+            context=f"row={row_no} chunk={idx} title={payload['title']}",
+        )
         chunk = KnowledgeChunk(
             document_id=document.document_id,
             chunk_no=idx,
@@ -1466,7 +1481,7 @@ def create_document(
             embedding=embedding,
             embedding_provider=settings.EMBEDDING_PROVIDER if embedding else None,
             embedding_model=settings.EMBEDDING_MODEL if embedding else None,
-            embedding_dim=len(embedding),
+            embedding_dim=len(embedding) if embedding else None,
             priority=payload["priority"],
             retrieval_weight=Decimal("1.000"),
             business_line=payload["business_line"],

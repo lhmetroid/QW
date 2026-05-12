@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     PUBLIC_KEY_VER: int = 2
     ENABLE_ARCHIVE_POLLING: bool = False
     ARCHIVE_SYNC_TIMEOUT_SECONDS: int = 300
+    SIDEBAR_ASSIST_SYNC_ARCHIVE_BEFORE_READ_DEFAULT: bool = False
 
     # PostgreSQL configuration.
     DATABASE_URL: str | None = None
@@ -52,6 +53,7 @@ class Settings(BaseSettings):
     LLM1_API_KEY: str = ""
     LLM1_MODEL: str = ""
     LLM1_TIMEOUT_SECONDS: int = 100
+    STAGE1_USE_LLM2: bool = False
     LLM1_COMPARE_API_URL: str = ""
     LLM1_COMPARE_API_KEY: str = ""
     LLM1_COMPARE_MODEL: str = ""
@@ -96,11 +98,11 @@ class Settings(BaseSettings):
     PGVECTOR_REQUIRED: bool = False
     PGVECTOR_ENABLED: bool = False
     PGVECTOR_DIM: int = 1024
-    KB_CANDIDATE_LIMIT: int = 500
+    KB_CANDIDATE_LIMIT: int = 300
     KB_KEYWORD_PREFILTER_ENABLED: bool = True
     KB_FULLTEXT_INDEX_ENABLED: bool = True
     KB_HEALTHCHECK_TIMEOUT_SECONDS: int = 5
-    SALES_KB_API_BASE_URL: str = "http://192.168.31.124:8100"
+    SALES_KB_API_BASE_URL: str = "https://knowledgebase.speedasia.net"
     SALES_KB_API_TIMEOUT_SECONDS: int = 8
 
     # Offline training pipeline runner.

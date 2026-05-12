@@ -130,7 +130,7 @@ def select_candidates(
             actual_sales_replies = _collect_actual_sales_replies(all_messages, int(msg.id))
             if not actual_sales_replies:
                 continue
-            reply_text = _reply_block_text(actual_sales_replies)
+            reply_text = _reply_block_text(actual_sales_replies, strip_noise=True)
             if not sanitize_text(reply_text).strip():
                 continue
             first_reply_time = actual_sales_replies[0].get("time")
@@ -295,6 +295,7 @@ def build_summary_keywords(rows: list[dict]) -> list[tuple[str, int]]:
 
 def build_report_markdown(day_text: str, rows: list[dict]) -> str:
     analytics_rows = [item["analytics_row"] for item in rows]
+    manual_business_scores = [float(item["manual_business_score"]) for item in analytics_rows if item.get("manual_business_score") is not None]
     manual_scores = [float(item["manual_quality_score"]) for item in analytics_rows if item.get("manual_quality_score") is not None]
     kb1_scores = [float(item["kb1_eval_score"]) for item in analytics_rows if item.get("kb1_eval_score") is not None]
     kb2_scores = [float(item["kb2_eval_score"]) for item in analytics_rows if item.get("kb2_eval_score") is not None]
@@ -312,7 +313,7 @@ def build_report_markdown(day_text: str, rows: list[dict]) -> str:
         key_facts = payload.get("key_facts") if isinstance(payload.get("key_facts"), dict) else {}
         reply_type = str(key_facts.get("latest_customer_reply_type") or "").strip() or "unknown"
         reply_types[reply_type] += 1
-        manual_score = row["analytics_row"].get("manual_quality_score")
+        manual_score = row["analytics_row"].get("manual_business_score")
         if manual_score is not None and float(manual_score) < 80:
             low_quality_cases.append(row)
 
@@ -323,7 +324,8 @@ def build_report_markdown(day_text: str, rows: list[dict]) -> str:
         f"- 日期：`{day_text}`",
         f"- 触发来源：`test`",
         f"- 节点数：`{len(rows)}`",
-        f"- 平均人工对照质量分：`{round(sum(manual_scores) / len(manual_scores), 2) if manual_scores else '-'} `",
+        f"- 平均人工业务质量分：`{round(sum(manual_business_scores) / len(manual_business_scores), 2) if manual_business_scores else '-'} `",
+        f"- 平均人工贴合代理分：`{round(sum(manual_scores) / len(manual_scores), 2) if manual_scores else '-'} `",
         f"- 平均知识库1评估分：`{round(sum(kb1_scores) / len(kb1_scores), 2) if kb1_scores else '-'} `",
         f"- 平均知识库2评估分：`{round(sum(kb2_scores) / len(kb2_scores), 2) if kb2_scores else '-'} `",
         f"- 知识库2主候选优于知识库1的节点数：`{better_kb2}`",
@@ -346,7 +348,7 @@ def build_report_markdown(day_text: str, rows: list[dict]) -> str:
             f"- 人工回复：{sanitize_text(candidate['actual_sales_reply_text']) or '-'}",
             f"- 摘要结论：主题=`{sanitize_text(str(payload.get('topic') or '-'))}`；诉求=`{sanitize_text(str(payload.get('core_demand') or '-'))}`；状态=`{sanitize_text(str(payload.get('status') or '-'))}`",
             f"- 阶段耗时：输入=`{analytics.get('step_1_time_ms')}`ms；FastTrack=`{analytics.get('step_2_time_ms')}`ms；LLM1=`{analytics.get('step_3_time_ms')}`ms；CRM=`{analytics.get('step_4_time_ms')}`ms；KB1=`{analytics.get('step_5_kb1_time_ms')}`ms；KB2=`{analytics.get('step_5_kb2_time_ms')}`ms；LLM2总=`{analytics.get('step_6_time_ms')}`ms；校验=`{analytics.get('step_7_time_ms')}`ms",
-            f"- 质量结论：人工对照=`{analytics.get('manual_quality_score')}`；知识库1评估=`{analytics.get('kb1_eval_score')}`；知识库2评估=`{analytics.get('kb2_eval_score')}`",
+            f"- 评分结论：人工业务质量=`{analytics.get('manual_business_score')}`；人工贴合代理分=`{analytics.get('manual_quality_score')}`；知识库1评估=`{analytics.get('kb1_eval_score')}`；知识库2评估=`{analytics.get('kb2_eval_score')}`",
             f"- 主候选(KB1)：{sanitize_text(str(analytics.get('step_6_main_kb1_content') or '-'))}",
             f"- 主候选(KB2)：{sanitize_text(str(analytics.get('step_6_main_kb2_content') or '-'))}",
             "",
@@ -356,7 +358,7 @@ def build_report_markdown(day_text: str, rows: list[dict]) -> str:
         "## 下一步优化建议",
         f"1. 先补场景治理。当前样本关键词以 `{', '.join(key for key, _ in keywords[:4]) or '业务执行'}` 为主，说明 5 月 11 日高价值节点不全是标准销售问答，包含大量交付推进/资料协同场景。建议在线程事实层新增 `交付推进 / 文件排版 / 预算待批 / 付款开票` 明确场景标签，再按场景切换提示词和回复模板。",
         f"2. 强化低负担承接规则。最新客户回复类型里 `{', '.join(f'{key}:{value}' for key, value in reply_types.items())}` 若以确认类、补充类居多，模型应更少追问，更多做承接、确认下一步和降低回复门槛。",
-        f"3. 用人工实发反哺候选。当前人工对照低于 80 分的节点数为 `{len(low_quality_cases)}`。建议把这些节点的人工回复块回流成“高质量回复片段/场景 SOP”，尤其是人工明显更短、更直接的情况。",
+        f"3. 用人工实发反哺候选。当前人工业务质量低于 80 分的节点数为 `{len(low_quality_cases)}`。建议把这些节点的人工回复块回流成“高质量回复片段/场景 SOP”，尤其是人工明显更短、更直接的情况。",
         f"4. 对比两路知识库命中差异。知识库2主候选优于知识库1的节点数为 `{better_kb2}`。若该值偏高，说明内部知识库在部分场景的覆盖、切片或标签仍弱，优先补入本次 10 条中的高分人工回复及其上下文。",
         "5. 持续保存阶段耗时。现在测试触发已经会自动回写完整 `result_payload` 和各阶段耗时，后续可直接按同样脚本扩展到更多日期，建立按场景、按销售、按知识源的质量/耗时对照基线。",
     ])

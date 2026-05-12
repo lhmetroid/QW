@@ -1,0 +1,3383 @@
+{
+  "date": "2026-05-11",
+  "generated_at": "2026-05-11T18:34:26.698313",
+  "selection_rule": {
+    "limit": 1,
+    "max_per_session": 2,
+    "session_prefix": "single_",
+    "excluded_existing_api_invocations": true,
+    "meaningful_anchor_filter": true
+  },
+  "rows": [
+    {
+      "candidate": {
+        "session_id": "single_WangHuiYing_wmS8sICwAA580XrndINDmRwwJqmfe7pA",
+        "anchor_message_id": 53479,
+        "anchor_message_time": "2026-05-11T14:33:46.936000",
+        "anchor_message_text": " 对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新",
+        "visible_count": 146,
+        "reply_count": 1,
+        "actual_sales_reply_text": "肯定下班前给你哈，安啦",
+        "score": 104.2
+      },
+      "record_id": "a5854221-645d-4262-a87f-d41acde0327b",
+      "snapshot_id": "edeae3d2-f73d-49c7-b36a-89da52701f2a",
+      "request_status": "skipped_unavailable",
+      "result_payload": {
+        "analysis_mode": "snapshot",
+        "analysis_version": {
+          "snapshot_id": "edeae3d2-f73d-49c7-b36a-89da52701f2a",
+          "session_id": "single_WangHuiYing_wmS8sICwAA580XrndINDmRwwJqmfe7pA",
+          "anchor_message_id": 53479,
+          "anchor_sender_type": "customer",
+          "anchor_message_time": "2026-05-11 14:33:46.936000",
+          "anchor_message_text": " 对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新",
+          "label": "客户 05-11 14:33  对13号早上正是用，但是我明天想留...",
+          "kind": "anchored_customer_message",
+          "has_v1": true,
+          "has_v2": false,
+          "updated_at": "2026-05-11 10:30:24.477081"
+        },
+        "fast_track": [
+          "文件发送",
+          "价格/比价"
+        ],
+        "has_v1": true,
+        "has_v2": false,
+        "has_v2_compare": false,
+        "llm_runtime": {
+          "llm1": {
+            "id": "LLM-1",
+            "role": "第一阶段特征提取（复用 LLM-2）",
+            "model": "deepseek-chat",
+            "provider": "OpenAI-compatible",
+            "url": "https://api.deepseek.com",
+            "display_name": "LLM-2 / deepseek-chat"
+          },
+          "llm1_compare": {
+            "id": "LLM-1 对比",
+            "role": "第一阶段对比特征提取",
+            "model": "",
+            "provider": "未配置",
+            "url": "",
+            "display_name": "LLM-1 对比 / 未配置"
+          },
+          "llm2": {
+            "id": "LLM-2",
+            "role": "第二阶段主回复生成",
+            "model": "deepseek-chat",
+            "provider": "OpenAI-compatible",
+            "url": "https://api.deepseek.com",
+            "display_name": "LLM-2 / deepseek-chat"
+          },
+          "llm2_compare": {
+            "id": "LLM-2 对比",
+            "role": "第二阶段对比回复生成",
+            "model": "qwen3-480b-cloud",
+            "provider": "Dify",
+            "url": "http://zjsphs.2288.org:11599/v1",
+            "display_name": "LLM-2 对比 / qwen3-480b-cloud"
+          }
+        },
+        "llm2_compare_configured": true,
+        "llm2_compare_runtime_status": {},
+        "latest_dialog_count": 146,
+        "input_messages": [
+          {
+            "id": 40355,
+            "sender": "customer",
+            "content": "hi T",
+            "time": "2026-05-07 11:46:46.732000"
+          },
+          {
+            "id": 40356,
+            "sender": "customer",
+            "content": "你之前说的ppt排版，一般怎么报价的啊",
+            "time": "2026-05-07 11:46:54.746000"
+          },
+          {
+            "id": 40357,
+            "sender": "sales",
+            "content": "60元/页，感谢页，只有logo的页面或者一些本来就不需要我们再动的页面不计算在内",
+            "time": "2026-05-07 11:47:41.317000"
+          },
+          {
+            "id": 40362,
+            "sender": "customer",
+            "content": "能再优惠点吗。。。",
+            "time": "2026-05-07 11:49:27.124000"
+          },
+          {
+            "id": 40364,
+            "sender": "sales",
+            "content": "em~~~50元/页吧~~这个可以争取到",
+            "time": "2026-05-07 11:51:11.567000"
+          },
+          {
+            "id": 40365,
+            "sender": "customer",
+            "content": "给我打个电话，方便吗",
+            "time": "2026-05-07 11:52:07.708000"
+          },
+          {
+            "id": 40366,
+            "sender": "sales",
+            "content": "好，等我1分钟",
+            "time": "2026-05-07 11:52:25.886000"
+          },
+          {
+            "id": 40368,
+            "sender": "customer",
+            "content": "哦哦 我忙到现在没注意是午休时间不好意思",
+            "time": "2026-05-07 11:52:42.025000"
+          },
+          {
+            "id": 40369,
+            "sender": "customer",
+            "content": "不方便可以午休后",
+            "time": "2026-05-07 11:52:49.291000"
+          },
+          {
+            "id": 40370,
+            "sender": "sales",
+            "content": "等我一口饭咽下去哈",
+            "time": "2026-05-07 11:53:08.446000"
+          },
+          {
+            "id": 40386,
+            "sender": "customer",
+            "content": "[文件消息] 刘彬 - 模块化方案赋能锂电池生产.pptx",
+            "time": "2026-05-07 11:58:49.158000"
+          },
+          {
+            "id": 40387,
+            "sender": "customer",
+            "content": "[文件消息] 刘彬 - 除湿机全生命周期费用分析.pptx",
+            "time": "2026-05-07 11:58:48.828000"
+          },
+          {
+            "id": 40388,
+            "sender": "customer",
+            "content": "[文件消息] 吴亦凯（陈杰讲） - Control Optimization PPT.pptx",
+            "time": "2026-05-07 11:58:50.212000"
+          },
+          {
+            "id": 40389,
+            "sender": "customer",
+            "content": "[文件消息] 张雪健 - 蒙特高效热泵介绍.pptx",
+            "time": "2026-05-07 11:58:49.422000"
+          },
+          {
+            "id": 40390,
+            "sender": "customer",
+            "content": "[文件消息] 王峰 - 蒙特EC风机改造介绍.pptx",
+            "time": "2026-05-07 11:58:50.172000"
+          },
+          {
+            "id": 40391,
+            "sender": "customer",
+            "content": "[文件消息] 陈志端 - 蒙特GTR高温转轮节能改造方案介绍0430.pptx",
+            "time": "2026-05-07 11:58:58.956000"
+          },
+          {
+            "id": 40392,
+            "sender": "customer",
+            "content": "6个ppt，你数一下，谢谢。",
+            "time": "2026-05-07 11:59:06.654000"
+          },
+          {
+            "id": 40396,
+            "sender": "customer",
+            "content": "logo，字体，母版上的用的不对版的话都要替换下哦。我们logo你有的哇。",
+            "time": "2026-05-07 11:59:32.881000"
+          },
+          {
+            "id": 40398,
+            "sender": "customer",
+            "content": "[文件消息] Logotype_and_symbol.zip",
+            "time": "2026-05-07 12:00:15.222000"
+          },
+          {
+            "id": 40400,
+            "sender": "customer",
+            "content": "[文件消息] Airflow_pattern 23.zip",
+            "time": "2026-05-07 12:00:40.599000"
+          },
+          {
+            "id": 40402,
+            "sender": "customer",
+            "content": "[文件消息] 2024 - Munters Brand Identity Guidelines-2401.pdf",
+            "time": "2026-05-07 12:01:06.494000"
+          },
+          {
+            "id": 40403,
+            "sender": "customer",
+            "content": "logo文件、品牌元素（背景点缀用）、VI文件\n\n供参考",
+            "time": "2026-05-07 12:01:29.858000"
+          },
+          {
+            "id": 40411,
+            "sender": "sales",
+            "content": "这6个PPT不用连在一起，都是单独排的对吧",
+            "time": "2026-05-07 12:02:51.654000"
+          },
+          {
+            "id": 40412,
+            "sender": "customer",
+            "content": "不同演讲人，当然不需要连一起",
+            "time": "2026-05-07 12:03:03.506000"
+          },
+          {
+            "id": 40413,
+            "sender": "sales",
+            "content": "刘彬有2个",
+            "time": "2026-05-07 12:03:25.440000"
+          },
+          {
+            "id": 40415,
+            "sender": "customer",
+            "content": "不用合并，主题不一样呀",
+            "time": "2026-05-07 12:03:40.068000"
+          },
+          {
+            "id": 40416,
+            "sender": "customer",
+            "content": "面对不同客户讲",
+            "time": "2026-05-07 12:03:44.937000"
+          },
+          {
+            "id": 40417,
+            "sender": "customer",
+            "content": "我给你6个，你回给我还是6个",
+            "time": "2026-05-07 12:03:52.174000"
+          },
+          {
+            "id": 40418,
+            "sender": "sales",
+            "content": "好",
+            "time": "2026-05-07 12:03:55.045000"
+          },
+          {
+            "id": 40420,
+            "sender": "customer",
+            "content": "你报价先微信里告知我一声",
+            "time": "2026-05-07 12:04:12.527000"
+          },
+          {
+            "id": 40421,
+            "sender": "customer",
+            "content": "再发邮件",
+            "time": "2026-05-07 12:04:14.326000"
+          },
+          {
+            "id": 40422,
+            "sender": "customer",
+            "content": "谢谢",
+            "time": "2026-05-07 12:04:15.681000"
+          },
+          {
+            "id": 40423,
+            "sender": "sales",
+            "content": "好的",
+            "time": "2026-05-07 12:04:18.367000"
+          },
+          {
+            "id": 40447,
+            "sender": "sales",
+            "content": "90页，4500",
+            "time": "2026-05-07 12:10:37.989000"
+          },
+          {
+            "id": 40462,
+            "sender": "customer",
+            "content": "在",
+            "time": "2026-05-07 12:18:26.741000"
+          },
+          {
+            "id": 40975,
+            "sender": "customer",
+            "content": "给你发了个邮件，额外2个ppt",
+            "time": "2026-05-07 14:33:35.343000"
+          },
+          {
+            "id": 40978,
+            "sender": "customer",
+            "content": "你看看多了实际多少页···",
+            "time": "2026-05-07 14:33:43.257000"
+          },
+          {
+            "id": 40985,
+            "sender": "customer",
+            "content": "可能需要你灵活一点",
+            "time": "2026-05-07 14:34:27.182000"
+          },
+          {
+            "id": 40987,
+            "sender": "customer",
+            "content": "因为这个人的两个ppt大量抄袭了其他同事的。。没必要每个都重新排。。。",
+            "time": "2026-05-07 14:34:42.526000"
+          },
+          {
+            "id": 40989,
+            "sender": "sales",
+            "content": "这种页面上的文字要变成可编辑的吗？上次那个参考的ppt类似这种截屏是没有编辑文字",
+            "time": "2026-05-07 14:35:26.731000"
+          },
+          {
+            "id": 40990,
+            "sender": "sales",
+            "content": "[图片消息]",
+            "time": "2026-05-07 14:35:26.328000"
+          },
+          {
+            "id": 40991,
+            "sender": "sales",
+            "content": "这是一条引用/回复消息：\n\"william.s：\n因为这个人的两个ppt大量抄袭了其他同事的。。没必要每个都重新排。。。\"\n------\n我来看看",
+            "time": "2026-05-07 14:35:32.675000"
+          },
+          {
+            "id": 40994,
+            "sender": "customer",
+            "content": "能不能编辑不重要，重点是文字能不能看得清，以及文字排版好不好看",
+            "time": "2026-05-07 14:36:38.310000"
+          },
+          {
+            "id": 40996,
+            "sender": "customer",
+            "content": "如果图片文字模糊，那就必须整改了",
+            "time": "2026-05-07 14:36:48.538000"
+          },
+          {
+            "id": 40997,
+            "sender": "customer",
+            "content": "不然只要好看，是否能编辑不在乎。",
+            "time": "2026-05-07 14:36:53.984000"
+          },
+          {
+            "id": 40998,
+            "sender": "sales",
+            "content": "那就根据实际情况按需调整",
+            "time": "2026-05-07 14:37:16.045000"
+          },
+          {
+            "id": 40999,
+            "sender": "customer",
+            "content": "当然正文里的尽量都是要能编辑的，因为避免不了小修小改。图片上的小字很少改。",
+            "time": "2026-05-07 14:37:16.320000"
+          },
+          {
+            "id": 41015,
+            "sender": "sales",
+            "content": "后面两个按30p算",
+            "time": "2026-05-07 14:41:24.910000"
+          },
+          {
+            "id": 41016,
+            "sender": "sales",
+            "content": "cosmx基本上都是用的是sunwoda的",
+            "time": "2026-05-07 14:41:49.690000"
+          },
+          {
+            "id": 41019,
+            "sender": "sales",
+            "content": "报价要更新么",
+            "time": "2026-05-07 14:42:04.242000"
+          },
+          {
+            "id": 41039,
+            "sender": "sales",
+            "content": "现在总共是6K，少的部分从预付款里走，还是更新一个报价",
+            "time": "2026-05-07 14:46:44.613000"
+          },
+          {
+            "id": 41529,
+            "sender": "sales",
+            "content": "业务部门今天能确认不",
+            "time": "2026-05-07 16:33:47.290000"
+          },
+          {
+            "id": 41532,
+            "sender": "customer",
+            "content": "我去催一下",
+            "time": "2026-05-07 16:34:24.115000"
+          },
+          {
+            "id": 41624,
+            "sender": "sales",
+            "content": "好的，加油",
+            "time": "2026-05-07 16:52:53.576000"
+          },
+          {
+            "id": 41670,
+            "sender": "customer",
+            "content": "他一直在开会",
+            "time": "2026-05-07 16:59:53.695000"
+          },
+          {
+            "id": 41671,
+            "sender": "customer",
+            "content": "明天给你来得及吗，明天我继续催",
+            "time": "2026-05-07 16:59:58.568000"
+          },
+          {
+            "id": 41674,
+            "sender": "customer",
+            "content": "刚才的两个ppt，实际多了多少页啊？ 谢谢",
+            "time": "2026-05-07 17:00:12.049000"
+          },
+          {
+            "id": 41687,
+            "sender": "sales",
+            "content": "实际是42页，我按30页算了",
+            "time": "2026-05-07 17:01:07.063000"
+          },
+          {
+            "id": 41693,
+            "sender": "customer",
+            "content": "1500咯",
+            "time": "2026-05-07 17:01:36.255000"
+          },
+          {
+            "id": 41695,
+            "sender": "customer",
+            "content": "那就是还差500，从那边扣吧",
+            "time": "2026-05-07 17:01:44.316000"
+          },
+          {
+            "id": 41697,
+            "sender": "customer",
+            "content": "开票依然是5500",
+            "time": "2026-05-07 17:01:54.506000"
+          },
+          {
+            "id": 41699,
+            "sender": "sales",
+            "content": "好的",
+            "time": "2026-05-07 17:02:03.143000"
+          },
+          {
+            "id": 41704,
+            "sender": "sales",
+            "content": "明天尽早给呗",
+            "time": "2026-05-07 17:02:27.041000"
+          },
+          {
+            "id": 41710,
+            "sender": "sales",
+            "content": "他给了后我再给个邮件是6K的哈，我们财务对不起来了，开票开5500，是不是也要做个合同",
+            "time": "2026-05-07 17:03:10.890000"
+          },
+          {
+            "id": 41716,
+            "sender": "customer",
+            "content": "他回复我了",
+            "time": "2026-05-07 17:03:41"
+          },
+          {
+            "id": 41717,
+            "sender": "customer",
+            "content": "我现在回复你邮件",
+            "time": "2026-05-07 17:03:44.283000"
+          },
+          {
+            "id": 41719,
+            "sender": "sales",
+            "content": "好的",
+            "time": "2026-05-07 17:04:00.423000"
+          },
+          {
+            "id": 41728,
+            "sender": "customer",
+            "content": "邮件回复你了",
+            "time": "2026-05-07 17:06:01.398000"
+          },
+          {
+            "id": 43208,
+            "sender": "sales",
+            "content": "[图片消息]",
+            "time": "2026-05-08 09:26:54.666000"
+          },
+          {
+            "id": 43209,
+            "sender": "sales",
+            "content": "隐藏页需要排么",
+            "time": "2026-05-08 09:26:55.008000"
+          },
+          {
+            "id": 43211,
+            "sender": "customer",
+            "content": "多吗",
+            "time": "2026-05-08 09:27:14.535000"
+          },
+          {
+            "id": 43212,
+            "sender": "customer",
+            "content": "这种情况",
+            "time": "2026-05-08 09:27:15.780000"
+          },
+          {
+            "id": 43214,
+            "sender": "customer",
+            "content": "就几页的话辛苦排了吧，如果之前报价没涉及，就从另一边直接扣钱。",
+            "time": "2026-05-08 09:28:10.983000"
+          },
+          {
+            "id": 43223,
+            "sender": "sales",
+            "content": " 目前就看到这页，排了它",
+            "time": "2026-05-08 09:30:20.896000"
+          },
+          {
+            "id": 43236,
+            "sender": "customer",
+            "content": "嗯嗯嗯",
+            "time": "2026-05-08 09:32:25.381000"
+          },
+          {
+            "id": 44316,
+            "sender": "customer",
+            "content": "[图片消息]",
+            "time": "2026-05-08 14:03:54.173000"
+          },
+          {
+            "id": 44319,
+            "sender": "customer",
+            "content": "1. 我不喜欢这个标题样式，不够商务，能不能比如说挖一块白色，专门放标题，清楚、显眼。不要放在复杂的背景图上",
+            "time": "2026-05-08 14:04:20.518000"
+          },
+          {
+            "id": 44326,
+            "sender": "customer",
+            "content": "[图片消息]",
+            "time": "2026-05-08 14:05:13.399000"
+          },
+          {
+            "id": 44327,
+            "sender": "customer",
+            "content": "「william.s：[图片]」\n- - - - - - - - - - - - - - -\n这种图有没有可能把图片拉伸到没那么扭曲，不强求哈，就是问问。",
+            "time": "2026-05-08 14:05:30.819000"
+          },
+          {
+            "id": 44328,
+            "sender": "customer",
+            "content": "[撤回了一条消息]",
+            "time": "2026-05-08 14:05:32.716000"
+          },
+          {
+            "id": 44329,
+            "sender": "customer",
+            "content": "「william.s：[图片]」\n- - - - - - - - - - - - - - -\n2. 这种图有没有可能把图片拉伸到没那么扭曲，不强求哈，就是问问。",
+            "time": "2026-05-08 14:05:38.767000"
+          },
+          {
+            "id": 44333,
+            "sender": "customer",
+            "content": "[图片消息]",
+            "time": "2026-05-08 14:06:08.437000"
+          },
+          {
+            "id": 44336,
+            "sender": "customer",
+            "content": "「william.s：[图片]」\n- - - - - - - - - - - - - - -\n3. 同上需求，只需要这个屏幕的截图即可，周边一圈其实都可以不要。展示起来显得专业一些。",
+            "time": "2026-05-08 14:06:26.876000"
+          },
+          {
+            "id": 44341,
+            "sender": "customer",
+            "content": "我没其它问题，这个样式挺好的，总体看。",
+            "time": "2026-05-08 14:06:55.554000"
+          },
+          {
+            "id": 44344,
+            "sender": "customer",
+            "content": "谢谢。",
+            "time": "2026-05-08 14:06:56.470000"
+          },
+          {
+            "id": 44349,
+            "sender": "sales",
+            "content": "好的，让同事改下，最后页感谢的和QA页就统一用这版里的咯",
+            "time": "2026-05-08 14:07:47.139000"
+          },
+          {
+            "id": 44373,
+            "sender": "customer",
+            "content": "可以，谢谢",
+            "time": "2026-05-08 14:10:26.512000"
+          },
+          {
+            "id": 45266,
+            "sender": "sales",
+            "content": "这个样子可以不",
+            "time": "2026-05-08 17:22:19.141000"
+          },
+          {
+            "id": 45267,
+            "sender": "sales",
+            "content": "[图片消息]",
+            "time": "2026-05-08 17:22:18.805000"
+          },
+          {
+            "id": 45272,
+            "sender": "sales",
+            "content": "[图片消息]",
+            "time": "2026-05-08 17:23:01.704000"
+          },
+          {
+            "id": 45273,
+            "sender": "sales",
+            "content": "[图片消息]",
+            "time": "2026-05-08 17:23:02.715000"
+          },
+          {
+            "id": 45275,
+            "sender": "sales",
+            "content": "另外两个图片处理过了",
+            "time": "2026-05-08 17:23:02.958000"
+          },
+          {
+            "id": 45299,
+            "sender": "customer",
+            "content": "好多了， 谢谢",
+            "time": "2026-05-08 17:25:34.430000"
+          },
+          {
+            "id": 45300,
+            "sender": "customer",
+            "content": "辛苦推进",
+            "time": "2026-05-08 17:25:36.659000"
+          },
+          {
+            "id": 45306,
+            "sender": "sales",
+            "content": "不客气，明天继续干其他几个",
+            "time": "2026-05-08 17:26:10.557000"
+          },
+          {
+            "id": 45425,
+            "sender": "customer",
+            "content": "[合十]",
+            "time": "2026-05-08 17:38:40.934000"
+          },
+          {
+            "id": 52169,
+            "sender": "sales",
+            "content": "左边是原来的ppt，显示要插图片，但是我们看不到这个图片，可能是smart图形的占位符号，我们排完的就是没有图片哦，你们同事是有图片要放么",
+            "time": "2026-05-11 09:33:02.700000"
+          },
+          {
+            "id": 52170,
+            "sender": "sales",
+            "content": "[图片消息]",
+            "time": "2026-05-11 09:33:02.322000"
+          },
+          {
+            "id": 52200,
+            "sender": "customer",
+            "content": "我去看看",
+            "time": "2026-05-11 09:36:57.350000"
+          },
+          {
+            "id": 52202,
+            "sender": "customer",
+            "content": "ppt是谁的",
+            "time": "2026-05-11 09:37:03.790000"
+          },
+          {
+            "id": 52203,
+            "sender": "customer",
+            "content": "你截图我看不到ppt标题",
+            "time": "2026-05-11 09:37:07.631000"
+          },
+          {
+            "id": 52206,
+            "sender": "sales",
+            "content": "CIBF - Sunwoda.pptx",
+            "time": "2026-05-11 09:37:15.809000"
+          },
+          {
+            "id": 52208,
+            "sender": "customer",
+            "content": "ok",
+            "time": "2026-05-11 09:37:23.812000"
+          },
+          {
+            "id": 52213,
+            "sender": "sales",
+            "content": "CIBF - Cosmx.ppt,这里也有哈，就是来个很像的ppt",
+            "time": "2026-05-11 09:38:01.489000"
+          },
+          {
+            "id": 52219,
+            "sender": "customer",
+            "content": "因为是同一个作者",
+            "time": "2026-05-11 09:38:51.650000"
+          },
+          {
+            "id": 52230,
+            "sender": "customer",
+            "content": "[图片消息]",
+            "time": "2026-05-11 09:40:14.979000"
+          },
+          {
+            "id": 52231,
+            "sender": "customer",
+            "content": "原始文件就是空的，你把这个圆圈删除吧",
+            "time": "2026-05-11 09:40:20.085000"
+          },
+          {
+            "id": 52234,
+            "sender": "sales",
+            "content": "好的",
+            "time": "2026-05-11 09:40:39.240000"
+          },
+          {
+            "id": 52235,
+            "sender": "customer",
+            "content": "[图片消息]",
+            "time": "2026-05-11 09:40:41.495000"
+          },
+          {
+            "id": 52245,
+            "sender": "sales",
+            "content": "好了几个我先发你邮箱，你们邮箱最多能收多少mb",
+            "time": "2026-05-11 09:41:33.755000"
+          },
+          {
+            "id": 52255,
+            "sender": "customer",
+            "content": "你还是微信一个个发我吧",
+            "time": "2026-05-11 09:42:36.664000"
+          },
+          {
+            "id": 52256,
+            "sender": "customer",
+            "content": "邮件一次性最多好像30m",
+            "time": "2026-05-11 09:42:41.461000"
+          },
+          {
+            "id": 52279,
+            "sender": "sales",
+            "content": "[文件消息] 陈志端 - 蒙特GTR高温转轮节能改造方案介绍0508.pptx",
+            "time": "2026-05-11 09:46:01.615000"
+          },
+          {
+            "id": 52280,
+            "sender": "sales",
+            "content": "[文件消息] 王峰 - 蒙特EC风机改造介绍--26.05.09.pptx",
+            "time": "2026-05-11 09:46:07.968000"
+          },
+          {
+            "id": 52282,
+            "sender": "sales",
+            "content": "删圆圈的等同事删完，文字排版调整下载发你",
+            "time": "2026-05-11 09:46:38.270000"
+          },
+          {
+            "id": 52283,
+            "sender": "sales",
+            "content": "[撤回了一条消息]",
+            "time": "2026-05-11 09:46:42.184000"
+          },
+          {
+            "id": 52284,
+            "sender": "sales",
+            "content": "删圆圈的等同事删完，文字排版调整下再发你",
+            "time": "2026-05-11 09:46:46.023000"
+          },
+          {
+            "id": 52328,
+            "sender": "customer",
+            "content": "所以现在好了两个是吗？",
+            "time": "2026-05-11 09:52:18.682000"
+          },
+          {
+            "id": 52335,
+            "sender": "sales",
+            "content": "CIBF - Sunwoda和CIBF - Cosmx这个也好了，就差个删圆圈，",
+            "time": "2026-05-11 09:53:35.319000"
+          },
+          {
+            "id": 52336,
+            "sender": "sales",
+            "content": "这是一条引用/回复消息：\n\"william.s：\n所以现在好了两个是吗？\"\n------\n先给你两个",
+            "time": "2026-05-11 09:53:42.972000"
+          },
+          {
+            "id": 52342,
+            "sender": "customer",
+            "content": "ok，那我目前收到2个反正。",
+            "time": "2026-05-11 09:55:15.594000"
+          },
+          {
+            "id": 52343,
+            "sender": "sales",
+            "content": "yes",
+            "time": "2026-05-11 09:55:24.400000"
+          },
+          {
+            "id": 52387,
+            "sender": "sales",
+            "content": "[文件消息] CIBF - Cosmx--26.05.09.pptx",
+            "time": "2026-05-11 10:01:54.676000"
+          },
+          {
+            "id": 52390,
+            "sender": "sales",
+            "content": "[文件消息] CIBF - Sunwoda--26.05.09.pptx",
+            "time": "2026-05-11 10:01:57.003000"
+          },
+          {
+            "id": 52391,
+            "sender": "sales",
+            "content": "这两个也好了",
+            "time": "2026-05-11 10:02:00.239000"
+          },
+          {
+            "id": 52392,
+            "sender": "customer",
+            "content": "OKOK！",
+            "time": "2026-05-11 10:02:07.261000"
+          },
+          {
+            "id": 53320,
+            "sender": "customer",
+            "content": "目前收到两个加两个一共四个",
+            "time": "2026-05-11 13:52:18.112000"
+          },
+          {
+            "id": 53322,
+            "sender": "sales",
+            "content": "是的",
+            "time": "2026-05-11 13:52:58.912000"
+          },
+          {
+            "id": 53331,
+            "sender": "customer",
+            "content": "那下班前还来得及不？[苦涩]",
+            "time": "2026-05-11 13:55:26.613000"
+          },
+          {
+            "id": 53342,
+            "sender": "sales",
+            "content": "来得及",
+            "time": "2026-05-11 13:59:05.783000"
+          },
+          {
+            "id": 53343,
+            "sender": "sales",
+            "content": "好了几个，还没给我",
+            "time": "2026-05-11 13:59:12.307000"
+          },
+          {
+            "id": 53353,
+            "sender": "sales",
+            "content": "[文件消息] 刘彬 - 除湿机全生命周期费用分析--26.05.11.pptx",
+            "time": "2026-05-11 14:03:41.871000"
+          },
+          {
+            "id": 53356,
+            "sender": "sales",
+            "content": "这个目录是中文的，后面内容全英文的，感觉对不台上，页码就先XX了",
+            "time": "2026-05-11 14:04:21.309000"
+          },
+          {
+            "id": 53371,
+            "sender": "customer",
+            "content": "我在机场，我没明白你表达什么",
+            "time": "2026-05-11 14:09:00.721000"
+          },
+          {
+            "id": 53372,
+            "sender": "sales",
+            "content": "[文件消息] 刘彬 - 模块化方案赋能锂电池生产--26.05.11.pptx",
+            "time": "2026-05-11 14:09:02.036000"
+          },
+          {
+            "id": 53374,
+            "sender": "customer",
+            "content": "我懂你意思了。。。",
+            "time": "2026-05-11 14:09:21.519000"
+          },
+          {
+            "id": 53385,
+            "sender": "sales",
+            "content": "[图片消息]",
+            "time": "2026-05-11 14:11:29.458000"
+          },
+          {
+            "id": 53386,
+            "sender": "sales",
+            "content": "这页的大标题是不是用框出来的这个",
+            "time": "2026-05-11 14:11:29.881000"
+          },
+          {
+            "id": 53438,
+            "sender": "sales",
+            "content": "[文件消息] 吴亦凯（陈杰讲） - Control Optimization PPT--26.05.11.pptx",
+            "time": "2026-05-11 14:23:04.306000"
+          },
+          {
+            "id": 53439,
+            "sender": "sales",
+            "content": "还有最后一个，大概还有几页差不多就好了",
+            "time": "2026-05-11 14:23:14.956000"
+          },
+          {
+            "id": 53463,
+            "sender": "customer",
+            "content": "好的",
+            "time": "2026-05-11 14:30:36.990000"
+          },
+          {
+            "id": 53464,
+            "sender": "customer",
+            "content": "你按你的理解来排吧，我也搞不清楚他们这个内容怎么个逻辑？",
+            "time": "2026-05-11 14:30:57.220000"
+          },
+          {
+            "id": 53465,
+            "sender": "customer",
+            "content": "总之你排好了，我会发给他们自己再去做检查的",
+            "time": "2026-05-11 14:31:05.427000"
+          },
+          {
+            "id": 53474,
+            "sender": "sales",
+            "content": "嗯，那个先不改了，总觉得目录和内容差了那么一点，要我们加的话，我们配合加就好了",
+            "time": "2026-05-11 14:32:55.307000"
+          },
+          {
+            "id": 53475,
+            "sender": "sales",
+            "content": "明天还有一天时间对吧",
+            "time": "2026-05-11 14:32:59.300000"
+          },
+          {
+            "id": 53479,
+            "sender": "customer",
+            "content": " 对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新",
+            "time": "2026-05-11 14:33:46.936000"
+          }
+        ],
+        "actual_sales_replies": [
+          {
+            "id": 53481,
+            "sender": "sales",
+            "content": "肯定下班前给你哈，安啦",
+            "time": "2026-05-11T14:34:23.158000"
+          }
+        ],
+        "stage_status": {
+          "conversation_input": "done",
+          "fast_track": "done",
+          "llm1": "done",
+          "crm_profile": "success",
+          "knowledge_v2": "manual_review_required",
+          "knowledge_external_api": "skipped_unavailable",
+          "llm2": "not_started",
+          "llm2_compare": "not_started",
+          "node_timings_ms": {
+            "conversation_input": {
+              "total_ms": 9.89,
+              "status": "done"
+            },
+            "fast_track": {
+              "total_ms": 2.4,
+              "status": "done"
+            },
+            "llm1": {
+              "total_ms": 13926.89,
+              "status": "done"
+            },
+            "crm_profile": {
+              "total_ms": 160.48,
+              "status": "success"
+            },
+            "knowledge": {
+              "total_ms": 8010.07,
+              "parts_ms": {
+                "knowledge_v2_ms": 8316.36,
+                "knowledge_external_api_ms": 8010.05
+              },
+              "status": "skipped_unavailable"
+            }
+          },
+          "llm1_started_at": "2026-05-11T10:29:51Z",
+          "llm1_display_reset": false,
+          "llm1_completed_at": "2026-05-11T10:30:06Z",
+          "last_requested_action": "knowledge_external_api"
+        },
+        "node_timings_ms": {
+          "conversation_input": {
+            "total_ms": 9.89,
+            "status": "done"
+          },
+          "fast_track": {
+            "total_ms": 2.4,
+            "status": "done"
+          },
+          "llm1": {
+            "total_ms": 13926.89,
+            "status": "done"
+          },
+          "crm_profile": {
+            "total_ms": 160.48,
+            "status": "success"
+          },
+          "knowledge": {
+            "total_ms": 8010.07,
+            "parts_ms": {
+              "knowledge_v2_ms": 8316.36,
+              "knowledge_external_api_ms": 8010.05
+            },
+            "status": "skipped_unavailable"
+          }
+        },
+        "crm_info": {
+          "crm_external_userid": "wmS8sICwAA580XrndINDmRwwJqmfe7pA",
+          "crm_contact_name": "孙诞",
+          "company_name": "蒙特空气处理设备（北京）有限公司上海办事处",
+          "company_industry": "legal",
+          "recent_opportunities": null,
+          "recent_quote_summary": null,
+          "ongoing_contracts": "XS260430-005-业务类型:笔译|中译英|负责人:王慧莹|设计合同翻译",
+          "contact_recent_followup": "当天收到邮件之前还发生过的往来记录：\n18:02，QQ，内容为：销售要求客户下班前提供最终版PPT文件，确保内容与目录匹配、格式统一。",
+          "customer_lifecycle_stage": "新联系人",
+          "customer_tier": "common",
+          "payment_risk_level": "low",
+          "high_risk_flags": [],
+          "crm_profile_status": "success"
+        },
+        "crm_status": "success",
+        "topic": "PPT排版美化项目推进与交付",
+        "core_demand": "客户需要我方在5月13日早上正式使用前完成6个（后增至8个）PPT的排版美化，并确保质量符合要求，同时处理额外出现的细节问题（如隐藏页、图片拉伸、标题样式等）。",
+        "key_facts": {
+          "latest_customer_reply_type": "schedule_confirmation",
+          "latest_customer_reply_goal": "确认明天（5月12日）还有一天时间可以继续修改，并说明13号早上正式使用，明天需留给演讲人做最终检查。",
+          "timeline_items": [
+            {
+              "time": "5月13日早上",
+              "topic": "PPT正式使用",
+              "status_scope": "future",
+              "status": "待交付",
+              "owner": "销售方",
+              "next_action": "在5月12日下班前完成所有PPT排版并交付给客户"
+            },
+            {
+              "time": "5月12日",
+              "topic": "客户内部检查PPT",
+              "status_scope": "future",
+              "status": "计划中",
+              "owner": "客户",
+              "next_action": "客户将收到的PPT发给演讲人做检查，如有更新再反馈"
+            },
+            {
+              "time": "当前",
+              "topic": "最后几个PPT的排版与交付",
+              "status_scope": "ongoing",
+              "status": "进行中",
+              "owner": "销售方",
+              "next_action": "完成剩余PPT的排版（包括删除圆圈、调整文字排版等），并微信逐个发送给客户"
+            }
+          ],
+          "current_focus": "确认明天（5月12日）还有一天时间，销售方需在当天完成所有PPT排版并交付，以便客户留给演讲人检查。",
+          "separate_topics": [
+            "6个初始PPT的排版报价与确认（50元/页，共4500元）",
+            "额外2个PPT（cosmx/sunwoda相关）的报价调整（按30页计，总价6000元，开票5500元，差额从预付款扣）",
+            "隐藏页的处理（客户同意排，费用从另一边扣）",
+            "标题样式修改（客户要求白色标题区域，不要放在复杂背景上）",
+            "图片拉伸问题（客户询问能否改善，不强求）",
+            "图片裁剪（只需屏幕截图，去掉周边）",
+            "Smart图形占位符问题（客户确认原始文件为空，要求删除圆圈）",
+            "目录与内容语言不一致问题（客户表示按销售方理解排版，后续由演讲人检查）"
+          ]
+        },
+        "todo_items": [
+          "完成剩余PPT的排版（包括删除圆圈、调整文字排版等）",
+          "将完成的PPT通过微信逐个发送给客户",
+          "确保所有PPT在5月12日下班前交付完毕"
+        ],
+        "risks": "[\"客户在机场，可能无法及时反馈或接收文件\", \"多个PPT由不同演讲人负责，后续检查可能提出额外修改需求，时间紧张\", \"目录与内容语言不一致可能影响排版准确性，需客户后续确认\"]",
+        "to_be_confirmed": "[\"隐藏页数量及具体费用扣除方式\", \"图片拉伸问题是否需进一步处理\", \"目录与内容语言不一致是否需要我方添加内容\"]",
+        "status": "进行中",
+        "at": "2026-05-11 10:30:06.294414",
+        "thread_business_fact": {
+          "session_id": "single_WangHuiYing_wmS8sICwAA580XrndINDmRwwJqmfe7pA",
+          "scenario_label": "after_sales",
+          "intent_label": "process",
+          "language_style": "wechat_brief",
+          "business_state": "after_sales",
+          "stage_signals": {
+            "has_formal_quote": true,
+            "crm_has_quote_history": false,
+            "payment_discussed": true,
+            "payment_confirmed": false,
+            "shipment_discussed": false,
+            "shipment_confirmed": false,
+            "after_sales_open": true,
+            "waiting_customer_material": false,
+            "awaiting_customer_reply": false,
+            "sales_only_conversation": false,
+            "followup_after_no_reply": false
+          },
+          "merged_facts": {
+            "topic": "PPT排版美化项目推进与交付",
+            "core_demand": "客户需要我方在5月13日早上正式使用前完成6个（后增至8个）PPT的排版美化，并确保质量符合要求，同时处理额外出现的细节问题（如隐藏页、图片拉伸、标题样式等）。",
+            "summary_status": "进行中",
+            "key_facts": {
+              "latest_customer_reply_type": "schedule_confirmation",
+              "latest_customer_reply_goal": "确认明天（5月12日）还有一天时间可以继续修改，并说明13号早上正式使用，明天需留给演讲人做最终检查。",
+              "timeline_items": [
+                {
+                  "time": "5月13日早上",
+                  "topic": "PPT正式使用",
+                  "status_scope": "future",
+                  "status": "待交付",
+                  "owner": "销售方",
+                  "next_action": "在5月12日下班前完成所有PPT排版并交付给客户"
+                },
+                {
+                  "time": "5月12日",
+                  "topic": "客户内部检查PPT",
+                  "status_scope": "future",
+                  "status": "计划中",
+                  "owner": "客户",
+                  "next_action": "客户将收到的PPT发给演讲人做检查，如有更新再反馈"
+                },
+                {
+                  "time": "当前",
+                  "topic": "最后几个PPT的排版与交付",
+                  "status_scope": "ongoing",
+                  "status": "进行中",
+                  "owner": "销售方",
+                  "next_action": "完成剩余PPT的排版（包括删除圆圈、调整文字排版等），并微信逐个发送给客户"
+                }
+              ],
+              "current_focus": "确认明天（5月12日）还有一天时间，销售方需在当天完成所有PPT排版并交付，以便客户留给演讲人检查。",
+              "separate_topics": [
+                "6个初始PPT的排版报价与确认（50元/页，共4500元）",
+                "额外2个PPT（cosmx/sunwoda相关）的报价调整（按30页计，总价6000元，开票5500元，差额从预付款扣）",
+                "隐藏页的处理（客户同意排，费用从另一边扣）",
+                "标题样式修改（客户要求白色标题区域，不要放在复杂背景上）",
+                "图片拉伸问题（客户询问能否改善，不强求）",
+                "图片裁剪（只需屏幕截图，去掉周边）",
+                "Smart图形占位符问题（客户确认原始文件为空，要求删除圆圈）",
+                "目录与内容语言不一致问题（客户表示按销售方理解排版，后续由演讲人检查）"
+              ]
+            },
+            "crm_recent_quote_summary": null,
+            "crm_customer_tier": "common",
+            "crm_payment_risk_level": "low",
+            "last_sender": "customer",
+            "sales_message_count": 63,
+            "customer_message_count": 83,
+            "consecutive_sales_messages": 0,
+            "awaiting_customer_reply": false,
+            "sales_only_conversation": false,
+            "followup_after_no_reply": false,
+            "latest_sales_message": "明天还有一天时间对吧",
+            "recent_sales_messages": [
+              "嗯，那个先不改了，总觉得目录和内容差了那么一点，要我们加的话，我们配合加就好了",
+              "明天还有一天时间对吧"
+            ],
+            "latest_customer_message": "对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新",
+            "latest_customer_reply_type": "question",
+            "latest_customer_time_mentions": [],
+            "crm_has_quote_history": false,
+            "attachment_summary": [
+              {
+                "source": "message",
+                "kind": "file",
+                "filename": null,
+                "raw": "[文件消息] 刘彬 - 模块化方案赋能锂电池生产.pptx",
+                "summary": "[文件消息] 刘彬 - 模块化方案赋能锂电池生产.pptx",
+                "signals": []
+              },
+              {
+                "source": "message",
+                "kind": "file",
+                "filename": null,
+                "raw": "[文件消息] 刘彬 - 除湿机全生命周期费用分析.pptx",
+                "summary": "[文件消息] 刘彬 - 除湿机全生命周期费用分析.pptx",
+                "signals": [
+                  "pricing"
+                ]
+              },
+              {
+                "source": "message",
+                "kind": "file",
+                "filename": null,
+                "raw": "[文件消息] 吴亦凯（陈杰讲） - Control Optimization PPT.pptx",
+                "summary": "[文件消息] 吴亦凯（陈杰讲） - Control Optimization PPT.pptx",
+                "signals": []
+              },
+              {
+                "source": "message",
+                "kind": "file",
+                "filename": null,
+                "raw": "[文件消息] 张雪健 - 蒙特高效热泵介绍.pptx",
+                "summary": "[文件消息] 张雪健 - 蒙特高效热泵介绍.pptx",
+                "signals": []
+              },
+              {
+                "source": "message",
+                "kind": "file",
+                "filename": null,
+                "raw": "[文件消息] 王峰 - 蒙特EC风机改造介绍.pptx",
+                "summary": "[文件消息] 王峰 - 蒙特EC风机改造介绍.pptx",
+                "signals": []
+              },
+              {
+                "source": "message",
+                "kind": "file",
+                "filename": null,
+                "raw": "[文件消息] 陈志端 - 蒙特GTR高温转轮节能改造方案介绍0430.pptx",
+                "summary": "[文件消息] 陈志端 - 蒙特GTR高温转轮节能改造方案介绍0430.pptx",
+                "signals": []
+              },
+              {
+                "source": "message",
+                "kind": "archive",
+                "filename": "Logotype_and_symbol.zip",
+                "raw": "[文件消息] Logotype_and_symbol.zip",
+                "summary": "[文件消息] Logotype_and_symbol.zip",
+                "signals": []
+              },
+              {
+                "source": "message",
+                "kind": "archive",
+                "filename": "23.zip",
+                "raw": "[文件消息] Airflow_pattern 23.zip",
+                "summary": "[文件消息] Airflow_pattern 23.zip",
+                "signals": []
+              },
+              {
+                "source": "message",
+                "kind": "pdf",
+                "filename": "Guidelines-2401.pdf",
+                "raw": "[文件消息] 2024 - Munters Brand Identity Guidelines-2401.pdf",
+                "summary": "[文件消息] 2024 - Munters Brand Identity Guidelines-2401.pdf",
+                "signals": []
+              },
+              {
+                "source": "message",
+                "kind": "file",
+                "filename": null,
+                "raw": "logo文件、品牌元素（背景点缀用）、VI文件 供参考",
+                "summary": "logo文件、品牌元素（背景点缀用）、VI文件 供参考",
+                "signals": []
+              },
+              {
+                "source": "message",
+                "kind": "file",
+                "filename": null,
+                "raw": "他给了后我再给个邮件是6K的哈，我们财务对不起来了，开票开5500，是不是也要做个合同",
+                "summary": "他给了后我再给个邮件是6K的哈，我们财务对不起来了，开票开5500，是不是也要做个合同",
+                "signals": [
+                  "contract"
+                ]
+              },
+              {
+                "source": "message",
+                "kind": "file",
+                "filename": null,
+                "raw": "原始文件就是空的，你把这个圆圈删除吧",
+                "summary": "原始文件就是空的，你把这个圆圈删除吧",
+                "signals": []
+              }
+            ],
+            "attachment_rollup": {
+              "count": 12,
+              "kinds": {
+                "archive": 2,
+                "file": 9,
+                "pdf": 1
+              },
+              "signals": {
+                "contract": 1,
+                "pricing": 1
+              },
+              "filenames": [
+                "Logotype_and_symbol.zip",
+                "23.zip",
+                "Guidelines-2401.pdf"
+              ],
+              "has_structured_attachments": true
+            },
+            "attachment_types": [
+              "archive",
+              "file",
+              "pdf"
+            ]
+          },
+          "reply_guard_reason": ""
+        },
+        "knowledge_v2": {
+          "status": "manual_review_required",
+          "query_text": "对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新；客户需要我方在5月13日早上正式使用前完成6个（后增至8个）PPT的排版美化，并确保质量符合要求，同时处理额外出现的细节问题（如隐藏页、图片拉伸、标题样式等）。；PPT排版美化项目推进与交付；进行中",
+          "query_features": {
+            "business_line": "general",
+            "knowledge_type": [
+              "pricing",
+              "process",
+              "faq"
+            ]
+          },
+          "filters_used": {
+            "status": "active",
+            "business_line": "general",
+            "knowledge_class": null,
+            "knowledge_type": [
+              "pricing",
+              "process",
+              "faq"
+            ],
+            "language_pair": null,
+            "service_scope": null,
+            "service_scope_allowlist": null,
+            "customer_tier": null,
+            "effective_time": "now",
+            "candidate_limit": 500,
+            "keyword_prefilter_enabled": true,
+            "normalized_query_text": "对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新；客户需要我方在5月13日早上正式使用前完成6个（后增至8个）PPT的排版美化，并确保质量符合要求，同时处理额外出现的细节问题（如隐藏页、图片拉伸、标题样式等）。；PPT排版美化项目推进与交付；进行中",
+            "query_terms": [
+              "交付",
+              "客户",
+              "对13号早上正是用",
+              "但是我明天想留着给他们再去对这个ppt第一是做检查",
+              "看有什么更新的就抓紧在利用最后一天更新",
+              "客户需要我方在5月13日早上正式使用前完成6个",
+              "后增至8个",
+              "ppt的排版美化",
+              "并确保质量符合要求",
+              "同时处理额外出现的细节问题"
+            ],
+            "intent_profile": {
+              "desired_knowledge_classes": [
+                "process"
+              ],
+              "desired_knowledge_types": [
+                "process"
+              ],
+              "domain_terms": [],
+              "ambiguous_query": false,
+              "intent_reasons": [
+                "process_intent"
+              ]
+            },
+            "thresholds": {
+              "min_score": 0.45,
+              "auto_ok_score": 0.7,
+              "supporting_score": 0.35
+            },
+            "thread_business_state": "inquiry",
+            "thread_fact_available": true,
+            "candidate_source": "hybrid_structured_keyword",
+            "candidate_counts_by_source": {
+              "structured_filters": 500,
+              "keyword_prefilter": 500,
+              "merged": 653
+            },
+            "candidate_count": 653,
+            "replyable_hit_count": 4,
+            "human_only_hit_count": 1,
+            "related_chunk_count": 0,
+            "supporting_chunk_count": 6
+          },
+          "hits": [
+            {
+              "chunk_id": "fa5a9f4e-fa77-4022-8e8c-c6cefe36b9aa",
+              "document_id": "3702a845-6555-490d-895e-a4441abb7699",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "请阐述开发客户1、3、1、3、2的要点",
+              "content": "一共10个点，先给客户我们的信息，再问客户拿信息，最后收尾时要联系方式\n给客户1+3共4个点，首先表明来意，再表达我们是最好的、合作过的公司名和我们提供的产品系列\n再问客户拿1+3共4个点，首先问该联系人的需求，再问该公司合作业绩最大的3个部门、市场部、采购部\n结尾时做到2点，用我们的企业微信添加客户的微信，并与客户确认邮箱和拿邮箱地址，发送邮件",
+              "score": 0.6166,
+              "semantic_score": 0.611297,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "candidate_sources": [
+                "keyword_prefilter",
+                "structured_filters"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.8086,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "sales_outreach",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": false,
+              "manual_review_required": false,
+              "applicability": "matched"
+            },
+            {
+              "chunk_id": "a38b6ec8-8c68-40e6-9e2c-e2e97621168f",
+              "document_id": "d518c735-8a9a-49cf-b7f5-6168624adff7",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "如何处理客户的电子版需求？ · 询问客户是否需要电子版排版设计，如邀请函、宣传册等。",
+              "content": "询问客户是否需要电子版排版设计，如邀请函、宣传册等。",
+              "score": 0.609414,
+              "semantic_score": 0.675111,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "candidate_sources": [
+                "keyword_prefilter",
+                "structured_filters"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": false,
+              "useful_score": 0.5769,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "cross_sell",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": true,
+              "manual_review_required": true,
+              "applicability": "matched"
+            },
+            {
+              "chunk_id": "43d3ab90-327b-4b83-a2dd-733ace7e0dc7",
+              "document_id": "c29efc03-96ba-4b50-80b4-fa7cef58f27c",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "客户询问合同审批流程的预计时间？",
+              "content": "销售解释目前合同正在走内部流程，并等待法务部门的审核意见。一旦确认无误，双方即可盖章。销售承诺会通过邮件通知客户合同状态，并希望能在本月内完成。",
+              "score": 0.604949,
+              "semantic_score": 0.592739,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "candidate_sources": [
+                "keyword_prefilter",
+                "structured_filters"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.7536,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "contract_approval",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": false,
+              "manual_review_required": false,
+              "applicability": "matched"
+            },
+            {
+              "chunk_id": "fb7ef2a1-e7b8-4023-aa41-17ed00fca3fa",
+              "document_id": "ad81857a-0f11-452c-b093-332d11058081",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "开发客户 · 要点1",
+              "content": "能给我们做些什么业务（翻译？多媒体，印刷，礼品，展会参展情况），建议我们怎么做（找谁，什么业务？）",
+              "score": 0.597506,
+              "semantic_score": 0.592316,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.081,
+              "candidate_sources": [
+                "keyword_prefilter",
+                "structured_filters"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.6644,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "demand_probe",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": false,
+              "manual_review_required": false,
+              "applicability": "matched"
+            },
+            {
+              "chunk_id": "6669e5cb-01eb-47be-84e2-8570e88f2bbd",
+              "document_id": "4fae0a3e-17d8-4c00-89e1-07bcd0d79357",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "客户在同意服务后又因成本问题需减少服务量，如何处理以维护客户关系并探索其他合作可能？ · 询问是否未来有其他项目或当前项目是否有可调整的部分，以维持合作机会，同时展现服务的灵活性和多样性。",
+              "content": "询问是否未来有其他项目或当前项目是否有可调整的部分，以维持合作机会，同时展现服务的灵活性和多样性。",
+              "score": 0.596518,
+              "semantic_score": 0.587005,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "candidate_sources": [
+                "keyword_prefilter"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.6561,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "objection_handling",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": false,
+              "manual_review_required": false,
+              "applicability": "matched"
+            }
+          ],
+          "replyable_hits": [
+            {
+              "chunk_id": "fa5a9f4e-fa77-4022-8e8c-c6cefe36b9aa",
+              "document_id": "3702a845-6555-490d-895e-a4441abb7699",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "请阐述开发客户1、3、1、3、2的要点",
+              "content": "一共10个点，先给客户我们的信息，再问客户拿信息，最后收尾时要联系方式\n给客户1+3共4个点，首先表明来意，再表达我们是最好的、合作过的公司名和我们提供的产品系列\n再问客户拿1+3共4个点，首先问该联系人的需求，再问该公司合作业绩最大的3个部门、市场部、采购部\n结尾时做到2点，用我们的企业微信添加客户的微信，并与客户确认邮箱和拿邮箱地址，发送邮件",
+              "score": 0.6166,
+              "semantic_score": 0.611297,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "candidate_sources": [
+                "keyword_prefilter",
+                "structured_filters"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.8086,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "sales_outreach",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": false,
+              "manual_review_required": false,
+              "applicability": "matched"
+            },
+            {
+              "chunk_id": "43d3ab90-327b-4b83-a2dd-733ace7e0dc7",
+              "document_id": "c29efc03-96ba-4b50-80b4-fa7cef58f27c",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "客户询问合同审批流程的预计时间？",
+              "content": "销售解释目前合同正在走内部流程，并等待法务部门的审核意见。一旦确认无误，双方即可盖章。销售承诺会通过邮件通知客户合同状态，并希望能在本月内完成。",
+              "score": 0.604949,
+              "semantic_score": 0.592739,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "candidate_sources": [
+                "keyword_prefilter",
+                "structured_filters"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.7536,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "contract_approval",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": false,
+              "manual_review_required": false,
+              "applicability": "matched"
+            },
+            {
+              "chunk_id": "fb7ef2a1-e7b8-4023-aa41-17ed00fca3fa",
+              "document_id": "ad81857a-0f11-452c-b093-332d11058081",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "开发客户 · 要点1",
+              "content": "能给我们做些什么业务（翻译？多媒体，印刷，礼品，展会参展情况），建议我们怎么做（找谁，什么业务？）",
+              "score": 0.597506,
+              "semantic_score": 0.592316,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.081,
+              "candidate_sources": [
+                "keyword_prefilter",
+                "structured_filters"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.6644,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "demand_probe",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": false,
+              "manual_review_required": false,
+              "applicability": "matched"
+            },
+            {
+              "chunk_id": "6669e5cb-01eb-47be-84e2-8570e88f2bbd",
+              "document_id": "4fae0a3e-17d8-4c00-89e1-07bcd0d79357",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "客户在同意服务后又因成本问题需减少服务量，如何处理以维护客户关系并探索其他合作可能？ · 询问是否未来有其他项目或当前项目是否有可调整的部分，以维持合作机会，同时展现服务的灵活性和多样性。",
+              "content": "询问是否未来有其他项目或当前项目是否有可调整的部分，以维持合作机会，同时展现服务的灵活性和多样性。",
+              "score": 0.596518,
+              "semantic_score": 0.587005,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "candidate_sources": [
+                "keyword_prefilter"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.6561,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "objection_handling",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": false,
+              "manual_review_required": false,
+              "applicability": "matched"
+            }
+          ],
+          "human_only_hits": [
+            {
+              "chunk_id": "a38b6ec8-8c68-40e6-9e2c-e2e97621168f",
+              "document_id": "d518c735-8a9a-49cf-b7f5-6168624adff7",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "如何处理客户的电子版需求？ · 询问客户是否需要电子版排版设计，如邀请函、宣传册等。",
+              "content": "询问客户是否需要电子版排版设计，如邀请函、宣传册等。",
+              "score": 0.609414,
+              "semantic_score": 0.675111,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "candidate_sources": [
+                "keyword_prefilter",
+                "structured_filters"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": false,
+              "useful_score": 0.5769,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "cross_sell",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": true,
+              "manual_review_required": true,
+              "applicability": "matched"
+            }
+          ],
+          "supporting_chunks": [
+            {
+              "chunk_id": "078c4cec-6b08-41f5-8f54-5b07fbc1af35",
+              "document_id": "4fae0a3e-17d8-4c00-89e1-07bcd0d79357",
+              "chunk_no": 1,
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "客户在同意服务后又因成本问题需减少服务量，如何处理以维护客户关系并探索其他合作可能？ · 表示理解客户决策的变化，立即暂停服务避免不必要的成本支出，展现对客户立场的尊重和支持。",
+              "content": "表示理解客户决策的变化，立即暂停服务避免不必要的成本支出，展现对客户立场的尊重和支持。",
+              "snippet": "表示理解客户决策的变化，立即暂停服务避免不必要的成本支出，展现对客户立场的尊重和支持。",
+              "score": 0.570821,
+              "semantic_score": 0.530567,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "objection_handling",
+              "region": null,
+              "customer_tier": null,
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.6511,
+              "effect_score": null,
+              "feedback_count": 0,
+              "relation": "supporting",
+              "applicability": "supporting"
+            },
+            {
+              "chunk_id": "d2f7fb1b-8ec7-446a-b8b7-89256e58a33c",
+              "document_id": "4fae0a3e-17d8-4c00-89e1-07bcd0d79357",
+              "chunk_no": 3,
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "客户在同意服务后又因成本问题需减少服务量，如何处理以维护客户关系并探索其他合作可能？ · 提供可能的优惠方案或分期支付选项，作为未来合作的吸引点，保持长期合作的积极态度。",
+              "content": "提供可能的优惠方案或分期支付选项，作为未来合作的吸引点，保持长期合作的积极态度。",
+              "snippet": "提供可能的优惠方案或分期支付选项，作为未来合作的吸引点，保持长期合作的积极态度。",
+              "score": 0.561409,
+              "semantic_score": 0.558873,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "objection_handling",
+              "region": null,
+              "customer_tier": null,
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": true,
+              "useful_score": 0.6486,
+              "effect_score": null,
+              "feedback_count": 0,
+              "relation": "supporting",
+              "applicability": "supporting"
+            },
+            {
+              "chunk_id": "8f2c8eb5-30a8-409b-a1bd-2f4c99005451",
+              "document_id": "ad81857a-0f11-452c-b093-332d11058081",
+              "chunk_no": 2,
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "开发客户 · 要点2",
+              "content": "应对当下的大环境，客户有什么变化，改变？当中我们能帮上什么？",
+              "snippet": "应对当下的大环境，客户有什么变化，改变？当中我们能帮上什么？",
+              "score": 0.543673,
+              "semantic_score": 0.527459,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "demand_probe",
+              "region": null,
+              "customer_tier": null,
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": true,
+              "useful_score": 0.5886,
+              "effect_score": null,
+              "feedback_count": 0,
+              "relation": "supporting",
+              "applicability": "supporting"
+            },
+            {
+              "chunk_id": "019ed50a-cc2e-4577-9b29-c05d42aa1a7d",
+              "document_id": "ad81857a-0f11-452c-b093-332d11058081",
+              "chunk_no": 3,
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "开发客户 · 要点3",
+              "content": "加企业微信",
+              "snippet": "加企业微信",
+              "score": 0.554402,
+              "semantic_score": 0.559418,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.081,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "demand_probe",
+              "region": null,
+              "customer_tier": null,
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": false,
+              "useful_score": 0.5594,
+              "effect_score": null,
+              "feedback_count": 0,
+              "relation": "supporting",
+              "applicability": "supporting"
+            },
+            {
+              "chunk_id": "349d3c8a-e05c-4c93-a414-f21491c1ce35",
+              "document_id": "d518c735-8a9a-49cf-b7f5-6168624adff7",
+              "chunk_no": 2,
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "如何处理客户的电子版需求？ · 提供我们公司在电子版排版设计方面的专业服务。",
+              "content": "提供我们公司在电子版排版设计方面的专业服务。",
+              "snippet": "提供我们公司在电子版排版设计方面的专业服务。",
+              "score": 0.580923,
+              "semantic_score": 0.61646,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.081,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "cross_sell",
+              "region": null,
+              "customer_tier": null,
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": false,
+              "useful_score": 0.5736,
+              "effect_score": null,
+              "feedback_count": 0,
+              "relation": "supporting",
+              "applicability": "supporting"
+            },
+            {
+              "chunk_id": "d4ba868c-2c0a-4e63-aeaf-b37f6f720fed",
+              "document_id": "d518c735-8a9a-49cf-b7f5-6168624adff7",
+              "chunk_no": 3,
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "如何处理客户的电子版需求？ · 说明电子版排版设计的优势，如便于修改和分享。",
+              "content": "说明电子版排版设计的优势，如便于修改和分享。",
+              "snippet": "说明电子版排版设计的优势，如便于修改和分享。",
+              "score": 0.589159,
+              "semantic_score": 0.634762,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.081,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "cross_sell",
+              "region": null,
+              "customer_tier": null,
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": false,
+              "useful_score": 0.5736,
+              "effect_score": null,
+              "feedback_count": 0,
+              "relation": "supporting",
+              "applicability": "supporting"
+            }
+          ],
+          "related_chunks": [],
+          "evidence_context": {
+            "rules": [
+              {
+                "chunk_id": "fa5a9f4e-fa77-4022-8e8c-c6cefe36b9aa",
+                "document_id": "3702a845-6555-490d-895e-a4441abb7699",
+                "knowledge_class": "process",
+                "knowledge_type": "process",
+                "chunk_type": "rule",
+                "title": "请阐述开发客户1、3、1、3、2的要点",
+                "content": "一共10个点，先给客户我们的信息，再问客户拿信息，最后收尾时要联系方式\n给客户1+3共4个点，首先表明来意，再表达我们是最好的、合作过的公司名和我们提供的产品系列\n再问客户拿1+3共4个点，首先问该联系人的需求，再问该公司合作业绩最大的3个部门、市场部、采购部\n结尾时做到2点，用我们的企业微信添加客户的微信，并与客户确认邮箱和拿邮箱地址，发送邮件",
+                "score": 0.6166,
+                "semantic_score": 0.611297,
+                "keyword_score": 0.2,
+                "exact_phrase_score": 0.066667,
+                "intent_score": 1.0,
+                "metadata_score": 1.0,
+                "bm25_score": 0.1,
+                "candidate_sources": [
+                  "keyword_prefilter",
+                  "structured_filters"
+                ],
+                "library_type": "reference",
+                "allowed_for_generation": true,
+                "usable_for_reply": true,
+                "publishable": true,
+                "useful_score": 0.8086,
+                "effect_score": null,
+                "feedback_count": 0,
+                "positive_feedback_count": 0,
+                "quality_notes": null,
+                "priority": 72,
+                "followup_strategy_score": 0.0,
+                "business_line": "general",
+                "sub_service": null,
+                "language_pair": null,
+                "service_scope": "sales_outreach",
+                "region": null,
+                "customer_tier": null,
+                "embedding_model": "qllama/bge-m3:latest",
+                "embedding_dim": 1024,
+                "pricing_rules": [],
+                "pricing_rule_missing": false,
+                "insufficient_info": false,
+                "manual_review_required": false,
+                "applicability": "matched"
+              },
+              {
+                "chunk_id": "43d3ab90-327b-4b83-a2dd-733ace7e0dc7",
+                "document_id": "c29efc03-96ba-4b50-80b4-fa7cef58f27c",
+                "knowledge_class": "process",
+                "knowledge_type": "process",
+                "chunk_type": "rule",
+                "title": "客户询问合同审批流程的预计时间？",
+                "content": "销售解释目前合同正在走内部流程，并等待法务部门的审核意见。一旦确认无误，双方即可盖章。销售承诺会通过邮件通知客户合同状态，并希望能在本月内完成。",
+                "score": 0.604949,
+                "semantic_score": 0.592739,
+                "keyword_score": 0.2,
+                "exact_phrase_score": 0.066667,
+                "intent_score": 1.0,
+                "metadata_score": 1.0,
+                "bm25_score": 0.1,
+                "candidate_sources": [
+                  "keyword_prefilter",
+                  "structured_filters"
+                ],
+                "library_type": "reference",
+                "allowed_for_generation": true,
+                "usable_for_reply": true,
+                "publishable": true,
+                "useful_score": 0.7536,
+                "effect_score": null,
+                "feedback_count": 0,
+                "positive_feedback_count": 0,
+                "quality_notes": null,
+                "priority": 72,
+                "followup_strategy_score": 0.0,
+                "business_line": "general",
+                "sub_service": null,
+                "language_pair": null,
+                "service_scope": "contract_approval",
+                "region": null,
+                "customer_tier": null,
+                "embedding_model": "qllama/bge-m3:latest",
+                "embedding_dim": 1024,
+                "pricing_rules": [],
+                "pricing_rule_missing": false,
+                "insufficient_info": false,
+                "manual_review_required": false,
+                "applicability": "matched"
+              },
+              {
+                "chunk_id": "fb7ef2a1-e7b8-4023-aa41-17ed00fca3fa",
+                "document_id": "ad81857a-0f11-452c-b093-332d11058081",
+                "knowledge_class": "process",
+                "knowledge_type": "process",
+                "chunk_type": "rule",
+                "title": "开发客户 · 要点1",
+                "content": "能给我们做些什么业务（翻译？多媒体，印刷，礼品，展会参展情况），建议我们怎么做（找谁，什么业务？）",
+                "score": 0.597506,
+                "semantic_score": 0.592316,
+                "keyword_score": 0.2,
+                "exact_phrase_score": 0.066667,
+                "intent_score": 1.0,
+                "metadata_score": 1.0,
+                "bm25_score": 0.081,
+                "candidate_sources": [
+                  "keyword_prefilter",
+                  "structured_filters"
+                ],
+                "library_type": "reference",
+                "allowed_for_generation": true,
+                "usable_for_reply": true,
+                "publishable": true,
+                "useful_score": 0.6644,
+                "effect_score": null,
+                "feedback_count": 0,
+                "positive_feedback_count": 0,
+                "quality_notes": null,
+                "priority": 72,
+                "followup_strategy_score": 0.0,
+                "business_line": "general",
+                "sub_service": null,
+                "language_pair": null,
+                "service_scope": "demand_probe",
+                "region": null,
+                "customer_tier": null,
+                "embedding_model": "qllama/bge-m3:latest",
+                "embedding_dim": 1024,
+                "pricing_rules": [],
+                "pricing_rule_missing": false,
+                "insufficient_info": false,
+                "manual_review_required": false,
+                "applicability": "matched"
+              },
+              {
+                "chunk_id": "6669e5cb-01eb-47be-84e2-8570e88f2bbd",
+                "document_id": "4fae0a3e-17d8-4c00-89e1-07bcd0d79357",
+                "knowledge_class": "process",
+                "knowledge_type": "process",
+                "chunk_type": "rule",
+                "title": "客户在同意服务后又因成本问题需减少服务量，如何处理以维护客户关系并探索其他合作可能？ · 询问是否未来有其他项目或当前项目是否有可调整的部分，以维持合作机会，同时展现服务的灵活性和多样性。",
+                "content": "询问是否未来有其他项目或当前项目是否有可调整的部分，以维持合作机会，同时展现服务的灵活性和多样性。",
+                "score": 0.596518,
+                "semantic_score": 0.587005,
+                "keyword_score": 0.2,
+                "exact_phrase_score": 0.066667,
+                "intent_score": 1.0,
+                "metadata_score": 1.0,
+                "bm25_score": 0.1,
+                "candidate_sources": [
+                  "keyword_prefilter"
+                ],
+                "library_type": "reference",
+                "allowed_for_generation": true,
+                "usable_for_reply": true,
+                "publishable": true,
+                "useful_score": 0.6561,
+                "effect_score": null,
+                "feedback_count": 0,
+                "positive_feedback_count": 0,
+                "quality_notes": null,
+                "priority": 72,
+                "followup_strategy_score": 0.0,
+                "business_line": "general",
+                "sub_service": null,
+                "language_pair": null,
+                "service_scope": "objection_handling",
+                "region": null,
+                "customer_tier": null,
+                "embedding_model": "qllama/bge-m3:latest",
+                "embedding_dim": 1024,
+                "pricing_rules": [],
+                "pricing_rule_missing": false,
+                "insufficient_info": false,
+                "manual_review_required": false,
+                "applicability": "matched"
+              }
+            ],
+            "faqs": [],
+            "cases": [],
+            "supporting": [
+              {
+                "chunk_id": "078c4cec-6b08-41f5-8f54-5b07fbc1af35",
+                "document_id": "4fae0a3e-17d8-4c00-89e1-07bcd0d79357",
+                "chunk_no": 1,
+                "knowledge_class": "process",
+                "knowledge_type": "process",
+                "chunk_type": "rule",
+                "title": "客户在同意服务后又因成本问题需减少服务量，如何处理以维护客户关系并探索其他合作可能？ · 表示理解客户决策的变化，立即暂停服务避免不必要的成本支出，展现对客户立场的尊重和支持。",
+                "content": "表示理解客户决策的变化，立即暂停服务避免不必要的成本支出，展现对客户立场的尊重和支持。",
+                "snippet": "表示理解客户决策的变化，立即暂停服务避免不必要的成本支出，展现对客户立场的尊重和支持。",
+                "score": 0.570821,
+                "semantic_score": 0.530567,
+                "keyword_score": 0.2,
+                "exact_phrase_score": 0.066667,
+                "intent_score": 1.0,
+                "metadata_score": 1.0,
+                "bm25_score": 0.1,
+                "business_line": "general",
+                "sub_service": null,
+                "language_pair": null,
+                "service_scope": "objection_handling",
+                "region": null,
+                "customer_tier": null,
+                "library_type": "reference",
+                "allowed_for_generation": true,
+                "usable_for_reply": true,
+                "publishable": true,
+                "useful_score": 0.6511,
+                "effect_score": null,
+                "feedback_count": 0,
+                "relation": "supporting",
+                "applicability": "supporting"
+              },
+              {
+                "chunk_id": "d2f7fb1b-8ec7-446a-b8b7-89256e58a33c",
+                "document_id": "4fae0a3e-17d8-4c00-89e1-07bcd0d79357",
+                "chunk_no": 3,
+                "knowledge_class": "process",
+                "knowledge_type": "process",
+                "chunk_type": "rule",
+                "title": "客户在同意服务后又因成本问题需减少服务量，如何处理以维护客户关系并探索其他合作可能？ · 提供可能的优惠方案或分期支付选项，作为未来合作的吸引点，保持长期合作的积极态度。",
+                "content": "提供可能的优惠方案或分期支付选项，作为未来合作的吸引点，保持长期合作的积极态度。",
+                "snippet": "提供可能的优惠方案或分期支付选项，作为未来合作的吸引点，保持长期合作的积极态度。",
+                "score": 0.561409,
+                "semantic_score": 0.558873,
+                "keyword_score": 0.2,
+                "exact_phrase_score": 0.066667,
+                "intent_score": 1.0,
+                "metadata_score": 1.0,
+                "bm25_score": 0.1,
+                "business_line": "general",
+                "sub_service": null,
+                "language_pair": null,
+                "service_scope": "objection_handling",
+                "region": null,
+                "customer_tier": null,
+                "library_type": "reference",
+                "allowed_for_generation": false,
+                "usable_for_reply": false,
+                "publishable": true,
+                "useful_score": 0.6486,
+                "effect_score": null,
+                "feedback_count": 0,
+                "relation": "supporting",
+                "applicability": "supporting"
+              },
+              {
+                "chunk_id": "8f2c8eb5-30a8-409b-a1bd-2f4c99005451",
+                "document_id": "ad81857a-0f11-452c-b093-332d11058081",
+                "chunk_no": 2,
+                "knowledge_class": "process",
+                "knowledge_type": "process",
+                "chunk_type": "rule",
+                "title": "开发客户 · 要点2",
+                "content": "应对当下的大环境，客户有什么变化，改变？当中我们能帮上什么？",
+                "snippet": "应对当下的大环境，客户有什么变化，改变？当中我们能帮上什么？",
+                "score": 0.543673,
+                "semantic_score": 0.527459,
+                "keyword_score": 0.2,
+                "exact_phrase_score": 0.066667,
+                "intent_score": 1.0,
+                "metadata_score": 1.0,
+                "bm25_score": 0.1,
+                "business_line": "general",
+                "sub_service": null,
+                "language_pair": null,
+                "service_scope": "demand_probe",
+                "region": null,
+                "customer_tier": null,
+                "library_type": "reference",
+                "allowed_for_generation": false,
+                "usable_for_reply": false,
+                "publishable": true,
+                "useful_score": 0.5886,
+                "effect_score": null,
+                "feedback_count": 0,
+                "relation": "supporting",
+                "applicability": "supporting"
+              },
+              {
+                "chunk_id": "019ed50a-cc2e-4577-9b29-c05d42aa1a7d",
+                "document_id": "ad81857a-0f11-452c-b093-332d11058081",
+                "chunk_no": 3,
+                "knowledge_class": "process",
+                "knowledge_type": "process",
+                "chunk_type": "rule",
+                "title": "开发客户 · 要点3",
+                "content": "加企业微信",
+                "snippet": "加企业微信",
+                "score": 0.554402,
+                "semantic_score": 0.559418,
+                "keyword_score": 0.2,
+                "exact_phrase_score": 0.066667,
+                "intent_score": 1.0,
+                "metadata_score": 1.0,
+                "bm25_score": 0.081,
+                "business_line": "general",
+                "sub_service": null,
+                "language_pair": null,
+                "service_scope": "demand_probe",
+                "region": null,
+                "customer_tier": null,
+                "library_type": "reference",
+                "allowed_for_generation": false,
+                "usable_for_reply": false,
+                "publishable": false,
+                "useful_score": 0.5594,
+                "effect_score": null,
+                "feedback_count": 0,
+                "relation": "supporting",
+                "applicability": "supporting"
+              },
+              {
+                "chunk_id": "349d3c8a-e05c-4c93-a414-f21491c1ce35",
+                "document_id": "d518c735-8a9a-49cf-b7f5-6168624adff7",
+                "chunk_no": 2,
+                "knowledge_class": "process",
+                "knowledge_type": "process",
+                "chunk_type": "rule",
+                "title": "如何处理客户的电子版需求？ · 提供我们公司在电子版排版设计方面的专业服务。",
+                "content": "提供我们公司在电子版排版设计方面的专业服务。",
+                "snippet": "提供我们公司在电子版排版设计方面的专业服务。",
+                "score": 0.580923,
+                "semantic_score": 0.61646,
+                "keyword_score": 0.2,
+                "exact_phrase_score": 0.066667,
+                "intent_score": 1.0,
+                "metadata_score": 1.0,
+                "bm25_score": 0.081,
+                "business_line": "general",
+                "sub_service": null,
+                "language_pair": null,
+                "service_scope": "cross_sell",
+                "region": null,
+                "customer_tier": null,
+                "library_type": "reference",
+                "allowed_for_generation": false,
+                "usable_for_reply": false,
+                "publishable": false,
+                "useful_score": 0.5736,
+                "effect_score": null,
+                "feedback_count": 0,
+                "relation": "supporting",
+                "applicability": "supporting"
+              },
+              {
+                "chunk_id": "d4ba868c-2c0a-4e63-aeaf-b37f6f720fed",
+                "document_id": "d518c735-8a9a-49cf-b7f5-6168624adff7",
+                "chunk_no": 3,
+                "knowledge_class": "process",
+                "knowledge_type": "process",
+                "chunk_type": "rule",
+                "title": "如何处理客户的电子版需求？ · 说明电子版排版设计的优势，如便于修改和分享。",
+                "content": "说明电子版排版设计的优势，如便于修改和分享。",
+                "snippet": "说明电子版排版设计的优势，如便于修改和分享。",
+                "score": 0.589159,
+                "semantic_score": 0.634762,
+                "keyword_score": 0.2,
+                "exact_phrase_score": 0.066667,
+                "intent_score": 1.0,
+                "metadata_score": 1.0,
+                "bm25_score": 0.081,
+                "business_line": "general",
+                "sub_service": null,
+                "language_pair": null,
+                "service_scope": "cross_sell",
+                "region": null,
+                "customer_tier": null,
+                "library_type": "reference",
+                "allowed_for_generation": false,
+                "usable_for_reply": false,
+                "publishable": false,
+                "useful_score": 0.5736,
+                "effect_score": null,
+                "feedback_count": 0,
+                "relation": "supporting",
+                "applicability": "supporting"
+              }
+            ],
+            "human_only": [
+              {
+                "chunk_id": "a38b6ec8-8c68-40e6-9e2c-e2e97621168f",
+                "document_id": "d518c735-8a9a-49cf-b7f5-6168624adff7",
+                "knowledge_class": "process",
+                "knowledge_type": "process",
+                "chunk_type": "rule",
+                "title": "如何处理客户的电子版需求？ · 询问客户是否需要电子版排版设计，如邀请函、宣传册等。",
+                "content": "询问客户是否需要电子版排版设计，如邀请函、宣传册等。",
+                "score": 0.609414,
+                "semantic_score": 0.675111,
+                "keyword_score": 0.2,
+                "exact_phrase_score": 0.066667,
+                "intent_score": 1.0,
+                "metadata_score": 1.0,
+                "bm25_score": 0.1,
+                "candidate_sources": [
+                  "keyword_prefilter",
+                  "structured_filters"
+                ],
+                "library_type": "reference",
+                "allowed_for_generation": false,
+                "usable_for_reply": false,
+                "publishable": false,
+                "useful_score": 0.5769,
+                "effect_score": null,
+                "feedback_count": 0,
+                "positive_feedback_count": 0,
+                "quality_notes": null,
+                "priority": 72,
+                "followup_strategy_score": 0.0,
+                "business_line": "general",
+                "sub_service": null,
+                "language_pair": null,
+                "service_scope": "cross_sell",
+                "region": null,
+                "customer_tier": null,
+                "embedding_model": "qllama/bge-m3:latest",
+                "embedding_dim": 1024,
+                "pricing_rules": [],
+                "pricing_rule_missing": false,
+                "insufficient_info": true,
+                "manual_review_required": true,
+                "applicability": "matched"
+              }
+            ]
+          },
+          "evidence_refs": [
+            {
+              "ref_id": "chunk:fa5a9f4e-fa77-4022-8e8c-c6cefe36b9aa",
+              "ref_type": "chunk",
+              "document_id": "3702a845-6555-490d-895e-a4441abb7699",
+              "chunk_id": "fa5a9f4e-fa77-4022-8e8c-c6cefe36b9aa",
+              "knowledge_type": "process",
+              "title": "请阐述开发客户1、3、1、3、2的要点",
+              "score": 0.6166,
+              "business_line": "general",
+              "service_scope": "sales_outreach",
+              "snippet": "一共10个点，先给客户我们的信息，再问客户拿信息，最后收尾时要联系方式\n给客户1+3共4个点，首先表明来意，再表达我们是最好的、合作过的公司名和我们提供的产品系列\n再问客户拿1+3共4个点，首先问该联系人的需求，再问该公司合作业绩最大的3个部门、市场部、采购部\n结尾时做到2点，用我们的企业微信添加客户的微信，并与客户确"
+            },
+            {
+              "ref_id": "chunk:43d3ab90-327b-4b83-a2dd-733ace7e0dc7",
+              "ref_type": "chunk",
+              "document_id": "c29efc03-96ba-4b50-80b4-fa7cef58f27c",
+              "chunk_id": "43d3ab90-327b-4b83-a2dd-733ace7e0dc7",
+              "knowledge_type": "process",
+              "title": "客户询问合同审批流程的预计时间？",
+              "score": 0.604949,
+              "business_line": "general",
+              "service_scope": "contract_approval",
+              "snippet": "销售解释目前合同正在走内部流程，并等待法务部门的审核意见。一旦确认无误，双方即可盖章。销售承诺会通过邮件通知客户合同状态，并希望能在本月内完成。"
+            },
+            {
+              "ref_id": "chunk:fb7ef2a1-e7b8-4023-aa41-17ed00fca3fa",
+              "ref_type": "chunk",
+              "document_id": "ad81857a-0f11-452c-b093-332d11058081",
+              "chunk_id": "fb7ef2a1-e7b8-4023-aa41-17ed00fca3fa",
+              "knowledge_type": "process",
+              "title": "开发客户 · 要点1",
+              "score": 0.597506,
+              "business_line": "general",
+              "service_scope": "demand_probe",
+              "snippet": "能给我们做些什么业务（翻译？多媒体，印刷，礼品，展会参展情况），建议我们怎么做（找谁，什么业务？）"
+            },
+            {
+              "ref_id": "chunk:6669e5cb-01eb-47be-84e2-8570e88f2bbd",
+              "ref_type": "chunk",
+              "document_id": "4fae0a3e-17d8-4c00-89e1-07bcd0d79357",
+              "chunk_id": "6669e5cb-01eb-47be-84e2-8570e88f2bbd",
+              "knowledge_type": "process",
+              "title": "客户在同意服务后又因成本问题需减少服务量，如何处理以维护客户关系并探索其他合作可能？ · 询问是否未来有其他项目或当前项目是否有可调整的部分，以维持合作机会，同时展现服务的灵活性和多样性。",
+              "score": 0.596518,
+              "business_line": "general",
+              "service_scope": "objection_handling",
+              "snippet": "询问是否未来有其他项目或当前项目是否有可调整的部分，以维持合作机会，同时展现服务的灵活性和多样性。"
+            }
+          ],
+          "confidence_score": 0.6166,
+          "retrieval_quality": "needs_review",
+          "insufficient_info": true,
+          "manual_review_required": true,
+          "no_hit_reason": "最高命中分 0.6166 未达到自动可用阈值 0.7",
+          "latency_ms": 8282,
+          "log_id": "24f9227d-b28f-4561-b235-67cb32af4336",
+          "thread_business_fact": {
+            "session_id": "single_WangHuiYing_wmS8sICwAA580XrndINDmRwwJqmfe7pA",
+            "scenario_label": "after_sales",
+            "intent_label": "process",
+            "language_style": "wechat_brief",
+            "business_state": "after_sales",
+            "stage_signals": {
+              "has_formal_quote": true,
+              "crm_has_quote_history": false,
+              "payment_discussed": true,
+              "payment_confirmed": false,
+              "shipment_discussed": false,
+              "shipment_confirmed": false,
+              "after_sales_open": true,
+              "waiting_customer_material": false,
+              "awaiting_customer_reply": false,
+              "sales_only_conversation": false,
+              "followup_after_no_reply": false
+            },
+            "merged_facts": {
+              "topic": "PPT排版美化项目推进与交付",
+              "core_demand": "客户需要我方在5月13日早上正式使用前完成6个（后增至8个）PPT的排版美化，并确保质量符合要求，同时处理额外出现的细节问题（如隐藏页、图片拉伸、标题样式等）。",
+              "summary_status": "进行中",
+              "key_facts": {
+                "latest_customer_reply_type": "schedule_confirmation",
+                "latest_customer_reply_goal": "确认明天（5月12日）还有一天时间可以继续修改，并说明13号早上正式使用，明天需留给演讲人做最终检查。",
+                "timeline_items": [
+                  {
+                    "time": "5月13日早上",
+                    "topic": "PPT正式使用",
+                    "status_scope": "future",
+                    "status": "待交付",
+                    "owner": "销售方",
+                    "next_action": "在5月12日下班前完成所有PPT排版并交付给客户"
+                  },
+                  {
+                    "time": "5月12日",
+                    "topic": "客户内部检查PPT",
+                    "status_scope": "future",
+                    "status": "计划中",
+                    "owner": "客户",
+                    "next_action": "客户将收到的PPT发给演讲人做检查，如有更新再反馈"
+                  },
+                  {
+                    "time": "当前",
+                    "topic": "最后几个PPT的排版与交付",
+                    "status_scope": "ongoing",
+                    "status": "进行中",
+                    "owner": "销售方",
+                    "next_action": "完成剩余PPT的排版（包括删除圆圈、调整文字排版等），并微信逐个发送给客户"
+                  }
+                ],
+                "current_focus": "确认明天（5月12日）还有一天时间，销售方需在当天完成所有PPT排版并交付，以便客户留给演讲人检查。",
+                "separate_topics": [
+                  "6个初始PPT的排版报价与确认（50元/页，共4500元）",
+                  "额外2个PPT（cosmx/sunwoda相关）的报价调整（按30页计，总价6000元，开票5500元，差额从预付款扣）",
+                  "隐藏页的处理（客户同意排，费用从另一边扣）",
+                  "标题样式修改（客户要求白色标题区域，不要放在复杂背景上）",
+                  "图片拉伸问题（客户询问能否改善，不强求）",
+                  "图片裁剪（只需屏幕截图，去掉周边）",
+                  "Smart图形占位符问题（客户确认原始文件为空，要求删除圆圈）",
+                  "目录与内容语言不一致问题（客户表示按销售方理解排版，后续由演讲人检查）"
+                ]
+              },
+              "crm_recent_quote_summary": null,
+              "crm_customer_tier": "common",
+              "crm_payment_risk_level": "low",
+              "last_sender": "customer",
+              "sales_message_count": 63,
+              "customer_message_count": 83,
+              "consecutive_sales_messages": 0,
+              "awaiting_customer_reply": false,
+              "sales_only_conversation": false,
+              "followup_after_no_reply": false,
+              "latest_sales_message": "明天还有一天时间对吧",
+              "recent_sales_messages": [
+                "嗯，那个先不改了，总觉得目录和内容差了那么一点，要我们加的话，我们配合加就好了",
+                "明天还有一天时间对吧"
+              ],
+              "latest_customer_message": "对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新",
+              "latest_customer_reply_type": "question",
+              "latest_customer_time_mentions": [],
+              "crm_has_quote_history": false,
+              "attachment_summary": [
+                {
+                  "source": "message",
+                  "kind": "file",
+                  "filename": null,
+                  "raw": "[文件消息] 刘彬 - 模块化方案赋能锂电池生产.pptx",
+                  "summary": "[文件消息] 刘彬 - 模块化方案赋能锂电池生产.pptx",
+                  "signals": []
+                },
+                {
+                  "source": "message",
+                  "kind": "file",
+                  "filename": null,
+                  "raw": "[文件消息] 刘彬 - 除湿机全生命周期费用分析.pptx",
+                  "summary": "[文件消息] 刘彬 - 除湿机全生命周期费用分析.pptx",
+                  "signals": [
+                    "pricing"
+                  ]
+                },
+                {
+                  "source": "message",
+                  "kind": "file",
+                  "filename": null,
+                  "raw": "[文件消息] 吴亦凯（陈杰讲） - Control Optimization PPT.pptx",
+                  "summary": "[文件消息] 吴亦凯（陈杰讲） - Control Optimization PPT.pptx",
+                  "signals": []
+                },
+                {
+                  "source": "message",
+                  "kind": "file",
+                  "filename": null,
+                  "raw": "[文件消息] 张雪健 - 蒙特高效热泵介绍.pptx",
+                  "summary": "[文件消息] 张雪健 - 蒙特高效热泵介绍.pptx",
+                  "signals": []
+                },
+                {
+                  "source": "message",
+                  "kind": "file",
+                  "filename": null,
+                  "raw": "[文件消息] 王峰 - 蒙特EC风机改造介绍.pptx",
+                  "summary": "[文件消息] 王峰 - 蒙特EC风机改造介绍.pptx",
+                  "signals": []
+                },
+                {
+                  "source": "message",
+                  "kind": "file",
+                  "filename": null,
+                  "raw": "[文件消息] 陈志端 - 蒙特GTR高温转轮节能改造方案介绍0430.pptx",
+                  "summary": "[文件消息] 陈志端 - 蒙特GTR高温转轮节能改造方案介绍0430.pptx",
+                  "signals": []
+                },
+                {
+                  "source": "message",
+                  "kind": "archive",
+                  "filename": "Logotype_and_symbol.zip",
+                  "raw": "[文件消息] Logotype_and_symbol.zip",
+                  "summary": "[文件消息] Logotype_and_symbol.zip",
+                  "signals": []
+                },
+                {
+                  "source": "message",
+                  "kind": "archive",
+                  "filename": "23.zip",
+                  "raw": "[文件消息] Airflow_pattern 23.zip",
+                  "summary": "[文件消息] Airflow_pattern 23.zip",
+                  "signals": []
+                },
+                {
+                  "source": "message",
+                  "kind": "pdf",
+                  "filename": "Guidelines-2401.pdf",
+                  "raw": "[文件消息] 2024 - Munters Brand Identity Guidelines-2401.pdf",
+                  "summary": "[文件消息] 2024 - Munters Brand Identity Guidelines-2401.pdf",
+                  "signals": []
+                },
+                {
+                  "source": "message",
+                  "kind": "file",
+                  "filename": null,
+                  "raw": "logo文件、品牌元素（背景点缀用）、VI文件 供参考",
+                  "summary": "logo文件、品牌元素（背景点缀用）、VI文件 供参考",
+                  "signals": []
+                },
+                {
+                  "source": "message",
+                  "kind": "file",
+                  "filename": null,
+                  "raw": "他给了后我再给个邮件是6K的哈，我们财务对不起来了，开票开5500，是不是也要做个合同",
+                  "summary": "他给了后我再给个邮件是6K的哈，我们财务对不起来了，开票开5500，是不是也要做个合同",
+                  "signals": [
+                    "contract"
+                  ]
+                },
+                {
+                  "source": "message",
+                  "kind": "file",
+                  "filename": null,
+                  "raw": "原始文件就是空的，你把这个圆圈删除吧",
+                  "summary": "原始文件就是空的，你把这个圆圈删除吧",
+                  "signals": []
+                }
+              ],
+              "attachment_rollup": {
+                "count": 12,
+                "kinds": {
+                  "archive": 2,
+                  "file": 9,
+                  "pdf": 1
+                },
+                "signals": {
+                  "contract": 1,
+                  "pricing": 1
+                },
+                "filenames": [
+                  "Logotype_and_symbol.zip",
+                  "23.zip",
+                  "Guidelines-2401.pdf"
+                ],
+                "has_structured_attachments": true
+              },
+              "attachment_types": [
+                "archive",
+                "file",
+                "pdf"
+              ]
+            },
+            "reply_guard_reason": ""
+          }
+        },
+        "knowledge_status": "manual_review_required",
+        "knowledge_confidence_score": 0.6166,
+        "knowledge_manual_review_required": true,
+        "evidence_refs": [
+          {
+            "ref_id": "chunk:fa5a9f4e-fa77-4022-8e8c-c6cefe36b9aa",
+            "ref_type": "chunk",
+            "document_id": "3702a845-6555-490d-895e-a4441abb7699",
+            "chunk_id": "fa5a9f4e-fa77-4022-8e8c-c6cefe36b9aa",
+            "knowledge_type": "process",
+            "title": "请阐述开发客户1、3、1、3、2的要点",
+            "score": 0.6166,
+            "business_line": "general",
+            "service_scope": "sales_outreach",
+            "snippet": "一共10个点，先给客户我们的信息，再问客户拿信息，最后收尾时要联系方式\n给客户1+3共4个点，首先表明来意，再表达我们是最好的、合作过的公司名和我们提供的产品系列\n再问客户拿1+3共4个点，首先问该联系人的需求，再问该公司合作业绩最大的3个部门、市场部、采购部\n结尾时做到2点，用我们的企业微信添加客户的微信，并与客户确"
+          },
+          {
+            "ref_id": "chunk:43d3ab90-327b-4b83-a2dd-733ace7e0dc7",
+            "ref_type": "chunk",
+            "document_id": "c29efc03-96ba-4b50-80b4-fa7cef58f27c",
+            "chunk_id": "43d3ab90-327b-4b83-a2dd-733ace7e0dc7",
+            "knowledge_type": "process",
+            "title": "客户询问合同审批流程的预计时间？",
+            "score": 0.604949,
+            "business_line": "general",
+            "service_scope": "contract_approval",
+            "snippet": "销售解释目前合同正在走内部流程，并等待法务部门的审核意见。一旦确认无误，双方即可盖章。销售承诺会通过邮件通知客户合同状态，并希望能在本月内完成。"
+          },
+          {
+            "ref_id": "chunk:fb7ef2a1-e7b8-4023-aa41-17ed00fca3fa",
+            "ref_type": "chunk",
+            "document_id": "ad81857a-0f11-452c-b093-332d11058081",
+            "chunk_id": "fb7ef2a1-e7b8-4023-aa41-17ed00fca3fa",
+            "knowledge_type": "process",
+            "title": "开发客户 · 要点1",
+            "score": 0.597506,
+            "business_line": "general",
+            "service_scope": "demand_probe",
+            "snippet": "能给我们做些什么业务（翻译？多媒体，印刷，礼品，展会参展情况），建议我们怎么做（找谁，什么业务？）"
+          },
+          {
+            "ref_id": "chunk:6669e5cb-01eb-47be-84e2-8570e88f2bbd",
+            "ref_type": "chunk",
+            "document_id": "4fae0a3e-17d8-4c00-89e1-07bcd0d79357",
+            "chunk_id": "6669e5cb-01eb-47be-84e2-8570e88f2bbd",
+            "knowledge_type": "process",
+            "title": "客户在同意服务后又因成本问题需减少服务量，如何处理以维护客户关系并探索其他合作可能？ · 询问是否未来有其他项目或当前项目是否有可调整的部分，以维持合作机会，同时展现服务的灵活性和多样性。",
+            "score": 0.596518,
+            "business_line": "general",
+            "service_scope": "objection_handling",
+            "snippet": "询问是否未来有其他项目或当前项目是否有可调整的部分，以维持合作机会，同时展现服务的灵活性和多样性。"
+          }
+        ],
+        "knowledge_evidence_context": {
+          "rules": [
+            {
+              "chunk_id": "fa5a9f4e-fa77-4022-8e8c-c6cefe36b9aa",
+              "document_id": "3702a845-6555-490d-895e-a4441abb7699",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "请阐述开发客户1、3、1、3、2的要点",
+              "content": "一共10个点，先给客户我们的信息，再问客户拿信息，最后收尾时要联系方式\n给客户1+3共4个点，首先表明来意，再表达我们是最好的、合作过的公司名和我们提供的产品系列\n再问客户拿1+3共4个点，首先问该联系人的需求，再问该公司合作业绩最大的3个部门、市场部、采购部\n结尾时做到2点，用我们的企业微信添加客户的微信，并与客户确认邮箱和拿邮箱地址，发送邮件",
+              "score": 0.6166,
+              "semantic_score": 0.611297,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "candidate_sources": [
+                "keyword_prefilter",
+                "structured_filters"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.8086,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "sales_outreach",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": false,
+              "manual_review_required": false,
+              "applicability": "matched"
+            },
+            {
+              "chunk_id": "43d3ab90-327b-4b83-a2dd-733ace7e0dc7",
+              "document_id": "c29efc03-96ba-4b50-80b4-fa7cef58f27c",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "客户询问合同审批流程的预计时间？",
+              "content": "销售解释目前合同正在走内部流程，并等待法务部门的审核意见。一旦确认无误，双方即可盖章。销售承诺会通过邮件通知客户合同状态，并希望能在本月内完成。",
+              "score": 0.604949,
+              "semantic_score": 0.592739,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "candidate_sources": [
+                "keyword_prefilter",
+                "structured_filters"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.7536,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "contract_approval",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": false,
+              "manual_review_required": false,
+              "applicability": "matched"
+            },
+            {
+              "chunk_id": "fb7ef2a1-e7b8-4023-aa41-17ed00fca3fa",
+              "document_id": "ad81857a-0f11-452c-b093-332d11058081",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "开发客户 · 要点1",
+              "content": "能给我们做些什么业务（翻译？多媒体，印刷，礼品，展会参展情况），建议我们怎么做（找谁，什么业务？）",
+              "score": 0.597506,
+              "semantic_score": 0.592316,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.081,
+              "candidate_sources": [
+                "keyword_prefilter",
+                "structured_filters"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.6644,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "demand_probe",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": false,
+              "manual_review_required": false,
+              "applicability": "matched"
+            },
+            {
+              "chunk_id": "6669e5cb-01eb-47be-84e2-8570e88f2bbd",
+              "document_id": "4fae0a3e-17d8-4c00-89e1-07bcd0d79357",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "客户在同意服务后又因成本问题需减少服务量，如何处理以维护客户关系并探索其他合作可能？ · 询问是否未来有其他项目或当前项目是否有可调整的部分，以维持合作机会，同时展现服务的灵活性和多样性。",
+              "content": "询问是否未来有其他项目或当前项目是否有可调整的部分，以维持合作机会，同时展现服务的灵活性和多样性。",
+              "score": 0.596518,
+              "semantic_score": 0.587005,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "candidate_sources": [
+                "keyword_prefilter"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.6561,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "objection_handling",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": false,
+              "manual_review_required": false,
+              "applicability": "matched"
+            }
+          ],
+          "faqs": [],
+          "cases": [],
+          "supporting": [
+            {
+              "chunk_id": "078c4cec-6b08-41f5-8f54-5b07fbc1af35",
+              "document_id": "4fae0a3e-17d8-4c00-89e1-07bcd0d79357",
+              "chunk_no": 1,
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "客户在同意服务后又因成本问题需减少服务量，如何处理以维护客户关系并探索其他合作可能？ · 表示理解客户决策的变化，立即暂停服务避免不必要的成本支出，展现对客户立场的尊重和支持。",
+              "content": "表示理解客户决策的变化，立即暂停服务避免不必要的成本支出，展现对客户立场的尊重和支持。",
+              "snippet": "表示理解客户决策的变化，立即暂停服务避免不必要的成本支出，展现对客户立场的尊重和支持。",
+              "score": 0.570821,
+              "semantic_score": 0.530567,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "objection_handling",
+              "region": null,
+              "customer_tier": null,
+              "library_type": "reference",
+              "allowed_for_generation": true,
+              "usable_for_reply": true,
+              "publishable": true,
+              "useful_score": 0.6511,
+              "effect_score": null,
+              "feedback_count": 0,
+              "relation": "supporting",
+              "applicability": "supporting"
+            },
+            {
+              "chunk_id": "d2f7fb1b-8ec7-446a-b8b7-89256e58a33c",
+              "document_id": "4fae0a3e-17d8-4c00-89e1-07bcd0d79357",
+              "chunk_no": 3,
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "客户在同意服务后又因成本问题需减少服务量，如何处理以维护客户关系并探索其他合作可能？ · 提供可能的优惠方案或分期支付选项，作为未来合作的吸引点，保持长期合作的积极态度。",
+              "content": "提供可能的优惠方案或分期支付选项，作为未来合作的吸引点，保持长期合作的积极态度。",
+              "snippet": "提供可能的优惠方案或分期支付选项，作为未来合作的吸引点，保持长期合作的积极态度。",
+              "score": 0.561409,
+              "semantic_score": 0.558873,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "objection_handling",
+              "region": null,
+              "customer_tier": null,
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": true,
+              "useful_score": 0.6486,
+              "effect_score": null,
+              "feedback_count": 0,
+              "relation": "supporting",
+              "applicability": "supporting"
+            },
+            {
+              "chunk_id": "8f2c8eb5-30a8-409b-a1bd-2f4c99005451",
+              "document_id": "ad81857a-0f11-452c-b093-332d11058081",
+              "chunk_no": 2,
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "开发客户 · 要点2",
+              "content": "应对当下的大环境，客户有什么变化，改变？当中我们能帮上什么？",
+              "snippet": "应对当下的大环境，客户有什么变化，改变？当中我们能帮上什么？",
+              "score": 0.543673,
+              "semantic_score": 0.527459,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "demand_probe",
+              "region": null,
+              "customer_tier": null,
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": true,
+              "useful_score": 0.5886,
+              "effect_score": null,
+              "feedback_count": 0,
+              "relation": "supporting",
+              "applicability": "supporting"
+            },
+            {
+              "chunk_id": "019ed50a-cc2e-4577-9b29-c05d42aa1a7d",
+              "document_id": "ad81857a-0f11-452c-b093-332d11058081",
+              "chunk_no": 3,
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "开发客户 · 要点3",
+              "content": "加企业微信",
+              "snippet": "加企业微信",
+              "score": 0.554402,
+              "semantic_score": 0.559418,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.081,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "demand_probe",
+              "region": null,
+              "customer_tier": null,
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": false,
+              "useful_score": 0.5594,
+              "effect_score": null,
+              "feedback_count": 0,
+              "relation": "supporting",
+              "applicability": "supporting"
+            },
+            {
+              "chunk_id": "349d3c8a-e05c-4c93-a414-f21491c1ce35",
+              "document_id": "d518c735-8a9a-49cf-b7f5-6168624adff7",
+              "chunk_no": 2,
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "如何处理客户的电子版需求？ · 提供我们公司在电子版排版设计方面的专业服务。",
+              "content": "提供我们公司在电子版排版设计方面的专业服务。",
+              "snippet": "提供我们公司在电子版排版设计方面的专业服务。",
+              "score": 0.580923,
+              "semantic_score": 0.61646,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.081,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "cross_sell",
+              "region": null,
+              "customer_tier": null,
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": false,
+              "useful_score": 0.5736,
+              "effect_score": null,
+              "feedback_count": 0,
+              "relation": "supporting",
+              "applicability": "supporting"
+            },
+            {
+              "chunk_id": "d4ba868c-2c0a-4e63-aeaf-b37f6f720fed",
+              "document_id": "d518c735-8a9a-49cf-b7f5-6168624adff7",
+              "chunk_no": 3,
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "如何处理客户的电子版需求？ · 说明电子版排版设计的优势，如便于修改和分享。",
+              "content": "说明电子版排版设计的优势，如便于修改和分享。",
+              "snippet": "说明电子版排版设计的优势，如便于修改和分享。",
+              "score": 0.589159,
+              "semantic_score": 0.634762,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.081,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "cross_sell",
+              "region": null,
+              "customer_tier": null,
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": false,
+              "useful_score": 0.5736,
+              "effect_score": null,
+              "feedback_count": 0,
+              "relation": "supporting",
+              "applicability": "supporting"
+            }
+          ],
+          "human_only": [
+            {
+              "chunk_id": "a38b6ec8-8c68-40e6-9e2c-e2e97621168f",
+              "document_id": "d518c735-8a9a-49cf-b7f5-6168624adff7",
+              "knowledge_class": "process",
+              "knowledge_type": "process",
+              "chunk_type": "rule",
+              "title": "如何处理客户的电子版需求？ · 询问客户是否需要电子版排版设计，如邀请函、宣传册等。",
+              "content": "询问客户是否需要电子版排版设计，如邀请函、宣传册等。",
+              "score": 0.609414,
+              "semantic_score": 0.675111,
+              "keyword_score": 0.2,
+              "exact_phrase_score": 0.066667,
+              "intent_score": 1.0,
+              "metadata_score": 1.0,
+              "bm25_score": 0.1,
+              "candidate_sources": [
+                "keyword_prefilter",
+                "structured_filters"
+              ],
+              "library_type": "reference",
+              "allowed_for_generation": false,
+              "usable_for_reply": false,
+              "publishable": false,
+              "useful_score": 0.5769,
+              "effect_score": null,
+              "feedback_count": 0,
+              "positive_feedback_count": 0,
+              "quality_notes": null,
+              "priority": 72,
+              "followup_strategy_score": 0.0,
+              "business_line": "general",
+              "sub_service": null,
+              "language_pair": null,
+              "service_scope": "cross_sell",
+              "region": null,
+              "customer_tier": null,
+              "embedding_model": "qllama/bge-m3:latest",
+              "embedding_dim": 1024,
+              "pricing_rules": [],
+              "pricing_rule_missing": false,
+              "insufficient_info": true,
+              "manual_review_required": true,
+              "applicability": "matched"
+            }
+          ]
+        },
+        "knowledge_external_api": {
+          "status": "skipped_unavailable",
+          "query_text": "对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新；客户需要我方在5月13日早上正式使用前完成6个（后增至8个）PPT的排版美化，并确保质量符合要求，同时处理额外出现的细节问题（如隐藏页、图片拉伸、标题样式等）。；PPT排版美化项目推进与交付；进行中",
+          "hits": [],
+          "replyable_hits": [],
+          "human_only_hits": [],
+          "manual_review_required": false,
+          "confidence_score": null,
+          "filters_used": {
+            "method": "POST",
+            "response_trim_limit": 5,
+            "endpoint": "http://192.168.31.124:8100/kb-units/qa-retrieve"
+          },
+          "evidence_refs": [],
+          "source": "sales_kb_api",
+          "latency_ms": 8009.92,
+          "skipped": true,
+          "skip_reason": "connection_failed",
+          "error": "HTTPConnectionPool(host='192.168.31.124', port=8100): Max retries exceeded with url: /kb-units/qa-retrieve (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x000001915E193750>, 'Connection to 192.168.31.124 timed out. (connect timeout=8)'))",
+          "how": "直接调用销售知识库 API 的 POST /kb-units/qa-retrieve 接口，返回候选销售回复。"
+        },
+        "summary": {
+          "topic": "PPT排版美化项目推进与交付",
+          "core_demand": "客户需要我方在5月13日早上正式使用前完成6个（后增至8个）PPT的排版美化，并确保质量符合要求，同时处理额外出现的细节问题（如隐藏页、图片拉伸、标题样式等）。",
+          "key_facts": {
+            "latest_customer_reply_type": "schedule_confirmation",
+            "latest_customer_reply_goal": "确认明天（5月12日）还有一天时间可以继续修改，并说明13号早上正式使用，明天需留给演讲人做最终检查。",
+            "timeline_items": [
+              {
+                "time": "5月13日早上",
+                "topic": "PPT正式使用",
+                "status_scope": "future",
+                "status": "待交付",
+                "owner": "销售方",
+                "next_action": "在5月12日下班前完成所有PPT排版并交付给客户"
+              },
+              {
+                "time": "5月12日",
+                "topic": "客户内部检查PPT",
+                "status_scope": "future",
+                "status": "计划中",
+                "owner": "客户",
+                "next_action": "客户将收到的PPT发给演讲人做检查，如有更新再反馈"
+              },
+              {
+                "time": "当前",
+                "topic": "最后几个PPT的排版与交付",
+                "status_scope": "ongoing",
+                "status": "进行中",
+                "owner": "销售方",
+                "next_action": "完成剩余PPT的排版（包括删除圆圈、调整文字排版等），并微信逐个发送给客户"
+              }
+            ],
+            "current_focus": "确认明天（5月12日）还有一天时间，销售方需在当天完成所有PPT排版并交付，以便客户留给演讲人检查。",
+            "separate_topics": [
+              "6个初始PPT的排版报价与确认（50元/页，共4500元）",
+              "额外2个PPT（cosmx/sunwoda相关）的报价调整（按30页计，总价6000元，开票5500元，差额从预付款扣）",
+              "隐藏页的处理（客户同意排，费用从另一边扣）",
+              "标题样式修改（客户要求白色标题区域，不要放在复杂背景上）",
+              "图片拉伸问题（客户询问能否改善，不强求）",
+              "图片裁剪（只需屏幕截图，去掉周边）",
+              "Smart图形占位符问题（客户确认原始文件为空，要求删除圆圈）",
+              "目录与内容语言不一致问题（客户表示按销售方理解排版，后续由演讲人检查）"
+            ]
+          },
+          "todo_items": [
+            "完成剩余PPT的排版（包括删除圆圈、调整文字排版等）",
+            "将完成的PPT通过微信逐个发送给客户",
+            "确保所有PPT在5月12日下班前交付完毕"
+          ],
+          "risks": "[\"客户在机场，可能无法及时反馈或接收文件\", \"多个PPT由不同演讲人负责，后续检查可能提出额外修改需求，时间紧张\", \"目录与内容语言不一致可能影响排版准确性，需客户后续确认\"]",
+          "to_be_confirmed": "[\"隐藏页数量及具体费用扣除方式\", \"图片拉伸问题是否需进一步处理\", \"目录与内容语言不一致是否需要我方添加内容\"]",
+          "status": "进行中"
+        },
+        "api_quality_similarity": {
+          "status": "scored",
+          "actual_sales_reply_text": "肯定下班前给你哈，安啦",
+          "scores": [
+            {
+              "key": "knowledge_v2",
+              "label": "知识库1 + 序号1风格 + 主模型",
+              "score": null,
+              "reason": "该路候选没有可发回复文本",
+              "score_mode": "missing_reply_text"
+            },
+            {
+              "key": "knowledge_external_api",
+              "label": "知识库2 + 序号1风格 + 主模型",
+              "score": null,
+              "reason": "该路候选没有可发回复文本",
+              "score_mode": "missing_reply_text"
+            }
+          ],
+          "best_key": null,
+          "best_label": null,
+          "best_score": null,
+          "summary": "",
+          "scored_by": {
+            "model": "qwen14b",
+            "provider": "Dify",
+            "score_mode": "llm1_with_heuristic_fallback"
+          },
+          "quality_score_rule": "取知识库1/知识库2两路相似度较高者作为该次调用质量分"
+        },
+        "api_quality_score": null,
+        "api_quality_status": "scored"
+      },
+      "analytics_row": {
+        "row_id": "a5854221-645d-4262-a87f-d41acde0327b",
+        "triggered_at": "2026-05-11T10:29:51.878211",
+        "source": "test",
+        "source_label": "测试触发",
+        "trigger_kind": "batch_test_full_run",
+        "trigger_label": "batch_test_full_run",
+        "request_status": "skipped_unavailable",
+        "request_status_label": "skipped_unavailable",
+        "session_id": "single_WangHuiYing_wmS8sICwAA580XrndINDmRwwJqmfe7pA",
+        "snapshot_id": "edeae3d2-f73d-49c7-b36a-89da52701f2a",
+        "run_id": "b6c4e3d555df",
+        "anchor_message_id": 53479,
+        "anchor_message_time": "2026-05-11T14:33:46.936000",
+        "anchor_message_text": "对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新",
+        "recent_customer_last": "对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新",
+        "recent_customer_full": "2026-05-11T14:09:00.721000 / 我在机场，我没明白你表达什么\n2026-05-11T14:09:21.519000 / 我懂你意思了。。。\n2026-05-11T14:30:36.990000 / 好的\n2026-05-11T14:30:57.220000 / 你按你的理解来排吧，我也搞不清楚他们这个内容怎么个逻辑？\n2026-05-11T14:31:05.427000 / 总之你排好了，我会发给他们自己再去做检查的\n2026-05-11T14:33:46.936000 / 对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新",
+        "recent_customer_count": 6,
+        "recent_dialog_last": "对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新",
+        "recent_dialog_full": "2026-05-11 14:03:41 销售：[文件消息] 刘彬 - 除湿机全生命周期费用分析--26.05.11.pptx\n2026-05-11 14:04:21 销售：这个目录是中文的，后面内容全英文的，感觉对不台上，页码就先XX了\n2026-05-11 14:09:00 客户：我在机场，我没明白你表达什么\n2026-05-11 14:09:02 销售：[文件消息] 刘彬 - 模块化方案赋能锂电池生产--26.05.11.pptx\n2026-05-11 14:09:21 客户：我懂你意思了。。。\n2026-05-11 14:11:29 销售：[图片消息]\n2026-05-11 14:11:29 销售：这页的大标题是不是用框出来的这个\n2026-05-11 14:23:04 销售：[文件消息] 吴亦凯（陈杰讲） - Control Optimization PPT--26.05.11.pptx\n2026-05-11 14:23:14 销售：还有最后一个，大概还有几页差不多就好了\n2026-05-11 14:30:36 客户：好的\n2026-05-11 14:30:57 客户：你按你的理解来排吧，我也搞不清楚他们这个内容怎么个逻辑？\n2026-05-11 14:31:05 客户：总之你排好了，我会发给他们自己再去做检查的\n2026-05-11 14:32:55 销售：嗯，那个先不改了，总觉得目录和内容差了那么一点，要我们加的话，我们配合加就好了\n2026-05-11 14:32:59 销售：明天还有一天时间对吧\n2026-05-11 14:33:46 客户：对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新",
+        "recent_dialog_count": 15,
+        "manual_reply_text": "肯定下班前给你哈，安啦",
+        "step_1_content": "输入消息数：15\n当前锚点：对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新",
+        "step_1_time_ms": 9.89,
+        "step_2_content": "文件发送\n价格/比价",
+        "step_2_time_ms": 2.4,
+        "step_3_content": "主题：PPT排版美化项目推进与交付\n诉求：客户需要我方在5月13日早上正式使用前完成6个（后增至8个）PPT的排版美化，并确保质量符合要求，同时处理额外出现的细节问题（如隐藏页、图片拉伸、标题样式等）。\n状态：进行中\n时间线：5月13日早上 · PPT正式使用 · 待推进；5月12日 · 客户内部检查PPT · 待推进；当前 · 最后几个PPT的排版与交付 · 进行中",
+        "step_3_time_ms": 13926.89,
+        "step_4_content": "客户：孙诞\n公司：蒙特空气处理设备（北京）有限公司上海办事处\n线程焦点：PPT排版美化项目推进与交付\n最新客户回复类型：question\n进行中：当前 · 最后几个PPT的排版与交付\n未来：5月13日早上 · PPT正式使用；5月12日 · 客户内部检查PPT\n最近跟进：当天收到邮件之前还发生过的往来记录：\n18:02，QQ，内容为：销售要求客户下班前提供最终版PPT文件，确保内容与目录匹配、格式统一。",
+        "step_4_time_ms": 160.48,
+        "step_5_kb1_content": "状态：需人工复核\n检索：对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新；客户需要我方在5月13日早上正式使用前完成6个（后增至8个）PPT的排版美化，并确保质量符合要求，同时处理额外出现的细节问题（如隐藏页、图片拉伸、标题样式等）。；PPT排版美化项目推进与交付；进行中\n命中：请阐述开发客户1、3、1、3、2的要点；如何处理客户的电子版需求？ · 询问客户是否需要电子版排版设计，如邀请函、宣传册等。；客户询问合同审批流程的预计时间？",
+        "step_5_kb1_time_ms": 8316.36,
+        "step_5_kb2_content": "状态：skipped_unavailable\n检索：对13号早上正是用，但是我明天想留着给他们再去对这个PPT第一是做检查，看有什么更新的就抓紧在利用最后一天更新；客户需要我方在5月13日早上正式使用前完成6个（后增至8个）PPT的排版美化，并确保质量符合要求，同时处理额外出现的细节问题（如隐藏页、图片拉伸、标题样式等）。；PPT排版美化项目推进与交付；进行中\n原因：HTTPConnectionPool(host='192.168.31.124', port=8100): Max retries exceeded with url: /kb-units/qa-retrieve (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x000001915E193750>, 'Connection to 192.168.31.124 timed out. (connect timeout=8)'))",
+        "step_5_kb2_time_ms": 8010.05,
+        "step_6_main_model_name": "LLM-2 / deepseek-chat",
+        "step_6_compare_model_name": "LLM-2 对比 / qwen3-480b-cloud",
+        "step_6_main_kb1_content": "-",
+        "step_6_main_kb1_score": null,
+        "step_6_main_kb1_score_reason": "-",
+        "step_6_main_time_ms": null,
+        "step_6_main_kb2_content": "-",
+        "step_6_main_kb2_score": null,
+        "step_6_main_kb2_score_reason": "-",
+        "step_6_compare_kb1_content": "-",
+        "step_6_compare_kb1_score": null,
+        "step_6_compare_kb1_score_reason": "-",
+        "step_6_compare_time_ms": null,
+        "step_6_compare_kb2_content": "-",
+        "step_6_compare_kb2_score": null,
+        "step_6_compare_kb2_score_reason": "-",
+        "step_6_time_ms": null,
+        "step_7_content": "状态：已生成质量分\n统计规则：取知识库1/知识库2两路相似度较高者作为该次调用质量分\n最佳质量分：-",
+        "manual_quality_score": null,
+        "manual_quality_reason": "状态：已生成质量分\n统计规则：取知识库1/知识库2两路相似度较高者作为该次调用质量分\n最佳质量分：-",
+        "step_7_kb1_score": null,
+        "step_7_kb1_reason": "该路候选没有可发回复文本",
+        "step_7_kb2_score": null,
+        "step_7_kb2_reason": "该路候选没有可发回复文本",
+        "step_7_time_ms": null,
+        "kb1_eval_score": 30.0,
+        "kb1_eval_reason": "检索到的知识库内容与当前客户沟通的核心议题（PPT排版美化项目的进度确认、细节处理和交付安排）关联度较低，缺乏针对项目执行阶段的具体指导。虽然提供了销售流程中的通用沟通要点，但未聚焦于客户当前关注的时间节点、具体内容修改需求及风险控制措施，因此在针对性和实际应用价值方面表现不足，对提升LLM生成话术的质量支持有限。",
+        "kb2_eval_score": null,
+        "kb2_eval_reason": "-",
+        "quality_annotations": {}
+      }
+    }
+  ]
+}

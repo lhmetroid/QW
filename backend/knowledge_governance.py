@@ -491,6 +491,75 @@ def summarize_attachment_mentions(mentions: list[dict[str, Any]] | None) -> dict
     }
 
 
+def _compact_text(value: Any) -> str:
+    return re.sub(r"\s+", "", _text(value))
+
+
+def _extract_time_mentions(text: str | None) -> list[str]:
+    raw_text = _text(text)
+    if not raw_text:
+        return []
+    patterns = [
+        r"\d{1,2}月\d{1,2}日",
+        r"(?:本周|下周)?周[一二三四五六日天]",
+        r"\d{1,2}点半?",
+        r"(?:上午|中午|下午|晚上)\d{1,2}点半?",
+        r"\d{1,2}点到\d{1,2}点",
+    ]
+    values: list[str] = []
+    for pattern in patterns:
+        for match in re.findall(pattern, raw_text):
+            value = _text(match)
+            if value and value not in values:
+                values.append(value)
+    return values[:6]
+
+
+def _detect_latest_customer_reply_type(text: str | None) -> str:
+    raw_text = _text(text)
+    compact = _compact_text(text)
+    if not compact:
+        return "other"
+    if re.search(r"(到公司|回头|稍后|晚点|方便时|一会儿).{0,8}(发|给你|发你|发送)", raw_text):
+        return "promise_send_later"
+    if (
+        _extract_time_mentions(raw_text)
+        and any(token in raw_text for token in ["开始", "到", "到场", "下午", "上午", "周三", "本周", "6月", "会议"])
+    ):
+        return "schedule_confirmation"
+    if re.fullmatch(r"(收到|收到了|收到啦|好|好的|好滴|ok|OK|嗯|嗯嗯|收到\[?OK\]?)[!！。.]?", compact, flags=re.IGNORECASE):
+        return "ack_only"
+    if "?" in raw_text or "？" in raw_text or any(token in raw_text for token in ["吗", "么", "是否", "可否", "能否"]):
+        return "question"
+    return "other"
+
+
+def _sales_asked_schedule(latest_sales_message: str | None) -> bool:
+    return bool(re.search(r"(时间|几点|几号|开始|到场|定了|安排|会议|会前|周三|本周|下午)", _text(latest_sales_message)))
+
+
+def _sales_asked_material(latest_sales_message: str | None) -> bool:
+    return bool(re.search(r"(发我|给我|发你|资料|文件|附件|PPT|材料)", _text(latest_sales_message), re.IGNORECASE))
+
+
+def _response_reasks_schedule(response_text: str | None, latest_customer_message: str | None) -> bool:
+    response = _text(response_text)
+    if not response or not _extract_time_mentions(latest_customer_message):
+        return False
+    if not re.search(r"(吗|吧|确认|没问题吧|可以吧|是否|几点|几号|开始|到场|安排)", response):
+        return False
+    customer_times = _extract_time_mentions(latest_customer_message)
+    return any(time_value in response for time_value in customer_times)
+
+
+def _response_reasks_material(response_text: str | None) -> bool:
+    response = _text(response_text)
+    return bool(
+        re.search(r"(发我|给我|资料|文件|附件|PPT|材料)", response, re.IGNORECASE)
+        and re.search(r"(收到后|看下|看看|发来|方便时)", response)
+    )
+
+
 def build_thread_business_fact(
     *,
     session_id: str,
@@ -540,6 +609,8 @@ def build_thread_business_fact(
     latest_sales_message = sales_messages[-1] if sales_messages else ""
     recent_sales_messages = sales_messages[-2:] if sales_messages else []
     latest_customer_message = next((_text(item.get("content")) for item in reversed(normalized_messages) if _text(item.get("sender_type")) == "customer"), "")
+    latest_customer_reply_type = _detect_latest_customer_reply_type(latest_customer_message)
+    latest_customer_time_mentions = _extract_time_mentions(latest_customer_message)
     awaiting_customer_reply = latest_sender == "sales" and sales_message_count > 0
     sales_only_conversation = sales_message_count > 0 and customer_message_count == 0
     followup_after_no_reply = awaiting_customer_reply and consecutive_sales_messages >= 2
@@ -645,6 +716,8 @@ def build_thread_business_fact(
         "latest_sales_message": latest_sales_message[:160] if latest_sales_message else None,
         "recent_sales_messages": [item[:160] for item in recent_sales_messages if item][:2],
         "latest_customer_message": latest_customer_message[:160] if latest_customer_message else None,
+        "latest_customer_reply_type": latest_customer_reply_type,
+        "latest_customer_time_mentions": latest_customer_time_mentions,
         "crm_has_quote_history": bool(crm_context.get("recent_quote_summary")),
         "attachment_summary": attachment_summary,
         "attachment_rollup": attachment_rollup,
@@ -741,6 +814,22 @@ def validate_thread_state_consistency(response_text: str | None, thread_fact: di
             ):
                 blocking_issues.append("当前属于客户未回复后的跟进，回复与最近我方外联过于相似，必须换角度推进，不能复述旧话术。")
                 break
+    if merged_facts.get("last_sender") == "customer":
+        latest_customer_message = _text(merged_facts.get("latest_customer_message"))
+        latest_sales_message = _text(merged_facts.get("latest_sales_message"))
+        latest_customer_reply_type = _text(merged_facts.get("latest_customer_reply_type"))
+        if (
+            latest_customer_reply_type == "schedule_confirmation"
+            and _sales_asked_schedule(latest_sales_message)
+            and _response_reasks_schedule(text, latest_customer_message)
+        ):
+            blocking_issues.append("客户刚确认时间安排，回复不应再次追问同一时间问题，应改为确认收到并说明我方动作。")
+        if (
+            latest_customer_reply_type == "promise_send_later"
+            and _sales_asked_material(latest_sales_message)
+            and _response_reasks_material(text)
+        ):
+            blocking_issues.append("客户已承诺稍后发送资料，回复不应重复催问同一材料，应先承接并说明收到后的动作。")
     if not thread_fact.get("allowed_for_generation"):
         warnings.append(thread_fact.get("reply_guard_reason") or "线程事实层未通过自动回复门禁。")
     return {"warnings": warnings, "blocking_issues": blocking_issues}

@@ -5,7 +5,7 @@ import requests
 import json
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from time import perf_counter
+from time import perf_counter, sleep
 from fastapi import HTTPException
 from sqlalchemy import or_
 from config import settings
@@ -21,10 +21,114 @@ class IntentEngine:
     """意图分析与提醒引擎"""
 
     @staticmethod
+    def _stage1_llm_defaults() -> dict:
+        if settings.STAGE1_USE_LLM2:
+            return {
+                "api_url": settings.LLM2_API_URL,
+                "api_key": settings.LLM2_API_KEY,
+                "model": settings.LLM2_MODEL,
+                "timeout_seconds": settings.LLM2_TIMEOUT_SECONDS,
+                "label": "LLM2_STAGE1",
+            }
+        return {
+            "api_url": settings.LLM1_API_URL,
+            "api_key": settings.LLM1_API_KEY,
+            "model": settings.LLM1_MODEL,
+            "timeout_seconds": settings.LLM1_TIMEOUT_SECONDS,
+            "label": "LLM1",
+        }
+
+    @staticmethod
     def _post_json(url: str, headers: dict, payload: dict, timeout: int):
         session = requests.Session()
         session.trust_env = settings.HTTP_TRUST_ENV
         return session.post(url, headers=headers, json=payload, timeout=timeout)
+
+    @staticmethod
+    def _response_detail(response) -> str:
+        try:
+            payload = response.json()
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            parts = []
+            code = sanitize_text(str(payload.get("code") or "")).strip()
+            message = sanitize_text(str(payload.get("message") or "")).strip()
+            if code:
+                parts.append(f"code={code}")
+            if message:
+                parts.append(f"message={message}")
+            if parts:
+                return ", ".join(parts)
+        return sanitize_text((response.text or "").strip())[:300]
+
+    @classmethod
+    def _should_retry_dify_response(cls, response) -> bool:
+        status = int(getattr(response, "status_code", 0) or 0)
+        if status in {429, 500, 502, 503, 504}:
+            return True
+        if status != 400:
+            return False
+        detail = (cls._response_detail(response) or "").lower()
+        retry_markers = [
+            "app_unavailable",
+            "service unavailable",
+            "service_unavailable",
+            "provider_unavailable",
+            "rate limit",
+            "rate_limit",
+            "temporarily unavailable",
+            "try again later",
+        ]
+        return any(marker in detail for marker in retry_markers)
+
+    @classmethod
+    def _request_dify_blocking(
+        cls,
+        *,
+        api_url: str,
+        headers: dict,
+        payload: dict,
+        timeout_seconds: int,
+        model: str,
+        prompt: str,
+        log_label: str,
+        max_attempts: int = 3,
+        retry_delay_seconds: float = 1.0,
+    ):
+        chat_url = api_url.rstrip("/") + "/chat-messages"
+        completion_url = api_url.rstrip("/") + "/completion-messages"
+        last_response = None
+        last_endpoint = chat_url
+        attempts = max(1, int(max_attempts or 1))
+
+        for attempt in range(1, attempts + 1):
+            cls._log_llm_prompt(log_label, model, chat_url, prompt)
+            response = cls._post_json(chat_url, headers=headers, timeout=timeout_seconds, payload=payload)
+            last_response = response
+            last_endpoint = chat_url
+            if response.status_code == 200:
+                return response, last_endpoint, attempt
+            if response.status_code == 404:
+                cls._log_llm_prompt(f"{log_label}_COMPLETION", model, completion_url, prompt)
+                response = cls._post_json(completion_url, headers=headers, timeout=timeout_seconds, payload=payload)
+                last_response = response
+                last_endpoint = completion_url
+                return response, last_endpoint, attempt
+            if attempt < attempts and cls._should_retry_dify_response(response):
+                logger.warning(
+                    "Dify 请求异常，准备重试: status=%s detail=%s attempt=%s/%s endpoint=%s",
+                    response.status_code,
+                    cls._response_detail(response),
+                    attempt,
+                    attempts,
+                    chat_url,
+                )
+                sleep(retry_delay_seconds)
+                continue
+            return response, last_endpoint, attempt
+
+        return last_response, last_endpoint, attempts
 
     @classmethod
     def get_ai_settings(cls):
@@ -163,6 +267,8 @@ class IntentEngine:
             "latest_sales_message",
             "recent_sales_messages",
             "latest_customer_message",
+            "latest_customer_reply_type",
+            "latest_customer_time_mentions",
             "crm_has_quote_history",
         ]
         filtered_merged_facts = {
@@ -278,6 +384,27 @@ class IntentEngine:
                 f"\n\n【当前回复焦点】当前要直接回应的客户最后一句是：{latest_customer_message}"
                 "\n请先直接回应这句客户消息，再决定是否补充下一步推进；不要跳回更早的旧追问或旧目标。"
             )
+            latest_customer_reply_type = str(merged_facts.get("latest_customer_reply_type") or "").strip()
+            latest_customer_time_mentions = merged_facts.get("latest_customer_time_mentions") or []
+            if latest_customer_reply_type == "schedule_confirmation":
+                time_hint = "、".join(str(item) for item in latest_customer_time_mentions if str(item).strip())
+                focus_note += (
+                    "\n客户这句是在确认时间/到场安排。"
+                    "不要把客户已确认的信息再改写成反问句。"
+                    f"{' 本次确认涉及：' + time_hint + '。' if time_hint else ''}"
+                    "\n优先回复方式：确认收到 + 我方动作/准备事项；只有确实缺信息时才补一个新问题。"
+                )
+            elif latest_customer_reply_type == "promise_send_later":
+                focus_note += (
+                    "\n客户这句是在承诺稍后发送文件/资料。"
+                    "不要重复催问同一材料，不要机械复述客户原话。"
+                    "\n优先回复方式：确认收到 + 说明收到后会马上查看/处理；必要时只补一个轻量下一步。"
+                )
+            elif latest_customer_reply_type == "ack_only":
+                focus_note += (
+                    "\n客户这句只是简短确认/收到。"
+                    "不要只把客户原话换个说法再发回去；如需回复，优先低负担承接或轻量推进。"
+                )
             if re.search(r"(已有|已经有|我们有|现有).*(报告|资料|英文版|中英文|文档|译文|文件)", latest_customer_message):
                 focus_note += (
                     "\n客户最后一句是在说明现有资料/报告/双语版本的现状。"
@@ -353,10 +480,12 @@ class IntentEngine:
         else:
             full_prompt = f"{prompt1}\n\n请分析以下企微真实对话记录：\n{conversation_text}"
 
-        api_url = api_url if api_url is not None else settings.LLM1_API_URL
-        api_key = api_key if api_key is not None else settings.LLM1_API_KEY
-        model = model if model is not None else settings.LLM1_MODEL
-        timeout_seconds = timeout_seconds if timeout_seconds is not None else settings.LLM1_TIMEOUT_SECONDS
+        stage1_defaults = cls._stage1_llm_defaults()
+        api_url = api_url if api_url is not None else stage1_defaults["api_url"]
+        api_key = api_key if api_key is not None else stage1_defaults["api_key"]
+        model = model if model is not None else stage1_defaults["model"]
+        timeout_seconds = timeout_seconds if timeout_seconds is not None else stage1_defaults["timeout_seconds"]
+        label = label or stage1_defaults["label"]
         return {
             "user_id": user_id,
             "full_prompt": full_prompt,
@@ -392,29 +521,36 @@ class IntentEngine:
         timeout_seconds = request_spec.get("timeout_seconds") or settings.LLM1_TIMEOUT_SECONDS
         user_id = request_spec.get("user_id") or "llm1"
         label = request_spec.get("label") or "LLM1"
+        disable_json_repair = bool(request_spec.get("disable_json_repair"))
         prompt_trace = dict(request_spec.get("prompt_trace") or {})
         raw_text = ""
 
         try:
             prompt_trace["request_started_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
             if api_key.startswith("app-"):
-                url = api_url.rstrip('/') + "/chat-messages"
                 payload = {
                     "inputs": {},
                     "query": full_prompt,
                     "response_mode": "blocking",
                     "user": user_id
                 }
-                cls._log_llm_prompt(f"{label}_DIFY", model, url, full_prompt)
-                response = cls._post_json(url, headers, payload, timeout_seconds)
-                if response.status_code == 404:
-                    url = api_url.rstrip('/') + "/completion-messages"
-                    cls._log_llm_prompt(f"{label}_DIFY_COMPLETION", model, url, full_prompt)
-                    response = cls._post_json(url, headers, payload, timeout_seconds)
+                response, endpoint_url, attempt_count = cls._request_dify_blocking(
+                    api_url=api_url,
+                    headers=headers,
+                    payload=payload,
+                    timeout_seconds=timeout_seconds,
+                    model=model,
+                    prompt=full_prompt,
+                    log_label=f"{label}_DIFY",
+                )
+                prompt_trace["response_endpoint"] = endpoint_url
+                prompt_trace["request_attempts"] = attempt_count
                 prompt_trace["response_status_code"] = response.status_code
                 prompt_trace["response_received_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
                 if response.status_code != 200:
-                    raise RuntimeError(f"Dify 接口错误: HTTP {response.status_code}")
+                    detail = cls._response_detail(response)
+                    prompt_trace["response_error_detail"] = detail
+                    raise RuntimeError(f"Dify 接口错误: HTTP {response.status_code}; {detail}")
                 raw_text = response.json().get("answer", "")
             else:
                 url = api_url.rstrip('/') + "/chat/completions"
@@ -443,6 +579,8 @@ class IntentEngine:
             prompt_trace["result"] = "json_error"
             prompt_trace["reason"] = sanitize_text(str(e))
             logger.error("LLM-1 返回 JSON 解析失败: %s", e)
+            if disable_json_repair:
+                raise RuntimeError(f"LLM-1 最终提取的 JSON 无法解析: {e}") from e
             repair_prompt = (
                 "你是一个 JSON 修复器。下面是一段本应返回 JSON 的文本，但当前格式有误。"
                 "请在不补充新事实的前提下，把它修成一个合法 JSON 对象。"
@@ -451,7 +589,30 @@ class IntentEngine:
                 f"待修复文本：\n{raw_text}"
             )
             try:
-                repaired = cls.run_llm1_json_prompt(repair_prompt, user_id=f"{user_id}_json_repair")
+                repair_request = {
+                    "user_id": f"{user_id}_json_repair",
+                    "full_prompt": repair_prompt,
+                    "api_url": api_url,
+                    "api_key": api_key,
+                    "model": model,
+                    "timeout_seconds": timeout_seconds,
+                    "label": f"{label}_JSON_REPAIR",
+                    "disable_json_repair": True,
+                    "prompt_trace": {
+                        "label": f"{label}_JSON_REPAIR",
+                        "model": model or "",
+                        "provider": cls._llm_provider_label(api_key),
+                        "api_url": api_url or "",
+                        "prompt": repair_prompt,
+                        "prompt_chars": len(repair_prompt or ""),
+                        "status": "ready",
+                        "sent_to_ai": True,
+                        "reason": "",
+                        "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                    },
+                }
+                repaired_bundle = cls.run_llm1_request(repair_request)
+                repaired = repaired_bundle.get("summary")
                 prompt_trace["result"] = "success_repaired_json"
                 prompt_trace["repair_reason"] = sanitize_text(str(e))
                 return {
@@ -512,21 +673,24 @@ class IntentEngine:
         }
         try:
             if settings.LLM1_API_KEY.startswith("app-"):
-                url = settings.LLM1_API_URL.rstrip("/") + "/chat-messages"
                 payload = {
                     "inputs": {},
                     "query": prompt,
                     "response_mode": "blocking",
                     "user": user_id
                 }
-                cls._log_llm_prompt("KB_ASSIST_DIFY", settings.LLM1_MODEL, url, prompt)
-                response = cls._post_json(url, headers, payload, settings.LLM1_TIMEOUT_SECONDS)
-                if response.status_code == 404:
-                    url = settings.LLM1_API_URL.rstrip("/") + "/completion-messages"
-                    cls._log_llm_prompt("KB_ASSIST_DIFY_COMPLETION", settings.LLM1_MODEL, url, prompt)
-                    response = cls._post_json(url, headers, payload, settings.LLM1_TIMEOUT_SECONDS)
+                response, _, _ = cls._request_dify_blocking(
+                    api_url=settings.LLM1_API_URL,
+                    headers=headers,
+                    payload=payload,
+                    timeout_seconds=settings.LLM1_TIMEOUT_SECONDS,
+                    model=settings.LLM1_MODEL,
+                    prompt=prompt,
+                    log_label="KB_ASSIST_DIFY",
+                )
                 if response.status_code != 200:
-                    raise RuntimeError(f"知识库 LLM 辅助 Dify 调用失败: HTTP {response.status_code}")
+                    detail = cls._response_detail(response)
+                    raise RuntimeError(f"知识库 LLM 辅助 Dify 调用失败: HTTP {response.status_code}; {detail}")
                 raw_text = response.json().get("answer", "")
             else:
                 url = settings.LLM1_API_URL.rstrip("/") + "/chat/completions"
@@ -574,7 +738,11 @@ class IntentEngine:
     @classmethod
     def get_embedding(cls, text: str) -> Optional[List[float]]:
         """调用接口获取文本向量"""
-        return EmbeddingService.embed(text)
+        try:
+            return EmbeddingService.embed(text)
+        except Exception as exc:
+            logger.warning("Embedding 调用失败，降级为无向量检索: %s", sanitize_text(str(exc)))
+            return None
 
     @classmethod
     def retrieve_knowledge(cls, query_text: str, top_k: int = 1) -> List[str]:
@@ -711,6 +879,31 @@ class IntentEngine:
     @staticmethod
     def _query_terms(query_text: str) -> List[str]:
         return IntentEngine._tokenize_query_text(query_text)[:10]
+
+    @staticmethod
+    def _keyword_prefilter_terms(query_terms: list[str]) -> list[str]:
+        if not query_terms:
+            return []
+        generic_terms = {
+            "客户", "报价", "价格", "收费", "流程", "交付", "资料", "案例", "服务范围",
+            "技术", "法律", "经验", "能力", "active", "ongoing", "success", "done",
+        }
+        preferred = []
+        fallback = []
+        for term in query_terms:
+            clean = (term or "").strip().lower()
+            if len(clean) < 2:
+                continue
+            if clean in generic_terms:
+                continue
+            if len(clean) >= 4 or any(ch.isdigit() for ch in clean):
+                preferred.append(clean)
+            else:
+                fallback.append(clean)
+        filtered = list(dict.fromkeys(preferred + fallback))
+        if filtered:
+            return filtered[:8]
+        return list(dict.fromkeys(query_terms))[:5]
 
     @staticmethod
     def _exact_phrase_score(query_text: str, chunk: KnowledgeChunk) -> float:
@@ -1168,7 +1361,7 @@ class IntentEngine:
                     KnowledgeChunk.customer_tier.is_(None),
                 ))
 
-            candidate_limit = max(20, min(int(settings.KB_CANDIDATE_LIMIT or 500), 2000))
+            candidate_limit = max(20, min(int(settings.KB_CANDIDATE_LIMIT or 300), 2000))
             candidate_query = query
             query_terms = cls._query_terms(normalized_query_text)
             intent_profile = cls._query_intent_profile(normalized_query_text, features)
@@ -1187,20 +1380,30 @@ class IntentEngine:
             filters_used["thread_fact_available"] = bool(thread_fact)
 
             candidate_sources_by_id: dict[str, set[str]] = {}
-            candidates_by_id: dict[str, KnowledgeChunk] = {}
+            merged_candidate_ids: list[str] = []
 
-            def add_candidates(items, source: str):
-                for item in items:
-                    chunk_id = str(item.chunk_id)
-                    candidates_by_id[chunk_id] = item
+            def add_candidate_ids(raw_ids, source: str):
+                for value in raw_ids:
+                    chunk_id = str(value)
                     candidate_sources_by_id.setdefault(chunk_id, set()).add(source)
+                    if chunk_id not in candidate_sources_by_id or source not in candidate_sources_by_id[chunk_id]:
+                        pass
+                    if chunk_id not in merged_candidate_ids:
+                        merged_candidate_ids.append(chunk_id)
 
-            structured_candidates = candidate_query.order_by(KnowledgeChunk.priority.desc()).limit(candidate_limit).all()
-            add_candidates(structured_candidates, "structured_filters")
-            keyword_candidates = []
-            if settings.KB_KEYWORD_PREFILTER_ENABLED and query_terms:
+            structured_candidate_ids = [
+                str(chunk_id)
+                for (chunk_id,) in candidate_query.with_entities(KnowledgeChunk.chunk_id)
+                .order_by(KnowledgeChunk.priority.desc())
+                .limit(candidate_limit)
+                .all()
+            ]
+            add_candidate_ids(structured_candidate_ids, "structured_filters")
+            keyword_prefilter_terms = cls._keyword_prefilter_terms(query_terms)
+            keyword_candidate_ids: list[str] = []
+            if settings.KB_KEYWORD_PREFILTER_ENABLED and keyword_prefilter_terms:
                 keyword_conditions = []
-                for term in query_terms:
+                for term in keyword_prefilter_terms:
                     like_term = f"%{term}%"
                     keyword_conditions.extend([
                         KnowledgeChunk.title.ilike(like_term),
@@ -1208,24 +1411,34 @@ class IntentEngine:
                         KnowledgeChunk.content.ilike(like_term),
                     ])
                 if keyword_conditions:
-                    keyword_candidates = (
-                        query.filter(or_(*keyword_conditions))
+                    keyword_candidate_ids = [
+                        str(chunk_id)
+                        for (chunk_id,) in query.filter(or_(*keyword_conditions))
+                        .with_entities(KnowledgeChunk.chunk_id)
                         .order_by(KnowledgeChunk.priority.desc())
                         .limit(candidate_limit)
                         .all()
-                    )
-                    add_candidates(keyword_candidates, "keyword_prefilter")
+                    ]
+                    add_candidate_ids(keyword_candidate_ids, "keyword_prefilter")
 
-            candidates = list(candidates_by_id.values())
+            candidates: list[KnowledgeChunk] = []
+            if merged_candidate_ids:
+                loaded_candidates = (
+                    query.filter(KnowledgeChunk.chunk_id.in_(merged_candidate_ids))
+                    .all()
+                )
+                candidates_by_id = {str(chunk.chunk_id): chunk for chunk in loaded_candidates}
+                candidates = [candidates_by_id[chunk_id] for chunk_id in merged_candidate_ids if chunk_id in candidates_by_id]
             if explicit_knowledge_classes:
                 candidates = [
                     chunk for chunk in candidates
                     if cls._knowledge_class_for_chunk(chunk) in set(explicit_knowledge_classes)
                 ]
             filters_used["candidate_source"] = "hybrid_structured_keyword"
+            filters_used["keyword_prefilter_terms"] = keyword_prefilter_terms
             filters_used["candidate_counts_by_source"] = {
-                "structured_filters": len(structured_candidates),
-                "keyword_prefilter": len(keyword_candidates),
+                "structured_filters": len(structured_candidate_ids),
+                "keyword_prefilter": len(keyword_candidate_ids),
                 "merged": len(candidates),
             }
             filters_used["candidate_count"] = len(candidates)
@@ -1839,12 +2052,43 @@ class IntentEngine:
         return any("客户未回复后的跟进" in item or "不能复述旧话术" in item for item in issues)
 
     @staticmethod
+    def _needs_customer_answer_rewrite_retry(validation: dict | None) -> bool:
+        issues = validation.get("blocking_issues") or [] if isinstance(validation, dict) else []
+        return any(
+            "客户刚确认时间安排" in item or "客户已承诺稍后发送资料" in item
+            for item in issues
+        )
+
+    @staticmethod
     def build_followup_guard_response(summary_json: dict | None = None) -> str:
         return (
             "【企微回复参考】\n"
             "不多打扰，想确认下这块近期还有在推进吗？您回我“有/暂时没有”都行。\n\n"
             "【跟进思路说明】\n"
             "客户未回复时先降门槛，不重复自我介绍和旧问题，用最短确认口拿状态信号。"
+        )
+
+    @staticmethod
+    def build_customer_answer_guard_response(summary_json: dict | None = None, thread_fact: dict | None = None) -> str:
+        merged_facts = (thread_fact or {}).get("merged_facts") or {}
+        reply_type = str(merged_facts.get("latest_customer_reply_type") or "").strip()
+        time_mentions = [str(item).strip() for item in (merged_facts.get("latest_customer_time_mentions") or []) if str(item).strip()]
+        if reply_type == "schedule_confirmation":
+            time_hint = "、".join(time_mentions[:2])
+            reply_line = f"好，那我这边按您说的时间准备{('，' + time_hint) if time_hint else ''}，提前到场。"
+            rationale = "客户已经确认时间，这里只需确认收到并说明我方动作，不要再把同一时间反问回去。"
+        elif reply_type == "promise_send_later":
+            reply_line = "好，您方便时发我就行，我这边收到后马上看。"
+            rationale = "客户已承诺稍后发资料，此时先承接并说明收到后的动作，不重复催同一材料。"
+        else:
+            topic = (summary_json or {}).get("topic") or "这块"
+            reply_line = f"好，我这边先接住。关于{topic}，有新进展我第一时间跟您对一下。"
+            rationale = "客户已经给出有效回应，此时宜先承接，不再机械复述客户原话。"
+        return (
+            "【企微回复参考】\n"
+            f"{reply_line}\n\n"
+            "【跟进思路说明】\n"
+            f"{rationale}"
         )
 
     @staticmethod
@@ -2218,7 +2462,7 @@ class IntentEngine:
                 }
             else:
                 overlap_ratio = cls._text_overlap_ratio(reply_text, actual_text)
-                heuristic_score = cls._clamp_score(32 + overlap_ratio * 68)
+                heuristic_score = cls._clamp_score(10 + overlap_ratio * 60)
                 entry = {
                     "key": item["key"],
                     "label": item["label"],
@@ -2420,25 +2664,32 @@ class IntentEngine:
             logger.info("正在调用 %s 生成回复建议...", label)
             prompt_trace["request_started_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
             if api_key.startswith("app-"):
-                url = api_url.rstrip("/") + "/chat-messages"
                 payload = {
                     "inputs": {},
                     "query": final_prompt,
                     "response_mode": "blocking",
                     "user": f"sales_assist_{label.lower()}",
                 }
-                cls._log_llm_prompt(f"{label}_DIFY", model, url, final_prompt)
-                response = cls._post_json(url, headers=headers, timeout=timeout_seconds, payload=payload)
-                if response.status_code == 404:
-                    url = api_url.rstrip("/") + "/completion-messages"
-                    cls._log_llm_prompt(f"{label}_DIFY_COMPLETION", model, url, final_prompt)
-                    response = cls._post_json(url, headers=headers, timeout=timeout_seconds, payload=payload)
+                response, endpoint_url, attempt_count = cls._request_dify_blocking(
+                    api_url=api_url,
+                    headers=headers,
+                    payload=payload,
+                    timeout_seconds=timeout_seconds,
+                    model=model,
+                    prompt=final_prompt,
+                    log_label=f"{label}_DIFY",
+                )
+                prompt_trace["response_endpoint"] = endpoint_url
+                prompt_trace["request_attempts"] = attempt_count
                 prompt_trace["response_status_code"] = response.status_code
                 prompt_trace["response_received_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
                 if response.status_code != 200:
-                    raise RuntimeError(f"Dify 接口错误: HTTP {response.status_code}")
+                    detail = cls._response_detail(response)
+                    prompt_trace["response_error_detail"] = detail
+                    raise RuntimeError(f"Dify 接口错误: HTTP {response.status_code}; {detail}")
                 raw_content = response.json().get("answer", "")
                 if raw_content:
+                    thread_fact = knowledge_list.get("thread_business_fact") if isinstance(knowledge_list, dict) else None
                     validation = cls.validate_sales_assist_output(raw_content, knowledge_list, crm_context=crm_context)
                     if cls._needs_followup_rewrite_retry(validation):
                         if not retry_forbidden:
@@ -2462,6 +2713,35 @@ class IntentEngine:
                         prompt_trace["post_validation_status"] = guarded_validation.get("status") or "ok"
                         prompt_trace["post_validation_manual_review_required"] = bool(guarded_validation.get("manual_review_required"))
                         prompt_trace["post_validation_reason"] = "followup_repetition_guard"
+                        return {
+                            "content": guarded_content,
+                            "raw_content": raw_content,
+                            "validation": guarded_validation,
+                            "evidence_refs": guarded_validation.get("evidence_refs") or [],
+                            "prompt_trace": prompt_trace,
+                        }
+                    if cls._needs_customer_answer_rewrite_retry(validation):
+                        if not retry_forbidden:
+                            retry_request = dict(request_spec)
+                            retry_request["retry_forbidden"] = True
+                            retry_request["final_prompt"] = (
+                                f"{final_prompt}\n\n"
+                                "【纠偏重写】客户刚刚已经回答了上一问。请完全重写："
+                                "不要把客户确认句改写成反问句，不要重复客户原话，"
+                                "请改为“确认收到 + 我方动作”，必要时最多补一个新的轻量推进点。"
+                            )
+                            return cls.generate_sales_assist_bundle(
+                                summary_json,
+                                knowledge_list,
+                                crm_context,
+                                prepared_request=retry_request,
+                            )
+                        guarded_content = cls.build_customer_answer_guard_response(summary_json, thread_fact)
+                        guarded_validation = cls.validate_sales_assist_output(guarded_content, knowledge_list, crm_context=crm_context)
+                        prompt_trace["result"] = "success_guarded"
+                        prompt_trace["post_validation_status"] = guarded_validation.get("status") or "ok"
+                        prompt_trace["post_validation_manual_review_required"] = bool(guarded_validation.get("manual_review_required"))
+                        prompt_trace["post_validation_reason"] = "customer_answer_guard"
                         return {
                             "content": guarded_content,
                             "raw_content": raw_content,
@@ -2499,6 +2779,7 @@ class IntentEngine:
             res_data = response.json()
             raw_content = res_data["choices"][0]["message"]["content"] if "choices" in res_data else ""
             if raw_content:
+                thread_fact = knowledge_list.get("thread_business_fact") if isinstance(knowledge_list, dict) else None
                 validation = cls.validate_sales_assist_output(raw_content, knowledge_list, crm_context=crm_context)
                 if cls._needs_followup_rewrite_retry(validation):
                     if not retry_forbidden:
@@ -2522,6 +2803,35 @@ class IntentEngine:
                     prompt_trace["post_validation_status"] = guarded_validation.get("status") or "ok"
                     prompt_trace["post_validation_manual_review_required"] = bool(guarded_validation.get("manual_review_required"))
                     prompt_trace["post_validation_reason"] = "followup_repetition_guard"
+                    return {
+                        "content": guarded_content,
+                        "raw_content": raw_content,
+                        "validation": guarded_validation,
+                        "evidence_refs": guarded_validation.get("evidence_refs") or [],
+                        "prompt_trace": prompt_trace,
+                    }
+                if cls._needs_customer_answer_rewrite_retry(validation):
+                    if not retry_forbidden:
+                        retry_request = dict(request_spec)
+                        retry_request["retry_forbidden"] = True
+                        retry_request["final_prompt"] = (
+                            f"{final_prompt}\n\n"
+                            "【纠偏重写】客户刚刚已经回答了上一问。请完全重写："
+                            "不要把客户确认句改写成反问句，不要重复客户原话，"
+                            "请改为“确认收到 + 我方动作”，必要时最多补一个新的轻量推进点。"
+                        )
+                        return cls.generate_sales_assist_bundle(
+                            summary_json,
+                            knowledge_list,
+                            crm_context,
+                            prepared_request=retry_request,
+                        )
+                    guarded_content = cls.build_customer_answer_guard_response(summary_json, thread_fact)
+                    guarded_validation = cls.validate_sales_assist_output(guarded_content, knowledge_list, crm_context=crm_context)
+                    prompt_trace["result"] = "success_guarded"
+                    prompt_trace["post_validation_status"] = guarded_validation.get("status") or "ok"
+                    prompt_trace["post_validation_manual_review_required"] = bool(guarded_validation.get("manual_review_required"))
+                    prompt_trace["post_validation_reason"] = "customer_answer_guard"
                     return {
                         "content": guarded_content,
                         "raw_content": raw_content,
@@ -2590,6 +2900,7 @@ class IntentEngine:
     @classmethod
     def _run_llm1(cls, user_id, context):
         """内部 LLM-1 调用实现逻辑 (剥离原 slow_track_analyze 内容)"""
-        request_spec = cls.build_llm1_request(context, user_id=user_id, label="LLM1")
+        stage1_label = cls._stage1_llm_defaults().get("label") or "LLM1"
+        request_spec = cls.build_llm1_request(context, user_id=user_id, label=stage1_label)
         bundle = cls.run_llm1_request(request_spec)
         return bundle.get("summary")

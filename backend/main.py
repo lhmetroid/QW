@@ -18,6 +18,7 @@ from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from time import perf_counter
 from typing import Any
+from urllib.parse import urlparse
 from sqlalchemy import and_, or_, text, func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -69,6 +70,7 @@ SIDEBAR_ASSIST_CACHE_LOCK = threading.Lock()
 POSITIVE_FEEDBACK_STATUSES = {"useful", "adopted", "won", "advanced"}
 NEGATIVE_FEEDBACK_STATUSES = {"needs_fix", "rejected"}
 TRAINING_SAMPLE_TYPES = {"embedding_corpus", "reply_fragment_sft", "thread_reply_sft", "retrieval_pair"}
+LEGACY_SALES_KB_HOSTS = {"192.168.31.124"}
 
 def _initial_cors_allow_origins() -> list[str]:
     origins = set()
@@ -7154,6 +7156,71 @@ def _sales_kb_api_timeout_seconds() -> int:
     return max(3, _runtime_int_setting("SALES_KB_API_TIMEOUT_SECONDS", settings.SALES_KB_API_TIMEOUT_SECONDS, default=8))
 
 
+def _sales_kb_probe_and_suggestions() -> tuple[dict, list[str]]:
+    base_url = _sales_kb_api_base_url()
+    endpoint = f"{base_url}/kb-units/qa-retrieve" if base_url else ""
+    probe = {
+        "status": "error",
+        "configured": bool(base_url),
+        "reachable": False,
+        "base_url": base_url,
+        "probe_url": endpoint,
+        "timeout_seconds": settings.KB_HEALTHCHECK_TIMEOUT_SECONDS,
+    }
+    suggestions: list[str] = []
+    if not base_url:
+        suggestions.append("补齐 SALES_KB_API_BASE_URL，并指向反向代理后的 HTTPS 域名。")
+        return probe, suggestions
+
+    parsed = urlparse(base_url)
+    host = str(parsed.hostname or "").strip().lower()
+    scheme = str(parsed.scheme or "").strip().lower()
+    probe["scheme"] = scheme or "-"
+    probe["host"] = host or "-"
+    if scheme != "https":
+        suggestions.append("知识库2当前应统一走 HTTPS 反向代理域名，不要继续使用 http。")
+    if host in LEGACY_SALES_KB_HOSTS:
+        suggestions.append("知识库2不应再指向旧内网 IP，请改为 https://knowledgebase.speedasia.net。")
+    if parsed.port:
+        suggestions.append("知识库2当前反向代理入口不需要显式端口，请去掉端口号。")
+        probe["port"] = parsed.port
+    if suggestions:
+        probe["error"] = "知识库2基址仍为旧格式"
+        return probe, suggestions
+
+    try:
+        session = requests.Session()
+        session.trust_env = settings.HTTP_TRUST_ENV
+        response = session.post(
+            endpoint,
+            json={"question": "付款"},
+            timeout=settings.KB_HEALTHCHECK_TIMEOUT_SECONDS,
+        )
+        probe["http_status"] = response.status_code
+        if response.status_code != 200:
+            probe["error"] = f"HTTP {response.status_code}"
+            suggestions.append("检查 knowledgebase.speedasia.net 的反向代理、证书和 /kb-units/qa-retrieve 是否正常。")
+            return probe, suggestions
+        payload = response.json()
+        answers = payload.get("answers") if isinstance(payload, dict) else None
+        if not isinstance(answers, list):
+            probe["error"] = "响应格式不是 {answers:[...]}"
+            suggestions.append("检查知识库2 Q&A 接口返回结构，当前页面和后台都依赖 {answers:[...]}。")
+            return probe, suggestions
+        probe["status"] = "ok"
+        probe["reachable"] = True
+        probe["answer_count"] = len(answers)
+        if answers:
+            top_answer = answers[0] if isinstance(answers[0], dict) else {}
+            probe["top_kb_unit_id"] = top_answer.get("kb_unit_id")
+            probe["top_score"] = top_answer.get("score")
+        return probe, suggestions
+    except Exception as exc:
+        probe["error"] = sanitize_text(str(exc))
+        suggestions.append("检查 knowledgebase.speedasia.net 是否可从当前服务器直连，以及反向代理目标服务是否在线。")
+        return probe, suggestions
+
+
 def _sales_kb_unit_type_label(unit_type: str | None) -> str:
     mapping = {
         "customer_profile": "客户画像",
@@ -7346,6 +7413,7 @@ def _search_sales_kb_api(query_text: str | None, top_k: int = 5) -> dict:
 
 def _public_endpoint_map() -> dict[str, str]:
     base_url = _external_api_base_url()
+    sales_kb_base_url = _sales_kb_api_base_url()
     if not base_url:
         return {
             "base_url": "",
@@ -7359,6 +7427,9 @@ def _public_endpoint_map() -> dict[str, str]:
             "ai_scripts_url": "",
             "sessions_url": "",
             "qywx_callback_url": "",
+            "sales_kb_base_url": sales_kb_base_url,
+            "sales_kb_qa_url": f"{sales_kb_base_url}/kb-units/qa-retrieve" if sales_kb_base_url else "",
+            "sales_kb_docs_url": f"{sales_kb_base_url}/docs" if sales_kb_base_url else "",
         }
     return {
         "base_url": base_url,
@@ -7372,6 +7443,9 @@ def _public_endpoint_map() -> dict[str, str]:
         "ai_scripts_url": f"{base_url}/api/system/ai_scripts",
         "sessions_url": f"{base_url}/api/sessions",
         "qywx_callback_url": f"{base_url}/cb/qywx",
+        "sales_kb_base_url": sales_kb_base_url,
+        "sales_kb_qa_url": f"{sales_kb_base_url}/kb-units/qa-retrieve" if sales_kb_base_url else "",
+        "sales_kb_docs_url": f"{sales_kb_base_url}/docs" if sales_kb_base_url else "",
     }
 
 def _public_access_runtime() -> dict[str, Any]:
@@ -7580,6 +7654,17 @@ def _system_config_check() -> dict:
         "suggestions": embedding_suggestions,
     }
 
+    sales_kb_probe, sales_kb_suggestions = _sales_kb_probe_and_suggestions()
+    checks["sales_kb"] = {
+        "status": sales_kb_probe.get("status") or "error",
+        "configured": sales_kb_probe.get("configured"),
+        "url": _sales_kb_api_base_url(),
+        "endpoint": sales_kb_probe.get("probe_url"),
+        "timeout_seconds": _sales_kb_api_timeout_seconds(),
+        "probe": sales_kb_probe,
+        "suggestions": sales_kb_suggestions,
+    }
+
     def build_llm_check(name: str, api_url: str, api_key: str, model: str):
         configured = not any(_is_placeholder_value(value) for value in [api_url, api_key, model])
         headers = {"Authorization": f"Bearer {api_key}"} if api_key and not api_key.startswith("app-") else {}
@@ -7685,6 +7770,7 @@ def _system_config_check() -> dict:
     checks["runtime"] = {
         "status": "ok",
         "external_api_base_url": _external_api_base_url(),
+        "sales_kb_api_base_url": _sales_kb_api_base_url(),
         "http_trust_env": settings.HTTP_TRUST_ENV,
         "api_reply_single_model_single_style": settings.API_REPLY_SINGLE_MODEL_SINGLE_STYLE,
         "api_reply_enable_scoring": settings.API_REPLY_ENABLE_SCORING,
@@ -7755,9 +7841,22 @@ def _runtime_health() -> dict:
         if (embedding_probe.get("status") or "ok") != "ok":
             overall = "degraded"
 
+    sales_kb_probe, sales_kb_suggestions = _sales_kb_probe_and_suggestions()
+    checks["sales_kb"] = {
+        "status": sales_kb_probe.get("status") or "error",
+        "url": _sales_kb_api_base_url(),
+        "endpoint": sales_kb_probe.get("probe_url"),
+        "timeout_seconds": _sales_kb_api_timeout_seconds(),
+        "probe": sales_kb_probe,
+        "suggestions": sales_kb_suggestions,
+    }
+    if (sales_kb_probe.get("status") or "error") != "ok":
+        overall = "degraded"
+
     checks["runtime"] = {
         "status": "ok",
         "external_api_base_url": _external_api_base_url(),
+        "sales_kb_api_base_url": _sales_kb_api_base_url(),
         "http_trust_env": settings.HTTP_TRUST_ENV,
         "llm1_timeout_seconds": settings.LLM1_TIMEOUT_SECONDS,
         "llm1_compare_timeout_seconds": settings.LLM1_COMPARE_TIMEOUT_SECONDS,
@@ -9398,7 +9497,7 @@ def _build_api_day_stats(db: Session, *, day_start: datetime, day_end: datetime)
         return {
             "invocation_count": 0,
             "avg_quality_score": None,
-            "quality_score_rule": "调用次数按同会话 + 同客户节点 + 同一天去重；质量均分仅统计最后一次有效质量分",
+            "quality_score_rule": "调用次数按同会话 + 同客户节点 + 同一天去重；贴合代理分均分仅统计最后一次有效分",
         }
 
     deduped: dict[tuple[str, int | None], ApiAssistInvocation] = {}
@@ -9418,7 +9517,7 @@ def _build_api_day_stats(db: Session, *, day_start: datetime, day_end: datetime)
     return {
         "invocation_count": len(deduped),
         "avg_quality_score": avg_score,
-        "quality_score_rule": "调用次数按同会话 + 同客户节点 + 同一天去重；质量均分仅统计最后一次有效质量分，且单次质量分取知识库1/知识库2两路较高分",
+        "quality_score_rule": "调用次数按同会话 + 同客户节点 + 同一天去重；贴合代理分均分仅统计最后一次有效分，且单次贴合代理分取知识库1/知识库2两路较高分",
     }
 
 
@@ -9855,7 +9954,7 @@ def _build_trigger_record_snapshot(
         "recent_customer_messages": [_message_analytics_dict(item) for item in recent_customer_messages],
         "latest_dialog_count": len(visible_messages),
         "actual_sales_replies": _jsonable(actual_sales_replies),
-        "actual_sales_reply_text": _reply_block_text(actual_sales_replies),
+        "actual_sales_reply_text": _reply_block_text(actual_sales_replies, strip_noise=True),
     }
 
 def _create_wecom_trigger_record(
@@ -10025,7 +10124,7 @@ def _sync_wecom_trigger_record_result(
             item.result_payload = _jsonable(result)
             item.stage_status = _jsonable(result.get("stage_status") or {})
             item.actual_sales_replies = _jsonable(actual_sales_replies)
-            item.actual_sales_reply_text = _reply_block_text(actual_sales_replies)
+            item.actual_sales_reply_text = _reply_block_text(actual_sales_replies, strip_noise=True)
         item.request_status = str(request_status or item.request_status or "unknown")
         if error_message is not None:
             item.error_message = sanitize_text(error_message)
@@ -10237,15 +10336,75 @@ def _collect_actual_sales_replies(messages: list[MessageLog], anchor_message_id:
             break
     return replies
 
-def _reply_block_text(replies: list[dict] | None) -> str:
-    return "\n".join(
+_REPLY_BLOCK_MESSAGE_PLACEHOLDER_RE = re.compile(r"^\[[^\]]+消息\].*$")
+_REPLY_BLOCK_ACK_LINES = {
+    "好",
+    "好的",
+    "好的好的",
+    "嗯",
+    "嗯嗯",
+    "哦",
+    "哦哦",
+    "收到",
+    "收到啦",
+    "好滴",
+    "好滴好滴",
+    "ok",
+    "okay",
+    "okk",
+    "yes",
+}
+
+def _reply_block_lines_from_text(text: str | None) -> list[str]:
+    return [
+        sanitize_text(line.strip())
+        for line in str(text or "").splitlines()
+        if sanitize_text(line.strip())
+    ]
+
+def _reply_block_line_is_placeholder(text: str) -> bool:
+    normalized = re.sub(r"\s+", "", str(text or ""))
+    if not normalized:
+        return True
+    if _REPLY_BLOCK_MESSAGE_PLACEHOLDER_RE.fullmatch(normalized):
+        return True
+    return bool(re.fullmatch(r"\d{1,4}", normalized))
+
+def _reply_block_line_is_ack(text: str) -> bool:
+    normalized = re.sub(r"\s+", "", str(text or "")).lower()
+    if not normalized:
+        return False
+    return normalized in _REPLY_BLOCK_ACK_LINES
+
+def _clean_reply_block_text(text: str | None) -> str:
+    raw_lines = _reply_block_lines_from_text(text)
+    if not raw_lines:
+        return ""
+    substantive_lines: list[str] = []
+    fallback_lines: list[str] = []
+    for line in raw_lines:
+        if _reply_block_line_is_placeholder(line):
+            continue
+        fallback_lines.append(line)
+        if _reply_block_line_is_ack(line):
+            continue
+        substantive_lines.append(line)
+    if substantive_lines:
+        return "\n".join(substantive_lines).strip()
+    if fallback_lines:
+        return "\n".join(fallback_lines).strip()
+    return "\n".join(raw_lines).strip()
+
+def _reply_block_text(replies: list[dict] | None, *, strip_noise: bool = False) -> str:
+    text = "\n".join(
         str(item.get("content") or "").strip()
         for item in (replies or [])
         if str(item.get("content") or "").strip()
     ).strip()
+    return _clean_reply_block_text(text) if strip_noise else text
 
 def _reply_block_hash(replies: list[dict] | None) -> str | None:
-    text = _reply_block_text(replies)
+    text = _reply_block_text(replies, strip_noise=False)
     if not text:
         return None
     return hashlib.sha1(text.encode("utf-8")).hexdigest()
@@ -10396,7 +10555,7 @@ def _build_api_similarity_payload(
     if not actual_sales_replies:
         return ({
             "status": "pending_no_sales_reply",
-            "reason": "触发后尚无我方连续回复块，暂不能计算质量分。",
+            "reason": "触发后尚无我方连续回复块，暂不能计算贴合代理分。",
             "scores": [],
             "actual_sales_reply_text": "",
         }, None, "pending_no_sales_reply")
@@ -10413,20 +10572,22 @@ def _build_api_similarity_payload(
             "status": "ignored_cross_day",
             "reason": "触发后的第一条我方回复发生在次日，该次 API 调用按误触发处理，不纳入统计。",
             "scores": [],
-            "actual_sales_reply_text": _reply_block_text(actual_sales_replies),
+            "actual_sales_reply_text": _reply_block_text(actual_sales_replies, strip_noise=True),
         }, None, "ignored_cross_day")
 
+    actual_reply_text = _reply_block_text(actual_sales_replies, strip_noise=True)
     similarity = IntentEngine.score_reply_similarity_to_sales_block(
         kb1_reply_text=result_payload.get("reply_reference"),
         kb2_reply_text=result_payload.get("reply_reference_compare"),
-        actual_sales_reply_text=_reply_block_text(actual_sales_replies),
+        actual_sales_reply_text=actual_reply_text,
         summary_json={
             "topic": result_payload.get("topic"),
             "core_demand": result_payload.get("core_demand"),
             "status": result_payload.get("status"),
         },
     )
-    similarity["quality_score_rule"] = "取知识库1/知识库2两路相似度较高者作为该次调用质量分"
+    similarity["actual_sales_reply_text"] = actual_reply_text
+    similarity["quality_score_rule"] = "取知识库1/知识库2两路贴合代理分较高者作为单次贴合代理分"
     best_score = similarity.get("best_score")
     return similarity, _decimal_score(best_score) if best_score is not None else None, similarity.get("status") or "scored"
 
@@ -10452,7 +10613,7 @@ def _refresh_api_invocation_quality(
         triggered_at=item.triggered_at,
     )
     item.actual_sales_replies = _jsonable(actual_sales_replies)
-    item.actual_sales_reply_text = _reply_block_text(actual_sales_replies)
+    item.actual_sales_reply_text = _reply_block_text(actual_sales_replies, strip_noise=True)
     item.actual_sales_reply_hash = reply_hash
     item.quality_similarity = _jsonable(similarity_payload)
     item.quality_score = best_score
@@ -13165,6 +13326,7 @@ ANALYTICS_QUALITY_SCORE_KEYS = {
     "step_6_main_kb2_score",
     "step_6_compare_kb1_score",
     "step_6_compare_kb2_score",
+    "manual_business_score",
     "manual_quality_score",
     "step_7_kb1_score",
     "step_7_kb2_score",
@@ -13395,14 +13557,127 @@ def _analytics_crm_summary(result: dict | None) -> str:
         parts.append(f"最近跟进：{recent_followup}")
     return "\n".join(parts)
 
+def _manual_business_validation_payload(result: dict | None) -> dict:
+    payload = result or {}
+    kb1 = payload.get("knowledge_v2") if isinstance(payload.get("knowledge_v2"), dict) else {}
+    kb2 = payload.get("knowledge_external_api") if isinstance(payload.get("knowledge_external_api"), dict) else {}
+    return {
+        "hits": [
+            *(kb1.get("hits") or []),
+            *(kb2.get("hits") or []),
+        ],
+        "thread_business_fact": payload.get("thread_business_fact") if isinstance(payload.get("thread_business_fact"), dict) else None,
+        "manual_review_required": False,
+    }
+
+def _manual_business_score_text_tokens(result: dict | None) -> tuple[str, str]:
+    payload = result or {}
+    thread_fact = payload.get("thread_business_fact") if isinstance(payload.get("thread_business_fact"), dict) else {}
+    merged_facts = thread_fact.get("merged_facts") if isinstance(thread_fact.get("merged_facts"), dict) else {}
+    topic = sanitize_text(str(payload.get("topic") or "").strip())
+    core_demand = sanitize_text(str(payload.get("core_demand") or "").strip())
+    latest_customer = sanitize_text(str(merged_facts.get("latest_customer_message") or "").strip())
+    focus_text = " ".join(part for part in [topic, core_demand, latest_customer] if part).strip()
+    return focus_text, latest_customer
+
+def _score_manual_business_reply(reply_text: str | None, result: dict | None) -> tuple[int | None, str]:
+    clean_text = _clean_reply_block_text(reply_text)
+    if not clean_text:
+        return None, "-"
+    payload = result or {}
+    crm_context = payload.get("crm_info") if isinstance(payload.get("crm_info"), dict) else {}
+    validation = IntentEngine.validate_sales_assist_output(
+        clean_text,
+        _manual_business_validation_payload(payload),
+        crm_context=crm_context,
+    )
+    warnings = [str(item or "").strip() for item in (validation.get("warnings") or []) if str(item or "").strip()]
+    blocking = [str(item or "").strip() for item in (validation.get("blocking_issues") or []) if str(item or "").strip()]
+    soft_warning_patterns = [
+        "知识检索本身已标记人工复核",
+    ]
+    material_warnings = [
+        item for item in warnings
+        if not any(pattern in item for pattern in soft_warning_patterns)
+    ]
+    focus_text, latest_customer = _manual_business_score_text_tokens(payload)
+    overlap_score = IntentEngine._text_overlap_ratio(clean_text, latest_customer or focus_text)
+    domain_tokens = ["发", "安排", "确认", "报价", "付款", "开票", "交稿", "同步", "修改", "跟进", "看", "交付", "邮件", "资料"]
+    explicit_tokens = ["下班前", "今天", "明天", "周一", "稍后", "马上", "一会", "收到后", "可以", "没问题", "按"]
+    focus_tokens = [token for token in ["报价", "交付", "资料", "付款", "开票", "人数", "预算", "老师", "档期", "原文", "PPT", "翻译", "logo", "文件"] if token in focus_text and token in clean_text]
+
+    intent_score = 20
+    if overlap_score >= 0.08 or focus_tokens:
+        intent_score += 5
+    if overlap_score >= 0.18 or len(focus_tokens) >= 2:
+        intent_score += 5
+    if any(token in clean_text for token in domain_tokens + explicit_tokens):
+        intent_score += 5
+    intent_score = max(0, min(35, intent_score))
+
+    next_step_score = 8
+    if any(token in clean_text for token in domain_tokens):
+        next_step_score += 6
+    if any(token in clean_text for token in ["下班前", "今天", "明天", "周一", "稍后", "马上", "一会", "收到后", "后续"]):
+        next_step_score += 4
+    if "？" in clean_text or "?" in clean_text or any(token in clean_text for token in ["发我", "提供", "确认", "告诉我", "看需不需要"]):
+        next_step_score += 2
+    next_step_score = max(0, min(20, next_step_score))
+
+    factual_score = 18
+    for item in blocking:
+        if "没有命中结构化 pricing_rule" in item:
+            factual_score -= 3
+        elif "能力/流程承诺" in item:
+            factual_score -= 4
+        else:
+            factual_score -= 8
+    factual_score -= min(6, len(material_warnings) * 2)
+    factual_score = max(0, min(20, factual_score))
+
+    risk_score = 12
+    if not blocking and not material_warnings:
+        risk_score += 3
+    for item in blocking:
+        if "没有命中结构化 pricing_rule" in item:
+            risk_score -= 2
+        elif "能力/流程承诺" in item:
+            risk_score -= 3
+        else:
+            risk_score -= 5
+    risk_score -= min(4, len(material_warnings) * 2)
+    risk_score = max(0, min(15, risk_score))
+
+    compact_len = len(re.sub(r"\s+", "", clean_text))
+    line_count = len(_reply_block_lines_from_text(clean_text))
+    wechat_score = 8
+    if 6 <= compact_len <= 48:
+        wechat_score += 2
+    elif compact_len > 90 or compact_len < 3:
+        wechat_score -= 2
+    if line_count >= 4:
+        wechat_score -= 1
+    wechat_score = max(0, min(10, wechat_score))
+
+    total_score = intent_score + next_step_score + factual_score + risk_score + wechat_score
+    reason = _analytics_join_lines([
+        f"意图命中：{intent_score}/35",
+        f"下一步推进：{next_step_score}/20",
+        f"事实正确：{factual_score}/20",
+        f"风险控制：{risk_score}/15",
+        f"微信表达：{wechat_score}/10",
+        f"风险提示：{sanitize_text('；'.join((blocking + material_warnings)[:3])) or '无明显结构化风险'}",
+    ])
+    return total_score, reason
+
 def _analytics_step7_summary(result: dict | None) -> str:
     payload = result or {}
     similarity = payload.get("api_quality_similarity") if isinstance(payload.get("api_quality_similarity"), dict) else {}
     if similarity:
         return "\n".join([
             f"状态：{_analytics_status_label(similarity.get('status'))}",
-            f"统计规则：{sanitize_text(str(similarity.get('quality_score_rule') or '').strip()) or '-'}",
-            f"最佳质量分：{sanitize_text(str(similarity.get('best_score') or '-').strip())}",
+            f"贴合规则：{sanitize_text(str(similarity.get('quality_score_rule') or '').strip()) or '-'}",
+            f"最佳贴合代理分：{sanitize_text(str(similarity.get('best_score') or '-').strip())}",
         ])
     validation = payload.get("assist_validation") if isinstance(payload.get("assist_validation"), dict) else {}
     if validation:
@@ -13463,10 +13738,10 @@ def _build_trigger_analytics_row(
     customer_bundle = recent_customer_messages or [item for item in all_input_messages if str(item.get("sender_type") or "").strip() == "customer"]
     recent_customer_last, recent_customer_full, recent_customer_count = _analytics_recent_customer_bundle(customer_bundle)
     recent_dialog_last, recent_dialog_full, recent_dialog_count = _analytics_recent_dialog_bundle(all_input_messages)
-    manual_reply_full = sanitize_text(str(
+    manual_reply_full = _clean_reply_block_text(str(
         ((result.get("api_quality_similarity") or {}).get("actual_sales_reply_text"))
         or manual_reply_text
-        or _reply_block_text(result.get("actual_sales_replies") or [])
+        or _reply_block_text(result.get("actual_sales_replies") or [], strip_noise=True)
         or ""
     ).strip()) or "-"
     candidates = result.get("reply_style_results_v2") if isinstance(result.get("reply_style_results_v2"), list) else []
@@ -13520,9 +13795,10 @@ def _build_trigger_analytics_row(
     api_quality_similarity = result.get("api_quality_similarity") if isinstance(result.get("api_quality_similarity"), dict) else {}
     api_quality_reason = _analytics_join_lines([
         f"状态：{_analytics_status_label(api_quality_similarity.get('status'))}",
-        f"统计规则：{sanitize_text(str(api_quality_similarity.get('quality_score_rule') or '').strip()) or '-'}",
-        f"最佳质量分：{sanitize_text(str(api_quality_similarity.get('best_score') or '-').strip())}",
+        f"贴合规则：{sanitize_text(str(api_quality_similarity.get('quality_score_rule') or '').strip()) or '-'}",
+        f"最佳贴合代理分：{sanitize_text(str(api_quality_similarity.get('best_score') or '-').strip())}",
     ], fallback="-")
+    manual_business_score, manual_business_reason = _score_manual_business_reply(manual_reply_full, result)
     annotation_map = _normalize_quality_annotation_map(quality_annotations)
     return {
         "row_id": row_id,
@@ -13579,6 +13855,8 @@ def _build_trigger_analytics_row(
         "step_6_compare_kb2_score_reason": compare_kb2_reason,
         "step_6_time_ms": (((node_timings or {}).get("llm2") or {}).get("total_ms")),
         "step_7_content": _analytics_step7_summary(result),
+        "manual_business_score": manual_business_score,
+        "manual_business_reason": manual_business_reason,
         "manual_quality_score": api_quality_score,
         "manual_quality_reason": api_quality_reason,
         "step_7_kb1_score": sim_kb1.get("score"),
@@ -13599,6 +13877,7 @@ def _analytics_score_averages(rows: list[dict]) -> dict[str, float | None]:
         "step_6_main_kb2_score",
         "step_6_compare_kb1_score",
         "step_6_compare_kb2_score",
+        "manual_business_score",
         "manual_quality_score",
         "step_7_kb1_score",
         "step_7_kb2_score",

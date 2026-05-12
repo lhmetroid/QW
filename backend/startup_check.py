@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import os
 import sys
+from urllib.parse import urlparse
+
+import requests
 
 from config import settings
+
+
+LEGACY_SALES_KB_HOSTS = {"192.168.31.124"}
 
 
 def is_placeholder(value: object) -> bool:
@@ -18,6 +24,41 @@ def normalized_embedding_provider() -> str:
     if provider in {"dify", "dify_app"}:
         return "dify"
     return "openai_compatible"
+
+
+def validate_sales_kb_base_url() -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    base_url = str(settings.SALES_KB_API_BASE_URL or "").strip().rstrip("/")
+    if not base_url:
+        return ["SALES_KB_API_BASE_URL"], warnings
+
+    parsed = urlparse(base_url)
+    host = str(parsed.hostname or "").strip().lower()
+    scheme = str(parsed.scheme or "").strip().lower()
+    if scheme != "https":
+        errors.append("SALES_KB_API_BASE_URL 必须使用 https://knowledgebase.speedasia.net")
+    if host in LEGACY_SALES_KB_HOSTS:
+        errors.append("SALES_KB_API_BASE_URL 仍指向旧内网 IP，请改为 https://knowledgebase.speedasia.net")
+    if parsed.port:
+        warnings.append("SALES_KB_API_BASE_URL 当前不需要显式端口号，请改为不带端口的反向代理域名")
+    try:
+        session = requests.Session()
+        session.trust_env = settings.HTTP_TRUST_ENV
+        response = session.post(
+            f"{base_url}/kb-units/qa-retrieve",
+            json={"question": "付款"},
+            timeout=settings.KB_HEALTHCHECK_TIMEOUT_SECONDS,
+        )
+        if response.status_code != 200:
+            warnings.append(f"知识库2 Q&A 探测返回 HTTP {response.status_code}，页面运行状态会显示异常")
+        else:
+            payload = response.json()
+            if not isinstance(payload, dict) or not isinstance(payload.get("answers"), list):
+                warnings.append("知识库2 Q&A 探测返回结构不是 {answers:[...]}，请检查反向代理目标服务")
+    except Exception as exc:
+        warnings.append(f"知识库2 Q&A 探测失败：{exc}")
+    return errors, warnings
 
 
 def main() -> int:
@@ -46,9 +87,14 @@ def main() -> int:
     if normalized_embedding_provider() != "ollama":
         required["EMBEDDING_API_KEY"] = settings.EMBEDDING_API_KEY
     required_missing.extend(name for name, value in required.items() if is_placeholder(value))
+    sales_kb_errors, sales_kb_warnings = validate_sales_kb_base_url()
+    required_missing.extend(sales_kb_errors)
 
     if required_missing:
-        print("启动失败：知识库核心配置缺失或仍为占位值: " + ", ".join(required_missing), file=sys.stderr)
+        messages: list[str] = []
+        if required_missing:
+            messages.append("缺失或仍为占位值: " + ", ".join(required_missing))
+        print("启动失败：知识库核心配置错误。 " + "；".join(messages), file=sys.stderr)
         return 1
 
     warnings: list[str] = []
@@ -80,6 +126,7 @@ def main() -> int:
         warnings.append("企微会话存档 SDK/私钥/CHATDATA_SECRET 未完整配置，同步今日真实记录不可用")
     if settings.ENABLE_ARCHIVE_POLLING and not archive_ready:
         warnings.append("ENABLE_ARCHIVE_POLLING=true 但会话存档配置不完整，后台会跳过自动轮询")
+    warnings.extend(sales_kb_warnings)
 
     print("知识库核心启动配置检查通过")
     for item in warnings:

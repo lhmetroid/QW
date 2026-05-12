@@ -6,6 +6,7 @@ import base64
 import hashlib
 import threading
 import time
+import re
 from datetime import datetime
 from config import settings
 
@@ -20,6 +21,19 @@ class ArchiveService:
     
     _sdk = None
     _sync_lock = threading.Lock()
+    _sdk_error_messages = {
+        10000: "参数错误，请检查 SDK 初始化与调用参数",
+        10001: "网络错误，腾讯会话存档接口请求失败",
+        10002: "数据解析失败",
+        10003: "系统失败",
+        10004: "密钥对版本或私钥解析失败",
+        10005: "fileid 错误",
+        10006: "拉取媒体数据失败",
+        10007: "找不到消息加密版本，需确认私钥是否已更新",
+        10008: "encrypt_key 错误",
+        10009: "IP 不合法",
+        10010: "数据过期或不可用",
+    }
 
     @staticmethod
     def _is_placeholder(value: object) -> bool:
@@ -37,6 +51,10 @@ class ArchiveService:
     @classmethod
     def _sync_lock_path(cls) -> str:
         return os.path.join(os.path.dirname(__file__), "archive_sync.lock")
+
+    @classmethod
+    def _log_file_path(cls) -> str:
+        return os.path.join(os.path.dirname(__file__), "logs", "app.log")
 
     @classmethod
     def _resolve_private_key_path(cls) -> str:
@@ -206,6 +224,161 @@ class ArchiveService:
         )
 
     @classmethod
+    def _format_sdk_error(cls, code: int) -> str:
+        return cls._sdk_error_messages.get(int(code), f"未知 SDK 错误码 {code}")
+
+    @staticmethod
+    def _format_dt(ts: float | None) -> str | None:
+        if ts is None:
+            return None
+        try:
+            return datetime.fromtimestamp(float(ts)).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return None
+
+    @classmethod
+    def _read_seq_cursor_info(cls) -> dict:
+        path = cls._seq_file_path()
+        info = {
+            "path": path,
+            "exists": os.path.exists(path),
+            "value": None,
+            "updated_at": None,
+        }
+        if not info["exists"]:
+            return info
+        try:
+            with open(path, "r", encoding="utf-8") as sf:
+                info["value"] = sf.read().strip() or None
+        except Exception as exc:
+            info["read_error"] = str(exc)
+        try:
+            info["updated_at"] = cls._format_dt(os.path.getmtime(path))
+        except OSError:
+            pass
+        return info
+
+    @classmethod
+    def _read_lock_info(cls) -> dict:
+        path = cls._sync_lock_path()
+        info = {
+            "path": path,
+            "exists": os.path.exists(path),
+            "pid_text": None,
+            "updated_at": None,
+            "age_seconds": None,
+            "stale_hint": False,
+        }
+        if not info["exists"]:
+            return info
+        try:
+            with open(path, "r", encoding="utf-8") as lf:
+                info["pid_text"] = lf.read().strip() or None
+        except Exception as exc:
+            info["read_error"] = str(exc)
+        try:
+            mtime = os.path.getmtime(path)
+            info["updated_at"] = cls._format_dt(mtime)
+            info["age_seconds"] = round(max(0.0, time.time() - mtime), 2)
+            info["stale_hint"] = info["age_seconds"] > 120
+        except OSError:
+            pass
+        return info
+
+    @classmethod
+    def _tail_archive_sync_events(cls, limit: int = 5) -> list[dict]:
+        path = cls._log_file_path()
+        if not os.path.exists(path):
+            return []
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+                lines = fh.readlines()
+        except Exception:
+            return []
+
+        matched: list[dict] = []
+        pattern = re.compile(r"ARCHIVE_SYNC_(SUCCESS|ERROR|SKIPPED)\s+(.+)$")
+        event_labels = {
+            "SUCCESS": "同步成功",
+            "ERROR": "同步失败",
+            "SKIPPED": "同步跳过",
+        }
+
+        for raw_line in reversed(lines):
+            line = raw_line.strip()
+            if "ARCHIVE_SYNC_" not in line:
+                continue
+            match = pattern.search(line)
+            if not match:
+                continue
+            event = match.group(1)
+            payload_raw = match.group(2)
+            payload = {}
+            try:
+                payload = json.loads(payload_raw)
+            except Exception:
+                payload = {"raw_payload": payload_raw}
+            timestamp = line.split(" | ", 1)[0].strip() if " | " in line else ""
+            matched.append({
+                "timestamp": timestamp,
+                "event": event,
+                "event_label": event_labels.get(event, event),
+                "payload": payload,
+                "raw_line": line,
+            })
+            if len(matched) >= limit:
+                break
+        return list(reversed(matched))
+
+    @classmethod
+    def get_runtime_diagnostics(cls) -> dict:
+        config = cls.config_status()
+        seq_cursor = cls._read_seq_cursor_info()
+        process_lock = cls._read_lock_info()
+        recent_events = cls._tail_archive_sync_events(limit=5)
+        last_event = recent_events[-1] if recent_events else None
+        last_payload = (last_event or {}).get("payload") or {}
+
+        suggestions: list[str] = []
+        if not config.get("ready"):
+            suggestions.append("请先补齐企微会话存档所需配置，再重试同步。")
+        sdk_error_code = last_payload.get("sdk_error_code")
+        if sdk_error_code == 10001:
+            suggestions.append("腾讯会话存档接口网络失败：请检查服务器出网、代理、防火墙、DNS 与腾讯侧 IP 白名单。")
+        elif sdk_error_code == 10009:
+            suggestions.append("腾讯侧返回 IP 不合法：请把当前服务器公网 IP 加入企业微信会话存档白名单。")
+        elif sdk_error_code == 10007:
+            suggestions.append("私钥版本不匹配：请重新下载并替换企业微信会话存档私钥。")
+        if process_lock.get("stale_hint"):
+            suggestions.append("发现同步锁文件长时间未更新，建议检查是否存在卡死进程，必要时重启服务后重试。")
+        if not recent_events:
+            suggestions.append("尚未发现最近同步日志，请先点击一次“同步今日真实记录”生成链路日志。")
+
+        overall = "ok"
+        summary = "企微会话存档链路看起来正常。"
+        if not config.get("ready"):
+            overall = "error"
+            summary = "企微会话存档基础配置不完整，当前无法正常同步。"
+        elif last_event and last_event.get("event") == "ERROR":
+            overall = "error"
+            summary = "最近一次企微会话存档同步失败，请根据错误码和建议继续排查。"
+        elif process_lock.get("exists"):
+            overall = "warning"
+            summary = "检测到同步锁文件存在，若持续不消失，可能有并发同步或残留锁。"
+
+        return {
+            "status": overall,
+            "summary": summary,
+            "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "archive_sdk": config,
+            "seq_cursor": seq_cursor,
+            "process_lock": process_lock,
+            "last_sync_event": last_event,
+            "recent_sync_events": recent_events,
+            "suggestions": suggestions,
+        }
+
+    @classmethod
     def sync_today_data(cls, session_id_filter: str | None = None):
         """全量增量拉取企微会话；支持按会话过滤返回结果，已落库消息不会重复写入。"""
         from database import SessionLocal, MessageLog
@@ -302,7 +475,16 @@ class ArchiveService:
                 ret_get = sdk.GetChatData(ctypes.c_void_p(client_ptr), ctypes.c_uint64(current_seq), ctypes.c_uint32(100), b"", b"", 10, ctypes.c_void_p(chat_data_slice))
                 cls._accumulate_timing(timings_ms, "fetch_chat_data_ms", fetch_started)
                 if ret_get != 0:
-                    break
+                    timings_ms["total_ms"] = round((time.perf_counter() - total_started) * 1000, 2)
+                    result = {
+                        "status": "error",
+                        "msg": f"腾讯会话存档拉取失败: {cls._format_sdk_error(ret_get)}",
+                        "sdk_error_code": int(ret_get),
+                        "current_seq": current_seq,
+                        "timings_ms": timings_ms,
+                    }
+                    cls._log_sync_result("ERROR", {"session_id_filter": session_id_filter, **result})
+                    return result
 
                 p_slice = ctypes.cast(ctypes.c_void_p(chat_data_slice), ctypes.POINTER(FinanceSlice))
                 raw_json_bytes = ctypes.string_at(p_slice.contents.buf, p_slice.contents.len)

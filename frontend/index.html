@@ -151,10 +151,14 @@
                 <div class="text-xl font-bold text-slate-900">智能销售辅助工作台</div>
                 <div class="text-xs text-slate-500 mt-1">左侧为企业微信实时意图分析，右侧为知识库导入、审核、发布和检索治理。</div>
             </div>
-            <nav class="grid grid-cols-2 gap-3 min-w-[420px]">
+            <nav class="grid grid-cols-3 gap-3 min-w-[640px]">
                 <button id="main-tab-wecom" onclick="switchMainApp('wecom')" title="进入企业微信实时智能页面，用于查看真实会话、提取销售意图、生成建议话术。" aria-label="企微实时智能：进入真实会话分析页面" class="rounded-2xl border px-5 py-3 text-left transition bg-blue-600 text-white border-blue-600 shadow-sm">
                     <div class="text-base font-bold">企微实时智能</div>
                     <div class="text-xs opacity-85 mt-1">会话同步、意图识别、客户画像、销售建议</div>
+                </button>
+                <button id="main-tab-analytics" onclick="switchMainApp('analytics')" title="进入企微智能回复统计分析页面，用于按触发逐次查看7步链路、耗时、评分与人工回复。" aria-label="企微智能回复统计分析：进入逐触发统计分析页面" class="rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300">
+                    <div class="text-base font-bold">企微智能回复统计分析</div>
+                    <div class="text-xs text-slate-500 mt-1">按触发逐条查看步骤内容、耗时、质量分与人工回复</div>
                 </button>
                 <button id="main-tab-kb" onclick="switchMainApp('kb')" title="进入知识库管理页面，用于导入、查看、审核、发布、检索和质量治理。" aria-label="知识库管理：进入知识库管理页面" class="rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300">
                     <div class="text-base font-bold">知识库管理</div>
@@ -180,6 +184,9 @@
             <button id="sync-btn" onclick="syncRealData()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center justify-center space-x-2">
                 <svg id="sync-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                 <span>同步今日真实记录</span>
+            </button>
+            <button id="sync-diagnostic-btn" onclick="checkArchiveSyncStatus()" class="w-full py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg shadow-sm transition-all border border-slate-200 flex items-center justify-center space-x-2">
+                <span>检查同步环境</span>
             </button>
 
             <!-- 精度状态条 V1.4.25 -->
@@ -279,6 +286,51 @@
             <div id="kb-tabs" class="px-6 pb-3 flex flex-wrap gap-2 text-xs"></div>
         </div>
         <div id="kb-body" class="flex-1 overflow-hidden"></div>
+    </main>
+
+    <main id="app-analytics" class="hidden flex-1 flex flex-col bg-slate-50 overflow-hidden">
+        <div class="shrink-0 border-b bg-white">
+            <div class="px-6 pt-5 pb-4 flex flex-wrap items-end justify-between gap-4">
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900">企微智能回复统计分析</h1>
+                    <p class="text-xs text-slate-500 mt-1">按触发逐条查看 7 个步骤内容、耗时、知识库分路、模型分路、评分与人工回复。</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">返回企微实时智能</button>
+                    <button onclick="loadWecomTriggerAnalytics(true)" class="px-4 py-2 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600">刷新统计</button>
+                </div>
+            </div>
+            <div class="px-6 pb-4 grid grid-cols-1 xl:grid-cols-[180px_180px_220px_auto] gap-3 items-end">
+                <label class="block">
+                    <span class="block text-[11px] font-bold text-slate-600 mb-1">开始日期</span>
+                    <input id="analytics-start-date" type="date" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </label>
+                <label class="block">
+                    <span class="block text-[11px] font-bold text-slate-600 mb-1">结束日期</span>
+                    <input id="analytics-end-date" type="date" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </label>
+                <label class="block">
+                    <span class="block text-[11px] font-bold text-slate-600 mb-1">来源</span>
+                    <select id="analytics-source-filter" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <option value="api,web_manual,test">全部来源</option>
+                        <option value="api">仅 API触发</option>
+                        <option value="web_manual">仅 网页人工触发</option>
+                        <option value="test">仅 测试触发</option>
+                        <option value="api,web_manual">API + 网页人工</option>
+                    </select>
+                </label>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="loadWecomTriggerAnalytics(true)" class="px-4 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100">查询</button>
+                    <button onclick="resetWecomAnalyticsFilters()" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">重置</button>
+                    <div id="analytics-summary-strip" class="flex-1 min-w-[280px] text-[11px] text-slate-500"></div>
+                </div>
+            </div>
+        </div>
+        <div class="flex-1 overflow-hidden">
+            <div id="analytics-table-wrap" class="h-full overflow-auto px-6 py-4">
+                <div class="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">加载统计中...</div>
+            </div>
+        </div>
     </main>
 
     <script>
@@ -428,6 +480,7 @@
 
         const MAIN_APP_LABELS = {
             wecom: '企微实时智能',
+            analytics: '企微智能回复统计分析',
             kb: '知识库管理'
         };
         const AI_SCRIPT_LABELS = {
@@ -449,6 +502,16 @@
         let uiRuntimeConfig = {
             wecomRecentMessageLimit: 6,
         };
+        let analyticsState = {
+            initialized: false,
+            loading: false,
+            rows: [],
+            summary: {row_count: 0, score_averages: {}},
+            filters: {start_date: '', end_date: '', sources: 'api,web_manual,test'},
+            qualityAnnotationOptions: [],
+        };
+        const DEFAULT_ANALYTICS_QUALITY_OPTIONS = ['这条回复不好', 'AI 太长', '没有正面报价', '追问太多', '不够像销售', '好样本'];
+        let analyticsQualityPopoverState = null;
         const defaultCurrentUserTitle = document.getElementById('current-user-title')?.innerText || '';
         const defaultStatusText = document.getElementById('status-text')?.innerText || '';
         const defaultAnalysisContent = document.getElementById('analysis-content')?.innerHTML || '';
@@ -517,7 +580,7 @@
                 <div class="font-bold text-slate-700 mb-1">所选日期 ${safeText(selectedSessionFilterDate)}</div>
                 <div class="flex flex-wrap gap-2">
                     ${renderStatusPill(`当日涉及调用节点 ${count}`, count ? 'blue' : 'slate')}
-                    ${renderStatusPill(`AI质量相似度平均分 ${avgText}`, avg !== null && avg !== undefined ? scoreTone(avg) : 'slate')}
+                    ${renderStatusPill(`AI贴合代理分平均 ${avgText}`, avg !== null && avg !== undefined ? scoreTone(avg) : 'slate')}
                     ${degraded ? renderStatusPill('统计已降级', 'amber') : ''}
                 </div>
                 <div class="mt-1 text-[10px] text-slate-400">${safeText(sessionDayStats?.quality_score_rule || '仅统计当日涉及调用节点')}</div>
@@ -694,7 +757,7 @@
                         </div>
                         <div class="text-[9px] text-slate-400 mt-1 pointer-events-none">
                             ${new Date(s.last_msg).toLocaleTimeString()} · 真实消息
-                            ${Number(s.api_invocation_count || 0) > 0 ? ` · 当日涉及调用${s.api_avg_quality_score !== null && s.api_avg_quality_score !== undefined ? ` · 质量均分 ${safeText(s.api_avg_quality_score)}` : ''}` : ''}
+                            ${Number(s.api_invocation_count || 0) > 0 ? ` · 当日涉及调用${s.api_avg_quality_score !== null && s.api_avg_quality_score !== undefined ? ` · 贴合代理均分 ${safeText(s.api_avg_quality_score)}` : ''}` : ''}
                         </div>
                     </div>
                 `).join('');
@@ -964,7 +1027,7 @@
             if (!['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) {
                 el.classList.add('help-inline');
             }
-            el.title = finalTip;
+            el.removeAttribute('title');
             if (label) {
                 el.setAttribute('aria-label', `${label}：${finalTip}`);
             }
@@ -986,21 +1049,29 @@
         }
 
         function switchMainApp(app) {
-            const normalized = app === 'kb' ? 'kb' : 'wecom';
+            const normalized = app === 'kb' ? 'kb' : (app === 'analytics' ? 'analytics' : 'wecom');
             document.getElementById('app-wecom')?.classList.toggle('hidden', normalized !== 'wecom');
+            document.getElementById('app-analytics')?.classList.toggle('hidden', normalized !== 'analytics');
             document.getElementById('app-kb')?.classList.toggle('hidden', normalized !== 'kb');
             const wecomTab = document.getElementById('main-tab-wecom');
+            const analyticsTab = document.getElementById('main-tab-analytics');
             const kbTab = document.getElementById('main-tab-kb');
-            if (wecomTab && kbTab) {
+            if (wecomTab && analyticsTab && kbTab) {
                 wecomTab.className = normalized === 'wecom'
                     ? 'rounded-2xl border px-5 py-3 text-left transition bg-blue-600 text-white border-blue-600 shadow-sm'
                     : 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-blue-50 hover:border-blue-300';
+                analyticsTab.className = normalized === 'analytics'
+                    ? 'rounded-2xl border px-5 py-3 text-left transition bg-amber-500 text-white border-amber-500 shadow-sm'
+                    : 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300';
                 kbTab.className = normalized === 'kb'
                     ? 'rounded-2xl border px-5 py-3 text-left transition bg-emerald-600 text-white border-emerald-600 shadow-sm'
                     : 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300';
             }
             if (normalized === 'kb') {
                 openKnowledgeAdmin(kbState.tab || 'documents');
+            } else if (normalized === 'analytics') {
+                history.replaceState(null, '', `${window.location.pathname}#analytics`);
+                loadWecomTriggerAnalytics();
             } else {
                 history.replaceState(null, '', window.location.pathname);
             }
@@ -1019,6 +1090,562 @@
                 const tip = tooltipFor(label) || tooltipFor(placeholder) || el.getAttribute('title') || placeholder;
                 if (tip) setHelpAttributes(el, label || placeholder, tip);
             });
+        }
+
+        function todayIsoDate() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function ensureWecomAnalyticsFilters() {
+            if (analyticsState.initialized) return;
+            const today = todayIsoDate();
+            analyticsState.filters.start_date = analyticsState.filters.start_date || today;
+            analyticsState.filters.end_date = analyticsState.filters.end_date || today;
+            document.getElementById('analytics-start-date').value = analyticsState.filters.start_date;
+            document.getElementById('analytics-end-date').value = analyticsState.filters.end_date;
+            document.getElementById('analytics-source-filter').value = analyticsState.filters.sources;
+            analyticsState.initialized = true;
+        }
+
+        function resetWecomAnalyticsFilters() {
+            analyticsState.initialized = false;
+            ensureWecomAnalyticsFilters();
+            loadWecomTriggerAnalytics(true);
+        }
+
+        function analyticsAvgText(value) {
+            return value === null || value === undefined ? '--' : Number(value).toFixed(1);
+        }
+
+        function analyticsMostCommonValue(rows, key, fallback = '') {
+            const counts = new Map();
+            (rows || []).forEach(row => {
+                const value = rawText(row?.[key] || '').trim();
+                if (!value) return;
+                counts.set(value, (counts.get(value) || 0) + 1);
+            });
+            let bestValue = fallback;
+            let bestCount = 0;
+            counts.forEach((count, value) => {
+                if (count > bestCount) {
+                    bestValue = value;
+                    bestCount = count;
+                }
+            });
+            return bestValue || fallback;
+        }
+
+        function analyticsAverageValue(rows, key) {
+            const values = [];
+            (rows || []).forEach(row => {
+                const raw = row?.[key];
+                if (raw === null || raw === undefined || raw === '') return;
+                const num = Number(raw);
+                if (!Number.isFinite(num)) return;
+                values.push(num);
+            });
+            if (!values.length) return null;
+            return values.reduce((sum, value) => sum + value, 0) / values.length;
+        }
+
+        function translateAnalyticsStatus(value) {
+            const raw = rawText(value || '').trim();
+            if (!raw) return '-';
+            const map = {
+                success: '成功',
+                done: '已完成',
+                queued: '排队中',
+                running: '执行中',
+                error: '失败',
+                empty: '无可用数据',
+                ok: '正常',
+                scored: '已生成质量分',
+                pending_no_sales_reply: '待销售后续回复',
+                pending_no_sales_reply_old: '待销售后续回复',
+                ignored_cross_day: '跨天回复不计统计',
+                reused_inflight: '复用进行中任务',
+                manual_review_required: '需人工复核',
+                low_confidence: '低置信度',
+                failed_no_content: '生成为空',
+                not_configured: '未配置',
+                not_started: '未开始',
+                skipped_no_query: '缺少检索问题，已跳过',
+                skipped_missing_knowledge: '缺少知识证据，已跳过',
+                skipped_api_isolated: 'API链路未执行对比模型',
+                connection_failed: '连接失败'
+            };
+            return map[raw] || raw;
+        }
+
+        function formatAnalyticsMs(value) {
+            if (value === null || value === undefined || value === '') return '-';
+            const num = Number(value);
+            if (!Number.isFinite(num)) return '-';
+            return `${(num / 1000).toFixed(2)}秒`;
+        }
+
+        function analyticsCellText(text) {
+            const raw = rawText(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            const lines = raw.split('\n').map(line => line.replace(/\s+/g, ' ').trim()).filter(Boolean);
+            return lines.join('\n') || '-';
+        }
+
+        function analyticsLineCount(text) {
+            const compact = analyticsCellText(text);
+            return compact === '-' ? 0 : compact.split('\n').filter(Boolean).length;
+        }
+
+        function renderAnalyticsClampedText(fullText, extraClass = '', maxLines = 3) {
+            const full = analyticsCellText(fullText);
+            return `<div class="text-[11px] leading-5 break-words ${extraClass}" style="-webkit-line-clamp:${maxLines};line-clamp:${maxLines};display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;" title="${safeText(full)}">${safeText(full)}</div>`;
+        }
+
+        function renderAnalyticsTextCell(text, extraClass = '') {
+            return renderAnalyticsClampedText(text, extraClass, 3);
+        }
+
+        function renderAnalyticsCopyableIdCell(value) {
+            const full = analyticsCellText(value);
+            return `
+                <div class="max-w-[120px] space-y-1">
+                    <div class="font-mono text-[10px] leading-4 break-all text-slate-600" style="-webkit-line-clamp:3;line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;" title="${safeText(full)}">${safeText(full)}</div>
+                    <button type="button" onclick="copyTextFromEncoded('${encodedArg(full)}')" class="inline-flex items-center rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50">复制</button>
+                </div>`;
+        }
+
+        function renderAnalyticsSourceTriggerCell(row) {
+            const source = analyticsCellText(row.source_label);
+            const trigger = analyticsCellText(row.trigger_label);
+            return `
+                <div class="min-w-[92px] text-[11px] leading-5" title="${safeText(`${source}\n${trigger}`)}">
+                    <div class="font-bold text-slate-700">${safeText(source)}</div>
+                    <div class="text-slate-500">${safeText(trigger)}</div>
+                </div>`;
+        }
+
+        function renderAnalyticsRecentDialogCell(row) {
+            const full = analyticsCellText(row.recent_dialog_full || row.recent_customer_full || '-');
+            const count = Number(row.recent_dialog_count || analyticsLineCount(full) || 0);
+            const countLabel = count > 0 ? `最近客户+销售 ${count} 条` : '最近客户+销售 -';
+            return `
+                <div class="max-w-[260px] space-y-1" title="${safeText(full)}">
+                    <div class="text-[10px] font-bold text-slate-500">${safeText(countLabel)}</div>
+                    ${renderAnalyticsClampedText(full, 'text-slate-700', 3)}
+                </div>`;
+        }
+
+        function renderAnalyticsStatusCell(row) {
+            const raw = analyticsCellText(row.request_status || '-');
+            const label = translateAnalyticsStatus(row.request_status_label || row.request_status || '-');
+            return `
+                <div class="min-w-[88px] text-[11px] leading-5" title="${safeText(`状态：${label}\n原值：${raw}`)}">
+                    <div class="font-bold text-slate-700">${safeText(label)}</div>
+                </div>`;
+        }
+
+        function renderAnalyticsModelCandidateCell(modelName, text) {
+            return `
+                <div class="max-w-[240px] space-y-1">
+                    <div class="text-[10px] font-bold text-slate-500">${safeText(analyticsCellText(modelName || '-'))}</div>
+                    ${renderAnalyticsTextCell(text, 'text-slate-700')}
+                </div>`;
+        }
+
+        function getAnalyticsQualityOptions() {
+            return Array.isArray(analyticsState.qualityAnnotationOptions) && analyticsState.qualityAnnotationOptions.length
+                ? analyticsState.qualityAnnotationOptions
+                : DEFAULT_ANALYTICS_QUALITY_OPTIONS;
+        }
+
+        function normalizeAnalyticsQualityAnnotation(annotation) {
+            const source = annotation && typeof annotation === 'object' ? annotation : {};
+            const labels = Array.isArray(source.labels)
+                ? [...new Set(source.labels.map(item => String(item || '').trim()).filter(Boolean))]
+                : [];
+            return {
+                labels,
+                custom_text: String(source.custom_text || '').trim(),
+                updated_at: String(source.updated_at || '').trim(),
+            };
+        }
+
+        function getAnalyticsRowById(rowId, rowSource) {
+            return (analyticsState.rows || []).find(row => String(row.row_id || '') === String(rowId || '') && String(row.source || '') === String(rowSource || '')) || null;
+        }
+
+        function getAnalyticsQualityAnnotation(row, scoreKey) {
+            const map = row && typeof row.quality_annotations === 'object' ? row.quality_annotations : {};
+            return normalizeAnalyticsQualityAnnotation(map?.[scoreKey]);
+        }
+
+        function analyticsQualityAnnotationSummary(annotation) {
+            const item = normalizeAnalyticsQualityAnnotation(annotation);
+            const parts = [];
+            if (item.labels.length) parts.push(`已选${item.labels.length}项`);
+            if (item.custom_text) parts.push('有备注');
+            return parts.join(' · ');
+        }
+
+        function analyticsScoreFieldLabel(scoreKey) {
+            const map = {
+                kb1_eval_score: '知识库1评分',
+                kb2_eval_score: '知识库2评分',
+                step_6_main_kb1_score: '主模型知识库1质量分',
+                step_6_main_kb2_score: '主模型知识库2质量分',
+                step_6_compare_kb1_score: '对比模型知识库1质量分',
+                step_6_compare_kb2_score: '对比模型知识库2质量分',
+                manual_business_score: '人工回复业务质量分',
+                manual_quality_score: '人工回复贴合代理分',
+                step_7_kb1_score: '知识库1人工回复贴合代理分',
+                step_7_kb2_score: '知识库2人工回复贴合代理分',
+            };
+            return map[scoreKey] || scoreKey || '-';
+        }
+
+        function ensureAnalyticsQualityPopover() {
+            let popover = document.getElementById('analytics-quality-popover');
+            if (popover) return popover;
+            popover = document.createElement('div');
+            popover.id = 'analytics-quality-popover';
+            popover.className = 'hidden fixed z-[1200] w-[340px] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl';
+            popover.innerHTML = `
+                <div class="space-y-3">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <div class="text-sm font-bold text-slate-800">质量分标记</div>
+                            <div id="analytics-quality-popover-meta" class="mt-1 text-[10px] text-slate-400"></div>
+                        </div>
+                        <button type="button" data-role="close" class="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">&times;</button>
+                    </div>
+                    <div id="analytics-quality-popover-options" class="max-h-[180px] space-y-2 overflow-y-auto pr-1"></div>
+                    <label class="block">
+                        <span class="mb-1 block text-[11px] font-bold text-slate-600">手写备注</span>
+                        <textarea id="analytics-quality-popover-text" class="h-24 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="补充这格分数的问题或价值点"></textarea>
+                    </label>
+                    <div id="analytics-quality-popover-error" class="hidden text-[11px] text-rose-600"></div>
+                    <div class="flex items-center justify-between gap-2">
+                        <button type="button" data-role="clear" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50">清空</button>
+                        <div class="flex items-center gap-2">
+                            <button type="button" data-role="cancel" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50">取消</button>
+                            <button type="button" data-role="save" class="rounded-lg bg-amber-500 px-3 py-2 text-[11px] font-bold text-white hover:bg-amber-600">保存</button>
+                        </div>
+                    </div>
+                </div>`;
+            document.body.appendChild(popover);
+            popover.querySelector('[data-role="close"]').onclick = () => closeAnalyticsQualityPopover();
+            popover.querySelector('[data-role="cancel"]').onclick = () => closeAnalyticsQualityPopover();
+            popover.querySelector('[data-role="clear"]').onclick = () => {
+                popover.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; });
+                const textEl = document.getElementById('analytics-quality-popover-text');
+                if (textEl) textEl.value = '';
+            };
+            popover.querySelector('[data-role="save"]').onclick = () => saveAnalyticsQualityPopover();
+            return popover;
+        }
+
+        function positionAnalyticsQualityPopover(anchorRect) {
+            const popover = ensureAnalyticsQualityPopover();
+            if (!anchorRect) return;
+            const width = 340;
+            const margin = 12;
+            const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1280;
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 800;
+            let left = anchorRect.left;
+            let top = anchorRect.bottom + 8;
+            if (left + width + margin > viewportWidth) {
+                left = Math.max(margin, viewportWidth - width - margin);
+            }
+            const estimatedHeight = Math.min(popover.offsetHeight || 360, viewportHeight - margin * 2);
+            if (top + estimatedHeight > viewportHeight - margin) {
+                top = Math.max(margin, anchorRect.top - estimatedHeight - 8);
+            }
+            popover.style.left = `${Math.max(margin, left)}px`;
+            popover.style.top = `${Math.max(margin, top)}px`;
+        }
+
+        function analyticsQualityPopoverOutsideHandler(event) {
+            if (!analyticsQualityPopoverState) return;
+            const popover = document.getElementById('analytics-quality-popover');
+            if (!popover || popover.classList.contains('hidden')) return;
+            if (popover.contains(event.target)) return;
+            if (analyticsQualityPopoverState.anchorEl && analyticsQualityPopoverState.anchorEl.contains(event.target)) return;
+            closeAnalyticsQualityPopover();
+        }
+
+        function analyticsQualityPopoverKeyHandler(event) {
+            if (event.key === 'Escape') closeAnalyticsQualityPopover();
+        }
+
+        function closeAnalyticsQualityPopover() {
+            const popover = document.getElementById('analytics-quality-popover');
+            if (popover) popover.classList.add('hidden');
+            document.removeEventListener('mousedown', analyticsQualityPopoverOutsideHandler, true);
+            document.removeEventListener('keydown', analyticsQualityPopoverKeyHandler, true);
+            analyticsQualityPopoverState = null;
+        }
+
+        function openAnalyticsQualityPopoverFromCell(event, encodedRowId, encodedSource, encodedScoreKey) {
+            const rowId = decodeURIComponent(encodedRowId || '');
+            const rowSource = decodeURIComponent(encodedSource || '');
+            const scoreKey = decodeURIComponent(encodedScoreKey || '');
+            const row = getAnalyticsRowById(rowId, rowSource);
+            if (!row || !scoreKey) return;
+            const anchorEl = event?.currentTarget || event?.target;
+            if (!anchorEl) return;
+            const popover = ensureAnalyticsQualityPopover();
+            const metaEl = document.getElementById('analytics-quality-popover-meta');
+            const optionsWrap = document.getElementById('analytics-quality-popover-options');
+            const textEl = document.getElementById('analytics-quality-popover-text');
+            const errorEl = document.getElementById('analytics-quality-popover-error');
+            const annotation = getAnalyticsQualityAnnotation(row, scoreKey);
+            metaEl.textContent = `${row.source_label || row.source || '-'} · ${analyticsScoreFieldLabel(scoreKey)}`;
+            optionsWrap.innerHTML = getAnalyticsQualityOptions().map(option => `
+                <label class="flex items-start gap-2 rounded-lg border border-slate-200 px-3 py-2 text-[12px] text-slate-700 hover:border-amber-300 hover:bg-amber-50">
+                    <input type="checkbox" value="${safeText(option)}" class="mt-0.5 rounded border-slate-300 text-amber-500 focus:ring-amber-500" ${annotation.labels.includes(option) ? 'checked' : ''}>
+                    <span>${safeText(option)}</span>
+                </label>
+            `).join('');
+            textEl.value = annotation.custom_text || '';
+            errorEl.textContent = '';
+            errorEl.classList.add('hidden');
+            popover.classList.remove('hidden');
+            analyticsQualityPopoverState = {rowId, rowSource, scoreKey, anchorEl};
+            positionAnalyticsQualityPopover(anchorEl.getBoundingClientRect());
+            document.addEventListener('mousedown', analyticsQualityPopoverOutsideHandler, true);
+            document.addEventListener('keydown', analyticsQualityPopoverKeyHandler, true);
+        }
+
+        async function saveAnalyticsQualityPopover() {
+            if (!analyticsQualityPopoverState) return;
+            const popover = ensureAnalyticsQualityPopover();
+            const saveBtn = popover.querySelector('[data-role="save"]');
+            const errorEl = document.getElementById('analytics-quality-popover-error');
+            const textEl = document.getElementById('analytics-quality-popover-text');
+            const labels = [...popover.querySelectorAll('input[type="checkbox"]:checked')].map(input => String(input.value || '').trim()).filter(Boolean);
+            const customText = String(textEl?.value || '').trim();
+            saveBtn.disabled = true;
+            saveBtn.textContent = '保存中...';
+            errorEl.textContent = '';
+            errorEl.classList.add('hidden');
+            try {
+                const res = await apiFetch(`${API_BASE}/api/wecom/trigger_analytics/quality_annotation`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        row_source: analyticsQualityPopoverState.rowSource,
+                        row_id: analyticsQualityPopoverState.rowId,
+                        score_key: analyticsQualityPopoverState.scoreKey,
+                        labels,
+                        custom_text: customText,
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) return showApiError(data, '保存质量分标记失败');
+                const row = getAnalyticsRowById(analyticsQualityPopoverState.rowId, analyticsQualityPopoverState.rowSource);
+                if (row) {
+                    row.quality_annotations = row.quality_annotations && typeof row.quality_annotations === 'object' ? row.quality_annotations : {};
+                    row.quality_annotations[analyticsQualityPopoverState.scoreKey] = data.annotation || {labels, custom_text: customText};
+                }
+                closeAnalyticsQualityPopover();
+                renderWecomAnalyticsTable();
+            } catch (e) {
+                errorEl.textContent = translateApiMessage(e?.message || e);
+                errorEl.classList.remove('hidden');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = '保存';
+            }
+        }
+
+        function renderAnalyticsScoreCell(row, scoreKey, score, reason, avg) {
+            const tone = score === null || score === undefined ? 'slate' : scoreTone(score);
+            const annotation = getAnalyticsQualityAnnotation(row, scoreKey);
+            const annotationSummary = analyticsQualityAnnotationSummary(annotation);
+            const hasAnnotation = !!annotationSummary;
+            const displayScore = score === null || score === undefined ? '-' : safeText(String(score));
+            const titleParts = [
+                reason || '-',
+                score === null || score === undefined ? '' : `分段：${scoreBandText(score)}`,
+                hasAnnotation ? `标记：${annotation.labels.join('、') || '-'}` : '',
+                annotation.custom_text ? `备注：${annotation.custom_text}` : ''
+            ].filter(Boolean);
+            return `
+                <div class="min-w-[84px] space-y-1">
+                    <button type="button" onclick="openAnalyticsQualityPopoverFromCell(event, '${encodedArg(row.row_id || '')}', '${encodedArg(row.source || '')}', '${encodedArg(scoreKey || '')}')" title="${safeText(titleParts.join('\n'))}" class="inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-bold transition hover:shadow-sm ${hasAnnotation ? 'ring-2 ring-amber-100' : ''} ${tone === 'emerald' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : tone === 'blue' ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100' : tone === 'amber' ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : tone === 'rose' ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'}">
+                        ${displayScore}
+                    </button>
+                    ${hasAnnotation ? `<div class="text-[10px] leading-4 text-amber-700" title="${safeText(`${annotation.labels.join('、')}${annotation.custom_text ? `\n${annotation.custom_text}` : ''}`)}">${safeText(annotationSummary)}</div>` : ''}
+                </div>`;
+        }
+
+        function renderWecomAnalyticsSummary() {
+            const summaryEl = document.getElementById('analytics-summary-strip');
+            if (!summaryEl) return;
+            const rowCount = Number(analyticsState.summary?.row_count || 0);
+            const filters = analyticsState.filters || {};
+            summaryEl.innerHTML = `
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div class="font-bold text-slate-700">共 ${rowCount} 条触发记录</div>
+                    <div class="text-[10px] text-slate-400 mt-1">范围 ${safeText(filters.start_date || '-')} ~ ${safeText(filters.end_date || '-')} · 来源 ${safeText(filters.sources || '-')}</div>
+                </div>`;
+        }
+
+        function renderWecomAnalyticsTable() {
+            const wrap = document.getElementById('analytics-table-wrap');
+            if (!wrap) return;
+            closeAnalyticsQualityPopover();
+            const rows = Array.isArray(analyticsState.rows) ? analyticsState.rows : [];
+            const avg = analyticsState.summary?.score_averages || {};
+            const mainModelName = analyticsMostCommonValue(rows, 'step_6_main_model_name', '主模型');
+            const compareModelName = analyticsMostCommonValue(rows, 'step_6_compare_model_name', '对比模型');
+            renderWecomAnalyticsSummary();
+            if (!rows.length) {
+                wrap.innerHTML = '<div class="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">当前条件下暂无触发记录。</div>';
+                return;
+            }
+            const avgTimeLabel = key => `平均 ${formatAnalyticsMs(analyticsAverageValue(rows, key))}`;
+            const avgScoreLabel = key => `平均 ${analyticsAvgText(avg[key])}`;
+            const headerWithMetric = (label, metricText = '') => metricText
+                ? `${label}<br><span class="text-[10px] font-normal text-slate-400">${safeText(metricText)}</span>`
+                : label;
+            const th = (labelHtml, title, extra = '') => `<th title="${safeText(title || labelHtml)}" class="sticky top-0 z-10 border-b border-slate-200 bg-slate-100 px-2 py-2 text-left text-[11px] font-bold text-slate-700 whitespace-normal align-top ${extra}">${labelHtml}</th>`;
+            const timeCell = row => renderAnalyticsTextCell(formatDateTime(row.triggered_at), 'min-w-[84px] text-slate-600');
+            wrap.innerHTML = `
+                <div class="space-y-3">
+                    <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] leading-5 text-slate-700">
+                        <div><b>说明</b>：来源和触发类型已合并显示；耗时列标题下方灰字表示当前筛选范围内该列平均费时；评分列标题下方灰字表示当前筛选范围内该列平均分。</div>
+                        <div class="mt-1">知识库评分：由后台异步评估检索结果对当前对话的针对性、价值及其对生成结果的支撑作用；候选质量分沿用多维度评分里的总分逻辑；人工回复业务质量分独立按业务维度打分；人工回复贴合代理分取本次调用知识库1/知识库2两路较高分；知识库1/2贴合代理分用于评价候选回复和人工实发之间的贴合程度。</div>
+                    </div>
+                    <div class="min-w-[4050px] rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <table class="w-full border-collapse">
+                            <thead>
+                                <tr>
+                                    ${th('触发时间', '本次触发发生的时间')}
+                                    ${th('来源 /<br>触发类型', '合并显示来源和触发类型，减少重复列')}
+                                    ${th('对话ID', '完整显示对话 ID，支持复制')}
+                                    ${th('状态', '前台转写后的中文状态；第二行保留原始状态值')}
+                                    ${th('最近客户+销售15条', '显示当前锚点之前最近 15 条浮动消息，包含时间、角色和内容')}
+                                    ${th('输入内容', '两行显示输入消息数和当前锚点')}
+                                    ${th(headerWithMetric('耗时', avgTimeLabel('step_1_time_ms')), '输入内容节点耗时，统一按秒显示')}
+                                    ${th('强信号', '强信号节点抽取到的结果')}
+                                    ${th(headerWithMetric('耗时', avgTimeLabel('step_2_time_ms')), '强信号节点耗时，统一按秒显示')}
+                                    ${th('特征提取', '特征提取结果，支持换行和悬浮查看完整内容')}
+                                    ${th(headerWithMetric('耗时', avgTimeLabel('step_3_time_ms')), '特征提取节点耗时，统一按秒显示')}
+                                    ${th('客户画像', '客户画像摘要，支持换行和悬浮查看完整内容')}
+                                    ${th(headerWithMetric('耗时', avgTimeLabel('step_4_time_ms')), '客户画像节点耗时，统一按秒显示')}
+                                    ${th('知识库1', '知识库1检索结果，状态和命中说明均转为中文')}
+                                    ${th(headerWithMetric('知识库1耗时', avgTimeLabel('step_5_kb1_time_ms')), '知识库1耗时，统一按秒显示')}
+                                    ${th(headerWithMetric('知识库1评分', avgScoreLabel('kb1_eval_score')), '知识库1检索针对性与价值评估评分')}
+                                    ${th('知识库2', '知识库2检索结果，状态和命中说明均转为中文')}
+                                    ${th(headerWithMetric('知识库2耗时', avgTimeLabel('step_5_kb2_time_ms')), '知识库2耗时，统一按秒显示')}
+                                    ${th(headerWithMetric('知识库2评分', avgScoreLabel('kb2_eval_score')), '知识库2检索针对性与价值评估评分')}
+                                    ${th(`${safeText(mainModelName)}<br>知识库1`, `${mainModelName} · 知识库1候选内容`)}
+                                    ${th(headerWithMetric('质量分', avgScoreLabel('step_6_main_kb1_score')), `${mainModelName} · 知识库1 · 候选质量分`)}
+                                    ${th(headerWithMetric('费时', avgTimeLabel('step_6_main_time_ms')), `${mainModelName} · 知识库1 · 生成费时（当前记录粒度为主模型整体费时，因此知识库1/知识库2显示相同）`)}
+                                    ${th(`${safeText(mainModelName)}<br>知识库2`, `${mainModelName} · 知识库2候选内容`)}
+                                    ${th(headerWithMetric('质量分', avgScoreLabel('step_6_main_kb2_score')), `${mainModelName} · 知识库2 · 候选质量分`)}
+                                    ${th(headerWithMetric('费时', avgTimeLabel('step_6_main_time_ms')), `${mainModelName} · 知识库2 · 生成费时（当前记录粒度为主模型整体费时，因此知识库1/知识库2显示相同）`)}
+                                    ${th(`${safeText(compareModelName)}<br>知识库1`, `${compareModelName} · 知识库1候选内容`)}
+                                    ${th(headerWithMetric('质量分', avgScoreLabel('step_6_compare_kb1_score')), `${compareModelName} · 知识库1 · 候选质量分`)}
+                                    ${th(headerWithMetric('费时', avgTimeLabel('step_6_compare_time_ms')), `${compareModelName} · 知识库1 · 生成费时（当前记录粒度为对比模型整体费时，因此知识库1/知识库2显示相同）`)}
+                                    ${th(`${safeText(compareModelName)}<br>知识库2`, `${compareModelName} · 知识库2候选内容`)}
+                                    ${th(headerWithMetric('质量分', avgScoreLabel('step_6_compare_kb2_score')), `${compareModelName} · 知识库2 · 候选质量分`)}
+                                    ${th(headerWithMetric('费时', avgTimeLabel('step_6_compare_time_ms')), `${compareModelName} · 知识库2 · 生成费时（当前记录粒度为对比模型整体费时，因此知识库1/知识库2显示相同）`)}
+                                    ${th(headerWithMetric('总耗时', avgTimeLabel('step_6_time_ms')), '第二阶段总耗时，统一按秒显示')}
+                                    ${th('人工回复', '触发后实际销售连续回复块，放到 06 节点后便于直接对照')}
+                                    ${th(headerWithMetric('业务分', avgScoreLabel('manual_business_score')), '人工回复业务质量分：独立按意图命中、推进、事实、风险、微信表达打分，不再复用相似度逻辑')}
+                                    ${th(headerWithMetric('贴合代理分', avgScoreLabel('manual_quality_score')), '人工回复贴合代理分：取知识库1/知识库2两路贴合代理分较高者，作为历史对照代理分')}
+                                    ${th('校验 / 质量', '质量校验摘要')}
+                                    ${th(headerWithMetric('知识库1贴合代理分', avgScoreLabel('step_7_kb1_score')), '知识库1通道候选与实际销售人工回复的贴合代理分')}
+                                    ${th(headerWithMetric('知识库2贴合代理分', avgScoreLabel('step_7_kb2_score')), '知识库2通道候选与实际销售人工回复的贴合代理分')}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rows.map(row => `
+                                    <tr class="border-b border-slate-100 align-top hover:bg-amber-50/40">
+                                        <td class="px-2 py-2">${timeCell(row)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsSourceTriggerCell(row)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsCopyableIdCell(row.session_id)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsStatusCell(row)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsRecentDialogCell(row)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsTextCell(row.step_1_content, 'max-w-[180px] text-slate-700')}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_1_time_ms)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsTextCell(row.step_2_content, 'max-w-[160px] text-slate-700')}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_2_time_ms)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsTextCell(row.step_3_content, 'max-w-[220px] text-slate-700')}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_3_time_ms)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsTextCell(row.step_4_content, 'max-w-[220px] text-slate-700')}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_4_time_ms)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsTextCell(row.step_5_kb1_content, 'max-w-[210px] text-slate-700')}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_5_kb1_time_ms)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'kb1_eval_score', row.kb1_eval_score, row.kb1_eval_reason, avg.kb1_eval_score)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsTextCell(row.step_5_kb2_content, 'max-w-[210px] text-slate-700')}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_5_kb2_time_ms)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'kb2_eval_score', row.kb2_eval_score, row.kb2_eval_reason, avg.kb2_eval_score)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsModelCandidateCell(row.step_6_main_model_name, row.step_6_main_kb1_content)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'step_6_main_kb1_score', row.step_6_main_kb1_score, row.step_6_main_kb1_score_reason, avg.step_6_main_kb1_score)}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_6_main_time_ms)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsModelCandidateCell(row.step_6_main_model_name, row.step_6_main_kb2_content)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'step_6_main_kb2_score', row.step_6_main_kb2_score, row.step_6_main_kb2_score_reason, avg.step_6_main_kb2_score)}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_6_main_time_ms)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsModelCandidateCell(row.step_6_compare_model_name, row.step_6_compare_kb1_content)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'step_6_compare_kb1_score', row.step_6_compare_kb1_score, row.step_6_compare_kb1_score_reason, avg.step_6_compare_kb1_score)}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_6_compare_time_ms)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsModelCandidateCell(row.step_6_compare_model_name, row.step_6_compare_kb2_content)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'step_6_compare_kb2_score', row.step_6_compare_kb2_score, row.step_6_compare_kb2_score_reason, avg.step_6_compare_kb2_score)}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_6_compare_time_ms)}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_6_time_ms)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsTextCell(row.manual_reply_text, 'max-w-[220px] text-slate-700')}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'manual_business_score', row.manual_business_score, row.manual_business_reason, avg.manual_business_score)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'manual_quality_score', row.manual_quality_score, row.manual_quality_reason, avg.manual_quality_score)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsTextCell(row.step_7_content, 'max-w-[220px] text-slate-700')}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'step_7_kb1_score', row.step_7_kb1_score, row.step_7_kb1_reason, avg.step_7_kb1_score)}</td>
+                                        <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'step_7_kb2_score', row.step_7_kb2_score, row.step_7_kb2_reason, avg.step_7_kb2_score)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`;
+            applyTooltips(wrap);
+        }
+
+        async function loadWecomTriggerAnalytics(force = false) {
+            ensureWecomAnalyticsFilters();
+            if (analyticsState.loading && !force) return;
+            analyticsState.loading = true;
+            const startDate = String(document.getElementById('analytics-start-date')?.value || analyticsState.filters.start_date || '').trim();
+            const endDate = String(document.getElementById('analytics-end-date')?.value || analyticsState.filters.end_date || '').trim();
+            const sources = String(document.getElementById('analytics-source-filter')?.value || analyticsState.filters.sources || '').trim();
+            analyticsState.filters = {start_date: startDate, end_date: endDate, sources};
+            const wrap = document.getElementById('analytics-table-wrap');
+            if (wrap) {
+                wrap.innerHTML = '<div class="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">统计加载中...</div>';
+            }
+            try {
+                const query = new URLSearchParams({
+                    start_date: startDate,
+                    end_date: endDate,
+                    sources: sources || 'api,web_manual,test',
+                    limit: '300',
+                });
+                const res = await apiFetch(`${API_BASE}/api/wecom/trigger_analytics?${query.toString()}`);
+                const data = await res.json();
+                analyticsState.rows = Array.isArray(data.rows) ? data.rows : [];
+                analyticsState.summary = data.summary || {row_count: 0, score_averages: {}};
+                analyticsState.qualityAnnotationOptions = Array.isArray(data.quality_annotation_options) ? data.quality_annotation_options : DEFAULT_ANALYTICS_QUALITY_OPTIONS;
+                renderWecomAnalyticsTable();
+            } catch (err) {
+                if (wrap) {
+                    wrap.innerHTML = `<div class="rounded-xl border border-rose-200 bg-rose-50 p-8 text-center text-sm text-rose-700">统计加载失败：${safeText(translateApiMessage(err?.message || err))}</div>`;
+                }
+            } finally {
+                analyticsState.loading = false;
+            }
         }
 
         const tooltipObserver = new MutationObserver(() => applyTooltips());
@@ -1046,6 +1673,8 @@
             const tab = KB_HASH_TAB_MAP[window.location.hash];
             if (tab) {
                 openKnowledgeAdmin(tab);
+            } else if (window.location.hash === '#analytics') {
+                switchMainApp('analytics');
             } else {
                 switchMainApp('wecom');
             }
@@ -1106,8 +1735,11 @@
                 renderSessions();
                 const sessionList = document.getElementById('session-list');
                 if (sessionList) {
+                    const selectedDate = selectedSessionFilterDate || getSessionFilterDate();
+                    const diagnosticUrl = `${API_BASE}/api/system/archive_sync_status${selectedDate ? `?chat_date=${encodeURIComponent(selectedDate)}` : ''}`;
+                    const sessionsUrl = `${API_BASE}/api/sessions${selectedDate ? `?chat_date=${encodeURIComponent(selectedDate)}` : ''}`;
                     const timeoutHint = String(err?.message || err || '').toLowerCase().includes('timeout')
-                        ? '<div class="mt-1 text-[10px] opacity-80">当前更像是 `/api/sessions` 接口处理或反向代理超时，不是“新字段没数据”。</div>'
+                        ? `<div class="mt-1 text-[10px] opacity-80">当前更像是 \`/api/sessions\` 接口处理或反向代理超时，不是“新字段没数据”。<br>建议先打开诊断接口：${safeText(diagnosticUrl)}<br>再直接访问会话接口：${safeText(sessionsUrl)}</div>`
                         : '';
                     sessionList.innerHTML = `
                         <div class="m-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] text-rose-700">
@@ -1407,7 +2039,26 @@
             return data?.node_timings_ms?.[nodeKey] || data?.stage_status?.node_timings_ms?.[nodeKey] || null;
         }
 
+        function isLlm1RefreshActive(data) {
+            const stage = data?.stage_status?.llm1;
+            return Boolean(data?.stage_status?.llm1_display_reset) && (stage === 'queued' || stage === 'running');
+        }
+
+        function getLlm1LatestSummaryTime(data) {
+            return data?.at || data?.analysis_version?.updated_at || '';
+        }
+
+        function getLlm1RefreshTime(data) {
+            if (isLlm1RefreshActive(data)) {
+                return data?.stage_status?.llm1_requested_at || data?.stage_status?.llm1_started_at || '';
+            }
+            return data?.stage_status?.llm1_completed_at || getLlm1LatestSummaryTime(data) || '';
+        }
+
         function renderNodeTimingPill(data, nodeKey) {
+            if (nodeKey === 'llm1' && isLlm1RefreshActive(data)) {
+                return renderStatusPill('刷新中', 'blue');
+            }
             const timing = getNodeTiming(data, nodeKey);
             if (!timing || timing.total_ms === undefined || timing.total_ms === null) return '';
             return renderStatusPill(`耗时 ${formatTimingMs(timing.total_ms)}`, 'slate');
@@ -1548,10 +2199,19 @@
 
         function scoreTone(score) {
             const val = Number(score || 0);
-            if (val >= 85) return 'emerald';
-            if (val >= 70) return 'blue';
-            if (val >= 55) return 'amber';
+            if (val >= 90) return 'emerald';
+            if (val >= 80) return 'blue';
+            if (val >= 70) return 'amber';
             return 'rose';
+        }
+
+        function scoreBandText(score) {
+            const val = Number(score || 0);
+            if (val >= 90) return '90-100：基本可直接发送';
+            if (val >= 80) return '80-89：小改即可发';
+            if (val >= 70) return '70-79：方向对但缺关键点';
+            if (val >= 60) return '60-69：可参考但需明显改写';
+            return '<60：不建议直接使用';
         }
 
         function renderCandidateScorePills(scoreEntry) {
@@ -1997,8 +2657,14 @@
             const actionLabel = data.has_v1 ? '🔄 重新提取' : '▶️ 提取特征';
             const actions = `<button onclick='triggerLLM(${jsArg(userId)}, 1)' class="text-[10px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 border border-indigo-600 px-2 py-1 rounded transition">${actionLabel}</button>`;
             const llm1 = getLlmRuntime(data, 'llm1');
+            const stageOneTitle = String(llm1.display_name || '').startsWith('LLM-2 /') ? '第一阶段特征提取（LLM-2）' : '第一阶段特征提取（LLM-1）';
+            const llm1Refreshing = isLlm1RefreshActive(data);
+            const showSummary = data.has_v1 && !llm1Refreshing;
+            const latestSummaryAt = getLlm1LatestSummaryTime(data);
+            const refreshTime = getLlm1RefreshTime(data);
+            const refreshLabel = llm1Refreshing ? '本次刷新' : '最近刷新';
             const threadFact = data.thread_business_fact || {};
-            const threadFactHtml = threadFact.business_state ? `
+            const threadFactHtml = showSummary && threadFact.business_state ? `
                 <div class="mt-3 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-950">
                     <div class="font-bold text-indigo-700 mb-1">线程业务事实层</div>
                     <div class="flex flex-wrap gap-2">
@@ -2012,21 +2678,47 @@
                 </div>` : '';
             const body = `
                 ${renderLlmRuntimeStrip(data, 'llm1', 'blue')}
-                <div class="mb-2">${renderStatusPill(data.has_v1 ? (data.status || '特征就绪') : '等待提取', data.has_v1 ? 'emerald' : 'amber')}</div>
+                <div class="mb-2 flex flex-wrap gap-2">
+                    ${renderStatusPill(llm1Refreshing ? '刷新中' : (data.has_v1 ? (data.status || '特征就绪') : '等待提取'), llm1Refreshing ? 'blue' : (data.has_v1 ? 'emerald' : 'amber'))}
+                    ${latestSummaryAt ? renderStatusPill(`最新提取 ${safeText(formatDateTime(latestSummaryAt))}`, 'slate') : ''}
+                    ${refreshTime ? renderStatusPill(`${refreshLabel} ${safeText(formatDateTime(refreshTime))}`, llm1Refreshing ? 'blue' : 'slate') : ''}
+                </div>
                 ${renderPipelineRows([
-                    {label: '核心主线', value: data.has_v1 ? gracefulStr(data.topic) : '--待构建--', className: data.has_v1 ? 'text-slate-700 font-medium' : 'text-slate-400'},
-                    {label: '核心诉求', value: data.has_v1 ? gracefulStr(data.core_demand) : '--待构建--', className: data.has_v1 ? 'text-slate-700 font-medium' : 'text-slate-400'},
-                    {label: '关键事实', html: data.has_v1 ? `<div class="flex flex-wrap gap-1">${renderKeyFacts(data.key_facts)}</div>` : '<span class="text-slate-400">--待构建--</span>'},
-                    {label: '待办动作', value: data.has_v1 ? gracefulStr(data.todo_items) : '--待构建--', className: data.has_v1 ? 'text-slate-700' : 'text-slate-400'},
-                    {label: '顾虑风险', value: data.has_v1 ? gracefulStr(data.risks) : '--待构建--', className: data.has_v1 ? 'text-rose-700 font-bold' : 'text-slate-400'},
-                    {label: '待确认项', value: data.has_v1 ? gracefulStr(data.to_be_confirmed) : '--待构建--', className: data.has_v1 ? 'text-amber-800 font-medium break-all' : 'text-slate-400'}
+                    {label: '核心主线', value: showSummary ? gracefulStr(data.topic) : '--待构建--', className: showSummary ? 'text-slate-700 font-medium' : 'text-slate-400'},
+                    {label: '核心诉求', value: showSummary ? gracefulStr(data.core_demand) : '--待构建--', className: showSummary ? 'text-slate-700 font-medium' : 'text-slate-400'},
+                    {label: '关键事实', html: showSummary ? `<div class="flex flex-wrap gap-1">${renderKeyFacts(data.key_facts)}</div>` : '<span class="text-slate-400">--待构建--</span>'},
+                    {label: '待办动作', value: showSummary ? gracefulStr(data.todo_items) : '--待构建--', className: showSummary ? 'text-slate-700' : 'text-slate-400'},
+                    {label: '顾虑风险', value: showSummary ? gracefulStr(data.risks) : '--待构建--', className: showSummary ? 'text-rose-700 font-bold' : 'text-slate-400'},
+                    {label: '待确认项', value: showSummary ? gracefulStr(data.to_be_confirmed) : '--待构建--', className: showSummary ? 'text-amber-800 font-medium break-all' : 'text-slate-400'}
                 ])}
                 ${threadFactHtml}`;
-            return renderPipelineCard(3, '第一阶段特征提取（LLM-1）', `${llm1.model || '未配置'}：将会话压缩为可检索、可生成的结构化摘要`, '#6366f1', body, {scriptKey: 'SYSTEM_PROMPT_LLM1', actions, timingHtml: renderNodeTimingPill(data, 'llm1')});
+            return renderPipelineCard(3, stageOneTitle, `${llm1.model || '未配置'}：将会话压缩为可检索、可生成的结构化摘要`, '#6366f1', body, {scriptKey: 'SYSTEM_PROMPT_LLM1', actions, timingHtml: renderNodeTimingPill(data, 'llm1')});
         }
 
         function renderCrmContextCard(data, sessionId = '') {
             const profile = data?.crm_info || data || {};
+            const threadFact = data?.thread_business_fact || {};
+            const mergedFacts = threadFact?.merged_facts || {};
+            const latestReplyTypeMap = {
+                ack_only: '客户简短确认',
+                schedule_confirmation: '客户确认时间安排',
+                promise_send_later: '客户承诺稍后发资料',
+                question: '客户提出新问题',
+                new_request: '客户提出新需求',
+                other: '客户回复待人工判断'
+            };
+            const timelineItems = Array.isArray(data?.key_facts?.timeline_items) ? data.key_facts.timeline_items : [];
+            const ongoingTimeline = timelineItems.filter(item => String(item?.status_scope || '').trim() === 'ongoing');
+            const futureTimeline = timelineItems.filter(item => String(item?.status_scope || '').trim() === 'future');
+            const formatTimelineItems = (items, fallback) => {
+                const texts = items.map(item => {
+                    const time = String(item?.time || '').trim();
+                    const topic = String(item?.topic || '').trim();
+                    const status = String(item?.status || '').trim();
+                    return [time, topic, status].filter(Boolean).join(' · ');
+                }).filter(Boolean);
+                return rowText(texts.length ? texts.join('\n') : '', fallback, 'text-slate-700 whitespace-pre-wrap', 'text-slate-400');
+            };
             const status = profile.crm_profile_status || 'empty';
             const reason = profile.crm_profile_error || (status === 'success' ? '' : '未读取到 CRM 客户画像');
             const lookupExternalUserId = profile.crm_external_userid || extractExternalUserIdFromSession(sessionId);
@@ -2045,6 +2737,10 @@
                 </div>
                 ${renderPipelineRows([
                     {label: 'external_userid', ...rowText(lookupExternalUserId, `未读取到：${externalUserIdReason}`, 'text-slate-700', 'text-rose-600')},
+                    {label: '当前线程焦点', ...rowText(data?.topic || data?.core_demand || '', '等待第一阶段提炼当前主线')},
+                    {label: '最新客户回复类型', ...rowText(latestReplyTypeMap[String(mergedFacts.latest_customer_reply_type || '').trim()] || '', '等待识别客户本轮回复意图')},
+                    {label: '进行中事项', ...formatTimelineItems(ongoingTimeline, '当前未拆出进行中事项')},
+                    {label: '未来事项', ...formatTimelineItems(futureTimeline, '当前未拆出未来事项')},
                     {label: '客户真名', ...crmFieldValue(profile, 'crm_contact_name')},
                     {label: '企业主体', ...crmFieldValue(profile, 'company_name')},
                     {label: '近期商机', ...crmFieldValue(profile, 'recent_opportunities', 'CRM暂无跟进中商机'), className: `${crmFieldValue(profile, 'recent_opportunities', 'CRM暂无跟进中商机').className} whitespace-pre-wrap`},
@@ -2232,7 +2928,7 @@
                         panelTone: 'border-cyan-100 bg-white',
                         sourcePillTone: 'blue',
                         fallbackQuery: data.core_demand || data.topic || '-',
-                        defaultHow: '直接调用外部销售知识库 API 的 POST /kb-units/qa-retrieve 接口，返回候选销售回复，不影响当前主知识库流程。'
+                        defaultHow: '直接调用 https://knowledgebase.speedasia.net 的 POST /kb-units/qa-retrieve 接口，返回候选销售回复；当前服务器统一走 HTTPS 反向代理域名，不再使用旧内网 IP。'
                     }) : renderKnowledgeChannelPlaceholder('直连销售知识库 API', 'border-cyan-100 bg-white', externalWaitingMessage, externalWaitingBadges)}
                 </div>`;
             return renderPipelineCard(5, '知识库检索证据（双通道对比）', '左侧保留当前知识库流程，右侧增加直连销售知识库 API 的检索结果用于对比', '#10b981', body, {actions: refreshAction, timingHtml: renderNodeTimingPill(data, 'knowledge')});
@@ -2247,9 +2943,12 @@
             const actionLabel = candidates.length ? '🔄 重新生成全部候选' : (data.has_v1 ? '▶️ 生成全部候选' : '⛔ 需先提取');
             const comparePromptTrace = data.sales_advice_compare_prompt_trace_v2 || null;
             const actualSalesReplies = Array.isArray(data.actual_sales_replies) ? data.actual_sales_replies : [];
+            const isApiSnapshot = data?.analysis_version?.kind === 'api_sidebar_assist';
             const llm2 = getLlmRuntime(data, 'llm2');
             const compareModelRuntime = getLlmRuntime(data, 'llm2_compare');
-            const compareModelConfigured = Boolean(compareModelRuntime.model);
+            const compareRuntime = data.llm2_compare_runtime_status || {};
+            const compareDisabledByApi = isApiSnapshot || data.stage_status?.llm2_compare === 'skipped_api_isolated' || compareRuntime.status === 'skipped_api_isolated';
+            const compareModelConfigured = !compareDisabledByApi && Boolean(compareModelRuntime.model);
             const downloadPromptButton = comparePromptTrace?.prompt
                 ? `<button type="button" onclick='downloadComparePromptTrace(${jsArg(userId)})' class="text-[10px] font-bold text-slate-700 bg-white border border-slate-300 px-2 py-1 rounded transition hover:bg-slate-50">下载知识库2脚本</button>`
                 : '';
@@ -2257,14 +2956,13 @@
             const llm2Stage = data.stage_status?.llm2 || 'not_started';
             const compareStage = data.stage_status?.llm2_compare || 'not_started';
             const llm2InProgress = llm2Stage === 'queued' || llm2Stage === 'running';
-            const compareInProgress = compareStage === 'queued' || compareStage === 'running';
-            const compareRuntime = data.llm2_compare_runtime_status || {};
-            const compareIsError = ['not_configured', 'failed_no_content', 'error', 'skipped_no_query', 'skipped_missing_knowledge'].includes(compareStage);
+            const compareInProgress = !compareDisabledByApi && (compareStage === 'queued' || compareStage === 'running');
+            const compareIsError = !compareDisabledByApi && ['not_configured', 'failed_no_content', 'error', 'skipped_no_query', 'skipped_missing_knowledge'].includes(compareStage);
             const primaryPillText = candidates.some(item => item.model_slot === 'llm2' && item.status === 'done') ? '主模型已生成' : (
                 llm2Stage === 'skipped_missing_knowledge' ? '知识库1待先检索' :
                 (llm2InProgress ? '主模型生成中' : '主模型等待生成')
             );
-            const comparePillText = candidates.some(item => item.model_slot === 'llm2_compare' && item.status === 'done') ? '对比模型已生成' : (
+            const comparePillText = compareDisabledByApi ? 'API 调用已禁用对比模型' : (candidates.some(item => item.model_slot === 'llm2_compare' && item.status === 'done') ? '对比模型已生成' : (
                 compareStage === 'not_configured' ? '对比模型未配置' :
                 compareStage === 'error' ? '对比模型失败' :
                 compareStage === 'failed_no_content' ? '对比模型空返回' :
@@ -2272,41 +2970,43 @@
                 compareStage === 'skipped_missing_knowledge' ? '知识库待先检索' :
                 compareInProgress ? '对比模型生成中' :
                 '对比模型等待生成'
-            );
-            const compareReason = compareRuntime.reason || (
+            ));
+            const compareReason = compareDisabledByApi ? 'API 调用链路不执行 LLM-2 对比模型。' : (compareRuntime.reason || (
                 compareStage === 'not_configured' ? '对比模型未配置。' :
                 compareStage === 'error' ? '对比模型生成失败，请查看后端日志。' :
                 compareStage === 'failed_no_content' ? '对比模型返回空内容。' :
                 compareStage === 'skipped_no_query' ? '存在知识库通道没有拿到可用检索问题。' :
                 compareStage === 'skipped_missing_knowledge' ? '知识库证据未准备好，请先执行 05 环节重新检索。' :
                 data.has_v1 ? '等待点击生成主模型/对比模型的全部候选' : '需要先完成第一阶段特征提取'
-            );
+            ));
             const summaryStatusText = replyGenerationStatusText(data, candidates, compareReason);
             const styleCount = enabledStyleTitles.length || 0;
             const configuredModelCount = compareModelConfigured ? 2 : 1;
             const expectedCandidateCount = styleCount ? configuredModelCount * 2 * styleCount : null;
-            const showCompareColumn = candidates.some(item => item.model_slot === 'llm2_compare') || compareModelConfigured || compareStage !== 'not_started';
+            const showCompareColumn = !compareDisabledByApi && (candidates.some(item => item.model_slot === 'llm2_compare') || compareModelConfigured || compareStage !== 'not_started');
             const columnSlots = showCompareColumn ? ['llm2', 'llm2_compare'] : ['llm2'];
             const candidateGridClass = showCompareColumn ? 'grid grid-cols-1 2xl:grid-cols-2 gap-3 min-w-0' : 'grid grid-cols-1 gap-3 min-w-0';
             const candidateColumnsHtml = candidates.length
                 ? `<div class="${candidateGridClass}">${columnSlots.map(slot => renderReplyCandidateColumn(data, slot, candidates.filter(item => item.model_slot === slot), scoreMap)).join('')}</div>`
                 : renderReplyPendingPanel(data);
-            const subtitle = compareModelConfigured
-                ? `${llm2.display_name || llm2.model || '主模型'} vs ${compareModelRuntime.display_name || compareModelRuntime.model || '对比模型'}`
-                : (llm2.display_name || llm2.model || '主模型未配置');
+            const subtitle = compareDisabledByApi
+                ? `${llm2.display_name || llm2.model || '主模型未配置'} · API 调用链路不执行 LLM-2 对比模型`
+                : (compareModelConfigured
+                    ? `${llm2.display_name || llm2.model || '主模型'} vs ${compareModelRuntime.display_name || compareModelRuntime.model || '对比模型'}`
+                    : (llm2.display_name || llm2.model || '主模型未配置'));
             const body = `
                 ${renderNodeTimingDetailBlock(data, 'llm2')}
                 <div class="mb-2 flex flex-wrap gap-1">
                     ${renderStatusPill(primaryPillText, candidates.some(item => item.model_slot === 'llm2' && item.status === 'done') ? 'emerald' : (llm2InProgress ? 'blue' : 'amber'))}
-                    ${renderStatusPill(comparePillText, candidates.some(item => item.model_slot === 'llm2_compare' && item.status === 'done') ? 'emerald' : (compareInProgress ? 'blue' : (compareIsError ? 'rose' : 'amber')))}
+                    ${renderStatusPill(comparePillText, compareDisabledByApi ? 'slate' : (candidates.some(item => item.model_slot === 'llm2_compare' && item.status === 'done') ? 'emerald' : (compareInProgress ? 'blue' : (compareIsError ? 'rose' : 'amber'))))}
                     ${renderStatusPill(`风格 ${enabledStyleTitles.length || 0} 项`, enabledStyleTitles.length ? 'blue' : 'slate')}
                     ${expectedCandidateCount ? renderStatusPill(`组合 ${expectedCandidateCount} 条`, 'slate') : ''}
                 </div>
                 ${renderPipelineRows([
                     {label: '生成输入', value: data.has_v1 ? '结构化摘要 + CRM 客户画像 + 知识库证据' : '--待构建--', className: data.has_v1 ? 'text-slate-700' : 'text-slate-400'},
-                    {label: '网页按钮', value: styleCount ? `${configuredModelCount} 模型 × 2 知识库 × ${styleCount} 风格 = ${expectedCandidateCount} 个候选` : '会展开模型 × 知识库 × 风格的全部候选', className: styleCount ? 'text-slate-700' : 'text-slate-500'},
+                    {label: '网页按钮', value: compareDisabledByApi ? '当前查看的是 API 固化快照，不展开网页端对比模型候选' : (styleCount ? `${configuredModelCount} 模型 × 2 知识库 × ${styleCount} 风格 = ${expectedCandidateCount} 个候选` : '会展开模型 × 知识库 × 风格的全部候选'), className: compareDisabledByApi ? 'text-slate-700' : (styleCount ? 'text-slate-700' : 'text-slate-500')},
                     {label: 'API 输出', value: '仅返回主模型 + 首个风格 + 双知识库 4 个标准字段', className: 'text-slate-700'},
-                    {label: '模型分列', value: showCompareColumn ? '主模型在左，对比模型在右' : '当前仅显示主模型列', className: showCompareColumn ? 'text-slate-700' : 'text-amber-700'},
+                    {label: '模型分列', value: compareDisabledByApi ? 'API 快照固定只显示主模型列' : (showCompareColumn ? '主模型在左，对比模型在右' : '当前仅显示主模型列'), className: compareDisabledByApi ? 'text-slate-700' : (showCompareColumn ? 'text-slate-700' : 'text-amber-700')},
                     {label: '已启用风格', value: enabledStyleTitles.length ? enabledStyleTitles.join(' / ') : '未读到风格配置', className: enabledStyleTitles.length ? 'text-slate-700' : 'text-amber-700'},
                     {label: '当前状态', value: summaryStatusText, className: candidates.length ? 'text-emerald-700' : ((llm2InProgress || compareInProgress) ? 'text-blue-700' : (compareIsError ? 'text-rose-700' : 'text-amber-700'))}
                 ])}
@@ -2350,7 +3050,7 @@
                 <div class="rounded-lg border ${tone === 'blue' ? 'border-blue-100 bg-blue-50' : 'border-emerald-100 bg-emerald-50'} p-3">
                     <div class="flex flex-wrap gap-1 mb-2">
                         ${renderStatusPill(title, tone)}
-                        ${scoreItem?.score !== null && scoreItem?.score !== undefined ? renderStatusPill(`相似度 ${scoreItem.score}`, scoreTone(scoreItem.score)) : renderStatusPill('暂无评分', 'slate')}
+                        ${scoreItem?.score !== null && scoreItem?.score !== undefined ? renderStatusPill(`贴合代理分 ${scoreItem.score}`, scoreTone(scoreItem.score)) : renderStatusPill('暂无评分', 'slate')}
                     </div>
                     <div class="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed">${safeText(replyText || '暂无可发回复')}</div>
                     <div class="mt-2 text-[10px] text-slate-500">${safeText(scoreItem?.reason || '等待评分')}</div>
@@ -2358,10 +3058,10 @@
             const body = `
                 <div class="flex flex-wrap gap-2 mb-3">
                     ${renderStatusPill(statusText, statusTone)}
-                    ${similarity?.best_score !== null && similarity?.best_score !== undefined ? renderStatusPill(`质量分 ${similarity.best_score}`, scoreTone(similarity.best_score)) : ''}
+                    ${similarity?.best_score !== null && similarity?.best_score !== undefined ? renderStatusPill(`贴合代理分 ${similarity.best_score}`, scoreTone(similarity.best_score)) : ''}
                 </div>
                 ${renderPipelineRows([
-                    {label: '质量规则', value: similarity?.quality_score_rule || '取知识库1/知识库2 两路较高分作为单次质量分', className: 'text-slate-700'},
+                    {label: '贴合规则', value: similarity?.quality_score_rule || '取知识库1/知识库2 两路较高分作为单次贴合代理分', className: 'text-slate-700'},
                     {label: '统计口径', value: status === 'ignored_cross_day' ? '该次触发按误触发处理，不纳入当日统计' : (status === 'scored' ? '该次触发纳入当日统计' : '待我方在当日发出后续回复后再判断是否纳入统计'), className: status === 'scored' ? 'text-emerald-700' : (status === 'ignored_cross_day' ? 'text-rose-700' : 'text-amber-700')}
                 ])}
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-3 mt-3">
@@ -2693,6 +3393,12 @@
                 ['后端返回', status.response || '-'],
                 ['下一步建议', status.next || '-']
             ];
+            if (Array.isArray(status.extraRows)) {
+                status.extraRows.forEach(row => {
+                    if (!Array.isArray(row) || row.length < 2) return;
+                    rows.push([row[0], row[1]]);
+                });
+            }
             box.className = `rounded-xl border p-3 text-[11px] shadow-sm ${styles[tone]}`;
             box.innerHTML = rows.map(([label, value]) => `
                 <div class="grid grid-cols-[70px_1fr] gap-2 py-0.5">
@@ -2700,6 +3406,137 @@
                     <span class="break-all whitespace-pre-wrap">${safeText(value)}</span>
                 </div>
             `).join('');
+        }
+
+        function getCurrentSessionFilterDate() {
+            const el = document.getElementById('session-date-filter');
+            return (el?.value || selectedSessionFilterDate || '').trim();
+        }
+
+        function formatArchiveSyncDiagnostics(diag, fallbackDate = '') {
+            if (!diag || typeof diag !== 'object') return '';
+            const lines = [];
+            const summary = diag.summary || '';
+            if (summary) lines.push(`诊断结论：${summary}`);
+            if (diag.server_time) lines.push(`服务端时间：${diag.server_time}`);
+
+            const sdk = diag.archive_sdk || {};
+            if (Object.keys(sdk).length) {
+                lines.push(`SDK文件：${sdk.sdk_present ? '已找到' : '缺失'}`);
+                lines.push(`私钥文件：${sdk.private_key_present ? '已找到' : '缺失'}`);
+                lines.push(`CORP_ID：${sdk.corp_id_configured ? '已配置' : '未配置'}`);
+                lines.push(`CHATDATA_SECRET：${sdk.chatdata_secret_configured ? '已配置' : '未配置'}`);
+                lines.push(`自动轮询：${sdk.archive_polling_enabled ? '已启用' : '未启用'}`);
+                if (Array.isArray(sdk.missing) && sdk.missing.length) {
+                    lines.push(`缺失项：${sdk.missing.join('，')}`);
+                }
+            }
+
+            const cursor = diag.seq_cursor || {};
+            if (cursor.path || cursor.value || cursor.updated_at) {
+                lines.push(`当前游标：${cursor.value || '未找到'}${cursor.updated_at ? `（更新时间 ${cursor.updated_at}）` : ''}`);
+            }
+
+            const lock = diag.process_lock || {};
+            if (lock.exists) {
+                lines.push(`同步锁：存在${lock.pid_text ? `，记录PID ${lock.pid_text}` : ''}${lock.updated_at ? `，最后更新时间 ${lock.updated_at}` : ''}`);
+                if (lock.stale_hint) lines.push('同步锁提醒：锁文件长时间未更新，可能存在残留锁或卡死进程。');
+            } else {
+                lines.push('同步锁：当前不存在。');
+            }
+
+            const dbSummary = diag.db_summary || {};
+            const latestMessage = dbSummary.latest_message || {};
+            if (latestMessage.timestamp) {
+                lines.push(`库内最新消息：${latestMessage.timestamp}，会话 ${latestMessage.session_id || '-'}，seq ${latestMessage.archive_seq || '-'}`);
+            }
+            const selectedDate = dbSummary.selected_date || null;
+            const selectedDateText = selectedDate?.date || fallbackDate || '';
+            if (selectedDateText) {
+                if (selectedDate) {
+                    lines.push(`库内 ${selectedDateText}：${selectedDate.message_count || 0} 条消息，${selectedDate.session_count || 0} 个会话${selectedDate.last_message_at ? `，最后一条 ${selectedDate.last_message_at}` : ''}`);
+                } else {
+                    lines.push(`库内 ${selectedDateText}：未返回该日期统计。`);
+                }
+            }
+            if (Array.isArray(dbSummary.recent_days) && dbSummary.recent_days.length) {
+                const recentText = dbSummary.recent_days.map(item => `${item.date} ${item.message_count}条/${item.session_count}会话`).join('；');
+                lines.push(`最近入库日期：${recentText}`);
+            }
+
+            const lastSync = diag.last_sync_event || {};
+            const lastPayload = lastSync.payload || {};
+            if (lastSync.timestamp || lastSync.event_label) {
+                lines.push(`最近同步结果：${lastSync.timestamp || '-'} ${lastSync.event_label || lastSync.event || '-'}`);
+                if (lastPayload.msg) lines.push(`最近同步说明：${lastPayload.msg}`);
+                if (lastPayload.sdk_error_code !== undefined && lastPayload.sdk_error_code !== null) {
+                    lines.push(`最近SDK错误码：${lastPayload.sdk_error_code}`);
+                }
+                if (lastPayload.current_seq) lines.push(`最近同步游标：${lastPayload.current_seq}`);
+                if (lastPayload.inserted_count !== undefined) {
+                    lines.push(`最近同步入库：新增 ${lastPayload.inserted_count || 0} 条，重复 ${lastPayload.duplicate_count || 0} 条，抓取 ${lastPayload.fetched_count || 0} 条`);
+                }
+            }
+
+            const suggestions = Array.isArray(diag.suggestions) ? diag.suggestions.filter(Boolean) : [];
+            if (suggestions.length) {
+                lines.push('排查建议：');
+                suggestions.forEach((item, idx) => lines.push(`${idx + 1}. ${item}`));
+            }
+
+            return lines.join('\n');
+        }
+
+        function formatArchiveSyncPayload(payload, fallbackDate = '') {
+            const detail = payload?.detail ?? payload;
+            const diagnostics = detail?.diagnostics || payload?.diagnostics || null;
+            const lines = [];
+            if (detail?.message) lines.push(`错误说明：${translateApiMessage(detail.message)}`);
+            else if (detail?.msg) lines.push(`错误说明：${translateApiMessage(detail.msg)}`);
+            else if (typeof detail === 'string') lines.push(`错误说明：${translateApiMessage(detail)}`);
+            if (detail?.sdk_error_code !== undefined && detail?.sdk_error_code !== null) {
+                lines.push(`SDK错误码：${detail.sdk_error_code}`);
+            }
+            if (detail?.current_seq) lines.push(`当前游标：${detail.current_seq}`);
+            if (detail?.timings_ms) lines.push(`耗时明细：${JSON.stringify(detail.timings_ms)}`);
+            const diagText = formatArchiveSyncDiagnostics(diagnostics, fallbackDate);
+            if (diagText) lines.push(diagText);
+            if (!lines.length && payload && typeof payload === 'object') {
+                return JSON.stringify(payload, null, 2);
+            }
+            return lines.join('\n');
+        }
+
+        async function checkArchiveSyncStatus() {
+            const chatDate = getCurrentSessionFilterDate();
+            const query = chatDate ? `?chat_date=${encodeURIComponent(chatDate)}` : '';
+            const url = `${API_BASE}/api/system/archive_sync_status${query}`;
+            renderOperationStatus({
+                label: '正在检查企微同步环境',
+                url,
+                response: '已向服务端请求诊断信息。',
+                next: '等待服务端返回 SDK、游标、数据库与最近同步日志摘要。'
+            });
+            try {
+                const res = await apiFetch(url);
+                const data = await res.json().catch(() => ({}));
+                const diagnosticsText = formatArchiveSyncPayload(data, chatDate);
+                renderOperationStatus({
+                    ok: res.ok && data?.diagnostics?.status !== 'error',
+                    label: '企微同步环境检查完成',
+                    url,
+                    response: diagnosticsText || '服务端已返回，但没有可展示的诊断内容。',
+                    next: '先看“库内指定日期”与“最近同步结果”两行；若错误码是 10001 或 10009，优先检查服务器出网与腾讯白名单。'
+                });
+            } catch (err) {
+                renderOperationStatus({
+                    ok: false,
+                    label: '企微同步环境检查失败',
+                    url,
+                    response: translateApiMessage(err?.message || err),
+                    next: '请先确认后端服务可访问，再重新点击本按钮。'
+                });
+            }
         }
 
         function renderOperationStatusIfActive(userId, versionId, contextSeq, status) {
@@ -2722,7 +3559,8 @@
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        snapshot_id: versionId !== 'current_tail' ? versionId : null
+                        snapshot_id: versionId !== 'current_tail' ? versionId : null,
+                        trigger_source: 'web_manual'
                     })
                 });
                 const data = await res.json().catch(() => ({}));
@@ -2772,7 +3610,8 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         step: step,
-                        snapshot_id: versionId !== 'current_tail' ? versionId : null
+                        snapshot_id: versionId !== 'current_tail' ? versionId : null,
+                        trigger_source: 'web_manual'
                     })
                 });
                 const data = await res.json().catch(() => ({}));
@@ -2930,6 +3769,7 @@
                 await updateProgress('正在握手企微存档中心...', 55);
                 
                 const url = `${API_BASE}/api/sync/today`;
+                const chatDate = getCurrentSessionFilterDate();
                 renderOperationStatus({
                     label: '同步今日真实记录已发起',
                     url,
@@ -2946,23 +3786,26 @@
                         ok: true,
                         label: '同步今日真实记录成功',
                         url,
-                        response: JSON.stringify(data),
-                        next: '已刷新真实会话列表，可选择会话继续执行回复生成链路。'
+                        response: formatArchiveSyncPayload(data, chatDate) || JSON.stringify(data),
+                        next: '已刷新真实会话列表，可选择会话继续执行回复生成链路。',
+                        extraRows: [
+                            ['补充说明', '如仍然没有目标日期的数据，请立刻点击“检查同步环境”，重点核对库内指定日期统计与最近同步结果。']
+                        ]
                     });
                     setTimeout(() => {
                         statusBox.classList.add('hidden');
                         fetchSessions();
                     }, 1500);
                 } else {
-                    const message = translateApiMessage(data.detail || data.msg || data.message || `HTTP ${res.status}`);
+                    const message = formatApiError(data, `同步失败：HTTP ${res.status}`);
                     renderOperationStatus({
                         ok: false,
                         label: '同步今日真实记录失败',
                         url,
-                        response: JSON.stringify(data),
-                        next: '本次会继续使用已有真实历史会话验证后续链路；请检查企微会话存档外部链路或 SDK 日志。'
+                        response: formatArchiveSyncPayload(data, chatDate) || JSON.stringify(data),
+                        next: '请先看错误说明、SDK错误码、当前游标、库内指定日期统计，再决定是检查腾讯白名单、服务器出网，还是回补游标重拉。'
                     });
-                    alert('同步中遇到障碍：' + message);
+                    alert('同步中遇到障碍：\n' + message);
                     statusBox.classList.add('hidden');
                 }
             } catch(e) {
@@ -2971,7 +3814,7 @@
                     label: '同步今日真实记录请求异常',
                     url: `${API_BASE}/api/sync/today`,
                     response: translateApiMessage(e?.message || e),
-                    next: '确认后端服务和企微会话存档依赖可用后重试。'
+                    next: '确认后端服务和企微会话存档依赖可用后重试；也可先点击“检查同步环境”获取中文诊断。'
                 });
                 alert('网络链路异常：' + translateApiMessage(e?.message || e));
                 statusBox.classList.add('hidden');
@@ -3337,6 +4180,16 @@
             if (detail.message) lines.push(translateApiMessage(detail.message));
             if (detail.error) lines.push(`错误：${translateApiMessage(detail.error)}`);
             if (detail.msg) lines.push(`错误：${translateApiMessage(detail.msg)}`);
+            if (detail.sdk_error_code !== undefined && detail.sdk_error_code !== null) {
+                lines.push(`SDK错误码：${detail.sdk_error_code}`);
+            }
+            if (detail.current_seq) {
+                lines.push(`当前游标：${detail.current_seq}`);
+            }
+            if (detail.diagnostics) {
+                const diagnosticsText = formatArchiveSyncDiagnostics(detail.diagnostics, getCurrentSessionFilterDate());
+                if (diagnosticsText) lines.push(diagnosticsText);
+            }
             if (detail.documents) {
                 lines.push('涉及文档：');
                 Object.entries(detail.documents).forEach(([id, info]) => {
@@ -3743,11 +4596,14 @@
         async function openKnowledgeAdmin(tab = null) {
             if (tab) kbState.tab = tab;
             document.getElementById('app-wecom')?.classList.add('hidden');
+            document.getElementById('app-analytics')?.classList.add('hidden');
             document.getElementById('app-kb')?.classList.remove('hidden');
             const wecomTab = document.getElementById('main-tab-wecom');
+            const analyticsTab = document.getElementById('main-tab-analytics');
             const kbTab = document.getElementById('main-tab-kb');
-            if (wecomTab && kbTab) {
+            if (wecomTab && analyticsTab && kbTab) {
                 wecomTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-blue-50 hover:border-blue-300';
+                analyticsTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300';
                 kbTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-emerald-600 text-white border-emerald-600 shadow-sm';
             }
             await loadKbDictionaries();
@@ -3816,9 +4672,10 @@
             const labels = {
                 postgres: '知识库数据库',
                 embedding: '向量模型服务',
+                sales_kb: '知识库2 API',
                 llm1: '第一阶段大模型',
                 llm2: '第二阶段主模型',
-                llm2_compare: '第二阶段知识库2通道',
+                llm2_compare: '第二阶段对比模型',
                 crm: '客户画像库',
                 qywx: '企微应用',
                 archive_sdk: '会话存档组件'
@@ -3871,6 +4728,9 @@
                 return `<div class="mt-2 text-[11px] text-slate-500">
                     probe: ${safeText(probe.status || '-')}
                     ${probe.http_status ? ` / HTTP ${safeText(probe.http_status)}` : ''}
+                    ${probe.answer_count !== undefined ? ` / answers ${safeText(probe.answer_count)}` : ''}
+                    ${probe.top_score !== undefined ? ` / top_score ${safeText(probe.top_score)}` : ''}
+                    ${probe.probe_url ? ` / ${safeText(probe.probe_url)}` : ''}
                     ${probe.error ? ` / ${safeText(probe.error)}` : ''}
                 </div>`;
             };

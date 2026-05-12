@@ -1,8 +1,12 @@
 import json
 import logging
+import threading
+import time
+from collections import OrderedDict
 from typing import Any, List, Optional
 
 import requests
+from requests import Response
 
 from config import settings
 
@@ -11,6 +15,61 @@ logger = logging.getLogger(__name__)
 
 class EmbeddingService:
     """统一封装知识库 embedding provider 调用。"""
+
+    _SESSION_LOCK = threading.Lock()
+    _SESSION_CACHE: dict[str, requests.Session] = {}
+    _EMBED_LOCK = threading.Lock()
+    _EMBED_CACHE: "OrderedDict[str, tuple[float, List[float]]]" = OrderedDict()
+    _EMBED_CACHE_MAX = 256
+    _EMBED_CACHE_TTL_SECONDS = 300
+
+    @staticmethod
+    def _cache_key(text: str) -> str:
+        return "||".join(
+            [
+                EmbeddingService.provider_name(),
+                settings.EMBEDDING_API_URL.rstrip("/"),
+                settings.EMBEDDING_MODEL,
+                str(settings.EMBEDDING_DIM),
+                text,
+            ]
+        )
+
+    @classmethod
+    def _get_cached_embedding(cls, text: str) -> Optional[List[float]]:
+        key = cls._cache_key(text)
+        now = time.monotonic()
+        with cls._EMBED_LOCK:
+            cached = cls._EMBED_CACHE.get(key)
+            if not cached:
+                return None
+            expires_at, vector = cached
+            if expires_at <= now:
+                cls._EMBED_CACHE.pop(key, None)
+                return None
+            cls._EMBED_CACHE.move_to_end(key)
+            return list(vector)
+
+    @classmethod
+    def _set_cached_embedding(cls, text: str, vector: List[float]) -> None:
+        key = cls._cache_key(text)
+        expires_at = time.monotonic() + cls._EMBED_CACHE_TTL_SECONDS
+        with cls._EMBED_LOCK:
+            cls._EMBED_CACHE[key] = (expires_at, list(vector))
+            cls._EMBED_CACHE.move_to_end(key)
+            while len(cls._EMBED_CACHE) > cls._EMBED_CACHE_MAX:
+                cls._EMBED_CACHE.popitem(last=False)
+
+    @classmethod
+    def _session_for(cls, provider: str) -> requests.Session:
+        session_key = f"{provider}|trust_env={settings.HTTP_TRUST_ENV}"
+        with cls._SESSION_LOCK:
+            session = cls._SESSION_CACHE.get(session_key)
+            if session is None:
+                session = requests.Session()
+                session.trust_env = settings.HTTP_TRUST_ENV
+                cls._SESSION_CACHE[session_key] = session
+            return session
 
     @staticmethod
     def provider_name() -> str:
@@ -52,13 +111,21 @@ class EmbeddingService:
         if not clean_text:
             raise ValueError("Embedding text is empty")
 
+        cached = EmbeddingService._get_cached_embedding(clean_text)
+        if cached is not None:
+            return cached
+
         provider = EmbeddingService.provider_name()
         if provider == "ollama":
-            return EmbeddingService._embed_ollama(clean_text)
-        if provider == "dify":
-            return EmbeddingService._embed_dify(clean_text)
+            vector = EmbeddingService._embed_ollama(clean_text)
+        elif provider == "dify":
+            vector = EmbeddingService._embed_dify(clean_text)
+        else:
+            vector = EmbeddingService._embed_openai_compatible(clean_text)
 
-        return EmbeddingService._embed_openai_compatible(clean_text)
+        if vector:
+            EmbeddingService._set_cached_embedding(clean_text, vector)
+        return vector
 
     @staticmethod
     def _embed_ollama(text: str) -> Optional[List[float]]:
@@ -68,8 +135,7 @@ class EmbeddingService:
             "prompt": text,
         }
         try:
-            session = requests.Session()
-            session.trust_env = settings.HTTP_TRUST_ENV
+            session = EmbeddingService._session_for("ollama")
             response = session.post(
                 url,
                 json=payload,
@@ -104,28 +170,32 @@ class EmbeddingService:
             "user": "knowledge_embedding",
         }
         try:
-            session = requests.Session()
-            session.trust_env = settings.HTTP_TRUST_ENV
-            url = EmbeddingService._dify_base_url() + "/completion-messages"
-            response = session.post(
-                url,
-                headers=headers,
-                json=payload,
-                timeout=settings.EMBEDDING_TIMEOUT_SECONDS,
-            )
-            if response.status_code == 404:
-                url = EmbeddingService._dify_base_url() + "/chat-messages"
+            session = EmbeddingService._session_for("dify")
+            app_mode = EmbeddingService._dify_app_mode()
+            preferred_paths = ["/chat-messages", "/completion-messages"] if app_mode == "chat" else ["/completion-messages", "/chat-messages"]
+            response = None
+            url = ""
+            for path in preferred_paths:
+                url = EmbeddingService._dify_base_url() + path
                 response = session.post(
                     url,
                     headers=headers,
                     json=payload,
                     timeout=settings.EMBEDDING_TIMEOUT_SECONDS,
                 )
-            response.raise_for_status()
-            return EmbeddingService._normalize_embedding_vector(
-                EmbeddingService._extract_dify_embedding(response.json()),
-                source_label="Dify embedding",
-            )
+                if response.status_code in {200, 400, 401, 403}:
+                    break
+            if response is None:
+                raise RuntimeError("Dify embedding 未获得有效响应")
+            EmbeddingService._raise_for_status_with_detail(response, url)
+            try:
+                return EmbeddingService._normalize_embedding_vector(
+                    EmbeddingService._extract_dify_embedding(response.json()),
+                    source_label="Dify embedding",
+                )
+            except RuntimeError:
+                logger.warning("Dify app 已调用成功，但返回中不含 embedding/vector；将由上层决定是否降级为关键词检索。")
+                return None
         except Exception as e:
             logger.error("Dify embedding 调用失败: %s", e)
             raise RuntimeError(f"Dify embedding 调用失败: {e}") from e
@@ -139,8 +209,7 @@ class EmbeddingService:
         headers = {"Authorization": f"Bearer {settings.EMBEDDING_API_KEY}"}
         payload = {"model": settings.EMBEDDING_MODEL, "input": text}
         try:
-            session = requests.Session()
-            session.trust_env = settings.HTTP_TRUST_ENV
+            session = EmbeddingService._session_for("openai_compatible")
             response = session.post(
                 url,
                 headers=headers,
@@ -164,6 +233,54 @@ class EmbeddingService:
         if not base_url.endswith("/v1"):
             base_url = base_url + "/v1"
         return base_url
+
+    @staticmethod
+    def _dify_app_info() -> dict[str, Any]:
+        headers = {"Authorization": f"Bearer {settings.EMBEDDING_API_KEY}"}
+        session = EmbeddingService._session_for("dify")
+        response = session.get(
+            EmbeddingService._dify_base_url() + "/info",
+            headers=headers,
+            timeout=settings.KB_HEALTHCHECK_TIMEOUT_SECONDS,
+        )
+        EmbeddingService._raise_for_status_with_detail(response, EmbeddingService._dify_base_url() + "/info")
+        payload = response.json()
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _dify_app_mode() -> str:
+        try:
+            return str(EmbeddingService._dify_app_info().get("mode") or "").strip().lower()
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _raise_for_status_with_detail(response: Response, url: str) -> None:
+        if response.ok:
+            return
+        detail = EmbeddingService._summarize_error_response(response)
+        raise RuntimeError(f"HTTP {response.status_code} endpoint={url} detail={detail}")
+
+    @staticmethod
+    def _summarize_error_response(response: Response) -> str:
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+
+        if isinstance(payload, dict):
+            code = str(payload.get("code") or "").strip()
+            message = str(payload.get("message") or "").strip()
+            pieces = []
+            if code:
+                pieces.append(f"code={code}")
+            if message:
+                pieces.append(f"message={message}")
+            if pieces:
+                return ", ".join(pieces)
+
+        text = (response.text or "").strip()
+        return text[:300] if text else "empty_response"
 
     @staticmethod
     def _extract_dify_embedding(payload: Any) -> Any:
