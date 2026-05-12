@@ -40,7 +40,7 @@ from database import (
     KnowledgeDocument, KnowledgeChunk, PricingRule, KnowledgeHitLog, KnowledgeCandidate,
     KnowledgeVersionSnapshot, JobTask, ThreadBusinessFact, EmailThreadAsset,
     EmailFragmentAsset, EmailEffectFeedback, ModelTrainingSample, ReplyChainSnapshot,
-    ApiAssistInvocation,
+    ApiAssistInvocation, WecomTriggerRecord,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -61,6 +61,11 @@ LLM_COMPARE_RUNTIME_STATUS: dict[str, dict[str, Any]] = {}
 REPLY_CHAIN_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="reply-chain")
 REPLY_CHAIN_ACTIVE_FUTURES: dict[str, Future] = {}
 REPLY_CHAIN_ACTIVE_LOCK = threading.Lock()
+SIDEBAR_ASSIST_RECENT_DEDUPE_TTL_SECONDS = 180
+SIDEBAR_ASSIST_ACTIVE_FUTURES: dict[str, Future] = {}
+SIDEBAR_ASSIST_ACTIVE_LOCK = threading.Lock()
+SIDEBAR_ASSIST_RESULT_CACHE: dict[str, dict[str, Any]] = {}
+SIDEBAR_ASSIST_CACHE_LOCK = threading.Lock()
 POSITIVE_FEEDBACK_STATUSES = {"useful", "adopted", "won", "advanced"}
 NEGATIVE_FEEDBACK_STATUSES = {"needs_fix", "rejected"}
 TRAINING_SAMPLE_TYPES = {"embedding_corpus", "reply_fragment_sft", "thread_reply_sft", "retrieval_pair"}
@@ -114,6 +119,26 @@ async def request_observability_middleware(request: Request, call_next):
             elapsed_ms,
         )
     return response
+
+
+def _optional_embedding_for_storage(text: str, *, context: str) -> list[float] | None:
+    try:
+        embedding = EmbeddingService.embed(text)
+    except Exception as exc:
+        logger.warning("Embedding 调用失败，继续按无向量模式处理。 context=%s error=%s", context, sanitize_text(str(exc)))
+        return None
+    if not embedding:
+        logger.warning("Embedding 未返回向量，继续按无向量模式处理。 context=%s", context)
+        return None
+    return embedding
+
+
+def _embedding_metadata_fields(embedding: list[float] | None) -> dict[str, Any]:
+    return {
+        "embedding_provider": settings.EMBEDDING_PROVIDER if embedding else None,
+        "embedding_model": settings.EMBEDDING_MODEL if embedding else None,
+        "embedding_dim": len(embedding) if embedding else None,
+    }
 
 from callback import router as callback_router
 app.include_router(callback_router)
@@ -225,6 +250,8 @@ def auto_patch_db():
             "anchor_message_text TEXT,"
             "visible_message_ids JSON,"
             "latest_dialog_count INTEGER DEFAULT 0,"
+            "trigger_source VARCHAR(30),"
+            "trigger_kind VARCHAR(50),"
             "triggered_at TIMESTAMP DEFAULT now(),"
             "stage_status JSON,"
             "result_payload JSON NOT NULL,"
@@ -235,6 +262,50 @@ def auto_patch_db():
             "quality_score NUMERIC(6, 2),"
             "quality_status VARCHAR(50),"
             "quality_scored_at TIMESTAMP,"
+            "quality_annotations JSON,"
+            "created_at TIMESTAMP DEFAULT now(),"
+            "updated_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
+        db.execute(text("ALTER TABLE api_assist_invocation ADD COLUMN IF NOT EXISTS trigger_source VARCHAR(30);"))
+        db.execute(text("ALTER TABLE api_assist_invocation ADD COLUMN IF NOT EXISTS trigger_kind VARCHAR(50);"))
+        db.execute(text("ALTER TABLE api_assist_invocation ADD COLUMN IF NOT EXISTS kb1_eval_score NUMERIC(6, 2);"))
+        db.execute(text("ALTER TABLE api_assist_invocation ADD COLUMN IF NOT EXISTS kb1_eval_reason TEXT;"))
+        db.execute(text("ALTER TABLE api_assist_invocation ADD COLUMN IF NOT EXISTS kb2_eval_score NUMERIC(6, 2);"))
+        db.execute(text("ALTER TABLE api_assist_invocation ADD COLUMN IF NOT EXISTS kb2_eval_reason TEXT;"))
+        db.execute(text("ALTER TABLE api_assist_invocation ADD COLUMN IF NOT EXISTS quality_annotations JSON;"))
+        db.execute(text("ALTER TABLE wecom_trigger_record ADD COLUMN IF NOT EXISTS kb1_eval_score NUMERIC(6, 2);"))
+        db.execute(text("ALTER TABLE wecom_trigger_record ADD COLUMN IF NOT EXISTS kb1_eval_reason TEXT;"))
+        db.execute(text("ALTER TABLE wecom_trigger_record ADD COLUMN IF NOT EXISTS kb2_eval_score NUMERIC(6, 2);"))
+        db.execute(text("ALTER TABLE wecom_trigger_record ADD COLUMN IF NOT EXISTS kb2_eval_reason TEXT;"))
+        db.execute(text("ALTER TABLE wecom_trigger_record ADD COLUMN IF NOT EXISTS quality_annotations JSON;"))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS wecom_trigger_record ("
+            "record_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "session_id VARCHAR(120) NOT NULL,"
+            "snapshot_id VARCHAR(120),"
+            "run_id VARCHAR(40),"
+            "trigger_source VARCHAR(30) NOT NULL DEFAULT 'web_manual',"
+            "trigger_kind VARCHAR(50) NOT NULL,"
+            "requested_step INTEGER,"
+            "requested_channel VARCHAR(50),"
+            "request_status VARCHAR(30) NOT NULL DEFAULT 'queued',"
+            "anchor_message_id INTEGER,"
+            "anchor_message_time TIMESTAMP,"
+            "anchor_message_text TEXT,"
+            "visible_message_ids JSON,"
+            "input_messages JSON,"
+            "recent_customer_messages JSON,"
+            "latest_dialog_count INTEGER DEFAULT 0,"
+            "actual_sales_replies JSON,"
+            "actual_sales_reply_text TEXT,"
+            "stage_status JSON,"
+            "result_payload JSON,"
+            "request_payload JSON,"
+            "error_message TEXT,"
+            "quality_annotations JSON,"
+            "triggered_at TIMESTAMP DEFAULT now(),"
+            "finished_at TIMESTAMP,"
             "created_at TIMESTAMP DEFAULT now(),"
             "updated_at TIMESTAMP DEFAULT now()"
             ");"
@@ -244,6 +315,10 @@ def auto_patch_db():
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_api_ai_session_triggered ON api_assist_invocation (session_id, triggered_at DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_api_ai_anchor_triggered ON api_assist_invocation (session_id, anchor_message_id, triggered_at DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_api_ai_quality_status ON api_assist_invocation (quality_status, triggered_at DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_wtr_triggered ON wecom_trigger_record (triggered_at DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_wtr_source_triggered ON wecom_trigger_record (trigger_source, triggered_at DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_wtr_session_triggered ON wecom_trigger_record (session_id, triggered_at DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_wtr_run_id ON wecom_trigger_record (run_id);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_message_logs_archive_msg_id ON message_logs (archive_msg_id);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_message_logs_archive_seq ON message_logs (archive_seq);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_active_effective ON knowledge_chunk (status, business_line, knowledge_type, effective_from, effective_to);"))
@@ -283,6 +358,9 @@ async def startup_event():
     if not archive_status["ready"]:
         logger.warning("企微会话存档自动轮询已请求但配置不完整，跳过启动: %s", archive_status["missing"])
         return
+
+    from kb_evaluation_worker import start_kb_evaluation_thread
+    start_kb_evaluation_thread()
 
     logger.info("启动企微会话存档 15 分钟异步轮询任务")
     async def background_poll_worker():
@@ -370,9 +448,7 @@ def process_deep_analyze_task(user_id, content, sender_type):
 @app.post("/api/knowledge")
 async def add_knowledge(title: str, content: str, category: str = "通用"):
     embedding = IntentEngine.get_embedding(content)
-    if not embedding:
-        raise HTTPException(status_code=500, detail="Embedding failed")
-    
+
     db = SessionLocal()
     try:
         new_item = KnowledgeBase(title=title, content=content, category=category, embedding=embedding)
@@ -506,6 +582,14 @@ class AssistFeedback(BaseModel):
     manual_feedback: dict | None = None
     final_response: str | None = None
     snapshot_id: str | None = None
+
+
+class TriggerAnalyticsQualityAnnotationRequest(BaseModel):
+    row_source: str
+    row_id: str
+    score_key: str
+    labels: list[str] | None = None
+    custom_text: str | None = None
 
 class ExcellentReplyExtractRequest(BaseModel):
     session_id: str
@@ -2295,9 +2379,10 @@ def _restore_document_from_snapshot(db: Session, doc: KnowledgeDocument, snapsho
     for chunk_payload in sorted(chunks_payload, key=lambda item: int(item.get("chunk_no") or 1)):
         retrieval_title = _strip_retrieval_title_prefix(chunk_payload.get("title") or doc.title)
         retrieval_text = _build_chunk_retrieval_text(chunk_payload.get("title") or doc.title, chunk_payload.get("content") or "")
-        embedding = EmbeddingService.embed(retrieval_text)
-        if not embedding:
-            raise HTTPException(status_code=500, detail=f"Embedding failed when restoring chunk: {chunk_payload.get('title')}")
+        embedding = _optional_embedding_for_storage(
+            retrieval_text,
+            context=f"restore_chunk:{chunk_payload.get('title') or doc.title}",
+        )
         chunk = KnowledgeChunk(
             document_id=doc.document_id,
             chunk_no=int(chunk_payload.get("chunk_no") or 1),
@@ -2306,9 +2391,7 @@ def _restore_document_from_snapshot(db: Session, doc: KnowledgeDocument, snapsho
             content=chunk_payload.get("content") or "",
             keyword_text=chunk_payload.get("keyword_text") or retrieval_text,
             embedding=embedding,
-            embedding_provider=settings.EMBEDDING_PROVIDER,
-            embedding_model=settings.EMBEDDING_MODEL,
-            embedding_dim=settings.EMBEDDING_DIM,
+            **_embedding_metadata_fields(embedding),
             priority=int(chunk_payload.get("priority") or 50),
             retrieval_weight=_decimal_or_none(chunk_payload.get("retrieval_weight")) or Decimal("1.000"),
             business_line=chunk_payload.get("business_line") or doc.business_line,
@@ -2445,9 +2528,7 @@ def _create_single_document_and_chunk(
     merged_tags = merge_knowledge_class_tags(tags, resolved_class)
     retrieval_title = _strip_retrieval_title_prefix(title)
     retrieval_text = _build_chunk_retrieval_text(title, content)
-    embedding = EmbeddingService.embed(retrieval_text)
-    if not embedding:
-        raise HTTPException(status_code=500, detail="Embedding failed")
+    embedding = _optional_embedding_for_storage(retrieval_text, context=f"create_document:{title}")
 
     document = KnowledgeDocument(
         title=title,
@@ -2479,9 +2560,7 @@ def _create_single_document_and_chunk(
         content=content,
         keyword_text=retrieval_text,
         embedding=embedding,
-        embedding_provider=settings.EMBEDDING_PROVIDER,
-        embedding_model=settings.EMBEDDING_MODEL,
-        embedding_dim=settings.EMBEDDING_DIM,
+        **_embedding_metadata_fields(embedding),
         priority=priority,
         business_line=business_line,
         sub_service=sub_service,
@@ -3428,7 +3507,10 @@ def _create_email_excel_document(
     for chunk_no, payload in enumerate(chunks_payload, start=1):
         retrieval_title = _strip_retrieval_title_prefix(payload["title"])
         retrieval_text = _build_chunk_retrieval_text(payload["title"], payload["content"])
-        embedding = EmbeddingService.embed(retrieval_text) if payload["content"] else None
+        embedding = _optional_embedding_for_storage(
+            retrieval_text,
+            context=f"email_chunk:{chunk_no}:{payload['title']}",
+        ) if payload["content"] else None
         chunk = KnowledgeChunk(
             document_id=document.document_id,
             chunk_no=chunk_no,
@@ -3437,9 +3519,7 @@ def _create_email_excel_document(
             content=payload["content"],
             keyword_text=retrieval_text,
             embedding=embedding,
-            embedding_provider=settings.EMBEDDING_PROVIDER if embedding else None,
-            embedding_model=settings.EMBEDDING_MODEL if embedding else None,
-            embedding_dim=settings.EMBEDDING_DIM if embedding else None,
+            **_embedding_metadata_fields(embedding),
             priority=_email_chunk_priority(payload["function_fragment"], payload["chunk_type"]),
             retrieval_weight=Decimal("1.000"),
             business_line=payload["business_line"],
@@ -5614,9 +5694,7 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
     )
     merged_tags = merge_knowledge_class_tags(payload.tags, resolved_class)
     embedding_text = _build_chunk_retrieval_text(payload.title, payload.content)
-    embedding = EmbeddingService.embed(embedding_text)
-    if not embedding:
-        raise HTTPException(status_code=500, detail="Embedding failed")
+    embedding = _optional_embedding_for_storage(embedding_text, context=f"manual_create:{payload.title}")
 
     effective_from, effective_to = default_pricing_effective_window(
         payload.effective_from,
@@ -5653,9 +5731,7 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
         content=payload.content,
         keyword_text=_build_chunk_retrieval_text(payload.title, payload.content),
         embedding=embedding,
-        embedding_provider=settings.EMBEDDING_PROVIDER,
-        embedding_model=settings.EMBEDDING_MODEL,
-        embedding_dim=settings.EMBEDDING_DIM,
+        **_embedding_metadata_fields(embedding),
         priority=payload.priority,
         business_line=payload.business_line,
         sub_service=payload.sub_service,
@@ -5755,9 +5831,7 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
         merged_chunk_tags = merge_knowledge_class_tags(item.tags, resolved_chunk_class)
         retrieval_title = _strip_retrieval_title_prefix(item.title)
         retrieval_text = _build_chunk_retrieval_text(item.title, item.content)
-        embedding = EmbeddingService.embed(retrieval_text)
-        if not embedding:
-            raise HTTPException(status_code=500, detail=f"Embedding failed at chunk {idx}: {item.title}")
+        embedding = _optional_embedding_for_storage(retrieval_text, context=f"multi_chunk_create:{idx}:{item.title}")
         chunk = KnowledgeChunk(
             document_id=document.document_id,
             chunk_no=idx,
@@ -5766,9 +5840,7 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
             content=item.content,
             keyword_text=retrieval_text,
             embedding=embedding,
-            embedding_provider=settings.EMBEDDING_PROVIDER,
-            embedding_model=settings.EMBEDDING_MODEL,
-            embedding_dim=settings.EMBEDDING_DIM,
+            **_embedding_metadata_fields(embedding),
             priority=item.priority,
             business_line=item.business_line or payload.business_line,
             sub_service=item.sub_service or payload.sub_service,
@@ -6465,14 +6537,12 @@ async def update_kb_chunk(chunk_id: str, payload: KnowledgeChunkUpdate, db: Sess
 
     if chunk.title != old_title or chunk.content != old_content:
         retrieval_text = _build_chunk_retrieval_text(chunk.title, chunk.content)
-        embedding = EmbeddingService.embed(retrieval_text)
-        if not embedding:
-            raise HTTPException(status_code=500, detail="Embedding failed")
+        embedding = _optional_embedding_for_storage(retrieval_text, context=f"update_chunk:{chunk.chunk_id}")
         chunk.keyword_text = retrieval_text
         chunk.embedding = embedding
-        chunk.embedding_provider = settings.EMBEDDING_PROVIDER
-        chunk.embedding_model = settings.EMBEDDING_MODEL
-        chunk.embedding_dim = settings.EMBEDDING_DIM
+        chunk.embedding_provider = settings.EMBEDDING_PROVIDER if embedding else None
+        chunk.embedding_model = settings.EMBEDDING_MODEL if embedding else None
+        chunk.embedding_dim = len(embedding) if embedding else None
 
     doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id == chunk.document_id).first()
     _apply_chunk_governance(
@@ -7331,6 +7401,11 @@ def _runtime_llm_values(prefix: str) -> dict:
         ),
     }
 
+def _runtime_stage1_llm_values() -> dict:
+    if _runtime_bool_setting("STAGE1_USE_LLM2", settings.STAGE1_USE_LLM2):
+        return _runtime_llm_values("LLM2")
+    return _runtime_llm_values("LLM1")
+
 def _runtime_llm_configured(config: dict) -> bool:
     return not any(
         _is_placeholder_value(config.get(field))
@@ -7357,18 +7432,20 @@ def _llm_provider_label(api_key: str | None) -> str:
     return "Dify" if str(api_key or "").startswith("app-") else "OpenAI-compatible"
 
 def _llm_runtime_config() -> dict:
-    llm1 = _runtime_llm_values("LLM1")
+    llm1 = _runtime_stage1_llm_values()
     llm1_compare = _runtime_llm_values("LLM1_COMPARE")
     llm2 = _runtime_llm_values("LLM2")
     llm2_compare = _runtime_llm_values("LLM2_COMPARE")
+    llm1_display_prefix = "LLM-2" if _runtime_bool_setting("STAGE1_USE_LLM2", settings.STAGE1_USE_LLM2) else "LLM-1"
+    llm1_role = "第一阶段特征提取（复用 LLM-2）" if _runtime_bool_setting("STAGE1_USE_LLM2", settings.STAGE1_USE_LLM2) else "第一阶段特征提取"
     return {
         "llm1": {
             "id": "LLM-1",
-            "role": "第一阶段特征提取",
+            "role": llm1_role,
             "model": llm1["model"],
             "provider": _llm_provider_label(llm1["api_key"]),
             "url": llm1["api_url"],
-            "display_name": f"LLM-1 / {llm1['model'] or '未配置'}",
+            "display_name": f"{llm1_display_prefix} / {llm1['model'] or '未配置'}",
         },
         "llm1_compare": {
             "id": "LLM-1 对比",
@@ -7422,7 +7499,24 @@ def _embedding_probe_and_suggestions() -> tuple[dict, list[str]]:
     if provider == "ollama":
         suggestions = [] if probe.get("reachable") else ["检查 Ollama 服务是否启动、URL 是否正确、模型是否已拉取。"]
     elif provider == "dify":
-        suggestions = [] if probe.get("reachable") else ["检查 Dify embedding 应用是否已发布、URL 是否正确、EMBEDDING_API_KEY 是否匹配该应用。"]
+        suggestions = [] if probe.get("reachable") else ["检查 Dify Service API 地址、应用发布状态和 API Key 是否正确。"]
+        if probe.get("reachable"):
+            try:
+                app_info = EmbeddingService._dify_app_info()
+                app_mode = str(app_info.get("mode") or "").strip().lower()
+                probe["app_mode"] = app_mode
+                probe["app_name"] = app_info.get("name")
+                if app_mode == "chat":
+                    probe["status"] = "warning"
+                    probe["vector_capable"] = False
+                    probe["fallback_mode"] = "keyword_only"
+                    suggestions = [
+                        "当前 embedding 与其他节点统一复用同一个 Dify 对话型应用；知识库会自动降级为关键词检索，不再强依赖原始向量输出。"
+                    ]
+                else:
+                    probe["vector_capable"] = True
+            except Exception as exc:
+                probe["app_info_error"] = sanitize_text(str(exc))
     else:
         suggestions = [] if probe.get("reachable") else ["检查 Embedding 网关 URL、API Key 和 /models 或 /embeddings 能力是否可用。"]
     probe["mode"] = probe_target.get("mode")
@@ -7513,7 +7607,7 @@ def _system_config_check() -> dict:
             "suggestions": suggestions,
         }
 
-    llm1 = _runtime_llm_values("LLM1")
+    llm1 = _runtime_stage1_llm_values()
     llm1_compare = _runtime_llm_values("LLM1_COMPARE")
     llm2 = _runtime_llm_values("LLM2")
     llm2_compare = _runtime_llm_values("LLM2_COMPARE")
@@ -7652,13 +7746,13 @@ def _runtime_health() -> dict:
     else:
         embedding_probe, _ = _embedding_probe_and_suggestions()
         checks["embedding"] = {
-            "status": "ok" if embedding_probe.get("reachable") else "error",
+            "status": embedding_probe.get("status") or ("ok" if embedding_probe.get("reachable") else "error"),
             "provider": settings.EMBEDDING_PROVIDER,
             "url": settings.EMBEDDING_API_URL,
             "model": settings.EMBEDDING_MODEL,
             "probe": embedding_probe,
         }
-        if not embedding_probe.get("reachable"):
+        if (embedding_probe.get("status") or "ok") != "ok":
             overall = "degraded"
 
     checks["runtime"] = {
@@ -7715,6 +7809,81 @@ async def get_public_endpoints():
         "generated_at": datetime.utcnow().isoformat(),
         "public_access": _public_access_runtime(),
         "external_endpoints": _public_endpoint_map(),
+    }
+
+def _archive_sync_db_summary(db: Session, chat_date: str | None = None) -> dict:
+    latest_row = db.query(
+        MessageLog.timestamp,
+        MessageLog.user_id,
+        MessageLog.archive_seq,
+    ).filter(
+        MessageLog.is_mock.is_(False)
+    ).order_by(
+        MessageLog.timestamp.desc(),
+        MessageLog.id.desc(),
+    ).first()
+
+    recent_rows = db.query(
+        func.date(MessageLog.timestamp).label("chat_day"),
+        func.count(MessageLog.id).label("message_count"),
+        func.count(func.distinct(MessageLog.user_id)).label("session_count"),
+    ).filter(
+        MessageLog.is_mock.is_(False)
+    ).group_by(
+        text("chat_day")
+    ).order_by(
+        text("chat_day DESC")
+    ).limit(5).all()
+
+    selected_date_summary = None
+    date_range = _parse_filter_date(chat_date) if chat_date else None
+    if date_range:
+        day_start, day_end = date_range
+        row = db.query(
+            func.count(MessageLog.id).label("message_count"),
+            func.count(func.distinct(MessageLog.user_id)).label("session_count"),
+            func.min(MessageLog.timestamp).label("first_message_at"),
+            func.max(MessageLog.timestamp).label("last_message_at"),
+        ).filter(
+            MessageLog.is_mock.is_(False),
+            MessageLog.timestamp >= day_start,
+            MessageLog.timestamp < day_end,
+        ).first()
+        selected_date_summary = {
+            "date": chat_date,
+            "message_count": int(row.message_count or 0) if row else 0,
+            "session_count": int(row.session_count or 0) if row else 0,
+            "first_message_at": row.first_message_at if row else None,
+            "last_message_at": row.last_message_at if row else None,
+        }
+
+    return {
+        "latest_message": {
+            "timestamp": latest_row.timestamp if latest_row else None,
+            "session_id": latest_row.user_id if latest_row else None,
+            "archive_seq": latest_row.archive_seq if latest_row else None,
+        },
+        "recent_days": [
+            {
+                "date": str(item.chat_day),
+                "message_count": int(item.message_count or 0),
+                "session_count": int(item.session_count or 0),
+            }
+            for item in recent_rows
+        ],
+        "selected_date": selected_date_summary,
+    }
+
+@app.get("/api/system/archive_sync_status")
+async def get_archive_sync_status(chat_date: str | None = Query(default=None), db: Session = Depends(get_db)):
+    from archive_service import ArchiveService
+
+    diagnostics = ArchiveService.get_runtime_diagnostics()
+    diagnostics["db_summary"] = _archive_sync_db_summary(db, chat_date=chat_date)
+    return {
+        "status": "success",
+        "generated_at": datetime.utcnow().isoformat(),
+        "diagnostics": diagnostics,
     }
 
 @app.post("/api/kb/documents/{document_id}/publish")
@@ -8316,10 +8485,10 @@ def _commit_kb_excel_import_raw(
             for chunk_index, chunk_payload in enumerate(split_chunks, start=1):
                 retrieval_title = _strip_retrieval_title_prefix(chunk_payload.title)
                 retrieval_text = _build_chunk_retrieval_text(chunk_payload.title, chunk_payload.content)
-                embedding = EmbeddingService.embed(retrieval_text)
-                if not embedding:
-                    failed.append({"row": item["row"], "title": chunk_payload.title, "errors": [f"embedding_failed_at_split_chunk_{chunk_index}"]})
-                    continue
+                embedding = _optional_embedding_for_storage(
+                    retrieval_text,
+                    context=f"publish_split_chunk:row{item['row']}:chunk{chunk_index}:{chunk_payload.title}",
+                )
                 chunk = KnowledgeChunk(
                     document_id=document.document_id,
                     chunk_no=chunk_index,
@@ -8328,9 +8497,7 @@ def _commit_kb_excel_import_raw(
                     content=chunk_payload.content,
                     keyword_text=retrieval_text,
                     embedding=embedding,
-                    embedding_provider=settings.EMBEDDING_PROVIDER,
-                    embedding_model=settings.EMBEDDING_MODEL,
-                    embedding_dim=settings.EMBEDDING_DIM,
+                    **_embedding_metadata_fields(embedding),
                     priority=chunk_payload.priority,
                     business_line=chunk_payload.business_line or item["business_line"],
                     sub_service=chunk_payload.sub_service or item.get("sub_service"),
@@ -8391,7 +8558,7 @@ def _commit_kb_excel_import_raw(
             continue
         retrieval_title = _strip_retrieval_title_prefix(title)
         retrieval_text = _build_chunk_retrieval_text(title, content)
-        embedding = EmbeddingService.embed(retrieval_text)
+        embedding = _optional_embedding_for_storage(retrieval_text, context=f"excel_import:row{item['row']}:{title}")
 
         document = KnowledgeDocument(
             title=title,
@@ -8428,9 +8595,7 @@ def _commit_kb_excel_import_raw(
             content=content,
             keyword_text=retrieval_text,
             embedding=embedding,
-            embedding_provider=settings.EMBEDDING_PROVIDER,
-            embedding_model=settings.EMBEDDING_MODEL,
-            embedding_dim=settings.EMBEDDING_DIM,
+            **_embedding_metadata_fields(embedding),
             priority=item["priority"],
             business_line=item["business_line"],
             sub_service=item.get("sub_service"),
@@ -8896,10 +9061,7 @@ async def import_faq_excel(file: UploadFile = File(...), db: Session = Depends(g
         risk_level = infer_faq_risk_level(title, content)
         retrieval_title = _strip_retrieval_title_prefix(title)
         retrieval_text = _build_chunk_retrieval_text(title, content)
-        embedding = EmbeddingService.embed(retrieval_text)
-        if not embedding:
-            failed.append({"row": row_index, "title": title, "reason": "embedding_failed"})
-            continue
+        embedding = _optional_embedding_for_storage(retrieval_text, context=f"faq_excel_import:row{row_index}:{title}")
 
         source_ref = f"{filename} / {sheet.title} / row {row_index}"
         document = KnowledgeDocument(
@@ -8928,9 +9090,7 @@ async def import_faq_excel(file: UploadFile = File(...), db: Session = Depends(g
             content=content,
             keyword_text=retrieval_text,
             embedding=embedding,
-            embedding_provider=settings.EMBEDDING_PROVIDER,
-            embedding_model=settings.EMBEDDING_MODEL,
-            embedding_dim=settings.EMBEDDING_DIM,
+            **_embedding_metadata_fields(embedding),
             priority=50,
             business_line=business_line,
             knowledge_type="faq",
@@ -9105,9 +9265,7 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
     for idx, item in enumerate(chunks_payload, start=1):
         retrieval_title = _strip_retrieval_title_prefix(item.title)
         retrieval_text = _build_chunk_retrieval_text(item.title, item.content)
-        embedding = EmbeddingService.embed(retrieval_text)
-        if not embedding:
-            raise HTTPException(status_code=500, detail=f"Embedding failed at assisted chunk {idx}: {item.title}")
+        embedding = _optional_embedding_for_storage(retrieval_text, context=f"assist_chunk:{idx}:{item.title}")
         chunk = KnowledgeChunk(
             document_id=document.document_id,
             chunk_no=idx,
@@ -9116,9 +9274,7 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
             content=item.content,
             keyword_text=retrieval_text,
             embedding=embedding,
-            embedding_provider=settings.EMBEDDING_PROVIDER,
-            embedding_model=settings.EMBEDDING_MODEL,
-            embedding_dim=settings.EMBEDDING_DIM,
+            **_embedding_metadata_fields(embedding),
             priority=item.priority,
             business_line=item.business_line,
             sub_service=item.sub_service,
@@ -9313,7 +9469,14 @@ def _build_api_session_marks(db: Session, *, day_start: datetime, day_end: datet
 async def get_sessions(chat_date: str | None = Query(default=None), db: Session = Depends(get_db)):
     """获取真实会话列表；模拟数据不会进入日常运行视图。"""
     from sqlalchemy import func, cast, Integer, text
+    total_started = perf_counter()
+    timings_ms: dict[str, float] = {}
+
+    stage_started = perf_counter()
     date_range = _parse_filter_date(chat_date)
+    timings_ms["parse_filter_date_ms"] = round((perf_counter() - stage_started) * 1000, 2)
+
+    stage_started = perf_counter()
     results = db.query(
         MessageLog.user_id,
         func.max(MessageLog.timestamp).label("last_msg"),
@@ -9326,12 +9489,15 @@ async def get_sessions(chat_date: str | None = Query(default=None), db: Session 
             MessageLog.timestamp < day_end,
         )
     results = results.group_by(MessageLog.user_id).order_by(text("last_msg DESC")).all()
+    timings_ms["query_sessions_ms"] = round((perf_counter() - stage_started) * 1000, 2)
 
     session_marks: dict[str, dict] = {}
     stats_payload = None
     if date_range:
         try:
+            stage_started = perf_counter()
             stats_payload = _build_api_day_stats(db, day_start=day_start, day_end=day_end)
+            timings_ms["build_day_stats_ms"] = round((perf_counter() - stage_started) * 1000, 2)
         except Exception as exc:
             logger.warning("构建当日 API 统计失败，已降级跳过。 date=%s error=%s", chat_date, exc)
             stats_payload = {
@@ -9342,7 +9508,9 @@ async def get_sessions(chat_date: str | None = Query(default=None), db: Session 
                 "error": sanitize_text(str(exc)),
             }
         try:
+            stage_started = perf_counter()
             session_marks = _build_api_session_marks(db, day_start=day_start, day_end=day_end)
+            timings_ms["build_session_marks_ms"] = round((perf_counter() - stage_started) * 1000, 2)
         except Exception as exc:
             logger.warning("构建会话级 API 标记失败，已降级跳过。 date=%s error=%s", chat_date, exc)
             session_marks = {}
@@ -9365,6 +9533,15 @@ async def get_sessions(chat_date: str | None = Query(default=None), db: Session 
         "filter_date": chat_date or None,
         "stats": stats_payload if date_range else None,
     }
+    timings_ms["total_ms"] = round((perf_counter() - total_started) * 1000, 2)
+    log_session_view_event("SESSIONS", {
+        "filter_date": chat_date or None,
+        "session_count": len(payload["sessions"]),
+        "has_date_stats": bool(date_range),
+        "api_invocation_count": (stats_payload or {}).get("invocation_count") if isinstance(stats_payload, dict) else None,
+        "stats_status": (stats_payload or {}).get("status") if isinstance(stats_payload, dict) else None,
+        "timings_ms": timings_ms,
+    })
     return payload
 
 @app.get("/api/sessions/{user_id}/messages")
@@ -9450,6 +9627,27 @@ async def _sync_archive_for_session(requested_session_id: str, timeout_seconds: 
     result["timings_ms"]["wait_ms"] = round((perf_counter() - total_started) * 1000, 2)
     return result
 
+
+async def _sync_archive_for_session_background(requested_session_id: str) -> None:
+    try:
+        result = await asyncio.to_thread(ArchiveService.sync_today_data, requested_session_id)
+        if result.get("status") != "success":
+            logger.warning(
+                "侧边栏辅助后台企微同步未成功 session_id=%s msg=%s",
+                requested_session_id,
+                result.get("msg"),
+            )
+    except Exception as exc:
+        logger.error("侧边栏辅助后台企微同步异常 session_id=%s err=%s", requested_session_id, exc)
+
+
+def _schedule_archive_sync_for_session(requested_session_id: str) -> bool:
+    archive_status = ArchiveService.config_status()
+    if not archive_status["ready"]:
+        return False
+    asyncio.create_task(_sync_archive_for_session_background(requested_session_id))
+    return True
+
 def extract_external_userid(value: str) -> str:
     """从单聊 session_id 中取真实外部联系人 ID；群聊没有 CRM external_userid。"""
     import re
@@ -9532,27 +9730,317 @@ def _submit_named_reply_chain_task(task_key: str, fn, *args) -> tuple[Future, bo
         REPLY_CHAIN_ACTIVE_FUTURES[task_key] = future
         return future, True
 
-def _submit_reply_chain_task(session_id: str, snapshot_id: str | None, step: int) -> tuple[Future, bool]:
+def _submit_reply_chain_task(
+    session_id: str,
+    snapshot_id: str | None,
+    step: int,
+    analytics_record_id: str | None = None,
+) -> tuple[Future, bool]:
     task_key = _reply_chain_executor_task_key(session_id, snapshot_id)
     target_fn = reanalyze_snapshot_task if snapshot_id and snapshot_id != "current_tail" else reanalyze_session_task
-    target_args = (session_id, snapshot_id, step) if target_fn is reanalyze_snapshot_task else (session_id, step)
+    target_args = (
+        (session_id, snapshot_id, step, analytics_record_id)
+        if target_fn is reanalyze_snapshot_task
+        else (session_id, step, analytics_record_id)
+    )
     return _submit_named_reply_chain_task(task_key, target_fn, *target_args)
 
 def _knowledge_refresh_executor_task_key(session_id: str, snapshot_id: str | None, channel: str) -> str:
     return f"{_reply_chain_executor_task_key(session_id, snapshot_id)}::knowledge::{channel}"
 
-def _submit_knowledge_refresh_task(session_id: str, snapshot_id: str | None, channel: str) -> tuple[Future, bool]:
+def _submit_knowledge_refresh_task(
+    session_id: str,
+    snapshot_id: str | None,
+    channel: str,
+    analytics_record_id: str | None = None,
+) -> tuple[Future, bool]:
     task_key = _knowledge_refresh_executor_task_key(session_id, snapshot_id, channel)
     target_fn = refresh_snapshot_knowledge_task if snapshot_id and snapshot_id != "current_tail" else refresh_session_knowledge_task
-    target_args = (session_id, snapshot_id, channel) if target_fn is refresh_snapshot_knowledge_task else (session_id, channel)
+    target_args = (
+        (session_id, snapshot_id, channel, analytics_record_id)
+        if target_fn is refresh_snapshot_knowledge_task
+        else (session_id, channel, analytics_record_id)
+    )
     return _submit_named_reply_chain_task(task_key, target_fn, *target_args)
 
 def _reply_chain_runtime_key(session_id: str, snapshot_id: str | None = None) -> str:
     return snapshot_id or session_id
 
+def _normalize_trigger_source(value: str | None, default: str = "web_manual") -> str:
+    raw = str(value or "").strip().lower()
+    alias_map = {
+        "api": "api",
+        "api_trigger": "api",
+        "sidebar_api": "api",
+        "web": "web_manual",
+        "web_manual": "web_manual",
+        "frontend": "web_manual",
+        "manual": "web_manual",
+        "test": "test",
+        "qa": "test",
+    }
+    return alias_map.get(raw, default)
+
+def _is_test_user_agent(user_agent: str | None) -> bool:
+    text_value = str(user_agent or "").strip().lower()
+    if not text_value:
+        return False
+    return any(keyword in text_value for keyword in [
+        "postman",
+        "apifox",
+        "insomnia",
+        "curl",
+        "python-requests",
+        "python/",
+        "pytest",
+        "selenium",
+        "playwright",
+    ])
+
+def _resolve_trigger_source(
+    *,
+    request: Request | None,
+    explicit: str | None,
+    default: str,
+) -> str:
+    normalized = _normalize_trigger_source(explicit, default=default)
+    if normalized == "test":
+        return "test"
+    user_agent = request.headers.get("user-agent", "") if request else ""
+    header_value = request.headers.get("x-trigger-source", "") if request else ""
+    if _normalize_trigger_source(header_value, default="") == "test":
+        return "test"
+    if _is_test_user_agent(user_agent):
+        return "test"
+    return normalized
+
+def _message_analytics_dict(item: MessageLog) -> dict:
+    return {
+        "id": item.id,
+        "sender_type": item.sender_type,
+        "content": sanitize_text(item.content or ""),
+        "time": item.timestamp.isoformat() if item.timestamp else None,
+    }
+
+def _build_trigger_record_snapshot(
+    db: Session,
+    *,
+    session_id: str,
+    snapshot_id: str | None,
+) -> dict:
+    all_messages = _load_session_messages(db, session_id)
+    anchor_message = None
+    visible_messages = all_messages
+    if snapshot_id and snapshot_id != "current_tail":
+        snapshot = db.query(ReplyChainSnapshot).filter(
+            ReplyChainSnapshot.snapshot_id == snapshot_id,
+            ReplyChainSnapshot.session_id == session_id,
+        ).first()
+        if snapshot and snapshot.anchor_message_id:
+            anchor_message = next((item for item in all_messages if item.id == snapshot.anchor_message_id), None)
+            visible_messages = _visible_messages_until_anchor(all_messages, snapshot.anchor_message_id)
+    if anchor_message is None:
+        anchor_message = _find_latest_customer_anchor(all_messages)
+        if anchor_message:
+            visible_messages = _visible_messages_until_anchor(all_messages, anchor_message.id)
+    input_messages = visible_messages[-15:]
+    recent_customer_messages = [item for item in input_messages if item.sender_type == "customer"]
+    actual_sales_replies = _collect_actual_sales_replies(all_messages, int(anchor_message.id)) if anchor_message else []
+    return {
+        "anchor_message_id": int(anchor_message.id) if anchor_message else None,
+        "anchor_message_time": anchor_message.timestamp if anchor_message else None,
+        "anchor_message_text": sanitize_text(anchor_message.content or "") if anchor_message else None,
+        "visible_message_ids": [item.id for item in visible_messages],
+        "input_messages": [_message_analytics_dict(item) for item in input_messages],
+        "recent_customer_messages": [_message_analytics_dict(item) for item in recent_customer_messages],
+        "latest_dialog_count": len(visible_messages),
+        "actual_sales_replies": _jsonable(actual_sales_replies),
+        "actual_sales_reply_text": _reply_block_text(actual_sales_replies),
+    }
+
+def _create_wecom_trigger_record(
+    *,
+    session_id: str,
+    snapshot_id: str | None,
+    run_id: str | None,
+    trigger_source: str,
+    trigger_kind: str,
+    requested_step: int | None = None,
+    requested_channel: str | None = None,
+    request_status: str = "queued",
+    request_payload: dict | None = None,
+) -> str | None:
+    db = SessionLocal()
+    try:
+        snapshot = _build_trigger_record_snapshot(db, session_id=session_id, snapshot_id=snapshot_id)
+        item = WecomTriggerRecord(
+            session_id=session_id,
+            snapshot_id=snapshot_id,
+            run_id=run_id,
+            trigger_source=trigger_source,
+            trigger_kind=trigger_kind,
+            requested_step=requested_step,
+            requested_channel=requested_channel,
+            request_status=request_status,
+            anchor_message_id=snapshot.get("anchor_message_id"),
+            anchor_message_time=snapshot.get("anchor_message_time"),
+            anchor_message_text=snapshot.get("anchor_message_text"),
+            visible_message_ids=snapshot.get("visible_message_ids"),
+            input_messages=snapshot.get("input_messages"),
+            recent_customer_messages=snapshot.get("recent_customer_messages"),
+            latest_dialog_count=int(snapshot.get("latest_dialog_count") or 0),
+            actual_sales_replies=snapshot.get("actual_sales_replies"),
+            actual_sales_reply_text=snapshot.get("actual_sales_reply_text"),
+            request_payload=_jsonable(request_payload or {}),
+            stage_status={},
+            triggered_at=datetime.utcnow(),
+        )
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+        return str(item.record_id)
+    except Exception as exc:
+        logger.error("创建企微触发统计记录失败: %s", exc)
+        db.rollback()
+        return None
+    finally:
+        db.close()
+
+def _update_wecom_trigger_record(
+    record_id: str | None,
+    *,
+    request_status: str,
+    result_payload: dict | None = None,
+    stage_status: dict | None = None,
+    error_message: str | None = None,
+) -> None:
+    if not record_id:
+        return
+    db = SessionLocal()
+    try:
+        item = db.query(WecomTriggerRecord).filter(WecomTriggerRecord.record_id == record_id).first()
+        if not item:
+            return
+        item.request_status = str(request_status or item.request_status or "unknown")
+        if stage_status is not None:
+            item.stage_status = _jsonable(stage_status)
+        if result_payload is not None:
+            item.result_payload = _jsonable(result_payload)
+            item.stage_status = _jsonable((result_payload or {}).get("stage_status") or stage_status or {})
+            item.actual_sales_replies = _jsonable((result_payload or {}).get("actual_sales_replies") or item.actual_sales_replies or [])
+            item.actual_sales_reply_text = _reply_block_text(item.actual_sales_replies or [])
+            item.latest_dialog_count = int((result_payload or {}).get("latest_dialog_count") or item.latest_dialog_count or 0)
+        if error_message is not None:
+            item.error_message = sanitize_text(error_message)
+        item.finished_at = datetime.utcnow()
+        db.commit()
+    except Exception as exc:
+        logger.error("回写企微触发统计记录失败: %s", exc)
+        db.rollback()
+    finally:
+        db.close()
+
+def _build_analysis_result_for_target(
+    db: Session,
+    *,
+    session_id: str,
+    snapshot_id: str | None,
+) -> dict:
+    if snapshot_id and snapshot_id != "current_tail":
+        snapshot = db.query(ReplyChainSnapshot).filter(
+            ReplyChainSnapshot.snapshot_id == snapshot_id,
+            ReplyChainSnapshot.session_id == session_id,
+        ).first()
+        if not snapshot:
+            return {}
+        all_messages = _load_session_messages(db, session_id)
+        visible_messages = _visible_messages_until_anchor(all_messages, snapshot.anchor_message_id)
+        result = _snapshot_result_payload(snapshot=snapshot, visible_messages=visible_messages)
+        if not result.get("fast_track"):
+            result["fast_track"] = collect_fast_track_signals(visible_messages[-15:])
+        if not result.get("actual_sales_replies"):
+            result["actual_sales_replies"] = _collect_actual_sales_replies(all_messages, snapshot.anchor_message_id)
+        result["node_timings_ms"] = _extract_node_timings(result.get("stage_status"))
+        return _jsonable(result)
+
+    recent_logs = db.query(MessageLog).filter(
+        MessageLog.user_id == session_id,
+        MessageLog.is_mock.is_(False),
+    ).order_by(MessageLog.id.desc()).limit(15).all()
+    fast_track_signals = collect_fast_track_signals(recent_logs)
+    summary = db.query(IntentSummary).filter(IntentSummary.user_id == session_id).order_by(IntentSummary.id.desc()).first()
+    result = _read_only_current_tail_result(
+        db=db,
+        user_id=session_id,
+        summary=summary,
+        recent_logs=recent_logs,
+        fast_track_signals=fast_track_signals,
+    )
+    result["node_timings_ms"] = _extract_node_timings(result.get("stage_status"))
+    return _jsonable(result)
+
+def _summary_payload_from_result(result: dict | None) -> dict:
+    payload = result or {}
+    return {
+        "topic": payload.get("topic"),
+        "core_demand": payload.get("core_demand"),
+        "key_facts": payload.get("key_facts"),
+        "todo_items": payload.get("todo_items"),
+        "risks": payload.get("risks"),
+        "to_be_confirmed": payload.get("to_be_confirmed"),
+        "status": payload.get("status"),
+    }
+
+def _sync_wecom_trigger_record_result(
+    *,
+    record_id: str | None,
+    session_id: str,
+    snapshot_id: str | None,
+    request_status: str,
+    error_message: str | None = None,
+) -> None:
+    if not record_id:
+        return
+    db = SessionLocal()
+    try:
+        item = db.query(WecomTriggerRecord).filter(WecomTriggerRecord.record_id == record_id).first()
+        if not item:
+            return
+        result = _build_analysis_result_for_target(
+            db,
+            session_id=session_id,
+            snapshot_id=snapshot_id,
+        )
+        if result:
+            actual_sales_replies = result.get("actual_sales_replies") or item.actual_sales_replies or []
+            similarity_payload, best_score, quality_status = _build_api_similarity_payload(
+                result_payload=result,
+                actual_sales_replies=actual_sales_replies,
+                triggered_at=item.triggered_at,
+            )
+            result["summary"] = _summary_payload_from_result(result)
+            result["api_quality_similarity"] = similarity_payload
+            result["api_quality_score"] = float(best_score) if best_score is not None else None
+            result["api_quality_status"] = quality_status
+            item.result_payload = _jsonable(result)
+            item.stage_status = _jsonable(result.get("stage_status") or {})
+            item.actual_sales_replies = _jsonable(actual_sales_replies)
+            item.actual_sales_reply_text = _reply_block_text(actual_sales_replies)
+        item.request_status = str(request_status or item.request_status or "unknown")
+        if error_message is not None:
+            item.error_message = sanitize_text(error_message)
+        item.finished_at = datetime.utcnow()
+        db.commit()
+    except Exception as exc:
+        logger.error("同步企微触发统计结果失败 record_id=%s err=%s", record_id, exc)
+        db.rollback()
+    finally:
+        db.close()
+
 def _mark_reply_chain_requested(session_id: str, snapshot_id: str | None, step: int, run_id: str) -> None:
     db = SessionLocal()
     try:
+        requested_at = _utc_now_iso()
         if snapshot_id and snapshot_id != "current_tail":
             snapshot = db.query(ReplyChainSnapshot).filter(
                 ReplyChainSnapshot.snapshot_id == snapshot_id,
@@ -9565,10 +10053,8 @@ def _mark_reply_chain_requested(session_id: str, snapshot_id: str | None, step: 
             stage_status["last_requested_step"] = step
             if step == 1:
                 stage_status["llm1"] = "queued"
-                stage_status["knowledge_v2"] = "not_started"
-                stage_status["knowledge_external_api"] = "not_started"
-                stage_status["llm2"] = "not_started"
-                stage_status["llm2_compare"] = "not_started"
+                stage_status["llm1_requested_at"] = requested_at
+                stage_status["llm1_display_reset"] = True
             elif step == 2:
                 stage_status["llm2"] = "queued"
                 stage_status["llm2_compare"] = "queued"
@@ -9584,10 +10070,8 @@ def _mark_reply_chain_requested(session_id: str, snapshot_id: str | None, step: 
         stage_status["last_requested_step"] = step
         if step == 1:
             stage_status["llm1"] = "queued"
-            stage_status["knowledge_v2"] = "not_started"
-            stage_status["knowledge_external_api"] = "not_started"
-            stage_status["llm2"] = "not_started"
-            stage_status["llm2_compare"] = "not_started"
+            stage_status["llm1_requested_at"] = requested_at
+            stage_status["llm1_display_reset"] = True
         elif step == 2:
             stage_status["llm2"] = "queued"
             stage_status["llm2_compare"] = "queued"
@@ -9766,6 +10250,18 @@ def _reply_block_hash(replies: list[dict] | None) -> str | None:
         return None
     return hashlib.sha1(text.encode("utf-8")).hexdigest()
 
+def _message_id_signature(message_ids: list[Any] | None) -> str:
+    normalized: list[str] = []
+    for raw_value in message_ids or []:
+        if raw_value is None:
+            continue
+        try:
+            normalized.append(str(int(raw_value)))
+        except (TypeError, ValueError):
+            normalized.append(str(raw_value))
+    payload = ",".join(normalized)
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
 def _find_latest_customer_anchor(messages: list[MessageLog]) -> MessageLog | None:
     for item in reversed(messages or []):
         if item.sender_type == "customer":
@@ -9797,6 +10293,96 @@ def _api_invocation_meta(item: ApiAssistInvocation) -> dict:
         "has_v2": bool((item.result_payload or {}).get("has_v2")),
         "source_label": "API调用",
     }
+
+def _api_invocation_identity_key(item: ApiAssistInvocation) -> str:
+    return (
+        f"{item.session_id or ''}"
+        f"::{int(item.anchor_message_id or 0)}"
+        f"::{_message_id_signature(item.visible_message_ids)}"
+    )
+
+def _sidebar_assist_request_key(
+    *,
+    session_id: str,
+    messages: list[MessageLog],
+    force_refresh: bool,
+) -> str:
+    anchor_message = _find_latest_customer_anchor(messages)
+    return (
+        f"{session_id or ''}"
+        f"::{1 if force_refresh else 0}"
+        f"::{int(anchor_message.id) if anchor_message else 0}"
+        f"::{_message_id_signature([item.id for item in messages])}"
+    )
+
+def _decorate_sidebar_assist_result(
+    payload: dict,
+    *,
+    status: str,
+    reason: str,
+    request_key: str | None = None,
+) -> dict:
+    result = dict(_jsonable(payload) or {})
+    result["request_dedupe"] = {
+        "status": status,
+        "reason": reason,
+        "ttl_seconds": SIDEBAR_ASSIST_RECENT_DEDUPE_TTL_SECONDS,
+        "request_key": request_key,
+    }
+    return result
+
+def _get_cached_sidebar_assist_result(request_key: str) -> dict | None:
+    now_epoch = datetime.utcnow().timestamp()
+    with SIDEBAR_ASSIST_CACHE_LOCK:
+        cached = SIDEBAR_ASSIST_RESULT_CACHE.get(request_key)
+        if not cached:
+            return None
+        cached_at_epoch = float(cached.get("cached_at_epoch") or 0)
+        if now_epoch - cached_at_epoch > SIDEBAR_ASSIST_RECENT_DEDUPE_TTL_SECONDS:
+            SIDEBAR_ASSIST_RESULT_CACHE.pop(request_key, None)
+            return None
+        return dict(cached.get("payload") or {})
+
+def _remember_sidebar_assist_result(request_key: str, payload: dict) -> None:
+    now_epoch = datetime.utcnow().timestamp()
+    with SIDEBAR_ASSIST_CACHE_LOCK:
+        expired_keys = [
+            key
+            for key, value in SIDEBAR_ASSIST_RESULT_CACHE.items()
+            if now_epoch - float(value.get("cached_at_epoch") or 0) > SIDEBAR_ASSIST_RECENT_DEDUPE_TTL_SECONDS
+        ]
+        for key in expired_keys:
+            SIDEBAR_ASSIST_RESULT_CACHE.pop(key, None)
+        SIDEBAR_ASSIST_RESULT_CACHE[request_key] = {
+            "cached_at_epoch": now_epoch,
+            "payload": dict(_jsonable(payload) or {}),
+        }
+
+def _acquire_sidebar_assist_future(request_key: str) -> tuple[Future, bool]:
+    with SIDEBAR_ASSIST_ACTIVE_LOCK:
+        current_future = SIDEBAR_ASSIST_ACTIVE_FUTURES.get(request_key)
+        if current_future and not current_future.done():
+            return current_future, False
+        new_future: Future = Future()
+        SIDEBAR_ASSIST_ACTIVE_FUTURES[request_key] = new_future
+        return new_future, True
+
+def _resolve_sidebar_assist_future(
+    request_key: str,
+    future: Future,
+    *,
+    result: dict | None = None,
+    error: Exception | None = None,
+) -> None:
+    with SIDEBAR_ASSIST_ACTIVE_LOCK:
+        if SIDEBAR_ASSIST_ACTIVE_FUTURES.get(request_key) is future:
+            SIDEBAR_ASSIST_ACTIVE_FUTURES.pop(request_key, None)
+    if future.done():
+        return
+    if error is not None:
+        future.set_exception(error)
+        return
+    future.set_result(dict(_jsonable(result) or {}))
 
 def _is_same_calendar_day(left: datetime | None, right: datetime | None) -> bool:
     return bool(left and right and left.date() == right.date())
@@ -9882,6 +10468,7 @@ def _store_api_assist_invocation(
     external_userid: str,
     sales_userid: str,
     messages: list[MessageLog],
+    trigger_source: str = "api",
 ) -> ApiAssistInvocation | None:
     anchor_message = _find_latest_customer_anchor(messages)
     if not anchor_message:
@@ -9897,6 +10484,8 @@ def _store_api_assist_invocation(
         anchor_message_text=anchor_message.content,
         visible_message_ids=[msg.id for msg in visible_messages],
         latest_dialog_count=len(visible_messages),
+        trigger_source=trigger_source,
+        trigger_kind="api_sidebar_assist",
         triggered_at=datetime.utcnow(),
         stage_status=_jsonable(result_payload.get("stage_status") or {}),
         result_payload=_jsonable(result_payload),
@@ -10052,7 +10641,7 @@ def _reply_scores_need_refresh(
     stored_sales = stored_scores.get("actual_sales_replies") or []
 
     done_candidates = [
-        item for item in (candidates or [])
+        item for item in (_prepare_candidates_for_scoring(candidates or []))
         if item.get("status") == "done" and str(item.get("content") or "").strip()
     ]
     sales_replies = [
@@ -10097,11 +10686,12 @@ def _load_or_refresh_reply_scores(
     candidates: list[dict] | None,
     actual_sales_replies: list[dict] | None,
 ) -> dict | None:
-    if not candidates:
+    prepared_candidates = _prepare_candidates_for_scoring(candidates or [])
+    if not prepared_candidates:
         return stored_scores if isinstance(stored_scores, dict) else None
     if not _reply_scores_need_refresh(
         stored_scores,
-        candidates=candidates,
+        candidates=prepared_candidates,
         actual_sales_replies=actual_sales_replies,
     ):
         return stored_scores
@@ -10109,9 +10699,51 @@ def _load_or_refresh_reply_scores(
         summary_json=summary_json,
         knowledge_payload=knowledge_payload or {},
         crm_context=crm_context,
-        candidates=candidates or [],
+        candidates=prepared_candidates,
         actual_sales_replies=actual_sales_replies or [],
     )
+
+def _prepare_candidates_for_scoring(candidates: list[dict] | None) -> list[dict]:
+    prepared: list[dict] = []
+    for item in candidates or []:
+        row = dict(item or {})
+        content = str(row.get("content") or "").strip()
+        if not content:
+            reply_reference = str(row.get("reply_reference") or "").strip()
+            followup_rationale = str(row.get("followup_rationale") or "").strip()
+            if reply_reference or followup_rationale:
+                parts = []
+                if reply_reference:
+                    parts.append("【企微回复参考】")
+                    parts.append(reply_reference)
+                if followup_rationale:
+                    parts.append("")
+                    parts.append("【跟进思路说明】")
+                    parts.append(followup_rationale)
+                row["content"] = "\n".join(parts).strip()
+        prepared.append(row)
+    return prepared
+
+
+def _merge_reply_candidates(existing: list[dict] | None, incoming: list[dict] | None) -> list[dict]:
+    merged: list[dict] = []
+    index_by_id: dict[str, int] = {}
+    for item in existing or []:
+        candidate_id = str((item or {}).get("candidate_id") or "").strip()
+        row = dict(item or {})
+        if candidate_id:
+            index_by_id[candidate_id] = len(merged)
+        merged.append(row)
+    for item in incoming or []:
+        candidate_id = str((item or {}).get("candidate_id") or "").strip()
+        row = dict(item or {})
+        if candidate_id and candidate_id in index_by_id:
+            merged[index_by_id[candidate_id]] = row
+        else:
+            if candidate_id:
+                index_by_id[candidate_id] = len(merged)
+            merged.append(row)
+    return merged
 
 def _generate_reply_style_candidates(
     *,
@@ -10379,6 +11011,418 @@ def _generate_reply_style_candidates(
         },
     }
 
+
+def _generate_llm2_compare_extension(
+    *,
+    summary_json: dict,
+    knowledge: dict,
+    knowledge_compare: dict | None,
+    crm_context: dict | None,
+    actual_sales_replies: list[dict] | None,
+    runtime_key: str,
+    existing_candidates: list[dict] | None,
+    single_model_single_style: bool | None = None,
+    enable_scoring: bool | None = None,
+) -> dict:
+    stage_started = perf_counter()
+    single_model_single_style = bool(single_model_single_style)
+    enable_scoring = bool(enable_scoring)
+    styles = IntentEngine.get_reply_style_options(enabled_only=True)
+    if single_model_single_style and styles:
+        styles = styles[:1]
+    compare_config = _runtime_llm_values("LLM2_COMPARE")
+    compare_model_configured = _runtime_llm_configured(compare_config)
+    llm_runtime = _llm_runtime_config()
+    model_spec = {
+        "slot": "llm2_compare",
+        "label": "对比模型",
+        "display_name": llm_runtime["llm2_compare"]["display_name"] or llm_runtime["llm2_compare"]["model"] or "对比模型",
+        "provider": llm_runtime["llm2_compare"]["provider"],
+        "config": compare_config,
+    }
+    knowledge_specs = [
+        {
+            "key": "knowledge_v2",
+            "label": "知识库1",
+            "payload": knowledge if isinstance(knowledge, dict) else {},
+            "status": str((knowledge or {}).get("status") or "not_started"),
+        },
+        {
+            "key": "knowledge_external_api",
+            "label": "知识库2",
+            "payload": knowledge_compare if isinstance(knowledge_compare, dict) else {},
+            "status": str((knowledge_compare or {}).get("status") or "not_started"),
+        },
+    ]
+    compare_candidates: list[dict] = []
+    stage_parts_ms: dict[str, float] = {}
+
+    def append_candidate(
+        *,
+        candidate_id: str,
+        knowledge_spec: dict,
+        style: dict,
+        status: str,
+        content: str = "",
+        validation: dict | None = None,
+        prompt_trace: dict | None = None,
+        reason: str = "",
+    ) -> None:
+        compare_candidates.append({
+            "candidate_id": candidate_id,
+            "model_slot": model_spec["slot"],
+            "model_label": model_spec["label"],
+            "model_display_name": model_spec["display_name"],
+            "model_provider": model_spec["provider"],
+            "knowledge_source": knowledge_spec["key"],
+            "knowledge_source_label": knowledge_spec["label"],
+            "style_id": style["id"],
+            "style_title": style["title"],
+            "style_content": style["content"],
+            "reply_style": style,
+            "status": status,
+            "content": content,
+            "validation": validation,
+            "prompt_trace": prompt_trace,
+            "reason": reason,
+        })
+
+    def knowledge_skip_reason(spec: dict) -> tuple[str, str] | None:
+        status = str(spec.get("status") or "").strip() or "not_started"
+        payload = spec.get("payload") if isinstance(spec.get("payload"), dict) else {}
+        if status in {"error", "not_configured", "skipped_no_query", "skipped_missing_knowledge"}:
+            reason = sanitize_text(str(payload.get("error") or "")) or {
+                "error": f"{spec['label']}检索失败",
+                "not_configured": f"{spec['label']}未配置",
+                "skipped_no_query": f"{spec['label']}缺少检索问题",
+                "skipped_missing_knowledge": f"{spec['label']}证据未准备好",
+            }.get(status, f"{spec['label']}不可用")
+            return status, reason
+        if status in {"not_started", "queued", "running"}:
+            return "skipped_missing_knowledge", f"{spec['label']}证据未准备好"
+        return None
+
+    if not compare_model_configured:
+        _set_llm_compare_status(runtime_key, "not_configured", "LLM2_COMPARE_API_URL / API_KEY / MODEL 未完整配置", compare_config)
+        merged_candidates = _merge_reply_candidates(existing_candidates, compare_candidates)
+        return {
+            "candidates": compare_candidates,
+            "merged_candidates": merged_candidates,
+            "reply_scores": None,
+            "llm2_compare_status": "not_configured",
+            "stage_timings_ms": {
+                "total_ms": round((perf_counter() - stage_started) * 1000, 2),
+                "parts_ms": stage_parts_ms,
+            },
+        }
+
+    _set_llm_compare_status(runtime_key, "running", "对比模型正在生成", compare_config)
+    slot_started = perf_counter()
+    done_count = 0
+    failure_count = 0
+    for knowledge_spec in knowledge_specs:
+        skip_meta = knowledge_skip_reason(knowledge_spec)
+        for style in styles:
+            candidate_id = f"llm2_compare__{knowledge_spec['key']}__{style['id']}"
+            if skip_meta:
+                status, reason = skip_meta
+                append_candidate(
+                    candidate_id=candidate_id,
+                    knowledge_spec=knowledge_spec,
+                    style=style,
+                    status=status,
+                    reason=reason,
+                )
+                continue
+            label_suffix = "KB1" if knowledge_spec["key"] == "knowledge_v2" else "KB2"
+            prompt_label = f"LLM2_COMPARE_{label_suffix}"
+            request_spec = None
+            try:
+                request_spec = IntentEngine.build_sales_assist_request(
+                    summary_json,
+                    knowledge_spec["payload"],
+                    crm_context,
+                    api_url=compare_config["api_url"],
+                    api_key=compare_config["api_key"],
+                    model=compare_config["model"],
+                    timeout_seconds=compare_config["timeout_seconds"],
+                    label=prompt_label,
+                    reply_style=style,
+                )
+                bundle = IntentEngine.generate_sales_assist_bundle(
+                    summary_json,
+                    knowledge_spec["payload"],
+                    crm_context,
+                    prepared_request=request_spec,
+                )
+                content = bundle.get("content")
+                if content:
+                    done_count += 1
+                    append_candidate(
+                        candidate_id=candidate_id,
+                        knowledge_spec=knowledge_spec,
+                        style=style,
+                        status="done",
+                        content=content,
+                        validation=bundle.get("validation") or IntentEngine.validate_sales_assist_output(content, knowledge_spec["payload"], crm_context=crm_context),
+                        prompt_trace=bundle.get("prompt_trace"),
+                    )
+                else:
+                    failure_count += 1
+                    append_candidate(
+                        candidate_id=candidate_id,
+                        knowledge_spec=knowledge_spec,
+                        style=style,
+                        status="failed_no_content",
+                        prompt_trace=request_spec.get("prompt_trace") if isinstance(request_spec, dict) else None,
+                        reason=f"对比模型在{knowledge_spec['label']}上返回空内容",
+                    )
+            except Exception as exc:
+                failure_count += 1
+                append_candidate(
+                    candidate_id=candidate_id,
+                    knowledge_spec=knowledge_spec,
+                    style=style,
+                    status="error",
+                    prompt_trace=request_spec.get("prompt_trace") if isinstance(request_spec, dict) else None,
+                    reason=sanitize_text(str(exc)),
+                )
+    stage_parts_ms["llm2_compare_ms"] = round((perf_counter() - slot_started) * 1000, 2)
+
+    merged_candidates = _merge_reply_candidates(existing_candidates, compare_candidates)
+    reply_scores = None
+    if enable_scoring:
+        score_started = perf_counter()
+        reply_scores = IntentEngine.score_reply_candidates(
+            summary_json=summary_json,
+            knowledge_payload=knowledge,
+            crm_context=crm_context,
+            candidates=merged_candidates,
+            actual_sales_replies=actual_sales_replies or [],
+        )
+        stage_parts_ms["reply_scoring_ms"] = round((perf_counter() - score_started) * 1000, 2)
+
+    compare_status = "done" if done_count else ("error" if failure_count else "failed_no_content")
+    compare_reason = {
+        "done": "对比模型已生成",
+        "error": "对比模型全部失败",
+        "failed_no_content": "对比模型无可用输出",
+    }.get(compare_status, "")
+    _set_llm_compare_status(runtime_key, compare_status, compare_reason, compare_config)
+    return {
+        "candidates": compare_candidates,
+        "merged_candidates": merged_candidates,
+        "reply_scores": reply_scores,
+        "llm2_compare_status": compare_status,
+        "stage_timings_ms": {
+            "total_ms": round((perf_counter() - stage_started) * 1000, 2),
+            "parts_ms": stage_parts_ms,
+        },
+    }
+
+
+def _complete_sidebar_assist_compare_async(
+    *,
+    summary_id: int | None,
+    invocation_id: str | None,
+    session_id: str,
+    summary_json: dict,
+    knowledge_v2: dict,
+    knowledge_external_api: dict | None,
+    crm_context: dict | None,
+    single_model_single_style: bool,
+    enable_scoring: bool,
+) -> None:
+    db = SessionLocal()
+    try:
+        summary = db.query(IntentSummary).filter(IntentSummary.id == summary_id).first() if summary_id else None
+        api_invocation = (
+            db.query(ApiAssistInvocation).filter(ApiAssistInvocation.invocation_id == invocation_id).first()
+            if invocation_id else None
+        )
+        existing_candidates = None
+        if summary and isinstance(summary.reply_style_results_v2, list):
+            existing_candidates = summary.reply_style_results_v2
+        elif api_invocation and isinstance((api_invocation.result_payload or {}).get("reply_style_results_v2"), list):
+            existing_candidates = api_invocation.result_payload.get("reply_style_results_v2")
+
+        extension = _generate_llm2_compare_extension(
+            summary_json=summary_json,
+            knowledge=knowledge_v2,
+            knowledge_compare=knowledge_external_api,
+            crm_context=crm_context,
+            actual_sales_replies=[],
+            runtime_key=session_id,
+            existing_candidates=existing_candidates,
+            single_model_single_style=single_model_single_style,
+            enable_scoring=enable_scoring,
+        )
+        compare_runtime_status = LLM_COMPARE_RUNTIME_STATUS.get(session_id) or {}
+        llm2_compare_status = extension.get("llm2_compare_status") or "failed_no_content"
+        stage_timing = extension.get("stage_timings_ms") or {}
+        parts_ms = dict(stage_timing.get("parts_ms") or {})
+        total_ms = _round_timing_ms(stage_timing.get("total_ms")) or 0.0
+
+        def apply_stage_updates(stage_status: dict) -> dict:
+            updated = dict(stage_status or {})
+            updated["llm2_compare"] = llm2_compare_status
+            existing_llm2 = dict(((updated.get("node_timings_ms") or {}).get("llm2")) or {})
+            existing_total = _round_timing_ms(existing_llm2.get("total_ms")) or 0.0
+            merged_parts = {
+                **dict(existing_llm2.get("parts_ms") or {}),
+                **parts_ms,
+            }
+            combined_total = round(existing_total + total_ms, 2) if total_ms else existing_total
+            _set_node_timing(
+                updated,
+                "llm2",
+                total_ms=combined_total,
+                parts_ms=merged_parts,
+                status="done" if llm2_compare_status in {"done", "not_configured", "failed_no_content", "error"} else "running",
+            )
+            return updated
+
+        if summary:
+            summary.reply_style_results_v2 = extension.get("merged_candidates")
+            if enable_scoring:
+                summary.reply_scores_v2 = extension.get("reply_scores")
+            summary.stage_status = apply_stage_updates(dict(summary.stage_status or {}))
+
+        if api_invocation:
+            result_payload = dict(api_invocation.result_payload or {})
+            result_payload["reply_style_results_v2"] = _serialize_reply_candidates_for_output(extension.get("merged_candidates"))
+            if enable_scoring:
+                result_payload["reply_scores_v2"] = extension.get("reply_scores")
+            result_payload["llm2_compare_runtime_status"] = compare_runtime_status
+            result_payload["stage_status"] = apply_stage_updates(dict(result_payload.get("stage_status") or {}))
+            result_payload["node_timings_ms"] = _extract_node_timings(result_payload["stage_status"])
+            api_invocation.stage_status = result_payload["stage_status"]
+            api_invocation.result_payload = _jsonable(result_payload)
+
+        db.commit()
+        logger.info(
+            "API 侧边栏异步补齐对比模型完成 session_id=%s invocation_id=%s compare_status=%s",
+            session_id,
+            invocation_id,
+            llm2_compare_status,
+        )
+    except Exception as exc:
+        db.rollback()
+        compare_config = _runtime_llm_values("LLM2_COMPARE")
+        _set_llm_compare_status(session_id, "error", f"异步补齐失败: {sanitize_text(str(exc))}", compare_config)
+        logger.error("API 侧边栏异步补齐对比模型失败 session_id=%s invocation_id=%s error=%s", session_id, invocation_id, exc)
+    finally:
+        db.close()
+
+def _complete_api_reply_scoring_async(
+    *,
+    summary_id: int | None,
+    invocation_id: str | None,
+    session_id: str,
+) -> None:
+    db = SessionLocal()
+    try:
+        summary = db.query(IntentSummary).filter(IntentSummary.id == summary_id).first() if summary_id else None
+        api_invocation = (
+            db.query(ApiAssistInvocation).filter(ApiAssistInvocation.invocation_id == invocation_id).first()
+            if invocation_id else None
+        )
+        payload = dict((api_invocation.result_payload or {}) if api_invocation else {})
+        candidates = None
+        if summary and isinstance(summary.reply_style_results_v2, list):
+            candidates = summary.reply_style_results_v2
+        elif isinstance(payload.get("reply_style_results_v2"), list):
+            candidates = payload.get("reply_style_results_v2")
+        if not candidates:
+            return
+
+        scoring_started = perf_counter()
+        summary_json = _summary_json_from_source(summary) if summary else _api_summary_json_from_payload(payload)
+        knowledge_payload = summary.knowledge_v2 if (summary and isinstance(summary.knowledge_v2, dict)) else (
+            payload.get("knowledge_v2") if isinstance(payload.get("knowledge_v2"), dict) else {}
+        )
+        crm_context = summary.crm_info if (summary and isinstance(summary.crm_info, dict)) else (
+            payload.get("crm_info") if isinstance(payload.get("crm_info"), dict) else None
+        )
+        actual_sales_replies = (
+            api_invocation.actual_sales_replies
+            if api_invocation and isinstance(api_invocation.actual_sales_replies, list)
+            else (payload.get("actual_sales_replies") if isinstance(payload.get("actual_sales_replies"), list) else [])
+        )
+        stored_scores = summary.reply_scores_v2 if (summary and isinstance(summary.reply_scores_v2, dict)) else (
+            payload.get("reply_scores_v2") if isinstance(payload.get("reply_scores_v2"), dict) else None
+        )
+        refreshed_scores = _load_or_refresh_reply_scores(
+            stored_scores=stored_scores,
+            summary_json=summary_json,
+            knowledge_payload=knowledge_payload,
+            crm_context=crm_context,
+            candidates=candidates,
+            actual_sales_replies=actual_sales_replies,
+        )
+        if not refreshed_scores:
+            return
+
+        scoring_ms = round((perf_counter() - scoring_started) * 1000, 2)
+        if summary:
+            summary.reply_scores_v2 = refreshed_scores
+            updated_stage_status = dict(summary.stage_status or {})
+            existing_llm2 = dict(((updated_stage_status.get("node_timings_ms") or {}).get("llm2")) or {})
+            merged_parts = {
+                **dict(existing_llm2.get("parts_ms") or {}),
+                "reply_scoring_ms": scoring_ms,
+            }
+            existing_total = _round_timing_ms(existing_llm2.get("total_ms")) or 0.0
+            if scoring_ms and merged_parts.get("reply_scoring_ms") != dict(existing_llm2.get("parts_ms") or {}).get("reply_scoring_ms"):
+                _set_node_timing(
+                    updated_stage_status,
+                    "llm2",
+                    total_ms=round(existing_total + scoring_ms, 2) if existing_total else scoring_ms,
+                    parts_ms=merged_parts,
+                    status=updated_stage_status.get("llm2") or "done",
+                )
+                summary.stage_status = updated_stage_status
+
+        if api_invocation:
+            payload = dict(api_invocation.result_payload or {})
+            payload["reply_scores_v2"] = refreshed_scores
+            llm_runtime = dict(payload.get("llm_runtime") or {})
+            current_runtime = _llm_runtime_config()
+            for key, value in current_runtime.items():
+                if not isinstance(llm_runtime.get(key), dict):
+                    llm_runtime[key] = value
+            payload["llm_runtime"] = llm_runtime
+            updated_stage_status = dict(payload.get("stage_status") or {})
+            existing_llm2 = dict(((updated_stage_status.get("node_timings_ms") or {}).get("llm2")) or {})
+            merged_parts = {
+                **dict(existing_llm2.get("parts_ms") or {}),
+                "reply_scoring_ms": scoring_ms,
+            }
+            existing_total = _round_timing_ms(existing_llm2.get("total_ms")) or 0.0
+            _set_node_timing(
+                updated_stage_status,
+                "llm2",
+                total_ms=round(existing_total + scoring_ms, 2) if existing_total else scoring_ms,
+                parts_ms=merged_parts,
+                status=updated_stage_status.get("llm2") or "done",
+            )
+            payload["stage_status"] = updated_stage_status
+            payload["node_timings_ms"] = _extract_node_timings(updated_stage_status)
+            api_invocation.stage_status = updated_stage_status
+            api_invocation.result_payload = _jsonable(payload)
+
+        db.commit()
+        logger.info(
+            "API 侧边栏异步补齐评分完成 session_id=%s invocation_id=%s",
+            session_id,
+            invocation_id,
+        )
+    except Exception as exc:
+        db.rollback()
+        logger.error("API 侧边栏异步补齐评分失败 session_id=%s invocation_id=%s error=%s", session_id, invocation_id, exc)
+    finally:
+        db.close()
+
 def _parse_sales_userid_from_session(session_id: str) -> str | None:
     text = str(session_id or "").strip()
     if not text.startswith("single_"):
@@ -10450,7 +11494,127 @@ def _api_invocation_result_payload(item: ApiAssistInvocation) -> dict:
     payload["user_id"] = item.session_id
     payload["has_api_invocation"] = True
     payload.setdefault("stage_status", item.stage_status or {})
-    return payload
+    llm_runtime = dict(payload.get("llm_runtime") or {})
+    current_runtime = _llm_runtime_config()
+    for key, value in current_runtime.items():
+        if not isinstance(llm_runtime.get(key), dict):
+            llm_runtime[key] = value
+        else:
+            merged_runtime = dict(value)
+            merged_runtime.update(llm_runtime.get(key) or {})
+            llm_runtime[key] = merged_runtime
+    payload["llm_runtime"] = llm_runtime
+    return _sanitize_api_sidebar_result_payload(payload)
+
+
+def _api_invocation_analytics_payload(item: ApiAssistInvocation) -> dict:
+    payload = dict(item.result_payload or {})
+    payload["analysis_mode"] = "api_sidebar_assist_snapshot"
+    payload["analysis_version"] = _api_invocation_meta(item)
+    payload["actual_sales_replies"] = item.actual_sales_replies or []
+    payload["api_quality_similarity"] = item.quality_similarity or None
+    payload["api_quality_score"] = float(item.quality_score) if item.quality_score is not None else None
+    payload["api_quality_status"] = item.quality_status
+    payload["api_triggered_at"] = item.triggered_at
+    payload["user_id"] = item.session_id
+    payload["has_api_invocation"] = True
+    payload.setdefault("stage_status", item.stage_status or {})
+    llm_runtime = dict(payload.get("llm_runtime") or {})
+    current_runtime = _llm_runtime_config()
+    for key, value in current_runtime.items():
+        if not isinstance(llm_runtime.get(key), dict):
+            llm_runtime[key] = value
+        else:
+            merged_runtime = dict(value)
+            merged_runtime.update(llm_runtime.get(key) or {})
+            llm_runtime[key] = merged_runtime
+    payload["llm_runtime"] = llm_runtime
+    payload["node_timings_ms"] = _extract_node_timings(payload.get("stage_status"))
+    return _jsonable(payload)
+
+
+def _api_summary_json_from_payload(payload: dict | None) -> dict:
+    source = payload or {}
+    return {
+        "topic": source.get("topic"),
+        "core_demand": source.get("core_demand"),
+        "key_facts": source.get("key_facts") or {},
+        "todo_items": source.get("todo_items") or [],
+        "risks": source.get("risks"),
+        "to_be_confirmed": source.get("to_be_confirmed"),
+        "status": source.get("status"),
+    }
+
+def _refresh_api_invocation_result_payload(item: ApiAssistInvocation) -> bool:
+    payload = dict(item.result_payload or {})
+    changed = False
+    actual_sales_replies = item.actual_sales_replies if isinstance(item.actual_sales_replies, list) else []
+    if payload.get("actual_sales_replies") != actual_sales_replies:
+        payload["actual_sales_replies"] = _jsonable(actual_sales_replies)
+        changed = True
+
+    llm_runtime = dict(payload.get("llm_runtime") or {})
+    current_runtime = _llm_runtime_config()
+    for key, value in current_runtime.items():
+        if not isinstance(llm_runtime.get(key), dict):
+            llm_runtime[key] = value
+            changed = True
+        else:
+            merged_runtime = dict(value)
+            merged_runtime.update(llm_runtime.get(key) or {})
+            if merged_runtime != llm_runtime.get(key):
+                llm_runtime[key] = merged_runtime
+                changed = True
+    if llm_runtime:
+        payload["llm_runtime"] = llm_runtime
+
+    candidates = payload.get("reply_style_results_v2") if isinstance(payload.get("reply_style_results_v2"), list) else []
+    stored_scores = payload.get("reply_scores_v2") if isinstance(payload.get("reply_scores_v2"), dict) else None
+    if candidates:
+        refreshed_scores = _load_or_refresh_reply_scores(
+            stored_scores=stored_scores,
+            summary_json=_api_summary_json_from_payload(payload),
+            knowledge_payload=payload.get("knowledge_v2") if isinstance(payload.get("knowledge_v2"), dict) else {},
+            crm_context=payload.get("crm_info") if isinstance(payload.get("crm_info"), dict) else None,
+            candidates=candidates,
+            actual_sales_replies=actual_sales_replies,
+        )
+        if refreshed_scores and refreshed_scores != stored_scores:
+            payload["reply_scores_v2"] = refreshed_scores
+            changed = True
+
+    if changed:
+        item.result_payload = _jsonable(payload)
+    return changed
+
+def _sanitize_api_sidebar_result_payload(payload: dict | None) -> dict:
+    result = dict(_jsonable(payload) or {})
+    stage_status = dict(result.get("stage_status") or {})
+    stage_status["llm2_compare"] = "skipped_api_isolated"
+    result["stage_status"] = stage_status
+    result["node_timings_ms"] = _extract_node_timings(stage_status)
+    result["llm2_compare_configured"] = False
+    result["llm2_compare_runtime_status"] = {
+        "status": "skipped_api_isolated",
+        "reason": "API 调用链路已禁用 LLM-2 对比模型",
+    }
+    llm_runtime = dict(result.get("llm_runtime") or {})
+    llm2_compare_runtime = dict(llm_runtime.get("llm2_compare") or {})
+    llm2_compare_runtime.update({
+        "model": "",
+        "provider": "",
+        "url": "",
+        "display_name": "API 调用已禁用对比模型",
+    })
+    llm_runtime["llm2_compare"] = llm2_compare_runtime
+    result["llm_runtime"] = llm_runtime
+    candidates = result.get("reply_style_results_v2")
+    if isinstance(candidates, list):
+        result["reply_style_results_v2"] = [
+            item for item in candidates
+            if str((item or {}).get("model_slot") or "").strip() != "llm2_compare"
+        ]
+    return result
 
 
 def _sales_advice_output_sections(raw_content: str | None) -> dict:
@@ -10473,6 +11637,10 @@ def _apply_sales_advice_output_fields(target: dict, raw_content: str | None, *, 
 
 def _stage_is_in_progress(stage: str | None) -> bool:
     return str(stage or "").strip() in {"queued", "running"}
+
+
+def _utc_now_iso() -> str:
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
 
 def _round_timing_ms(value: Any) -> float | None:
@@ -10507,7 +11675,9 @@ def _set_node_timing(
     if rounded_total is not None:
         payload["total_ms"] = rounded_total
     if parts_ms is not None:
-        payload["parts_ms"] = _clean_timing_parts(parts_ms)
+        merged_parts = dict(payload.get("parts_ms") or {})
+        merged_parts.update(_clean_timing_parts(parts_ms))
+        payload["parts_ms"] = merged_parts
     if status is not None:
         payload["status"] = str(status)
     node_timings[node_key] = payload
@@ -10663,9 +11833,11 @@ def _read_only_current_tail_result(
 class TriggerReq(BaseModel):
     step: int
     snapshot_id: str | None = None
+    trigger_source: str | None = None
 
 class KnowledgeRefreshReq(BaseModel):
     snapshot_id: str | None = None
+    trigger_source: str | None = None
 
 
 class ReplyChainSnapshotCreateReq(BaseModel):
@@ -10792,8 +11964,10 @@ def _snapshot_result_payload(
         result["reply_scores_v2"] = snapshot.reply_scores_v2
     return result
 
-def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: str) -> None:
+def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: str, analytics_record_id: str | None = None) -> None:
     db = SessionLocal()
+    final_status = "unknown"
+    final_error = None
     try:
         snapshot = db.query(ReplyChainSnapshot).filter(
             ReplyChainSnapshot.snapshot_id == snapshot_id,
@@ -10845,6 +12019,7 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
                 }
             snapshot.stage_status = stage_status
             db.commit()
+            final_status = "skipped_no_summary"
             return
 
         summary_json = {**_summary_json_from_source(snapshot), "fast_track_signals": fast_track_signals}
@@ -10926,6 +12101,7 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
         snapshot.stage_status = stage_status
         db.commit()
         knowledge_payload = snapshot.knowledge_v2 if channel == "knowledge_v2" else snapshot.knowledge_external_api
+        final_status = stage_status.get(channel) or "unknown"
         log_reply_chain_event("STEP_RESULT", {
             "source": "frontend",
             "business_object": session_id,
@@ -10936,6 +12112,8 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
         })
     except Exception as exc:
         logger.error("历史节点知识库刷新失败 [%s]: %s", channel, exc)
+        final_status = "error"
+        final_error = str(exc)
         db.rollback()
         snapshot = db.query(ReplyChainSnapshot).filter(
             ReplyChainSnapshot.snapshot_id == snapshot_id,
@@ -10980,9 +12158,18 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
         })
     finally:
         db.close()
+        _sync_wecom_trigger_record_result(
+            record_id=analytics_record_id,
+            session_id=session_id,
+            snapshot_id=snapshot_id,
+            request_status=final_status,
+            error_message=final_error,
+        )
 
-def refresh_session_knowledge_task(user_id: str, channel: str) -> None:
+def refresh_session_knowledge_task(user_id: str, channel: str, analytics_record_id: str | None = None) -> None:
     db = SessionLocal()
+    final_status = "unknown"
+    final_error = None
     try:
         summary = db.query(IntentSummary).filter(IntentSummary.user_id == user_id).order_by(IntentSummary.id.desc()).first()
         if not summary:
@@ -11040,6 +12227,7 @@ def refresh_session_knowledge_task(user_id: str, channel: str) -> None:
                 }
             summary.stage_status = stage_status
             db.commit()
+            final_status = "skipped_no_summary"
             return
 
         crm_started = perf_counter()
@@ -11123,6 +12311,7 @@ def refresh_session_knowledge_task(user_id: str, channel: str) -> None:
         summary.stage_status = stage_status
         db.commit()
         knowledge_payload = summary.knowledge_v2 if channel == "knowledge_v2" else summary.knowledge_external_api
+        final_status = stage_status.get(channel) or "unknown"
         log_reply_chain_event("STEP_RESULT", {
             "source": "frontend",
             "business_object": user_id,
@@ -11133,6 +12322,8 @@ def refresh_session_knowledge_task(user_id: str, channel: str) -> None:
         })
     except Exception as exc:
         logger.error("会话知识库刷新失败 [%s]: %s", channel, exc)
+        final_status = "error"
+        final_error = str(exc)
         db.rollback()
         summary = db.query(IntentSummary).filter(IntentSummary.user_id == user_id).order_by(IntentSummary.id.desc()).first()
         if summary:
@@ -11173,10 +12364,19 @@ def refresh_session_knowledge_task(user_id: str, channel: str) -> None:
         })
     finally:
         db.close()
+        _sync_wecom_trigger_record_result(
+            record_id=analytics_record_id,
+            session_id=user_id,
+            snapshot_id=None,
+            request_status=final_status,
+            error_message=final_error,
+        )
 
-def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
+def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1, analytics_record_id: str | None = None):
     db = SessionLocal()
     runtime_key = _reply_chain_runtime_key(session_id, snapshot_id)
+    final_status = "unknown"
+    final_error = None
     try:
         snapshot = db.query(ReplyChainSnapshot).filter(
             ReplyChainSnapshot.snapshot_id == snapshot_id,
@@ -11210,18 +12410,20 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
                 "step": step,
                 "stage": "llm1_snapshot",
             })
+            llm1_started_at = _utc_now_iso()
             stage_status["llm1"] = "running"
-            stage_status["knowledge_v2"] = "not_started"
-            stage_status["knowledge_external_api"] = "not_started"
-            stage_status["llm2"] = "not_started"
-            stage_status["llm2_compare"] = "not_started"
+            stage_status["llm1_started_at"] = llm1_started_at
+            stage_status["llm1_display_reset"] = True
             snapshot.stage_status = stage_status
             db.commit()
             if not visible_messages:
                 stage_status["llm1"] = "skipped_no_messages"
+                stage_status["llm1_completed_at"] = _utc_now_iso()
+                stage_status["llm1_display_reset"] = False
                 _set_node_timing(stage_status, "llm1", total_ms=0, status="skipped_no_messages")
                 snapshot.stage_status = stage_status
                 db.commit()
+                final_status = "skipped_no_messages"
                 return
             context = [{"content": item.content, "sender_type": item.sender_type} for item in visible_messages]
             llm1_started = perf_counter()
@@ -11264,6 +12466,8 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
                 messages=visible_messages,
             )
             stage_status["llm1"] = "done"
+            stage_status["llm1_completed_at"] = _utc_now_iso()
+            stage_status["llm1_display_reset"] = False
             stage_status["crm_profile"] = snapshot.crm_status or "unknown"
             stage_status["knowledge_v2"] = "not_started"
             stage_status["knowledge_external_api"] = "not_started"
@@ -11280,6 +12484,7 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
                 "result": "success",
                 "message_count": len(visible_messages),
             })
+            final_status = "done"
             return
 
         if step != 2:
@@ -11296,6 +12501,7 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
             stage_status["llm2"] = "skipped_no_summary"
             snapshot.stage_status = stage_status
             db.commit()
+            final_status = "skipped_no_summary"
             return
         stage_status["llm2"] = "running"
         stage_status["llm2_compare"] = "running"
@@ -11332,6 +12538,7 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
                 "result": "skipped_missing_knowledge",
                 "reason": "知识库1证据未准备好，请先执行 05 环节重新检索。",
             })
+            final_status = "skipped_missing_knowledge"
             return
 
         knowledge = dict(snapshot.knowledge_v2 or {})
@@ -11394,6 +12601,7 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
                 "stage": "llm2_snapshot",
                 "result": stage_status["llm2"],
             })
+            final_status = stage_status["llm2"]
             return
 
         snapshot.stage_status = stage_status
@@ -11409,8 +12617,11 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
             "knowledge_status": snapshot.knowledge_status,
             "knowledge_log_id": snapshot.knowledge_log_id,
         })
+        final_status = stage_status.get("llm2") or "done"
     except Exception as e:
         logger.error("历史节点 AI 推理过程崩坏: %s", e)
+        final_status = "error"
+        final_error = str(e)
         db.rollback()
         snapshot = db.query(ReplyChainSnapshot).filter(
             ReplyChainSnapshot.snapshot_id == snapshot_id,
@@ -11422,6 +12633,7 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
             stage_status["fast_track"] = stage_status.get("fast_track") or "done"
             if step == 1:
                 stage_status["llm1"] = "error"
+                stage_status["llm1_display_reset"] = False
             elif step == 2:
                 stage_status["llm2"] = "error"
                 compare_runtime = LLM_COMPARE_RUNTIME_STATUS.get(runtime_key) or {}
@@ -11438,10 +12650,19 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1):
         })
     finally:
         db.close()
+        _sync_wecom_trigger_record_result(
+            record_id=analytics_record_id,
+            session_id=session_id,
+            snapshot_id=snapshot_id,
+            request_status=final_status,
+            error_message=final_error,
+        )
 
-def reanalyze_session_task(user_id: str, step: int = 1):
+def reanalyze_session_task(user_id: str, step: int = 1, analytics_record_id: str | None = None):
     """由界面主动测算触发：抓取特定会话并投递给 LLM 大语言模型进行意图重算"""
     db = SessionLocal()
+    final_status = "unknown"
+    final_error = None
     try:
         if step == 1:
             log_reply_chain_event("STEP_START", {
@@ -11452,17 +12673,18 @@ def reanalyze_session_task(user_id: str, step: int = 1):
             })
             logger.info("正在执行阶段 1: 调用 LLM-1 提取会话 %s 结构化画像", user_id)
             existing_summary = db.query(IntentSummary).filter(IntentSummary.user_id == user_id).order_by(IntentSummary.id.desc()).first()
+            llm1_requested_at = None
+            llm1_started_at = _utc_now_iso()
             if existing_summary:
                 existing_stage_status = {
                     "conversation_input": "done",
                     "fast_track": "done",
                     **dict(existing_summary.stage_status or {}),
                 }
+                llm1_requested_at = existing_stage_status.get("llm1_requested_at")
                 existing_stage_status["llm1"] = "running"
-                existing_stage_status["knowledge_v2"] = "not_started"
-                existing_stage_status["knowledge_external_api"] = "not_started"
-                existing_stage_status["llm2"] = "not_started"
-                existing_stage_status["llm2_compare"] = "not_started"
+                existing_stage_status["llm1_started_at"] = llm1_started_at
+                existing_stage_status["llm1_display_reset"] = True
                 existing_summary.stage_status = existing_stage_status
                 db.commit()
             started = perf_counter()
@@ -11508,10 +12730,15 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                     external_userid=extract_external_userid(user_id),
                 )
                 summary_record.thread_business_fact = _thread_fact_to_dict(thread_fact)
+                llm1_completed_at = _utc_now_iso()
                 stage_status_payload = {
                     "conversation_input": "done" if context else "empty",
                     "fast_track": "done",
                     "llm1": "done",
+                    "llm1_requested_at": llm1_requested_at or llm1_started_at,
+                    "llm1_started_at": llm1_started_at,
+                    "llm1_completed_at": llm1_completed_at,
+                    "llm1_display_reset": False,
                     "crm_profile": summary_record.crm_status or "unknown",
                     "knowledge_v2": "not_started",
                     "knowledge_external_api": "not_started",
@@ -11534,6 +12761,7 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                     "result": "success",
                     "message_count": len(context),
                 })
+                final_status = "done"
             else:
                 summary = db.query(IntentSummary).filter(IntentSummary.user_id == user_id).order_by(IntentSummary.id.desc()).first()
                 if summary:
@@ -11542,6 +12770,8 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                         "fast_track": "done",
                         **dict(summary.stage_status or {}),
                     }
+                    stage_status_payload["llm1_completed_at"] = _utc_now_iso()
+                    stage_status_payload["llm1_display_reset"] = False
                     _set_node_timing(stage_status_payload, "conversation_input", total_ms=conversation_input_ms, status="empty")
                     _set_node_timing(stage_status_payload, "fast_track", total_ms=fast_track_ms, status="done")
                     _set_node_timing(stage_status_payload, "llm1", total_ms=0, status="skipped_no_messages")
@@ -11554,6 +12784,7 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                     "stage": "llm1",
                     "result": "skipped_no_messages",
                 })
+                final_status = "skipped_no_messages"
         
         elif step == 2:
             log_reply_chain_event("STEP_START", {
@@ -11624,6 +12855,7 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                         "result": "skipped_missing_knowledge",
                         "reason": "知识库1证据未准备好，请先执行 05 环节重新检索。",
                     })
+                    final_status = "skipped_missing_knowledge"
                     return
                 knowledge = dict(summary.knowledge_v2 or {})
                 knowledge["thread_business_fact"] = thread_fact_payload
@@ -11686,6 +12918,7 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                         "knowledge_status": knowledge.get("status"),
                         "knowledge_log_id": knowledge.get("log_id"),
                     })
+                    final_status = stage_status.get("llm2") or "done"
                 else:
                     log_reply_chain_event("STEP_RESULT", {
                         "source": "frontend",
@@ -11694,6 +12927,7 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                         "stage": "llm2",
                         "result": generation_bundle.get("llm2_status") or "failed_no_content",
                     })
+                    final_status = generation_bundle.get("llm2_status") or "failed_no_content"
             else:
                 log_reply_chain_event("STEP_RESULT", {
                     "source": "frontend",
@@ -11702,9 +12936,21 @@ def reanalyze_session_task(user_id: str, step: int = 1):
                     "stage": "llm2",
                     "result": "skipped_no_summary",
                 })
+                final_status = "skipped_no_summary"
             
     except Exception as e:
         logger.error(f"AI 推理过程崩坏: {e}")
+        final_status = "error"
+        final_error = str(e)
+        if step == 1:
+            db.rollback()
+            latest_summary = db.query(IntentSummary).filter(IntentSummary.user_id == user_id).order_by(IntentSummary.id.desc()).first()
+            if latest_summary:
+                stage_status = dict(latest_summary.stage_status or {})
+                stage_status["llm1"] = "error"
+                stage_status["llm1_display_reset"] = False
+                latest_summary.stage_status = stage_status
+                db.commit()
         log_reply_chain_event("STEP_RESULT", {
             "source": "frontend",
             "business_object": user_id,
@@ -11714,6 +12960,13 @@ def reanalyze_session_task(user_id: str, step: int = 1):
         })
     finally:
         db.close()
+        _sync_wecom_trigger_record_result(
+            record_id=analytics_record_id,
+            session_id=user_id,
+            snapshot_id=None,
+            request_status=final_status,
+            error_message=final_error,
+        )
 
 @app.get("/api/sessions/{user_id}/analysis_versions")
 async def list_reply_chain_versions(user_id: str):
@@ -11728,9 +12981,17 @@ async def list_reply_chain_versions(user_id: str):
         api_invocations = db.query(ApiAssistInvocation).filter(
             ApiAssistInvocation.session_id == user_id
         ).order_by(ApiAssistInvocation.anchor_message_time.desc(), ApiAssistInvocation.triggered_at.desc()).all()
+        deduped_api_invocations: list[ApiAssistInvocation] = []
+        seen_api_invocation_keys: set[str] = set()
+        for item in api_invocations:
+            identity_key = _api_invocation_identity_key(item)
+            if identity_key in seen_api_invocation_keys:
+                continue
+            seen_api_invocation_keys.add(identity_key)
+            deduped_api_invocations.append(item)
         mixed_versions = [
             *[_reply_snapshot_meta(item) for item in snapshots],
-            *[_api_invocation_meta(item) for item in api_invocations],
+            *[_api_invocation_meta(item) for item in deduped_api_invocations],
         ]
         mixed_versions.sort(
             key=lambda item: (
@@ -11758,6 +13019,8 @@ async def list_reply_chain_versions(user_id: str):
         log_session_view_event("ANALYSIS_VERSIONS", {
             "user_id": user_id,
             "version_count": len(result["versions"]),
+            "api_version_count_raw": len(api_invocations),
+            "api_version_count_deduped": len(deduped_api_invocations),
             "timings_ms": {"total_ms": round((perf_counter() - total_started) * 1000, 2)},
         })
         return result
@@ -11878,6 +13141,637 @@ async def get_latest_analysis(user_id: str, snapshot_id: str | None = Query(defa
     finally:
         db.close()
 
+def _analytics_source_label(source: str | None) -> str:
+    return {
+        "api": "API触发",
+        "web_manual": "网页人工触发",
+        "test": "测试触发",
+    }.get(_normalize_trigger_source(source, default="web_manual"), source or "-")
+
+
+ANALYTICS_QUALITY_LABEL_OPTIONS = [
+    "这条回复不好",
+    "AI 太长",
+    "没有正面报价",
+    "追问太多",
+    "不够像销售",
+    "好样本",
+]
+
+ANALYTICS_QUALITY_SCORE_KEYS = {
+    "kb1_eval_score",
+    "kb2_eval_score",
+    "step_6_main_kb1_score",
+    "step_6_main_kb2_score",
+    "step_6_compare_kb1_score",
+    "step_6_compare_kb2_score",
+    "manual_quality_score",
+    "step_7_kb1_score",
+    "step_7_kb2_score",
+}
+
+def _analytics_status_label(status: str | None) -> str:
+    value = sanitize_text(str(status or "").strip())
+    if not value:
+        return "-"
+    return {
+        "success": "成功",
+        "done": "已完成",
+        "queued": "排队中",
+        "running": "执行中",
+        "error": "失败",
+        "empty": "无可用数据",
+        "ok": "正常",
+        "scored": "已生成质量分",
+        "pending_no_sales_reply": "待销售后续回复",
+        "ignored_cross_day": "跨天回复不计统计",
+        "reused_inflight": "复用进行中任务",
+        "manual_review_required": "需人工复核",
+        "low_confidence": "低置信度",
+        "failed_no_content": "生成为空",
+        "not_configured": "未配置",
+        "not_started": "未开始",
+        "skipped_no_query": "缺少检索问题，已跳过",
+        "skipped_missing_knowledge": "缺少知识证据，已跳过",
+        "connection_failed": "连接失败",
+    }.get(value, value)
+
+def _analytics_status_scope_label(scope: str | None) -> str:
+    value = sanitize_text(str(scope or "").strip())
+    return {
+        "ongoing": "进行中",
+        "future": "待推进",
+        "done": "已完成",
+    }.get(value, value or "-")
+
+def _analytics_sender_label(sender_type: str | None) -> str:
+    value = sanitize_text(str(sender_type or "").strip())
+    return {
+        "customer": "客户",
+        "sales": "销售",
+        "assistant": "系统",
+        "email": "邮件",
+    }.get(value, value or "未知角色")
+
+def _analytics_format_time_text(value: Any) -> str:
+    text_value = str(value or "").strip()
+    if not text_value:
+        return "-"
+    try:
+        return datetime.fromisoformat(text_value.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return text_value.replace("T", " ")[:19] or text_value
+
+def _analytics_trigger_label(kind: str | None, step: int | None = None, channel: str | None = None) -> str:
+    if kind == "api_sidebar_assist":
+        return "侧边栏API"
+    if kind == "refresh_knowledge":
+        return "知识库双通道刷新"
+    if kind == "trigger_llm":
+        return f"人工重跑步骤{step or '-'}"
+    if channel:
+        return channel
+    return kind or "-"
+
+def _analytics_join_lines(items: list[str], fallback: str = "-") -> str:
+    values = [sanitize_text(str(item or "").strip()) for item in items if str(item or "").strip()]
+    return "\n".join(values) if values else fallback
+
+def _analytics_recent_customer_bundle(message_dicts: list[dict] | None) -> tuple[str, str, int]:
+    customer_items = [item for item in (message_dicts or []) if str(item.get("sender_type") or "").strip() == "customer"]
+    full_lines = [
+        " / ".join(part for part in [str(item.get("time") or "").strip(), sanitize_text(str(item.get("content") or "").strip())] if part)
+        for item in customer_items
+    ]
+    latest_text = sanitize_text(str((customer_items[-1] or {}).get("content") or "").strip()) if customer_items else "-"
+    return latest_text or "-", _analytics_join_lines(full_lines), len(customer_items)
+
+def _analytics_recent_dialog_bundle(message_dicts: list[dict] | None) -> tuple[str, str, int]:
+    dialog_items = [item for item in (message_dicts or []) if sanitize_text(str(item.get("content") or "").strip())]
+    full_lines = [
+        f"{_analytics_format_time_text(item.get('time'))} {_analytics_sender_label(item.get('sender_type'))}：{sanitize_text(str(item.get('content') or '').strip())}"
+        for item in dialog_items
+    ]
+    latest_item = dialog_items[-1] if dialog_items else {}
+    latest_text = sanitize_text(str(latest_item.get("content") or "").strip()) or "-"
+    return latest_text, _analytics_join_lines(full_lines), len(dialog_items)
+
+def _analytics_candidate_text(candidate: dict | None) -> str:
+    if not isinstance(candidate, dict):
+        return "-"
+    reply_reference = sanitize_text(str(candidate.get("reply_reference") or "").strip())
+    followup = sanitize_text(str(candidate.get("followup_rationale") or "").strip())
+    blocks = []
+    if reply_reference:
+        blocks.append(reply_reference)
+    if followup:
+        blocks.append(f"思路：{followup}")
+    reason = sanitize_text(str(candidate.get("reason") or "").strip())
+    if not blocks and reason:
+        blocks.append(reason)
+    return "\n".join(blocks) if blocks else "-"
+
+def _analytics_find_candidate(candidates: list[dict] | None, model_slot: str, knowledge_source: str) -> dict | None:
+    for item in candidates or []:
+        if str(item.get("model_slot") or "").strip() != model_slot:
+            continue
+        if str(item.get("knowledge_source") or "").strip() != knowledge_source:
+            continue
+        return item
+    return None
+
+def _analytics_score_map(reply_scores: dict | None) -> dict[str, dict]:
+    items = (reply_scores or {}).get("ai_candidates") or []
+    return {
+        str(item.get("candidate_id") or "").strip(): item
+        for item in items
+        if str(item.get("candidate_id") or "").strip()
+    }
+
+
+def _normalize_quality_annotation_map(payload: dict | None) -> dict[str, dict]:
+    source = payload if isinstance(payload, dict) else {}
+    normalized: dict[str, dict] = {}
+    for key, value in source.items():
+        score_key = str(key or "").strip()
+        if score_key not in ANALYTICS_QUALITY_SCORE_KEYS or not isinstance(value, dict):
+            continue
+        labels = []
+        for item in (value.get("labels") or []):
+            label = str(item or "").strip()
+            if label and label not in labels:
+                labels.append(label)
+        custom_text = sanitize_text(str(value.get("custom_text") or "").strip())
+        normalized[score_key] = {
+            "labels": labels,
+            "custom_text": custom_text,
+            "updated_at": sanitize_text(str(value.get("updated_at") or "").strip()) or None,
+        }
+    return normalized
+
+
+def _quality_annotation_payload(score_key: str, value: dict | None) -> dict:
+    normalized = _normalize_quality_annotation_map({score_key: value}).get(score_key) or {}
+    return {
+        "score_key": score_key,
+        "labels": normalized.get("labels") or [],
+        "custom_text": normalized.get("custom_text") or "",
+        "updated_at": normalized.get("updated_at"),
+    }
+
+def _analytics_knowledge_summary(payload: dict | None) -> str:
+    if not isinstance(payload, dict):
+        return "-"
+    hits = payload.get("hits") or []
+    top_titles = []
+    for item in hits[:3]:
+        title = sanitize_text(str((item or {}).get("title") or (item or {}).get("content") or "").strip())
+        if title:
+            top_titles.append(title[:120])
+    query_text = sanitize_text(str(payload.get("query_text") or "").strip())
+    status = _analytics_status_label(payload.get("status"))
+    parts = [f"状态：{status}"]
+    if query_text:
+        parts.append(f"检索：{query_text}")
+    if top_titles:
+        parts.append(f"命中：{'；'.join(top_titles)}")
+    error_text = sanitize_text(str(payload.get("error") or "").strip())
+    if error_text:
+        parts.append(f"原因：{error_text}")
+    return "\n".join(parts)
+
+def _analytics_llm1_summary(result: dict | None) -> str:
+    payload = result or {}
+    facts = payload.get("key_facts") if isinstance(payload.get("key_facts"), dict) else {}
+    timeline_items = facts.get("timeline_items") if isinstance(facts, dict) else []
+    timeline_text = []
+    for item in timeline_items[:3] if isinstance(timeline_items, list) else []:
+        text_value = " · ".join(
+            part for part in [
+                str((item or {}).get("time") or "").strip(),
+                str((item or {}).get("topic") or "").strip(),
+                _analytics_status_scope_label((item or {}).get("status_scope")),
+            ] if part
+        )
+        if text_value:
+            timeline_text.append(text_value)
+    parts = [
+        f"主题：{sanitize_text(str(payload.get('topic') or '').strip()) or '-'}",
+        f"诉求：{sanitize_text(str(payload.get('core_demand') or '').strip()) or '-'}",
+        f"状态：{_analytics_status_label(payload.get('status'))}",
+    ]
+    if timeline_text:
+        parts.append(f"时间线：{'；'.join(timeline_text)}")
+    return "\n".join(parts)
+
+def _analytics_crm_summary(result: dict | None) -> str:
+    payload = result or {}
+    crm = payload.get("crm_info") if isinstance(payload.get("crm_info"), dict) else {}
+    thread_fact = payload.get("thread_business_fact") if isinstance(payload.get("thread_business_fact"), dict) else {}
+    merged_facts = thread_fact.get("merged_facts") if isinstance(thread_fact.get("merged_facts"), dict) else {}
+    timeline_items = payload.get("key_facts", {}).get("timeline_items") if isinstance(payload.get("key_facts"), dict) else []
+    ongoing = [
+        " · ".join(part for part in [str((item or {}).get("time") or "").strip(), str((item or {}).get("topic") or "").strip()] if part)
+        for item in timeline_items or []
+        if str((item or {}).get("status_scope") or "").strip() == "ongoing"
+    ]
+    future = [
+        " · ".join(part for part in [str((item or {}).get("time") or "").strip(), str((item or {}).get("topic") or "").strip()] if part)
+        for item in timeline_items or []
+        if str((item or {}).get("status_scope") or "").strip() == "future"
+    ]
+    parts = [
+        f"客户：{sanitize_text(str(crm.get('crm_contact_name') or '').strip()) or '-'}",
+        f"公司：{sanitize_text(str(crm.get('company_name') or '').strip()) or '-'}",
+        f"线程焦点：{sanitize_text(str(payload.get('topic') or payload.get('core_demand') or '').strip()) or '-'}",
+        f"最新客户回复类型：{sanitize_text(str(merged_facts.get('latest_customer_reply_type') or '').strip()) or '-'}",
+    ]
+    if ongoing:
+        parts.append(f"进行中：{'；'.join(ongoing[:3])}")
+    if future:
+        parts.append(f"未来：{'；'.join(future[:3])}")
+    recent_followup = sanitize_text(str(crm.get("contact_recent_followup") or "").strip())
+    if recent_followup:
+        parts.append(f"最近跟进：{recent_followup}")
+    return "\n".join(parts)
+
+def _analytics_step7_summary(result: dict | None) -> str:
+    payload = result or {}
+    similarity = payload.get("api_quality_similarity") if isinstance(payload.get("api_quality_similarity"), dict) else {}
+    if similarity:
+        return "\n".join([
+            f"状态：{_analytics_status_label(similarity.get('status'))}",
+            f"统计规则：{sanitize_text(str(similarity.get('quality_score_rule') or '').strip()) or '-'}",
+            f"最佳质量分：{sanitize_text(str(similarity.get('best_score') or '-').strip())}",
+        ])
+    validation = payload.get("assist_validation") if isinstance(payload.get("assist_validation"), dict) else {}
+    if validation:
+        warnings = "；".join([sanitize_text(str(item or "").strip()) for item in (validation.get("warnings") or [])[:3]])
+        blocking = "；".join([sanitize_text(str(item or "").strip()) for item in (validation.get("blocking_issues") or [])[:3]])
+        parts = [
+            f"状态：{_analytics_status_label(validation.get('status'))}",
+            f"人工复核：{'是' if validation.get('manual_review_required') else '否'}",
+        ]
+        if blocking:
+            parts.append(f"阻断：{blocking}")
+        if warnings:
+            parts.append(f"提醒：{warnings}")
+        return "\n".join(parts)
+    return "-"
+
+def _analytics_message_dicts_from_api(db: Session, item: ApiAssistInvocation) -> list[dict]:
+    visible_ids = [int(x) for x in (item.visible_message_ids or []) if str(x).isdigit()]
+    if visible_ids:
+        logs = db.query(MessageLog).filter(MessageLog.id.in_(visible_ids)).order_by(MessageLog.id.asc()).all()
+        return [_message_analytics_dict(log) for log in logs[-15:]]
+    logs = db.query(MessageLog).filter(
+        MessageLog.user_id == item.session_id,
+        MessageLog.is_mock.is_(False),
+    ).order_by(MessageLog.id.desc()).limit(15).all()
+    return [_message_analytics_dict(log) for log in reversed(logs)]
+
+def _build_trigger_analytics_row(
+    *,
+    row_id: str,
+    triggered_at: datetime | None,
+    trigger_source: str,
+    trigger_kind: str,
+    request_status: str,
+    session_id: str,
+    snapshot_id: str | None,
+    run_id: str | None,
+    anchor_message_id: int | None,
+    anchor_message_time: datetime | None,
+    anchor_message_text: str | None,
+    input_messages: list[dict] | None,
+    recent_customer_messages: list[dict] | None,
+    manual_reply_text: str | None,
+    result_payload: dict | None,
+    requested_step: int | None = None,
+    requested_channel: str | None = None,
+    kb1_eval_score: float | None = None,
+    kb1_eval_reason: str | None = None,
+    kb2_eval_score: float | None = None,
+    kb2_eval_reason: str | None = None,
+    quality_annotations: dict | None = None,
+) -> dict:
+    result = _jsonable(result_payload or {})
+    stage_status = result.get("stage_status") if isinstance(result.get("stage_status"), dict) else {}
+    node_timings = result.get("node_timings_ms") if isinstance(result.get("node_timings_ms"), dict) else _extract_node_timings(stage_status)
+    all_input_messages = input_messages or result.get("input_messages") or []
+    llm_runtime = result.get("llm_runtime") if isinstance(result.get("llm_runtime"), dict) else {}
+    customer_bundle = recent_customer_messages or [item for item in all_input_messages if str(item.get("sender_type") or "").strip() == "customer"]
+    recent_customer_last, recent_customer_full, recent_customer_count = _analytics_recent_customer_bundle(customer_bundle)
+    recent_dialog_last, recent_dialog_full, recent_dialog_count = _analytics_recent_dialog_bundle(all_input_messages)
+    manual_reply_full = sanitize_text(str(
+        ((result.get("api_quality_similarity") or {}).get("actual_sales_reply_text"))
+        or manual_reply_text
+        or _reply_block_text(result.get("actual_sales_replies") or [])
+        or ""
+    ).strip()) or "-"
+    candidates = result.get("reply_style_results_v2") if isinstance(result.get("reply_style_results_v2"), list) else []
+    score_map = _analytics_score_map(result.get("reply_scores_v2") if isinstance(result.get("reply_scores_v2"), dict) else {})
+    main_kb1 = _analytics_find_candidate(candidates, "llm2", "knowledge_v2")
+    main_kb2 = _analytics_find_candidate(candidates, "llm2", "knowledge_external_api")
+    compare_kb1 = _analytics_find_candidate(candidates, "llm2_compare", "knowledge_v2")
+    compare_kb2 = _analytics_find_candidate(candidates, "llm2_compare", "knowledge_external_api")
+    similarity_scores = {
+        str(item.get("key") or "").strip(): item
+        for item in ((result.get("api_quality_similarity") or {}).get("scores") or [])
+        if str(item.get("key") or "").strip()
+    }
+
+    def candidate_score_fields(candidate: dict | None) -> tuple[int | None, str]:
+        if not isinstance(candidate, dict):
+            return None, "-"
+        score_entry = score_map.get(str(candidate.get("candidate_id") or "").strip()) or {}
+        score_value = score_entry.get("overall_score")
+        try:
+            score_value = int(score_value) if score_value is not None else None
+        except (TypeError, ValueError):
+            score_value = None
+        return score_value, sanitize_text(str(score_entry.get("score_reason") or "").strip()) or "-"
+
+    main_kb1_score, main_kb1_reason = candidate_score_fields(main_kb1)
+    main_kb2_score, main_kb2_reason = candidate_score_fields(main_kb2)
+    compare_kb1_score, compare_kb1_reason = candidate_score_fields(compare_kb1)
+    compare_kb2_score, compare_kb2_reason = candidate_score_fields(compare_kb2)
+    sim_kb1 = similarity_scores.get("knowledge_v2") or {}
+    sim_kb2 = similarity_scores.get("knowledge_external_api") or {}
+    main_model_name = sanitize_text(str(
+        (main_kb1 or {}).get("model_display_name")
+        or (main_kb2 or {}).get("model_display_name")
+        or ((llm_runtime.get("llm2") or {}).get("display_name"))
+        or ((llm_runtime.get("llm2") or {}).get("model"))
+        or "主模型"
+    ).strip()) or "主模型"
+    compare_model_name = sanitize_text(str(
+        (compare_kb1 or {}).get("model_display_name")
+        or (compare_kb2 or {}).get("model_display_name")
+        or ((llm_runtime.get("llm2_compare") or {}).get("display_name"))
+        or ((llm_runtime.get("llm2_compare") or {}).get("model"))
+        or "对比模型"
+    ).strip()) or "对比模型"
+    api_quality_score = result.get("api_quality_score")
+    try:
+        api_quality_score = float(api_quality_score) if api_quality_score is not None else None
+    except (TypeError, ValueError):
+        api_quality_score = None
+    api_quality_similarity = result.get("api_quality_similarity") if isinstance(result.get("api_quality_similarity"), dict) else {}
+    api_quality_reason = _analytics_join_lines([
+        f"状态：{_analytics_status_label(api_quality_similarity.get('status'))}",
+        f"统计规则：{sanitize_text(str(api_quality_similarity.get('quality_score_rule') or '').strip()) or '-'}",
+        f"最佳质量分：{sanitize_text(str(api_quality_similarity.get('best_score') or '-').strip())}",
+    ], fallback="-")
+    annotation_map = _normalize_quality_annotation_map(quality_annotations)
+    return {
+        "row_id": row_id,
+        "triggered_at": triggered_at.isoformat() if triggered_at else None,
+        "source": trigger_source,
+        "source_label": _analytics_source_label(trigger_source),
+        "trigger_kind": trigger_kind,
+        "trigger_label": _analytics_trigger_label(trigger_kind, requested_step, requested_channel),
+        "request_status": request_status or "-",
+        "request_status_label": _analytics_status_label(request_status),
+        "session_id": session_id,
+        "snapshot_id": snapshot_id,
+        "run_id": run_id,
+        "anchor_message_id": anchor_message_id,
+        "anchor_message_time": anchor_message_time.isoformat() if anchor_message_time else None,
+        "anchor_message_text": sanitize_text(str(anchor_message_text or "").strip()) or "-",
+        "recent_customer_last": recent_customer_last,
+        "recent_customer_full": recent_customer_full,
+        "recent_customer_count": recent_customer_count,
+        "recent_dialog_last": recent_dialog_last,
+        "recent_dialog_full": recent_dialog_full,
+        "recent_dialog_count": recent_dialog_count,
+        "manual_reply_text": manual_reply_full,
+        "step_1_content": _analytics_join_lines([
+            f"输入消息数：{len(all_input_messages)}",
+            f"当前锚点：{sanitize_text(str(anchor_message_text or '').strip()) or recent_customer_last}",
+        ]),
+        "step_1_time_ms": (((node_timings or {}).get("conversation_input") or {}).get("total_ms")),
+        "step_2_content": _analytics_join_lines([str(item or "").strip() for item in (result.get("fast_track") or [])], fallback="无强信号"),
+        "step_2_time_ms": (((node_timings or {}).get("fast_track") or {}).get("total_ms")),
+        "step_3_content": _analytics_llm1_summary(result),
+        "step_3_time_ms": (((node_timings or {}).get("llm1") or {}).get("total_ms")),
+        "step_4_content": _analytics_crm_summary(result),
+        "step_4_time_ms": (((node_timings or {}).get("crm_profile") or {}).get("total_ms")),
+        "step_5_kb1_content": _analytics_knowledge_summary(result.get("knowledge_v2") if isinstance(result.get("knowledge_v2"), dict) else {}),
+        "step_5_kb1_time_ms": ((((node_timings or {}).get("knowledge") or {}).get("parts_ms") or {}).get("knowledge_v2_ms")),
+        "step_5_kb2_content": _analytics_knowledge_summary(result.get("knowledge_external_api") if isinstance(result.get("knowledge_external_api"), dict) else {}),
+        "step_5_kb2_time_ms": ((((node_timings or {}).get("knowledge") or {}).get("parts_ms") or {}).get("knowledge_external_api_ms")),
+        "step_6_main_model_name": main_model_name,
+        "step_6_compare_model_name": compare_model_name,
+        "step_6_main_kb1_content": _analytics_candidate_text(main_kb1),
+        "step_6_main_kb1_score": main_kb1_score,
+        "step_6_main_kb1_score_reason": main_kb1_reason,
+        "step_6_main_time_ms": ((((node_timings or {}).get("llm2") or {}).get("parts_ms") or {}).get("llm2_ms")),
+        "step_6_main_kb2_content": _analytics_candidate_text(main_kb2),
+        "step_6_main_kb2_score": main_kb2_score,
+        "step_6_main_kb2_score_reason": main_kb2_reason,
+        "step_6_compare_kb1_content": _analytics_candidate_text(compare_kb1),
+        "step_6_compare_kb1_score": compare_kb1_score,
+        "step_6_compare_kb1_score_reason": compare_kb1_reason,
+        "step_6_compare_time_ms": ((((node_timings or {}).get("llm2") or {}).get("parts_ms") or {}).get("llm2_compare_ms")),
+        "step_6_compare_kb2_content": _analytics_candidate_text(compare_kb2),
+        "step_6_compare_kb2_score": compare_kb2_score,
+        "step_6_compare_kb2_score_reason": compare_kb2_reason,
+        "step_6_time_ms": (((node_timings or {}).get("llm2") or {}).get("total_ms")),
+        "step_7_content": _analytics_step7_summary(result),
+        "manual_quality_score": api_quality_score,
+        "manual_quality_reason": api_quality_reason,
+        "step_7_kb1_score": sim_kb1.get("score"),
+        "step_7_kb1_reason": sanitize_text(str(sim_kb1.get("reason") or "").strip()) or "-",
+        "step_7_kb2_score": sim_kb2.get("score"),
+        "step_7_kb2_reason": sanitize_text(str(sim_kb2.get("reason") or "").strip()) or "-",
+        "step_7_time_ms": (((node_timings or {}).get("validation") or {}).get("total_ms")),
+        "kb1_eval_score": kb1_eval_score,
+        "kb1_eval_reason": kb1_eval_reason or "-",
+        "kb2_eval_score": kb2_eval_score,
+        "kb2_eval_reason": kb2_eval_reason or "-",
+        "quality_annotations": annotation_map,
+    }
+
+def _analytics_score_averages(rows: list[dict]) -> dict[str, float | None]:
+    score_keys = [
+        "step_6_main_kb1_score",
+        "step_6_main_kb2_score",
+        "step_6_compare_kb1_score",
+        "step_6_compare_kb2_score",
+        "manual_quality_score",
+        "step_7_kb1_score",
+        "step_7_kb2_score",
+        "kb1_eval_score",
+        "kb2_eval_score",
+    ]
+    averages: dict[str, float | None] = {}
+    for key in score_keys:
+        values = []
+        for row in rows:
+            try:
+                raw_value = row.get(key)
+                if raw_value is None or raw_value == "":
+                    continue
+                values.append(float(raw_value))
+            except (TypeError, ValueError):
+                continue
+        averages[key] = round(sum(values) / len(values), 2) if values else None
+    return averages
+
+@app.get("/api/wecom/trigger_analytics")
+async def get_wecom_trigger_analytics(
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    sources: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+):
+    db = SessionLocal()
+    try:
+        today = datetime.now().date()
+        parsed_start = datetime.fromisoformat(str(start_date or today.isoformat())[:10])
+        parsed_end = datetime.fromisoformat(str(end_date or str(start_date or today.isoformat()))[:10])
+        if parsed_end < parsed_start:
+            raise HTTPException(status_code=400, detail="结束日期不能早于开始日期")
+        day_start = datetime(parsed_start.year, parsed_start.month, parsed_start.day)
+        day_end = datetime(parsed_end.year, parsed_end.month, parsed_end.day) + timedelta(days=1)
+        source_values = {
+            _normalize_trigger_source(item.strip(), default="")
+            for item in str(sources or "api,web_manual,test").split(",")
+            if item.strip()
+        } or {"api", "web_manual", "test"}
+
+        rows: list[dict] = []
+        api_items = db.query(ApiAssistInvocation).filter(
+            ApiAssistInvocation.triggered_at >= day_start,
+            ApiAssistInvocation.triggered_at < day_end,
+        ).order_by(ApiAssistInvocation.triggered_at.desc()).all()
+        for item in api_items:
+            normalized_source = _normalize_trigger_source(item.trigger_source, default="api")
+            if normalized_source not in source_values:
+                continue
+            result_payload = _api_invocation_analytics_payload(item)
+            message_dicts = _analytics_message_dicts_from_api(db, item)
+            rows.append(_build_trigger_analytics_row(
+                row_id=str(item.invocation_id),
+                triggered_at=item.triggered_at,
+                trigger_source=normalized_source,
+                trigger_kind=str(item.trigger_kind or "api_sidebar_assist"),
+                request_status=str(item.quality_status or "success"),
+                session_id=item.session_id,
+                snapshot_id=str(item.invocation_id),
+                run_id=None,
+                anchor_message_id=item.anchor_message_id,
+                anchor_message_time=item.anchor_message_time,
+                anchor_message_text=item.anchor_message_text,
+                input_messages=message_dicts,
+                recent_customer_messages=[m for m in message_dicts if m.get("sender_type") == "customer"],
+                manual_reply_text=item.actual_sales_reply_text,
+                result_payload=result_payload,
+                kb1_eval_score=item.kb1_eval_score,
+                kb1_eval_reason=item.kb1_eval_reason,
+                kb2_eval_score=item.kb2_eval_score,
+                kb2_eval_reason=item.kb2_eval_reason,
+                quality_annotations=item.quality_annotations,
+            ))
+
+        trigger_items = db.query(WecomTriggerRecord).filter(
+            WecomTriggerRecord.triggered_at >= day_start,
+            WecomTriggerRecord.triggered_at < day_end,
+        ).order_by(WecomTriggerRecord.triggered_at.desc()).all()
+        for item in trigger_items:
+            normalized_source = _normalize_trigger_source(item.trigger_source, default="web_manual")
+            if normalized_source not in source_values:
+                continue
+            rows.append(_build_trigger_analytics_row(
+                row_id=str(item.record_id),
+                triggered_at=item.triggered_at,
+                trigger_source=normalized_source,
+                trigger_kind=item.trigger_kind,
+                request_status=item.request_status,
+                session_id=item.session_id,
+                snapshot_id=item.snapshot_id,
+                run_id=item.run_id,
+                anchor_message_id=item.anchor_message_id,
+                anchor_message_time=item.anchor_message_time,
+                anchor_message_text=item.anchor_message_text,
+                input_messages=item.input_messages or [],
+                recent_customer_messages=item.recent_customer_messages or [],
+                manual_reply_text=item.actual_sales_reply_text,
+                result_payload=item.result_payload or {},
+                requested_step=item.requested_step,
+                requested_channel=item.requested_channel,
+                kb1_eval_score=item.kb1_eval_score,
+                kb1_eval_reason=item.kb1_eval_reason,
+                kb2_eval_score=item.kb2_eval_score,
+                kb2_eval_reason=item.kb2_eval_reason,
+                quality_annotations=item.quality_annotations,
+            ))
+
+        rows.sort(key=lambda item: str(item.get("triggered_at") or ""), reverse=True)
+        rows = rows[:limit]
+        return {
+            "status": "success",
+            "filters": {
+                "start_date": parsed_start.date().isoformat(),
+                "end_date": parsed_end.date().isoformat(),
+                "sources": sorted(source_values),
+                "limit": limit,
+            },
+            "summary": {
+                "row_count": len(rows),
+                "score_averages": _analytics_score_averages(rows),
+            },
+            "quality_annotation_options": ANALYTICS_QUALITY_LABEL_OPTIONS,
+            "rows": rows,
+        }
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日期格式必须为 YYYY-MM-DD")
+    finally:
+        db.close()
+
+
+@app.post("/api/wecom/trigger_analytics/quality_annotation")
+async def save_wecom_trigger_quality_annotation(payload: TriggerAnalyticsQualityAnnotationRequest, db: Session = Depends(get_db)):
+    score_key = str(payload.score_key or "").strip()
+    if score_key not in ANALYTICS_QUALITY_SCORE_KEYS:
+        raise HTTPException(status_code=400, detail="不支持的质量分字段")
+    row_source = _normalize_trigger_source(payload.row_source, default="web_manual")
+    row_id = str(payload.row_id or "").strip()
+    if not row_id:
+        raise HTTPException(status_code=400, detail="缺少记录 ID")
+
+    labels = []
+    for item in (payload.labels or []):
+        label = str(item or "").strip()
+        if label and label in ANALYTICS_QUALITY_LABEL_OPTIONS and label not in labels:
+            labels.append(label)
+    custom_text = sanitize_text(str(payload.custom_text or "").strip())
+    target_row = (
+        db.query(ApiAssistInvocation).filter(ApiAssistInvocation.invocation_id == row_id).first()
+        if row_source == "api"
+        else db.query(WecomTriggerRecord).filter(WecomTriggerRecord.record_id == row_id).first()
+    )
+    if not target_row:
+        raise HTTPException(status_code=404, detail="未找到对应触发记录")
+
+    annotation_map = _normalize_quality_annotation_map(getattr(target_row, "quality_annotations", None))
+    annotation_map[score_key] = {
+        "labels": labels,
+        "custom_text": custom_text,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    target_row.quality_annotations = annotation_map
+    db.add(target_row)
+    db.commit()
+    db.refresh(target_row)
+    return {
+        "status": "success",
+        "row_source": row_source,
+        "row_id": row_id,
+        "annotation": _quality_annotation_payload(score_key, annotation_map.get(score_key)),
+    }
+
 @app.get("/api/thread_facts/{session_id}")
 async def get_thread_business_fact(session_id: str, db: Session = Depends(get_db)):
     item = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
@@ -11889,10 +13783,21 @@ async def get_thread_business_fact(session_id: str, db: Session = Depends(get_db
 async def trigger_llm_post(user_id: str, req: TriggerReq, background_tasks: BackgroundTasks, request: Request):
     """前端手动拔枪按钮请求"""
     run_id = uuid.uuid4().hex[:12]
+    trigger_source = _resolve_trigger_source(request=request, explicit=req.trigger_source, default="web_manual")
     runtime_key = _reply_chain_runtime_key(user_id, req.snapshot_id)
     executor_task_key = _reply_chain_executor_task_key(user_id, req.snapshot_id)
+    analytics_record_id = _create_wecom_trigger_record(
+        session_id=user_id,
+        snapshot_id=req.snapshot_id,
+        run_id=run_id,
+        trigger_source=trigger_source,
+        trigger_kind="trigger_llm",
+        requested_step=req.step,
+        request_status="queued",
+        request_payload={"step": req.step, "snapshot_id": req.snapshot_id},
+    )
     payload = {
-        "source": "frontend",
+        "source": trigger_source,
         "client_host": request.client.host if request.client else "",
         "user_agent": request.headers.get("user-agent", "")[:160],
         "business_object": user_id,
@@ -11904,7 +13809,14 @@ async def trigger_llm_post(user_id: str, req: TriggerReq, background_tasks: Back
     log_reply_chain_event("TRIGGER_REQUEST", payload)
     logger.info(f"收到前台发起的 LLM 手动指令！正在执行阶段 {req.step} ...")
     _mark_reply_chain_requested(user_id, req.snapshot_id, req.step, run_id)
-    _future, accepted = _submit_reply_chain_task(user_id, req.snapshot_id, req.step)
+    _future, accepted = _submit_reply_chain_task(user_id, req.snapshot_id, req.step, analytics_record_id)
+    if not accepted:
+        _update_wecom_trigger_record(
+            analytics_record_id,
+            request_status="reused_inflight",
+            stage_status={"dedupe_status": "reused_inflight", "requested_step": req.step},
+            error_message="同一会话已有相同后台任务执行中，本次触发复用已有任务",
+        )
     return {
         "status": "success",
         "msg": f"已将步骤 {req.step} 投入后台大模型运算池" if accepted else f"当前节点已有任务执行中，继续复用已有后台任务（步骤 {req.step}）",
@@ -11912,6 +13824,7 @@ async def trigger_llm_post(user_id: str, req: TriggerReq, background_tasks: Back
         "runtime_key": runtime_key,
         "executor_task_key": executor_task_key,
         "accepted": accepted,
+        "analytics_record_id": analytics_record_id,
         "llm_runtime": _llm_runtime_config(),
         "llm2_compare_configured": True,
     }
@@ -11919,11 +13832,21 @@ async def trigger_llm_post(user_id: str, req: TriggerReq, background_tasks: Back
 @app.post("/api/sessions/{user_id}/refresh_knowledge")
 async def refresh_knowledge_post(user_id: str, req: KnowledgeRefreshReq, request: Request):
     run_id = uuid.uuid4().hex[:12]
+    trigger_source = _resolve_trigger_source(request=request, explicit=req.trigger_source, default="web_manual")
     snapshot_id = req.snapshot_id
     channels = ["knowledge_v2", "knowledge_external_api"]
     accepted_channels: list[str] = []
     reused_channels: list[str] = []
     executor_task_keys: dict[str, str] = {}
+    analytics_record_id = _create_wecom_trigger_record(
+        session_id=user_id,
+        snapshot_id=snapshot_id,
+        run_id=run_id,
+        trigger_source=trigger_source,
+        trigger_kind="refresh_knowledge",
+        request_status="queued",
+        request_payload={"snapshot_id": snapshot_id, "channels": channels},
+    )
     for channel in channels:
         task_key = _knowledge_refresh_executor_task_key(user_id, snapshot_id, channel)
         executor_task_keys[channel] = task_key
@@ -11932,13 +13855,19 @@ async def refresh_knowledge_post(user_id: str, req: KnowledgeRefreshReq, request
             is_running = bool(active and not active.done())
         if not is_running:
             _mark_knowledge_refresh_requested(user_id, snapshot_id, channel, run_id)
-        _future, accepted = _submit_knowledge_refresh_task(user_id, snapshot_id, channel)
+        _future, accepted = _submit_knowledge_refresh_task(user_id, snapshot_id, channel, analytics_record_id)
         if accepted:
             accepted_channels.append(channel)
         else:
             reused_channels.append(channel)
+            _update_wecom_trigger_record(
+            analytics_record_id,
+            request_status="reused_inflight",
+            stage_status={"dedupe_status": "reused_inflight", "requested_channel": channel},
+            error_message=f"{channel} 已有后台刷新任务执行中，本次触发复用已有任务",
+        )
     payload = {
-        "source": "frontend",
+        "source": trigger_source,
         "client_host": request.client.host if request.client else "",
         "user_agent": request.headers.get("user-agent", "")[:160],
         "business_object": user_id,
@@ -11956,6 +13885,7 @@ async def refresh_knowledge_post(user_id: str, req: KnowledgeRefreshReq, request
         "run_id": run_id,
         "runtime_key": _reply_chain_runtime_key(user_id, snapshot_id),
         "executor_task_keys": executor_task_keys,
+        "analytics_record_id": analytics_record_id,
         "accepted_channels": accepted_channels,
         "reused_channels": reused_channels,
         "accepted": bool(accepted_channels),
@@ -11965,7 +13895,8 @@ class SidebarAssistRequest(BaseModel):
     external_userid: str
     userid: str
     force_refresh: bool = False
-    sync_archive_before_read: bool = True
+    sync_archive_before_read: bool = settings.SIDEBAR_ASSIST_SYNC_ARCHIVE_BEFORE_READ_DEFAULT
+    trigger_source: str | None = None
 
 class SessionArchiveSyncRequest(BaseModel):
     session_id: str | None = None
@@ -11974,7 +13905,7 @@ class SessionArchiveSyncRequest(BaseModel):
     limit: int = 100
 
 @app.post("/api/wecom/sidebar_assist")
-async def sidebar_assist(request: SidebarAssistRequest):
+async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
     """供企微原生右侧边栏应用调用的同步直出接口"""
     from time import perf_counter
 
@@ -11988,6 +13919,9 @@ async def sidebar_assist(request: SidebarAssistRequest):
     assist_bundle = None
     compare_bundle = None
     all_messages: list[MessageLog] = []
+    dedupe_request_key: str | None = None
+    dedupe_future: Future | None = None
+    dedupe_future_owner = False
 
     def mark_timing(name: str, started_at: float):
         timings_ms[name] = round((perf_counter() - started_at) * 1000, 2)
@@ -11997,6 +13931,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
         stage_started = perf_counter()
         external_userid = request.external_userid.strip()
         sales_userid = request.userid.strip()
+        trigger_source = _resolve_trigger_source(request=http_request, explicit=request.trigger_source, default="api")
         mark_timing("normalize_request_ms", stage_started)
 
         if not external_userid or not sales_userid:
@@ -12029,7 +13964,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
             db.close()
             db = SessionLocal()
         else:
-            stage_status["archive_sync"] = "skipped_by_request"
+            stage_status["archive_sync"] = "scheduled_async" if _schedule_archive_sync_for_session(requested_session_id) else "skipped_by_request"
 
         stage_started = perf_counter()
         session_id, recent_logs, session_lookup = find_existing_single_session_id(db, sales_userid, external_userid, limit=15)
@@ -12055,6 +13990,62 @@ async def sidebar_assist(request: SidebarAssistRequest):
             },
             status="done" if recent_logs else "empty",
         )
+        stage_started = perf_counter()
+        dedupe_request_key = _sidebar_assist_request_key(
+            session_id=session_id or requested_session_id,
+            messages=all_messages,
+            force_refresh=bool(request.force_refresh),
+        )
+        if not request.force_refresh:
+            cached_result = _get_cached_sidebar_assist_result(dedupe_request_key)
+            if cached_result:
+                mark_timing("dedupe_lookup_ms", stage_started)
+                cached_result = _decorate_sidebar_assist_result(
+                    cached_result,
+                    status="reused_recent_cache",
+                    reason="短时间内消息内容未变化，直接复用最近一次已完成结果",
+                    request_key=dedupe_request_key,
+                )
+                log_sidebar_result("REUSED", {
+                    "external_userid": external_userid,
+                    "sales_userid": sales_userid,
+                    "session_id": session_id,
+                    "requested_session_id": requested_session_id,
+                    "dedupe_status": "reused_recent_cache",
+                    "dedupe_reason": "same_content_recent_cache",
+                    "latest_dialog_count": len(recent_logs),
+                    "request_key": dedupe_request_key,
+                    "timings_ms": {
+                        **timings_ms,
+                        "total_ms": round((perf_counter() - total_started) * 1000, 2),
+                    },
+                })
+                return cached_result
+        dedupe_future, dedupe_future_owner = _acquire_sidebar_assist_future(dedupe_request_key)
+        mark_timing("dedupe_lookup_ms", stage_started)
+        if not dedupe_future_owner:
+            reused_result = await asyncio.wrap_future(dedupe_future)
+            reused_result = _decorate_sidebar_assist_result(
+                reused_result,
+                status="reused_inflight",
+                reason="同一会话、同一消息内容的请求仍在处理中，当前请求直接复用进行中的结果",
+                request_key=dedupe_request_key,
+            )
+            log_sidebar_result("REUSED", {
+                "external_userid": external_userid,
+                "sales_userid": sales_userid,
+                "session_id": session_id,
+                "requested_session_id": requested_session_id,
+                "dedupe_status": "reused_inflight",
+                "dedupe_reason": "same_content_inflight",
+                "latest_dialog_count": len(recent_logs),
+                "request_key": dedupe_request_key,
+                "timings_ms": {
+                    **timings_ms,
+                    "total_ms": round((perf_counter() - total_started) * 1000, 2),
+                },
+            })
+            return reused_result
 
         # Fast-Track 前置扫描：既返回给侧边栏展示，也作为 LLM-2 的输入信号
         stage_started = perf_counter()
@@ -12213,8 +14204,8 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 crm_context=crm_context,
                 actual_sales_replies=[],
                 runtime_key=session_id,
-                single_model_single_style=settings.API_REPLY_SINGLE_MODEL_SINGLE_STYLE,
-                enable_scoring=settings.API_REPLY_ENABLE_SCORING,
+                single_model_single_style=True,
+                enable_scoring=False,
             )
             mark_timing("llm2_generate_ms", stage_started)
             primary_candidate = generation_bundle.get("primary_candidate")
@@ -12232,6 +14223,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
             summary.assist_validation = primary_candidate.get("validation") if primary_candidate else None
             summary.assist_compare_validation = compare_candidate.get("validation") if compare_candidate else None
             llm2_stage_timing = generation_bundle.get("stage_timings_ms") or {}
+            llm2_compare_status = "skipped_api_isolated"
             _set_node_timing(
                 stage_status,
                 "llm2",
@@ -12247,21 +14239,24 @@ async def sidebar_assist(request: SidebarAssistRequest):
                 "knowledge_v2": summary.knowledge_status or stage_status.get("knowledge_v2") or "not_started",
                 "knowledge_external_api": external_knowledge.get("status") or stage_status.get("knowledge_external_api") or "unknown",
                 "llm2": generation_bundle.get("llm2_status"),
-                "llm2_compare": generation_bundle.get("llm2_compare_status"),
+                "llm2_compare": llm2_compare_status,
             }
             db.commit()
             stage_status["llm2"] = generation_bundle.get("llm2_status")
-            stage_status["llm2_compare"] = generation_bundle.get("llm2_compare_status")
+            stage_status["llm2_compare"] = llm2_compare_status
             if primary_candidate:
                 assist_bundle = {"validation": primary_candidate.get("validation")}
             if compare_candidate:
                 compare_bundle = {"validation": compare_candidate.get("validation")}
         else:
             stage_status["llm2"] = "skipped_advice_exists" if summary and summary.sales_advice_v2 else "skipped_no_summary"
-            stage_status["llm2_compare"] = "skipped_advice_exists" if summary and summary.sales_advice_compare_v2 else "skipped_no_summary"
+            stage_status["llm2_compare"] = "skipped_api_isolated"
 
         # 3. 封装全量字段给侧边栏前端
-        compare_runtime_status = LLM_COMPARE_RUNTIME_STATUS.get(session_id) or {}
+        compare_runtime_status = {
+            "status": "skipped_api_isolated",
+            "reason": "API 调用链路已禁用 LLM-2 对比模型",
+        }
         result = {
             "status": "success",
             "external_userid": external_userid,
@@ -12275,7 +14270,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
             "has_v2": False,
             "has_v2_compare": False,
             "llm_runtime": _llm_runtime_config(),
-            "llm2_compare_configured": True,
+            "llm2_compare_configured": False,
             "llm2_compare_runtime_status": compare_runtime_status,
             "stage_status": stage_status
         }
@@ -12348,21 +14343,10 @@ async def sidebar_assist(request: SidebarAssistRequest):
                     result["assist_compare_validation"] = compare_bundle.get("validation")
             if summary.reply_style_results_v2:
                 result["reply_style_results_v2"] = _serialize_reply_candidates_for_output(summary.reply_style_results_v2)
-            if summary.reply_scores_v2 and settings.API_REPLY_ENABLE_SCORING:
+            if summary.reply_scores_v2:
                 result["reply_scores_v2"] = summary.reply_scores_v2
             if summary.sales_advice_compare_prompt_trace_v2:
                 result["sales_advice_compare_prompt_trace_v2"] = summary.sales_advice_compare_prompt_trace_v2
-                if not summary.sales_advice_compare_v2:
-                    trace_result = str(summary.sales_advice_compare_prompt_trace_v2.get("result") or "")
-                    trace_stage = {
-                        "running": "running",
-                        "failed_no_content": "failed_no_content",
-                        "error": "error",
-                    }.get(trace_result)
-                    if trace_stage:
-                        stage_status["llm2_compare"] = trace_stage
-            elif compare_runtime_status.get("status") and not stage_status.get("llm2_compare"):
-                stage_status["llm2_compare"] = compare_runtime_status.get("status")
             
             # 始终回传 CRM 画像供前端显示
             if crm_context is None:
@@ -12418,7 +14402,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
         timings_ms["total_ms"] = round((perf_counter() - total_started) * 1000, 2)
         result["timings_ms"] = timings_ms
         result["node_timings_ms"] = _extract_node_timings(stage_status)
-        result = _jsonable(result)
+        result = _sanitize_api_sidebar_result_payload(_jsonable(result))
         api_invocation = _store_api_assist_invocation(
             db,
             result_payload=result,
@@ -12427,6 +14411,7 @@ async def sidebar_assist(request: SidebarAssistRequest):
             external_userid=external_userid,
             sales_userid=sales_userid,
             messages=all_messages,
+            trigger_source=trigger_source,
         )
         db.commit()
         log_sidebar_result("SUCCESS", {
@@ -12442,16 +14427,38 @@ async def sidebar_assist(request: SidebarAssistRequest):
             "crm_status": result.get("crm_status"),
             "knowledge_status": result.get("knowledge_status"),
             "api_invocation_id": str(api_invocation.invocation_id) if api_invocation else None,
+            "dedupe_status": "fresh",
+            "request_key": dedupe_request_key,
             "stage_status": stage_status,
             "timings_ms": timings_ms,
         })
-
-        return result
+        final_result = _api_invocation_result_payload(api_invocation) if api_invocation else result
+        final_result = _decorate_sidebar_assist_result(
+            final_result,
+            status="fresh",
+            reason="本次请求触发了新的侧边栏分析流程",
+            request_key=dedupe_request_key,
+        )
+        if summary and api_invocation:
+            REPLY_CHAIN_EXECUTOR.submit(
+                _complete_api_reply_scoring_async,
+                summary_id=summary.id,
+                invocation_id=str(api_invocation.invocation_id),
+                session_id=session_id,
+            )
+        if dedupe_request_key:
+            _remember_sidebar_assist_result(dedupe_request_key, final_result)
+        if dedupe_request_key and dedupe_future_owner and dedupe_future:
+            _resolve_sidebar_assist_future(dedupe_request_key, dedupe_future, result=final_result)
+        return final_result
     except Exception as e:
+        if dedupe_request_key and dedupe_future_owner and dedupe_future:
+            _resolve_sidebar_assist_future(dedupe_request_key, dedupe_future, error=e)
         logger.error(f"侧边栏接口异常退出: {e}")
         timings_ms["total_ms"] = round((perf_counter() - total_started) * 1000, 2)
         log_sidebar_result("ERROR", {
             "error": str(e),
+            "request_key": dedupe_request_key,
             "stage_status": stage_status,
             "timings_ms": timings_ms,
         })
@@ -12535,6 +14542,7 @@ async def sync_today_messages(request: Request):
         res = await asyncio.wait_for(asyncio.to_thread(ArchiveService.sync_today_data), timeout=timeout_seconds)
     except asyncio.TimeoutError:
         reason = f"企微会话存档同步超过 {timeout_seconds} 秒未返回，可能是外部 SDK、网络或企微服务器阻塞"
+        diagnostics = ArchiveService.get_runtime_diagnostics()
         log_reply_chain_event("SYNC_RESULT", {
             "source": "frontend",
             "business_object": "today_archive_sync",
@@ -12543,8 +14551,13 @@ async def sync_today_messages(request: Request):
             "reason": reason,
             "timeout_seconds": timeout_seconds,
         })
-        raise HTTPException(status_code=504, detail=reason)
+        raise HTTPException(status_code=504, detail={
+            "message": reason,
+            "timeout_seconds": timeout_seconds,
+            "diagnostics": diagnostics,
+        })
     if res.get("status") == "error":
+        diagnostics = ArchiveService.get_runtime_diagnostics()
         log_reply_chain_event("SYNC_RESULT", {
             "source": "frontend",
             "business_object": "today_archive_sync",
@@ -12552,7 +14565,13 @@ async def sync_today_messages(request: Request):
             "result": "error",
             "reason": res.get("msg"),
         })
-        raise HTTPException(status_code=500, detail=res.get("msg"))
+        raise HTTPException(status_code=500, detail={
+            "message": res.get("msg"),
+            "sdk_error_code": res.get("sdk_error_code"),
+            "current_seq": res.get("current_seq"),
+            "timings_ms": res.get("timings_ms"),
+            "diagnostics": diagnostics,
+        })
     log_reply_chain_event("SYNC_RESULT", {
         "source": "frontend",
         "business_object": "today_archive_sync",

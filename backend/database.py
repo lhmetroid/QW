@@ -366,6 +366,8 @@ class ApiAssistInvocation(Base):
     anchor_message_text = Column(Text, nullable=True)
     visible_message_ids = Column(JSON, nullable=True)
     latest_dialog_count = Column(Integer, nullable=False, default=0)
+    trigger_source = Column(String(30), nullable=True, default="api")
+    trigger_kind = Column(String(50), nullable=True, default="api_sidebar_assist")
     triggered_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     stage_status = Column(JSON, nullable=True)
     result_payload = Column(JSON, nullable=False)
@@ -376,6 +378,11 @@ class ApiAssistInvocation(Base):
     quality_score = Column(Numeric(6, 2), nullable=True)
     quality_status = Column(String(50), nullable=True)
     quality_scored_at = Column(DateTime, nullable=True)
+    kb1_eval_score = Column(Numeric(6, 2), nullable=True)
+    kb1_eval_reason = Column(Text, nullable=True)
+    kb2_eval_score = Column(Numeric(6, 2), nullable=True)
+    kb2_eval_reason = Column(Text, nullable=True)
+    quality_annotations = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
 
@@ -383,6 +390,49 @@ class ApiAssistInvocation(Base):
         Index("idx_api_ai_session_triggered", "session_id", "triggered_at"),
         Index("idx_api_ai_anchor_triggered", "session_id", "anchor_message_id", "triggered_at"),
         Index("idx_api_ai_quality_status", "quality_status", "triggered_at"),
+    )
+
+class WecomTriggerRecord(Base):
+    """网页人工/Test 触发记录：按每次触发保存一行，用于统计分析。"""
+    __tablename__ = "wecom_trigger_record"
+
+    record_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    session_id = Column(String(120), nullable=False)
+    snapshot_id = Column(String(120), nullable=True)
+    run_id = Column(String(40), nullable=True)
+    trigger_source = Column(String(30), nullable=False, default="web_manual")
+    trigger_kind = Column(String(50), nullable=False)
+    requested_step = Column(Integer, nullable=True)
+    requested_channel = Column(String(50), nullable=True)
+    request_status = Column(String(30), nullable=False, default="queued")
+    anchor_message_id = Column(Integer, nullable=True)
+    anchor_message_time = Column(DateTime, nullable=True)
+    anchor_message_text = Column(Text, nullable=True)
+    visible_message_ids = Column(JSON, nullable=True)
+    input_messages = Column(JSON, nullable=True)
+    recent_customer_messages = Column(JSON, nullable=True)
+    latest_dialog_count = Column(Integer, nullable=False, default=0)
+    actual_sales_replies = Column(JSON, nullable=True)
+    actual_sales_reply_text = Column(Text, nullable=True)
+    stage_status = Column(JSON, nullable=True)
+    result_payload = Column(JSON, nullable=True)
+    request_payload = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    kb1_eval_score = Column(Numeric(6, 2), nullable=True)
+    kb1_eval_reason = Column(Text, nullable=True)
+    kb2_eval_score = Column(Numeric(6, 2), nullable=True)
+    kb2_eval_reason = Column(Text, nullable=True)
+    quality_annotations = Column(JSON, nullable=True)
+    triggered_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_wtr_triggered", "triggered_at"),
+        Index("idx_wtr_source_triggered", "trigger_source", "triggered_at"),
+        Index("idx_wtr_session_triggered", "session_id", "triggered_at"),
+        Index("idx_wtr_run_id", "run_id"),
     )
 
 class EmailThreadAsset(Base):
