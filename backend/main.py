@@ -11007,18 +11007,6 @@ def _generate_reply_style_candidates(
         })
 
     def knowledge_skip_reason(spec: dict) -> tuple[str, str] | None:
-        status = str(spec.get("status") or "").strip() or "not_started"
-        payload = spec.get("payload") if isinstance(spec.get("payload"), dict) else {}
-        if status in {"error", "not_configured", "skipped_no_query", "skipped_missing_knowledge"}:
-            reason = sanitize_text(str(payload.get("error") or "")) or {
-                "error": f"{spec['label']}检索失败",
-                "not_configured": f"{spec['label']}未配置",
-                "skipped_no_query": f"{spec['label']}缺少检索问题",
-                "skipped_missing_knowledge": f"{spec['label']}证据未准备好",
-            }.get(status, f"{spec['label']}不可用")
-            return status, reason
-        if status in {"not_started", "queued", "running"}:
-            return "skipped_missing_knowledge", f"{spec['label']}证据未准备好"
         return None
 
     for model_spec in model_specs:
@@ -11249,18 +11237,6 @@ def _generate_llm2_compare_extension(
         })
 
     def knowledge_skip_reason(spec: dict) -> tuple[str, str] | None:
-        status = str(spec.get("status") or "").strip() or "not_started"
-        payload = spec.get("payload") if isinstance(spec.get("payload"), dict) else {}
-        if status in {"error", "not_configured", "skipped_no_query", "skipped_missing_knowledge"}:
-            reason = sanitize_text(str(payload.get("error") or "")) or {
-                "error": f"{spec['label']}检索失败",
-                "not_configured": f"{spec['label']}未配置",
-                "skipped_no_query": f"{spec['label']}缺少检索问题",
-                "skipped_missing_knowledge": f"{spec['label']}证据未准备好",
-            }.get(status, f"{spec['label']}不可用")
-            return status, reason
-        if status in {"not_started", "queued", "running"}:
-            return "skipped_missing_knowledge", f"{spec['label']}证据未准备好"
         return None
 
     if not compare_model_configured:
@@ -12200,14 +12176,14 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
         snapshot.thread_business_fact = thread_fact_payload
         query_features = {}
         retrieval_query = ""
-        if snapshot.core_demand and snapshot.core_demand != "未明确":
+        if snapshot.core_demand:
             query_features = IntentEngine.infer_query_features(summary_json, crm_context, thread_fact_payload)
             retrieval_query = IntentEngine.build_retrieval_query(summary_json, thread_fact_payload)
 
         knowledge_stage_started = perf_counter()
         knowledge_parts_ms: dict[str, float] = {}
         if channel == "knowledge_v2":
-            if snapshot.core_demand and snapshot.core_demand != "未明确":
+            if snapshot.core_demand:
                 try:
                     started = perf_counter()
                     knowledge = IntentEngine.retrieve_knowledge_v2(
@@ -12410,14 +12386,14 @@ def refresh_session_knowledge_task(user_id: str, channel: str, analytics_record_
         thread_fact_payload = _thread_fact_prompt_dict(current_thread_fact)
         query_features = {}
         retrieval_query = ""
-        if summary.core_demand and summary.core_demand != "未明确":
+        if summary.core_demand:
             query_features = IntentEngine.infer_query_features(summary_json, crm_context, thread_fact_payload)
             retrieval_query = IntentEngine.build_retrieval_query(summary_json, thread_fact_payload)
 
         knowledge_stage_started = perf_counter()
         knowledge_parts_ms: dict[str, float] = {}
         if channel == "knowledge_v2":
-            if summary.core_demand and summary.core_demand != "未明确":
+            if summary.core_demand:
                 try:
                     started = perf_counter()
                     knowledge = IntentEngine.retrieve_knowledge_v2(
@@ -14195,6 +14171,7 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
     crm_context = None
     knowledge_base = None
     knowledge_v2 = None
+    external_knowledge = None
     assist_bundle = None
     compare_bundle = None
     all_messages: list[MessageLog] = []
@@ -14431,7 +14408,7 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
             knowledge_stage_started = perf_counter()
             knowledge_parts_ms: dict[str, float] = {}
             external_knowledge = None
-            if summary.core_demand and summary.core_demand != "未明确":
+            if summary.core_demand:
                 stage_started = perf_counter()
                 thread_fact_payload = _thread_fact_to_dict(thread_fact)
                 query_features = IntentEngine.infer_query_features(summary_json, crm_context, thread_fact_payload)
@@ -14579,7 +14556,7 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
                         result["evidence_refs"] = result.get("evidence_refs") or knowledge_base.get("evidence_refs") or []
                         result["knowledge_confidence_score"] = knowledge_base.get("confidence_score")
                         result["knowledge_manual_review_required"] = knowledge_base.get("manual_review_required")
-                elif summary.core_demand and summary.core_demand != "未明确":
+                elif summary.core_demand:
                     stage_started = perf_counter()
                     current_thread_fact = db.query(ThreadBusinessFact).filter(ThreadBusinessFact.session_id == session_id).first()
                     thread_fact_payload = _thread_fact_prompt_dict(current_thread_fact)
@@ -14615,6 +14592,11 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
                     result["knowledge_v2"] = {"status": "skipped_no_core_demand", "hits": [], "evidence_refs": []}
                     result["evidence_refs"] = []
                     knowledge_status = "skipped_no_core_demand"
+                # KB2 外部知识库结果写入 result_payload
+                if external_knowledge is not None:
+                    result["knowledge_external_api"] = external_knowledge
+                elif summary.knowledge_external_api is not None:
+                    result["knowledge_external_api"] = summary.knowledge_external_api
             if summary.sales_advice_compare_v2:
                 result["has_v2_compare"] = True
                 _apply_sales_advice_output_fields(result, summary.sales_advice_compare_v2, compare=True)
