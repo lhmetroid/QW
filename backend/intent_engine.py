@@ -2061,11 +2061,15 @@ class IntentEngine:
 
     @staticmethod
     def build_followup_guard_response(summary_json: dict | None = None) -> str:
+        # 【跟进思路说明】已从输出格式移除（2026-05-13）。恢复时同步恢复脚本：
+        # 将下方字符串末尾的 \n\n” 改回 \n\n”，并在后面加回：
+        # “【跟进思路说明】\n”
+        # “客户未回复时先降门槛，不重复自我介绍和旧问题，用最短确认口拿状态信号。”
+        # 同时在 ai_settings.json SYSTEM_PROMPT_LLM2 第10条”不要超过50字)”后加回：
+        # \n\n【跟进思路说明】\n(用一两句话向销售解释为什么要这么回，接下来要注意什么)
         return (
-            "【企微回复参考】\n"
-            "不多打扰，想确认下这块近期还有在推进吗？您回我“有/暂时没有”都行。\n\n"
-            "【跟进思路说明】\n"
-            "客户未回复时先降门槛，不重复自我介绍和旧问题，用最短确认口拿状态信号。"
+            “【企微回复参考】\n”
+            “不多打扰，想确认下这块近期还有在推进吗？您回我”有/暂时没有”都行。”
         )
 
     @staticmethod
@@ -2084,11 +2088,17 @@ class IntentEngine:
             topic = (summary_json or {}).get("topic") or "这块"
             reply_line = f"好，我这边先接住。关于{topic}，有新进展我第一时间跟您对一下。"
             rationale = "客户已经给出有效回应，此时宜先承接，不再机械复述客户原话。"
+        # 【跟进思路说明】已从输出格式移除（2026-05-13）。恢复时同步恢复脚本：
+        # 将下方返回改回：
+        # return (
+        #     "【企微回复参考】\n"
+        #     f"{reply_line}\n\n"
+        #     "【跟进思路说明】\n"
+        #     f"{rationale}"
+        # )
         return (
             "【企微回复参考】\n"
-            f"{reply_line}\n\n"
-            "【跟进思路说明】\n"
-            f"{rationale}"
+            f"{reply_line}"
         )
 
     @staticmethod

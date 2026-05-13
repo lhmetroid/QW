@@ -10871,16 +10871,17 @@ def _prepare_candidates_for_scoring(candidates: list[dict] | None) -> list[dict]
         content = str(row.get("content") or "").strip()
         if not content:
             reply_reference = str(row.get("reply_reference") or "").strip()
-            followup_rationale = str(row.get("followup_rationale") or "").strip()
-            if reply_reference or followup_rationale:
+            # 【跟进思路说明】已从输出格式移除（2026-05-13），恢复时取消注释：
+            # followup_rationale = str(row.get("followup_rationale") or "").strip()
+            if reply_reference:
                 parts = []
                 if reply_reference:
                     parts.append("【企微回复参考】")
                     parts.append(reply_reference)
-                if followup_rationale:
-                    parts.append("")
-                    parts.append("【跟进思路说明】")
-                    parts.append(followup_rationale)
+                # if followup_rationale:
+                #     parts.append("")
+                #     parts.append("【跟进思路说明】")
+                #     parts.append(followup_rationale)
                 row["content"] = "\n".join(parts).strip()
         prepared.append(row)
     return prepared
@@ -11777,7 +11778,8 @@ def _sales_advice_output_sections(raw_content: str | None) -> dict:
     sections = IntentEngine.split_sales_assist_output(raw_content)
     return {
         "reply_reference": sections.get("reply_reference") or None,
-        "followup_rationale": sections.get("followup_rationale") or None,
+        # 【跟进思路说明】已从输出格式移除（2026-05-13），恢复时取消注释：
+        # "followup_rationale": sections.get("followup_rationale") or None,
     }
 
 
@@ -11785,10 +11787,12 @@ def _apply_sales_advice_output_fields(target: dict, raw_content: str | None, *, 
     sections = _sales_advice_output_sections(raw_content)
     if compare:
         target["reply_reference_compare"] = sections.get("reply_reference")
-        target["followup_rationale_compare"] = sections.get("followup_rationale")
+        # 【跟进思路说明】已从输出格式移除（2026-05-13），恢复时取消注释：
+        # target["followup_rationale_compare"] = sections.get("followup_rationale")
         return
     target["reply_reference"] = sections.get("reply_reference")
-    target["followup_rationale"] = sections.get("followup_rationale")
+    # 【跟进思路说明】已从输出格式移除（2026-05-13），恢复时取消注释：
+    # target["followup_rationale"] = sections.get("followup_rationale")
 
 
 def _stage_is_in_progress(stage: str | None) -> bool:
@@ -13417,12 +13421,13 @@ def _analytics_candidate_text(candidate: dict | None) -> str:
     if not isinstance(candidate, dict):
         return "-"
     reply_reference = sanitize_text(str(candidate.get("reply_reference") or "").strip())
-    followup = sanitize_text(str(candidate.get("followup_rationale") or "").strip())
+    # 【跟进思路说明】已从输出格式移除（2026-05-13），恢复时取消注释以下3行：
+    # followup = sanitize_text(str(candidate.get("followup_rationale") or "").strip())
     blocks = []
     if reply_reference:
         blocks.append(reply_reference)
-    if followup:
-        blocks.append(f"思路：{followup}")
+    # if followup:
+    #     blocks.append(f"思路：{followup}")
     reason = sanitize_text(str(candidate.get("reason") or "").strip())
     if not blocks and reason:
         blocks.append(reason)

@@ -2139,7 +2139,9 @@
         }
 
         function candidateFollowupRationale(candidate) {
-            return String(candidate?.followup_rationale || '').trim();
+            // 【跟进思路说明】已从输出格式移除（2026-05-13），恢复时改回：
+            // return String(candidate?.followup_rationale || '').trim();
+            return '';
         }
 
         function candidateModelMeta(candidate) {
@@ -2182,9 +2184,10 @@
             if (replyReference) {
                 blocks.push(`【企微回复参考】\n${replyReference}`);
             }
-            if (followupRationale) {
-                blocks.push(`【跟进思路说明】\n${followupRationale}`);
-            }
+            // 【跟进思路说明】已从输出格式移除（2026-05-13），恢复时取消注释：
+            // if (followupRationale) {
+            //     blocks.push(`【跟进思路说明】\n${followupRationale}`);
+            // }
             return blocks.join('\n\n').trim();
         }
 
