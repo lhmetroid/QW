@@ -11728,6 +11728,13 @@ def _sanitize_api_sidebar_result_payload(payload: dict | None) -> dict:
     result = dict(_jsonable(payload) or {})
     stage_status = dict(result.get("stage_status") or {})
     stage_status["llm2_compare"] = "skipped_api_isolated"
+    # API 路径不运行对比模型，清除缓存摘要带入的 llm2_compare_ms，防止污染分析面板
+    node_timings = dict(stage_status.get("node_timings_ms") or {})
+    llm2_node = dict(node_timings.get("llm2") or {})
+    if isinstance(llm2_node.get("parts_ms"), dict):
+        llm2_node["parts_ms"] = {k: v for k, v in llm2_node["parts_ms"].items() if k != "llm2_compare_ms"}
+    node_timings["llm2"] = llm2_node
+    stage_status["node_timings_ms"] = node_timings
     result["stage_status"] = stage_status
     result["node_timings_ms"] = _extract_node_timings(stage_status)
     result["llm2_compare_configured"] = False
