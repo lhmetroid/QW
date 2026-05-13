@@ -10917,6 +10917,7 @@ def _generate_reply_style_candidates(
     runtime_key: str,
     single_model_single_style: bool | None = None,
     enable_scoring: bool | None = None,
+    kb2_enabled: bool = True,
 ) -> dict:
     stage_started = perf_counter()
     single_model_single_style = (
@@ -10962,13 +10963,14 @@ def _generate_reply_style_candidates(
             "payload": knowledge if isinstance(knowledge, dict) else {},
             "status": str((knowledge or {}).get("status") or "not_started"),
         },
-        {
+    ]
+    if kb2_enabled:
+        knowledge_specs.append({
             "key": "knowledge_external_api",
             "label": "知识库2",
             "payload": knowledge_compare if isinstance(knowledge_compare, dict) else {},
             "status": str((knowledge_compare or {}).get("status") or "not_started"),
-        },
-    ]
+        })
 
     model_stats: dict[str, dict[str, int]] = {}
     stage_parts_ms: dict[str, float] = {}
@@ -14434,6 +14436,7 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
             knowledge_stage_started = perf_counter()
             knowledge_parts_ms: dict[str, float] = {}
             external_knowledge = None
+            api_kb2_enabled = bool(IntentEngine.get_ai_settings().get("API_KB2_ENABLED", True))
             if summary.core_demand:
                 stage_started = perf_counter()
                 thread_fact_payload = _thread_fact_to_dict(thread_fact)
@@ -14449,9 +14452,12 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
                 knowledge_v2["thread_business_fact"] = thread_fact_payload
                 knowledge_base = knowledge_v2
                 knowledge_parts_ms["knowledge_v2_ms"] = round((perf_counter() - stage_started) * 1000, 2)
-                stage_started = perf_counter()
-                external_knowledge = _search_sales_kb_api(retrieval_query, top_k=5)
-                knowledge_parts_ms["knowledge_external_api_ms"] = round((perf_counter() - stage_started) * 1000, 2)
+                if api_kb2_enabled:
+                    stage_started = perf_counter()
+                    external_knowledge = _search_sales_kb_api(retrieval_query, top_k=5)
+                    knowledge_parts_ms["knowledge_external_api_ms"] = round((perf_counter() - stage_started) * 1000, 2)
+                else:
+                    external_knowledge = {"status": "skipped_kb2_disabled", "hits": []}
                 mark_timing("knowledge_retrieve_ms", knowledge_stage_started)
                 knowledge_status = knowledge_v2.get("status", "error")
                 stage_status["knowledge_v2"] = knowledge_status
@@ -14459,9 +14465,12 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
                 knowledge_v2 = {"status": "skipped_no_core_demand", "hits": [], "evidence_context": {"rules": [], "faqs": [], "cases": []}, "evidence_refs": []}
                 knowledge_base = knowledge_v2
                 knowledge_status = "skipped_no_core_demand"
-                stage_started = perf_counter()
-                external_knowledge = _search_sales_kb_api(None, top_k=5)
-                knowledge_parts_ms["knowledge_external_api_ms"] = round((perf_counter() - stage_started) * 1000, 2)
+                if api_kb2_enabled:
+                    stage_started = perf_counter()
+                    external_knowledge = _search_sales_kb_api(None, top_k=5)
+                    knowledge_parts_ms["knowledge_external_api_ms"] = round((perf_counter() - stage_started) * 1000, 2)
+                else:
+                    external_knowledge = {"status": "skipped_kb2_disabled", "hits": []}
                 mark_timing("knowledge_retrieve_ms", knowledge_stage_started)
             stage_status["knowledge_external_api"] = external_knowledge.get("status") or "unknown"
             _set_node_timing(
@@ -14488,6 +14497,7 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
                 runtime_key=session_id,
                 single_model_single_style=True,
                 enable_scoring=False,
+                kb2_enabled=api_kb2_enabled,
             )
             mark_timing("llm2_generate_ms", stage_started)
             primary_candidate = generation_bundle.get("primary_candidate")
