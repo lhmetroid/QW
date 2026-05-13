@@ -1188,6 +1188,29 @@
             return `${(num / 1000).toFixed(2)}秒`;
         }
 
+        function renderTotalTimeCell(row) {
+            const isApi = row.source === 'api';
+            const wallMs = row.step_total_wall_ms;
+            const useWall = isApi && wallMs != null && wallMs !== '' && Number.isFinite(Number(wallMs));
+            const displayStr = formatAnalyticsMs(useWall ? wallMs : row.step_6_time_ms);
+            const steps = [
+                ['①输入', row.step_1_time_ms],
+                ['②强扫描', row.step_2_time_ms],
+                ['③LLM1', row.step_3_time_ms],
+                ['④CRM', row.step_4_time_ms],
+                ['⑤KB1', row.step_5_kb1_time_ms],
+                ['⑤KB2', row.step_5_kb2_time_ms],
+                ['⑥LLM2', row.step_6_time_ms],
+            ];
+            const lines = steps
+                .filter(([, ms]) => ms != null && ms !== '' && Number.isFinite(Number(ms)))
+                .map(([label, ms]) => `${label}: ${formatAnalyticsMs(ms)}`);
+            if (useWall) lines.push(`合计: ${formatAnalyticsMs(wallMs)}`);
+            const tip = lines.join('\n');
+            if (!tip) return safeText(displayStr);
+            return `<span title="${safeText(tip)}" style="cursor:help;text-decoration:underline dotted #94a3b8;text-underline-offset:3px">${safeText(displayStr)}</span>`;
+        }
+
         function analyticsCellText(text) {
             const raw = rawText(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             const lines = raw.split('\n').map(line => line.replace(/\s+/g, ' ').trim()).filter(Boolean);
@@ -1555,7 +1578,7 @@
                                     ${th(`${safeText(compareModelName)}<br>知识库2`, `${compareModelName} · 知识库2候选内容`)}
                                     ${th(headerWithMetric('质量分', avgScoreLabel('step_6_compare_kb2_score')), `${compareModelName} · 知识库2 · 候选质量分`)}
                                     ${th(headerWithMetric('费时', avgTimeLabel('step_6_compare_time_ms')), `${compareModelName} · 知识库2 · 生成费时（当前记录粒度为对比模型整体费时，因此知识库1/知识库2显示相同）`)}
-                                    ${th(headerWithMetric('总耗时', avgTimeLabel('step_6_time_ms')), '第二阶段总耗时，统一按秒显示')}
+                                    ${th(headerWithMetric('总耗时', avgTimeLabel('step_6_time_ms')), 'API触发：从请求到返回的实际墙钟总耗时，悬停查看各步骤明细；网页/测试触发：第二阶段LLM2节点总耗时')}
                                     ${th('人工回复', '触发后实际销售连续回复块，放到 06 节点后便于直接对照')}
                                     ${th(headerWithMetric('业务分', avgScoreLabel('manual_business_score')), '人工回复业务质量分：独立按意图命中、推进、事实、风险、微信表达打分，不再复用相似度逻辑')}
                                     ${th(headerWithMetric('贴合代理分', avgScoreLabel('manual_quality_score')), '人工回复贴合代理分：取知识库1/知识库2两路贴合代理分较高者，作为历史对照代理分')}
@@ -1598,7 +1621,7 @@
                                         <td class="px-2 py-2">${renderAnalyticsModelCandidateCell(row.step_6_compare_model_name, row.step_6_compare_kb2_content)}</td>
                                         <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'step_6_compare_kb2_score', row.step_6_compare_kb2_score, row.step_6_compare_kb2_score_reason, avg.step_6_compare_kb2_score)}</td>
                                         <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_6_compare_time_ms)}</td>
-                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_6_time_ms)}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${renderTotalTimeCell(row)}</td>
                                         <td class="px-2 py-2">${renderAnalyticsTextCell(row.manual_reply_text, 'max-w-[220px] text-slate-700')}</td>
                                         <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'manual_business_score', row.manual_business_score, row.manual_business_reason, avg.manual_business_score)}</td>
                                         <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'manual_quality_score', row.manual_quality_score, row.manual_quality_reason, avg.manual_quality_score)}</td>

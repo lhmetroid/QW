@@ -13733,6 +13733,7 @@ def _build_trigger_analytics_row(
     result = _jsonable(result_payload or {})
     stage_status = result.get("stage_status") if isinstance(result.get("stage_status"), dict) else {}
     node_timings = result.get("node_timings_ms") if isinstance(result.get("node_timings_ms"), dict) else _extract_node_timings(stage_status)
+    result_timings = result.get("timings_ms") if isinstance(result.get("timings_ms"), dict) else {}
     all_input_messages = input_messages or result.get("input_messages") or []
     llm_runtime = result.get("llm_runtime") if isinstance(result.get("llm_runtime"), dict) else {}
     customer_bundle = recent_customer_messages or [item for item in all_input_messages if str(item.get("sender_type") or "").strip() == "customer"]
@@ -13854,6 +13855,8 @@ def _build_trigger_analytics_row(
         "step_6_compare_kb2_score": compare_kb2_score,
         "step_6_compare_kb2_score_reason": compare_kb2_reason,
         "step_6_time_ms": (((node_timings or {}).get("llm2") or {}).get("total_ms")),
+        # API 触发专用：从请求进入到返回的实际墙钟总耗时，非 API 触发保持 None
+        "step_total_wall_ms": result_timings.get("total_ms") if trigger_source == "api" else None,
         "step_7_content": _analytics_step7_summary(result),
         "manual_business_score": manual_business_score,
         "manual_business_reason": manual_business_reason,
