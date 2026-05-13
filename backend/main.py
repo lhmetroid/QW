@@ -11033,81 +11033,93 @@ def _generate_reply_style_candidates(
         if slot == "llm2_compare":
             _set_llm_compare_status(runtime_key, "running", "对比模型正在生成", config)
 
-        for knowledge_spec in knowledge_specs:
-            skip_meta = knowledge_skip_reason(knowledge_spec)
-            for style in styles:
-                candidate_id = f"{slot}__{knowledge_spec['key']}__{style['id']}"
-                if skip_meta:
-                    status, reason = skip_meta
-                    append_candidate(
-                        candidate_id=candidate_id,
-                        model_spec=model_spec,
-                        knowledge_spec=knowledge_spec,
-                        style=style,
-                        status=status,
-                        reason=reason,
-                    )
-                    stats["placeholders"] += 1
-                    continue
+        def _run_kb_candidate(ks: dict, sty: dict) -> dict:
+            cid = f"{slot}__{ks['key']}__{sty['id']}"
+            task_started = perf_counter()
+            skip_meta = knowledge_skip_reason(ks)
+            if skip_meta:
+                return {"candidate_id": cid, "ks": ks, "sty": sty,
+                        "skip_meta": skip_meta, "elapsed_ms": 0.0}
+            label_suffix = "KB1" if ks["key"] == "knowledge_v2" else "KB2"
+            prompt_label = f"{slot.upper()}_{label_suffix}"
+            req_spec = None
+            try:
+                req_spec = IntentEngine.build_sales_assist_request(
+                    summary_json, ks["payload"], crm_context,
+                    api_url=config["api_url"], api_key=config["api_key"],
+                    model=config["model"], timeout_seconds=config["timeout_seconds"],
+                    label=prompt_label, reply_style=sty,
+                )
+                bundle = IntentEngine.generate_sales_assist_bundle(
+                    summary_json, ks["payload"], crm_context, prepared_request=req_spec,
+                )
+                elapsed = round((perf_counter() - task_started) * 1000, 2)
+                return {
+                    "candidate_id": cid, "ks": ks, "sty": sty, "skip_meta": None,
+                    "status": "done" if bundle.get("content") else "failed_no_content",
+                    "bundle": bundle, "req_spec": req_spec, "elapsed_ms": elapsed,
+                }
+            except Exception as exc:
+                elapsed = round((perf_counter() - task_started) * 1000, 2)
+                return {
+                    "candidate_id": cid, "ks": ks, "sty": sty, "skip_meta": None,
+                    "status": "error", "exc": exc, "req_spec": req_spec, "elapsed_ms": elapsed,
+                }
 
-                label_suffix = "KB1" if knowledge_spec["key"] == "knowledge_v2" else "KB2"
-                prompt_label = f"{slot.upper()}_{label_suffix}"
-                request_spec = None
-                try:
-                    request_spec = IntentEngine.build_sales_assist_request(
-                        summary_json,
-                        knowledge_spec["payload"],
-                        crm_context,
-                        api_url=config["api_url"],
-                        api_key=config["api_key"],
-                        model=config["model"],
-                        timeout_seconds=config["timeout_seconds"],
-                        label=prompt_label,
-                        reply_style=style,
-                    )
-                    bundle = IntentEngine.generate_sales_assist_bundle(
-                        summary_json,
-                        knowledge_spec["payload"],
-                        crm_context,
-                        prepared_request=request_spec,
-                    )
-                    content = bundle.get("content")
-                    if content:
-                        stats["done"] += 1
-                        append_candidate(
-                            candidate_id=candidate_id,
-                            model_spec=model_spec,
-                            knowledge_spec=knowledge_spec,
-                            style=style,
-                            status="done",
-                            content=content,
-                            validation=bundle.get("validation") or IntentEngine.validate_sales_assist_output(content, knowledge_spec["payload"], crm_context=crm_context),
-                            prompt_trace=bundle.get("prompt_trace"),
-                        )
-                    else:
-                        stats["failures"] += 1
-                        append_candidate(
-                            candidate_id=candidate_id,
-                            model_spec=model_spec,
-                            knowledge_spec=knowledge_spec,
-                            style=style,
-                            status="failed_no_content",
-                            prompt_trace=request_spec.get("prompt_trace"),
-                            reason=f"{model_spec['label']}在{knowledge_spec['label']}上返回空内容",
-                        )
-                except Exception as exc:
-                    stats["failures"] += 1
-                    append_candidate(
-                        candidate_id=candidate_id,
-                        model_spec=model_spec,
-                        knowledge_spec=knowledge_spec,
-                        style=style,
-                        status="error",
-                        prompt_trace=request_spec.get("prompt_trace") if isinstance(request_spec, dict) else None,
-                        reason=sanitize_text(str(exc)),
-                    )
+        all_tasks = [(ks, sty) for ks in knowledge_specs for sty in styles]
+        per_kb_elapsed: dict[str, float] = {}
+
+        if len(all_tasks) > 1:
+            fs = [REPLY_CHAIN_EXECUTOR.submit(_run_kb_candidate, ks, sty) for ks, sty in all_tasks]
+            task_results = [f.result() for f in fs]
+        else:
+            task_results = [_run_kb_candidate(ks, sty) for ks, sty in all_tasks]
+
+        for res in task_results:
+            ks, sty, cid = res["ks"], res["sty"], res["candidate_id"]
+            if res["skip_meta"]:
+                status, reason = res["skip_meta"]
+                append_candidate(
+                    candidate_id=cid, model_spec=model_spec, knowledge_spec=ks,
+                    style=sty, status=status, reason=reason,
+                )
+                stats["placeholders"] += 1
+                continue
+            per_kb_elapsed[f"{slot}_{ks['key']}_ms"] = res["elapsed_ms"]
+            if res["status"] == "done":
+                bundle = res["bundle"]
+                content = bundle.get("content")
+                stats["done"] += 1
+                append_candidate(
+                    candidate_id=cid, model_spec=model_spec, knowledge_spec=ks,
+                    style=sty, status="done", content=content,
+                    validation=bundle.get("validation") or IntentEngine.validate_sales_assist_output(
+                        content, ks["payload"], crm_context=crm_context
+                    ),
+                    prompt_trace=bundle.get("prompt_trace"),
+                )
+            elif res["status"] == "failed_no_content":
+                stats["failures"] += 1
+                req_spec = res.get("req_spec")
+                append_candidate(
+                    candidate_id=cid, model_spec=model_spec, knowledge_spec=ks,
+                    style=sty, status="failed_no_content",
+                    prompt_trace=req_spec.get("prompt_trace") if isinstance(req_spec, dict) else None,
+                    reason=f"{model_spec['label']}在{ks['label']}上返回空内容",
+                )
+            else:
+                stats["failures"] += 1
+                req_spec = res.get("req_spec")
+                append_candidate(
+                    candidate_id=cid, model_spec=model_spec, knowledge_spec=ks,
+                    style=sty, status="error",
+                    prompt_trace=req_spec.get("prompt_trace") if isinstance(req_spec, dict) else None,
+                    reason=sanitize_text(str(res.get("exc", ""))),
+                )
+
         part_key = "llm2_compare_ms" if slot == "llm2_compare" else "llm2_ms"
         stage_parts_ms[part_key] = round((perf_counter() - slot_started) * 1000, 2)
+        stage_parts_ms.update(per_kb_elapsed)
 
     primary_stats = ensure_model_stats("llm2")
     compare_stats = ensure_model_stats("llm2_compare")
