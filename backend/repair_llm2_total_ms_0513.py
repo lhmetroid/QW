@@ -15,11 +15,13 @@ repair_llm2_total_ms_0513.py
 
 import sys
 import os
+import copy
 
 sys.path.insert(0, os.path.dirname(__file__))
 
 from database import SessionLocal, ApiAssistInvocation
 from datetime import datetime
+from sqlalchemy.orm.attributes import flag_modified
 
 
 def repair():
@@ -82,8 +84,18 @@ def repair():
                         payload["stage_status"] = stage_status
                         changed = True
 
+            # 同步修复独立的 stage_status 列
+            ss_col = dict(row.stage_status or {})
+            ss_col_nt = ss_col.get("node_timings_ms")
+            if isinstance(ss_col_nt, dict) and fix_llm2_total(ss_col_nt):
+                ss_col["node_timings_ms"] = ss_col_nt
+                row.stage_status = copy.deepcopy(ss_col)
+                flag_modified(row, "stage_status")
+                changed = True
+
             if changed:
-                row.result_payload = payload
+                row.result_payload = copy.deepcopy(payload)
+                flag_modified(row, "result_payload")
                 patched += 1
 
         if patched:
