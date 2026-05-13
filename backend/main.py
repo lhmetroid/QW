@@ -11527,7 +11527,7 @@ def _complete_api_reply_scoring_async(
                 _set_node_timing(
                     updated_stage_status,
                     "llm2",
-                    total_ms=round(existing_total + scoring_ms, 2) if existing_total else scoring_ms,
+                    # 不累加到 total_ms：评分在主请求返回后异步执行，不属于请求延迟
                     parts_ms=merged_parts,
                     status=updated_stage_status.get("llm2") or "done",
                 )
@@ -11548,11 +11548,10 @@ def _complete_api_reply_scoring_async(
                 **dict(existing_llm2.get("parts_ms") or {}),
                 "reply_scoring_ms": scoring_ms,
             }
-            existing_total = _round_timing_ms(existing_llm2.get("total_ms")) or 0.0
+            # 不累加到 total_ms：评分在主请求返回后异步执行，不属于请求延迟
             _set_node_timing(
                 updated_stage_status,
                 "llm2",
-                total_ms=round(existing_total + scoring_ms, 2) if existing_total else scoring_ms,
                 parts_ms=merged_parts,
                 status=updated_stage_status.get("llm2") or "done",
             )
