@@ -23,3 +23,4 @@ backend/seq_cursor.txt
 !.env.example
 *.pem
 docs/配置.txt
+backend/ai_settings.local.json

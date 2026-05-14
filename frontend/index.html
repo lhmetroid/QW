@@ -119,7 +119,7 @@
                 color: #f8fafc;
                 font-size: 11px;
                 line-height: 1.55;
-                white-space: normal;
+                white-space: pre-line;
                 box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
                 pointer-events: none;
             }
@@ -151,20 +151,26 @@
                 <div class="text-xl font-bold text-slate-900">智能销售辅助工作台</div>
                 <div class="text-xs text-slate-500 mt-1">左侧为企业微信实时意图分析，右侧为知识库导入、审核、发布和检索治理。</div>
             </div>
-            <nav class="grid grid-cols-3 gap-3 min-w-[640px]">
-                <button id="main-tab-wecom" onclick="switchMainApp('wecom')" title="进入企业微信实时智能页面，用于查看真实会话、提取销售意图、生成建议话术。" aria-label="企微实时智能：进入真实会话分析页面" class="rounded-2xl border px-5 py-3 text-left transition bg-blue-600 text-white border-blue-600 shadow-sm">
-                    <div class="text-base font-bold">企微实时智能</div>
-                    <div class="text-xs opacity-85 mt-1">会话同步、意图识别、客户画像、销售建议</div>
-                </button>
-                <button id="main-tab-analytics" onclick="switchMainApp('analytics')" title="进入企微智能回复统计分析页面，用于按触发逐次查看7步链路、耗时、评分与人工回复。" aria-label="企微智能回复统计分析：进入逐触发统计分析页面" class="rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300">
-                    <div class="text-base font-bold">企微智能回复统计分析</div>
-                    <div class="text-xs text-slate-500 mt-1">按触发逐条查看步骤内容、耗时、质量分与人工回复</div>
-                </button>
-                <button id="main-tab-kb" onclick="switchMainApp('kb')" title="进入知识库管理页面，用于导入、查看、审核、发布、检索和质量治理。" aria-label="知识库管理：进入知识库管理页面" class="rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300">
-                    <div class="text-base font-bold">知识库管理</div>
-                    <div class="text-xs text-slate-500 mt-1">导入、查看、审核、发布、检索、质量治理</div>
-                </button>
-            </nav>
+            <div class="flex flex-wrap items-center justify-end gap-3">
+                <nav class="grid grid-cols-3 gap-3 min-w-[640px]">
+                    <button id="main-tab-wecom" onclick="switchMainApp('wecom')" title="进入企业微信实时智能页面，用于查看真实会话、提取销售意图、生成建议话术。" aria-label="企微实时智能：进入真实会话分析页面" class="rounded-2xl border px-5 py-3 text-left transition bg-blue-600 text-white border-blue-600 shadow-sm">
+                        <div class="text-base font-bold">企微实时智能</div>
+                        <div class="text-xs opacity-85 mt-1">会话同步、意图识别、客户画像、销售建议</div>
+                    </button>
+                    <button id="main-tab-analytics" onclick="switchMainApp('analytics')" title="进入企微智能回复统计分析页面，用于按触发逐次查看7步链路、耗时、评分与人工回复。" aria-label="企微智能回复统计分析：进入逐触发统计分析页面" class="rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300">
+                        <div class="text-base font-bold">企微智能回复统计分析</div>
+                        <div class="text-xs text-slate-500 mt-1">按触发逐条查看步骤内容、耗时、质量分与人工回复</div>
+                    </button>
+                    <button id="main-tab-kb" onclick="switchMainApp('kb')" title="进入知识库管理页面，用于导入、查看、审核、发布、检索和质量治理。" aria-label="知识库管理：进入知识库管理页面" class="rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300">
+                        <div class="text-base font-bold">知识库管理</div>
+                        <div class="text-xs text-slate-500 mt-1">导入、查看、审核、发布、检索、质量治理</div>
+                    </button>
+                </nav>
+                <div class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <span id="auth-user-label" class="font-bold text-slate-700">已登录</span>
+                    <button onclick="logoutFrontend()" class="rounded-md border border-slate-200 bg-white px-2 py-1 font-bold text-slate-600 hover:bg-slate-100">退出</button>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -342,6 +348,26 @@
         let apiBaseCandidates = [];
         let apiBaseReadyPromise = null;
 
+        async function refreshAuthUser() {
+            try {
+                const res = await RAW_FETCH('/api/auth/me', {headers: {'Cache-Control': 'no-cache'}});
+                const data = await res.json().catch(() => ({}));
+                if (!data.authenticated) {
+                    window.location.href = '/static/login.html';
+                    return;
+                }
+                const label = document.getElementById('auth-user-label');
+                if (label) label.textContent = data.username || '已登录';
+            } catch (_) {}
+        }
+
+        async function logoutFrontend() {
+            try {
+                await RAW_FETCH('/api/auth/logout', {method: 'POST'});
+            } catch (_) {}
+            window.location.href = '/static/login.html';
+        }
+
         function normalizeApiBase(value) {
             const text = String(value || '').trim();
             if (!text || text === 'null' || text === 'undefined') return '';
@@ -500,7 +526,7 @@
         let sessionSelectionRequestSeq = 0;
         let analysisContextSeq = 0;
         let uiRuntimeConfig = {
-            wecomRecentMessageLimit: 6,
+            wecomRecentMessageLimit: 10,
         };
         let analyticsState = {
             initialized: false,
@@ -833,7 +859,7 @@
                     uiRuntimeConfig.wecomRecentMessageLimit = clampWecomRecentMessageLimit(data.WECOM_RECENT_MESSAGE_LIMIT);
                 }
             } catch (_) {
-                uiRuntimeConfig.wecomRecentMessageLimit = 6;
+                uiRuntimeConfig.wecomRecentMessageLimit = 10;
             }
             return uiRuntimeConfig;
         }
@@ -1189,9 +1215,8 @@
         }
 
         function renderTotalTimeCell(row) {
-            const isApi = row.source === 'api';
             const wallMs = row.step_total_wall_ms;
-            const useWall = isApi && wallMs != null && wallMs !== '' && Number.isFinite(Number(wallMs));
+            const useWall = wallMs != null && wallMs !== '' && Number.isFinite(Number(wallMs));
             const displayStr = formatAnalyticsMs(useWall ? wallMs : row.step_6_time_ms);
             const steps = [
                 ['①输入', row.step_1_time_ms],
@@ -1200,7 +1225,7 @@
                 ['④CRM', row.step_4_time_ms],
                 ['⑤KB1', row.step_5_kb1_time_ms],
                 ['⑤KB2', row.step_5_kb2_time_ms],
-                ['⑥LLM2', row.step_6_time_ms],
+                ['⑥LLM2', row.step_6_main_time_ms],
             ];
             const lines = steps
                 .filter(([, ms]) => ms != null && ms !== '' && Number.isFinite(Number(ms)))
@@ -1208,7 +1233,7 @@
             if (useWall) lines.push(`合计: ${formatAnalyticsMs(wallMs)}`);
             const tip = lines.join('\n');
             if (!tip) return safeText(displayStr);
-            return `<span title="${safeText(tip)}" style="cursor:help;text-decoration:underline dotted #94a3b8;text-underline-offset:3px">${safeText(displayStr)}</span>`;
+            return `<span class="help-target help-inline" data-help="${safeText(tip)}">${safeText(displayStr)}</span>`;
         }
 
         function analyticsCellText(text) {
@@ -1255,7 +1280,7 @@
             const count = Number(row.recent_dialog_count || analyticsLineCount(full) || 0);
             const countLabel = count > 0 ? `最近客户+销售 ${count} 条` : '最近客户+销售 -';
             return `
-                <div class="max-w-[260px] space-y-1" title="${safeText(full)}">
+                <div class="max-w-[260px] space-y-1 help-target" data-help="${safeText(full)}">
                     <div class="text-[10px] font-bold text-slate-500">${safeText(countLabel)}</div>
                     ${renderAnalyticsClampedText(full, 'text-slate-700', 3)}
                 </div>`;
@@ -1578,7 +1603,7 @@
                                     ${th(`${safeText(compareModelName)}<br>知识库2`, `${compareModelName} · 知识库2候选内容`)}
                                     ${th(headerWithMetric('质量分', avgScoreLabel('step_6_compare_kb2_score')), `${compareModelName} · 知识库2 · 候选质量分`)}
                                     ${th(headerWithMetric('费时', avgTimeLabel('step_6_compare_time_ms')), `${compareModelName} · 知识库2 · 生成费时（当前记录粒度为对比模型整体费时，因此知识库1/知识库2显示相同）`)}
-                                    ${th(headerWithMetric('总耗时', avgTimeLabel('step_6_time_ms')), 'API触发：从请求到返回的实际墙钟总耗时，悬停查看各步骤明细；网页/测试触发：第二阶段LLM2节点总耗时')}
+                                    ${th(headerWithMetric('总耗时', `平均 ${formatAnalyticsMs((() => { const vals = (rows || []).map(r => { const w = r.step_total_wall_ms; return (w != null && w !== '' && Number.isFinite(Number(w))) ? Number(w) : (r.step_6_time_ms != null && r.step_6_time_ms !== '' && Number.isFinite(Number(r.step_6_time_ms)) ? Number(r.step_6_time_ms) : null); }).filter(v => v !== null); return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null; })())}`), 'API触发：从请求到返回的实际墙钟总耗时，悬停查看各步骤明细；网页/测试触发：第二阶段LLM2节点总耗时')}
                                     ${th('人工回复', '触发后实际销售连续回复块，放到 06 节点后便于直接对照')}
                                     ${th(headerWithMetric('业务分', avgScoreLabel('manual_business_score')), '人工回复业务质量分：独立按意图命中、推进、事实、风险、微信表达打分，不再复用相似度逻辑')}
                                     ${th(headerWithMetric('贴合代理分', avgScoreLabel('manual_quality_score')), '人工回复贴合代理分：取知识库1/知识库2两路贴合代理分较高者，作为历史对照代理分')}
@@ -1614,7 +1639,7 @@
                                         <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_6_main_time_ms)}</td>
                                         <td class="px-2 py-2">${renderAnalyticsModelCandidateCell(row.step_6_main_model_name, row.step_6_main_kb2_content)}</td>
                                         <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'step_6_main_kb2_score', row.step_6_main_kb2_score, row.step_6_main_kb2_score_reason, avg.step_6_main_kb2_score)}</td>
-                                        <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_6_main_time_ms)}</td>
+                                        <td class="px-2 py-2 text-[11px] text-slate-600">${row.step_6_main_kb2_content && row.step_6_main_kb2_content !== '-' ? formatAnalyticsMs(row.step_6_main_time_ms) : '-'}</td>
                                         <td class="px-2 py-2">${renderAnalyticsModelCandidateCell(row.step_6_compare_model_name, row.step_6_compare_kb1_content)}</td>
                                         <td class="px-2 py-2">${renderAnalyticsScoreCell(row, 'step_6_compare_kb1_score', row.step_6_compare_kb1_score, row.step_6_compare_kb1_score_reason, avg.step_6_compare_kb1_score)}</td>
                                         <td class="px-2 py-2 text-[11px] text-slate-600">${formatAnalyticsMs(row.step_6_compare_time_ms)}</td>
@@ -1777,13 +1802,16 @@
 
         function formatDateTime(dateStr) {
             if (!dateStr) return '';
-            const d = new Date(dateStr);
+            // Append Z if no timezone info so the string is parsed as UTC
+            const raw = typeof dateStr === 'string' && !/[Z+\-]\d{2}:?\d{2}$/.test(dateStr.slice(10)) ? dateStr + 'Z' : dateStr;
+            const d = new Date(raw);
             if (Number.isNaN(d.getTime())) return '';
-            const mm = (d.getMonth() + 1).toString().padStart(2, '0');
-            const dd = d.getDate().toString().padStart(2, '0');
-            const hh = d.getHours().toString().padStart(2, '0');
-            const mi = d.getMinutes().toString().padStart(2, '0');
-            const ss = d.getSeconds().toString().padStart(2, '0');
+            const bj = new Date(d.getTime() + 8 * 3600 * 1000);
+            const mm = (bj.getUTCMonth() + 1).toString().padStart(2, '0');
+            const dd = bj.getUTCDate().toString().padStart(2, '0');
+            const hh = bj.getUTCHours().toString().padStart(2, '0');
+            const mi = bj.getUTCMinutes().toString().padStart(2, '0');
+            const ss = bj.getUTCSeconds().toString().padStart(2, '0');
             return `${mm}月${dd}日 ${hh}:${mi}:${ss}`;
         }
 
@@ -4017,6 +4045,7 @@
             if (tabKey === 'chunks') return refreshKbChunks();
             if (tabKey === 'review') return refreshKbReview();
             if (tabKey === 'candidates') return refreshKbCandidates();
+            if (tabKey === 'wecom_raw') return refreshWecomRawList();
         }
 
         const KNOWLEDGE_CLASS_HELP = [
@@ -4144,6 +4173,11 @@
 
         function safeText(value) {
             if (value === null || value === undefined || value === '') return '-';
+            return String(value).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+        }
+
+        function safeAttr(value) {
+            if (value === null || value === undefined) return '';
             return String(value).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
         }
 
@@ -4659,6 +4693,7 @@
                 ['review', '待审核'],
                 ['candidates', '知识候选'],
                 ['import', '导入中心'],
+                ['wecom_raw', '企微数据'],
                 ['batches', '批次'],
                 ['pricing', '报价规则'],
                 ['retrieve', '检索测试'],
@@ -4686,6 +4721,7 @@
             if (tab === 'review') return loadKbReview();
             if (tab === 'candidates') return loadKbCandidates();
             if (tab === 'import') return renderKbImport();
+            if (tab === 'wecom_raw') return loadKbWecomRaw();
             if (tab === 'batches') return loadKbBatches();
             if (tab === 'pricing') return loadKbPricing();
             if (tab === 'retrieve') return loadKbRetrieveTest();
@@ -6109,6 +6145,257 @@
                 </table>` : '<div class="text-sm text-slate-400 text-center p-8">没有可导入行</div>';
         }
 
+        // ─── 企微原始数据 ───────────────────────────────────────────────────────────
+
+        async function loadKbWecomRaw() {
+            let batches = [];
+            try {
+                const r = await apiFetch(`${API_BASE}/api/wecom/raw/batches`);
+                batches = (await r.json()).batches || [];
+            } catch(e) {}
+
+            const state = getKbListState('wecom_raw');
+            if (!state.batchId && batches.length) state.batchId = batches[0].batch_id;
+            if (state.rowStatus === undefined) state.rowStatus = '';
+
+            const batchOpts = batches.map(b =>
+                `<option value="${safeAttr(b.batch_id)}" ${state.batchId === b.batch_id ? 'selected' : ''}>${safeText(b.batch_id)} （${b.total}条 · ${(b.imported_at||'').slice(0,10)}）</option>`
+            ).join('');
+
+            renderKbShell(`
+                <div class="mb-2 flex flex-wrap items-center gap-2">
+                    <button onclick="doWecomRawImport(event)" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700">导入企微数据</button>
+                    <button disabled class="px-3 py-1.5 bg-slate-200 text-slate-400 rounded text-xs font-medium cursor-not-allowed" title="AI预处理功能待实现">数据预处理</button>
+                    <span class="text-xs text-slate-400">源文件：企微提取内容_20260509111157.csv</span>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3 items-end">
+                    <label class="block text-xs text-slate-500"><span class="block mb-1">批次</span>
+                        <select id="wr-batch" class="border rounded px-2 py-1 text-xs" onchange="getKbListState('wecom_raw').batchId=this.value;getKbListState('wecom_raw').offset=0;refreshWecomRawList()">
+                            <option value="">全部批次</option>${batchOpts}
+                        </select>
+                    </label>
+                    <label class="block text-xs text-slate-500"><span class="block mb-1">处理状态</span>
+                        <select id="wr-status" class="border rounded px-2 py-1 text-xs" onchange="getKbListState('wecom_raw').rowStatus=this.value;getKbListState('wecom_raw').offset=0;refreshWecomRawList()">
+                            <option value="" ${!state.rowStatus?'selected':''}>全部状态</option>
+                            <option value="pending" ${state.rowStatus==='pending'?'selected':''}>待处理</option>
+                            <option value="processed" ${state.rowStatus==='processed'?'selected':''}>已处理</option>
+                            <option value="skipped" ${state.rowStatus==='skipped'?'selected':''}>已跳过</option>
+                        </select>
+                    </label>
+                    <label class="block text-xs text-slate-500"><span class="block mb-1">内容关键词</span>
+                        <input id="wr-keyword" value="${safeAttr(state.contentKeyword||'')}" class="border rounded px-2 py-1 text-xs bg-white w-40" placeholder="内容搜索" onkeydown="if(event.key==='Enter')searchWecomRaw()">
+                    </label>
+                    <button onclick="searchWecomRaw()" class="px-3 py-1 bg-blue-600 text-white rounded text-xs">查询</button>
+                    <button onclick="resetWecomRawSearch()" class="px-3 py-1 bg-slate-200 text-slate-700 rounded text-xs">重置</button>
+                </div>
+                <div id="wr-list"><div class="text-sm text-slate-400 p-8 text-center">加载中...</div></div>
+            `);
+            await refreshWecomRawList();
+        }
+
+        function searchWecomRaw() {
+            const state = getKbListState('wecom_raw');
+            state.contentKeyword = (document.getElementById('wr-keyword')?.value || '').trim();
+            state.offset = 0;
+            refreshWecomRawList();
+        }
+
+        function resetWecomRawSearch() {
+            const state = getKbListState('wecom_raw');
+            state.contentKeyword = '';
+            state.rowStatus = '';
+            const kwEl = document.getElementById('wr-keyword');
+            if (kwEl) kwEl.value = '';
+            const stEl = document.getElementById('wr-status');
+            if (stEl) stEl.value = '';
+            state.offset = 0;
+            refreshWecomRawList();
+        }
+
+        async function doWecomRawImport(evt) {
+            const btn = evt.target;
+            btn.disabled = true; btn.textContent = '导入中...';
+            try {
+                const res = await apiFetch(`${API_BASE}/api/wecom/raw/import`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({})
+                });
+                const d = await res.json();
+                if (d.status === 'already_imported') {
+                    if (!confirm(`该文件已导入（批次 ${d.batch_id}，共 ${d.existing_rows} 条）。\n是否强制重新导入覆盖？`)) {
+                        btn.disabled = false; btn.textContent = '导入企微数据'; return;
+                    }
+                    const res2 = await apiFetch(`${API_BASE}/api/wecom/raw/import`, {
+                        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({force: true})
+                    });
+                    const d2 = await res2.json();
+                    getKbListState('wecom_raw').batchId = d2.batch_id;
+                    alert(`重新导入完成，共 ${d2.inserted} 条`);
+                } else {
+                    getKbListState('wecom_raw').batchId = d.batch_id;
+                    alert(`导入完成，共 ${d.inserted} 条\n批次：${d.batch_id}`);
+                }
+                loadKbWecomRaw();
+            } catch(e) {
+                alert('导入失败：' + e);
+                btn.disabled = false; btn.textContent = '导入企微数据';
+            }
+        }
+
+        async function refreshWecomRawList() {
+            const listEl = document.getElementById('wr-list');
+            if (!listEl) return;
+            listEl.innerHTML = '<div class="text-sm text-slate-400 p-4 text-center">加载中...</div>';
+            const state = getKbListState('wecom_raw');
+            const params = new URLSearchParams({ limit: state.limit, offset: state.offset });
+            if (state.batchId) params.set('batch_id', state.batchId);
+            if (state.rowStatus) params.set('row_status', state.rowStatus);
+            if (state.contentKeyword) params.set('keyword', state.contentKeyword);
+            const res = await apiFetch(`${API_BASE}/api/wecom/raw/messages?${params}`);
+            const data = await res.json();
+            state.total = data.total || 0;
+            const items = data.items || [];
+
+            if (!items.length) {
+                listEl.innerHTML = '<div class="text-sm text-slate-400 p-8 text-center bg-white rounded border">暂无数据，请先点击「导入企微数据」</div>';
+                return;
+            }
+
+            listEl.innerHTML = `
+                <div class="bg-white border rounded overflow-hidden">
+                    ${renderKbPagination('wecom_raw')}
+                    <div class="overflow-x-auto">
+                    <table class="min-w-full text-xs border-t" style="min-width:1100px">
+                        <thead class="bg-slate-100 text-slate-600 sticky top-0">
+                            <tr>
+                                <th class="p-2 text-left whitespace-nowrap w-10">#</th>
+                                <th class="p-2 text-left whitespace-nowrap w-24">发件人</th>
+                                <th class="p-2 text-left whitespace-nowrap w-24">收件人</th>
+                                <th class="p-2 text-left whitespace-nowrap w-20">群ID</th>
+                                <th class="p-2 text-left whitespace-nowrap w-32">时间</th>
+                                <th class="p-2 text-left min-w-[180px]">内容</th>
+                                <th class="p-2 text-left whitespace-nowrap w-20">from</th>
+                                <th class="p-2 text-left whitespace-nowrap w-20">tolist</th>
+                                <th class="p-2 text-left whitespace-nowrap w-16">阶段</th>
+                                <th class="p-2 text-left whitespace-nowrap w-16">环节</th>
+                                <th class="p-2 text-center whitespace-nowrap w-14">质量分</th>
+                                <th class="p-2 text-left whitespace-nowrap w-24">处理备注</th>
+                                <th class="p-2 text-left whitespace-nowrap w-28">处理结论</th>
+                                <th class="p-2 text-left whitespace-nowrap w-14">状态</th>
+                                <th class="p-2 text-left whitespace-nowrap w-10">详情</th>
+                            </tr>
+                        </thead>
+                        <tbody>${renderWecomRawRows(items)}</tbody>
+                    </table>
+                    </div>
+                    ${renderKbPagination('wecom_raw')}
+                </div>`;
+        }
+
+        function renderWecomRawRows(items) {
+            let lastGroupKey = null;
+            return items.map(item => {
+                const isCustomer = item.role === 'customer';
+                const bgClass = isCustomer ? 'bg-blue-50' : 'bg-green-50';
+                const groupBorder = (lastGroupKey !== null && item.group_key !== lastGroupKey)
+                    ? 'border-t-2 border-slate-400' : 'border-t border-slate-200';
+                lastGroupKey = item.group_key;
+
+                const roleTag = isCustomer
+                    ? '<span class="inline-block px-1 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px]">客户</span>'
+                    : '<span class="inline-block px-1 py-0.5 rounded bg-green-100 text-green-700 text-[10px]">销售</span>';
+                const senderId = (item.sender||'').replace(/^(客户|销售)[：:]/,'');
+                const receiverId = (item.receiver||'').replace(/^(客户|销售)[：:]/,'');
+                const contentSnip = (item.content||'').replace(/\n/g,' ').slice(0,50)+((item.content||'').length>50?'…':'');
+                const timeStr = (item.msg_time||'').slice(0,16).replace('T',' ');
+
+                const stageHtml = item.stage
+                    ? `<span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px]">${safeText(item.stage)}</span>`
+                    : '<span class="text-slate-300">—</span>';
+                const conclusionHtml = item.process_result
+                    ? `<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] whitespace-nowrap">${safeText(item.process_result)}</span>`
+                    : '<span class="text-slate-300">—</span>';
+                const statusHtml = item.row_status === 'processed'
+                    ? '<span class="text-emerald-600 font-medium">已处理</span>'
+                    : item.row_status === 'skipped'
+                    ? '<span class="text-slate-400">跳过</span>'
+                    : '<span class="text-slate-400">待处理</span>';
+
+                return `<tr class="${bgClass} ${groupBorder} hover:brightness-95 cursor-pointer" onclick="showWecomRawGroup('${safeAttr(item.group_key||'')}', ${item.id})">
+                    <td class="p-2 text-slate-400 text-right">${item.row_index ?? ''}</td>
+                    <td class="p-2 whitespace-nowrap">${roleTag} <span class="text-[10px] text-slate-500">${safeText(senderId.slice(0,10))}</span></td>
+                    <td class="p-2 text-[10px] text-slate-500 whitespace-nowrap">${safeText(receiverId.slice(0,10))}</td>
+                    <td class="p-2 text-[10px] text-slate-400 whitespace-nowrap">${safeText((item.group_id||'').slice(0,8))}</td>
+                    <td class="p-2 text-[10px] text-slate-500 whitespace-nowrap">${safeText(timeStr)}</td>
+                    <td class="p-2" title="${safeAttr(item.content||'')}">${safeText(contentSnip)}</td>
+                    <td class="p-2 text-[10px] text-slate-400 whitespace-nowrap">${safeText((item.from_id||'').slice(0,10))}</td>
+                    <td class="p-2 text-[10px] text-slate-400 whitespace-nowrap">${safeText((item.to_id||'').slice(0,10))}</td>
+                    <td class="p-2">${stageHtml}</td>
+                    <td class="p-2 text-[10px] text-slate-600">${item.section ? safeText(item.section) : '<span class="text-slate-300">—</span>'}</td>
+                    <td class="p-2 text-center text-[10px]">${item.quality_score ?? '<span class="text-slate-300">—</span>'}</td>
+                    <td class="p-2 text-[10px] text-slate-500 truncate max-w-[6rem]" title="${safeAttr(item.process_note||'')}">${item.process_note ? safeText(item.process_note.slice(0,18)) : '<span class="text-slate-300">—</span>'}</td>
+                    <td class="p-2">${conclusionHtml}</td>
+                    <td class="p-2">${statusHtml}</td>
+                    <td class="p-2"><button onclick="event.stopPropagation();showWecomRawGroup('${safeAttr(item.group_key||'')}', ${item.id})" class="text-emerald-700 font-bold text-xs hover:underline">详情</button></td>
+                </tr>`;
+            }).join('');
+        }
+
+        async function showWecomRawGroup(groupKey, highlightId) {
+            if (!groupKey) return;
+            const detailEl = document.getElementById('kb-detail');
+            if (!detailEl) return;
+            detailEl.innerHTML = '<div class="text-sm text-slate-400 p-8 text-center">加载中...</div>';
+            const res = await apiFetch(`${API_BASE}/api/wecom/raw/group/${encodeURIComponent(groupKey)}`);
+            const data = await res.json();
+            const msgs = data.items || [];
+
+            const msgHtml = msgs.map(m => {
+                const isCustomer = m.role === 'customer';
+                const bgBorder = isCustomer ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200';
+                const roleColor = isCustomer ? 'text-blue-600' : 'text-green-700';
+                const roleLabel = isCustomer ? '客户' : '销售';
+                const highlightRing = m.id === highlightId ? ' ring-2 ring-amber-400' : '';
+                const timeStr = (m.msg_time||'').slice(0,16).replace('T',' ');
+                const contentHtml = (m.content||'—').split('\n').map(l => `<div>${safeText(l)||'&nbsp;'}</div>`).join('');
+                const conclusionBadge = m.process_result
+                    ? `<span class="px-1 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px]">${safeText(m.process_result)}</span>` : '';
+                const stageBadge = m.stage
+                    ? `<span class="px-1 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px]">${safeText(m.stage)}</span>` : '';
+                const metaRow = [
+                    m.group_id ? `群:${safeText(m.group_id.slice(0,8))}` : '',
+                    m.from_id ? `from:${safeText(m.from_id.slice(0,10))}` : '',
+                    m.to_id ? `to:${safeText(m.to_id.slice(0,10))}` : '',
+                ].filter(Boolean).join(' · ');
+
+                return `<div class="rounded border p-2 mb-2 ${bgBorder}${highlightRing}">
+                    <div class="flex flex-wrap items-center gap-1.5 mb-1.5 text-[10px] text-slate-500">
+                        <span class="font-semibold ${roleColor}">${roleLabel}</span>
+                        <span>${safeText((m.sender||'').replace(/^(客户|销售)[：:]/,''))}</span>
+                        <span class="text-slate-400">${safeText(timeStr)}</span>
+                        ${stageBadge}${conclusionBadge}
+                    </div>
+                    <div class="text-xs text-slate-800 whitespace-pre-wrap leading-relaxed">${contentHtml}</div>
+                    ${m.process_note ? `<div class="mt-1 text-[10px] text-slate-500 italic border-t pt-1">${safeText(m.process_note)}</div>` : ''}
+                    ${metaRow ? `<div class="mt-1 text-[10px] text-slate-400">${metaRow}</div>` : ''}
+                </div>`;
+            }).join('');
+
+            detailEl.innerHTML = `
+                <div class="space-y-2 text-xs">
+                    <div class="flex items-center justify-between border-b pb-2 mb-2">
+                        <h3 class="font-bold text-slate-700">对话组详情</h3>
+                        <span class="text-[10px] text-slate-400 font-mono">${safeText(groupKey)}</span>
+                    </div>
+                    <div class="flex gap-3 text-[10px] text-slate-500 mb-2">
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-blue-100 border border-blue-200 inline-block"></span>客户</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-green-100 border border-green-200 inline-block"></span>销售</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 ring-2 ring-amber-400 rounded inline-block"></span>当前行</span>
+                    </div>
+                    ${msgs.length ? msgHtml : '<div class="text-slate-400 text-center py-8">该组无消息</div>'}
+                </div>`;
+        }
+        // ─── end 企微原始数据 ────────────────────────────────────────────────────────
+
         async function loadKbBatches() {
             document.getElementById('kb-body').innerHTML = `<div class="h-full grid grid-cols-[minmax(520px,1fr)_420px] overflow-hidden"><div class="overflow-y-auto p-4 bg-slate-50" id="kb-batches-list"></div><div class="overflow-y-auto border-l bg-white p-4" id="kb-detail"><div class="text-sm text-slate-400 pt-12 text-center">选择批次查看结果</div></div></div>`;
             const res = await apiFetch(`${API_BASE}/api/kb/import_batches`);
@@ -6578,6 +6865,7 @@
         }
 
         async function bootstrapApp() {
+            await refreshAuthUser();
             await ensureApiBaseReady();
             await loadUiRuntimeConfig();
             initSessionFilters();

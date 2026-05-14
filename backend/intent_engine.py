@@ -133,13 +133,23 @@ class IntentEngine:
     @classmethod
     def get_ai_settings(cls):
         import os, json
-        filepath = os.path.join(os.path.dirname(__file__), "ai_settings.json")
+        base_path = os.path.join(os.path.dirname(__file__), "ai_settings.json")
+        local_path = os.path.join(os.path.dirname(__file__), "ai_settings.local.json")
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                return json.load(f)
+            with open(base_path, "r", encoding="utf-8") as f:
+                base = json.load(f)
         except Exception as e:
             logger.error(f"读取 ai_settings.json 失败: {e}")
             raise RuntimeError(f"读取 ai_settings.json 失败: {e}") from e
+        if os.path.exists(local_path):
+            try:
+                with open(local_path, "r", encoding="utf-8") as f:
+                    local = json.load(f)
+                if isinstance(local, dict):
+                    base.update(local)
+            except Exception as e:
+                logger.warning(f"读取 ai_settings.local.json 失败，已忽略: {e}")
+        return base
 
     @classmethod
     def get_rules(cls):
@@ -557,8 +567,10 @@ class IntentEngine:
                 payload = {
                     "model": model,
                     "messages": [{"role": "user", "content": full_prompt}],
-                    "temperature": 0.1
+                    "temperature": 0.1,
+                    "max_tokens": max(120, int(getattr(settings, "LLM1_MAX_TOKENS", 700) or 700)),
                 }
+                prompt_trace["max_tokens"] = payload["max_tokens"]
                 cls._log_llm_prompt(f"{label}_OPENAI", model, url, full_prompt)
                 response = cls._post_json(url, headers, payload, timeout_seconds)
                 prompt_trace["response_status_code"] = response.status_code
@@ -2865,6 +2877,105 @@ class IntentEngine:
             logger.error(f"LLM-2 调用异常: {e}")
             raise RuntimeError(f"LLM-2 调用异常: {e}") from e
         raise RuntimeError("LLM-2 返回缺少有效内容")
+
+    @classmethod
+    def generate_sales_assist_stream(
+        cls,
+        summary_json: dict,
+        knowledge_list,
+        crm_context: dict = None,
+        *,
+        prepared_request: dict | None = None,
+    ):
+        """
+        流式调用 LLM-2（OpenAI 协议，如 DeepSeek）。
+        Dify 模式（api_key 以 'app-' 开头）不支持，调用时抛 RuntimeError。
+
+        生成器依次 yield：
+          {"type": "delta", "content": "token"}          —— 每个文本片段
+          {"type": "done",  "content": "完整文本",
+           "validation": {...}, "prompt_trace": {...}}    —— 流结束
+        """
+        request_spec = prepared_request or cls.build_sales_assist_request(
+            summary_json, knowledge_list, crm_context
+        )
+        final_prompt   = request_spec.get("final_prompt") or ""
+        api_url        = request_spec.get("api_url") or ""
+        api_key        = request_spec.get("api_key") or ""
+        model          = request_spec.get("model") or ""
+        timeout_s      = request_spec.get("timeout_seconds") or settings.LLM2_TIMEOUT_SECONDS
+
+        if api_key.startswith("app-"):
+            raise RuntimeError("generate_sales_assist_stream 不支持 Dify 模式，请使用同步接口")
+
+        prompt_trace = dict(request_spec.get("prompt_trace") or {})
+        prompt_trace.update({
+            "status": "ready",
+            "sent_to_ai": True,
+            "request_started_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        })
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        url = api_url.rstrip("/") + "/chat/completions"
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": final_prompt}],
+            "temperature": 0.7,
+            "stream": True,
+        }
+        cls._log_llm_prompt("LLM2_STREAM", model, url, final_prompt)
+
+        chunks: list[str] = []
+        session = requests.Session()
+        session.trust_env = settings.HTTP_TRUST_ENV
+        try:
+            with session.post(url, headers=headers, json=payload,
+                              timeout=timeout_s, stream=True) as resp:
+                if resp.status_code != 200:
+                    detail = cls._response_detail(resp)
+                    raise RuntimeError(f"LLM-2 流式接口错误: HTTP {resp.status_code}; {detail}")
+                for raw_line in resp.iter_lines():
+                    if not raw_line:
+                        continue
+                    line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+                    if line.startswith("data:"):
+                        line = line[5:].strip()
+                    if line == "[DONE]":
+                        break
+                    try:
+                        chunk_json = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    token = (
+                        (chunk_json.get("choices") or [{}])[0]
+                        .get("delta", {})
+                        .get("content") or ""
+                    )
+                    if token:
+                        chunks.append(token)
+                        yield {"type": "delta", "content": token}
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"LLM-2 流式请求异常: {exc}") from exc
+
+        assembled = "".join(chunks)
+        prompt_trace["response_received_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        prompt_trace["result"] = "success" if assembled else "no_content"
+
+        validation = (
+            cls.validate_sales_assist_output(assembled, knowledge_list, crm_context=crm_context)
+            if assembled else {}
+        )
+        yield {
+            "type": "done",
+            "content": assembled,
+            "validation": validation,
+            "prompt_trace": prompt_trace,
+        }
 
     @classmethod
     def slow_track_analyze(cls, user_id: str, context: List[dict]):

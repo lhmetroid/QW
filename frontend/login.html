@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 智能销售辅助工作台</title>
+    <script async src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+            background:
+                linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(16, 185, 129, 0.10)),
+                #f8fafc;
+        }
+        .login-shell {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+        .login-panel {
+            width: min(100%, 420px);
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.94);
+            box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+        }
+    </style>
+</head>
+<body>
+    <main class="login-shell text-slate-800">
+        <section class="login-panel p-7">
+            <div class="mb-7">
+                <div class="text-sm font-bold text-emerald-700">智能销售辅助工作台</div>
+                <h1 class="mt-2 text-2xl font-bold text-slate-950">账号登录</h1>
+                <p class="mt-2 text-sm leading-6 text-slate-500">请输入工作台账号密码后进入系统。</p>
+            </div>
+
+            <form id="login-form" class="space-y-4">
+                <label class="block">
+                    <span class="mb-1.5 block text-xs font-bold text-slate-600">账号</span>
+                    <input id="username" name="username" autocomplete="username" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15" placeholder="请输入账号" required>
+                </label>
+                <label class="block">
+                    <span class="mb-1.5 block text-xs font-bold text-slate-600">密码</span>
+                    <input id="password" name="password" type="password" autocomplete="current-password" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15" placeholder="请输入密码" required>
+                </label>
+
+                <div id="login-error" class="hidden rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700"></div>
+
+                <button id="login-submit" type="submit" class="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+                    登录
+                </button>
+            </form>
+
+        </section>
+    </main>
+
+    <script>
+        const form = document.getElementById('login-form');
+        const submitButton = document.getElementById('login-submit');
+        const errorBox = document.getElementById('login-error');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+
+        function safeNextUrl(value) {
+            if (!value || !value.startsWith('/') || value.startsWith('//')) return '/static/index.html';
+            if (value.startsWith('/static/login.html') || value.startsWith('/api/auth/')) return '/static/index.html';
+            return value;
+        }
+
+        function showError(message) {
+            errorBox.textContent = message || '登录失败，请稍后重试';
+            errorBox.classList.remove('hidden');
+        }
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            errorBox.classList.add('hidden');
+            submitButton.disabled = true;
+            submitButton.textContent = '登录中...';
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        username: usernameInput.value.trim(),
+                        password: passwordInput.value
+                    })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    showError(data.detail || '账号或密码错误');
+                    return;
+                }
+                const next = safeNextUrl(new URLSearchParams(window.location.search).get('next'));
+                window.location.href = next;
+            } catch (err) {
+                showError('无法连接后台服务，请确认服务已启动');
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = '登录';
+            }
+        });
+    </script>
+</body>
+</html>

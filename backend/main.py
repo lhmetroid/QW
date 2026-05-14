@@ -1,15 +1,17 @@
-from fastapi import FastAPI, Request, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File, Form
+from fastapi import FastAPI, Request, Response, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, RedirectResponse
 from concurrent.futures import Future, ThreadPoolExecutor
 import xml.etree.ElementTree as ET
+import base64
 import os
 import logging
 import json
 import uuid
 import re
 import hashlib
+import hmac
 import subprocess
 import threading
 import requests
@@ -18,7 +20,7 @@ from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from time import perf_counter
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from sqlalchemy import and_, or_, text, func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -55,6 +57,14 @@ from knowledge_governance import (
     validate_thread_state_consistency,
 )
 
+FRONTEND_AUTH_COOKIE_NAME = "qw_frontend_auth"
+
+
+class FrontendLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
 app = FastAPI(title="企微智能实时提醒后台")
 logger = logging.getLogger(__name__)
 _RUNTIME_ENV_CACHE: dict[str, Any] = {"mtime": None, "values": {}}
@@ -87,6 +97,128 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _frontend_auth_secret() -> bytes:
+    configured_secret = str(settings.FRONTEND_AUTH_SECRET or "").strip()
+    if configured_secret:
+        return configured_secret.encode("utf-8")
+    fallback_secret = f"{settings.FRONTEND_AUTH_USERNAME}:{settings.FRONTEND_AUTH_PASSWORD}:{settings.CORP_ID}"
+    return fallback_secret.encode("utf-8")
+
+
+def _base64url_encode(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _base64url_decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode((value + padding).encode("ascii"))
+
+
+def _make_frontend_auth_token(username: str) -> str:
+    expires_at = int(datetime.utcnow().timestamp()) + max(60, int(settings.FRONTEND_AUTH_SESSION_SECONDS))
+    payload = _base64url_encode(json.dumps(
+        {"u": username, "exp": expires_at},
+        separators=(",", ":"),
+    ).encode("utf-8"))
+    signature = hmac.new(_frontend_auth_secret(), payload.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{payload}.{signature}"
+
+
+def _verify_frontend_auth_token(token: str | None) -> dict[str, Any] | None:
+    if not token or "." not in token:
+        return None
+    payload, signature = token.rsplit(".", 1)
+    expected_signature = hmac.new(_frontend_auth_secret(), payload.encode("ascii"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected_signature):
+        return None
+    try:
+        data = json.loads(_base64url_decode(payload).decode("utf-8"))
+    except Exception:
+        return None
+    if data.get("u") != settings.FRONTEND_AUTH_USERNAME:
+        return None
+    if int(data.get("exp") or 0) < int(datetime.utcnow().timestamp()):
+        return None
+    return data
+
+
+def _is_frontend_authenticated(request: Request) -> bool:
+    if not settings.FRONTEND_AUTH_ENABLED:
+        return True
+    return _verify_frontend_auth_token(request.cookies.get(FRONTEND_AUTH_COOKIE_NAME)) is not None
+
+
+def _safe_next_url(value: str | None) -> str:
+    if not value or not value.startswith("/") or value.startswith("//"):
+        return "/static/index.html"
+    if value.startswith("/static/login.html") or value.startswith("/api/auth/"):
+        return "/static/index.html"
+    return value
+
+
+def _frontend_path_requires_auth(path: str) -> bool:
+    if not settings.FRONTEND_AUTH_ENABLED:
+        return False
+    if path in {"/static/login.html"}:
+        return False
+    return path == "/static/index.html" or path.startswith("/static/")
+
+
+@app.middleware("http")
+async def frontend_auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if not settings.FRONTEND_AUTH_ENABLED:
+        return await call_next(request)
+    if path == "/":
+        target = "/static/index.html" if _is_frontend_authenticated(request) else "/static/login.html"
+        return RedirectResponse(url=target)
+    if path == "/static/login.html" and _is_frontend_authenticated(request):
+        return RedirectResponse(url=_safe_next_url(request.query_params.get("next")))
+    if _frontend_path_requires_auth(path) and not _is_frontend_authenticated(request):
+        next_url = path + (f"?{request.url.query}" if request.url.query else "")
+        return RedirectResponse(url=f"/static/login.html?next={quote(next_url, safe='')}")
+    return await call_next(request)
+
+
+@app.post("/api/auth/login")
+async def frontend_login(payload: FrontendLoginRequest, request: Request, response: Response):
+    username = str(payload.username or "").strip()
+    password = str(payload.password or "")
+    valid_username = hmac.compare_digest(username, settings.FRONTEND_AUTH_USERNAME)
+    valid_password = hmac.compare_digest(password, settings.FRONTEND_AUTH_PASSWORD)
+    if not valid_username or not valid_password:
+        raise HTTPException(status_code=401, detail="账号或密码错误")
+
+    max_age = max(60, int(settings.FRONTEND_AUTH_SESSION_SECONDS))
+    response.set_cookie(
+        FRONTEND_AUTH_COOKIE_NAME,
+        _make_frontend_auth_token(username),
+        max_age=max_age,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        path="/",
+    )
+    return {"status": "success", "username": username, "expires_in": max_age}
+
+
+@app.post("/api/auth/logout")
+async def frontend_logout(response: Response):
+    response.delete_cookie(FRONTEND_AUTH_COOKIE_NAME, path="/")
+    return {"status": "success"}
+
+
+@app.get("/api/auth/me")
+async def frontend_auth_me(request: Request):
+    if not settings.FRONTEND_AUTH_ENABLED:
+        return {"status": "success", "authenticated": True, "username": "auth_disabled"}
+    session = _verify_frontend_auth_token(request.cookies.get(FRONTEND_AUTH_COOKIE_NAME))
+    if not session:
+        return {"status": "success", "authenticated": False}
+    return {"status": "success", "authenticated": True, "username": session.get("u")}
+
 
 @app.get("/")
 async def index_redirect():
@@ -333,6 +465,32 @@ def auto_patch_db():
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_effect_score ON knowledge_chunk (status, effect_score DESC, useful_score DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kcand_source ON knowledge_candidate (source_type, source_ref);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_khl_status_created ON knowledge_hit_logs (status, created_at DESC);"))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS wecom_raw_import ("
+            "id SERIAL PRIMARY KEY,"
+            "import_batch_id VARCHAR(40) NOT NULL,"
+            "sender VARCHAR(200),"
+            "receiver VARCHAR(200),"
+            "group_id VARCHAR(200),"
+            "msg_time TIMESTAMP,"
+            "content TEXT,"
+            "from_id VARCHAR(200),"
+            "to_id VARCHAR(200),"
+            "stage VARCHAR(50),"
+            "section VARCHAR(100),"
+            "quality_score NUMERIC(5,2),"
+            "process_note TEXT,"
+            "process_result VARCHAR(50),"
+            "row_status VARCHAR(30) DEFAULT 'pending',"
+            "group_key VARCHAR(80),"
+            "role VARCHAR(20),"
+            "row_index INTEGER,"
+            "created_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_batch ON wecom_raw_import (import_batch_id);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_group ON wecom_raw_import (group_key);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_status_created ON wecom_raw_import (row_status, created_at DESC);"))
         if settings.KB_FULLTEXT_INDEX_ENABLED:
             db.execute(text(
                 "CREATE INDEX IF NOT EXISTS idx_kc_fulltext_simple ON knowledge_chunk "
@@ -7144,6 +7302,18 @@ def _runtime_bool_setting(name: str, current: Any = None, default: bool = False)
     except Exception:
         return default
 
+def _coerce_bool_setting(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return default
+
 def _external_api_base_url() -> str:
     return str(_runtime_setting("EXTERNAL_API_BASE_URL", settings.EXTERNAL_API_BASE_URL) or "").strip().rstrip("/")
 
@@ -9434,17 +9604,25 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
 @app.get("/api/system/ai_scripts")
 async def get_ai_scripts():
     import os, json
-    filepath = os.path.join(os.path.dirname(__file__), "ai_settings.json")
+    base_path = os.path.join(os.path.dirname(__file__), "ai_settings.json")
+    local_path = os.path.join(os.path.dirname(__file__), "ai_settings.local.json")
     defaults = {
-        "WECOM_RECENT_MESSAGE_LIMIT": 6,
+        "WECOM_RECENT_MESSAGE_LIMIT": 10,
+        "API_KB2_ENABLED": True,
     }
     try:
-        if os.path.exists(filepath):
-            with open(filepath, "r", encoding="utf-8") as f:
-                stored = json.load(f)
-                if not isinstance(stored, dict):
+        if os.path.exists(base_path):
+            with open(base_path, "r", encoding="utf-8") as f:
+                base = json.load(f) or {}
+                if not isinstance(base, dict):
                     raise HTTPException(status_code=500, detail="ai_settings.json 格式错误")
-                return {**defaults, **stored}
+            local = {}
+            if os.path.exists(local_path):
+                with open(local_path, "r", encoding="utf-8") as f:
+                    local = json.load(f) or {}
+                    if not isinstance(local, dict):
+                        local = {}
+            return {**defaults, **base, **local}
         raise HTTPException(status_code=500, detail="ai_settings.json 不存在")
     except HTTPException:
         raise
@@ -9454,25 +9632,35 @@ async def get_ai_scripts():
 @app.post("/api/system/ai_scripts")
 async def save_ai_scripts(payload: dict):
     import os, json
-    filepath = os.path.join(os.path.dirname(__file__), "ai_settings.json")
-    defaults = {
-        "WECOM_RECENT_MESSAGE_LIMIT": 6,
-    }
+    base_path  = os.path.join(os.path.dirname(__file__), "ai_settings.json")
+    local_path = os.path.join(os.path.dirname(__file__), "ai_settings.local.json")
     try:
-        existing = {}
-        if os.path.exists(filepath):
-            with open(filepath, "r", encoding="utf-8") as f:
-                existing = json.load(f) or {}
-                if not isinstance(existing, dict):
-                    existing = {}
-        merged = {**defaults, **existing, **(payload or {})}
+        # 读基础默认值
+        base = {}
+        if os.path.exists(base_path):
+            with open(base_path, "r", encoding="utf-8") as f:
+                base = json.load(f) or {}
+                if not isinstance(base, dict):
+                    base = {}
+        # 读已有本地覆盖
+        local = {}
+        if os.path.exists(local_path):
+            with open(local_path, "r", encoding="utf-8") as f:
+                local = json.load(f) or {}
+                if not isinstance(local, dict):
+                    local = {}
+        # 合并：base → local → 本次提交
+        merged_local = {**local, **(payload or {})}
         try:
-            merged["WECOM_RECENT_MESSAGE_LIMIT"] = max(1, min(30, int(merged.get("WECOM_RECENT_MESSAGE_LIMIT", 6))))
+            if "WECOM_RECENT_MESSAGE_LIMIT" in merged_local:
+                merged_local["WECOM_RECENT_MESSAGE_LIMIT"] = max(1, min(30, int(merged_local["WECOM_RECENT_MESSAGE_LIMIT"])))
         except (TypeError, ValueError):
-            merged["WECOM_RECENT_MESSAGE_LIMIT"] = 6
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(merged, f, ensure_ascii=False, indent=4)
-        return {"status": "success", "saved": merged}
+            merged_local["WECOM_RECENT_MESSAGE_LIMIT"] = 10
+        with open(local_path, "w", encoding="utf-8") as f:
+            json.dump(merged_local, f, ensure_ascii=False, indent=4)
+        # 返回最终生效值（base + local）
+        effective = {**base, **merged_local}
+        return {"status": "success", "saved": effective}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -9942,7 +10130,7 @@ def _build_trigger_record_snapshot(
         anchor_message = _find_latest_customer_anchor(all_messages)
         if anchor_message:
             visible_messages = _visible_messages_until_anchor(all_messages, anchor_message.id)
-    input_messages = visible_messages[-15:]
+    input_messages = visible_messages[-10:]
     recent_customer_messages = [item for item in input_messages if item.sender_type == "customer"]
     actual_sales_replies = _collect_actual_sales_replies(all_messages, int(anchor_message.id)) if anchor_message else []
     return {
@@ -10056,7 +10244,7 @@ def _build_analysis_result_for_target(
         visible_messages = _visible_messages_until_anchor(all_messages, snapshot.anchor_message_id)
         result = _snapshot_result_payload(snapshot=snapshot, visible_messages=visible_messages)
         if not result.get("fast_track"):
-            result["fast_track"] = collect_fast_track_signals(visible_messages[-15:])
+            result["fast_track"] = collect_fast_track_signals(visible_messages[-10:])
         if not result.get("actual_sales_replies"):
             result["actual_sales_replies"] = _collect_actual_sales_replies(all_messages, snapshot.anchor_message_id)
         result["node_timings_ms"] = _extract_node_timings(result.get("stage_status"))
@@ -10065,7 +10253,7 @@ def _build_analysis_result_for_target(
     recent_logs = db.query(MessageLog).filter(
         MessageLog.user_id == session_id,
         MessageLog.is_mock.is_(False),
-    ).order_by(MessageLog.id.desc()).limit(15).all()
+    ).order_by(MessageLog.id.desc()).limit(10).all()
     fast_track_signals = collect_fast_track_signals(recent_logs)
     summary = db.query(IntentSummary).filter(IntentSummary.user_id == session_id).order_by(IntentSummary.id.desc()).first()
     result = _read_only_current_tail_result(
@@ -11829,6 +12017,7 @@ def _set_node_timing(
     total_ms: Any = None,
     parts_ms: dict[str, Any] | None = None,
     status: str | None = None,
+    replace_parts: bool = False,
 ) -> dict:
     node_timings = dict(stage_status.get("node_timings_ms") or {})
     payload = dict(node_timings.get(node_key) or {})
@@ -11836,9 +12025,12 @@ def _set_node_timing(
     if rounded_total is not None:
         payload["total_ms"] = rounded_total
     if parts_ms is not None:
-        merged_parts = dict(payload.get("parts_ms") or {})
-        merged_parts.update(_clean_timing_parts(parts_ms))
-        payload["parts_ms"] = merged_parts
+        if replace_parts:
+            payload["parts_ms"] = _clean_timing_parts(parts_ms)
+        else:
+            merged_parts = dict(payload.get("parts_ms") or {})
+            merged_parts.update(_clean_timing_parts(parts_ms))
+            payload["parts_ms"] = merged_parts
     if status is not None:
         payload["status"] = str(status)
     node_timings[node_key] = payload
@@ -12140,7 +12332,7 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
         all_messages = _load_session_messages(db, session_id)
         visible_messages = _visible_messages_until_anchor(all_messages, snapshot.anchor_message_id)
         conversation_input_ms = round((perf_counter() - started) * 1000, 2)
-        recent_visible_logs = visible_messages[-15:]
+        recent_visible_logs = visible_messages[-10:]
         started = perf_counter()
         fast_track_signals = collect_fast_track_signals(recent_visible_logs)
         fast_track_ms = round((perf_counter() - started) * 1000, 2)
@@ -12339,7 +12531,7 @@ def refresh_session_knowledge_task(user_id: str, channel: str, analytics_record_
         recent_logs = db.query(MessageLog).filter(
             MessageLog.user_id == user_id,
             MessageLog.is_mock.is_(False),
-        ).order_by(MessageLog.id.desc()).limit(15).all()
+        ).order_by(MessageLog.id.desc()).limit(10).all()
         conversation_input_ms = round((perf_counter() - started) * 1000, 2)
         started = perf_counter()
         fast_track_signals = collect_fast_track_signals(recent_logs)
@@ -12550,7 +12742,7 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1, an
         all_messages = _load_session_messages(db, session_id)
         visible_messages = _visible_messages_until_anchor(all_messages, snapshot.anchor_message_id)
         conversation_input_ms = round((perf_counter() - started) * 1000, 2)
-        recent_visible_logs = visible_messages[-15:]
+        recent_visible_logs = visible_messages[-10:]
         started = perf_counter()
         fast_track_signals = collect_fast_track_signals(recent_visible_logs)
         fast_track_ms = round((perf_counter() - started) * 1000, 2)
@@ -12852,7 +13044,7 @@ def reanalyze_session_task(user_id: str, step: int = 1, analytics_record_id: str
             context_logs = db.query(MessageLog).filter(
                 MessageLog.user_id == user_id,
                 MessageLog.is_mock.is_(False),
-            ).order_by(MessageLog.id.desc()).limit(15).all()
+            ).order_by(MessageLog.id.desc()).limit(10).all()
             conversation_input_ms = round((perf_counter() - started) * 1000, 2)
             context = [{"content": l.content, "sender_type": l.sender_type} for l in reversed(context_logs)]
             started = perf_counter()
@@ -12962,7 +13154,7 @@ def reanalyze_session_task(user_id: str, step: int = 1, analytics_record_id: str
                 recent_logs = db.query(MessageLog).filter(
                     MessageLog.user_id == user_id,
                     MessageLog.is_mock.is_(False),
-                ).order_by(MessageLog.id.desc()).limit(15).all()
+                ).order_by(MessageLog.id.desc()).limit(10).all()
                 conversation_input_ms = round((perf_counter() - started) * 1000, 2)
                 started = perf_counter()
                 fast_track_signals = collect_fast_track_signals(recent_logs)
@@ -13230,7 +13422,7 @@ async def get_latest_analysis(user_id: str, snapshot_id: str | None = Query(defa
                 visible_messages = _visible_messages_until_anchor(all_messages, snapshot.anchor_message_id)
                 result = _snapshot_result_payload(snapshot=snapshot, visible_messages=visible_messages)
                 if not result.get("fast_track"):
-                    result["fast_track"] = collect_fast_track_signals(visible_messages[-15:])
+                    result["fast_track"] = collect_fast_track_signals(visible_messages[-10:])
                 if not result.get("actual_sales_replies"):
                     result["actual_sales_replies"] = _collect_actual_sales_replies(all_messages, snapshot.anchor_message_id)
                 if (snapshot.topic or snapshot.core_demand or snapshot.status) and not result.get("crm_info"):
@@ -13276,7 +13468,7 @@ async def get_latest_analysis(user_id: str, snapshot_id: str | None = Query(defa
         recent_logs = db.query(MessageLog).filter(
             MessageLog.user_id == user_id,
             MessageLog.is_mock.is_(False),
-        ).order_by(MessageLog.id.desc()).limit(15).all()
+        ).order_by(MessageLog.id.desc()).limit(10).all()
         fast_track_signals = collect_fast_track_signals(recent_logs)
 
         # 2. 获取 V1 及 V2 结果
@@ -13699,11 +13891,11 @@ def _analytics_message_dicts_from_api(db: Session, item: ApiAssistInvocation) ->
     visible_ids = [int(x) for x in (item.visible_message_ids or []) if str(x).isdigit()]
     if visible_ids:
         logs = db.query(MessageLog).filter(MessageLog.id.in_(visible_ids)).order_by(MessageLog.id.asc()).all()
-        return [_message_analytics_dict(log) for log in logs[-15:]]
+        return [_message_analytics_dict(log) for log in logs[-10:]]
     logs = db.query(MessageLog).filter(
         MessageLog.user_id == item.session_id,
         MessageLog.is_mock.is_(False),
-    ).order_by(MessageLog.id.desc()).limit(15).all()
+    ).order_by(MessageLog.id.desc()).limit(10).all()
     return [_message_analytics_dict(log) for log in reversed(logs)]
 
 def _build_trigger_analytics_row(
@@ -13856,8 +14048,7 @@ def _build_trigger_analytics_row(
         "step_6_compare_kb2_score": compare_kb2_score,
         "step_6_compare_kb2_score_reason": compare_kb2_reason,
         "step_6_time_ms": (((node_timings or {}).get("llm2") or {}).get("total_ms")),
-        # API 触发专用：从请求进入到返回的实际墙钟总耗时，非 API 触发保持 None
-        "step_total_wall_ms": result_timings.get("total_ms") if trigger_source == "api" else None,
+        "step_total_wall_ms": result_timings.get("total_ms") or None,
         "step_7_content": _analytics_step7_summary(result),
         "manual_business_score": manual_business_score,
         "manual_business_reason": manual_business_reason,
@@ -14188,8 +14379,12 @@ class SessionArchiveSyncRequest(BaseModel):
     limit: int = 100
 
 @app.post("/api/wecom/sidebar_assist")
-async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
-    """供企微原生右侧边栏应用调用的同步直出接口"""
+async def sidebar_assist(
+    request: SidebarAssistRequest,
+    http_request: Request,
+    stream: bool = Query(False, description="为 true 时以 SSE 流式输出 LLM-2 结果"),
+):
+    """供企微原生右侧边栏应用调用的同步直出接口；stream=true 时改为 SSE 流式输出"""
     from time import perf_counter
 
     total_started = perf_counter()
@@ -14251,7 +14446,7 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
             stage_status["archive_sync"] = "scheduled_async" if _schedule_archive_sync_for_session(requested_session_id) else "skipped_by_request"
 
         stage_started = perf_counter()
-        session_id, recent_logs, session_lookup = find_existing_single_session_id(db, sales_userid, external_userid, limit=15)
+        session_id, recent_logs, session_lookup = find_existing_single_session_id(db, sales_userid, external_userid, limit=10)
         mark_timing("load_recent_messages_ms", stage_started)
         stage_status["session_lookup"] = session_lookup
         logger.info(
@@ -14436,7 +14631,11 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
             knowledge_stage_started = perf_counter()
             knowledge_parts_ms: dict[str, float] = {}
             external_knowledge = None
-            api_kb2_enabled = bool(IntentEngine.get_ai_settings().get("API_KB2_ENABLED", True))
+            api_kb2_enabled = _coerce_bool_setting(
+                IntentEngine.get_ai_settings().get("API_KB2_ENABLED", True),
+                default=True,
+            )
+            stage_status["api_kb2_enabled"] = api_kb2_enabled
             if summary.core_demand:
                 stage_started = perf_counter()
                 thread_fact_payload = _thread_fact_to_dict(thread_fact)
@@ -14479,6 +14678,7 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
                 total_ms=timings_ms.get("knowledge_retrieve_ms"),
                 parts_ms=knowledge_parts_ms,
                 status=stage_status.get("knowledge_v2") or stage_status.get("knowledge_external_api") or "unknown",
+                replace_parts=True,
             )
             summary.knowledge_log_id = knowledge_v2.get("log_id")
             summary.knowledge_v2 = knowledge_v2
@@ -14486,6 +14686,185 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
             summary.knowledge_status = knowledge_v2.get("status")
             summary.knowledge_confidence_score = _decimal_score(knowledge_v2.get("confidence_score"))
             summary.knowledge_manual_review_required = bool(knowledge_v2.get("manual_review_required"))
+
+            # ── 流式路径：LLM-2 以 SSE 方式向调用方逐 token 输出 ──────────────
+            if stream:
+                _llm2_cfg  = _runtime_llm_values("LLM2")
+                _styles    = IntentEngine.get_reply_style_options(enabled_only=True)
+                _style     = _styles[0] if _styles else {"id": "default", "title": "默认", "content": ""}
+                _req_spec  = IntentEngine.build_sales_assist_request(
+                    summary_json, knowledge_v2, crm_context,
+                    api_url=_llm2_cfg["api_url"],
+                    api_key=_llm2_cfg["api_key"],
+                    model=_llm2_cfg["model"],
+                    timeout_seconds=_llm2_cfg["timeout_seconds"],
+                    label="LLM2_STREAM",
+                    reply_style=_style,
+                )
+                # 在进入流之前把 KB 检索结果写入 DB
+                summary.stage_status = {
+                    **dict(summary.stage_status or {}),
+                    **stage_status,
+                    "llm1": stage_status.get("llm1") or "done",
+                    "crm_profile": summary.crm_status or stage_status.get("crm_profile") or "unknown",
+                    "knowledge_v2": summary.knowledge_status or stage_status.get("knowledge_v2") or "not_started",
+                    "knowledge_external_api": (external_knowledge or {}).get("status") or "unknown",
+                    "llm2": "streaming",
+                }
+                db.commit()
+                db.close()
+                db = None  # 防止 finally 重复关闭
+
+                # 把流中需要用到的变量提前捕获到闭包
+                _status_payload = {
+                    "stage": "llm2_start",
+                    "has_v1": True,
+                    "topic": summary.topic,
+                    "core_demand": summary.core_demand,
+                    "key_facts": summary.key_facts,
+                    "risks": summary.risks,
+                    "todo_items": summary.todo_items,
+                    "to_be_confirmed": summary.to_be_confirmed,
+                    "fast_track": fast_track_signals,
+                    "crm_status": (crm_context or {}).get("crm_profile_status", "unknown"),
+                    "knowledge_status": knowledge_status,
+                    "stage_status": dict(stage_status),
+                    "timings_ms": dict(timings_ms),
+                }
+                _cap = dict(
+                    summary_id=summary.id,
+                    session_id=session_id,
+                    requested_session_id=requested_session_id,
+                    external_userid=external_userid,
+                    sales_userid=sales_userid,
+                    trigger_source=trigger_source,
+                    total_started=total_started,
+                    timings_ms=dict(timings_ms),
+                    stage_status=dict(stage_status),
+                    fast_track_signals=list(fast_track_signals),
+                    all_messages=list(all_messages),
+                    summary_json=dict(summary_json),
+                    knowledge_v2=knowledge_v2,
+                    crm_context=crm_context,
+                )
+
+                # 释放 dedup future —— 流式路径暂不向等待者转发结果
+                if dedupe_request_key and dedupe_future_owner and dedupe_future:
+                    _resolve_sidebar_assist_future(
+                        dedupe_request_key, dedupe_future,
+                        error=RuntimeError("stream mode, no dedup forwarding"),
+                    )
+
+                def _stream_gen():
+                    """同步 SSE 生成器，FastAPI 在线程池中运行此函数"""
+                    import json as _json
+                    from time import perf_counter as _pc
+
+                    def _sse(event: str, data: dict) -> str:
+                        return f"event: {event}\ndata: {_json.dumps(data, ensure_ascii=False)}\n\n"
+
+                    # 第一帧：步骤①-⑤已完成的元数据
+                    yield _sse("status", _status_payload)
+
+                    llm2_start   = _pc()
+                    full_content = ""
+                    validation   = {}
+
+                    try:
+                        for chunk in IntentEngine.generate_sales_assist_stream(
+                            _cap["summary_json"],
+                            _cap["knowledge_v2"],
+                            _cap["crm_context"],
+                            prepared_request=_req_spec,
+                        ):
+                            if chunk["type"] == "delta":
+                                full_content += chunk["content"]
+                                yield _sse("delta", {"content": chunk["content"]})
+                            elif chunk["type"] == "done":
+                                full_content = chunk["content"]
+                                validation   = chunk.get("validation") or {}
+                    except Exception as exc:
+                        logger.error("LLM-2 流式生成失败: %s", exc)
+                        yield _sse("error", {"error": sanitize_text(str(exc)), "stage": "llm2"})
+                        return
+
+                    llm2_elapsed = round((_pc() - llm2_start) * 1000, 2)
+
+                    # 保存 LLM-2 结果到数据库
+                    _done_ss = {**_cap["stage_status"], "llm2": "done" if full_content else "failed_no_content"}
+                    _inv     = None
+                    _save_db = SessionLocal()
+                    try:
+                        _sm = _save_db.query(IntentSummary).filter(
+                            IntentSummary.id == _cap["summary_id"]
+                        ).first()
+                        if _sm:
+                            _sm.sales_advice_v2  = full_content or None
+                            _sm.assist_validation = validation or None
+                            _sm.stage_status      = {**dict(_sm.stage_status or {}), **_done_ss}
+                            _save_db.commit()
+                        _result_doc = _sanitize_api_sidebar_result_payload(_jsonable({
+                            "status": "success",
+                            "external_userid": _cap["external_userid"],
+                            "sales_userid":    _cap["sales_userid"],
+                            "session_id":      _cap["session_id"],
+                            "requested_session_id": _cap["requested_session_id"],
+                            "has_v1": True,
+                            "has_v2": bool(full_content),
+                            "has_v2_compare": False,
+                            "fast_track": _cap["fast_track_signals"],
+                            "sales_advice":    full_content,
+                            "sales_advice_v2": full_content,
+                            "assist_validation": validation,
+                            "stage_status": _done_ss,
+                            "timings_ms": {
+                                **_cap["timings_ms"],
+                                "llm2_generate_ms": llm2_elapsed,
+                                "total_ms": round((_pc() - _cap["total_started"]) * 1000, 2),
+                            },
+                        }))
+                        _inv = _store_api_assist_invocation(
+                            _save_db,
+                            result_payload=_result_doc,
+                            session_id=_cap["session_id"],
+                            requested_session_id=_cap["requested_session_id"],
+                            external_userid=_cap["external_userid"],
+                            sales_userid=_cap["sales_userid"],
+                            messages=_cap["all_messages"],
+                            trigger_source=_cap["trigger_source"],
+                        )
+                        _save_db.commit()
+                    except Exception as db_exc:
+                        logger.error("流式 LLM2 DB 保存失败: %s", db_exc)
+                        try:
+                            _save_db.rollback()
+                        except Exception:
+                            pass
+                    finally:
+                        _save_db.close()
+
+                    # 最终帧：完整文本 + 元数据
+                    yield _sse("done", {
+                        "stage": "done",
+                        "has_v2": bool(full_content),
+                        "full_content": full_content,
+                        "sales_advice": full_content,
+                        "validation": validation,
+                        "stage_status": _done_ss,
+                        "timings_ms": {
+                            **_cap["timings_ms"],
+                            "llm2_generate_ms": llm2_elapsed,
+                            "total_ms": round((_pc() - _cap["total_started"]) * 1000, 2),
+                        },
+                        "invocation_id": str(_inv.invocation_id) if _inv else None,
+                    })
+
+                return StreamingResponse(
+                    _stream_gen(),
+                    media_type="text/event-stream",
+                    headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+                )
+            # ── 非流式路径（原逻辑不变）───────────────────────────────────────
 
             stage_started = perf_counter()
             generation_bundle = _generate_reply_style_candidates(
@@ -14520,8 +14899,9 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
                 stage_status,
                 "llm2",
                 total_ms=llm2_stage_timing.get("total_ms"),
-                parts_ms=llm2_stage_timing.get("parts_ms"),
+                parts_ms=llm2_stage_timing.get("parts_ms") or {},
                 status=generation_bundle.get("llm2_status") or "failed_no_content",
+                replace_parts=True,
             )
             summary.stage_status = {
                 **dict(summary.stage_status or {}),
@@ -14766,7 +15146,8 @@ async def sidebar_assist(request: SidebarAssistRequest, http_request: Request):
             "timings_ms": timings_ms
         }
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 @app.post("/api/sync/session")
 async def sync_single_session_messages(payload: SessionArchiveSyncRequest, request: Request):
@@ -14881,6 +15262,202 @@ async def sync_today_messages(request: Request):
 def archive_sdk_status():
     from archive_service import ArchiveService
     return {
-        "status": "running", 
+        "status": "running",
         "archive_sdk": ArchiveService.get_token_status()
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 企微原始数据导入 & 预处理 API
+# ─────────────────────────────────────────────────────────────────────────────
+
+import csv as _csv
+import hashlib as _hashlib
+
+_WECOM_RAW_DEFAULT_PATH = os.path.join(os.path.dirname(__file__), "..", "docs", "企微提取内容_20260509111157.csv")
+
+def _parse_wecom_msg_time(time_str: str):
+    for fmt in ("%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M"):
+        try:
+            return datetime.strptime(time_str.strip(), fmt)
+        except Exception:
+            pass
+    return None
+
+def _detect_wecom_role(sender: str) -> str:
+    if sender.startswith("客户:") or sender.startswith("客户："):
+        return "customer"
+    if sender.startswith("销售:") or sender.startswith("销售："):
+        return "sales"
+    return "unknown"
+
+class WecomRawImportRequest(BaseModel):
+    file_path: str | None = None
+    force: bool = False
+
+@app.post("/api/wecom/raw/import")
+def import_wecom_raw(req: WecomRawImportRequest, db: Session = Depends(get_db)):
+    file_path = req.file_path or _WECOM_RAW_DEFAULT_PATH
+    file_path = os.path.abspath(file_path)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"文件不存在: {file_path}")
+
+    # batch_id: file name + md5 prefix
+    with open(file_path, "rb") as fh:
+        file_hash = _hashlib.md5(fh.read()).hexdigest()[:12]
+    batch_id = f"wri_{file_hash}"
+
+    # check duplicate
+    existing = db.execute(text("SELECT COUNT(*) FROM wecom_raw_import WHERE import_batch_id = :bid"), {"bid": batch_id}).scalar()
+    if existing and not req.force:
+        return {"status": "already_imported", "batch_id": batch_id, "existing_rows": existing}
+
+    if existing and req.force:
+        db.execute(text("DELETE FROM wecom_raw_import WHERE import_batch_id = :bid"), {"bid": batch_id})
+        db.commit()
+
+    # parse CSV
+    encodings = ["utf-8-sig", "utf-8", "gbk"]
+    rows_raw = []
+    for enc in encodings:
+        try:
+            with open(file_path, mode="r", encoding=enc, newline="") as fh:
+                reader = _csv.DictReader(fh)
+                rows_raw = list(reader)
+            break
+        except Exception:
+            continue
+
+    if not rows_raw:
+        raise HTTPException(status_code=400, detail="无法读取 CSV 文件，请检查编码")
+
+    dialogue_counter = 0
+    inserted = 0
+    insert_rows = []
+
+    for idx, row in enumerate(rows_raw):
+        sender = (row.get("发件人") or row.get("sender") or "").strip()
+        receiver = (row.get("收件人") or row.get("receiver") or "").strip()
+        group_id = (row.get("群ID") or row.get("group_id") or "").strip()
+        time_str = (row.get("时间") or row.get("time") or "").strip()
+        content = (row.get("内容") or row.get("content") or "").strip()
+        from_id = (row.get("from") or row.get("from_id") or "").strip()
+        to_id = (row.get("tolist") or row.get("to_id") or "").strip()
+
+        # empty row = dialogue separator → increment dialogue counter, skip
+        if not sender and not content:
+            dialogue_counter += 1
+            continue
+
+        role = _detect_wecom_role(sender)
+        msg_time = _parse_wecom_msg_time(time_str) if time_str else None
+        group_key = f"{batch_id}_d{dialogue_counter}"
+
+        insert_rows.append({
+            "import_batch_id": batch_id,
+            "sender": sender,
+            "receiver": receiver,
+            "group_id": group_id,
+            "msg_time": msg_time,
+            "content": content,
+            "from_id": from_id,
+            "to_id": to_id,
+            "stage": None,
+            "section": None,
+            "quality_score": None,
+            "process_note": None,
+            "process_result": None,
+            "row_status": "pending",
+            "group_key": group_key,
+            "role": role,
+            "row_index": idx,
+        })
+
+    if insert_rows:
+        db.execute(text(
+            "INSERT INTO wecom_raw_import "
+            "(import_batch_id, sender, receiver, group_id, msg_time, content, from_id, to_id, "
+            " stage, section, quality_score, process_note, process_result, row_status, group_key, role, row_index) "
+            "VALUES (:import_batch_id, :sender, :receiver, :group_id, :msg_time, :content, :from_id, :to_id, "
+            " :stage, :section, :quality_score, :process_note, :process_result, :row_status, :group_key, :role, :row_index)"
+        ), insert_rows)
+        db.commit()
+        inserted = len(insert_rows)
+
+    return {"status": "ok", "batch_id": batch_id, "inserted": inserted}
+
+
+@app.get("/api/wecom/raw/batches")
+def list_wecom_raw_batches(db: Session = Depends(get_db)):
+    rows = db.execute(text(
+        "SELECT import_batch_id, COUNT(*) as total, MIN(created_at) as imported_at "
+        "FROM wecom_raw_import GROUP BY import_batch_id ORDER BY imported_at DESC"
+    )).fetchall()
+    return {"batches": [{"batch_id": r[0], "total": r[1], "imported_at": str(r[2])} for r in rows]}
+
+
+@app.get("/api/wecom/raw/messages")
+def list_wecom_raw_messages(
+    batch_id: str | None = None,
+    stage: str | None = None,
+    row_status: str | None = None,
+    keyword: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    conditions = ["1=1"]
+    params: dict = {"limit": limit, "offset": offset}
+    if batch_id:
+        conditions.append("import_batch_id = :batch_id")
+        params["batch_id"] = batch_id
+    if stage:
+        conditions.append("stage = :stage")
+        params["stage"] = stage
+    if row_status:
+        conditions.append("row_status = :row_status")
+        params["row_status"] = row_status
+    if keyword:
+        conditions.append("content ILIKE :kw")
+        params["kw"] = f"%{keyword}%"
+    where = " AND ".join(conditions)
+    total = db.execute(text(f"SELECT COUNT(*) FROM wecom_raw_import WHERE {where}"), params).scalar()
+    rows = db.execute(text(
+        f"SELECT id, import_batch_id, sender, receiver, group_id, msg_time, content, from_id, to_id, "
+        f"stage, section, quality_score, process_note, process_result, row_status, group_key, role, row_index "
+        f"FROM wecom_raw_import WHERE {where} ORDER BY row_index ASC, id ASC "
+        f"LIMIT :limit OFFSET :offset"
+    ), params).fetchall()
+
+    def row_to_dict(r):
+        return {
+            "id": r[0], "import_batch_id": r[1], "sender": r[2], "receiver": r[3],
+            "group_id": r[4], "msg_time": str(r[5]) if r[5] else None,
+            "content": r[6], "from_id": r[7], "to_id": r[8],
+            "stage": r[9], "section": r[10], "quality_score": str(r[11]) if r[11] is not None else None,
+            "process_note": r[12], "process_result": r[13], "row_status": r[14],
+            "group_key": r[15], "role": r[16], "row_index": r[17],
+        }
+
+    return {"total": total, "items": [row_to_dict(r) for r in rows]}
+
+
+@app.get("/api/wecom/raw/group/{group_key}")
+def get_wecom_raw_group(group_key: str, db: Session = Depends(get_db)):
+    rows = db.execute(text(
+        "SELECT id, sender, receiver, group_id, msg_time, content, from_id, to_id, "
+        "stage, section, quality_score, process_note, process_result, row_status, group_key, role, row_index "
+        "FROM wecom_raw_import WHERE group_key = :gk ORDER BY row_index ASC, id ASC"
+    ), {"gk": group_key}).fetchall()
+
+    def row_to_dict(r):
+        return {
+            "id": r[0], "sender": r[1], "receiver": r[2], "group_id": r[3],
+            "msg_time": str(r[4]) if r[4] else None, "content": r[5],
+            "from_id": r[6], "to_id": r[7], "stage": r[8], "section": r[9],
+            "quality_score": str(r[10]) if r[10] is not None else None,
+            "process_note": r[11], "process_result": r[12], "row_status": r[13],
+            "group_key": r[14], "role": r[15], "row_index": r[16],
+        }
+
+    return {"group_key": group_key, "items": [row_to_dict(r) for r in rows]}

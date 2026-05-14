@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     LLM1_API_KEY: str = ""
     LLM1_MODEL: str = ""
     LLM1_TIMEOUT_SECONDS: int = 100
+    LLM1_MAX_TOKENS: int = 700
     STAGE1_USE_LLM2: bool = False
     LLM1_COMPARE_API_URL: str = ""
     LLM1_COMPARE_API_KEY: str = ""
@@ -77,6 +78,11 @@ class Settings(BaseSettings):
     LOG_DESENSITIZE_ENABLED: bool = True
     SLOW_REQUEST_MS: int = 3000
     HTTP_TRUST_ENV: bool = False
+    FRONTEND_AUTH_ENABLED: bool = True
+    FRONTEND_AUTH_USERNAME: str = "admin"
+    FRONTEND_AUTH_PASSWORD: str = "Qw@2026"
+    FRONTEND_AUTH_SECRET: str = ""
+    FRONTEND_AUTH_SESSION_SECONDS: int = 86400
 
     # Knowledge-base embedding configuration.
     EMBEDDING_PROVIDER: str = ""
