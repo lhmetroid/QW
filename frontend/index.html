@@ -6361,15 +6361,12 @@
                 </div>`;
         }
 
-        // 对话组颜色方案：偶数组 A，奇数组 B；组内客户/销售各有底色
-        // 仅含客户（无回复）→ amber；仅含销售（无问题）→ violet
-        const _WR_GROUP_COLORS = [
-            { customer: 'bg-blue-50',   sales: 'bg-green-50'   },  // 组 A（偶数）
-            { customer: 'bg-sky-100',   sales: 'bg-teal-100'   },  // 组 B（奇数）
-        ];
+        // 同一对话组（group_key 相同）全部行使用同一底色；相邻组交替换色
+        const _WR_GROUP_COLORS = ['bg-blue-50', 'bg-green-50'];  // A、B 交替
+        // 仅客户（无回复）→ amber-50；仅销售（无提问）→ violet-50
 
         function renderWecomRawRows(items, pageOffset) {
-            // 先扫描每个 group_key 内有哪些角色，以便判断"仅客户"/"仅销售"
+            // 扫描每组内角色，用于特殊色判断
             const groupRoles = {};
             items.forEach(item => {
                 if (!groupRoles[item.group_key]) groupRoles[item.group_key] = new Set();
@@ -6377,7 +6374,7 @@
             });
 
             let lastGroupKey = null;
-            let groupSeq = -1;  // 对话组顺序（用于奇偶交替）
+            let groupSeq = -1;
             const groupSeqMap = {};
 
             return items.map((item, i) => {
@@ -6390,19 +6387,14 @@
                 const seq = groupSeqMap[gk];
                 const roles = groupRoles[gk] || new Set();
                 const hasCustomer = roles.has('customer');
-                const hasSales = roles.has('sales');
+                const hasSales   = roles.has('sales');
                 const isCustomer = item.role === 'customer';
 
-                // 底色：仅客户发言（无销售回复）→ amber；仅销售（无客户）→ violet；正常对话 → A/B 交替
+                // 整组同色：特殊组用专属色，正常对话按组序交替
                 let bgClass;
-                if (!hasSales) {
-                    bgClass = 'bg-amber-50';   // 无回复
-                } else if (!hasCustomer) {
-                    bgClass = 'bg-violet-50';  // 无提问
-                } else {
-                    const scheme = _WR_GROUP_COLORS[seq % 2];
-                    bgClass = isCustomer ? scheme.customer : scheme.sales;
-                }
+                if (!hasSales)    bgClass = 'bg-amber-50';              // 无回复
+                else if (!hasCustomer) bgClass = 'bg-violet-50';        // 无提问
+                else               bgClass = _WR_GROUP_COLORS[seq % 2]; // A/B 交替
 
                 const groupBorder = (i > 0 && item.group_key !== items[i-1].group_key)
                     ? 'border-t-2 border-slate-300' : 'border-t border-slate-200';
