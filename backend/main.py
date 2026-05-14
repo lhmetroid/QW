@@ -1720,6 +1720,17 @@ KB_TEMPLATE_RULE_GUIDE = [
     ["样例使用方式", "模板首个工作表中的示例行可直接另存为内部样例，删除示例后再填正式数据。"],
 ]
 
+KB_KNOWLEDGE_CLASS_GUIDE = [
+    ["报价限制条件", "pricing_constraint", "pricing + constraint", "不能直接报价、需人工核价、加急另计、特殊范围另议。报价规则本身写入结构化报价规则，不作为知识分类。"],
+    ["能力知识", "capability", "capability + rule", "说明公司能不能做、支持哪些语种、行业、服务范围。适合回答“能做吗、是否支持、覆盖哪些服务”。"],
+    ["流程规则", "process", "process + rule", "说明客户要提供什么、内部怎么推进、交付和跟进步骤。适合回答“怎么做、步骤是什么”。"],
+    ["FAQ常见问答", "faq", "faq + faq", "承载普通问答和标准解释，不能替代结构化报价规则。"],
+    ["案例", "example", "faq + example", "历史成交、历史服务或沟通案例，用于参考和增强说服力，不直接当作当前承诺。"],
+    ["邮件模板", "email_template", "faq + template", "可复用的邮件正文、邮件开场、结尾、催确认或说明表达。只用于邮件场景，不承载业务规则或报价承诺。"],
+    ["企微", "wecom", "faq + template", "可复用的企微私聊或群聊短回复，强调微信口语化、低负担推进和当前会话承接。"],
+    ["名词定义", "definition", "faq + definition", "解释术语、计价口径和业务概念，不承载业务承诺。"],
+]
+
 KB_TEMPLATE_ENUM_GROUPS = [
     ("knowledge_class", "知识分类", "统一模板里普通知识必填；结构化报价规则留空。"),
     ("business_line", "服务", "用于限定业务线，推荐直接使用系统标准值。"),
@@ -1795,6 +1806,12 @@ def _build_kb_import_template_workbook(template_type: str):
         for row in field_rows:
             field_sheet.append(row)
         _set_worksheet_widths(field_sheet, field_rows)
+
+        class_sheet = workbook.create_sheet("知识分类说明")
+        class_rows = [["知识分类", "编码", "底层映射", "定义说明"], *KB_KNOWLEDGE_CLASS_GUIDE]
+        for row in class_rows:
+            class_sheet.append(row)
+        _set_worksheet_widths(class_sheet, class_rows)
 
         enum_sheet = workbook.create_sheet("枚举参考")
         enum_rows = [["字段", "编码", "显示值", "说明"]]
@@ -6075,7 +6092,7 @@ async def list_kb_import_templates():
         "chunk_type": KB_EXCEL_IMPORT_TYPES["unified"]["chunk_type"],
         "risk_level": KB_EXCEL_IMPORT_TYPES["unified"]["risk_level"],
         "required_columns": ["标题", "内容"],
-        "guide_sheets": ["填写说明", "字段说明", "枚举参考"],
+        "guide_sheets": ["填写说明", "字段说明", "知识分类说明", "枚举参考"],
         "sample_row_count": len(KB_UNIFIED_TEMPLATE_SAMPLE_ROWS),
         "supports": [item["label"] for key, item in KB_EXCEL_IMPORT_TYPES.items() if key != "unified"],
     }
@@ -15453,11 +15470,72 @@ def wecom_import_status(batch_id: str, db: Session = Depends(get_db)):
     job = _wecom_import_jobs.get(batch_id)
     if job:
         return {"batch_id": batch_id, **job}
-    # 不在内存中则查 DB
     cnt = db.execute(text("SELECT COUNT(*) FROM wecom_raw_import WHERE import_batch_id = :bid"), {"bid": batch_id}).scalar()
     if cnt:
         return {"batch_id": batch_id, "status": "done", "inserted": cnt}
     return {"batch_id": batch_id, "status": "not_found"}
+
+
+import tempfile as _tempfile
+
+@app.post("/api/wecom/raw/import/file")
+async def import_wecom_raw_file(
+    file: UploadFile = File(...),
+    force: str = Form("false"),
+    db: Session = Depends(get_db),
+):
+    """接收前端上传的 CSV 文件，保存为临时文件后启动后台导入线程。"""
+    force_flag = str(force).lower() in ("1", "true", "yes")
+    suffix = os.path.splitext(file.filename or "upload")[1] or ".csv"
+    tmp = _tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        content = await file.read()
+        tmp.write(content)
+        tmp.close()
+    except Exception as e:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise HTTPException(status_code=500, detail=f"文件写入失败: {e}")
+
+    file_path = tmp.name
+    try:
+        file_hash = _file_md5_chunked(file_path)
+    except Exception as e:
+        os.unlink(file_path)
+        raise HTTPException(status_code=500, detail=f"MD5 计算失败: {e}")
+
+    batch_id = f"wri_{file_hash}"
+    existing = db.execute(text("SELECT COUNT(*) FROM wecom_raw_import WHERE import_batch_id = :bid"), {"bid": batch_id}).scalar()
+    if existing and not force_flag:
+        os.unlink(file_path)
+        return {"status": "already_imported", "batch_id": batch_id, "existing_rows": existing}
+
+    job = _wecom_import_jobs.get(batch_id)
+    if job and job.get("status") == "running":
+        os.unlink(file_path)
+        return {"status": "running", "batch_id": batch_id, "inserted": job.get("inserted", 0)}
+
+    _wecom_import_jobs[batch_id] = {"status": "running", "inserted": 0}
+    from database import engine as _db_engine
+    database_url = str(_db_engine.url)
+
+    def _bg_with_cleanup(fp, bid, ff, dburl):
+        try:
+            _run_wecom_import_bg(fp, bid, ff, dburl)
+        finally:
+            try:
+                os.unlink(fp)
+            except Exception:
+                pass
+
+    t = _threading.Thread(
+        target=_bg_with_cleanup,
+        args=(file_path, batch_id, force_flag, database_url),
+        daemon=True, name=f"wecom_import_{batch_id}"
+    )
+    t.start()
+    logger.info(f"[wecom_import_file] 后台导入线程已启动 batch={batch_id} file={file.filename}")
+    return {"status": "accepted", "batch_id": batch_id}
 
 
 @app.get("/api/wecom/raw/batches")

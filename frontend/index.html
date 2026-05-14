@@ -6149,10 +6149,13 @@
 
         // ─── 企微原始数据 ───────────────────────────────────────────────────────────
 
+        // 企微数据端点只在本地服务器存在，始终用 location.origin 避免 API_BASE 指向外部
+        const _WR_BASE = () => window.location.origin;
+
         async function loadKbWecomRaw() {
             let batches = [];
             try {
-                const r = await fetch(`${API_BASE}/api/wecom/raw/batches`, {credentials: 'include'});
+                const r = await fetch(`${_WR_BASE()}/api/wecom/raw/batches`, {credentials: 'include'});
                 batches = (await r.json()).batches || [];
             } catch(e) {}
 
@@ -6166,11 +6169,13 @@
 
             renderKbShell(`
                 <div class="mb-2 flex flex-wrap items-center gap-2">
-                    <button onclick="doWecomRawImport(event)" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700">导入企微数据</button>
+                    <button onclick="doWecomRawImport(event)" id="wr-import-btn" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700">导入企微数据</button>
                     <button disabled class="px-3 py-1.5 bg-slate-200 text-slate-400 rounded text-xs font-medium cursor-not-allowed" title="AI预处理功能待实现">数据预处理</button>
                     <label class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
-                        <span class="whitespace-nowrap">源文件：</span>
-                        <input id="wr-filepath" type="text" value="${safeAttr(getKbListState('wecom_raw').filePath||'')}" placeholder="留空用默认路径" class="border rounded px-2 py-1 text-xs bg-white w-72" title="输入服务器上 CSV 文件的绝对路径，留空使用默认文件">
+                        <span class="whitespace-nowrap">CSV文件：</span>
+                        <input id="wr-file-input" type="file" accept=".csv" class="hidden" onchange="document.getElementById('wr-file-label').textContent=this.files[0]?.name||'未选择文件'">
+                        <button onclick="document.getElementById('wr-file-input').click()" class="px-2 py-1 border rounded text-xs bg-white hover:bg-slate-50">选择文件</button>
+                        <span id="wr-file-label" class="text-slate-400 text-xs">未选择（使用默认文件）</span>
                     </label>
                 </div>
                 <div class="flex flex-wrap gap-2 mb-3 items-end">
@@ -6218,15 +6223,25 @@
         }
 
         async function _wecomRawDoPost(force) {
-            const fp = (document.getElementById('wr-filepath')?.value || '').trim();
-            if (fp) getKbListState('wecom_raw').filePath = fp;
-            const body = {force: !!force};
-            if (fp) body.file_path = fp;
-            const res = await fetch(`${API_BASE}/api/wecom/raw/import`, {
-                method: 'POST', headers: {'Content-Type':'application/json'},
-                body: JSON.stringify(body),
-                credentials: 'include'
-            });
+            const fileInput = document.getElementById('wr-file-input');
+            const file = fileInput?.files?.[0];
+            let res;
+            if (file) {
+                // 上传用户选择的文件
+                const form = new FormData();
+                form.append('file', file);
+                form.append('force', force ? 'true' : 'false');
+                res = await fetch(`${_WR_BASE()}/api/wecom/raw/import/file`, {
+                    method: 'POST', body: form, credentials: 'include'
+                });
+            } else {
+                // 使用服务器默认文件
+                res = await fetch(`${_WR_BASE()}/api/wecom/raw/import`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({force: !!force}),
+                    credentials: 'include'
+                });
+            }
             let d; try { d = await res.json(); } catch(e) { d = {}; }
             if (!res.ok) throw new Error(d.detail || `HTTP ${res.status}`);
             return d;
@@ -6236,7 +6251,7 @@
             for (let i = 0; i < 300; i++) {  // 最多等 5 分钟
                 await new Promise(r => setTimeout(r, 1000));
                 try {
-                    const r = await fetch(`${API_BASE}/api/wecom/raw/import/status/${batchId}`, {credentials: 'include'});
+                    const r = await fetch(`${_WR_BASE()}/api/wecom/raw/import/status/${batchId}`, {credentials: 'include'});
                     const s = await r.json();
                     if (s.status === 'done') return s;
                     if (s.status === 'error') throw new Error(s.error || '后台导入异常');
@@ -6285,8 +6300,8 @@
             if (state.contentKeyword) params.set('keyword', state.contentKeyword);
             let data;
             try {
-                // 使用 raw fetch 避免 3.5s 本地超时（首次无 batch 时 COUNT 查询较慢）
-                const res = await fetch(`${API_BASE}/api/wecom/raw/messages?${params}`, {credentials: 'include'});
+                // 使用 window.location.origin 确保命中本地服务器，绕开 API_BASE 超时限制
+                const res = await fetch(`${_WR_BASE()}/api/wecom/raw/messages?${params}`, {credentials: 'include'});
                 data = await res.json();
             } catch(e) {
                 listEl.innerHTML = `<div class="text-sm text-rose-500 p-8 text-center bg-white rounded border">加载失败：${e}</div>`;
