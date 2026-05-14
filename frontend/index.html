@@ -961,7 +961,7 @@
             '转候选': '把该命中日志的纠错信息创建为知识候选。',
             '客户问题': '输入一条真实客户问题，用当前条件测试知识检索和证据命中。',
             '服务': '限定业务线，减少跨服务误命中。',
-            '知识分类': '限定知识用途，例如 FAQ、流程规则、能力知识、邮件模板等。',
+            '知识分类': '限定知识用途，例如 FAQ、流程规则、能力知识、邮件模板、企微等。',
             '语种': '限定语言方向，例如中译英、英译法等。',
             '服务范围': '限定资料类型或服务边界，例如普通资料、法律资料、认证文件。',
             '返回条数': '控制本次测试返回的命中数量，便于排查排序质量。',
@@ -4054,7 +4054,8 @@
             ['流程规则', '说明客户要提供什么、内部怎么推进、交付和跟进步骤。适合回答“怎么做、步骤是什么”。'],
             ['FAQ常见问答', '承载普通问答和标准解释，不能替代结构化报价规则。'],
             ['案例', '历史成交、历史服务或沟通案例，用于参考和增强说服力，不直接当作当前承诺。'],
-            ['邮件模板', '可复用邮件或企微回复表达，必须基于已发布证据使用。'],
+            ['邮件模板', '可复用的邮件正文、邮件开场、结尾、催确认或说明表达。只用于邮件场景，不承载业务规则或报价承诺。'],
+            ['企微', '可复用的企微私聊或群聊短回复，强调微信口语化、低负担推进和当前会话承接。'],
             ['名词定义', '解释术语、计价口径和业务概念，不承载业务承诺。']
         ];
 
@@ -4065,18 +4066,19 @@
             faq: {knowledge_type: 'faq', chunk_type: 'faq', risk_level: 'medium'},
             example: {knowledge_type: 'faq', chunk_type: 'example', risk_level: 'medium'},
             email_template: {knowledge_type: 'faq', chunk_type: 'template', risk_level: 'medium'},
+            wecom: {knowledge_type: 'faq', chunk_type: 'template', risk_level: 'medium'},
             definition: {knowledge_type: 'faq', chunk_type: 'definition', risk_level: 'low'}
         };
 
         const MAPPING_SUMMARY_HELP = [
             ['报价限制条件', '自动映射为 pricing + constraint，并默认高风险。'],
             ['能力知识 / 流程规则', '分别映射为 capability + rule、process + rule。'],
-            ['FAQ / 案例 / 邮件模板', '统一落到 faq 体系，再分别映射为 faq、example、template。'],
+            ['FAQ / 案例 / 邮件模板 / 企微', '统一落到 faq 体系；FAQ 映射为 faq，案例映射为 example，邮件模板和企微映射为 template。'],
             ['名词定义', '自动映射为 faq + definition，并默认低风险。']
         ];
 
         const SPECIAL_RULES_HELP = [
-            ['结构化报价规则', '保留为独立对象和独立导入类型，但不属于 7 类知识分类。'],
+            ['结构化报价规则', '保留为独立对象和独立导入类型，但不属于 8 类知识分类。'],
             ['Excel 导入口径', '除结构化报价规则外，其余业务知识统一按“知识分类 + 切分”导入。'],
             ['自动切分', '切分=1 会先拆分为多个草稿 chunk，不会直接发布为 active。'],
             ['审核发布', '所有导入结果先进入草稿，后续仍需提交审核、审核同意和发布门禁。']
@@ -6013,7 +6015,7 @@
             if (!item) return;
             document.getElementById('kb-template-info').innerHTML = `
                 当前模板：<b>${safeText(item.label)}</b>。
-                统一模板同时支持 7 类业务知识和结构化报价规则，无需选择导入类型。
+                统一模板同时支持 8 类业务知识和结构化报价规则，无需选择导入类型。
                 普通业务知识需填写 <b>知识分类</b>；结构化报价规则行保持知识分类留空，并填写价格、计价单位、币种、生效时间和失效时间。
                 切分=1 会调用大模型拆成多条草稿切片；结构化报价规则固定按单条导入。
                 模板工作簿内已附带 <b>${safeText((item.guide_sheets || []).join(' / '))}</b> 和 <b>${safeText(item.sample_row_count)}</b> 条完整样例。
@@ -6150,7 +6152,7 @@
         async function loadKbWecomRaw() {
             let batches = [];
             try {
-                const r = await apiFetch(`${API_BASE}/api/wecom/raw/batches`);
+                const r = await fetch(`${API_BASE}/api/wecom/raw/batches`, {credentials: 'include'});
                 batches = (await r.json()).batches || [];
             } catch(e) {}
 
@@ -6166,7 +6168,10 @@
                 <div class="mb-2 flex flex-wrap items-center gap-2">
                     <button onclick="doWecomRawImport(event)" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700">导入企微数据</button>
                     <button disabled class="px-3 py-1.5 bg-slate-200 text-slate-400 rounded text-xs font-medium cursor-not-allowed" title="AI预处理功能待实现">数据预处理</button>
-                    <span class="text-xs text-slate-400">源文件：企微提取内容_20260509111157.csv</span>
+                    <label class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
+                        <span class="whitespace-nowrap">源文件：</span>
+                        <input id="wr-filepath" type="text" value="${safeAttr(getKbListState('wecom_raw').filePath||'')}" placeholder="留空用默认路径" class="border rounded px-2 py-1 text-xs bg-white w-72" title="输入服务器上 CSV 文件的绝对路径，留空使用默认文件">
+                    </label>
                 </div>
                 <div class="flex flex-wrap gap-2 mb-3 items-end">
                     <label class="block text-xs text-slate-500"><span class="block mb-1">批次</span>
@@ -6213,9 +6218,13 @@
         }
 
         async function _wecomRawDoPost(force) {
+            const fp = (document.getElementById('wr-filepath')?.value || '').trim();
+            if (fp) getKbListState('wecom_raw').filePath = fp;
+            const body = {force: !!force};
+            if (fp) body.file_path = fp;
             const res = await fetch(`${API_BASE}/api/wecom/raw/import`, {
                 method: 'POST', headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({force: !!force}),
+                body: JSON.stringify(body),
                 credentials: 'include'
             });
             let d; try { d = await res.json(); } catch(e) { d = {}; }
@@ -6274,8 +6283,15 @@
             if (state.batchId) params.set('batch_id', state.batchId);
             if (state.rowStatus) params.set('row_status', state.rowStatus);
             if (state.contentKeyword) params.set('keyword', state.contentKeyword);
-            const res = await apiFetch(`${API_BASE}/api/wecom/raw/messages?${params}`);
-            const data = await res.json();
+            let data;
+            try {
+                // 使用 raw fetch 避免 3.5s 本地超时（首次无 batch 时 COUNT 查询较慢）
+                const res = await fetch(`${API_BASE}/api/wecom/raw/messages?${params}`, {credentials: 'include'});
+                data = await res.json();
+            } catch(e) {
+                listEl.innerHTML = `<div class="text-sm text-rose-500 p-8 text-center bg-white rounded border">加载失败：${e}</div>`;
+                return;
+            }
             state.total = data.total || 0;
             const items = data.items || [];
 

@@ -489,6 +489,8 @@ def auto_patch_db():
             ");"
         ))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_batch ON wecom_raw_import (import_batch_id);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_batch_row ON wecom_raw_import (import_batch_id, row_index);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_row_index ON wecom_raw_import (row_index);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_group ON wecom_raw_import (group_key);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_status_created ON wecom_raw_import (row_status, created_at DESC);"))
         if settings.KB_FULLTEXT_INDEX_ENABLED:
@@ -1038,6 +1040,7 @@ KB_LABELS = {
         "example": "案例",
         "script": "话术模板",
         "email_template": "邮件模板",
+        "wecom": "企微",
         "definition": "名词定义",
     },
     "intent_type": {
@@ -1144,6 +1147,7 @@ KB_KNOWLEDGE_CLASS_CONFIG = {
     "example": {"knowledge_type": "faq", "chunk_type": "example", "risk_level": "medium"},
     "script": {"knowledge_type": "faq", "chunk_type": "template", "risk_level": "medium"},
     "email_template": {"knowledge_type": "faq", "chunk_type": "template", "risk_level": "medium"},
+    "wecom": {"knowledge_type": "faq", "chunk_type": "template", "risk_level": "medium"},
     "definition": {"knowledge_type": "faq", "chunk_type": "definition", "risk_level": "low"},
 }
 
@@ -1629,6 +1633,7 @@ KB_EXCEL_IMPORT_TYPES = {
     "capability": {"label": "能力知识", "knowledge_class": "capability", "knowledge_type": "capability", "chunk_type": "rule", "risk_level": "medium"},
     "case": {"label": "案例", "knowledge_class": "example", "knowledge_type": "faq", "chunk_type": "example", "risk_level": "medium"},
     "script": {"label": "邮件模板", "knowledge_class": "email_template", "knowledge_type": "faq", "chunk_type": "template", "risk_level": "medium"},
+    "wecom": {"label": "企微", "knowledge_class": "wecom", "knowledge_type": "faq", "chunk_type": "template", "risk_level": "medium"},
     "definition": {"label": "名词定义", "knowledge_class": "definition", "knowledge_type": "faq", "chunk_type": "definition", "risk_level": "low"},
     "email_digest": {"label": "邮件整理", "knowledge_class": "faq", "knowledge_type": "faq", "chunk_type": "faq", "risk_level": "medium"},
 }
@@ -1665,6 +1670,7 @@ KB_EXCEL_TEMPLATE_SAMPLE = {
     "capability": ["英译法能力说明", "可承接英译法普通商务资料。", "能力知识", 0, "翻译", "英译法", "普通资料", "", 80, "中", "", "", "", "", "", "", "", "", "", "能力"],
     "case": ["价格异议案例", "客户质疑价格高，销售解释译审流程与交付保障后成交。", "案例", 0, "翻译", "", "普通资料", "", 60, "中", "", "", "", "", "", "", "", "", "", "案例"],
     "script": ["询价回复邮件模板", "您好，请您先发送需翻译文件，并说明语种、用途、交付时间和质量要求，我们收到后尽快评估报价。", "邮件模板", 0, "翻译", "", "普通资料", "", 60, "中", "", "", "", "", "", "", "", "", "", "邮件模板"],
+    "wecom": ["客户答应稍后发资料", "收到，您方便时发我就行。我这边收到后马上看一下，再给您确认后续报价和时间。", "企微", 0, "翻译", "", "普通资料", "", 60, "中", "", "", "", "", "", "", "", "", "", "企微,短回复"],
     "definition": ["1000中文字符定义", "1000中文字符通常指中文原文字符数量，用于按千字计价的翻译报价口径。", "名词定义", 0, "翻译", "", "普通资料", "", 50, "低", "", "", "", "", "", "", "", "", "", "定义"],
     "email_digest": ["邮件询价整理", "客户邮件询问英译法报价和交期，需先确认文件字数和用途。", "FAQ常见问答", 0, "翻译", "英译法", "普通资料", "", 60, "中", "", "", "", "", "", "", "", "", "", "邮件"],
 }
@@ -1676,6 +1682,7 @@ KB_UNIFIED_TEMPLATE_SAMPLE_ROWS = [
     ["英译法能力说明", "可承接英译法普通商务资料，支持标准译审流程和按需润色。", "能力知识", 0, "翻译", "英译法", "普通资料", "", 80, "中", "", "", "", "", "", "", "", "", "", "能力,英译法"],
     ["价格异议案例", "客户质疑价格高，销售先解释译审流程和交付保障，再补充历史交付经验，最终推进成交。", "案例", 0, "翻译", "", "普通资料", "重点客户", 65, "中", "", "", "", "", "", "", "", "", "", "案例,价格异议"],
     ["询价回复邮件模板", "您好，请您先发送需翻译文件，并说明语种、用途、交付时间和质量要求，我们收到后尽快评估报价。", "邮件模板", 0, "翻译", "", "普通资料", "", 70, "中", "", "", "", "", "", "", "", "", "", "邮件模板,询价"],
+    ["客户答应稍后发资料", "收到，您方便时发我就行。我这边收到后马上看一下，再给您确认后续报价和时间。", "企微", 0, "翻译", "", "普通资料", "", 70, "中", "", "", "", "", "", "", "", "", "", "企微,短回复"],
     ["1000中文字符定义", "1000中文字符通常指中文原文字符数量，用于按千字计价的翻译报价口径。", "名词定义", 0, "翻译", "", "普通资料", "", 55, "低", "", "", "", "", "", "", "", "", "", "定义,报价口径"],
     ["英译法普通商务资料报价", "英译法普通商务资料按220元/千字报价，最低收费300元。", "", 0, "翻译", "英译法", "普通资料", "", 95, "高", "2026-04-20", "2030-12-31", "每千中文字符", "CNY", 220, 220, 300, "", "不含税", "结构化报价"],
     ["邮件询价整理", "客户邮件询问英译法报价和交期，需先确认文件字数、用途、交付时间和是否需要盖章。", "FAQ常见问答", 1, "翻译", "英译法", "认证/盖章文件", "普通客户", 72, "中", "", "", "", "", "", "", "", "", "", "邮件,询价整理"],
@@ -1684,7 +1691,7 @@ KB_UNIFIED_TEMPLATE_SAMPLE_ROWS = [
 KB_TEMPLATE_FIELD_GUIDE = [
     ["标题", "是", "全部知识", "建议写成可被审核人快速判断用途的主题，避免过短或过泛。", "翻译下单流程"],
     ["内容", "是", "全部知识", "填写可复用的业务说明、流程、问答、模板或规则正文。", "收文件、确认语种用途、评估报价交期、付款立项、译审交付。"],
-    ["知识分类", "普通知识必填；结构化报价留空", "FAQ/流程/能力/案例/邮件模板/名词定义/报价限制条件", "统一模板用它判断落入哪类知识；结构化报价规则行请保持留空。", "流程规则"],
+    ["知识分类", "普通知识必填；结构化报价留空", "FAQ/流程/能力/案例/邮件模板/企微/名词定义/报价限制条件", "统一模板用它判断落入哪类知识；结构化报价规则行请保持留空。", "流程规则"],
     ["切分", "否", "全部知识", "填 1 时会调用 LLM 按业务知识点拆成多条草稿切片；填 0 或留空则按单条导入。", "1"],
     ["服务", "建议填写", "全部知识", "用于限定业务线，常见值：翻译、印刷、同传、多媒体译制、展台搭建、礼品、通用。", "翻译"],
     ["语种", "按需填写", "语言相关知识或报价", "建议使用系统标准值，例如中译英、英译法、英译中。", "英译法"],
@@ -1705,7 +1712,7 @@ KB_TEMPLATE_FIELD_GUIDE = [
 ]
 
 KB_TEMPLATE_RULE_GUIDE = [
-    ["统一模板适用范围", "同一份模板同时支持 FAQ常见问答、流程规则、能力知识、案例、邮件模板、名词定义、报价限制条件，以及结构化报价规则。"],
+    ["统一模板适用范围", "同一份模板同时支持 FAQ常见问答、流程规则、能力知识、案例、邮件模板、企微、名词定义、报价限制条件，以及结构化报价规则。"],
     ["普通知识导入规则", "普通业务知识必须填写知识分类；系统会根据知识分类自动映射到底层 knowledge_type 和 chunk_type。"],
     ["结构化报价规则导入规则", "结构化报价规则行的知识分类留空，同时补齐价格、单位、币种、生效日期、失效日期等字段。"],
     ["切分规则", "切分=1 会调用 LLM 自动拆成多条草稿切片；结构化报价规则固定按单条导入。"],
@@ -1849,6 +1856,7 @@ def _template_type_from_knowledge_class(knowledge_class: str | None) -> str:
         "faq": "faq",
         "example": "case",
         "email_template": "script",
+        "wecom": "wecom",
         "definition": "definition",
     }
     return mapping.get(knowledge_class or "", "faq")
@@ -8587,7 +8595,7 @@ def _llm_split_excel_item_to_chunks(item: dict) -> list[KnowledgeChunkCreate]:
     prompt = f"""
 你是企业知识库切分助手。请只根据原文拆分知识，不要编造价格、能力、交期、承诺或客户信息。
 
-业务侧知识分类只能从以下 7 类中选择：{class_options}。
+业务侧知识分类只能从以下分类中选择：{class_options}。
 注意：报价规则不是知识分类；明确价格、单位、最低收费、税费、加急倍率应由结构化 pricing_rule 管理。这里仅可输出报价限制条件，例如“需另行确认”“不能直接承诺固定价”。
 
 输出纯 JSON：
@@ -8596,7 +8604,7 @@ def _llm_split_excel_item_to_chunks(item: dict) -> list[KnowledgeChunkCreate]:
     {{
       "title": "简短标题",
       "content": "只表达一个业务可调用知识点",
-      "knowledge_class": "报价限制条件|能力知识|流程规则|FAQ常见问答|案例|邮件模板|名词定义",
+      "knowledge_class": "报价限制条件|能力知识|流程规则|FAQ常见问答|案例|邮件模板|企微|名词定义",
       "business_line": "translation|printing|interpretation|multimedia|exhibition|gifts|general",
       "language_pair": null,
       "service_scope": null,
@@ -9418,7 +9426,7 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
     {{
       "title": "简短标题",
       "content": "只包含一个业务知识点的原文或规范化表述",
-      "knowledge_class": "报价限制条件|能力知识|流程规则|FAQ常见问答|案例|邮件模板|名词定义",
+      "knowledge_class": "报价限制条件|能力知识|流程规则|FAQ常见问答|案例|邮件模板|企微|名词定义",
       "business_line": "translation|printing|interpretation|multimedia|exhibition|gifts|general",
       "sub_service": null,
       "language_pair": null,
@@ -9441,7 +9449,7 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
 }}
 
 字段约束：
-- knowledge_class 只能使用 7 类业务分类：报价限制条件、能力知识、流程规则、FAQ常见问答、案例、邮件模板、名词定义。
+- knowledge_class 只能使用 8 类业务分类：报价限制条件、能力知识、流程规则、FAQ常见问答、案例、邮件模板、企微、名词定义。
 - 报价规则不是知识分类；明确价格和单位必须进入结构化 pricing_rule，普通 chunk 只承载报价限制条件或说明证据。
 - business_line 只能使用 translation、printing、interpretation、multimedia、exhibition、gifts、general。
 - 价格、费用、折扣、税费、合同、承诺、赔付类内容 risk_level 必须为 high 且 review_required=true。
@@ -15490,7 +15498,7 @@ def list_wecom_raw_messages(
     rows = db.execute(text(
         f"SELECT id, import_batch_id, sender, receiver, group_id, msg_time, content, from_id, to_id, "
         f"stage, section, quality_score, process_note, process_result, row_status, group_key, role, row_index "
-        f"FROM wecom_raw_import WHERE {where} ORDER BY row_index ASC, id ASC "
+        f"FROM wecom_raw_import WHERE {where} ORDER BY id ASC "
         f"LIMIT :limit OFFSET :offset"
     ), params).fetchall()
 
