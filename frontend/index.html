@@ -6212,27 +6212,51 @@
             refreshWecomRawList();
         }
 
+        async function _wecomRawDoPost(force) {
+            const res = await fetch(`${API_BASE}/api/wecom/raw/import`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({force: !!force}),
+                credentials: 'include'
+            });
+            let d; try { d = await res.json(); } catch(e) { d = {}; }
+            if (!res.ok) throw new Error(d.detail || `HTTP ${res.status}`);
+            return d;
+        }
+
+        async function _wecomRawPollStatus(batchId, btn) {
+            for (let i = 0; i < 300; i++) {  // 最多等 5 分钟
+                await new Promise(r => setTimeout(r, 1000));
+                try {
+                    const r = await fetch(`${API_BASE}/api/wecom/raw/import/status/${batchId}`, {credentials: 'include'});
+                    const s = await r.json();
+                    if (s.status === 'done') return s;
+                    if (s.status === 'error') throw new Error(s.error || '后台导入异常');
+                    btn.textContent = `导入中 ${s.inserted ?? 0} 条...`;
+                } catch(e) { /* 网络抖动忽略 */ }
+            }
+            throw new Error('导入超时，请检查后台日志');
+        }
+
         async function doWecomRawImport(evt) {
             const btn = evt.target;
             btn.disabled = true; btn.textContent = '导入中...';
             try {
-                const res = await apiFetch(`${API_BASE}/api/wecom/raw/import`, {
-                    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({})
-                });
-                const d = await res.json();
+                let d = await _wecomRawDoPost(false);
                 if (d.status === 'already_imported') {
                     if (!confirm(`该文件已导入（批次 ${d.batch_id}，共 ${d.existing_rows} 条）。\n是否强制重新导入覆盖？`)) {
                         btn.disabled = false; btn.textContent = '导入企微数据'; return;
                     }
-                    const res2 = await apiFetch(`${API_BASE}/api/wecom/raw/import`, {
-                        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({force: true})
-                    });
-                    const d2 = await res2.json();
-                    getKbListState('wecom_raw').batchId = d2.batch_id;
-                    alert(`重新导入完成，共 ${d2.inserted} 条`);
-                } else {
+                    d = await _wecomRawDoPost(true);
+                }
+                if (d.status === 'accepted' || d.status === 'running') {
+                    const batchId = d.batch_id;
+                    getKbListState('wecom_raw').batchId = batchId;
+                    btn.textContent = '导入中 0 条...';
+                    const done = await _wecomRawPollStatus(batchId, btn);
+                    alert(`导入完成，共 ${done.inserted ?? '?'} 条\n批次：${batchId}`);
+                } else if (d.status === 'done' || d.inserted != null) {
                     getKbListState('wecom_raw').batchId = d.batch_id;
-                    alert(`导入完成，共 ${d.inserted} 条\n批次：${d.batch_id}`);
+                    alert(`导入完成，共 ${d.inserted ?? '?'} 条\n批次：${d.batch_id ?? '?'}`);
                 }
                 loadKbWecomRaw();
             } catch(e) {

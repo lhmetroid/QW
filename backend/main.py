@@ -15309,71 +15309,48 @@ def _wecom_raw_insert_batch(db, rows: list):
     ), rows)
     db.commit()
 
+import threading as _threading
+
 class WecomRawImportRequest(BaseModel):
     file_path: str | None = None
     force: bool = False
 
-@app.post("/api/wecom/raw/import")
-def import_wecom_raw(req: WecomRawImportRequest, db: Session = Depends(get_db)):
-    file_path = os.path.abspath(req.file_path or _WECOM_RAW_DEFAULT_PATH)
-    logger.info(f"[wecom_raw_import] 开始导入，路径: {file_path}")
+# 后台导入任务状态 {batch_id: {"status": "running"|"done"|"error", "inserted": int, "error": str}}
+_wecom_import_jobs: dict = {}
 
-    if not os.path.exists(file_path):
-        logger.error(f"[wecom_raw_import] 文件不存在: {file_path}")
-        raise HTTPException(status_code=404, detail=f"文件不存在: {file_path}")
-
-    file_size = os.path.getsize(file_path)
-    logger.info(f"[wecom_raw_import] 文件大小: {file_size/1024/1024:.1f} MB，开始计算 MD5")
-
+def _run_wecom_import_bg(file_path: str, batch_id: str, force: bool, database_url: str):
+    """后台线程：流式读取 CSV 并分批插入 DB，完成后更新 _wecom_import_jobs。"""
+    from sqlalchemy import create_engine as _ce
+    from sqlalchemy.orm import sessionmaker as _sm
+    _engine = _ce(database_url, pool_pre_ping=True)
+    _Session = _sm(bind=_engine)
+    db = _Session()
     try:
-        file_hash = _file_md5_chunked(file_path)
-    except Exception as e:
-        logger.error(f"[wecom_raw_import] MD5 计算失败: {e}")
-        raise HTTPException(status_code=500, detail=f"MD5 计算失败: {e}")
+        if force:
+            db.execute(text("DELETE FROM wecom_raw_import WHERE import_batch_id = :bid"), {"bid": batch_id})
+            db.commit()
 
-    batch_id = f"wri_{file_hash}"
-    logger.info(f"[wecom_raw_import] batch_id={batch_id}")
-
-    existing = db.execute(text("SELECT COUNT(*) FROM wecom_raw_import WHERE import_batch_id = :bid"), {"bid": batch_id}).scalar()
-    if existing and not req.force:
-        logger.info(f"[wecom_raw_import] 已存在 {existing} 条，返回 already_imported")
-        return {"status": "already_imported", "batch_id": batch_id, "existing_rows": existing}
-
-    if existing and req.force:
-        logger.info(f"[wecom_raw_import] force=True，删除旧数据 {existing} 条")
-        db.execute(text("DELETE FROM wecom_raw_import WHERE import_batch_id = :bid"), {"bid": batch_id})
-        db.commit()
-
-    # 检测编码（只读前 4KB 探测）
-    detected_enc = "utf-8-sig"
-    for enc in ["utf-8-sig", "utf-8", "gbk", "gb18030"]:
-        try:
-            with open(file_path, mode="r", encoding=enc, newline="") as fh:
-                sample = fh.read(4096)
+        detected_enc = "utf-8-sig"
+        for enc in ["utf-8-sig", "utf-8", "gbk", "gb18030"]:
+            try:
+                with open(file_path, mode="r", encoding=enc, newline="") as fh:
+                    sample = fh.read(4096)
                 if "发件人" in sample or "收件人" in sample:
                     detected_enc = enc
                     break
-        except Exception:
-            continue
-    logger.info(f"[wecom_raw_import] 检测编码: {detected_enc}")
+            except Exception:
+                continue
 
-    # 流式读取 + 分批插入，避免大文件一次性入内存
-    dialogue_counter = 0
-    total_inserted = 0
-    total_skipped = 0
-    batch_buf = []
-    parse_errors = []
+        dialogue_counter = 0
+        total_inserted = 0
+        total_skipped = 0
+        batch_buf = []
+        parse_errors = []
 
-    try:
         with open(file_path, mode="r", encoding=detected_enc, newline="", errors="replace") as fh:
             reader = _csv.DictReader(fh)
-            # 验证列头
             if reader.fieldnames:
-                logger.info(f"[wecom_raw_import] CSV 列头: {reader.fieldnames}")
-                has_sender = any(("发件人" in (k or "") or "sender" in (k or "").lower()) for k in reader.fieldnames)
-                if not has_sender:
-                    logger.warning(f"[wecom_raw_import] 未检测到「发件人」列，fieldnames={reader.fieldnames}")
-
+                logger.info(f"[wecom_import_bg] 列头: {reader.fieldnames}")
             for idx, row in enumerate(reader):
                 try:
                     sender   = (row.get("发件人") or row.get("sender") or "").strip()
@@ -15383,63 +15360,96 @@ def import_wecom_raw(req: WecomRawImportRequest, db: Session = Depends(get_db)):
                     content  = (row.get("内容")   or row.get("content") or "").strip()
                     from_id  = (row.get("from")   or row.get("from_id") or "").strip()
                     to_id    = (row.get("tolist") or row.get("to_id") or "").strip()
-
                     if not sender and not content:
                         dialogue_counter += 1
                         total_skipped += 1
                         continue
-
                     role     = _detect_wecom_role(sender)
                     msg_time = _parse_wecom_msg_time(time_str) if time_str else None
                     group_key = f"{batch_id}_d{dialogue_counter}"
-
                     batch_buf.append({
                         "import_batch_id": batch_id,
                         "sender": sender[:200] if sender else None,
                         "receiver": receiver[:200] if receiver else None,
                         "group_id": group_id[:200] if group_id else None,
-                        "msg_time": msg_time,
-                        "content": content,
+                        "msg_time": msg_time, "content": content,
                         "from_id": from_id[:200] if from_id else None,
                         "to_id": to_id[:200] if to_id else None,
                         "stage": None, "section": None, "quality_score": None,
                         "process_note": None, "process_result": None,
-                        "row_status": "pending",
-                        "group_key": group_key,
-                        "role": role,
-                        "row_index": idx,
+                        "row_status": "pending", "group_key": group_key,
+                        "role": role, "row_index": idx,
                     })
-
                     if len(batch_buf) >= _WECOM_RAW_INSERT_BATCH:
                         _wecom_raw_insert_batch(db, batch_buf)
                         total_inserted += len(batch_buf)
-                        logger.info(f"[wecom_raw_import] 已插入 {total_inserted} 条 (idx={idx})")
+                        _wecom_import_jobs[batch_id]["inserted"] = total_inserted
+                        logger.info(f"[wecom_import_bg] 已插入 {total_inserted} 条")
                         batch_buf = []
-
                 except Exception as row_err:
                     parse_errors.append(f"row {idx}: {row_err}")
-                    if len(parse_errors) <= 3:
-                        logger.warning(f"[wecom_raw_import] 行解析异常 idx={idx}: {row_err}")
 
-        # 插入剩余
         if batch_buf:
             _wecom_raw_insert_batch(db, batch_buf)
             total_inserted += len(batch_buf)
 
+        _wecom_import_jobs[batch_id].update({"status": "done", "inserted": total_inserted,
+                                              "skipped": total_skipped, "errors": len(parse_errors)})
+        logger.info(f"[wecom_import_bg] 完成 batch={batch_id} inserted={total_inserted}")
     except Exception as e:
-        logger.error(f"[wecom_raw_import] 读取/插入异常: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"导入失败: {e}")
+        logger.error(f"[wecom_import_bg] 异常: {e}", exc_info=True)
+        _wecom_import_jobs[batch_id].update({"status": "error", "error": str(e)})
+    finally:
+        db.close()
+        _engine.dispose()
 
-    logger.info(f"[wecom_raw_import] 完成 batch={batch_id} inserted={total_inserted} skipped={total_skipped} errors={len(parse_errors)}")
-    return {
-        "status": "ok",
-        "batch_id": batch_id,
-        "inserted": total_inserted,
-        "skipped_separators": total_skipped,
-        "parse_errors": len(parse_errors),
-        "parse_error_samples": parse_errors[:3],
-        "detected_encoding": detected_enc,
-    }
+@app.post("/api/wecom/raw/import")
+def import_wecom_raw(req: WecomRawImportRequest, db: Session = Depends(get_db)):
+    file_path = os.path.abspath(req.file_path or _WECOM_RAW_DEFAULT_PATH)
+    logger.info(f"[wecom_raw_import] 请求导入，路径: {file_path}")
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"文件不存在: {file_path}")
+
+    try:
+        file_hash = _file_md5_chunked(file_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MD5 计算失败: {e}")
+
+    batch_id = f"wri_{file_hash}"
+
+    existing = db.execute(text("SELECT COUNT(*) FROM wecom_raw_import WHERE import_batch_id = :bid"), {"bid": batch_id}).scalar()
+    if existing and not req.force:
+        return {"status": "already_imported", "batch_id": batch_id, "existing_rows": existing}
+
+    # 正在运行中则直接返回进度
+    job = _wecom_import_jobs.get(batch_id)
+    if job and job.get("status") == "running":
+        return {"status": "running", "batch_id": batch_id, "inserted": job.get("inserted", 0)}
+
+    # 启动后台线程，立即返回 accepted
+    _wecom_import_jobs[batch_id] = {"status": "running", "inserted": 0}
+    from database import engine as _db_engine
+    database_url = str(_db_engine.url)
+    t = _threading.Thread(
+        target=_run_wecom_import_bg,
+        args=(file_path, batch_id, req.force, database_url),
+        daemon=True, name=f"wecom_import_{batch_id}"
+    )
+    t.start()
+    logger.info(f"[wecom_raw_import] 后台导入线程已启动 batch={batch_id}")
+    return {"status": "accepted", "batch_id": batch_id}
+
+@app.get("/api/wecom/raw/import/status/{batch_id}")
+def wecom_import_status(batch_id: str, db: Session = Depends(get_db)):
+    job = _wecom_import_jobs.get(batch_id)
+    if job:
+        return {"batch_id": batch_id, **job}
+    # 不在内存中则查 DB
+    cnt = db.execute(text("SELECT COUNT(*) FROM wecom_raw_import WHERE import_batch_id = :bid"), {"bid": batch_id}).scalar()
+    if cnt:
+        return {"batch_id": batch_id, "status": "done", "inserted": cnt}
+    return {"batch_id": batch_id, "status": "not_found"}
 
 
 @app.get("/api/wecom/raw/batches")
