@@ -22,5 +22,6 @@ backend/seq_cursor.txt
 .env.*
 !.env.example
 *.pem
-docs/配置.txt
+# docs/ 目录为业务资料（CSV、Excel、文档、脚本），不涉及代码，不上传
+docs/
 backend/ai_settings.local.json
