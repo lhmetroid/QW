@@ -6315,14 +6315,29 @@
                 return;
             }
 
+            const pageOffset = state.offset || 0;
+            const totalPages = Math.ceil(state.total / state.limit) || 1;
+            const currentPage = Math.floor(pageOffset / state.limit) + 1;
+
+            const wrPagination = () => `
+                <div class="flex items-center justify-between gap-3 px-3 py-2 border-t bg-slate-50 text-xs text-slate-600">
+                    <div>共 ${state.total} 条，每页 ${state.limit} 条，第 ${currentPage} / ${totalPages} 页</div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="changeKbPage('wecom_raw',-1)" ${pageOffset<=0?'disabled':''} class="px-2 py-1 rounded border bg-white text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">上一页</button>
+                        <button type="button" onclick="changeKbPage('wecom_raw',1)" ${pageOffset+state.limit>=state.total?'disabled':''} class="px-2 py-1 rounded border bg-white text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">下一页</button>
+                        <input id="wr-page-jump" type="number" min="1" max="${totalPages}" placeholder="页码" onkeydown="if(event.key==='Enter')jumpWecomRawPage()" class="w-16 border rounded px-2 py-1 text-xs text-center">
+                        <button type="button" onclick="jumpWecomRawPage()" class="px-2 py-1 rounded border bg-white text-slate-700">跳转</button>
+                    </div>
+                </div>`;
+
             listEl.innerHTML = `
                 <div class="bg-white border rounded overflow-hidden">
-                    ${renderKbPagination('wecom_raw')}
+                    ${wrPagination()}
                     <div class="overflow-x-auto">
                     <table class="min-w-full text-xs border-t" style="min-width:1100px">
                         <thead class="bg-slate-100 text-slate-600 sticky top-0">
                             <tr>
-                                <th class="p-2 text-left whitespace-nowrap w-10">#</th>
+                                <th class="p-2 text-right whitespace-nowrap w-10">#</th>
                                 <th class="p-2 text-left whitespace-nowrap w-24">发件人</th>
                                 <th class="p-2 text-left whitespace-nowrap w-24">收件人</th>
                                 <th class="p-2 text-left whitespace-nowrap w-20">群ID</th>
@@ -6339,21 +6354,58 @@
                                 <th class="p-2 text-left whitespace-nowrap w-10">详情</th>
                             </tr>
                         </thead>
-                        <tbody>${renderWecomRawRows(items)}</tbody>
+                        <tbody>${renderWecomRawRows(items, pageOffset)}</tbody>
                     </table>
                     </div>
-                    ${renderKbPagination('wecom_raw')}
+                    ${wrPagination()}
                 </div>`;
         }
 
-        function renderWecomRawRows(items) {
+        // 对话组颜色方案：偶数组 A，奇数组 B；组内客户/销售各有底色
+        // 仅含客户（无回复）→ amber；仅含销售（无问题）→ violet
+        const _WR_GROUP_COLORS = [
+            { customer: 'bg-blue-50',   sales: 'bg-green-50'   },  // 组 A（偶数）
+            { customer: 'bg-sky-100',   sales: 'bg-teal-100'   },  // 组 B（奇数）
+        ];
+
+        function renderWecomRawRows(items, pageOffset) {
+            // 先扫描每个 group_key 内有哪些角色，以便判断"仅客户"/"仅销售"
+            const groupRoles = {};
+            items.forEach(item => {
+                if (!groupRoles[item.group_key]) groupRoles[item.group_key] = new Set();
+                groupRoles[item.group_key].add(item.role);
+            });
+
             let lastGroupKey = null;
-            return items.map(item => {
+            let groupSeq = -1;  // 对话组顺序（用于奇偶交替）
+            const groupSeqMap = {};
+
+            return items.map((item, i) => {
+                const gk = item.group_key || '';
+                if (gk !== lastGroupKey) {
+                    groupSeq++;
+                    groupSeqMap[gk] = groupSeq;
+                    lastGroupKey = gk;
+                }
+                const seq = groupSeqMap[gk];
+                const roles = groupRoles[gk] || new Set();
+                const hasCustomer = roles.has('customer');
+                const hasSales = roles.has('sales');
                 const isCustomer = item.role === 'customer';
-                const bgClass = isCustomer ? 'bg-blue-50' : 'bg-green-50';
-                const groupBorder = (lastGroupKey !== null && item.group_key !== lastGroupKey)
-                    ? 'border-t-2 border-slate-400' : 'border-t border-slate-200';
-                lastGroupKey = item.group_key;
+
+                // 底色：仅客户发言（无销售回复）→ amber；仅销售（无客户）→ violet；正常对话 → A/B 交替
+                let bgClass;
+                if (!hasSales) {
+                    bgClass = 'bg-amber-50';   // 无回复
+                } else if (!hasCustomer) {
+                    bgClass = 'bg-violet-50';  // 无提问
+                } else {
+                    const scheme = _WR_GROUP_COLORS[seq % 2];
+                    bgClass = isCustomer ? scheme.customer : scheme.sales;
+                }
+
+                const groupBorder = (i > 0 && item.group_key !== items[i-1].group_key)
+                    ? 'border-t-2 border-slate-300' : 'border-t border-slate-200';
 
                 const roleTag = isCustomer
                     ? '<span class="inline-block px-1 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px]">客户</span>'
@@ -6362,6 +6414,7 @@
                 const receiverId = (item.receiver||'').replace(/^(客户|销售)[：:]/,'');
                 const contentSnip = (item.content||'').replace(/\n/g,' ').slice(0,50)+((item.content||'').length>50?'…':'');
                 const timeStr = (item.msg_time||'').slice(0,16).replace('T',' ');
+                const displayNum = (pageOffset || 0) + i + 1;  // 从 1 起，连续不断
 
                 const stageHtml = item.stage
                     ? `<span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px]">${safeText(item.stage)}</span>`
@@ -6375,8 +6428,8 @@
                     ? '<span class="text-slate-400">跳过</span>'
                     : '<span class="text-slate-400">待处理</span>';
 
-                return `<tr class="${bgClass} ${groupBorder} hover:brightness-95 cursor-pointer" onclick="showWecomRawGroup('${safeAttr(item.group_key||'')}', ${item.id})">
-                    <td class="p-2 text-slate-400 text-right">${item.row_index ?? ''}</td>
+                return `<tr class="${bgClass} ${groupBorder} hover:brightness-95 cursor-pointer" onclick="showWecomRawGroup('${safeAttr(gk)}', ${item.id})">
+                    <td class="p-2 text-slate-400 text-right text-[10px]">${displayNum}</td>
                     <td class="p-2 whitespace-nowrap">${roleTag} <span class="text-[10px] text-slate-500">${safeText(senderId.slice(0,10))}</span></td>
                     <td class="p-2 text-[10px] text-slate-500 whitespace-nowrap">${safeText(receiverId.slice(0,10))}</td>
                     <td class="p-2 text-[10px] text-slate-400 whitespace-nowrap">${safeText((item.group_id||'').slice(0,8))}</td>
@@ -6390,9 +6443,23 @@
                     <td class="p-2 text-[10px] text-slate-500 truncate max-w-[6rem]" title="${safeAttr(item.process_note||'')}">${item.process_note ? safeText(item.process_note.slice(0,18)) : '<span class="text-slate-300">—</span>'}</td>
                     <td class="p-2">${conclusionHtml}</td>
                     <td class="p-2">${statusHtml}</td>
-                    <td class="p-2"><button onclick="event.stopPropagation();showWecomRawGroup('${safeAttr(item.group_key||'')}', ${item.id})" class="text-emerald-700 font-bold text-xs hover:underline">详情</button></td>
+                    <td class="p-2"><button onclick="event.stopPropagation();showWecomRawGroup('${safeAttr(gk)}', ${item.id})" class="text-emerald-700 font-bold text-xs hover:underline">详情</button></td>
                 </tr>`;
             }).join('');
+        }
+
+        function jumpWecomRawPage() {
+            const state = getKbListState('wecom_raw');
+            const total = Number(state.total || 0);
+            const limit = Number(state.limit || 100);
+            const totalPages = Math.ceil(total / limit) || 1;
+            const input = document.getElementById('wr-page-jump');
+            if (!input) return;
+            let pg = parseInt(input.value, 10);
+            if (isNaN(pg) || pg < 1) pg = 1;
+            if (pg > totalPages) pg = totalPages;
+            state.offset = (pg - 1) * limit;
+            refreshWecomRawList();
         }
 
         async function showWecomRawGroup(groupKey, highlightId) {
