@@ -1,0 +1,147 @@
+2026-05-18 17:15:04 | INFO | main | 数据库 Schema 自动检查/修复完成
+2026-05-18 17:15:04 | INFO | mail_scheduler | [scheduler] loaded 0 schedules from DB
+2026-05-18 17:15:04 | INFO | apscheduler.scheduler | Scheduler started
+2026-05-18 17:15:04 | INFO | mail_scheduler | [scheduler] started
+2026-05-18 17:15:04 | INFO | main | 邮件同步表初始化完成，调度器已启动
+2026-05-18 17:15:05 | INFO | kb_evaluation_worker | Knowledge Base Evaluation Worker started.
+2026-05-18 17:15:05 | INFO | main | 启动企微会话存档 15 分钟异步轮询任务
+2026-05-18 17:15:05 | INFO | archive_service | 企微 SDK V3 接口映射与内存模型初始化完成
+2026-05-18 17:15:05 | INFO | archive_service | ARCHIVE_SYNC_SUCCESS {"session_id_filter": null, "status": "success", "msg": "同步成功：新增 4 条，跳过重复 0 条。", "inserted_count": 4, "duplicate_count": 0, "parse_failed_count": 0, "fetched_count": 4, "batch_count": 1, "current_seq": 2957041, "timings_ms": {"load_private_key_ms": 40.09, "sdk_init_ms": 0.02, "load_seq_cursor_ms": 0.2, "fetch_chat_data_ms": 448.73, "process_messages_ms": 198.55, "save_seq_cursor_ms": 0.6, "commit_ms": 25.64, "total_ms": 737.55}}
+2026-05-18 17:15:06 | INFO | kb_evaluation_worker | KB Eval Worker: SQL found 106 ApiAssist and 13 Trigger candidates.
+2026-05-18 17:15:06 | INFO | kb_evaluation_worker | 知识库评分开始：发现 2 条待处理记录（ApiAssist: 2, Trigger: 0）
+2026-05-18 17:15:06 | INFO | kb_evaluation_worker | 正在评估 ApiAssist 记录: b3a6b18f-1bf0-4233-97f6-f569c84842ed ...
+2026-05-18 17:15:13 | INFO | kb_evaluation_worker | ApiAssist 记录 b3a6b18f-1bf0-4233-97f6-f569c84842ed 评估完成。
+2026-05-18 17:15:13 | INFO | kb_evaluation_worker | 正在评估 ApiAssist 记录: 278b8a17-0445-4e5b-94b7-56f6b2e3285a ...
+2026-05-18 17:15:30 | INFO | kb_evaluation_worker | ApiAssist 记录 278b8a17-0445-4e5b-94b7-56f6b2e3285a 评估完成。
+2026-05-18 17:15:30 | INFO | kb_evaluation_worker | 知识库评分：成功处理 2 条 ApiAssist 记录。
+2026-05-18 17:15:31 | ERROR | main | caselib iteration failed
+Traceback (most recent call last):
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\engine\default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python313\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+psycopg.errors.StringDataRightTruncation: 对于可变字符类型来说，值太长了(50)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\items\QW\backend\main.py", line 17835, in _caselib_run_iteration_background
+    db.commit()
+    ~~~~~~~~~^^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\orm\session.py", line 2030, in commit
+    trans.commit(_to_root=True)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "<string>", line 2, in commit
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\orm\session.py", line 1311, in commit
+    self._prepare_impl()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "<string>", line 2, in _prepare_impl
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\orm\session.py", line 1286, in _prepare_impl
+    self.session.flush()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\orm\session.py", line 4331, in flush
+    self._flush(objects)
+    ~~~~~~~~~~~^^^^^^^^^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\orm\session.py", line 4466, in _flush
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\orm\session.py", line 4427, in _flush
+    flush_context.execute()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 466, in execute
+    rec.execute(self)
+    ~~~~~~~~~~~^^^^^^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 642, in execute
+    util.preloaded.orm_persistence.save_obj(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self.mapper,
+        ^^^^^^^^^^^^
+        uow.states_for_mapper_hierarchy(self.mapper, False, False),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        uow,
+        ^^^^
+    )
+    ^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\orm\persistence.py", line 85, in save_obj
+    _emit_update_statements(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        base_mapper,
+        ^^^^^^^^^^^^
+    ...<3 lines>...
+        update,
+        ^^^^^^^
+    )
+    ^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\orm\persistence.py", line 912, in _emit_update_statements
+    c = connection.execute(
+        statement, multiparams, execution_options=execution_options
+    )
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\sql\elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\engine\base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Program Files\Python313\Lib\site-packages\sqlalchemy\engine\default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python313\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+sqlalchemy.exc.DataError: (psycopg.errors.StringDataRightTruncation) 对于可变字符类型来说，值太长了(50)
+[SQL: UPDATE case_iteration_result SET step1_summary=%(step1_summary)s::JSON, step2_crm_info=%(step2_crm_info)s::JSON, step3_thread_business_fact=%(step3_thread_business_fact)s::JSON, step4_knowledge=%(step4_knowledge)s::JSON, step5_llm1_compare=%(step5_llm1_compare)s::JSON, step6_sales_advice=%(step6_sales_advice)s::VARCHAR, step6_compare_advice=%(step6_compare_advice)s::VARCHAR, step7_reply_styles=%(step7_reply_styles)s::JSON, step7_reply_scores=%(step7_reply_scores)s::JSON, snapshot_id=%(snapshot_id)s::VARCHAR, quality_score=%(quality_score)s, kb1_eval_score=%(kb1_eval_score)s, kb2_eval_score=%(kb2_eval_score)s, quality_status=%(quality_status)s::VARCHAR, latency_ms=%(latency_ms)s::INTEGER, stage_status=%(stage_status)s::JSON, status=%(status)s::VARCHAR, finished_at=%(finished_at)s::TIMESTAMP WITHOUT TIME ZONE, updated_at=%(updated_at)s::TIMESTAMP WITHOUT TIME ZONE WHERE case_iteration_result.result_id = %(case_iteration_result_result_id)s::UUID]
+[parameters: {'step1_summary': Json({'topic': '老板重视方案，需打动他们', 'core_dem ... (70 chars)), 'step2_crm_info': Json({'customer_tier': 'unknown', 'histo ... (49 chars)), 'step3_thread_business_fact': Json({'business_state': 'exploration'}), 'step4_knowledge': Json({'hits': [], 'knowledge_status': 'd ... (48 chars)), 'step5_llm1_compare': Json({'note': 'dry_run skipped'}), 'step6_sales_advice': '[DryRun] 针对 S01 场景（方案确认与正式报价），建议结合客户最新关切，引用案例ID=S01-01 复盘要点。', 'step6_compare_advice': '[DryRun] 针对 S01 场景（方案确认与正式报价），建议结合客户最新关切，引用案例ID=S01-01 复盘要点。（对比模型 dry_run）', 'step7_reply_styles': Json([{'style': 'professional', 'text':  ... (198 chars)), 'step7_reply_scores': Json({'professional': 87, 'friendly': 87}), 'snapshot_id': None, 'quality_score': 89, 'kb1_eval_score': 87, 'kb2_eval_score': 87, 'quality_status': "real_error_fallback_dry: HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/wecom/sidebar_assist (Caused by New", 'latency_ms': 195, 'stage_status': Json({'mode': 'dry_run'}), 'status': 'success', 'finished_at': datetime.datetime(2026, 5, 18, 9, 15, 31, 459891), 'updated_at': datetime.datetime(2026, 5, 18, 9, 15, 31, 471824), 'case_iteration_result_result_id': 'cd1a3c66-c5c6-4bd8-8ae9-46a31ace7deb'}]
+(Background on this error at: https://sqlalche.me/e/20/9h9h)
+2026-05-18 17:16:32 | INFO | kb_evaluation_worker | KB Eval Worker: SQL found 106 ApiAssist and 13 Trigger candidates.
+2026-05-18 17:17:40 | INFO | kb_evaluation_worker | KB Eval Worker: SQL found 106 ApiAssist and 13 Trigger candidates.
+2026-05-18 17:18:42 | INFO | kb_evaluation_worker | KB Eval Worker: SQL found 106 ApiAssist and 13 Trigger candidates.
+2026-05-18 17:19:44 | INFO | kb_evaluation_worker | KB Eval Worker: SQL found 106 ApiAssist and 13 Trigger candidates.

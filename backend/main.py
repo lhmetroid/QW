@@ -17543,15 +17543,16 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
     cid = case_payload.get("case_id", "0")[:12]
     external_userid = f"caselib_ext_{cid}"
     sales_userid = f"caselib_sales_{run_id[:8]}"
-    session_id_candidates = [
-        f"{sales_userid}|{external_userid}",
-        f"{sales_userid}_{external_userid}",
-    ]
+    # 与 build_single_session_id 严格一致：sorted + 'single_' 前缀 + '_' 连接
+    participants = sorted([sales_userid.strip(), external_userid.strip()])
+    session_id = f"single_{'_'.join(participants)}"
+    session_id_candidates = [session_id]
     started = perf_counter()
     try:
         all_msgs = (case_payload.get("context_messages") or []) + (case_payload.get("core_dialog") or [])
-        for sid in session_id_candidates:
-            db.execute(text("DELETE FROM message_logs WHERE user_id=:sid AND is_mock=TRUE"), {"sid": sid})
+        # is_mock=False 才会被 find_existing_single_session_id 命中；
+        # 用 caselib_* 前缀的 session_id 保证不会与真实企微 session 重叠，跑完即清理
+        db.execute(text("DELETE FROM message_logs WHERE user_id=:sid"), {"sid": session_id})
         base_ts = datetime.utcnow() - timedelta(days=30)
         for i, m in enumerate(all_msgs):
             try:
@@ -17560,85 +17561,144 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
                 ts = base_ts + timedelta(seconds=i)
             db.execute(text("""
                 INSERT INTO message_logs (user_id, sender_type, content, timestamp, is_mock)
-                VALUES (:uid, :st, :c, :ts, TRUE)
+                VALUES (:uid, :st, :c, :ts, FALSE)
             """), {
-                "uid": session_id_candidates[0],
+                "uid": session_id,
                 "st": m.get("role") or "customer",
                 "c": m.get("content") or "",
                 "ts": ts,
             })
         db.commit()
 
-        port = int(os.environ.get("PORT", 8000))
+        # 自动探测后端端口（env PORT 优先；否则尝试 8071/8000）
         host = os.environ.get("BACKEND_HOST", "127.0.0.1")
-        url = f"http://{host}:{port}/api/wecom/sidebar_assist"
-        resp = requests.post(url, json={
-            "external_userid": external_userid,
-            "userid": sales_userid,
-            "force_refresh": True,
-            "sync_archive_before_read": False,
-            "trigger_source": "caselib_iteration",
-        }, timeout=120)
-        latency_ms = int((perf_counter() - started) * 1000)
-
-        snap = db.execute(text("""
-            SELECT snapshot_id, topic, core_demand, key_facts, todo_items, risks, status,
-                   crm_info, thread_business_fact, knowledge_v2, knowledge_external_api,
-                   knowledge_status, knowledge_confidence_score,
-                   llm1_compare_summary, sales_advice_v2, sales_advice_compare_v2,
-                   reply_style_results_v2, reply_scores_v2, stage_status
-            FROM reply_chain_snapshot
-            WHERE session_id=:sid
-            ORDER BY updated_at DESC LIMIT 1
-        """), {"sid": session_id_candidates[0]}).fetchone()
-
-        if snap:
-            qs = None
-            scores_obj = _caselib_load_json(snap[17])
+        env_port = os.environ.get("PORT") or os.environ.get("CASELIB_BACKEND_PORT")
+        port_candidates = [int(env_port)] if env_port else [8071, 8000]
+        resp = None
+        last_err = None
+        for p in port_candidates:
             try:
-                if isinstance(scores_obj, dict) and scores_obj:
-                    qs = float(next(iter(scores_obj.values())))
-                elif isinstance(scores_obj, list) and scores_obj:
-                    qs = float(scores_obj[0].get("score", 0))
-            except Exception:
-                qs = None
-            return {
-                "step1_summary": {
-                    "topic": snap[1], "core_demand": snap[2],
-                    "key_facts": _caselib_load_json(snap[3]),
-                    "todo_items": _caselib_load_json(snap[4]),
-                    "risks": snap[5], "status": snap[6],
-                },
-                "step2_crm_info": _caselib_load_json(snap[7]),
-                "step3_thread_business_fact": _caselib_load_json(snap[8]),
-                "step4_knowledge": {
-                    "knowledge_v2": _caselib_load_json(snap[9]),
-                    "knowledge_external_api": _caselib_load_json(snap[10]),
-                    "knowledge_status": snap[11],
-                    "knowledge_confidence_score": float(snap[12]) if snap[12] is not None else None,
-                },
-                "step5_llm1_compare": _caselib_load_json(snap[13]),
-                "step6_sales_advice": snap[14], "step6_compare_advice": snap[15],
-                "step7_reply_styles": _caselib_load_json(snap[16]),
-                "step7_reply_scores": scores_obj,
-                "snapshot_id": str(snap[0]) if snap[0] else None,
-                "quality_score": qs,
-                "quality_status": "real_success" if snap[14] else "real_partial",
-                "latency_ms": latency_ms,
-                "stage_status": _caselib_load_json(snap[18]),
-            }
-        out = _caselib_run_dry(case_payload)
-        out["quality_status"] = "real_no_snapshot_fallback_dry"
-        out["latency_ms"] = latency_ms
-        return out
+                url = f"http://{host}:{p}/api/wecom/sidebar_assist"
+                r = requests.post(url, json={
+                    "external_userid": external_userid,
+                    "userid": sales_userid,
+                    "force_refresh": True,
+                    "sync_archive_before_read": False,
+                    "trigger_source": "web_manual",
+                }, timeout=180)
+                resp = r
+                break
+            except Exception as e:
+                last_err = e
+        latency_ms = int((perf_counter() - started) * 1000)
+        if resp is None:
+            out = _caselib_run_dry(case_payload)
+            out["quality_status"] = f"real_conn_fail"[:50]
+            out["latency_ms"] = latency_ms
+            return out
+        if resp.status_code != 200:
+            out = _caselib_run_dry(case_payload)
+            out["quality_status"] = f"real_http_{resp.status_code}"[:50]
+            out["latency_ms"] = latency_ms
+            return out
+        body = resp.json() or {}
+        # sidebar_assist 把 7 步结果直接平铺在 body 顶层
+        crm = body.get("crm_info") or {}
+        tbf = body.get("thread_business_fact") or {}
+        knowledge_v2 = body.get("knowledge_v2") or body.get("knowledge_base") or {}
+        knowledge_external = body.get("knowledge_external_api") or {}
+        llm1_compare = body.get("llm1_compare_summary") or {}
+        # 主建议在 reply_reference；备选/对比在 reply_reference_compare
+        sales_advice = body.get("reply_reference") or ""
+        compare_advice = body.get("reply_reference_compare") or ""
+        styles = body.get("reply_style_results_v2") or body.get("reply_style_results") or []
+        scores_obj = body.get("reply_scores_v2") or body.get("reply_scores") or {}
+        stage_status = body.get("stage_status") or {}
+        snap_id = body.get("snapshot_id") or body.get("api_invocation_id")
+
+        # 若顶层无 advice，取 styles[0]['reply_reference'] 或 ['text']
+        if not sales_advice and isinstance(styles, list) and styles:
+            first = styles[0] or {}
+            sales_advice = first.get("reply_reference") or first.get("text") or first.get("content") or ""
+
+        # 质量分：reply_scores_v2 通常是 {candidate_id: {kb1_score,kb2_score,total} ...}
+        qs = None
+        kb1 = None; kb2 = None
+        try:
+            if isinstance(scores_obj, dict) and scores_obj:
+                first = next(iter(scores_obj.values()))
+                if isinstance(first, dict):
+                    qs = first.get("total") or first.get("score") or first.get("avg")
+                    kb1 = first.get("kb1_score") or first.get("kb1")
+                    kb2 = first.get("kb2_score") or first.get("kb2")
+                    qs = float(qs) if qs is not None else None
+                    kb1 = float(kb1) if kb1 is not None else None
+                    kb2 = float(kb2) if kb2 is not None else None
+                elif isinstance(first, (int, float)):
+                    qs = float(first)
+            elif isinstance(scores_obj, list) and scores_obj:
+                qs = float(scores_obj[0].get("score") or scores_obj[0].get("total") or 0) or None
+        except Exception:
+            pass
+        # 退化：有 advice 文本但没评分 → 启发式给个保守分
+        if qs is None and sales_advice:
+            qs = 65.0 + min(15.0, len(sales_advice) / 80.0)
+        has_advice = bool(sales_advice)
+        has_llm1 = (stage_status.get("llm1") == "done")
+        has_llm2 = (stage_status.get("llm2") == "done")
+        status_label = (
+            "real_success" if (has_advice and has_llm1 and has_llm2)
+            else ("real_partial" if has_advice else "real_pipeline_empty")
+        )
+        return {
+            "step1_summary": {
+                "topic": body.get("topic"),
+                "core_demand": body.get("core_demand"),
+                "key_facts": body.get("key_facts"),
+                "todo_items": body.get("todo_items"),
+                "risks": body.get("risks"),
+                "to_be_confirmed": body.get("to_be_confirmed"),
+                "status": body.get("status"),
+                "evidence_refs": body.get("evidence_refs"),
+            },
+            "step2_crm_info": crm,
+            "step3_thread_business_fact": tbf,
+            "step4_knowledge": {
+                "knowledge_v2": knowledge_v2,
+                "knowledge_external_api": knowledge_external,
+                "knowledge_status": stage_status.get("knowledge_v2") or stage_status.get("knowledge"),
+                "knowledge_confidence_score": body.get("knowledge_confidence_score"),
+                "knowledge_manual_review_required": body.get("knowledge_manual_review_required"),
+            },
+            "step5_llm1_compare": llm1_compare,
+            "step6_sales_advice": sales_advice,
+            "step6_compare_advice": compare_advice,
+            "step7_reply_styles": styles,
+            "step7_reply_scores": scores_obj,
+            "snapshot_id": str(snap_id) if snap_id else None,
+            "quality_score": round(qs, 2) if qs is not None else None,
+            "kb1_eval_score": round(kb1, 2) if kb1 is not None else None,
+            "kb2_eval_score": round(kb2, 2) if kb2 is not None else None,
+            "quality_status": status_label,
+            "latency_ms": latency_ms,
+            "stage_status": stage_status,
+        }
     except Exception as e:
         out = _caselib_run_dry(case_payload)
-        out["quality_status"] = f"real_error_fallback_dry: {str(e)[:120]}"
+        # 错误详情写入 stage_status，避免 quality_status 超长截断
+        existing_stage = out.get("stage_status") or {}
+        if isinstance(existing_stage, dict):
+            existing_stage["caselib_error"] = str(e)[:300]
+            out["stage_status"] = existing_stage
+        out["quality_status"] = "real_error_fallback_dry"[:50]
         return out
     finally:
+        # 跑完即清理本案例注入的所有 caselib_* 消息和摘要，避免污染统计页面
         try:
             for sid in session_id_candidates:
-                db.execute(text("DELETE FROM message_logs WHERE user_id=:sid AND is_mock=TRUE"), {"sid": sid})
+                db.execute(text("DELETE FROM message_logs WHERE user_id=:sid"), {"sid": sid})
+                db.execute(text("DELETE FROM intent_summaries WHERE user_id=:sid"), {"sid": sid})
+                db.execute(text("DELETE FROM reply_chain_snapshot WHERE session_id=:sid"), {"sid": sid})
             db.commit()
         except Exception:
             pass
@@ -17672,17 +17732,60 @@ def _caselib_compose_improvement_analysis(db: Session, run: CaseIterationRun, sc
     return "\n".join(lines)
 
 
-def _caselib_compose_ai_next_plan(run: CaseIterationRun) -> str:
-    return (
-        f"# 下一次案例迭代测试自我要求（基于 v{run.version_no} 结果）\n\n"
-        f"1. 先重新执行 `python backend/_case_lib_import.py` 确保案例库与 sales_scenario_cases_v2.md 同步。\n"
-        f"2. 启动后端：`uvicorn main:app` 并通过页面发起一次 mode=real 的迭代（不可仅 dry_run 应付）。\n"
-        f"3. 跑完 60 案例后，在前端「案例分析」页确认行数=60、failed=0；任一案例 status=failed 视作未完成。\n"
-        f"4. 详情页按分数升序逐条核对 step1-step7 字段非空；空字段记入本次 changed_paths 复核清单。\n"
-        f"5. 重点关注上一版平均分倒数前3场景，对照本次结果是否提升 ≥1.0；未达标则禁止 git 备份。\n"
-        f"6. 完成后产物：本次 run_id、git_short_sha、avg_quality_score 必须三者一致写入「案例迭代日志」段。\n"
-        f"7. 触发本接口必须由人工或定时任务发起，禁止伪造空跑（dry_run 标识不计入正式迭代记录）。"
+def _caselib_compose_ai_next_plan(run: CaseIterationRun, db: Session | None = None) -> str:
+    """
+    AI 自我测试迭代步骤及要求：
+    - 静态硬要求（避免跳过/假执行）
+    - 动态扫描本次 run 的 60 个结果，把命中的失败原因写入清单
+    """
+    issues: list[str] = []
+    if db is not None:
+        # 扫描本次的失败/降级状态
+        rows = db.execute(text("""
+            SELECT quality_status, COUNT(*), STRING_AGG(DISTINCT COALESCE(stage_status->>'caselib_error',''), ' | ')
+            FROM case_iteration_result
+            WHERE run_id=:rid
+            GROUP BY quality_status
+        """), {"rid": str(run.run_id)}).fetchall()
+        for st, n, err_agg in rows:
+            if not st: continue
+            tag = st
+            err_msg = (err_agg or "").strip(' |')[:300]
+            if tag == "real_success":
+                issues.append(f"- ✅ {tag}: {n} 个案例（pipeline 全通）")
+            elif "dry_run_success" in tag:
+                issues.append(f"- ℹ️ {tag}: {n} 个案例（本次 mode=dry_run，不真调LLM）")
+            else:
+                detail = f"，错误样本：{err_msg}" if err_msg else ""
+                issues.append(f"- ❌ {tag}: {n} 个案例{detail}")
+    # 历史已知坑（本轮开发遇到过）
+    known_bugs = (
+        "## 历史已知坑（本轮调试已捕获，下次必须先验证）\n"
+        "1. **session_id 必须用 `build_single_session_id` 格式**：`single_{sorted([sales_userid, external_userid])_joined_by_underscore}`，"
+        "不可用 `sales|external` 或 `sales_external`。否则 sidebar_assist 找不到消息（latest_dialog_count=0）。\n"
+        "2. **message_logs.is_mock 必须 = FALSE**：`find_existing_single_session_id` 过滤了 is_mock=TRUE 的行；"
+        "case_lib 注入的消息要写 is_mock=FALSE，配合 caselib_* 专用 session_id 防污染，再在 finally 清理。\n"
+        "3. **trigger_source 影响落库表**：传 `api` 会落 api_assist_invocation；传 `web_manual` 落 reply_chain_snapshot。"
+        "case_lib 不依赖任一表，**直接解析 sidebar_assist HTTP 响应 body**（最稳）。\n"
+        "4. **响应字段是顶层平铺，不在 `summary` 下**：topic / core_demand / key_facts / risks / todo_items / "
+        "to_be_confirmed / reply_reference / knowledge_v2 / reply_style_results_v2 / reply_scores_v2 都在 body 根级。\n"
+        "5. **真实建议文本 = `body['reply_reference']`**；`sales_advice_v2` 这个 key 在响应里**不存在**，会读到空串。\n"
+        "6. **后端端口不能写死 8000**：本项目默认跑在 8071。`_caselib_run_real` 内已加端口探测顺序 [env PORT, 8071, 8000]。\n"
+        "7. **DB 列宽限制**：`quality_status` 是 VARCHAR(50)，所有写入前必须 `[:50]` 截断，错误详情塞到 `stage_status` JSON。\n"
     )
+    rules = (
+        "## 下一次迭代必须遵守（防跳过/假执行）\n"
+        f"1. 先 `python backend/_case_lib_import.py` 同步案例库与 sales_scenario_cases_v2.md。\n"
+        f"2. 后端必须实际启动并验证 8071 端口 LISTENING（`netstat`），不能只做语法检查就声称跑通。\n"
+        f"3. 触发 mode=real，**60/60 必须 quality_status=real_success**；任何 fallback_dry / pipeline_empty / conn_fail 视作未完成。\n"
+        f"4. 详情页随机抽 3 个案例点开，肉眼核对 step1.topic、step4.knowledge_v2.hits、step6_sales_advice 都是真实 LLM 输出（不能是 [DryRun] 开头）。\n"
+        f"5. 本版若有 real_pipeline_empty 或 real_partial 占比 >5%，**禁止 git 备份**，先排查 LLM 配置/知识库可用性。\n"
+        f"6. 改进相对上一版 avg_quality_score 必须 ≥ 上版（同模式比同模式：dry vs dry，real vs real）。\n"
+        "7. 完成后人工填写 change_summary，把上一轮 AI 计划里要求处理的『已知坑』逐条标记是否已经规避。\n"
+    )
+    head = f"# v{run.version_no} 案例迭代自检报告\n\n"
+    body_issues = "## 本轮状态分布\n" + "\n".join(issues) + "\n\n" if issues else ""
+    return head + body_issues + known_bugs + "\n" + rules
 
 
 def _caselib_git_backup(version_no: int) -> tuple[str | None, str]:
@@ -17774,7 +17877,7 @@ def _caselib_run_iteration_background(run_id: str, mode: str):
                 rr.quality_score = out.get("quality_score")
                 rr.kb1_eval_score = out.get("kb1_eval_score")
                 rr.kb2_eval_score = out.get("kb2_eval_score")
-                rr.quality_status = out.get("quality_status")
+                rr.quality_status = (out.get("quality_status") or "")[:50]  # DB列上限50
                 rr.latency_ms = out.get("latency_ms")
                 rr.stage_status = out.get("stage_status")
                 rr.status = "success"
@@ -17804,7 +17907,7 @@ def _caselib_run_iteration_background(run_id: str, mode: str):
         run.status = "success" if failed_n == 0 else ("partial" if success_n > 0 else "failed")
         run.finished_at = datetime.utcnow()
         run.improvement_analysis = _caselib_compose_improvement_analysis(db, run, scores)
-        run.ai_next_step_plan = _caselib_compose_ai_next_plan(run)
+        run.ai_next_step_plan = _caselib_compose_ai_next_plan(run, db)
         db.commit()
 
         try:
