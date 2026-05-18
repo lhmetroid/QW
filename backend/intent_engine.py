@@ -833,6 +833,7 @@ class IntentEngine:
             "example": {"knowledge_type": "faq", "chunk_type": "example"},
             "script": {"knowledge_type": "faq", "chunk_type": "template"},
             "email_template": {"knowledge_type": "faq", "chunk_type": "template"},
+            "wecom": {"knowledge_type": "faq", "chunk_type": "template"},
             "definition": {"knowledge_type": "faq", "chunk_type": "definition"},
         }.get(class_code or "")
 
@@ -952,6 +953,8 @@ class IntentEngine:
             ("language_pair", chunk.language_pair),
             ("service_scope", chunk.service_scope),
             ("customer_tier", chunk.customer_tier),
+            ("business_stage", getattr(chunk, "business_stage", None)),
+            ("business_scenario_code", getattr(chunk, "business_scenario_code", None)),
         ]
         matched = 0
         total = 0
@@ -986,12 +989,16 @@ class IntentEngine:
             desired_classes.extend(["pricing_constraint"])
             desired_types.append("pricing")
             reasons.append("pricing_intent")
-        if any(word in query for word in ["话术", "邮件", "怎么回复"]):
+        if any(word in query for word in ["企微", "微信", "私聊", "群聊", "短回复"]):
+            desired_classes.append("wecom")
+            desired_types.append("faq")
+            reasons.append("wecom_intent")
+        elif any(word in query for word in ["话术", "邮件", "怎么回复"]):
             desired_classes.append("email_template")
             desired_types.append("faq")
             reasons.append("template_intent")
         if any(word in query for word in ["未回复", "没回", "跟进", "二次跟进", "再联系", "轻一点"]):
-            desired_classes.extend(["email_template", "process", "faq"])
+            desired_classes.extend(["wecom", "email_template", "process", "faq"])
             desired_types.extend(["faq", "process"])
             reasons.append("followup_intent")
 
@@ -1134,6 +1141,8 @@ class IntentEngine:
             "service_scope": chunk.service_scope,
             "region": chunk.region,
             "customer_tier": chunk.customer_tier,
+            "business_stage": getattr(chunk, "business_stage", None),
+            "business_scenario_code": getattr(chunk, "business_scenario_code", None),
             "library_type": chunk.library_type,
             "allowed_for_generation": chunk.allowed_for_generation,
             "usable_for_reply": chunk.usable_for_reply,
@@ -1287,6 +1296,8 @@ class IntentEngine:
             "service_scope": features.get("service_scope"),
             "service_scope_allowlist": features.get("service_scope_allowlist"),
             "customer_tier": features.get("customer_tier"),
+            "business_stage": features.get("business_stage"),
+            "business_scenario_code": features.get("business_scenario_code"),
             "effective_time": "now",
             "candidate_limit": settings.KB_CANDIDATE_LIMIT,
             "keyword_prefilter_enabled": settings.KB_KEYWORD_PREFILTER_ENABLED,
@@ -1588,6 +1599,8 @@ class IntentEngine:
                     "service_scope": chunk.service_scope,
                     "region": chunk.region,
                     "customer_tier": chunk.customer_tier,
+                    "business_stage": getattr(chunk, "business_stage", None),
+                    "business_scenario_code": getattr(chunk, "business_scenario_code", None),
                     "embedding_model": chunk.embedding_model,
                     "embedding_dim": chunk.embedding_dim,
                     "pricing_rules": pricing_rules,
@@ -1852,7 +1865,7 @@ class IntentEngine:
         stage_signals = (thread_fact or {}).get("stage_signals") or {}
         if stage_signals.get("followup_after_no_reply") or stage_signals.get("awaiting_customer_reply"):
             features["followup_strategy"] = "awaiting_customer_reply"
-            features["knowledge_class"] = ["email_template", "process", "faq"]
+            features["knowledge_class"] = ["wecom", "email_template", "process", "faq"]
             if features.get("service_scope") == "general":
                 features.pop("service_scope", None)
             features["service_scope_allowlist"] = ["general", "contact_discovery", "contact_follow_up", "sales_outreach"]
@@ -1946,6 +1959,8 @@ class IntentEngine:
                     "score": hit.get("score"),
                     "business_line": hit.get("business_line"),
                     "service_scope": hit.get("service_scope"),
+                    "business_stage": hit.get("business_stage"),
+                    "business_scenario_code": hit.get("business_scenario_code"),
                     "snippet": sanitize_text((hit.get("content") or "")[:160]),
                 })
                 seen.add(chunk_ref_id)

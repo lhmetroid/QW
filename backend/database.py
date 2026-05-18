@@ -125,6 +125,8 @@ class KnowledgeChunk(Base):
     service_scope = Column(String(80), nullable=True)
     region = Column(String(80), nullable=True)
     customer_tier = Column(String(80), nullable=True)
+    business_stage = Column(String(80), nullable=True)
+    business_scenario_code = Column(String(80), nullable=True)
     structured_tags = Column(JSON, nullable=True)
     library_type = Column(String(20), nullable=False, default="reference")
     allowed_for_generation = Column(Boolean, nullable=False, default=False)
@@ -149,6 +151,7 @@ class KnowledgeChunk(Base):
     __table_args__ = (
         Index("idx_kc_status_business_type", "status", "business_line", "knowledge_type"),
         Index("idx_kc_scope", "language_pair", "service_scope", "customer_tier"),
+        Index("idx_kc_business_scenario", "business_stage", "business_scenario_code"),
         Index("idx_kc_document", "document_id"),
     )
 
@@ -592,6 +595,120 @@ class KnowledgeVersionSnapshot(Base):
         Index("idx_kvs_doc_version", "document_id", "version_no"),
         Index("idx_kvs_created_at", "created_at"),
     )
+
+class CaseLibraryCase(Base):
+    """经典案例库：12个场景 x 每场景质量分前5 = 60个案例（独立表，与正式数据不交叉）。"""
+    __tablename__ = "case_library_case"
+
+    case_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    scenario_code = Column(String(10), nullable=False)        # S01-S12
+    scenario_name = Column(String(80), nullable=False)        # 价格竞争/比价 等
+    scenario_rank = Column(Integer, nullable=False)           # 1..5（场景内按质量分排名）
+    case_title = Column(String(255), nullable=True)           # 案例标题
+    group_key = Column(String(120), nullable=False)
+    session_date = Column(DateTime, nullable=False)           # 会话日期
+    batch_id = Column(String(120), nullable=True)
+    slice_ids = Column(JSON, nullable=True)
+    row_start = Column(Integer, nullable=True)
+    row_end = Column(Integer, nullable=True)
+    quality_score_md = Column(Numeric(6, 2), nullable=True)   # 来自 v2.md 的"质量分（最高）"
+    core_dialog = Column(JSON, nullable=False)                # 核心对话 [{role, time, content, row_index}]
+    context_messages = Column(JSON, nullable=True)            # 核心对话之前15条聊天背景
+    md_source_path = Column(String(255), nullable=True)       # 来源 markdown 文件名
+    md_section_anchor = Column(String(80), nullable=True)     # 例: S01-03
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("scenario_code", "scenario_rank", name="uq_case_library_scenario_rank"),
+        Index("idx_clc_scenario", "scenario_code", "scenario_rank"),
+    )
+
+
+class CaseIterationRun(Base):
+    """案例迭代运行记录：每点击/触发一次跑60个案例为一行。"""
+    __tablename__ = "case_iteration_run"
+
+    run_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    version_no = Column(Integer, nullable=False)                # 自增版本号(每次+1)
+    git_commit_sha = Column(String(64), nullable=True)
+    git_branch = Column(String(120), nullable=True)
+    git_short_sha = Column(String(20), nullable=True)
+    git_dirty = Column(Boolean, nullable=False, default=False)  # 是否有未提交改动
+    changed_paths = Column(JSON, nullable=True)                 # 本次相对上一版改了哪些文件
+    change_summary = Column(Text, nullable=True)                # 本次修改说明
+    pipeline_config = Column(JSON, nullable=True)               # 本次跑的脚本/Prompt/参数快照
+    status = Column(String(20), nullable=False, default="queued")  # queued/running/success/partial/failed
+    total_cases = Column(Integer, nullable=False, default=0)
+    completed_cases = Column(Integer, nullable=False, default=0)
+    success_cases = Column(Integer, nullable=False, default=0)
+    failed_cases = Column(Integer, nullable=False, default=0)
+    avg_quality_score = Column(Numeric(6, 2), nullable=True)
+    min_quality_score = Column(Numeric(6, 2), nullable=True)
+    max_quality_score = Column(Numeric(6, 2), nullable=True)
+    avg_latency_ms = Column(Integer, nullable=True)
+    improvement_analysis = Column(Text, nullable=True)          # 本次得分分析
+    ai_next_step_plan = Column(Text, nullable=True)             # AI自我测试迭代步骤及要求（避免跳过/假执行）
+    backup_commit_sha = Column(String(64), nullable=True)       # 完成后自动提交的commit SHA
+    backup_status = Column(String(30), nullable=True)
+    triggered_by = Column(String(120), nullable=True)
+    triggered_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_cir_triggered_at", "triggered_at"),
+        Index("idx_cir_version_no", "version_no"),
+        Index("idx_cir_status", "status", "triggered_at"),
+    )
+
+
+class CaseIterationResult(Base):
+    """案例迭代逐案例结果：1 run x 60 cases = 60 行；记录 7 步链路每步快照。"""
+    __tablename__ = "case_iteration_result"
+
+    result_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    run_id = Column(UUID(as_uuid=False), ForeignKey("case_iteration_run.run_id"), nullable=False)
+    case_id = Column(UUID(as_uuid=False), ForeignKey("case_library_case.case_id"), nullable=False)
+    scenario_code = Column(String(10), nullable=False)
+    scenario_rank = Column(Integer, nullable=False)
+    # 7 步骤结果快照
+    step1_summary = Column(JSON, nullable=True)         # topic/core_demand/key_facts/todo/risks/status
+    step2_crm_info = Column(JSON, nullable=True)
+    step3_thread_business_fact = Column(JSON, nullable=True)
+    step4_knowledge = Column(JSON, nullable=True)       # knowledge_v2/external/log_id
+    step5_llm1_compare = Column(JSON, nullable=True)
+    step6_sales_advice = Column(Text, nullable=True)
+    step6_compare_advice = Column(Text, nullable=True)
+    step7_reply_styles = Column(JSON, nullable=True)    # reply_style_results_v2
+    step7_reply_scores = Column(JSON, nullable=True)
+    # 关联现有快照便于追溯
+    snapshot_id = Column(String(120), nullable=True)
+    trigger_record_id = Column(String(120), nullable=True)
+    # 评分
+    quality_score = Column(Numeric(6, 2), nullable=True)
+    kb1_eval_score = Column(Numeric(6, 2), nullable=True)
+    kb2_eval_score = Column(Numeric(6, 2), nullable=True)
+    quality_status = Column(String(50), nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    stage_status = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default="queued")  # queued/running/success/failed
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "case_id", name="uq_case_iter_result_run_case"),
+        Index("idx_cir_run_scenario", "run_id", "scenario_code"),
+        Index("idx_cir_quality", "run_id", "quality_score"),
+    )
+
 
 class JobTask(Base):
     """异步任务表：承接回归、导入和抽取等耗时任务。"""

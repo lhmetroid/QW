@@ -152,7 +152,7 @@
                 <div class="text-xs text-slate-500 mt-1">左侧为企业微信实时意图分析，右侧为知识库导入、审核、发布和检索治理。</div>
             </div>
             <div class="flex flex-wrap items-center justify-end gap-3">
-                <nav class="grid grid-cols-3 gap-3 min-w-[640px]">
+                <nav class="grid grid-cols-4 gap-3 min-w-[820px]">
                     <button id="main-tab-wecom" onclick="switchMainApp('wecom')" title="进入企业微信实时智能页面，用于查看真实会话、提取销售意图、生成建议话术。" aria-label="企微实时智能：进入真实会话分析页面" class="rounded-2xl border px-5 py-3 text-left transition bg-blue-600 text-white border-blue-600 shadow-sm">
                         <div class="text-base font-bold">企微实时智能</div>
                         <div class="text-xs opacity-85 mt-1">会话同步、意图识别、客户画像、销售建议</div>
@@ -164,6 +164,10 @@
                     <button id="main-tab-kb" onclick="switchMainApp('kb')" title="进入知识库管理页面，用于导入、查看、审核、发布、检索和质量治理。" aria-label="知识库管理：进入知识库管理页面" class="rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300">
                         <div class="text-base font-bold">知识库管理</div>
                         <div class="text-xs text-slate-500 mt-1">导入、查看、审核、发布、检索、质量治理</div>
+                    </button>
+                    <button id="main-tab-caselib" onclick="switchMainApp('caselib')" title="进入经典案例迭代优化页面：12场景x5案例=60案例的批量7步链路评测、版本回滚、AI自检计划。" aria-label="经典案例迭代优化：批量跑7步并迭代提升" class="rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300">
+                        <div class="text-base font-bold">经典案例迭代优化</div>
+                        <div class="text-xs text-slate-500 mt-1">60典型案例批量跑7步、版本号、平均分、AI下一步</div>
                     </button>
                 </nav>
                 <div class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -335,6 +339,75 @@
         <div class="flex-1 overflow-hidden">
             <div id="analytics-table-wrap" class="h-full overflow-auto px-6 py-4">
                 <div class="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">加载统计中...</div>
+            </div>
+        </div>
+    </main>
+
+    <main id="app-caselib" class="hidden flex-1 flex flex-col bg-slate-50 overflow-hidden">
+        <div class="shrink-0 border-b bg-white">
+            <div class="px-6 pt-5 pb-3 flex flex-wrap items-end justify-between gap-4">
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900">经典案例迭代优化</h1>
+                    <p class="text-xs text-slate-500 mt-1">12场景 × 每场景5个最佳案例 = 60 个核心案例，批量跑 7 步链路，记录版本号、平均分、AI 下一步计划。</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">返回企微实时智能</button>
+                    <button id="caselib-reimport-btn" onclick="caselibReimport()" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">重导案例库</button>
+                    <button id="caselib-refresh-btn" onclick="loadCaselibList(true)" class="px-4 py-2 rounded-lg bg-purple-500 text-white text-xs font-bold hover:bg-purple-600">刷新列表</button>
+                </div>
+            </div>
+            <!-- 子页签 -->
+            <div class="px-6 pb-3 flex gap-2 text-xs">
+                <button id="caselib-sub-tab-list" onclick="caselibSwitchSubTab('list')" class="px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 font-bold">① 案例分析（迭代记录）</button>
+                <button id="caselib-sub-tab-cases" onclick="caselibSwitchSubTab('cases')" class="px-3 py-1.5 rounded-lg border bg-white text-slate-700 hover:bg-slate-50">③ 案例库（60案例）</button>
+                <span class="text-[11px] text-slate-400 self-center ml-2">提示：在迭代记录里双击行或点详细，可进入"② 60案例详情"页查看 7 步结果。</span>
+            </div>
+        </div>
+
+        <!-- 子页1：迭代列表 -->
+        <div id="caselib-sub-list" class="flex-1 overflow-hidden flex flex-col">
+            <div class="shrink-0 px-6 py-3 bg-white border-b flex flex-wrap items-center gap-3">
+                <label class="text-[11px] text-slate-600 font-bold">运行模式：</label>
+                <select id="caselib-mode" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs">
+                    <option value="dry_run">dry_run（不调LLM，仅打通链路验证）</option>
+                    <option value="real">real（真实调用sidebar_assist 7步）</option>
+                </select>
+                <input id="caselib-change-summary" type="text" placeholder="本次相对上一版本修改了什么（必填）" class="flex-1 min-w-[300px] rounded-lg border border-slate-200 px-3 py-1.5 text-xs">
+                <button onclick="caselibStartIteration()" class="px-4 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700">▶ 启动新一轮迭代（跑60案例）</button>
+                <span id="caselib-start-status" class="text-[11px] text-slate-500"></span>
+            </div>
+            <div class="flex-1 overflow-auto px-6 py-4">
+                <div id="caselib-list-table" class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <div class="p-8 text-center text-sm text-slate-400">加载迭代历史中...</div>
+                </div>
+                <div id="caselib-list-analysis" class="mt-4"></div>
+            </div>
+        </div>
+
+        <!-- 子页2：单次迭代详情（60案例结果） -->
+        <div id="caselib-sub-detail" class="hidden flex-1 overflow-hidden flex flex-col">
+            <div class="shrink-0 px-6 py-3 bg-white border-b flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <button onclick="caselibSwitchSubTab('list')" class="text-[11px] text-purple-700 hover:underline">← 返回迭代列表</button>
+                    <span id="caselib-detail-title" class="ml-3 text-sm font-bold text-slate-900">迭代详情</span>
+                    <span id="caselib-detail-subtitle" class="ml-2 text-[11px] text-slate-500"></span>
+                </div>
+                <div id="caselib-detail-summary" class="text-[11px] text-slate-600"></div>
+            </div>
+            <div class="flex-1 overflow-auto px-6 py-4">
+                <div id="caselib-detail-table" class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <div class="p-8 text-center text-sm text-slate-400">加载详情中...</div>
+                </div>
+                <div id="caselib-detail-analysis" class="mt-4"></div>
+            </div>
+        </div>
+
+        <!-- 子页3：案例库（只读浏览60案例） -->
+        <div id="caselib-sub-cases" class="hidden flex-1 overflow-auto">
+            <div class="px-6 py-4">
+                <div id="caselib-cases-table" class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <div class="p-8 text-center text-sm text-slate-400">加载案例库中...</div>
+                </div>
             </div>
         </div>
     </main>
@@ -916,6 +989,7 @@
             '列表': '查看全部知识文档，可按状态、类型和服务筛选。',
             '待审核': '批量提交审核、发布或归档草稿和审核中知识。',
             '知识候选': '查看销售反馈、会话抽取和邮件抽取生成的候选知识。',
+            '原始沟通清洗': '原始数据统一入口：上传邮件文件（.eml/.msg/.zip）或浏览企微会话，清洗后路由到知识候选或企微数据。',
             '导入中心': '下载表格模板、预览表格、确认导入真实知识库草稿。',
             '批次': '按导入批次编号查看和治理每次导入结果。',
             '报价规则': '查看结构化报价规则，确认价格、单位、币种、生效范围。',
@@ -1075,13 +1149,16 @@
         }
 
         function switchMainApp(app) {
-            const normalized = app === 'kb' ? 'kb' : (app === 'analytics' ? 'analytics' : 'wecom');
+            const validApps = ['wecom', 'analytics', 'kb', 'caselib'];
+            const normalized = validApps.includes(app) ? app : 'wecom';
             document.getElementById('app-wecom')?.classList.toggle('hidden', normalized !== 'wecom');
             document.getElementById('app-analytics')?.classList.toggle('hidden', normalized !== 'analytics');
             document.getElementById('app-kb')?.classList.toggle('hidden', normalized !== 'kb');
+            document.getElementById('app-caselib')?.classList.toggle('hidden', normalized !== 'caselib');
             const wecomTab = document.getElementById('main-tab-wecom');
             const analyticsTab = document.getElementById('main-tab-analytics');
             const kbTab = document.getElementById('main-tab-kb');
+            const caselibTab = document.getElementById('main-tab-caselib');
             if (wecomTab && analyticsTab && kbTab) {
                 wecomTab.className = normalized === 'wecom'
                     ? 'rounded-2xl border px-5 py-3 text-left transition bg-blue-600 text-white border-blue-600 shadow-sm'
@@ -1093,16 +1170,428 @@
                     ? 'rounded-2xl border px-5 py-3 text-left transition bg-emerald-600 text-white border-emerald-600 shadow-sm'
                     : 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300';
             }
+            if (caselibTab) {
+                caselibTab.className = normalized === 'caselib'
+                    ? 'rounded-2xl border px-5 py-3 text-left transition bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+            }
             if (normalized === 'kb') {
                 openKnowledgeAdmin(kbState.tab || 'documents');
             } else if (normalized === 'analytics') {
                 history.replaceState(null, '', `${window.location.pathname}#analytics`);
                 loadWecomTriggerAnalytics();
+            } else if (normalized === 'caselib') {
+                history.replaceState(null, '', `${window.location.pathname}#caselib`);
+                caselibSwitchSubTab(caselibState.subTab || 'list');
             } else {
                 history.replaceState(null, '', window.location.pathname);
             }
             applyTooltips();
         }
+
+        // ============== 经典案例迭代优化 ==============
+        const caselibState = {
+            subTab: 'list',       // list / detail / cases
+            iterations: [],
+            cases: [],
+            currentRunId: null,
+            currentDetail: null,
+            pollingTimer: null,
+        };
+
+        function caselibSwitchSubTab(name) {
+            caselibState.subTab = name;
+            document.getElementById('caselib-sub-list')?.classList.toggle('hidden', name !== 'list');
+            document.getElementById('caselib-sub-detail')?.classList.toggle('hidden', name !== 'detail');
+            document.getElementById('caselib-sub-cases')?.classList.toggle('hidden', name !== 'cases');
+            const tabList = document.getElementById('caselib-sub-tab-list');
+            const tabCases = document.getElementById('caselib-sub-tab-cases');
+            if (tabList && tabCases) {
+                tabList.className = name === 'list'
+                    ? 'px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 font-bold'
+                    : 'px-3 py-1.5 rounded-lg border bg-white text-slate-700 hover:bg-slate-50';
+                tabCases.className = name === 'cases'
+                    ? 'px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 font-bold'
+                    : 'px-3 py-1.5 rounded-lg border bg-white text-slate-700 hover:bg-slate-50';
+            }
+            if (name === 'list') {
+                loadCaselibList(false);
+                if (caselibState.pollingTimer == null) {
+                    caselibState.pollingTimer = setInterval(() => {
+                        if (caselibState.subTab === 'list') loadCaselibList(false);
+                    }, 4000);
+                }
+            } else {
+                if (caselibState.pollingTimer) {
+                    clearInterval(caselibState.pollingTimer);
+                    caselibState.pollingTimer = null;
+                }
+                if (name === 'cases') loadCaselibCases();
+            }
+        }
+
+        async function loadCaselibList(force) {
+            try {
+                const res = await apiFetch(`${API_BASE}/api/case_lib/iterations?limit=100`);
+                const data = await res.json();
+                caselibState.iterations = data.iterations || [];
+                renderCaselibList(caselibState.iterations);
+            } catch (e) {
+                document.getElementById('caselib-list-table').innerHTML =
+                    `<div class="p-8 text-center text-sm text-red-500">加载失败：${(e && e.message) || e}</div>`;
+            }
+        }
+
+        function renderCaselibList(rows) {
+            const wrap = document.getElementById('caselib-list-table');
+            if (!rows.length) {
+                wrap.innerHTML = '<div class="p-8 text-center text-sm text-slate-400">还没有迭代记录。点击上方"启动新一轮迭代"开始第一次。</div>';
+                document.getElementById('caselib-list-analysis').innerHTML = '';
+                return;
+            }
+            const head = `
+                <table class="w-full text-xs">
+                    <thead class="bg-slate-50 text-slate-600">
+                        <tr>
+                            <th class="px-3 py-2 text-left">v#</th>
+                            <th class="px-3 py-2 text-left">触发时间</th>
+                            <th class="px-3 py-2 text-left">git版本</th>
+                            <th class="px-3 py-2 text-left">本次修改</th>
+                            <th class="px-3 py-2 text-left">状态</th>
+                            <th class="px-3 py-2 text-right">完成/总</th>
+                            <th class="px-3 py-2 text-right">平均分</th>
+                            <th class="px-3 py-2 text-right">min/max</th>
+                            <th class="px-3 py-2 text-right">平均耗时</th>
+                            <th class="px-3 py-2 text-left">备份SHA</th>
+                            <th class="px-3 py-2 text-center">详细</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+            const body = rows.map(r => {
+                const tt = (r.triggered_at || '').replace('T', ' ').slice(0, 19);
+                const shortSha = r.git_short_sha || (r.git_commit_sha || '').slice(0, 8) || '-';
+                const sumTxt = (r.change_summary || '').slice(0, 60);
+                const stColors = {success: 'bg-emerald-100 text-emerald-700', partial: 'bg-amber-100 text-amber-700',
+                    failed: 'bg-red-100 text-red-700', running: 'bg-blue-100 text-blue-700',
+                    queued: 'bg-slate-100 text-slate-600'};
+                const stCls = stColors[r.status] || 'bg-slate-100 text-slate-600';
+                const avg = r.avg_quality_score != null ? r.avg_quality_score.toFixed(2) : '-';
+                const mn = r.min_quality_score != null ? r.min_quality_score.toFixed(1) : '-';
+                const mx = r.max_quality_score != null ? r.max_quality_score.toFixed(1) : '-';
+                const lat = r.avg_latency_ms ? `${r.avg_latency_ms}ms` : '-';
+                const backup = r.backup_commit_sha ? r.backup_commit_sha.slice(0, 8) : (r.backup_status || '-');
+                return `<tr class="border-t hover:bg-purple-50 cursor-pointer" ondblclick="caselibOpenDetail('${r.run_id}')">
+                    <td class="px-3 py-2 font-bold text-purple-700">v${r.version_no}</td>
+                    <td class="px-3 py-2 text-slate-600">${tt}</td>
+                    <td class="px-3 py-2 font-mono text-[11px] text-slate-700">${shortSha}${r.git_dirty ? ' <span class="text-amber-600">*dirty</span>' : ''}</td>
+                    <td class="px-3 py-2 text-slate-700 max-w-[280px] truncate" title="${escapeHtml(r.change_summary || '')}">${escapeHtml(sumTxt)}</td>
+                    <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${stCls}">${r.status}</span></td>
+                    <td class="px-3 py-2 text-right">${r.completed_cases}/${r.total_cases}</td>
+                    <td class="px-3 py-2 text-right font-bold text-purple-700">${avg}</td>
+                    <td class="px-3 py-2 text-right text-[11px] text-slate-500">${mn} / ${mx}</td>
+                    <td class="px-3 py-2 text-right text-[11px] text-slate-500">${lat}</td>
+                    <td class="px-3 py-2 font-mono text-[11px] text-slate-600" title="${r.backup_status || ''}">${backup}</td>
+                    <td class="px-3 py-2 text-center"><button onclick="event.stopPropagation();caselibOpenDetail('${r.run_id}')" class="text-purple-600 hover:underline text-[11px]">详细 →</button></td>
+                </tr>`;
+            }).join('');
+            wrap.innerHTML = head + body + '</tbody></table>';
+
+            // 最近一次的改进分析 + AI 下一步计划
+            const last = rows[0];
+            if (last && (last.improvement_analysis || last.ai_next_step_plan)) {
+                document.getElementById('caselib-list-analysis').innerHTML = `
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div class="rounded-xl border border-purple-100 bg-purple-50 p-4">
+                            <div class="text-xs font-bold text-purple-800 mb-2">📊 最近一次得分分析（v${last.version_no}）</div>
+                            <pre class="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(last.improvement_analysis || '')}</pre>
+                        </div>
+                        <div class="rounded-xl border border-amber-100 bg-amber-50 p-4">
+                            <div class="text-xs font-bold text-amber-800 mb-2">🤖 下次迭代 AI 自检步骤（避免跳过/假执行）</div>
+                            <pre class="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(last.ai_next_step_plan || '')}</pre>
+                        </div>
+                    </div>`;
+            } else {
+                document.getElementById('caselib-list-analysis').innerHTML = '';
+            }
+        }
+
+        async function caselibStartIteration() {
+            const mode = document.getElementById('caselib-mode').value;
+            const summary = document.getElementById('caselib-change-summary').value.trim();
+            if (!summary) {
+                document.getElementById('caselib-start-status').innerHTML =
+                    '<span class="text-red-600">⚠ 请填写本次修改说明</span>';
+                return;
+            }
+            document.getElementById('caselib-start-status').innerHTML =
+                '<span class="text-blue-600">提交中...</span>';
+            try {
+                const res = await apiFetch(`${API_BASE}/api/case_lib/iterations/start`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({change_summary: summary, mode}),
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    document.getElementById('caselib-start-status').innerHTML =
+                        `<span class="text-emerald-600">已启动 v${data.iteration.version_no}（${mode}），后台运行中…</span>`;
+                    document.getElementById('caselib-change-summary').value = '';
+                    setTimeout(() => loadCaselibList(true), 500);
+                } else {
+                    document.getElementById('caselib-start-status').innerHTML =
+                        `<span class="text-red-600">启动失败：${JSON.stringify(data)}</span>`;
+                }
+            } catch (e) {
+                document.getElementById('caselib-start-status').innerHTML =
+                    `<span class="text-red-600">启动异常：${(e && e.message) || e}</span>`;
+            }
+        }
+
+        async function caselibReimport() {
+            const btn = document.getElementById('caselib-reimport-btn');
+            if (btn) { btn.disabled = true; btn.textContent = '重导中...'; }
+            try {
+                const res = await apiFetch(`${API_BASE}/api/case_lib/reimport`, {method: 'POST'});
+                const data = await res.json();
+                alert(`重导${data.status}\n\n${(data.stdout || '').slice(-800)}\n\n${data.stderr || ''}`);
+                if (caselibState.subTab === 'cases') loadCaselibCases();
+            } catch (e) {
+                alert('重导失败：' + ((e && e.message) || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '重导案例库'; }
+            }
+        }
+
+        async function caselibOpenDetail(runId) {
+            caselibState.currentRunId = runId;
+            caselibSwitchSubTab('detail');
+            document.getElementById('caselib-detail-table').innerHTML =
+                '<div class="p-8 text-center text-sm text-slate-400">加载中...</div>';
+            try {
+                const res = await apiFetch(`${API_BASE}/api/case_lib/iterations/${runId}`);
+                const data = await res.json();
+                caselibState.currentDetail = data;
+                renderCaselibDetail(data);
+            } catch (e) {
+                document.getElementById('caselib-detail-table').innerHTML =
+                    `<div class="p-8 text-center text-sm text-red-500">加载失败：${(e && e.message) || e}</div>`;
+            }
+        }
+
+        function renderCaselibDetail(data) {
+            const it = data.iteration;
+            const rows = data.results || [];
+            const tt = (it.triggered_at || '').replace('T', ' ').slice(0, 19);
+            document.getElementById('caselib-detail-title').textContent =
+                `v${it.version_no} 迭代详情（${rows.length} 个案例，按分数升序）`;
+            document.getElementById('caselib-detail-subtitle').textContent =
+                `git=${it.git_short_sha || '-'} ${it.git_dirty ? '(dirty)' : ''} | ${tt} | 状态=${it.status}`;
+            document.getElementById('caselib-detail-summary').innerHTML =
+                `<span class="mr-3">平均 <b class="text-purple-700">${it.avg_quality_score ?? '-'}</b></span>` +
+                `<span class="mr-3">min ${it.min_quality_score ?? '-'} / max ${it.max_quality_score ?? '-'}</span>` +
+                `<span class="mr-3">成功 ${it.success_cases} / 失败 ${it.failed_cases}</span>` +
+                `<span>备份 ${it.backup_commit_sha ? it.backup_commit_sha.slice(0,8) : (it.backup_status || '-')}</span>`;
+
+            const head = `
+                <table class="w-full text-xs">
+                    <thead class="bg-slate-50 text-slate-600 sticky top-0">
+                        <tr>
+                            <th class="px-2 py-2 text-left">场景</th>
+                            <th class="px-2 py-2 text-left">案例</th>
+                            <th class="px-2 py-2 text-right">分</th>
+                            <th class="px-2 py-2 text-right">kb1</th>
+                            <th class="px-2 py-2 text-right">kb2</th>
+                            <th class="px-2 py-2 text-left">状态</th>
+                            <th class="px-2 py-2 text-left">耗时</th>
+                            <th class="px-2 py-2 text-left">step1 topic</th>
+                            <th class="px-2 py-2 text-left">step4 知识</th>
+                            <th class="px-2 py-2 text-left">step6 销售建议</th>
+                            <th class="px-2 py-2 text-left">step7 风格分</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+            const body = rows.map(r => {
+                const c = r.case || {};
+                const sc = r.scenario_code || '-';
+                const title = `${r.scenario_rank || '?'}. ${c.case_title || ''}`;
+                const qs = r.quality_score != null ? r.quality_score.toFixed(2) : '-';
+                const k1 = r.kb1_eval_score != null ? r.kb1_eval_score.toFixed(1) : '-';
+                const k2 = r.kb2_eval_score != null ? r.kb2_eval_score.toFixed(1) : '-';
+                const stCls = r.status === 'success' ? 'text-emerald-700' :
+                              (r.status === 'failed' ? 'text-red-600' : 'text-slate-500');
+                const topic = (r.step1_summary && (r.step1_summary.topic || r.step1_summary.core_demand)) || '';
+                const kb = r.step4_knowledge && r.step4_knowledge.knowledge_status || '';
+                const advice = (r.step6_sales_advice || '').slice(0, 80);
+                const styleScores = r.step7_reply_scores
+                    ? (typeof r.step7_reply_scores === 'object'
+                        ? Object.entries(r.step7_reply_scores).map(([k,v]) => `${k}:${v}`).join(' ')
+                        : String(r.step7_reply_scores).slice(0, 60))
+                    : '';
+                return `<tr class="border-t hover:bg-purple-50 cursor-pointer" onclick="caselibOpenCaseModal('${r.case_id}', '${r.result_id}')">
+                    <td class="px-2 py-2 font-bold text-purple-700">${sc}</td>
+                    <td class="px-2 py-2 max-w-[180px] truncate" title="${escapeHtml(c.case_title || '')}">${escapeHtml(title)}</td>
+                    <td class="px-2 py-2 text-right font-bold text-purple-700">${qs}</td>
+                    <td class="px-2 py-2 text-right text-slate-600">${k1}</td>
+                    <td class="px-2 py-2 text-right text-slate-600">${k2}</td>
+                    <td class="px-2 py-2 ${stCls}">${r.status}</td>
+                    <td class="px-2 py-2 text-slate-500">${r.latency_ms || '-'}ms</td>
+                    <td class="px-2 py-2 max-w-[200px] truncate text-slate-700" title="${escapeHtml(topic)}">${escapeHtml(topic)}</td>
+                    <td class="px-2 py-2 text-slate-500">${escapeHtml(kb)}</td>
+                    <td class="px-2 py-2 max-w-[260px] truncate text-slate-700" title="${escapeHtml(r.step6_sales_advice || '')}">${escapeHtml(advice)}</td>
+                    <td class="px-2 py-2 text-slate-600 text-[10px]">${escapeHtml(styleScores)}</td>
+                </tr>`;
+            }).join('');
+            document.getElementById('caselib-detail-table').innerHTML = head + body + '</tbody></table>';
+            document.getElementById('caselib-detail-analysis').innerHTML = `
+                <div class="rounded-xl border border-purple-100 bg-purple-50 p-4 mt-3">
+                    <div class="text-xs font-bold text-purple-800 mb-2">📊 改进分析</div>
+                    <pre class="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(it.improvement_analysis || '')}</pre>
+                </div>
+                <div class="rounded-xl border border-amber-100 bg-amber-50 p-4 mt-3">
+                    <div class="text-xs font-bold text-amber-800 mb-2">🤖 下次迭代 AI 自检步骤</div>
+                    <pre class="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(it.ai_next_step_plan || '')}</pre>
+                </div>
+            `;
+        }
+
+        function caselibOpenCaseModal(caseId, resultId) {
+            const detail = caselibState.currentDetail;
+            if (!detail) return;
+            const r = (detail.results || []).find(x => x.result_id === resultId);
+            if (!r) return;
+            const c = r.case || {};
+            const ctxList = (c.context_messages || []).map(m =>
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}">[${m.role}]</b> <span class="text-slate-400">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
+            ).join('');
+            const coreList = (c.core_dialog || []).map(m =>
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}">[${m.role}]</b> <span class="text-slate-400">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
+            ).join('');
+            const stepBlock = (label, val) => `
+                <div class="rounded-lg border bg-white p-3 mb-2">
+                    <div class="text-[10px] font-bold text-slate-500 mb-1">${label}</div>
+                    <pre class="text-[11px] text-slate-700 whitespace-pre-wrap leading-snug max-h-[200px] overflow-auto">${escapeHtml(typeof val === 'string' ? val : JSON.stringify(val, null, 2))}</pre>
+                </div>`;
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                    <div class="px-5 py-3 border-b flex justify-between items-center bg-purple-50">
+                        <div>
+                            <div class="font-bold text-slate-900">${r.scenario_code}-${r.scenario_rank} ${escapeHtml(c.case_title || '')}</div>
+                            <div class="text-[11px] text-slate-500">${c.group_key} @ ${c.session_date} | 质量分=${r.quality_score ?? '-'} | 状态=${r.status}</div>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-slate-500 hover:text-slate-800 text-xl">×</button>
+                    </div>
+                    <div class="flex-1 overflow-auto p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div>
+                            <div class="text-xs font-bold text-slate-700 mb-2">背景对话（核心对话之前${(c.context_messages||[]).length}条）</div>
+                            <div class="rounded border bg-slate-50 p-2 max-h-[200px] overflow-auto mb-3">${ctxList || '<span class="text-slate-400 text-xs">无</span>'}</div>
+                            <div class="text-xs font-bold text-slate-700 mb-2">核心对话（${(c.core_dialog||[]).length}条）</div>
+                            <div class="rounded border bg-emerald-50 p-2 max-h-[260px] overflow-auto">${coreList || '<span class="text-slate-400 text-xs">无</span>'}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs font-bold text-slate-700 mb-2">企微7步链路结果</div>
+                            ${stepBlock('Step1 摘要', r.step1_summary)}
+                            ${stepBlock('Step2 CRM', r.step2_crm_info)}
+                            ${stepBlock('Step3 线程业务事实', r.step3_thread_business_fact)}
+                            ${stepBlock('Step4 知识检索', r.step4_knowledge)}
+                            ${stepBlock('Step5 LLM1对比', r.step5_llm1_compare)}
+                            ${stepBlock('Step6 销售建议', r.step6_sales_advice)}
+                            ${stepBlock('Step6 对比建议', r.step6_compare_advice)}
+                            ${stepBlock('Step7 风格候选', r.step7_reply_styles)}
+                            ${stepBlock('Step7 候选评分', r.step7_reply_scores)}
+                        </div>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+        }
+
+        async function loadCaselibCases() {
+            try {
+                const res = await apiFetch(`${API_BASE}/api/case_lib/cases`);
+                const data = await res.json();
+                caselibState.cases = data.cases || [];
+                renderCaselibCases(caselibState.cases);
+            } catch (e) {
+                document.getElementById('caselib-cases-table').innerHTML =
+                    `<div class="p-8 text-center text-sm text-red-500">加载失败：${(e && e.message) || e}</div>`;
+            }
+        }
+
+        function renderCaselibCases(rows) {
+            const wrap = document.getElementById('caselib-cases-table');
+            if (!rows.length) {
+                wrap.innerHTML = '<div class="p-8 text-center text-sm text-slate-400">案例库为空。点击右上"重导案例库"。</div>';
+                return;
+            }
+            const head = `
+                <table class="w-full text-xs">
+                    <thead class="bg-slate-50 text-slate-600 sticky top-0">
+                        <tr>
+                            <th class="px-3 py-2 text-left">场景</th>
+                            <th class="px-3 py-2 text-left">排名</th>
+                            <th class="px-3 py-2 text-left">案例标题</th>
+                            <th class="px-3 py-2 text-left">group_key</th>
+                            <th class="px-3 py-2 text-left">会话日期</th>
+                            <th class="px-3 py-2 text-right">质量分</th>
+                            <th class="px-3 py-2 text-right">核心对话</th>
+                            <th class="px-3 py-2 text-right">背景上文</th>
+                            <th class="px-3 py-2 text-left">md锚</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+            const body = rows.map(c => `
+                <tr class="border-t hover:bg-purple-50 cursor-pointer" onclick="caselibPreviewCase('${c.case_id}')">
+                    <td class="px-3 py-2 font-bold text-purple-700">${c.scenario_code}</td>
+                    <td class="px-3 py-2">${c.scenario_rank}</td>
+                    <td class="px-3 py-2 max-w-[260px] truncate" title="${escapeHtml(c.case_title || '')}">${escapeHtml(c.case_title || '')}</td>
+                    <td class="px-3 py-2 font-mono text-[11px] text-slate-600">${c.group_key}</td>
+                    <td class="px-3 py-2 text-slate-600">${c.session_date || '-'}</td>
+                    <td class="px-3 py-2 text-right">${c.quality_score_md ?? '-'}</td>
+                    <td class="px-3 py-2 text-right">${(c.core_dialog || []).length}</td>
+                    <td class="px-3 py-2 text-right">${(c.context_messages || []).length}</td>
+                    <td class="px-3 py-2 font-mono text-[11px] text-slate-500">${c.md_section_anchor || '-'}</td>
+                </tr>`).join('');
+            wrap.innerHTML = head + body + '</tbody></table>';
+        }
+
+        function caselibPreviewCase(caseId) {
+            const c = (caselibState.cases || []).find(x => x.case_id === caseId);
+            if (!c) return;
+            const ctxList = (c.context_messages || []).map(m =>
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}">[${m.role}]</b> <span class="text-slate-400">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
+            ).join('');
+            const coreList = (c.core_dialog || []).map(m =>
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}">[${m.role}]</b> <span class="text-slate-400">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
+            ).join('');
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                    <div class="px-5 py-3 border-b flex justify-between items-center bg-purple-50">
+                        <div>
+                            <div class="font-bold text-slate-900">${c.scenario_code}-${c.scenario_rank} ${escapeHtml(c.case_title || '')}</div>
+                            <div class="text-[11px] text-slate-500">${c.group_key} @ ${c.session_date} | 质量分=${c.quality_score_md ?? '-'} | ${c.md_section_anchor || ''}</div>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-slate-500 hover:text-slate-800 text-xl">×</button>
+                    </div>
+                    <div class="flex-1 overflow-auto p-4">
+                        <div class="text-xs font-bold text-slate-700 mb-2">背景对话（${(c.context_messages||[]).length}条）</div>
+                        <div class="rounded border bg-slate-50 p-3 mb-3">${ctxList || '<span class="text-slate-400 text-xs">无</span>'}</div>
+                        <div class="text-xs font-bold text-slate-700 mb-2">核心对话（${(c.core_dialog||[]).length}条）</div>
+                        <div class="rounded border bg-emerald-50 p-3">${coreList || '<span class="text-slate-400 text-xs">无</span>'}</div>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+        }
+
+        function escapeHtml(s) {
+            if (s == null) return '';
+            return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+        // ============== /经典案例迭代优化 ==============
 
         function applyTooltips(root = document) {
             root.querySelectorAll('button, th, td > b, div > b, label > span:first-child, h1, h2, h3, .font-bold').forEach(el => {
@@ -4668,14 +5157,19 @@
             if (tab) kbState.tab = tab;
             document.getElementById('app-wecom')?.classList.add('hidden');
             document.getElementById('app-analytics')?.classList.add('hidden');
+            document.getElementById('app-caselib')?.classList.add('hidden');
             document.getElementById('app-kb')?.classList.remove('hidden');
             const wecomTab = document.getElementById('main-tab-wecom');
             const analyticsTab = document.getElementById('main-tab-analytics');
             const kbTab = document.getElementById('main-tab-kb');
+            const caselibTab = document.getElementById('main-tab-caselib');
             if (wecomTab && analyticsTab && kbTab) {
                 wecomTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-blue-50 hover:border-blue-300';
                 analyticsTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300';
                 kbTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-emerald-600 text-white border-emerald-600 shadow-sm';
+            }
+            if (caselibTab) {
+                caselibTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
             }
             await loadKbDictionaries();
             renderKbTabs();
@@ -4694,6 +5188,7 @@
                 ['chunks', '切片'],
                 ['review', '待审核'],
                 ['candidates', '知识候选'],
+                ['raw_comm', '原始沟通清洗'],
                 ['import', '导入中心'],
                 ['wecom_raw', '企微数据'],
                 ['batches', '批次'],
@@ -4722,6 +5217,7 @@
             if (tab === 'chunks') return loadKbChunks();
             if (tab === 'review') return loadKbReview();
             if (tab === 'candidates') return loadKbCandidates();
+            if (tab === 'raw_comm') return loadRawComm();
             if (tab === 'import') return renderKbImport();
             if (tab === 'wecom_raw') return loadKbWecomRaw();
             if (tab === 'batches') return loadKbBatches();
@@ -4929,7 +5425,7 @@
                             <tr><th class="text-left p-2">标题</th><th class="text-left p-2">知识分类</th><th class="text-left p-2">服务</th><th class="text-left p-2">新增时间</th><th class="text-left p-2">状态</th><th class="text-left p-2">风险</th><th class="text-left p-2">操作</th></tr>
                         </thead>
                         <tbody>${docs.map(doc => `
-                            <tr class="border-t hover:bg-slate-50">
+                            <tr class="border-t hover:bg-slate-50 cursor-pointer" onclick="showKbDocument('${doc.document_id}')">
                                 <td class="p-2 font-medium text-slate-700">${safeText(doc.title)}</td>
                                 <td class="p-2">${safeText(doc.knowledge_class_label || doc.knowledge_type_label)}</td>
                                 <td class="p-2">${safeText(doc.business_line_label)}</td>
@@ -4937,7 +5433,7 @@
                                 <td class="p-2">${fmtStatus(doc)}</td>
                                 <td class="p-2">${safeText(doc.risk_level_label)}</td>
                                 <td class="p-2">
-                                    <button onclick="showKbDocument('${doc.document_id}')" class="text-emerald-700 font-bold">详情</button>
+                                    <button onclick="event.stopPropagation();showKbDocument('${doc.document_id}')" class="text-emerald-700 font-bold">详情</button>
                                 </td>
                             </tr>`).join('')}</tbody>
                     </table>
@@ -5012,7 +5508,7 @@
                             <tr><th class="text-left p-2">切片标题</th><th class="text-left p-2">文档 ID</th><th class="text-left p-2">知识分类</th><th class="text-left p-2">服务</th><th class="text-left p-2">新增时间</th><th class="text-left p-2">状态</th><th class="text-left p-2">操作</th></tr>
                         </thead>
                         <tbody>${chunks.map(chunk => `
-                            <tr class="border-t hover:bg-slate-50">
+                            <tr class="border-t hover:bg-slate-50 cursor-pointer" onclick="showQualityChunk('${chunk.chunk_id}')">
                                 <td class="p-2 font-medium text-slate-700">
                                     <div>${safeText(chunk.title)}</div>
                                     <div class="mt-1 text-[10px] text-slate-400" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${safeText(chunk.content || '')}</div>
@@ -5023,7 +5519,7 @@
                                 <td class="p-2 text-slate-500">${safeText(formatKbCreatedAt(chunk.created_at))}</td>
                                 <td class="p-2">${safeText(chunk.status_label || chunk.status)}</td>
                                 <td class="p-2">
-                                    <button onclick="showQualityChunk('${chunk.chunk_id}')" class="text-emerald-700 font-bold">详情</button>
+                                    <button onclick="event.stopPropagation();showQualityChunk('${chunk.chunk_id}')" class="text-emerald-700 font-bold">详情</button>
                                 </td>
                             </tr>`).join('')}</tbody>
                     </table>
@@ -5648,7 +6144,7 @@
                 <div class="bg-white border rounded overflow-hidden">
                     <table class="w-full text-xs">
                         <thead class="bg-slate-100"><tr><th class="p-2"><input type="checkbox" onchange="document.querySelectorAll('.kb-select-doc').forEach(x=>x.checked=this.checked); updateReviewBulkActions();"></th><th class="text-left p-2">标题</th><th class="text-left p-2">新增时间</th><th class="text-left p-2">状态</th><th class="text-left p-2">风险</th><th class="text-left p-2">操作</th></tr></thead>
-                        <tbody>${docs.map(doc => `<tr class="border-t"><td class="p-2"><input class="kb-select-doc" type="checkbox" value="${doc.document_id}" onchange="updateReviewBulkActions()"></td><td class="p-2 font-medium">${safeText(doc.title)}</td><td class="p-2 text-slate-500">${safeText(formatKbCreatedAt(doc.created_at))}</td><td class="p-2">${fmtStatus(doc)}</td><td class="p-2">${safeText(doc.risk_level_label)}</td><td class="p-2"><button onclick="showKbDocument('${doc.document_id}')" class="text-emerald-700 font-bold mr-3">详情</button><button onclick="editKbDocument('${doc.document_id}')" class="text-indigo-700 font-bold">控制项</button></td></tr>`).join('')}</tbody>
+                        <tbody>${docs.map(doc => `<tr class="border-t hover:bg-slate-50 cursor-pointer" onclick="showKbDocument('${doc.document_id}')"><td class="p-2"><input class="kb-select-doc" type="checkbox" value="${doc.document_id}" onclick="event.stopPropagation()" onchange="updateReviewBulkActions()"></td><td class="p-2 font-medium">${safeText(doc.title)}</td><td class="p-2 text-slate-500">${safeText(formatKbCreatedAt(doc.created_at))}</td><td class="p-2">${fmtStatus(doc)}</td><td class="p-2">${safeText(doc.risk_level_label)}</td><td class="p-2"><button onclick="event.stopPropagation();showKbDocument('${doc.document_id}')" class="text-emerald-700 font-bold mr-3">详情</button><button onclick="event.stopPropagation();editKbDocument('${doc.document_id}')" class="text-indigo-700 font-bold">控制项</button></td></tr>`).join('')}</tbody>
                     </table>
                     ${renderKbPagination('review')}
                 </div>` : '<div class="text-sm text-slate-400 p-8 text-center bg-white rounded border">暂无待审核知识</div>';
@@ -5826,7 +6322,7 @@
                             <tr><th class="text-left p-2 w-10">选</th><th class="text-left p-2">标题</th><th class="text-left p-2">来源</th><th class="text-left p-2">类型</th><th class="text-left p-2">服务</th><th class="text-left p-2">新增时间</th><th class="text-left p-2">状态</th><th class="text-left p-2">操作</th></tr>
                         </thead>
                         <tbody>${items.map(item => `
-                            <tr class="border-t hover:bg-slate-50">
+                            <tr class="border-t hover:bg-slate-50 cursor-pointer" onclick="showKbCandidate('${item.candidate_id}')">
                                 <td class="p-2 align-top">
                                     <input
                                         class="kb-select-candidate"
@@ -5835,6 +6331,7 @@
                                         data-candidate-id="${item.candidate_id}"
                                         ${item.status === 'candidate' ? '' : 'disabled'}
                                         ${getSelectedCandidateIds().includes(item.candidate_id) ? 'checked' : ''}
+                                        onclick="event.stopPropagation()"
                                         onchange="toggleKbCandidateSelection('${item.candidate_id}', this.checked)"
                                     >
                                 </td>
@@ -5844,7 +6341,7 @@
                                 <td class="p-2">${safeText(item.business_line_label)}</td>
                                 <td class="p-2 text-slate-500">${safeText(formatKbCreatedAt(item.created_at))}</td>
                                 <td class="p-2"><span class="text-[10px] px-2 py-0.5 rounded border bg-slate-50 text-slate-700">${safeText(item.status_label || item.status)}</span></td>
-                                <td class="p-2"><button onclick="showKbCandidate('${item.candidate_id}')" class="text-emerald-700 font-bold">详情</button></td>
+                                <td class="p-2"><button onclick="event.stopPropagation();showKbCandidate('${item.candidate_id}')" class="text-emerald-700 font-bold">详情</button></td>
                             </tr>`).join('')}
                         </tbody>
                     </table>
@@ -6147,6 +6644,1032 @@
                 </table>` : '<div class="text-sm text-slate-400 text-center p-8">没有可导入行</div>';
         }
 
+        // ─── 原始沟通清洗 ────────────────────────────────────────────────────────────
+
+        const _RC_BASE = () => window.location.origin;
+
+        const rcState = {
+            mailTab: 'mail',      // 'mail' | 'wecom'
+            showAccounts: false,
+            mailBatchId: null,
+            mailOffset: 0,
+            mailLimit: 30,
+            mailKeyword: '',
+            mailCleanStatus: '',
+            wecomOffset: 0,
+            wecomLimit: 30,
+            wecomRoomId: '',
+            wecomDateFrom: '',
+            wecomDateTo: '',
+            selectedMails: new Set(),
+        };
+
+        async function loadRawComm() {
+            await _rcRenderShell();
+        }
+
+        async function _rcRenderShell() {
+            const body = document.getElementById('kb-body');
+            body.innerHTML = `
+                <div class="h-full flex flex-col overflow-hidden">
+                    <div class="flex-none px-4 pt-3 pb-2 bg-white border-b flex flex-wrap gap-2 items-center">
+                        <button onclick="rcSwitchTab('mail')" id="rc-tab-mail" class="px-3 py-1 rounded border text-xs ${rcState.mailTab==='mail'?'bg-blue-600 text-white border-blue-600':'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'}">邮件原始数据</button>
+                        <button onclick="rcSwitchTab('wecom')" id="rc-tab-wecom" class="px-3 py-1 rounded border text-xs ${rcState.mailTab==='wecom'?'bg-blue-600 text-white border-blue-600':'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'}">企微会话原始数据</button>
+                        ${rcState.mailTab==='mail' ? `<button onclick="rcToggleAccounts()" class="ml-2 px-3 py-1 rounded border text-xs ${rcState.showAccounts?'bg-slate-700 text-white border-slate-700':'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'}">邮箱账号配置</button>` : ''}
+                    </div>
+                    <div id="rc-content" class="flex-1 overflow-y-auto p-4 bg-slate-50"></div>
+                </div>`;
+            if (rcState.mailTab === 'mail') {
+                if (rcState.showAccounts) {
+                    await _rcRenderAccountPanel();
+                } else {
+                    await _rcLoadMailTab();
+                }
+            } else {
+                await _rcLoadWecomTab();
+            }
+        }
+
+        function rcSwitchTab(tab) {
+            rcState.mailTab = tab;
+            rcState.showAccounts = false;
+            rcState.selectedMails.clear();
+            _rcRenderShell();
+        }
+
+        function rcToggleAccounts() {
+            rcState.showAccounts = !rcState.showAccounts;
+            _rcRenderShell();
+        }
+
+        // ── 邮件账号配置面板 ──────────────────────────────────────────────────────
+
+        async function _rcRenderAccountPanel() {
+            const content = document.getElementById('rc-content');
+            if (!content) return;
+            content.innerHTML = '<div class="text-slate-400 p-6 text-center text-xs">加载账号列表...</div>';
+            let accounts = [];
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts`, {credentials:'include'});
+                accounts = (await r.json()).accounts || [];
+            } catch(e) {}
+
+            const statusBadge = s => ({
+                'authorized': '<span class="text-xs text-emerald-600 font-medium">已授权</span>',
+                'draft': '<span class="text-xs text-slate-400">草稿</span>',
+                'error': '<span class="text-xs text-red-500">连接错误</span>',
+            }[s] || `<span class="text-xs text-slate-400">${safeText(s||'')}</span>`);
+
+            const providerLabel = p => ({'imap':'IMAP','gmail':'Gmail','outlook':'Outlook'}[p]||p||'IMAP');
+            const isOAuth = a => a.provider_type === 'gmail' || a.provider_type === 'outlook';
+
+            const rows = accounts.map(a => `
+                <tr class="border-b hover:bg-slate-50 text-xs" id="rc-acc-row-${a.id}">
+                    <td class="px-3 py-2 font-medium text-slate-800">${safeText(a.account_name)}</td>
+                    <td class="px-3 py-2 text-slate-600">${safeText(a.email_address)}</td>
+                    <td class="px-3 py-2">
+                        <span class="px-1.5 py-0.5 rounded text-xs font-medium ${a.provider_type==='gmail'?'bg-red-50 text-red-600':a.provider_type==='outlook'?'bg-blue-50 text-blue-600':'bg-slate-100 text-slate-600'}">
+                            ${providerLabel(a.provider_type)}
+                        </span>
+                    </td>
+                    <td class="px-3 py-2 text-slate-400 text-xs">${isOAuth(a)?'OAuth2':safeText(a.imap_host||'')+(a.imap_port?':'+a.imap_port:'')}</td>
+                    <td class="px-3 py-2">${statusBadge(a.status)}</td>
+                    <td class="px-3 py-2 text-slate-400">${(a.last_sync_at||'').slice(0,16)||'从未同步'}</td>
+                    <td class="px-3 py-2 text-xs" id="rc-acc-schedule-cell-${a.id}"><span class="text-slate-300">加载中...</span></td>
+                    <td class="px-3 py-2">
+                        <div class="flex flex-wrap gap-1">
+                            ${!isOAuth(a) ? `<button onclick="rcTestAccount(${a.id})" class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">测试</button>` : ''}
+                            ${isOAuth(a) ? `<button onclick="rcGetOAuthUrl(${a.id})" class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded hover:bg-purple-200">获取授权链接</button>` : ''}
+                            ${isOAuth(a) ? `<button onclick="rcConfigOAuth(${a.id})" class="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200">配置 OAuth</button>` : ''}
+                            <button onclick="rcTriggerSync(${a.id},'${safeAttr(a.provider_type||'imap')}')" class="px-2 py-0.5 bg-emerald-600 text-white rounded hover:bg-emerald-700 font-medium">▶ 立即同步</button>
+                            <button onclick="rcScheduleDialog(${a.id})" class="px-2 py-0.5 bg-violet-100 text-violet-700 rounded hover:bg-violet-200">⏰ 定时</button>
+                            <button onclick="rcViewSyncJobs(${a.id})" class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded hover:bg-slate-200">记录</button>
+                            <button onclick="rcEditAccountDialog(${a.id},'${safeAttr(a.account_name)}','${safeAttr(a.email_address)}','${safeAttr(a.imap_host||'')}',${a.imap_port||993},'${safeAttr(a.imap_username||'')}')" class="px-2 py-0.5 bg-slate-100 text-slate-700 rounded hover:bg-slate-200">编辑</button>
+                            <button onclick="rcDeleteAccount(${a.id},'${safeAttr(a.email_address)}')" class="px-2 py-0.5 bg-red-100 text-red-600 rounded hover:bg-red-200">删除</button>
+                        </div>
+                    </td>
+                </tr>
+                <tr id="rc-acc-jobs-${a.id}" class="hidden bg-slate-50">
+                    <td colspan="8" class="px-3 py-2 text-xs text-slate-500" id="rc-acc-jobs-body-${a.id}"></td>
+                </tr>`).join('');
+
+            content.innerHTML = `
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-800 leading-relaxed">
+                    <b>邮件同步说明：</b>
+                    <ul class="mt-1 ml-3 list-disc space-y-0.5">
+                        <li><b>IMAP</b>：填写服务器/用户名/密码，点"测试"验证，再点 <b>▶ 立即同步</b> 或配置 <b>⏰ 定时</b> 自动拉取</li>
+                        <li><b>Gmail</b>：点"配置 OAuth"填入 client_id/secret，"获取授权链接"在浏览器完成授权，之后可同步</li>
+                        <li><b>Outlook</b>：同 Gmail，需先在 Azure 注册应用后配置 OAuth</li>
+                        <li>▶ 立即同步 — 后台运行，不阻塞界面；⏰ 定时 — 配置间隔后自动周期同步，服务重启后自动恢复</li>
+                    </ul>
+                </div>
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-semibold text-slate-700">邮箱账号列表</h3>
+                    <div class="flex gap-2">
+                        <button onclick="rcAddAccountDialog()" class="px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700">+ IMAP账号</button>
+                        <button onclick="rcAddOAuthAccountDialog('gmail')" class="px-3 py-1.5 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600">+ Gmail</button>
+                        <button onclick="rcAddOAuthAccountDialog('outlook')" class="px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600">+ Outlook</button>
+                    </div>
+                </div>
+                ${accounts.length === 0 ? `
+                    <div class="text-center text-slate-400 py-12 text-sm">暂无配置的邮箱账号<br><span class="text-xs">点击上方按钮添加账号</span></div>
+                ` : `
+                    <div class="overflow-x-auto">
+                    <table class="w-full text-xs bg-white rounded border">
+                        <thead class="bg-slate-100 text-slate-600">
+                            <tr>
+                                <th class="px-3 py-2 text-left">账号名称</th>
+                                <th class="px-3 py-2 text-left">邮箱</th>
+                                <th class="px-3 py-2 text-left">类型</th>
+                                <th class="px-3 py-2 text-left">服务器/协议</th>
+                                <th class="px-3 py-2 text-left">状态</th>
+                                <th class="px-3 py-2 text-left whitespace-nowrap">上次同步</th>
+                                <th class="px-3 py-2 text-left whitespace-nowrap" title="定时自动同步状态（间隔/下次执行时间）">定时同步 ℹ</th>
+                                <th class="px-3 py-2 text-left">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                    </div>
+                `}
+            `;
+            // 异步加载各账号定时同步状态
+            for (const a of accounts) {
+                _rcLoadScheduleCell(a.id);
+            }
+        }
+
+        async function _rcLoadScheduleCell(accountId) {
+            const cell = document.getElementById(`rc-acc-schedule-cell-${accountId}`);
+            if (!cell) return;
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts/${accountId}/schedule`, {credentials:'include'});
+                const d = await r.json();
+                const s = d.schedule;
+                if (!s) {
+                    cell.innerHTML = '<span class="text-slate-300 text-xs">未配置</span>';
+                } else if (!s.enabled) {
+                    cell.innerHTML = '<span class="text-slate-400 text-xs">已停用</span>';
+                } else {
+                    const next = (s.next_run_at||'').slice(0,16).replace('T',' ');
+                    cell.innerHTML = `<span class="text-violet-600 font-medium text-xs">每 ${s.interval_minutes} 分钟</span><br><span class="text-slate-400 text-[10px]">下次: ${next||'--'}</span>`;
+                }
+            } catch(e) {
+                cell.innerHTML = '<span class="text-slate-300 text-xs">-</span>';
+            }
+        }
+
+        async function rcScheduleDialog(accountId) {
+            const modalId = 'rc-schedule-modal';
+            document.getElementById(modalId)?.remove();
+            // 先拉取当前配置
+            let current = null;
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts/${accountId}/schedule`, {credentials:'include'});
+                const d = await r.json();
+                current = d.schedule;
+            } catch(e) {}
+            const s = current || {enabled: true, interval_minutes: 60, job_type: 'incremental_sync', lookback_days: 7};
+            const html = `<div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" id="${modalId}" onclick="if(event.target===this)this.remove()">
+                <div class="bg-white rounded-xl shadow-2xl p-6 w-[420px] max-w-full">
+                    <h3 class="font-semibold text-slate-800 mb-4">⏰ 定时同步配置</h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex items-center gap-3">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="rcs-enabled" ${s.enabled?'checked':''} class="w-4 h-4">
+                                <span class="text-xs font-medium text-slate-700">启用定时同步</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500 block mb-1">同步间隔（分钟）</label>
+                            <div class="flex gap-2 items-center flex-wrap">
+                                <input id="rcs-interval" type="number" min="5" max="10080" value="${s.interval_minutes}" class="border rounded px-2 py-1.5 text-sm w-24">
+                                <span class="text-xs text-slate-400">分钟</span>
+                                <div class="flex gap-1 ml-1">
+                                    ${[30,60,120,360,720,1440].map(v=>`<button onclick="document.getElementById('rcs-interval').value=${v}" class="px-2 py-0.5 rounded border text-xs text-slate-600 hover:bg-slate-50">${v<60?v+'m':v/60+'h'}</button>`).join('')}
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500 block mb-1">同步模式</label>
+                            <select id="rcs-jobtype" class="border rounded px-2 py-1.5 text-sm w-full">
+                                <option value="incremental_sync" ${s.job_type==='incremental_sync'?'selected':''}>增量同步（仅新邮件，推荐）</option>
+                                <option value="full_sync" ${s.job_type==='full_sync'?'selected':''}>全量同步（按回溯天数）</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500 block mb-1">全量同步回溯天数（增量模式下忽略）</label>
+                            <input id="rcs-lookback" type="number" min="1" max="365" value="${s.lookback_days}" class="border rounded px-2 py-1.5 text-sm w-24">
+                        </div>
+                        ${current ? `<div class="text-xs text-slate-400 bg-slate-50 rounded p-2">
+                            上次运行：${(current.last_run_at||'').slice(0,16).replace('T',' ')||'从未'} ·
+                            下次运行：${(current.next_run_at||'').slice(0,16).replace('T',' ')||'--'}
+                        </div>` : ''}
+                    </div>
+                    <div class="flex justify-between gap-2 mt-5">
+                        ${current ? `<button onclick="rcDeleteSchedule(${accountId})" class="px-3 py-1.5 border border-red-200 text-red-500 rounded text-sm hover:bg-red-50">删除配置</button>` : '<div></div>'}
+                        <div class="flex gap-2">
+                            <button onclick="document.getElementById('${modalId}').remove()" class="px-4 py-1.5 border rounded text-sm text-slate-600 hover:bg-slate-50">取消</button>
+                            <button onclick="rcSaveSchedule(${accountId})" class="px-4 py-1.5 bg-violet-600 text-white rounded text-sm font-medium hover:bg-violet-700">保存</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+            document.body.insertAdjacentHTML('beforeend', html);
+        }
+
+        async function rcSaveSchedule(accountId) {
+            const enabled = document.getElementById('rcs-enabled')?.checked ?? true;
+            const interval = parseInt(document.getElementById('rcs-interval')?.value || '60');
+            const jobType = document.getElementById('rcs-jobtype')?.value || 'incremental_sync';
+            const lookback = parseInt(document.getElementById('rcs-lookback')?.value || '7');
+            if (interval < 5) { alert('间隔不能少于 5 分钟'); return; }
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts/${accountId}/schedule`, {
+                    method: 'PUT', credentials: 'include',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({enabled, interval_minutes: interval, job_type: jobType, lookback_days: lookback}),
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                document.getElementById('rc-schedule-modal')?.remove();
+                alert(d.message || '定时配置已保存');
+                _rcLoadScheduleCell(accountId);
+            } catch(e) { alert('保存失败：' + e); }
+        }
+
+        async function rcDeleteSchedule(accountId) {
+            if (!confirm('确认删除该账号的定时同步配置？')) return;
+            try {
+                await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts/${accountId}/schedule`, {
+                    method: 'DELETE', credentials: 'include'
+                });
+                document.getElementById('rc-schedule-modal')?.remove();
+                _rcLoadScheduleCell(accountId);
+            } catch(e) { alert('删除失败：' + e); }
+        }
+
+        async function rcGetOAuthUrl(id) {
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts/${id}/oauth/authorize-url`, {
+                    method: 'POST', credentials: 'include'
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                const url = d.authorize_url;
+                const html = `<div class="fixed inset-0 input-dialog-backdrop z-50 flex items-center justify-center" id="rc-oauth-url-dialog">
+                    <div class="bg-white rounded-xl shadow-xl p-6 w-[480px] max-w-full">
+                        <h3 class="font-semibold mb-3">OAuth 授权链接</h3>
+                        <p class="text-xs text-slate-500 mb-3">在浏览器中打开以下链接完成授权，授权成功后回调会自动更新账号状态：</p>
+                        <textarea class="w-full border rounded p-2 text-xs h-24 font-mono" readonly>${safeText(url)}</textarea>
+                        <div class="flex gap-2 mt-3">
+                            <a href="${safeAttr(url)}" target="_blank" class="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">在新标签打开</a>
+                            <button onclick="document.getElementById('rc-oauth-url-dialog').remove()" class="px-4 py-1.5 border rounded text-sm hover:bg-slate-50">关闭</button>
+                        </div>
+                    </div></div>`;
+                document.body.insertAdjacentHTML('beforeend', html);
+            } catch(e) { alert('获取授权链接失败：' + e); }
+        }
+
+        function rcConfigOAuth(id) {
+            const html = `<div class="fixed inset-0 input-dialog-backdrop z-50 flex items-center justify-center" id="rc-oauth-cfg-dialog">
+                <div class="bg-white rounded-xl shadow-xl p-6 w-[440px] max-w-full">
+                    <h3 class="font-semibold mb-3">配置 OAuth 凭证</h3>
+                    <div class="space-y-3 text-sm">
+                        <div><label class="text-xs text-slate-500">Client ID</label><input id="rco-cid" class="mt-1 w-full border rounded px-2 py-1.5 text-xs font-mono" placeholder="来自 Google/Azure 控制台"></div>
+                        <div><label class="text-xs text-slate-500">Client Secret</label><input id="rco-cs" type="password" class="mt-1 w-full border rounded px-2 py-1.5 text-xs font-mono"></div>
+                        <div><label class="text-xs text-slate-500">Redirect URI（需在控制台注册）</label><input id="rco-ru" class="mt-1 w-full border rounded px-2 py-1.5 text-xs font-mono" placeholder="${window.location.origin}/api/raw_comm/oauth/callback" value="${window.location.origin}/api/raw_comm/oauth/callback"></div>
+                        <div><label class="text-xs text-slate-500">Scope（可留空用默认）</label><input id="rco-scope" class="mt-1 w-full border rounded px-2 py-1.5 text-xs font-mono" placeholder="Gmail默认: gmail.readonly"></div>
+                        <div><label class="text-xs text-slate-500">Tenant ID（Outlook，留空用 common）</label><input id="rco-tid" class="mt-1 w-full border rounded px-2 py-1.5 text-xs font-mono" placeholder="common" value="common"></div>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-4">
+                        <button onclick="document.getElementById('rc-oauth-cfg-dialog').remove()" class="px-4 py-1.5 border rounded text-sm hover:bg-slate-50">取消</button>
+                        <button onclick="rcSaveOAuthConfig(${id})" class="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">保存配置</button>
+                    </div>
+                </div></div>`;
+            document.body.insertAdjacentHTML('beforeend', html);
+        }
+
+        async function rcSaveOAuthConfig(id) {
+            const body = {
+                oauth_client_id: document.getElementById('rco-cid')?.value?.trim() || '',
+                oauth_client_secret: document.getElementById('rco-cs')?.value || '',
+                oauth_redirect_uri: document.getElementById('rco-ru')?.value?.trim() || '',
+                oauth_scope: document.getElementById('rco-scope')?.value?.trim() || '',
+                oauth_tenant_id: document.getElementById('rco-tid')?.value?.trim() || 'common',
+            };
+            if (!body.oauth_client_id || !body.oauth_redirect_uri) { alert('请填写 Client ID 和 Redirect URI'); return; }
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts/${id}/oauth/configure`, {
+                    method: 'POST', credentials: 'include',
+                    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+                });
+                if (!r.ok) { const d = await r.json(); throw new Error(d.detail||`HTTP ${r.status}`); }
+                document.getElementById('rc-oauth-cfg-dialog')?.remove();
+                alert('OAuth 凭证已保存，现在可以点击"获取授权链接"完成授权');
+                await _rcRenderAccountPanel();
+            } catch(e) { alert('保存失败：' + e); }
+        }
+
+        function rcAddOAuthAccountDialog(provider) {
+            const label = provider === 'gmail' ? 'Gmail' : 'Outlook';
+            const html = `<div class="fixed inset-0 input-dialog-backdrop z-50 flex items-center justify-center" id="rc-oauth-add-dialog">
+                <div class="bg-white rounded-xl shadow-xl p-6 w-[440px] max-w-full">
+                    <h3 class="font-semibold mb-3">添加 ${label} 账号</h3>
+                    <div class="space-y-3 text-sm">
+                        <div><label class="text-xs text-slate-500">账号名称</label><input id="rcoa-name" class="mt-1 w-full border rounded px-2 py-1.5 text-sm" placeholder="如：公司 Gmail"></div>
+                        <div><label class="text-xs text-slate-500">邮箱地址</label><input id="rcoa-email" type="email" class="mt-1 w-full border rounded px-2 py-1.5 text-sm" placeholder="user@gmail.com"></div>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-3">添加后需配置 OAuth 凭证并完成授权才能同步。</p>
+                    <div class="flex justify-end gap-2 mt-4">
+                        <button onclick="document.getElementById('rc-oauth-add-dialog').remove()" class="px-4 py-1.5 border rounded text-sm hover:bg-slate-50">取消</button>
+                        <button onclick="rcSaveOAuthAccount('${provider}')" class="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">创建账号</button>
+                    </div>
+                </div></div>`;
+            document.body.insertAdjacentHTML('beforeend', html);
+        }
+
+        async function rcSaveOAuthAccount(provider) {
+            const name = document.getElementById('rcoa-name')?.value?.trim();
+            const email = document.getElementById('rcoa-email')?.value?.trim();
+            if (!name || !email) { alert('请填写账号名称和邮箱地址'); return; }
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts`, {
+                    method: 'POST', credentials: 'include',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({account_name:name, email_address:email, provider_type:provider}),
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail||`HTTP ${r.status}`);
+                document.getElementById('rc-oauth-add-dialog')?.remove();
+                await _rcRenderAccountPanel();
+            } catch(e) { alert('创建失败：' + e); }
+        }
+
+        async function rcTriggerSync(id, provider) {
+            if (!confirm(`立即触发 ${provider} 账号同步（后台运行）？`)) return;
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts/${id}/sync`, {
+                    method: 'POST', credentials: 'include',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({job_type: 'incremental_sync', lookback_days: 30}),
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail||`HTTP ${r.status}`);
+                alert(d.message || '同步已启动，请稍后查看同步记录');
+                await _rcRenderAccountPanel();
+            } catch(e) { alert('触发失败：' + e); }
+        }
+
+        async function rcViewSyncJobs(id) {
+            const row = document.getElementById(`rc-acc-jobs-${id}`);
+            const body = document.getElementById(`rc-acc-jobs-body-${id}`);
+            if (!row || !body) return;
+            if (!row.classList.contains('hidden')) { row.classList.add('hidden'); return; }
+            body.textContent = '加载中...';
+            row.classList.remove('hidden');
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts/${id}/sync_jobs`, {credentials:'include'});
+                const data = await r.json();
+                const jobs = data.jobs || [];
+                if (!jobs.length) { body.textContent = '暂无同步记录'; return; }
+                const statusColor = s => ({'completed':'text-emerald-600','failed':'text-red-500','running':'text-blue-600'}[s]||'text-slate-400');
+                body.innerHTML = '<table class="w-full text-xs"><thead class="text-slate-500"><tr><th class="text-left py-1">类型</th><th class="text-left">状态</th><th class="text-left">说明</th><th class="text-left">开始</th><th class="text-left">完成</th><th class="text-right">成功/失败</th></tr></thead><tbody>'
+                    + jobs.map(j => `<tr class="border-t"><td class="py-0.5">${j.job_type||''}</td><td class="${statusColor(j.status)}">${j.status||''}</td><td class="max-w-[240px] truncate" title="${safeAttr(j.detail||'')}">${safeText(j.detail||'')}</td><td class="whitespace-nowrap">${(j.started_at||'').slice(0,16)}</td><td class="whitespace-nowrap">${(j.finished_at||'').slice(0,16)||'--'}</td><td class="text-right">${j.success_count||0}/${j.failed_count||0}</td></tr>`).join('')
+                    + '</tbody></table>';
+            } catch(e) { body.textContent = '加载失败：' + e; }
+        }
+
+        function rcAddAccountDialog() {
+            const html = `
+                <div class="fixed inset-0 input-dialog-backdrop z-50 flex items-center justify-center" id="rc-acc-dialog">
+                <div class="bg-white rounded-xl shadow-xl p-6 w-96 max-w-full">
+                    <h3 class="font-semibold text-slate-800 mb-4">添加 IMAP 邮箱账号</h3>
+                    <div class="space-y-3 text-sm">
+                        <div><label class="text-xs text-slate-500">账号名称</label><input id="rca-name" class="mt-1 w-full border rounded px-2 py-1.5 text-sm" placeholder="如：公司邮箱"></div>
+                        <div><label class="text-xs text-slate-500">邮箱地址</label><input id="rca-email" type="email" class="mt-1 w-full border rounded px-2 py-1.5 text-sm" placeholder="user@example.com"></div>
+                        <div><label class="text-xs text-slate-500">IMAP 服务器</label><input id="rca-host" class="mt-1 w-full border rounded px-2 py-1.5 text-sm" placeholder="imap.example.com"></div>
+                        <div class="flex gap-2">
+                            <div class="flex-1"><label class="text-xs text-slate-500">端口</label><input id="rca-port" type="number" class="mt-1 w-full border rounded px-2 py-1.5 text-sm" value="993"></div>
+                            <div class="flex items-end pb-1"><label class="flex items-center gap-1 text-xs text-slate-600 cursor-pointer"><input id="rca-ssl" type="checkbox" checked> SSL</label></div>
+                        </div>
+                        <div><label class="text-xs text-slate-500">用户名</label><input id="rca-uname" class="mt-1 w-full border rounded px-2 py-1.5 text-sm" placeholder="通常为邮箱地址"></div>
+                        <div><label class="text-xs text-slate-500">密码/授权码</label><input id="rca-pwd" type="password" class="mt-1 w-full border rounded px-2 py-1.5 text-sm"></div>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-5">
+                        <button onclick="document.getElementById('rc-acc-dialog').remove()" class="px-4 py-1.5 border rounded text-sm text-slate-600 hover:bg-slate-50">取消</button>
+                        <button onclick="rcSaveNewAccount()" class="px-4 py-1.5 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700">保存</button>
+                    </div>
+                </div></div>`;
+            document.body.insertAdjacentHTML('beforeend', html);
+        }
+
+        async function rcSaveNewAccount() {
+            const name = document.getElementById('rca-name')?.value?.trim();
+            const email = document.getElementById('rca-email')?.value?.trim();
+            const host = document.getElementById('rca-host')?.value?.trim();
+            const port = parseInt(document.getElementById('rca-port')?.value || '993');
+            const ssl = document.getElementById('rca-ssl')?.checked ?? true;
+            const uname = document.getElementById('rca-uname')?.value?.trim();
+            const pwd = document.getElementById('rca-pwd')?.value;
+            if (!name || !email || !host) { alert('请填写账号名称、邮箱地址和 IMAP 服务器'); return; }
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts`, {
+                    method: 'POST', credentials: 'include',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({account_name:name, email_address:email, provider_type:'imap',
+                        imap_host:host, imap_port:port, imap_use_ssl:ssl,
+                        imap_username:uname||email, imap_password:pwd||''}),
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                document.getElementById('rc-acc-dialog')?.remove();
+                await _rcRenderAccountPanel();
+            } catch(e) { alert('保存失败：' + e); }
+        }
+
+        function rcEditAccountDialog(id, name, email, host, port, uname) {
+            const html = `
+                <div class="fixed inset-0 input-dialog-backdrop z-50 flex items-center justify-center" id="rc-acc-edit-dialog">
+                <div class="bg-white rounded-xl shadow-xl p-6 w-96 max-w-full">
+                    <h3 class="font-semibold text-slate-800 mb-4">编辑账号：${safeText(email)}</h3>
+                    <div class="space-y-3 text-sm">
+                        <div><label class="text-xs text-slate-500">账号名称</label><input id="rce-name" class="mt-1 w-full border rounded px-2 py-1.5 text-sm" value="${safeAttr(name)}"></div>
+                        <div><label class="text-xs text-slate-500">IMAP 服务器</label><input id="rce-host" class="mt-1 w-full border rounded px-2 py-1.5 text-sm" value="${safeAttr(host)}"></div>
+                        <div class="flex gap-2">
+                            <div class="flex-1"><label class="text-xs text-slate-500">端口</label><input id="rce-port" type="number" class="mt-1 w-full border rounded px-2 py-1.5 text-sm" value="${port}"></div>
+                            <div class="flex items-end pb-1"><label class="flex items-center gap-1 text-xs text-slate-600 cursor-pointer"><input id="rce-ssl" type="checkbox" checked> SSL</label></div>
+                        </div>
+                        <div><label class="text-xs text-slate-500">用户名</label><input id="rce-uname" class="mt-1 w-full border rounded px-2 py-1.5 text-sm" value="${safeAttr(uname)}"></div>
+                        <div><label class="text-xs text-slate-500">新密码（留空不修改）</label><input id="rce-pwd" type="password" class="mt-1 w-full border rounded px-2 py-1.5 text-sm"></div>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-5">
+                        <button onclick="document.getElementById('rc-acc-edit-dialog').remove()" class="px-4 py-1.5 border rounded text-sm text-slate-600 hover:bg-slate-50">取消</button>
+                        <button onclick="rcSaveEditAccount(${id})" class="px-4 py-1.5 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700">保存</button>
+                    </div>
+                </div></div>`;
+            document.body.insertAdjacentHTML('beforeend', html);
+        }
+
+        async function rcSaveEditAccount(id) {
+            const name = document.getElementById('rce-name')?.value?.trim();
+            const host = document.getElementById('rce-host')?.value?.trim();
+            const port = parseInt(document.getElementById('rce-port')?.value || '993');
+            const ssl = document.getElementById('rce-ssl')?.checked ?? true;
+            const uname = document.getElementById('rce-uname')?.value?.trim();
+            const pwd = document.getElementById('rce-pwd')?.value;
+            const body = {account_name:name, imap_host:host, imap_port:port, imap_use_ssl:ssl, imap_username:uname};
+            if (pwd) body.imap_password = pwd;
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts/${id}`, {
+                    method: 'PUT', credentials: 'include',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body),
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                document.getElementById('rc-acc-edit-dialog')?.remove();
+                await _rcRenderAccountPanel();
+            } catch(e) { alert('保存失败：' + e); }
+        }
+
+        async function rcDeleteAccount(id, email) {
+            if (!confirm(`确认删除账号 ${email}？相关同步任务记录也将被删除。`)) return;
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts/${id}`, {
+                    method: 'DELETE', credentials: 'include'
+                });
+                if (!r.ok) { const d = await r.json(); throw new Error(d.detail||`HTTP ${r.status}`); }
+                await _rcRenderAccountPanel();
+            } catch(e) { alert('删除失败：' + e); }
+        }
+
+        async function rcTestAccount(id) {
+            const btn = event?.target;
+            if (btn) { btn.textContent = '测试中...'; btn.disabled = true; }
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/accounts/${id}/test`, {
+                    method: 'POST', credentials: 'include'
+                });
+                const d = await r.json();
+                if (d.status === 'ok') {
+                    alert(`连接成功！发现 ${(d.folders||[]).length} 个文件夹：\n${(d.folders||[]).slice(0,10).join('\n')}`);
+                } else {
+                    alert(`连接失败：${d.detail||'未知错误'}`);
+                }
+                await _rcRenderAccountPanel();
+            } catch(e) {
+                alert('测试失败：' + e);
+                if (btn) { btn.textContent = '测试连接'; btn.disabled = false; }
+            }
+        }
+
+        // ── 邮件原始数据 tab ──────────────────────────────────────────────────────
+
+        async function _rcLoadMailTab() {
+            const content = document.getElementById('rc-content');
+            if (!content) return;
+            let batches = [];
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/batches`, {credentials:'include'});
+                batches = (await r.json()).batches || [];
+            } catch(e) {}
+
+            const batchOpts = batches.map(b =>
+                `<option value="${safeAttr(String(b.id))}" ${rcState.mailBatchId===String(b.id)?'selected':''}>${safeText(b.source_name)} (${b.success_count}封 · ${(b.created_at||'').slice(0,10)})</option>`
+            ).join('');
+
+            content.innerHTML = `
+                <div class="bg-blue-50 border border-blue-100 rounded-lg p-2.5 mb-3 text-xs text-blue-700 leading-relaxed">
+                    <b>数据来源：</b>①手动上传 .eml/.msg/.zip 文件 ②配置 IMAP 账号后点"立即同步"拉取（后台运行，非实时）③Gmail/Outlook 授权后同步。
+                    上传后点击<b>批量清洗待处理</b>提取正文，再选中已清洗邮件<b>→知识候选</b>。<b>点击主题或"查看"可阅读邮件全文。</b>
+                </div>
+                <div class="mb-2 flex flex-wrap gap-1 items-center">
+                    <label class="cursor-pointer px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700">
+                        选择文件上传（.eml / .msg / .zip）
+                        <input id="rc-mail-file" type="file" accept=".eml,.msg,.zip" multiple class="hidden" onchange="rcUploadMails(event)">
+                    </label>
+                    <span id="rc-mail-file-label" class="text-slate-400 text-xs ml-1">未选择文件</span>
+                </div>
+                <div class="flex flex-wrap gap-3 mb-2 items-end">
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">批次</span>
+                        <select id="rc-mail-batch" class="border rounded px-2 py-1 text-xs" onchange="rcState.mailBatchId=this.value||null;rcState.mailOffset=0;_rcRefreshMailList()">
+                            <option value="">全部批次</option>${batchOpts}
+                        </select>
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">清洗状态</span>
+                        <select id="rc-clean-status" class="border rounded px-2 py-1 text-xs" onchange="rcState.mailCleanStatus=this.value;rcState.mailOffset=0;_rcRefreshMailList()">
+                            <option value="">全部状态</option>
+                            <option value="pending" ${rcState.mailCleanStatus==='pending'?'selected':''}>待清洗</option>
+                            <option value="completed" ${rcState.mailCleanStatus==='completed'?'selected':''}>已清洗</option>
+                            <option value="failed" ${rcState.mailCleanStatus==='failed'?'selected':''}>清洗失败</option>
+                        </select>
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">关键词</span>
+                        <input id="rc-mail-kw" type="text" placeholder="主题/发件人" value="${safeAttr(rcState.mailKeyword)}" class="border rounded px-2 py-1 text-xs w-36 bg-white" onkeydown="if(event.key==='Enter')_rcSearchMail()">
+                    </label>
+                    <button onclick="_rcSearchMail()" class="px-3 py-1.5 bg-blue-600 text-white rounded text-xs">查询</button>
+                    <button onclick="_rcResetMailSearch()" class="px-3 py-1.5 bg-slate-200 text-slate-700 rounded text-xs">重置</button>
+                    <div class="ml-auto flex gap-2 items-center flex-wrap">
+                        <button onclick="rcBatchClean()" class="px-3 py-1.5 bg-amber-500 text-white rounded text-xs font-medium hover:bg-amber-600">批量清洗待处理</button>
+                        <button onclick="rcBatchToCandidate()" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700">选中 → 知识候选</button>
+                        <span class="text-slate-400 text-xs" id="rc-select-count">已选 0 封</span>
+                    </div>
+                </div>
+                <div id="rc-mail-list" class="text-sm text-slate-400 text-center p-8">加载中...</div>
+            `;
+            await _rcRefreshMailList();
+        }
+
+        function _rcSearchMail() {
+            rcState.mailKeyword = (document.getElementById('rc-mail-kw')?.value || '').trim();
+            rcState.mailOffset = 0;
+            _rcRefreshMailList();
+        }
+
+        function _rcResetMailSearch() {
+            rcState.mailKeyword = '';
+            rcState.mailCleanStatus = '';
+            rcState.mailBatchId = null;
+            ['rc-mail-kw','rc-mail-batch','rc-clean-status'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            rcState.mailOffset = 0;
+            _rcRefreshMailList();
+        }
+
+        async function _rcRefreshMailList() {
+            const listEl = document.getElementById('rc-mail-list');
+            if (!listEl) return;
+            const params = new URLSearchParams({limit: rcState.mailLimit, offset: rcState.mailOffset});
+            if (rcState.mailBatchId) params.set('batch_id', rcState.mailBatchId);
+            if (rcState.mailCleanStatus) params.set('clean_status', rcState.mailCleanStatus);
+            if (rcState.mailKeyword) params.set('keyword', rcState.mailKeyword);
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/messages?${params}`, {credentials:'include'});
+                const data = await r.json();
+                const items = data.items || [];
+                const total = data.total || 0;
+                if (!items.length) {
+                    listEl.innerHTML = '<div class="text-slate-400 p-8 text-center">暂无邮件数据</div>';
+                    return;
+                }
+                const rows = items.map(m => {
+                    const uid = safeAttr(m.mail_uid);
+                    const checked = rcState.selectedMails.has(m.mail_uid) ? 'checked' : '';
+                    const cleanBadge = m.clean_status === 'completed'
+                        ? '<span class="text-[10px] px-2 py-0.5 rounded border bg-emerald-50 text-emerald-700">已清洗</span>'
+                        : m.clean_status === 'failed'
+                        ? '<span class="text-[10px] px-2 py-0.5 rounded border bg-red-50 text-red-600">失败</span>'
+                        : '<span class="text-[10px] px-2 py-0.5 rounded border bg-slate-50 text-slate-500">待清洗</span>';
+                    const preview = m.body_main_text ? safeText(m.body_main_text.slice(0, 100)) : '<span class="text-slate-300">--</span>';
+                    return `<tr class="border-t hover:bg-blue-50">
+                        <td class="p-2 w-8 text-center"><input type="checkbox" ${checked} class="rc-mail-cb" onclick="_rcToggleMail('${uid}')"></td>
+                        <td class="p-2 max-w-[260px]"><span class="block truncate font-medium text-slate-800 hover:text-blue-600 cursor-pointer" title="${safeAttr(m.subject||'')}" onclick="rcViewMailDetail('${uid}')">${safeText(m.subject||'(无主题)')}</span></td>
+                        <td class="p-2 text-slate-500 whitespace-nowrap max-w-[140px] truncate" title="${safeAttr(m.from_email||'')}">${safeText(m.from_email||'--')}</td>
+                        <td class="p-2 text-slate-400 whitespace-nowrap">${(m.sent_at||'').slice(0,10)||'--'}</td>
+                        <td class="p-2 whitespace-nowrap">${cleanBadge}</td>
+                        <td class="p-2 text-slate-400 max-w-[220px] truncate">${preview}</td>
+                        <td class="p-2 whitespace-nowrap">
+                            <div class="flex gap-1">
+                                <button onclick="rcViewMailDetail('${uid}')" class="px-2 py-0.5 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200">查看</button>
+                                ${m.clean_status !== 'completed' ? `<button onclick="rcCleanOne('${uid}')" class="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded hover:bg-amber-200">清洗</button>` : ''}
+                                ${m.clean_status === 'completed' ? `<button onclick="rcMailToCandidate('${uid}','${safeAttr(m.subject||'')}')" class="px-2 py-0.5 text-xs bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200">→候选</button>` : ''}
+                            </div>
+                        </td>
+                    </tr>`;
+                }).join('');
+                const totalPages = Math.max(1, Math.ceil(total / rcState.mailLimit));
+                const curPage = Math.floor(rcState.mailOffset / rcState.mailLimit) + 1;
+                listEl.innerHTML = `
+                    <div class="bg-white border rounded overflow-hidden">
+                    <table class="w-full text-xs">
+                        <thead class="bg-slate-100 text-slate-600 sticky top-0">
+                            <tr>
+                                <th class="p-2 w-8 text-center"><input type="checkbox" onclick="rcToggleAllMails(this)" id="rc-select-all"></th>
+                                <th class="p-2 text-left" title="邮件主题，点击可查看全文">主题 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-36" title="发件人邮箱地址">发件人 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-24" title="邮件发送时间">发送时间 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-20" title="是否已通过清洗提取正文：待清洗/已清洗/失败">清洗状态 ℹ</th>
+                                <th class="p-2 text-left" title="清洗后正文摘要（前100字）">正文摘要 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-32">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                    <div class="flex items-center justify-between gap-3 px-3 py-2 border-t bg-slate-50 text-xs text-slate-600">
+                        <div>共 ${total} 封，每页 ${rcState.mailLimit} 条，第 ${curPage} / ${totalPages} 页</div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="rcState.mailOffset-=rcState.mailLimit;_rcRefreshMailList()" ${rcState.mailOffset<=0?'disabled':''} class="px-2 py-1 rounded border bg-white text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">上一页</button>
+                            <button onclick="rcState.mailOffset+=rcState.mailLimit;_rcRefreshMailList()" ${rcState.mailOffset+rcState.mailLimit>=total?'disabled':''} class="px-2 py-1 rounded border bg-white text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">下一页</button>
+                            <input id="rc-mail-page-jump" type="number" min="1" max="${totalPages}" value="${curPage}" onkeydown="if(event.key==='Enter')rcJumpMailPage()" class="w-16 border rounded px-2 py-1 text-xs text-center">
+                            <button onclick="rcJumpMailPage()" class="px-2 py-1 rounded border bg-white text-slate-700 hover:bg-slate-50">跳转</button>
+                        </div>
+                    </div>
+                    </div>`;
+                _rcUpdateSelectCount();
+            } catch(e) {
+                listEl.innerHTML = `<div class="text-red-500 p-4">加载失败：${safeText(String(e))}</div>`;
+            }
+        }
+
+        function rcJumpMailPage() {
+            const input = document.getElementById('rc-mail-page-jump');
+            if (!input) return;
+            const page = parseInt(input.value);
+            if (!page || page < 1) return;
+            rcState.mailOffset = (page - 1) * rcState.mailLimit;
+            _rcRefreshMailList();
+        }
+
+        async function rcViewMailDetail(uid) {
+            const modalId = 'rc-mail-detail-modal';
+            document.getElementById(modalId)?.remove();
+            const html = `<div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" id="${modalId}" onclick="if(event.target===this)this.remove()">
+                <div class="bg-white rounded-xl shadow-2xl w-[720px] max-w-[96vw] max-h-[90vh] flex flex-col">
+                    <div class="flex items-center justify-between px-5 py-3 border-b flex-none">
+                        <h3 class="font-semibold text-slate-800 text-sm">邮件详情</h3>
+                        <button onclick="document.getElementById('${modalId}').remove()" class="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">×</button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-5 text-xs" id="rc-mail-detail-body">
+                        <div class="text-slate-400 text-center py-8">加载中...</div>
+                    </div>
+                </div>
+            </div>`;
+            document.body.insertAdjacentHTML('beforeend', html);
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/messages/${encodeURIComponent(uid)}`, {credentials:'include'});
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const m = await r.json();
+                const body = document.getElementById('rc-mail-detail-body');
+                if (!body) return;
+                const statusMap = {completed:'已清洗', failed:'清洗失败', pending:'待清洗'};
+                const statusColor = {completed:'text-emerald-600', failed:'text-red-500', pending:'text-amber-500'};
+                const fieldRow = (label, val) => val ? `<div class="flex gap-2 mb-1.5"><span class="text-slate-400 w-20 flex-none shrink-0">${label}</span><span class="text-slate-700 break-all">${safeText(String(val))}</span></div>` : '';
+                const mainBody = m.body_main_text || m.body_text_clean || null;
+                const rawBody  = m.body_text || null;
+                const hasAnyBody = !!(mainBody || rawBody);
+                body.innerHTML = `
+                    <div class="space-y-4">
+                        <div class="bg-slate-50 rounded-lg p-3 border text-xs space-y-1.5">
+                            <div class="text-sm font-semibold text-slate-800 mb-2">${safeText(m.subject||'(无主题)')}</div>
+                            ${fieldRow('发件人', m.from_email)}
+                            ${fieldRow('收件人', (m.to_emails||[]).join(', '))}
+                            ${fieldRow('抄送', (m.cc_emails||[]).join(', '))}
+                            ${fieldRow('发送时间', (m.sent_at||'').replace('T',' ').slice(0,19))}
+                            ${fieldRow('来源', m.source_type)}
+                            <div class="flex gap-2 mb-1.5"><span class="text-slate-400 w-20 flex-none">清洗状态</span><span class="${statusColor[m.clean_status]||'text-slate-400'} font-medium">${statusMap[m.clean_status]||m.clean_status}</span></div>
+                            ${m.has_attachment ? '<div class="flex gap-2"><span class="text-slate-400 w-20 flex-none">附件</span><span class="text-amber-600">有附件</span></div>' : ''}
+                        </div>
+                        ${mainBody ? `
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="text-xs font-medium text-slate-600">${m.body_main_text ? '清洗后正文' : '原始正文（清洗版）'}</span>
+                                <span class="text-[10px] text-slate-400">${mainBody.length} 字符</span>
+                            </div>
+                            <pre class="bg-white border rounded-lg p-3 text-xs text-slate-700 whitespace-pre-wrap break-words max-h-80 overflow-y-auto font-sans leading-relaxed">${safeText(mainBody.slice(0,8000))}</pre>
+                        </div>` : ''}
+                        ${rawBody && rawBody !== mainBody ? `
+                        <details ${!mainBody ? 'open' : ''}>
+                            <summary class="text-xs font-medium text-slate-600 cursor-pointer hover:text-slate-800 select-none py-0.5">
+                                ${mainBody ? '原始正文（展开查看）' : '原始正文'}
+                                <span class="text-slate-400 font-normal ml-1">${rawBody.length} 字符</span>
+                            </summary>
+                            <pre class="mt-2 bg-white border rounded-lg p-3 text-xs text-slate-600 whitespace-pre-wrap break-words max-h-80 overflow-y-auto font-sans leading-relaxed">${safeText(rawBody.slice(0,8000))}</pre>
+                        </details>` : ''}
+                        ${!hasAnyBody ? `
+                        <div class="bg-slate-50 border border-dashed border-slate-200 rounded-lg p-5 text-center space-y-1">
+                            <div class="text-slate-400 text-xs">此邮件正文未存储</div>
+                            <div class="text-slate-300 text-[10px]">${
+                                (m.source_type||'').startsWith('sqlserver')
+                                ? '原始正文存储在 SQL Server 数据库中，无法在此处直接查阅（仅导入了邮件元数据）'
+                                : '正文内容为空，可尝试点击"立即清洗"重新解析原始文件'
+                            }</div>
+                        </div>` : ''}
+                        ${m.body_quoted_text ? `
+                        <details>
+                            <summary class="text-xs text-slate-500 cursor-pointer hover:text-slate-700 select-none py-0.5">引用历史邮件（展开查看）</summary>
+                            <pre class="mt-2 bg-slate-50 border rounded-lg p-3 text-xs text-slate-500 whitespace-pre-wrap break-words max-h-48 overflow-y-auto font-sans">${safeText(m.body_quoted_text.slice(0,4000))}</pre>
+                        </details>` : ''}
+                        ${m.clean_error ? `<div class="text-red-500 bg-red-50 border border-red-100 rounded p-2 text-xs">清洗错误：${safeText(m.clean_error)}</div>` : ''}
+                        <div class="flex gap-2 pt-1 border-t">
+                            ${m.clean_status !== 'completed' ? `<button onclick="rcCleanOne('${safeAttr(uid)}').then(()=>{document.getElementById('${modalId}')?.remove();rcViewMailDetail('${safeAttr(uid)}');})" class="px-3 py-1.5 bg-amber-500 text-white rounded text-xs hover:bg-amber-600">立即清洗</button>` : ''}
+                            ${m.clean_status === 'completed' ? `<button onclick="document.getElementById('${modalId}').remove();rcMailToCandidate('${safeAttr(uid)}','${safeAttr(m.subject||'')}')" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700">→ 知识候选</button>` : ''}
+                            <button onclick="document.getElementById('${modalId}').remove()" class="px-3 py-1.5 border rounded text-xs text-slate-600 hover:bg-slate-50 ml-auto">关闭</button>
+                        </div>
+                    </div>`;
+            } catch(e) {
+                const body = document.getElementById('rc-mail-detail-body');
+                if (body) body.innerHTML = `<div class="text-red-500 p-4">加载失败：${safeText(String(e))}</div>`;
+            }
+        }
+
+        function _rcToggleMail(uid) {
+            if (rcState.selectedMails.has(uid)) {
+                rcState.selectedMails.delete(uid);
+            } else {
+                rcState.selectedMails.add(uid);
+            }
+            _rcUpdateSelectCount();
+            const rows = document.querySelectorAll('.rc-mail-cb');
+            rows.forEach(cb => {
+                const tr = cb.closest('tr');
+                const onclick = cb.getAttribute('onclick') || '';
+                const m = onclick.match(/'([^']+)'/);
+                if (m && m[1] === uid) cb.checked = rcState.selectedMails.has(uid);
+            });
+        }
+
+        function rcToggleAllMails(checkbox) {
+            document.querySelectorAll('.rc-mail-cb').forEach(cb => {
+                const onclick = cb.getAttribute('onclick') || '';
+                const m = onclick.match(/'([^']+)'/);
+                if (m) {
+                    if (checkbox.checked) {
+                        rcState.selectedMails.add(m[1]);
+                    } else {
+                        rcState.selectedMails.delete(m[1]);
+                    }
+                    cb.checked = checkbox.checked;
+                }
+            });
+            _rcUpdateSelectCount();
+        }
+
+        function _rcUpdateSelectCount() {
+            const el = document.getElementById('rc-select-count');
+            if (el) el.textContent = `已选 ${rcState.selectedMails.size} 封`;
+        }
+
+        async function rcUploadMails(evt) {
+            const files = evt.target.files;
+            if (!files || !files.length) return;
+            const label = document.getElementById('rc-mail-file-label');
+            if (label) label.textContent = `上传中(${files.length}个文件)...`;
+            try {
+                const form = new FormData();
+                for (const f of files) form.append('files', f);
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/import/file`, {
+                    method: 'POST', body: form, credentials: 'include'
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                alert(`上传完成，共 ${d.imported} 封邮件已导入${d.errors?.length ? `，${d.errors.length} 个失败` : ''}`);
+                rcState.mailBatchId = String(d.batch_id);
+                await _rcRenderShell();
+            } catch(e) {
+                alert('上传失败：' + e);
+                if (label) label.textContent = '上传失败';
+            }
+        }
+
+        async function rcCleanOne(uid) {
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/clean/${encodeURIComponent(uid)}`, {
+                    method: 'POST', credentials: 'include'
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                await _rcRefreshMailList();
+            } catch(e) {
+                alert('清洗失败：' + e);
+            }
+        }
+
+        async function rcBatchClean() {
+            try {
+                const params = new URLSearchParams({limit: 100});
+                if (rcState.mailBatchId) params.set('batch_id', rcState.mailBatchId);
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/batch_clean?${params}`, {
+                    method: 'POST', credentials: 'include'
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                alert(`批量清洗完成：成功 ${d.cleaned}，失败 ${d.failed}`);
+                await _rcRefreshMailList();
+            } catch(e) {
+                alert('批量清洗失败：' + e);
+            }
+        }
+
+        async function rcMailToCandidate(uid, subject) {
+            const title = prompt('候选标题（可修改）', `[邮件] ${subject || uid}`);
+            if (title === null) return;
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/to_candidate`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'include',
+                    body: JSON.stringify({mail_uid: uid, title: title.trim() || undefined}),
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                alert(`已添加到知识候选：${d.title}`);
+            } catch(e) {
+                alert('操作失败：' + e);
+            }
+        }
+
+        async function rcBatchToCandidate() {
+            if (!rcState.selectedMails.size) { alert('请先选择邮件'); return; }
+            if (!confirm(`将 ${rcState.selectedMails.size} 封已清洗邮件添加到知识候选？`)) return;
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/mail/batch_to_candidate`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'include',
+                    body: JSON.stringify({mail_uids: [...rcState.selectedMails]}),
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                rcState.selectedMails.clear();
+                alert(`已添加 ${d.promoted} 条到知识候选${d.errors?.length ? `，${d.errors.length} 条失败（未清洗或无内容）` : ''}`);
+                await _rcRefreshMailList();
+            } catch(e) {
+                alert('操作失败：' + e);
+            }
+        }
+
+        // ── 企微会话原始数据 tab ──────────────────────────────────────────────────
+
+        async function _rcLoadWecomTab() {
+            const content = document.getElementById('rc-content');
+            if (!content) return;
+            content.innerHTML = `
+                <div class="bg-blue-50 border border-blue-100 rounded-lg p-2.5 mb-3 text-xs text-blue-700 leading-relaxed">
+                    <b>数据来源：</b>企微会话存档 SDK 同步写入 wecom_conversation_raw 表（由外部同步服务运行）。
+                    按<b>日期范围</b>或<b>群 ID</b> 筛选会话，点"→企微数据"将该会话消息路由到<b>企微数据</b> tab 进行清洗处理。
+                </div>
+                <div class="flex flex-wrap gap-3 mb-3 items-end">
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">群/会话 ID（模糊匹配）</span>
+                        <input id="rc-wecom-room" type="text" placeholder="room_id" value="${safeAttr(rcState.wecomRoomId)}" class="border rounded px-2 py-1 text-xs w-40 bg-white">
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">开始日期</span>
+                        <input id="rc-wecom-df" type="date" value="${safeAttr(rcState.wecomDateFrom)}" class="border rounded px-2 py-1 text-xs bg-white">
+                    </label>
+                    <label class="block text-xs text-slate-500">
+                        <span class="block mb-1">结束日期</span>
+                        <input id="rc-wecom-dt" type="date" value="${safeAttr(rcState.wecomDateTo)}" class="border rounded px-2 py-1 text-xs bg-white">
+                    </label>
+                    <button onclick="_rcSearchWecom()" class="px-3 py-1.5 bg-blue-600 text-white rounded text-xs">查询</button>
+                    <button onclick="_rcResetWecomSearch()" class="px-3 py-1.5 bg-slate-200 text-slate-700 rounded text-xs">重置</button>
+                </div>
+                <div id="rc-wecom-list" class="text-sm text-slate-400 text-center p-8">加载中...</div>`;
+            await _rcRefreshWecomList();
+        }
+
+        function _rcSearchWecom() {
+            rcState.wecomRoomId = (document.getElementById('rc-wecom-room')?.value || '').trim();
+            rcState.wecomDateFrom = document.getElementById('rc-wecom-df')?.value || '';
+            rcState.wecomDateTo = document.getElementById('rc-wecom-dt')?.value || '';
+            rcState.wecomOffset = 0;
+            _rcRefreshWecomList();
+        }
+
+        function _rcResetWecomSearch() {
+            rcState.wecomRoomId = '';
+            rcState.wecomDateFrom = '';
+            rcState.wecomDateTo = '';
+            rcState.wecomOffset = 0;
+            ['rc-wecom-room','rc-wecom-df','rc-wecom-dt'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            _rcRefreshWecomList();
+        }
+
+        async function _rcRefreshWecomList() {
+            const listEl = document.getElementById('rc-wecom-list');
+            if (!listEl) return;
+            const params = new URLSearchParams({limit: rcState.wecomLimit, offset: rcState.wecomOffset});
+            if (rcState.wecomRoomId) params.set('room_id', rcState.wecomRoomId);
+            if (rcState.wecomDateFrom) params.set('date_from', rcState.wecomDateFrom);
+            if (rcState.wecomDateTo) params.set('date_to', rcState.wecomDateTo);
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/wecom/conversations?${params}`, {credentials:'include'});
+                const data = await r.json();
+                const items = data.items || [];
+                const total = data.total || 0;
+                if (!items.length) {
+                    listEl.innerHTML = '<div class="text-slate-400 p-8 text-center">暂无企微会话数据<br><span class="text-xs text-slate-300">（需企微会话存档 SDK 已同步数据到 wecom_conversation_raw 表）</span></div>';
+                    return;
+                }
+                const rows = items.map(c => `
+                    <tr class="border-t hover:bg-blue-50">
+                        <td class="p-2 max-w-[200px]"><span class="block truncate font-medium text-slate-800" title="${safeAttr(c.title||c.conversation_uid)}">${safeText(c.title||c.room_id||c.conversation_uid)}</span></td>
+                        <td class="p-2 text-slate-500 whitespace-nowrap">${safeText(c.conversation_type||'--')}</td>
+                        <td class="p-2 text-slate-500 whitespace-nowrap">${safeText(c.sender_id||'--')}</td>
+                        <td class="p-2 text-slate-400 whitespace-nowrap">${(c.last_message_at||'').slice(0,10)||'--'}</td>
+                        <td class="p-2 text-slate-600 text-right whitespace-nowrap">${c.message_count||0}</td>
+                        <td class="p-2 whitespace-nowrap">
+                            <button onclick="rcWecomToRaw('${safeAttr(c.conversation_uid)}','${safeAttr(c.title||c.conversation_uid)}')" class="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">→企微数据</button>
+                        </td>
+                    </tr>`).join('');
+                const totalPages = Math.max(1, Math.ceil(total / rcState.wecomLimit));
+                const curPage = Math.floor(rcState.wecomOffset / rcState.wecomLimit) + 1;
+                listEl.innerHTML = `
+                    <div class="bg-white border rounded overflow-hidden">
+                    <table class="w-full text-xs">
+                        <thead class="bg-slate-100 text-slate-600 sticky top-0">
+                            <tr>
+                                <th class="p-2 text-left" title="会话标题或群 room_id">会话标题/群ID ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-20" title="会话类型：群聊 / 单聊">类型 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-24" title="会话发起人/成员 ID">发起人 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-24" title="最后一条消息的时间">最后消息 ℹ</th>
+                                <th class="p-2 text-right whitespace-nowrap w-16" title="该会话总消息条数">消息数 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-20">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                    <div class="flex items-center justify-between gap-3 px-3 py-2 border-t bg-slate-50 text-xs text-slate-600">
+                        <div>共 ${total} 个会话，每页 ${rcState.wecomLimit} 条，第 ${curPage} / ${totalPages} 页</div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="rcState.wecomOffset-=rcState.wecomLimit;_rcRefreshWecomList()" ${rcState.wecomOffset<=0?'disabled':''} class="px-2 py-1 rounded border bg-white text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">上一页</button>
+                            <button onclick="rcState.wecomOffset+=rcState.wecomLimit;_rcRefreshWecomList()" ${rcState.wecomOffset+rcState.wecomLimit>=total?'disabled':''} class="px-2 py-1 rounded border bg-white text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">下一页</button>
+                            <input id="rc-wecom-page-jump" type="number" min="1" max="${totalPages}" value="${curPage}" onkeydown="if(event.key==='Enter')rcJumpWecomPage()" class="w-16 border rounded px-2 py-1 text-xs text-center">
+                            <button onclick="rcJumpWecomPage()" class="px-2 py-1 rounded border bg-white text-slate-700 hover:bg-slate-50">跳转</button>
+                        </div>
+                    </div>
+                    </div>`;
+            } catch(e) {
+                listEl.innerHTML = `<div class="text-red-500 p-4">加载失败：${safeText(String(e))}</div>`;
+            }
+        }
+
+        function rcJumpWecomPage() {
+            const input = document.getElementById('rc-wecom-page-jump');
+            if (!input) return;
+            const page = parseInt(input.value);
+            if (!page || page < 1) return;
+            rcState.wecomOffset = (page - 1) * rcState.wecomLimit;
+            _rcRefreshWecomList();
+        }
+
+        async function rcWecomToRaw(convUid, title) {
+            const label = prompt('批次标签（留空自动生成）', '');
+            if (label === null) return;
+            try {
+                const r = await fetch(`${_RC_BASE()}/api/raw_comm/wecom/to_wecom_raw`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'include',
+                    body: JSON.stringify({conversation_uid: convUid, batch_label: label.trim() || undefined}),
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                alert(`已路由到企微数据：批次 ${d.batch_id}，共 ${d.inserted} 条消息`);
+            } catch(e) {
+                alert('操作失败：' + e);
+            }
+        }
+
         // ─── 企微原始数据 ───────────────────────────────────────────────────────────
 
         // 企微数据端点只在本地服务器存在，始终用 location.origin 避免 API_BASE 指向外部
@@ -6169,14 +7692,8 @@
 
             renderKbShell(`
                 <div class="mb-2 flex flex-wrap items-center gap-2">
-                    <button onclick="doWecomRawImport(event)" id="wr-import-btn" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700">导入企微数据</button>
-                    <button disabled class="px-3 py-1.5 bg-slate-200 text-slate-400 rounded text-xs font-medium cursor-not-allowed" title="AI预处理功能待实现">数据预处理</button>
-                    <label class="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
-                        <span class="whitespace-nowrap">CSV文件：</span>
-                        <input id="wr-file-input" type="file" accept=".csv" class="hidden" onchange="document.getElementById('wr-file-label').textContent=this.files[0]?.name||'未选择文件'">
-                        <button onclick="document.getElementById('wr-file-input').click()" class="px-2 py-1 border rounded text-xs bg-white hover:bg-slate-50">选择文件</button>
-                        <span id="wr-file-label" class="text-slate-400 text-xs">未选择（使用默认文件）</span>
-                    </label>
+                    <span class="text-xs text-slate-400">数据导入已移至「原始沟通清洗」tab → 企微会话原始数据 → 路由到企微数据</span>
+                    <button id="wr-preprocess-btn" onclick="startWecomRawPreprocess()" class="px-3 py-1.5 bg-slate-700 text-white rounded text-xs font-medium hover:bg-slate-800" title="仅处理待处理行；每次约100行，自动延伸到第100行所在切片结束；单切片LLM1失败会标记失败并继续下一条。">数据预处理</button>
                 </div>
                 <div class="flex flex-wrap gap-2 mb-3 items-end">
                     <label class="block text-xs text-slate-500"><span class="block mb-1">批次</span>
@@ -6184,12 +7701,15 @@
                             <option value="">全部批次</option>${batchOpts}
                         </select>
                     </label>
-                    <label class="block text-xs text-slate-500"><span class="block mb-1">处理状态</span>
+                    <label class="block text-xs text-slate-500" title="处理状态：pending待处理；processed已预处理；published已发布入正式知识库；rejected已拒绝入库；skipped已跳过；failed为LLM1预处理失败，失败行不会被待处理批次重复处理。"><span class="block mb-1">处理状态</span>
                         <select id="wr-status" class="border rounded px-2 py-1 text-xs" onchange="getKbListState('wecom_raw').rowStatus=this.value;getKbListState('wecom_raw').offset=0;refreshWecomRawList()">
                             <option value="" ${!state.rowStatus?'selected':''}>全部状态</option>
                             <option value="pending" ${state.rowStatus==='pending'?'selected':''}>待处理</option>
                             <option value="processed" ${state.rowStatus==='processed'?'selected':''}>已处理</option>
+                            <option value="published" ${state.rowStatus==='published'?'selected':''}>已发布</option>
+                            <option value="rejected" ${state.rowStatus==='rejected'?'selected':''}>已拒绝</option>
                             <option value="skipped" ${state.rowStatus==='skipped'?'selected':''}>已跳过</option>
+                            <option value="failed" ${state.rowStatus==='failed'?'selected':''}>处理失败</option>
                         </select>
                     </label>
                     <label class="block text-xs text-slate-500"><span class="block mb-1">内容关键词</span>
@@ -6201,6 +7721,72 @@
                 <div id="wr-list"><div class="text-sm text-slate-400 p-8 text-center">加载中...</div></div>
             `);
             await refreshWecomRawList();
+        }
+
+        async function startWecomRawPreprocess() {
+            const state = getKbListState('wecom_raw');
+            const batchId = state.batchId || document.getElementById('wr-batch')?.value || '';
+            if (!batchId) {
+                alert('请先选择企微数据批次');
+                return;
+            }
+            const btn = document.getElementById('wr-preprocess-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '预处理中...';
+                btn.className = 'px-3 py-1.5 bg-slate-300 text-slate-500 rounded text-xs font-medium cursor-wait';
+            }
+            try {
+                const r = await fetch(`${location.origin}/api/wecom/raw/preprocess`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({batch_id: batchId, row_limit: 100, timeout_seconds: 240})
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.detail || '启动预处理失败');
+                if (d.status === 'done') {
+                    alert(d.message || '没有待处理行');
+                    await refreshWecomRawList();
+                    return;
+                }
+                const jobId = d.job_id;
+                if (!jobId) throw new Error('后端未返回 job_id');
+                await pollWecomRawPreprocess(jobId, btn);
+                await refreshWecomRawList();
+            } catch(e) {
+                alert(e.message || String(e));
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '数据预处理';
+                    btn.className = 'px-3 py-1.5 bg-slate-700 text-white rounded text-xs font-medium hover:bg-slate-800';
+                }
+            }
+        }
+
+        async function pollWecomRawPreprocess(jobId, btn) {
+            for (let i = 0; i < 720; i++) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                const r = await fetch(`${location.origin}/api/wecom/raw/preprocess/status/${encodeURIComponent(jobId)}`);
+                const d = await r.json();
+                const processed = Number(d.processed_slices || 0);
+                const failed = Number(d.failed_slices || 0);
+                const selected = Number(d.selected_slices || 0);
+                if (btn) {
+                    btn.textContent = selected ? `预处理中 ${processed + failed}/${selected}` : '预处理中...';
+                }
+                if (d.status === 'done') {
+                    alert(`本批预处理完成：成功 ${d.processed_slices || 0} 个切片，失败 ${d.failed_slices || 0} 个切片。`);
+                    return d;
+                }
+                if (d.status === 'error') {
+                    throw new Error(d.error || '预处理任务失败');
+                }
+                if (d.status === 'not_found') {
+                    throw new Error('预处理任务不存在');
+                }
+            }
+            throw new Error('预处理轮询超时，后台可能仍在运行，请稍后刷新运行状态。');
         }
 
         function searchWecomRaw() {
@@ -6325,8 +7911,8 @@
                     <div class="flex items-center gap-2">
                         <button type="button" onclick="changeKbPage('wecom_raw',-1)" ${pageOffset<=0?'disabled':''} class="px-2 py-1 rounded border bg-white text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">上一页</button>
                         <button type="button" onclick="changeKbPage('wecom_raw',1)" ${pageOffset+state.limit>=state.total?'disabled':''} class="px-2 py-1 rounded border bg-white text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">下一页</button>
-                        <input id="wr-page-jump" type="number" min="1" max="${totalPages}" placeholder="页码" onkeydown="if(event.key==='Enter')jumpWecomRawPage()" class="w-16 border rounded px-2 py-1 text-xs text-center">
-                        <button type="button" onclick="jumpWecomRawPage()" class="px-2 py-1 rounded border bg-white text-slate-700">跳转</button>
+                        <input type="number" min="1" max="${totalPages}" placeholder="页码" onkeydown="if(event.key==='Enter')jumpWecomRawPage(this)" class="wr-page-jump w-16 border rounded px-2 py-1 text-xs text-center">
+                        <button type="button" onclick="jumpWecomRawPage(this)" class="px-2 py-1 rounded border bg-white text-slate-700">跳转</button>
                     </div>
                 </div>`;
 
@@ -6334,24 +7920,84 @@
                 <div class="bg-white border rounded overflow-hidden">
                     ${wrPagination()}
                     <div class="overflow-x-auto">
-                    <table class="min-w-full text-xs border-t" style="min-width:1100px">
+                    <table class="min-w-full text-xs border-t" style="min-width:1280px">
                         <thead class="bg-slate-100 text-slate-600 sticky top-0">
                             <tr>
-                                <th class="p-2 text-right whitespace-nowrap w-10">#</th>
-                                <th class="p-2 text-left whitespace-nowrap w-24">发件人</th>
-                                <th class="p-2 text-left whitespace-nowrap w-24">收件人</th>
-                                <th class="p-2 text-left whitespace-nowrap w-20">群ID</th>
-                                <th class="p-2 text-left whitespace-nowrap w-32">时间</th>
-                                <th class="p-2 text-left min-w-[180px]">内容</th>
-                                <th class="p-2 text-left whitespace-nowrap w-20">from</th>
-                                <th class="p-2 text-left whitespace-nowrap w-20">tolist</th>
-                                <th class="p-2 text-left whitespace-nowrap w-16">阶段</th>
-                                <th class="p-2 text-left whitespace-nowrap w-16">环节</th>
-                                <th class="p-2 text-center whitespace-nowrap w-14">质量分</th>
-                                <th class="p-2 text-left whitespace-nowrap w-24">处理备注</th>
-                                <th class="p-2 text-left whitespace-nowrap w-28">处理结论</th>
-                                <th class="p-2 text-left whitespace-nowrap w-14">状态</th>
-                                <th class="p-2 text-left whitespace-nowrap w-10">详情</th>
+                                <th class="p-2 text-right whitespace-nowrap w-10" title="列表序号：按当前筛选和分页连续显示，不等同于原始CSV行号。">#</th>
+                                <th class="p-2 text-left whitespace-nowrap w-24" title="发件人：原始CSV发件人，前缀用于区分客户/销售。悬停单元格可看完整ID。">发件人 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-24" title="收件人：原始CSV收件人。用于追溯对话双方，不作为知识库检索字段。">收件人 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-20" title="群ID：企微群聊ID。私聊为空；群聊数据需额外判断是否能形成明确客户问答。">群ID ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-28" title="切片号：第2步切片生成后的唯一聚合键，对应 slice_id。第3步入知识库预处理前必须先锁定切片号。
+硬规则：同一切片内多行必须相同，不同切片不能重复；第3步只能按既有切片号填字段，不能逐行处理，不能跨切片取问答，不能在预处理时拆分或合并切片。
+若边界错误，必须退回第2步先修正切片号，再重新预处理。">切片号 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-32" title="时间：原始消息时间。用于判断是否跨天、是否超过4小时、是否应断开为不同切片。">时间 ℹ</th>
+                                <th class="p-2 text-left min-w-[220px]" title="内容：原始消息内容。入库前只做必要脱敏、乱码清理、附件/图片/语音等标准化，不随意改写原意。">内容 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-20" title="商业阶段：来自销售商业场景标准表的上层分类，优先显示预处理字段 business_stage，缺失时才显示暂存层旧 stage。
+当前选项：基础跟进、价值呈现、异议处理、深度摸排、客情经营、商务转化、售后合规。
+判断规则：按语义和上下文判断，不能因为会话存档从某一行开始就默认是首次接触。">商业阶段 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-28" title="商业场景：来自 llm_business_scenario_standards 的中文场景名，优先显示 business_scenario_name，缺失时才显示暂存层旧 section。
+基础跟进：新客激活、节气/开工问候、人员离职/交接、老客唤醒、丢单复盘。
+价值呈现：案例分享、业务深度介绍、线下约见/面谈、产品/服务细节对标。
+异议处理：预算收紧、已有稳定供应商、价格竞争/比价、内部消化/自己做。
+深度摸排：决策链/关系网摸排、渠道/合作伙伴调查、多方协同与内部游说支持。
+客情经营：社交应酬/客情深度维护、行业共鸣/吐苦水、紧急响应/确定性交付、转介绍请求与存量裂变。
+商务转化：方案确认与正式报价。
+售后合规：售后纠偏/客诉处理。">商业场景 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-20" title="业务类型/服务类型：
+笔译 — 文字翻译、资料翻译、文档本地化。
+口译 — 同传、交传、陪同口译、会议口译。
+印刷 — 设计排版、印刷、电子宣传册、易拉宝等图文物料。
+视频译制 — 视频配音、字幕、剪辑、本地化。
+展台搭建 — 展会展台设计、搭建、展会配套执行。
+礼品定制 — 企业礼品、笔记本、奖杯、周边定制。
+多元 — 同时涉及多项服务或销售综合触达，无法拆到单一服务。
+未知 — 文本不足，无法判断服务类型。
+页面显示使用中文；正式入库可另存系统编码。">业务类型 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-16" title="语种：
+中英 — 中文与英文互译，未明确方向时使用。
+中俄 — 中文与俄文互译。
+中德 — 中文与德文互译。
+中法 — 中文与法文互译。
+阿拉伯译中 — 阿拉伯语翻译为中文。
+中译阿拉伯 — 中文翻译为阿拉伯语。
+多语种 — 同时涉及多种语言。
+未知 — 明确涉及翻译但语种未说明。
+不适用 — 该切片不涉及翻译业务。
+判断规则：不能因为国家、国外项目、出口贸易、视频号标题、行业背景或业务类型“多元”推断语种；没有明确语言方向时不要轻易填写。
+后续正式入库应保留原始表述，并尽量归一到系统既有语种。">语种 ℹ</th>
+                                <th class="p-2 text-center whitespace-nowrap w-16" title="质量分（0-100）：评价切片作为知识库检索和引用时是否有价值，不是评价单行长短。
+90-100 — 极优，高度通用，可直接作为标准话术/强规则。
+80-89 — 高价值，问答清晰，有明确复用场景。
+70-79 — 有入库价值，但需标题、字段或备注限定适用边界。
+60-69 — 弱参考，建议进候选池或人工确认，不宜直接发布。
+40-59 — 个案化或上下文依赖强，默认不入正式知识库。
+0-39 — 无信息量、纯确认、乱码、无问无答、无上下文价值，不入库。纯推广或群发模板不能自动低分，应看是否可复用、可检索、不会误导。
+同一切片内多行应共享同一质量分。">质量分 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-24" title="处理备注：不是解读客户原话，而是说明切片归属和入库判断理由。
+应说明：属于哪个切片；为何入库或不入库；若不入库，原因是无问、无答、简单确认、乱码、强个案、时效性强或无上下文价值；若入库，说明可复用价值。
+同一切片内多行备注应保持一致或标明“同切片，随切片统一判断”。">处理备注 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-28" title="处理结论：
+入库_切片 — 问答完整且具备知识库复用价值，可进入候选或发布流程。
+待人工确认 — 语义复杂、边界不清、个案化但可能有价值，需要人工复核。
+不入库_无问 — 无法构造有效触发场景且没有复用价值。仅销售发送的紫色底色消息不自动归入无问；有价值时应作为销售主动触达模板候选。
+不入库_无答 — 只有客户问题或客户确认，缺少有效销售回答。
+不入库_简单确认 — 好的、收到、OK、谢谢等无新信息。
+不入库_无上下文价值 — 内容缺少可复用上下文，检索出来不能指导销售回复。
+不入库_强个案 — 只适用于具体联系人、具体电话/项目/时间，检索出来容易误导。
+不入库_时效性强 — 过期活动、临时通知、强日期依赖内容。
+不入库_乱码 — 未知消息类型或内容无法识别。
+当前历史兼容值：不入库_无信息量、不入库_纯推广；其中纯推广和群发模板后续应重新判断为入库候选或无上下文价值。">处理结论 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-16" title="状态：
+待处理：原始导入后待预处理。
+已处理：已完成预处理，但不代表已入正式知识库。
+已发布：已通过人工复核并发布到正式知识库。
+已拒绝：人工确认不入库。
+跳过：已跳过，通常为无信息量、乱码、无问无答或不满足切片要求。
+同一切片内多行最终应共享发布状态。">状态 ℹ</th>
+                                <th class="p-2 text-left whitespace-nowrap w-10" title="详情：展示入知识库详细信息，主展示为完整知识切片。
+入库正文：正式写入 knowledge_chunk.content 的标准化内容，必须可直接用于检索和生成。
+参考回复：来自原始销售回复 slice_answer，可多行合并，是来源/审核字段，不等同于入库正文。
+使用边界：来自 usage_boundary，用于说明适用条件、不可直接套用的风险和需要人工调整的变量。">详情 ℹ</th>
                             </tr>
                         </thead>
                         <tbody>${renderWecomRawRows(items, pageOffset)}</tbody>
@@ -6361,43 +8007,118 @@
                 </div>`;
         }
 
-        // 同一对话组（group_key 相同）全部行使用同一底色；相邻组交替换色
-        const _WR_GROUP_COLORS = ['bg-blue-50', 'bg-green-50'];  // A、B 交替
-        // 仅客户（无回复）→ amber-50；仅销售（无提问）→ violet-50
+        // 可视轮次颜色：红→黄→紫→绿循环（有问有答的轮次）
+        // 仅客户（无销售回复）→ amber-100；仅销售主动触达 → violet-100
+        const _WR_GROUP_COLORS = ['bg-red-100', 'bg-green-100'];
+
+        // 计算两条消息的时间差（小时）
+        function _wrTimeDiffH(t1, t2) {
+            if (!t1 || !t2) return 0;
+            const diff = Math.abs(new Date(t2) - new Date(t1));
+            return diff / 3600000;
+        }
 
         function renderWecomRawRows(items, pageOffset) {
-            // 扫描每组内角色，用于特殊色判断
-            const groupRoles = {};
-            items.forEach(item => {
-                if (!groupRoles[item.group_key]) groupRoles[item.group_key] = new Set();
-                groupRoles[item.group_key].add(item.role);
+            window._wecomRawListCache = window._wecomRawListCache || {};
+            (items || []).forEach(item => {
+                if (item && item.id != null) window._wecomRawListCache[String(item.id)] = item;
+            });
+            // 第一步：按角色转换计算可视轮次（不依赖DB的group_key）
+            // 规则：
+            //   客户消息跟在销售消息后 → 新轮次（无条件）
+            //   销售连续发消息，且当前轮次已有问+答，且时间间隔≥4小时 → 新"纯销售"块
+            //   group_key 变化（换联系人）→ 重置计数
+            const vRound = [];
+            let roundSeq = 0, roundHasCust = false, roundHasSales = false;
+            let prevRole = null, prevGk = null, prevTime = null;
+
+            items.forEach((item) => {
+                const gk = item.group_key || '';
+                const role = item.role;
+
+                if (gk !== prevGk) {
+                    roundSeq = 0; roundHasCust = false; roundHasSales = false;
+                    prevRole = null; prevTime = null; prevGk = gk;
+                }
+
+                if (prevRole !== null) {
+                    if (role === 'customer' && prevRole === 'sales') {
+                        // 客户重新提问 → 新轮次
+                        roundSeq++; roundHasCust = false; roundHasSales = false;
+                    } else if (role === 'sales' && prevRole === 'customer'
+                               && _wrTimeDiffH(prevTime, item.msg_time) >= 4) {
+                        // 销售跨4小时才回 → 客户消息视为无回复（amber），销售另起新块
+                        roundSeq++; roundHasCust = false; roundHasSales = false;
+                    } else if (role === 'sales' && prevRole === 'sales'
+                               && roundHasCust && roundHasSales
+                               && _wrTimeDiffH(prevTime, item.msg_time) >= 4) {
+                        // 已完成一轮后，销售跨4小时续发 → 新"纯销售"块
+                        roundSeq++; roundHasCust = false; roundHasSales = false;
+                    }
+                }
+
+                if (role === 'customer') roundHasCust = true; else roundHasSales = true;
+                vRound.push(roundSeq);
+                prevRole = role;
+                prevTime = item.msg_time;
             });
 
-            let lastGroupKey = null;
-            let groupSeq = -1;
-            const groupSeqMap = {};
+            // 第二步：统计每个可视轮次内的角色集合
+            const roundRoles = {};
+            items.forEach((item, i) => {
+                const rk = `${item.group_key||''}\x00${vRound[i]}`;
+                if (!roundRoles[rk]) roundRoles[rk] = new Set();
+                roundRoles[rk].add(item.role);
+            });
+
+            // 第三步：给有问有答的轮次按 group_key 内顺序分配循环色
+            const gkNormalSeq = {};   // {gk: normalRoundCount}
+            const roundBgMap = {};
+            const seenRk = new Set();
+            items.forEach((item, i) => {
+                const gk = item.group_key || '';
+                const rk = `${gk}\x00${vRound[i]}`;
+                if (seenRk.has(rk)) return;
+                seenRk.add(rk);
+                const roles = roundRoles[rk];
+                if (roles.has('customer') && roles.has('sales')) {
+                    if (gkNormalSeq[gk] === undefined) gkNormalSeq[gk] = 0;
+                    roundBgMap[rk] = _WR_GROUP_COLORS[gkNormalSeq[gk] % _WR_GROUP_COLORS.length];
+                    gkNormalSeq[gk]++;
+                }
+            });
+
+            const stableSliceColor = (sliceId) => {
+                const raw = String(sliceId || '');
+                let hash = 0;
+                for (let j = 0; j < raw.length; j++) hash = ((hash * 31) + raw.charCodeAt(j)) >>> 0;
+                return _WR_GROUP_COLORS[hash % _WR_GROUP_COLORS.length];
+            };
+            const hasLockedMultiRowSlice = (item) => {
+                const start = Number(item.slice_row_start || 0);
+                const end = Number(item.slice_row_end || 0);
+                return Boolean(item.slice_id) && start > 0 && end > start;
+            };
 
             return items.map((item, i) => {
                 const gk = item.group_key || '';
-                if (gk !== lastGroupKey) {
-                    groupSeq++;
-                    groupSeqMap[gk] = groupSeq;
-                    lastGroupKey = gk;
-                }
-                const seq = groupSeqMap[gk];
-                const roles = groupRoles[gk] || new Set();
+                const rk = `${gk}\x00${vRound[i]}`;
+                const roles = roundRoles[rk] || new Set();
                 const hasCustomer = roles.has('customer');
-                const hasSales   = roles.has('sales');
-                const isCustomer = item.role === 'customer';
+                const hasSales    = roles.has('sales');
+                const isCustomer  = item.role === 'customer';
 
-                // 整组同色：特殊组用专属色，正常对话按组序交替
                 let bgClass;
-                if (!hasSales)    bgClass = 'bg-amber-50';              // 无回复
-                else if (!hasCustomer) bgClass = 'bg-violet-50';        // 无提问
-                else               bgClass = _WR_GROUP_COLORS[seq % 2]; // A/B 交替
+                if (hasLockedMultiRowSlice(item)) {
+                    // 已锁定切片后优先用数据库边界着色，避免分页首尾把同一红/绿对话块误判成黄/紫单向块。
+                    bgClass = stableSliceColor(item.slice_id);
+                } else if (!hasSales)  bgClass = 'bg-amber-100';   // 仅客户（无回复）
+                else if (!hasCustomer) bgClass = 'bg-violet-100';  // 仅销售主动触达
+                else                   bgClass = roundBgMap[rk];   // 未切片兜底：有问有答循环色
 
-                const groupBorder = (i > 0 && item.group_key !== items[i-1].group_key)
-                    ? 'border-t-2 border-slate-300' : 'border-t border-slate-200';
+                // 粗灰线只在换联系人（group_key变化）时显示，轮次切换用细线
+                const isNewContact = i > 0 && item.group_key !== items[i-1].group_key;
+                const groupBorder = isNewContact ? 'border-t-2 border-slate-300' : 'border-t border-slate-200';
 
                 const roleTag = isCustomer
                     ? '<span class="inline-block px-1 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px]">客户</span>'
@@ -6407,31 +8128,58 @@
                 const contentSnip = (item.content||'').replace(/\n/g,' ').slice(0,50)+((item.content||'').length>50?'…':'');
                 const timeStr = (item.msg_time||'').slice(0,16).replace('T',' ');
                 const displayNum = (pageOffset || 0) + i + 1;  // 从 1 起，连续不断
+                const sliceNo = item.slice_id || '';
+                const displayStage = item.business_stage || item.stage || '';
+                const displayScenario = item.business_scenario_name || item.section || '';
+                const effectiveQuality = item.slice_quality_score ?? item.quality_score;
+                const effectiveResult = item.slice_process_result || item.process_result || '';
+                const effectiveStatus = item.slice_status || item.row_status || '';
 
-                const stageHtml = item.stage
-                    ? `<span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px]">${safeText(item.stage)}</span>`
+                const stageHtml = displayStage
+                    ? `<span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px]">${safeText(displayStage)}</span>`
                     : '<span class="text-slate-300">—</span>';
-                const conclusionHtml = item.process_result
-                    ? `<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] whitespace-nowrap">${safeText(item.process_result)}</span>`
+                const _prColors = {
+                    '入库_切片':     'bg-emerald-100 text-emerald-800',
+                    '不入库_纯推广': 'bg-slate-100 text-slate-500',
+                    '不入库_无信息量':'bg-slate-100 text-slate-400',
+                    '不入库_无上下文价值':'bg-slate-100 text-slate-500',
+                    '不入库_无问':   'bg-amber-100 text-amber-800',
+                    '不入库_无答':   'bg-amber-100 text-amber-800',
+                    '不入库_乱码':   'bg-red-100 text-red-600',
+                    '待人工确认':    'bg-orange-100 text-orange-700',
+                };
+                const conclusionHtml = effectiveResult
+                    ? `<span class="px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap ${_prColors[effectiveResult]||'bg-amber-100 text-amber-800'}">${safeText(effectiveResult)}</span>`
                     : '<span class="text-slate-300">—</span>';
-                const statusHtml = item.row_status === 'processed'
+                const blHtml = item.business_line
+                    ? `<span class="px-1 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] whitespace-nowrap">${safeText(item.business_line)}</span>`
+                    : '<span class="text-slate-300">—</span>';
+                const lpHtml = item.language_pair && item.language_pair !== '不适用'
+                    ? `<span class="text-[10px] text-indigo-600">${safeText(item.language_pair)}</span>`
+                    : '<span class="text-slate-300">—</span>';
+                const statusHtml = effectiveStatus === 'processed'
                     ? '<span class="text-emerald-600 font-medium">已处理</span>'
-                    : item.row_status === 'skipped'
+                    : effectiveStatus === 'published'
+                    ? '<span class="text-blue-600 font-medium">已发布</span>'
+                    : effectiveStatus === 'rejected'
+                    ? '<span class="text-rose-600 font-medium">已拒绝</span>'
+                    : effectiveStatus === 'skipped'
                     ? '<span class="text-slate-400">跳过</span>'
                     : '<span class="text-slate-400">待处理</span>';
 
                 return `<tr class="${bgClass} ${groupBorder} hover:brightness-95 cursor-pointer" onclick="showWecomRawGroup('${safeAttr(gk)}', ${item.id})">
                     <td class="p-2 text-slate-400 text-right text-[10px]">${displayNum}</td>
-                    <td class="p-2 whitespace-nowrap">${roleTag} <span class="text-[10px] text-slate-500">${safeText(senderId.slice(0,10))}</span></td>
-                    <td class="p-2 text-[10px] text-slate-500 whitespace-nowrap">${safeText(receiverId.slice(0,10))}</td>
+                    <td class="p-2 whitespace-nowrap">${roleTag} <span class="text-[10px] text-slate-500" title="${safeAttr(senderId)}">${safeText(senderId.slice(0,10))}</span></td>
+                    <td class="p-2 text-[10px] text-slate-500 whitespace-nowrap" title="${safeAttr(receiverId)}">${safeText(receiverId.slice(0,10))}</td>
                     <td class="p-2 text-[10px] text-slate-400 whitespace-nowrap">${safeText((item.group_id||'').slice(0,8))}</td>
+                    <td class="p-2 text-[10px] text-slate-500 whitespace-nowrap font-mono" title="${safeAttr(sliceNo || '暂无切片号，需先完成第2步切片生成')}">${sliceNo ? safeText(sliceNo.replace(/^wri_/, '').slice(0,18)) : '<span class="text-rose-400">未切片</span>'}</td>
                     <td class="p-2 text-[10px] text-slate-500 whitespace-nowrap">${safeText(timeStr)}</td>
                     <td class="p-2" title="${safeAttr(item.content||'')}">${safeText(contentSnip)}</td>
-                    <td class="p-2 text-[10px] text-slate-400 whitespace-nowrap">${safeText((item.from_id||'').slice(0,10))}</td>
-                    <td class="p-2 text-[10px] text-slate-400 whitespace-nowrap">${safeText((item.to_id||'').slice(0,10))}</td>
                     <td class="p-2">${stageHtml}</td>
-                    <td class="p-2 text-[10px] text-slate-600">${item.section ? safeText(item.section) : '<span class="text-slate-300">—</span>'}</td>
-                    <td class="p-2 text-center text-[10px]">${item.quality_score ?? '<span class="text-slate-300">—</span>'}</td>
+                    <td class="p-2 text-[10px] text-slate-600">${displayScenario ? safeText(displayScenario) : '<span class="text-slate-300">—</span>'}</td>
+                    <td class="p-2">${blHtml}</td>
+                    <td class="p-2">${lpHtml}</td>
+                    <td class="p-2 text-center text-[10px] font-medium ${Number(effectiveQuality) >= 70 ? 'text-emerald-700' : Number(effectiveQuality) >= 50 ? 'text-amber-700' : 'text-slate-400'}">${effectiveQuality != null ? safeText(effectiveQuality) : '<span class="text-slate-300">—</span>'}</td>
                     <td class="p-2 text-[10px] text-slate-500 truncate max-w-[6rem]" title="${safeAttr(item.process_note||'')}">${item.process_note ? safeText(item.process_note.slice(0,18)) : '<span class="text-slate-300">—</span>'}</td>
                     <td class="p-2">${conclusionHtml}</td>
                     <td class="p-2">${statusHtml}</td>
@@ -6440,12 +8188,15 @@
             }).join('');
         }
 
-        function jumpWecomRawPage() {
+        function jumpWecomRawPage(sourceEl) {
             const state = getKbListState('wecom_raw');
             const total = Number(state.total || 0);
             const limit = Number(state.limit || 100);
             const totalPages = Math.ceil(total / limit) || 1;
-            const input = document.getElementById('wr-page-jump');
+            const container = sourceEl?.closest?.('.flex.items-center.gap-2');
+            const input = sourceEl?.matches?.('input')
+                ? sourceEl
+                : (container?.querySelector?.('.wr-page-jump') || document.querySelector('.wr-page-jump'));
             if (!input) return;
             let pg = parseInt(input.value, 10);
             if (isNaN(pg) || pg < 1) pg = 1;
@@ -6459,9 +8210,225 @@
             const detailEl = document.getElementById('kb-detail');
             if (!detailEl) return;
             detailEl.innerHTML = '<div class="text-sm text-slate-400 p-8 text-center">加载中...</div>';
-            const res = await apiFetch(`${API_BASE}/api/wecom/raw/group/${encodeURIComponent(groupKey)}`);
+            const res = await fetch(`${_WR_BASE()}/api/wecom/raw/group/${encodeURIComponent(groupKey)}`, {credentials: 'include'});
             const data = await res.json();
-            const msgs = data.items || [];
+            const cache = window._wecomRawListCache || {};
+            const KB_SLICE_FIELDS = new Set([
+                'kb_unit_id', 'slice_id', 'slice_title', 'slice_question', 'slice_answer', 'normalized_content',
+                'usage_boundary', 'slice_quality_score', 'slice_process_result', 'slice_status',
+                'slice_row_start', 'slice_row_end', 'business_stage', 'business_scenario_code',
+                'business_scenario_name', 'scenario_match_reason', 'skip_reason', 'publish_target', 'process_note'
+            ]);
+            const valueRichness = (v) => {
+                if (v === null || v === undefined || v === '') return -1;
+                const s = String(v);
+                return s.length + (s.includes('\n') ? 1000 : 0);
+            };
+            const preferFilled = (base, extra) => {
+                const merged = {...(base || {})};
+                Object.entries(extra || {}).forEach(([k, v]) => {
+                    if (v === null || v === undefined || v === '') return;
+                    if (KB_SLICE_FIELDS.has(k) && valueRichness(merged[k]) > valueRichness(v)) return;
+                    merged[k] = v;
+                });
+                return merged;
+            };
+            const groupRows = data.items || [];
+            const groupIds = new Set(groupRows.map(m => String(m.id)));
+            const cacheRows = Object.values(cache).filter(m => m && (groupIds.has(String(m.id)) || m.group_key === groupKey));
+            const byId = {};
+            [...cacheRows, ...groupRows].forEach(m => {
+                if (!m || m.id == null) return;
+                byId[String(m.id)] = preferFilled(byId[String(m.id)], m);
+            });
+            const msgs = Object.values(byId).sort((a,b) => Number(a.row_index ?? a.id ?? 0) - Number(b.row_index ?? b.id ?? 0));
+            const selected = preferFilled(cache[String(highlightId)] || {}, msgs.find(m => Number(m.id) === Number(highlightId)) || msgs[0] || {});
+            const selectedSliceId = selected.slice_id || '';
+            const allKnownRows = Object.values(cache).concat(msgs);
+            const sliceById = {};
+            allKnownRows.forEach(m => {
+                if (!m || m.id == null) return;
+                if (selectedSliceId && m.slice_id !== selectedSliceId) return;
+                sliceById[String(m.id)] = preferFilled(sliceById[String(m.id)], m);
+            });
+            const sliceMsgs = selectedSliceId
+                ? Object.values(sliceById).sort((a,b) => Number(a.row_index ?? a.id ?? 0) - Number(b.row_index ?? b.id ?? 0))
+                : (selected.id ? [selected] : []);
+            const firstFilled = (rows, field) => {
+                let best = '';
+                (rows || []).forEach(row => {
+                    const v = row ? row[field] : '';
+                    if (valueRichness(v) > valueRichness(best)) best = v;
+                });
+                return best;
+            };
+            const sliceSelected = preferFilled(selected, {
+                kb_unit_id: firstFilled(sliceMsgs, 'kb_unit_id'),
+                slice_id: firstFilled(sliceMsgs, 'slice_id'),
+                slice_title: firstFilled(sliceMsgs, 'slice_title'),
+                slice_question: firstFilled(sliceMsgs, 'slice_question'),
+                slice_answer: firstFilled(sliceMsgs, 'slice_answer'),
+                normalized_content: firstFilled(sliceMsgs, 'normalized_content'),
+                usage_boundary: firstFilled(sliceMsgs, 'usage_boundary'),
+                slice_quality_score: firstFilled(sliceMsgs, 'slice_quality_score'),
+                slice_process_result: firstFilled(sliceMsgs, 'slice_process_result'),
+                slice_status: firstFilled(sliceMsgs, 'slice_status'),
+                slice_row_start: firstFilled(sliceMsgs, 'slice_row_start'),
+                slice_row_end: firstFilled(sliceMsgs, 'slice_row_end'),
+                business_stage: firstFilled(sliceMsgs, 'business_stage'),
+                business_scenario_code: firstFilled(sliceMsgs, 'business_scenario_code'),
+                business_scenario_name: firstFilled(sliceMsgs, 'business_scenario_name'),
+                scenario_match_reason: firstFilled(sliceMsgs, 'scenario_match_reason'),
+                skip_reason: firstFilled(sliceMsgs, 'skip_reason'),
+                publish_target: firstFilled(sliceMsgs, 'publish_target'),
+                process_note: firstFilled(sliceMsgs, 'process_note'),
+            });
+            const formatDisplayRows = (rows) => {
+                const ids = (rows || []).map(m => Number(m.id)).filter(n => Number.isFinite(n)).sort((a,b) => a - b);
+                if (!ids.length) return '';
+                const ranges = [];
+                let start = ids[0], prev = ids[0];
+                ids.slice(1).forEach(n => {
+                    if (n === prev + 1) {
+                        prev = n;
+                        return;
+                    }
+                    ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+                    start = prev = n;
+                });
+                ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+                return ranges.join('、');
+            };
+            const rowRange = formatDisplayRows(sliceMsgs.length ? sliceMsgs : [selected])
+                || (sliceSelected.slice_row_start !== null && sliceSelected.slice_row_start !== undefined && sliceSelected.slice_row_start !== ''
+                    && sliceSelected.slice_row_end !== null && sliceSelected.slice_row_end !== undefined && sliceSelected.slice_row_end !== ''
+                    ? `${Number(sliceSelected.slice_row_start) + 1}-${Number(sliceSelected.slice_row_end) + 1}`
+                    : '-');
+            const effectiveQuality = sliceSelected.slice_quality_score ?? selected.quality_score ?? '-';
+            const effectiveResult = sliceSelected.slice_process_result || selected.process_result || '-';
+            const effectiveStatus = sliceSelected.slice_status || selected.row_status || '-';
+            const stageScenario = [sliceSelected.business_stage || selected.stage, sliceSelected.business_scenario_name || selected.section].filter(Boolean).join(' - ') || '-';
+            const normalizeKbText = (value) => String(value || '')
+                .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[邮箱地址]')
+                .replace(/(?<!\d)(?:1[3-9]\d{9}|\d{7,12})(?!\d)/g, '[联系电话]')
+                .replace(/\bjamie\b/gi, '[客户联系人]')
+                .replace(/吴磊\s*Leo|吴磊|Leo/gi, '[销售姓名]')
+                .replace(/孔经理/g, '[客户联系人]')
+                .replace(/\[(愉快|玫瑰|太阳|握手|勾引)\]/g, '')
+                .trim();
+            const customerMsgs = sliceMsgs.filter(m => m.role === 'customer').map(m => normalizeKbText(m.content)).filter(Boolean);
+            const salesMsgs = sliceMsgs.filter(m => m.role === 'sales').map(m => normalizeKbText(m.content)).filter(Boolean);
+            const fallbackQuestion = sliceSelected.slice_question || customerMsgs.join('\n') || (selected.role === 'customer' ? normalizeKbText(selected.content) : '');
+            const fallbackAnswer = sliceSelected.slice_answer || salesMsgs.join('\n') || (selected.role === 'sales' ? normalizeKbText(selected.content) : '');
+            const semanticTitleSeed = (fallbackQuestion || fallbackAnswer || normalizeKbText(selected.content || '')).replace(/\s+/g, ' ').slice(0, 48);
+            const fallbackTitle = sliceSelected.slice_title || (semanticTitleSeed ? `${semanticTitleSeed}${semanticTitleSeed.length >= 48 ? '...' : ''}` : '知识标题待补齐');
+            const fallbackNormalized = sliceSelected.normalized_content || normalizeKbText(selected.content || '');
+            const fallbackPublishTarget = sliceSelected.publish_target || (String(effectiveResult).startsWith('入库') ? '正式知识库候选：knowledge_document + knowledge_chunk' : '');
+            const scenarioNameForCode = sliceSelected.business_scenario_name || selected.section || '';
+            const scenarioCodeMap = {
+                '新客激活': 'lead_activation',
+                '节气/开工问候': 'greetings',
+                '人员离职/交接': 'handover',
+                '老客唤醒': 're_activation',
+                '丢单复盘': 'lost_order_review',
+                '案例分享': 'case_sharing',
+                '业务深度介绍': 'service_intro',
+                '线下约见/面谈': 'meeting',
+                '产品/服务细节对标': 'spec_alignment',
+                '预算收紧': 'budget_cut',
+                '已有稳定供应商': 'existing_supplier',
+                '价格竞争/比价': 'pricing_bidding',
+                '内部消化/自己做': 'internalization',
+                '决策链/关系网摸排': 'mapping',
+                '渠道/合作伙伴调查': 'channel_investigation',
+                '多方协同与内部游说支持': 'internal_support',
+                '社交应酬/客情深度维护': 'relationship_maintenance',
+                '行业共鸣/吐苦水': 'empathy',
+                '紧急响应/确定性交付': 'emergency_response',
+                '转介绍请求与存量裂变': 'referral',
+                '方案确认与正式报价': 'quotation_confirmation',
+                '售后纠偏/客诉处理': 'complaints',
+            };
+            const scenarioCode = sliceSelected.business_scenario_code || scenarioCodeMap[scenarioNameForCode] || '-';
+            const fallbackReasonByScenario = (scenario) => {
+                if (scenario === '老客唤醒') return '客户处于既有触达/跟进上下文，销售通过轻量承接、回拨安排或服务提醒重新激活沟通。';
+                if (scenario === '新客激活') return '客户通过好友验证或尚未充分了解我方服务，销售介绍身份、服务范围并发起低压力探需。';
+                if (scenario === '节气/开工问候') return '消息内容围绕新年、开工、节日等时间节点问候，主要用于低压力关系维护。';
+                if (scenario === '转介绍请求与存量裂变') return '销售请求客户将联系方式或服务信息转给潜在需求方，核心动作是转介绍。';
+                if (scenario === '案例分享') return '销售分享成功案例、案例视频或项目经验，用案例证明服务能力并维持客户认知。';
+                if (scenario === '业务深度介绍') return '销售介绍公司能力、服务范围、历史经验或标杆客户合作，用于建立服务认知。';
+                if (scenario === '决策链/关系网摸排') return '客户或销售内容涉及其他联系人、联系路径、角色关系或决策链信息。';
+                return '';
+            };
+            const matchReason = sliceSelected.scenario_match_reason || fallbackReasonByScenario(scenarioNameForCode) || '命中依据缺失：需补充具体语义信号，不能只记录场景结论。';
+            const sectionValue = (text, label) => {
+                const src = String(text || '');
+                const labels = ['适用场景', '触发场景', '参考话术', '参考回复', '使用边界', '必要边界'];
+                const start = src.indexOf(`${label}：`);
+                if (start < 0) return '';
+                let end = src.length;
+                labels.filter(x => x !== label).forEach(other => {
+                    const idx = src.indexOf(`${other}：`, start + label.length + 1);
+                    if (idx >= 0 && idx < end) end = idx;
+                });
+                return src.slice(start + label.length + 1, end).trim();
+            };
+            const contextText = sectionValue(fallbackNormalized, '触发场景') || sectionValue(fallbackNormalized, '适用场景') || fallbackQuestion;
+            const referenceReplyText = fallbackAnswer || sectionValue(fallbackNormalized, '参考回复') || sectionValue(fallbackNormalized, '参考话术');
+            const boundaryText = sliceSelected.usage_boundary
+                || sectionValue(fallbackNormalized, '使用边界')
+                || sectionValue(fallbackNormalized, '必要边界')
+                || (sliceSelected.skip_reason || '按质量分、适用场景和人工复核结果决定是否发布。');
+            const buildFormalContent = () => [
+                contextText ? `适用场景：\n${contextText}` : '',
+                referenceReplyText ? `参考话术：\n${referenceReplyText}` : '',
+                boundaryText ? `使用边界：\n${boundaryText}` : '',
+            ].filter(Boolean).join('\n\n');
+            const rawFormalContent = String(sliceSelected.normalized_content || '').trim();
+            const rawReferenceReply = String(referenceReplyText || '').trim();
+            const normalizedIsOnlyReply = rawFormalContent && rawReferenceReply && rawFormalContent === rawReferenceReply;
+            const formalContentText = rawFormalContent && !normalizedIsOnlyReply
+                ? rawFormalContent
+                : (buildFormalContent() || rawFormalContent || '-');
+            const knowledgeClass = String(effectiveResult).startsWith('入库') ? '企微回复模板' : '企微候选模板';
+            const serviceDisplay = selected.business_line || '多元';
+            const completeSliceText = [
+                `触发场景：\n${contextText || '-'}`,
+                `参考回复：\n${referenceReplyText || '-'}`,
+                `使用边界：\n${boundaryText || '-'}`,
+            ].join('\n\n');
+            const infoRow = (label, value) => `
+                <div class="grid grid-cols-[82px_1fr] gap-2 border-b border-slate-100 py-1.5">
+                    <div class="text-slate-400">${safeText(label)}</div>
+                    <div class="text-slate-700 whitespace-pre-wrap">${safeText(value === null || value === undefined || value === '' ? '-' : value)}</div>
+                </div>`;
+            const sectionLabel = (text) => `<div class="mt-3 mb-1 text-[11px] font-bold text-slate-500">${safeText(text)}</div>`;
+            const detailInfoHtml = `
+                <div class="rounded border bg-white p-3">
+                    <div class="flex items-center justify-between border-b pb-2 mb-2">
+                        <h3 class="font-bold text-slate-800">入知识库详细信息</h3>
+                        <span class="text-[10px] text-slate-400 font-mono">${safeText(sliceSelected.slice_id || sliceSelected.kb_unit_id || groupKey)}</span>
+                    </div>
+                    ${infoRow('知识标题', fallbackTitle)}
+                    ${infoRow('知识分类', knowledgeClass)}
+                    ${infoRow('服务', serviceDisplay)}
+                    ${infoRow('商业场景', stageScenario)}
+                    ${infoRow('知识切片', completeSliceText)}
+                    ${sectionLabel('字段明细')}
+                    ${infoRow('入库正文', formalContentText)}
+                    ${infoRow('触发场景', contextText)}
+                    ${infoRow('参考回复', referenceReplyText)}
+                    ${infoRow('使用边界', boundaryText)}
+                    ${infoRow('场景编码', scenarioCode)}
+                    ${infoRow('命中依据', matchReason)}
+                    ${infoRow('质量分', effectiveQuality)}
+                    ${infoRow('处理结论', effectiveResult)}
+                    ${infoRow('发布状态', effectiveStatus)}
+                    ${infoRow('不入库原因', sliceSelected.skip_reason)}
+                    ${infoRow('来源行号', rowRange)}
+                    ${infoRow('发布目标', fallbackPublishTarget)}
+                    ${infoRow('处理备注', sliceSelected.process_note)}
+                </div>`;
 
             const msgHtml = msgs.map(m => {
                 const isCustomer = m.role === 'customer';
@@ -6471,10 +8438,12 @@
                 const highlightRing = m.id === highlightId ? ' ring-2 ring-amber-400' : '';
                 const timeStr = (m.msg_time||'').slice(0,16).replace('T',' ');
                 const contentHtml = (m.content||'—').split('\n').map(l => `<div>${safeText(l)||'&nbsp;'}</div>`).join('');
-                const conclusionBadge = m.process_result
-                    ? `<span class="px-1 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px]">${safeText(m.process_result)}</span>` : '';
-                const stageBadge = m.stage
-                    ? `<span class="px-1 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px]">${safeText(m.stage)}</span>` : '';
+                const msgConclusion = m.slice_process_result || m.process_result;
+                const msgStage = [m.business_stage || m.stage, m.business_scenario_name || m.section].filter(Boolean).join(' - ');
+                const conclusionBadge = msgConclusion
+                    ? `<span class="px-1 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px]">${safeText(msgConclusion)}</span>` : '';
+                const stageBadge = msgStage
+                    ? `<span class="px-1 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px]">${safeText(msgStage)}</span>` : '';
                 const metaRow = [
                     m.group_id ? `群:${safeText(m.group_id.slice(0,8))}` : '',
                     m.from_id ? `from:${safeText(m.from_id.slice(0,10))}` : '',
@@ -6496,16 +8465,16 @@
 
             detailEl.innerHTML = `
                 <div class="space-y-2 text-xs">
-                    <div class="flex items-center justify-between border-b pb-2 mb-2">
-                        <h3 class="font-bold text-slate-700">对话组详情</h3>
-                        <span class="text-[10px] text-slate-400 font-mono">${safeText(groupKey)}</span>
-                    </div>
-                    <div class="flex gap-3 text-[10px] text-slate-500 mb-2">
-                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-blue-100 border border-blue-200 inline-block"></span>客户</span>
-                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-green-100 border border-green-200 inline-block"></span>销售</span>
-                        <span class="flex items-center gap-1"><span class="w-3 h-3 ring-2 ring-amber-400 rounded inline-block"></span>当前行</span>
-                    </div>
-                    ${msgs.length ? msgHtml : '<div class="text-slate-400 text-center py-8">该组无消息</div>'}
+                    ${detailInfoHtml}
+                    <details class="rounded border bg-slate-50 p-3">
+                        <summary class="cursor-pointer font-bold text-slate-700">查看完整原始上下文</summary>
+                        <div class="flex gap-3 text-[10px] text-slate-500 my-2">
+                            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-blue-100 border border-blue-200 inline-block"></span>客户</span>
+                            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-green-100 border border-green-200 inline-block"></span>销售</span>
+                            <span class="flex items-center gap-1"><span class="w-3 h-3 ring-2 ring-amber-400 rounded inline-block"></span>当前行</span>
+                        </div>
+                        ${msgs.length ? msgHtml : '<div class="text-slate-400 text-center py-8">该组无消息</div>'}
+                    </details>
                 </div>`;
         }
         // ─── end 企微原始数据 ────────────────────────────────────────────────────────
@@ -6719,7 +8688,7 @@
                     <table class="w-full text-xs">
                         <thead class="bg-slate-100"><tr><th class="text-left p-2">等级</th><th class="text-left p-2">类型</th><th class="text-left p-2">标题/范围</th><th class="text-left p-2">说明</th><th class="text-left p-2">操作</th></tr></thead>
                         <tbody>${issues.map((issue, index) => `
-                            <tr class="border-t">
+                            <tr class="border-t hover:bg-slate-50 cursor-pointer" onclick="showQualityIssue(${index})">
                                 <td class="p-2">${safeText(issue.severity)}</td>
                                 <td class="p-2 font-medium">${safeText(issue.type)}</td>
                                 <td class="p-2">${safeText(issue.title || JSON.stringify(issue.scope || {}))}</td>
@@ -6732,18 +8701,18 @@
         }
 
         function renderQualityIssueActions(issue, index) {
-            const buttons = [`<button onclick="showQualityIssue(${index})" class="text-emerald-700 font-bold mr-2">详情</button>`];
-            if (issue.document_id) buttons.push(`<button onclick="showKbDocument('${issue.document_id}')" class="text-slate-700 mr-2">文档</button>`);
-            if (issue.chunk_id) buttons.push(`<button onclick="showQualityChunk('${issue.chunk_id}')" class="text-slate-700 mr-2">知识切片</button>`);
-            if (issue.type === 'missing_pricing_rule' && issue.chunk_id && issue.document_id) buttons.push(`<button onclick="addKbPricingRule('${issue.chunk_id}', '${issue.document_id}')" class="text-emerald-700 mr-2">补规则</button>`);
-            if ((issue.rule_ids && issue.rule_ids.length) || issue.rule_id) buttons.push(`<button onclick="showQualityRules('${(issue.rule_ids || [issue.rule_id]).join(',')}')" class="text-slate-700 mr-2">规则</button>`);
-            if (issue.type === 'duplicate_pricing_rule' && issue.rule_ids?.length > 1) buttons.push(`<button onclick="archiveDuplicateRules('${issue.rule_ids.join(',')}')" class="text-rose-700 mr-2">归档重复</button>`);
+            const buttons = [`<button onclick="event.stopPropagation();showQualityIssue(${index})" class="text-emerald-700 font-bold mr-2">详情</button>`];
+            if (issue.document_id) buttons.push(`<button onclick="event.stopPropagation();showKbDocument('${issue.document_id}')" class="text-slate-700 mr-2">文档</button>`);
+            if (issue.chunk_id) buttons.push(`<button onclick="event.stopPropagation();showQualityChunk('${issue.chunk_id}')" class="text-slate-700 mr-2">知识切片</button>`);
+            if (issue.type === 'missing_pricing_rule' && issue.chunk_id && issue.document_id) buttons.push(`<button onclick="event.stopPropagation();addKbPricingRule('${issue.chunk_id}', '${issue.document_id}')" class="text-emerald-700 mr-2">补规则</button>`);
+            if ((issue.rule_ids && issue.rule_ids.length) || issue.rule_id) buttons.push(`<button onclick="event.stopPropagation();showQualityRules('${(issue.rule_ids || [issue.rule_id]).join(',')}')" class="text-slate-700 mr-2">规则</button>`);
+            if (issue.type === 'duplicate_pricing_rule' && issue.rule_ids?.length > 1) buttons.push(`<button onclick="event.stopPropagation();archiveDuplicateRules('${issue.rule_ids.join(',')}')" class="text-rose-700 mr-2">归档重复</button>`);
             if ((issue.type === 'expired_document' || issue.type === 'expiring_document') && issue.document_id) {
-                buttons.push(`<button onclick="extendQualityDocument('${issue.document_id}')" class="text-indigo-700 mr-2">延长期限</button>`);
-                buttons.push(`<button onclick="kbDocAction('${issue.document_id}', 'archive')" class="text-rose-700 mr-2">归档</button>`);
+                buttons.push(`<button onclick="event.stopPropagation();extendQualityDocument('${issue.document_id}')" class="text-indigo-700 mr-2">延长期限</button>`);
+                buttons.push(`<button onclick="event.stopPropagation();kbDocAction('${issue.document_id}', 'archive')" class="text-rose-700 mr-2">归档</button>`);
             }
             if ((issue.type === 'expired_pricing_rule' || issue.type === 'expiring_pricing_rule') && issue.rule_id) {
-                buttons.push(`<button onclick="archiveKbPricingRule('${issue.rule_id}', '${issue.document_id || ''}')" class="text-rose-700 mr-2">停用规则</button>`);
+                buttons.push(`<button onclick="event.stopPropagation();archiveKbPricingRule('${issue.rule_id}', '${issue.document_id || ''}')" class="text-rose-700 mr-2">停用规则</button>`);
             }
             return buttons.join('');
         }

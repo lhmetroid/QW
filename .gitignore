@@ -25,3 +25,6 @@ backend/seq_cursor.txt
 # docs/ 目录为业务资料（CSV、Excel、文档、脚本），不涉及代码，不上传
 docs/
 backend/ai_settings.local.json
+
+# other/ 是独立项目，不上传到 QW 仓库
+other/

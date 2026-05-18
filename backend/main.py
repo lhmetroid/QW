@@ -18,6 +18,7 @@ import requests
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 from urllib.parse import quote, urlparse
@@ -31,6 +32,24 @@ from qywx_utils import QYWXUtils
 from intent_engine import IntentEngine
 from embedding_service import EmbeddingService
 from email_import_service import EmailImportService
+from raw_comm_service import (
+    parse_mail_file, expand_zip,
+    insert_mail_raw, create_mail_batch, upsert_mail_cleaned, clean_mail_payload,
+)
+from mail_oauth import (
+    build_gmail_authorize_url, exchange_gmail_code,
+    build_outlook_authorize_url, exchange_outlook_code,
+)
+from mail_sync import (
+    run_imap_sync, run_gmail_sync, run_outlook_sync,
+    ensure_sync_tables, _account_to_sync_dict,
+)
+from attachment_service import parse_and_store, get_available_parsers
+from mail_scheduler import (
+    ensure_schedule_table, load_schedules_from_db,
+    start_scheduler, stop_scheduler,
+    add_account_schedule, remove_account_schedule, get_next_run,
+)
 from business_csv_import import (
     DEFAULT_BUSINESS_CSV_FILENAME,
     DEFAULT_ROW_END as DEFAULT_BUSINESS_CSV_ROW_END,
@@ -44,6 +63,7 @@ from database import (
     KnowledgeVersionSnapshot, JobTask, ThreadBusinessFact, EmailThreadAsset,
     EmailFragmentAsset, EmailEffectFeedback, ModelTrainingSample, ReplyChainSnapshot,
     ApiAssistInvocation, WecomTriggerRecord,
+    CaseLibraryCase, CaseIterationRun, CaseIterationResult,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -329,6 +349,8 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS positive_feedback_count INTEGER DEFAULT 0;"))
         db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS last_feedback_at TIMESTAMP;"))
         db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS quality_notes JSON;"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS business_stage VARCHAR(80);"))
+        db.execute(text("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS business_scenario_code VARCHAR(80);"))
         db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS library_type VARCHAR(20) DEFAULT 'reference';"))
         db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS allowed_for_generation BOOLEAN DEFAULT FALSE;"))
         db.execute(text("ALTER TABLE knowledge_candidate ADD COLUMN IF NOT EXISTS usable_for_reply BOOLEAN DEFAULT FALSE;"))
@@ -458,6 +480,7 @@ def auto_patch_db():
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_active_effective ON knowledge_chunk (status, business_line, knowledge_type, effective_from, effective_to);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_replyable ON knowledge_chunk (status, usable_for_reply, allowed_for_generation, useful_score DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_priority ON knowledge_chunk (priority DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_business_scenario ON knowledge_chunk (business_stage, business_scenario_code);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_pr_active_scope ON pricing_rule (status, business_line, language_pair, service_scope, customer_tier);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kd_effective_to ON knowledge_document (status, effective_to);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kcand_status_created ON knowledge_candidate (status, created_at DESC);"))
@@ -483,15 +506,53 @@ def auto_patch_db():
             "process_result VARCHAR(50),"
             "row_status VARCHAR(30) DEFAULT 'pending',"
             "group_key VARCHAR(80),"
+            "kb_unit_id VARCHAR(80),"
+            "slice_id VARCHAR(80),"
+            "slice_title VARCHAR(255),"
+            "slice_question TEXT,"
+            "slice_answer TEXT,"
+            "normalized_content TEXT,"
+            "slice_quality_score NUMERIC(5,2),"
+            "slice_process_result VARCHAR(50),"
+            "slice_status VARCHAR(30),"
+            "slice_row_start INTEGER,"
+            "slice_row_end INTEGER,"
+            "business_stage VARCHAR(80),"
+            "business_scenario_code VARCHAR(80),"
+            "business_scenario_name VARCHAR(120),"
+            "scenario_match_reason TEXT,"
+            "usage_boundary TEXT,"
+            "skip_reason TEXT,"
+            "publish_target VARCHAR(120),"
             "role VARCHAR(20),"
             "row_index INTEGER,"
             "created_at TIMESTAMP DEFAULT now()"
             ");"
         ))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS kb_unit_id VARCHAR(80);"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS slice_id VARCHAR(80);"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS slice_title VARCHAR(255);"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS slice_question TEXT;"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS slice_answer TEXT;"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS normalized_content TEXT;"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS slice_quality_score NUMERIC(5,2);"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS slice_process_result VARCHAR(50);"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS slice_status VARCHAR(30);"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS slice_row_start INTEGER;"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS slice_row_end INTEGER;"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS business_stage VARCHAR(80);"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS business_scenario_code VARCHAR(80);"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS business_scenario_name VARCHAR(120);"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS scenario_match_reason TEXT;"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS usage_boundary TEXT;"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS skip_reason TEXT;"))
+        db.execute(text("ALTER TABLE wecom_raw_import ADD COLUMN IF NOT EXISTS publish_target VARCHAR(120);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_batch ON wecom_raw_import (import_batch_id);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_batch_row ON wecom_raw_import (import_batch_id, row_index);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_row_index ON wecom_raw_import (row_index);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_group ON wecom_raw_import (group_key);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_slice ON wecom_raw_import (slice_id);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_kb_unit ON wecom_raw_import (kb_unit_id);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_wri_status_created ON wecom_raw_import (row_status, created_at DESC);"))
         if settings.KB_FULLTEXT_INDEX_ENABLED:
             db.execute(text(
@@ -508,8 +569,25 @@ def auto_patch_db():
 
 auto_patch_db()
 
+# 初始化邮件同步相关表（sync_checkpoint 等）并启动定时调度器
+try:
+    _patch_db = SessionLocal()
+    ensure_sync_tables(_patch_db)
+    ensure_schedule_table(_patch_db)
+    load_schedules_from_db(_patch_db)
+    _patch_db.close()
+    start_scheduler()
+    logger.info("邮件同步表初始化完成，调度器已启动")
+except Exception as _e:
+    logger.warning("邮件同步初始化跳过: %s", _e)
+
 import asyncio
 from archive_service import ArchiveService
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    stop_scheduler()
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -643,6 +721,8 @@ class KnowledgeManualCreate(BaseModel):
     service_scope: str | None = None
     region: str | None = None
     customer_tier: str | None = None
+    business_stage: str | None = None
+    business_scenario_code: str | None = None
     source_type: str = "manual"
     source_ref: str | None = None
     owner: str | None = None
@@ -673,6 +753,8 @@ class KnowledgeChunkCreate(BaseModel):
     service_scope: str | None = None
     region: str | None = None
     customer_tier: str | None = None
+    business_stage: str | None = None
+    business_scenario_code: str | None = None
     priority: int = 50
     tags: dict | None = None
     pricing_rule: dict | None = None
@@ -717,6 +799,8 @@ class KnowledgeChunkUpdate(BaseModel):
     service_scope: str | None = None
     region: str | None = None
     customer_tier: str | None = None
+    business_stage: str | None = None
+    business_scenario_code: str | None = None
     priority: int | None = None
     structured_tags: dict | None = None
 
@@ -2190,6 +2274,8 @@ def _chunk_to_dict(chunk: KnowledgeChunk) -> dict:
         "region": chunk.region,
         "customer_tier": chunk.customer_tier,
         "customer_tier_label": label_for("customer_tier", chunk.customer_tier),
+        "business_stage": chunk.business_stage,
+        "business_scenario_code": chunk.business_scenario_code,
         "priority": chunk.priority,
         "library_type": chunk.library_type,
         "allowed_for_generation": chunk.allowed_for_generation,
@@ -2586,6 +2672,8 @@ def _restore_document_from_snapshot(db: Session, doc: KnowledgeDocument, snapsho
             service_scope=chunk_payload.get("service_scope"),
             region=chunk_payload.get("region"),
             customer_tier=chunk_payload.get("customer_tier"),
+            business_stage=chunk_payload.get("business_stage"),
+            business_scenario_code=chunk_payload.get("business_scenario_code"),
             structured_tags=chunk_payload.get("structured_tags"),
             status="review",
             effective_from=doc.effective_from,
@@ -5925,6 +6013,8 @@ async def create_manual_knowledge(payload: KnowledgeManualCreate, db: Session = 
         service_scope=payload.service_scope,
         region=payload.region,
         customer_tier=payload.customer_tier,
+        business_stage=payload.business_stage,
+        business_scenario_code=payload.business_scenario_code,
         structured_tags=merged_tags,
         status=now_status,
         effective_from=effective_from,
@@ -6034,6 +6124,8 @@ async def create_manual_multi_knowledge(payload: KnowledgeMultiChunkCreate, db: 
             service_scope=item.service_scope,
             region=item.region,
             customer_tier=item.customer_tier,
+            business_stage=item.business_stage,
+            business_scenario_code=item.business_scenario_code,
             structured_tags=merged_chunk_tags,
             status="draft",
             effective_from=effective_from,
@@ -6695,6 +6787,10 @@ async def update_kb_chunk(chunk_id: str, payload: KnowledgeChunkUpdate, db: Sess
         chunk.region = payload.region
     if payload.customer_tier is not None:
         chunk.customer_tier = payload.customer_tier
+    if payload.business_stage is not None:
+        chunk.business_stage = payload.business_stage
+    if payload.business_scenario_code is not None:
+        chunk.business_scenario_code = payload.business_scenario_code
     if payload.priority is not None:
         chunk.priority = payload.priority
 
@@ -14500,7 +14596,7 @@ async def sidebar_assist(
             messages=all_messages,
             force_refresh=bool(request.force_refresh),
         )
-        if not request.force_refresh:
+        if not stream and not request.force_refresh:
             cached_result = _get_cached_sidebar_assist_result(dedupe_request_key)
             if cached_result:
                 mark_timing("dedupe_lookup_ms", stage_started)
@@ -14525,31 +14621,34 @@ async def sidebar_assist(
                     },
                 })
                 return cached_result
-        dedupe_future, dedupe_future_owner = _acquire_sidebar_assist_future(dedupe_request_key)
-        mark_timing("dedupe_lookup_ms", stage_started)
-        if not dedupe_future_owner:
-            reused_result = await asyncio.wrap_future(dedupe_future)
-            reused_result = _decorate_sidebar_assist_result(
-                reused_result,
-                status="reused_inflight",
-                reason="同一会话、同一消息内容的请求仍在处理中，当前请求直接复用进行中的结果",
-                request_key=dedupe_request_key,
-            )
-            log_sidebar_result("REUSED", {
-                "external_userid": external_userid,
-                "sales_userid": sales_userid,
-                "session_id": session_id,
-                "requested_session_id": requested_session_id,
-                "dedupe_status": "reused_inflight",
-                "dedupe_reason": "same_content_inflight",
-                "latest_dialog_count": len(recent_logs),
-                "request_key": dedupe_request_key,
-                "timings_ms": {
-                    **timings_ms,
-                    "total_ms": round((perf_counter() - total_started) * 1000, 2),
-                },
-            })
-            return reused_result
+        if not stream:
+            dedupe_future, dedupe_future_owner = _acquire_sidebar_assist_future(dedupe_request_key)
+            mark_timing("dedupe_lookup_ms", stage_started)
+            if not dedupe_future_owner:
+                reused_result = await asyncio.wrap_future(dedupe_future)
+                reused_result = _decorate_sidebar_assist_result(
+                    reused_result,
+                    status="reused_inflight",
+                    reason="同一会话、同一消息内容的请求仍在处理中，当前请求直接复用进行中的结果",
+                    request_key=dedupe_request_key,
+                )
+                log_sidebar_result("REUSED", {
+                    "external_userid": external_userid,
+                    "sales_userid": sales_userid,
+                    "session_id": session_id,
+                    "requested_session_id": requested_session_id,
+                    "dedupe_status": "reused_inflight",
+                    "dedupe_reason": "same_content_inflight",
+                    "latest_dialog_count": len(recent_logs),
+                    "request_key": dedupe_request_key,
+                    "timings_ms": {
+                        **timings_ms,
+                        "total_ms": round((perf_counter() - total_started) * 1000, 2),
+                    },
+                })
+                return reused_result
+        else:
+            mark_timing("dedupe_lookup_ms", stage_started)
 
         # Fast-Track 前置扫描：既返回给侧边栏展示，也作为 LLM-2 的输入信号
         stage_started = perf_counter()
@@ -14620,6 +14719,7 @@ async def sidebar_assist(
 
         if summary and (
             request.force_refresh
+            or stream
             or not summary.sales_advice_v2
             or not summary.sales_advice_compare_v2
         ):
@@ -14727,7 +14827,7 @@ async def sidebar_assist(
                     reply_style=_style,
                 )
                 # 在进入流之前把 KB 检索结果写入 DB
-                summary.stage_status = {
+                summary_stage_status = {
                     **dict(summary.stage_status or {}),
                     **stage_status,
                     "llm1": stage_status.get("llm1") or "done",
@@ -14735,6 +14835,16 @@ async def sidebar_assist(
                     "knowledge_v2": summary.knowledge_status or stage_status.get("knowledge_v2") or "not_started",
                     "knowledge_external_api": (external_knowledge or {}).get("status") or "unknown",
                     "llm2": "streaming",
+                }
+                summary.stage_status = summary_stage_status
+                summary_snapshot = {
+                    "id": summary.id,
+                    "topic": summary.topic,
+                    "core_demand": summary.core_demand,
+                    "key_facts": summary.key_facts,
+                    "risks": summary.risks,
+                    "todo_items": summary.todo_items,
+                    "to_be_confirmed": summary.to_be_confirmed,
                 }
                 db.commit()
                 db.close()
@@ -14744,12 +14854,12 @@ async def sidebar_assist(
                 _status_payload = {
                     "stage": "llm2_start",
                     "has_v1": True,
-                    "topic": summary.topic,
-                    "core_demand": summary.core_demand,
-                    "key_facts": summary.key_facts,
-                    "risks": summary.risks,
-                    "todo_items": summary.todo_items,
-                    "to_be_confirmed": summary.to_be_confirmed,
+                    "topic": summary_snapshot["topic"],
+                    "core_demand": summary_snapshot["core_demand"],
+                    "key_facts": summary_snapshot["key_facts"],
+                    "risks": summary_snapshot["risks"],
+                    "todo_items": summary_snapshot["todo_items"],
+                    "to_be_confirmed": summary_snapshot["to_be_confirmed"],
                     "fast_track": fast_track_signals,
                     "crm_status": (crm_context or {}).get("crm_profile_status", "unknown"),
                     "knowledge_status": knowledge_status,
@@ -14757,7 +14867,7 @@ async def sidebar_assist(
                     "timings_ms": dict(timings_ms),
                 }
                 _cap = dict(
-                    summary_id=summary.id,
+                    summary_id=summary_snapshot["id"],
                     session_id=session_id,
                     requested_session_id=requested_session_id,
                     external_userid=external_userid,
@@ -14767,18 +14877,10 @@ async def sidebar_assist(
                     timings_ms=dict(timings_ms),
                     stage_status=dict(stage_status),
                     fast_track_signals=list(fast_track_signals),
-                    all_messages=list(all_messages),
                     summary_json=dict(summary_json),
                     knowledge_v2=knowledge_v2,
                     crm_context=crm_context,
                 )
-
-                # 释放 dedup future —— 流式路径暂不向等待者转发结果
-                if dedupe_request_key and dedupe_future_owner and dedupe_future:
-                    _resolve_sidebar_assist_future(
-                        dedupe_request_key, dedupe_future,
-                        error=RuntimeError("stream mode, no dedup forwarding"),
-                    )
 
                 def _stream_gen():
                     """同步 SSE 生成器，FastAPI 在线程池中运行此函数"""
@@ -14818,6 +14920,7 @@ async def sidebar_assist(
                     # 保存 LLM-2 结果到数据库
                     _done_ss = {**_cap["stage_status"], "llm2": "done" if full_content else "failed_no_content"}
                     _inv     = None
+                    _invocation_id = None
                     _save_db = SessionLocal()
                     try:
                         _sm = _save_db.query(IntentSummary).filter(
@@ -14848,6 +14951,7 @@ async def sidebar_assist(
                                 "total_ms": round((_pc() - _cap["total_started"]) * 1000, 2),
                             },
                         }))
+                        _messages_for_invocation = _load_session_messages(_save_db, _cap["session_id"]) if _cap["session_id"] else []
                         _inv = _store_api_assist_invocation(
                             _save_db,
                             result_payload=_result_doc,
@@ -14855,9 +14959,10 @@ async def sidebar_assist(
                             requested_session_id=_cap["requested_session_id"],
                             external_userid=_cap["external_userid"],
                             sales_userid=_cap["sales_userid"],
-                            messages=_cap["all_messages"],
+                            messages=_messages_for_invocation,
                             trigger_source=_cap["trigger_source"],
                         )
+                        _invocation_id = str(_inv.invocation_id) if _inv else None
                         _save_db.commit()
                     except Exception as db_exc:
                         logger.error("流式 LLM2 DB 保存失败: %s", db_exc)
@@ -14881,7 +14986,7 @@ async def sidebar_assist(
                             "llm2_generate_ms": llm2_elapsed,
                             "total_ms": round((_pc() - _cap["total_started"]) * 1000, 2),
                         },
-                        "invocation_id": str(_inv.invocation_id) if _inv else None,
+                        "invocation_id": _invocation_id,
                     })
 
                 return StreamingResponse(
@@ -15342,6 +15447,32 @@ class WecomRawImportRequest(BaseModel):
 
 # 后台导入任务状态 {batch_id: {"status": "running"|"done"|"error", "inserted": int, "error": str}}
 _wecom_import_jobs: dict = {}
+_wecom_preprocess_jobs: dict = {}
+_wecom_preprocess_lock = threading.Lock()
+
+_WECOM_PREPROCESS_ROW_LIMIT_DEFAULT = 100
+_WECOM_PREPROCESS_LLM_TIMEOUT_DEFAULT = 240
+_WECOM_PREPROCESS_LOOKAHEAD = 200
+
+_WECOM_PROCESS_RESULTS = {
+    "入库_切片",
+    "待人工确认",
+    "不入库_无上下文价值",
+    "不入库_强个案",
+    "不入库_乱码",
+    "不入库_简单确认",
+    "不入库_无答",
+}
+_WECOM_ROW_STATUSES = {"processed", "skipped"}
+
+
+class WecomRawPreprocessRequest(BaseModel):
+    batch_id: str
+    row_limit: int = _WECOM_PREPROCESS_ROW_LIMIT_DEFAULT
+    timeout_seconds: int = _WECOM_PREPROCESS_LLM_TIMEOUT_DEFAULT
+    llm1_api_url: str | None = None
+    llm1_api_key: str | None = None
+    llm1_model: str | None = None
 
 def _run_wecom_import_bg(file_path: str, batch_id: str, force: bool, database_url: str):
     """后台线程：流式读取 CSV 并分批插入 DB，完成后更新 _wecom_import_jobs。"""
@@ -15455,7 +15586,7 @@ def import_wecom_raw(req: WecomRawImportRequest, db: Session = Depends(get_db)):
     # 启动后台线程，立即返回 accepted
     _wecom_import_jobs[batch_id] = {"status": "running", "inserted": 0}
     from database import engine as _db_engine
-    database_url = str(_db_engine.url)
+    database_url = _db_engine.url.render_as_string(hide_password=False)
     t = _threading.Thread(
         target=_run_wecom_import_bg,
         args=(file_path, batch_id, req.force, database_url),
@@ -15474,6 +15605,597 @@ def wecom_import_status(batch_id: str, db: Session = Depends(get_db)):
     if cnt:
         return {"batch_id": batch_id, "status": "done", "inserted": cnt}
     return {"batch_id": batch_id, "status": "not_found"}
+
+
+def _wecom_dt_diff_hours(left, right) -> float:
+    if not left or not right:
+        return 0.0
+    try:
+        return abs((right - left).total_seconds()) / 3600
+    except Exception:
+        return 0.0
+
+
+def _wecom_visual_round_keys(rows: list[dict]) -> list[str]:
+    """Mirror the WeCom raw page coloring rule; this is Step 2 slice-boundary input."""
+    keys: list[str] = []
+    round_seq = 0
+    round_has_customer = False
+    round_has_sales = False
+    prev_role = None
+    prev_group_key = None
+    prev_time = None
+    for row in rows:
+        group_key = row.get("group_key") or ""
+        role = row.get("role") or "unknown"
+        if group_key != prev_group_key:
+            round_seq = 0
+            round_has_customer = False
+            round_has_sales = False
+            prev_role = None
+            prev_time = None
+            prev_group_key = group_key
+
+        if prev_role is not None:
+            if role == "customer" and prev_role == "sales":
+                round_seq += 1
+                round_has_customer = False
+                round_has_sales = False
+            elif role == "sales" and prev_role == "customer" and _wecom_dt_diff_hours(prev_time, row.get("msg_time")) >= 4:
+                round_seq += 1
+                round_has_customer = False
+                round_has_sales = False
+            elif (
+                role == "sales"
+                and prev_role == "sales"
+                and round_has_customer
+                and round_has_sales
+                and _wecom_dt_diff_hours(prev_time, row.get("msg_time")) >= 4
+            ):
+                round_seq += 1
+                round_has_customer = False
+                round_has_sales = False
+
+        if role == "customer":
+            round_has_customer = True
+        else:
+            round_has_sales = True
+        keys.append(f"{group_key}\x00{round_seq}")
+        prev_role = role
+        prev_time = row.get("msg_time")
+    return keys
+
+
+def _wecom_slice_boundary_keys(rows: list[dict]) -> list[str]:
+    """Convert visual color groups into actual slice units.
+
+    Red/green dialog groups can span multiple rows. Yellow customer-only and
+    violet sales-only groups are not dialogs, so each source row is its own
+    slice even when the UI paints adjacent rows with the same color.
+    """
+    visual_keys = _wecom_visual_round_keys(rows)
+    grouped_roles: dict[str, set[str]] = {}
+    for row, key in zip(rows, visual_keys):
+        grouped_roles.setdefault(key, set()).add(row.get("role") or "unknown")
+
+    slice_keys: list[str] = []
+    for row, key in zip(rows, visual_keys):
+        roles = grouped_roles.get(key) or set()
+        if "customer" in roles and "sales" in roles:
+            slice_keys.append(key)
+        else:
+            slice_keys.append(f"{key}\x00row:{row.get('id')}")
+    return slice_keys
+
+
+def _wecom_row_dict(row) -> dict:
+    return {
+        "id": row[0],
+        "import_batch_id": row[1],
+        "sender": row[2],
+        "receiver": row[3],
+        "group_id": row[4],
+        "msg_time": row[5],
+        "content": row[6] or "",
+        "from_id": row[7],
+        "to_id": row[8],
+        "group_key": row[9],
+        "role": row[10],
+        "row_index": row[11],
+        "slice_id": row[12],
+    }
+
+
+def _wecom_fetch_pending_rows(db: Session, batch_id: str, row_limit: int) -> list[dict]:
+    row_limit = max(1, min(int(row_limit or _WECOM_PREPROCESS_ROW_LIMIT_DEFAULT), 300))
+    params = {"batch_id": batch_id, "limit": row_limit}
+    base_rows = db.execute(text(
+        "SELECT id, import_batch_id, sender, receiver, group_id, msg_time, content, from_id, to_id, "
+        "group_key, role, row_index, slice_id "
+        "FROM wecom_raw_import "
+        "WHERE import_batch_id = :batch_id AND row_status = 'pending' "
+        "ORDER BY row_index ASC, id ASC LIMIT :limit"
+    ), params).fetchall()
+    rows = [_wecom_row_dict(r) for r in base_rows]
+    if len(rows) < row_limit:
+        return rows
+
+    def _after_clause(last_row: dict) -> tuple[str, dict]:
+        return (
+            "((row_index > :last_row_index) OR (row_index = :last_row_index AND id > :last_id))",
+            {"last_row_index": last_row["row_index"], "last_id": last_row["id"]},
+        )
+
+    while True:
+        round_keys = _wecom_slice_boundary_keys(rows)
+        target_key = round_keys[row_limit - 1]
+        end = row_limit
+        while end < len(rows) and round_keys[end] == target_key:
+            end += 1
+        if end < len(rows):
+            return rows[:end]
+
+        clause, after_params = _after_clause(rows[-1])
+        extra = db.execute(text(
+            "SELECT id, import_batch_id, sender, receiver, group_id, msg_time, content, from_id, to_id, "
+            "group_key, role, row_index, slice_id "
+            "FROM wecom_raw_import "
+            f"WHERE import_batch_id = :batch_id AND row_status = 'pending' AND {clause} "
+            "ORDER BY row_index ASC, id ASC LIMIT :limit"
+        ), {"batch_id": batch_id, "limit": _WECOM_PREPROCESS_LOOKAHEAD, **after_params}).fetchall()
+        if not extra:
+            return rows
+        rows.extend(_wecom_row_dict(r) for r in extra)
+        if len(extra) < _WECOM_PREPROCESS_LOOKAHEAD:
+            round_keys = _wecom_slice_boundary_keys(rows)
+            target_key = round_keys[row_limit - 1]
+            end = row_limit
+            while end < len(rows) and round_keys[end] == target_key:
+                end += 1
+            return rows[:end]
+
+
+def _wecom_assign_slice_ids(db: Session, rows: list[dict], batch_id: str) -> list[dict]:
+    if not rows:
+        return []
+    round_keys = _wecom_slice_boundary_keys(rows)
+    groups: dict[str, list[dict]] = {}
+    for row, key in zip(rows, round_keys):
+        groups.setdefault(key, []).append(row)
+
+    batch_suffix = re.sub(r"[^a-zA-Z0-9]+", "", batch_id)[-8:] or "batch"
+    used_slice_ids: set[str] = set()
+    for group_rows in groups.values():
+        existing_slice_id = next((str(r.get("slice_id") or "").strip() for r in group_rows if str(r.get("slice_id") or "").strip()), "")
+        row_start = min(int(r["row_index"] or 0) + 1 for r in group_rows)
+        row_end = max(int(r["row_index"] or 0) + 1 for r in group_rows)
+        slice_id = existing_slice_id if existing_slice_id and existing_slice_id not in used_slice_ids else ""
+        if not slice_id:
+            base_slice_id = f"wri_auto_{batch_suffix}_r{row_start:06d}"
+            slice_id = base_slice_id
+            suffix = 2
+            while slice_id in used_slice_ids:
+                slice_id = f"{base_slice_id}_{suffix}"
+                suffix += 1
+        used_slice_ids.add(slice_id)
+        ids = [r["id"] for r in group_rows]
+        db.execute(text(
+            "UPDATE wecom_raw_import SET "
+            "slice_id = :slice_id, kb_unit_id = :slice_id, slice_row_start = :row_start, slice_row_end = :row_end, "
+            "slice_status = COALESCE(slice_status, 'sliced') "
+            "WHERE id = ANY(:ids) AND row_status = 'pending'"
+        ), {"slice_id": slice_id, "row_start": row_start, "row_end": row_end, "ids": ids})
+        for row in group_rows:
+            row["slice_id"] = slice_id
+            row["slice_row_start"] = row_start
+            row["slice_row_end"] = row_end
+    db.commit()
+    return rows
+
+
+def _wecom_business_scenarios(db: Session) -> list[dict]:
+    rows = db.execute(text(
+        "SELECT scene_value, category, scenario, scenario_full, features, strategy "
+        "FROM llm_business_scenario_standards "
+        "WHERE COALESCE(is_active, true) = true "
+        "ORDER BY sort_order ASC, standard_id ASC"
+    )).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def _wecom_llm_preprocess_prompt(slice_id: str, rows: list[dict], scenarios: list[dict]) -> str:
+    role_label = {"customer": "客户", "sales": "销售", "unknown": "未知"}
+    messages = [
+        {
+            "row_id": r["id"],
+            "row_index": r.get("row_index"),
+            "time": str(r.get("msg_time") or ""),
+            "role": role_label.get(r.get("role") or "unknown", r.get("role") or "未知"),
+            "sender": r.get("sender") or "",
+            "receiver": r.get("receiver") or "",
+            "content": r.get("content") or "",
+        }
+        for r in rows
+    ]
+    scenario_lines = "\n".join(
+        f"- code={s.get('scene_value')}；商业阶段={s.get('category')}；商业场景={s.get('scenario')}；特征={s.get('features') or ''}；策略={s.get('strategy') or ''}"
+        for s in scenarios
+    )
+    return f"""
+你是企微历史记录入知识库预处理助手。请严格按“一个 slice_id 是一个最小处理单元”的规则处理，不要跨切片，不要拆分当前切片，不要合并相邻切片。
+
+当前 slice_id：{slice_id}
+
+商业场景标准只能从以下 llm_business_scenario_standards 启用项选择；无法识别或不入库乱码类可填 null：
+{scenario_lines}
+
+必须返回纯 JSON 对象，不要 markdown，不要解释：
+{{
+  "slice_title": "知识标题，不写切片/模板等泛化词",
+  "slice_question": "客户原话多行合并；若只有销售主动触达，写触发场景/适用条件；不得伪造客户原话",
+  "slice_answer": "销售原话多行合并；不得润色、总结或改写",
+  "normalized_content": "拟入库正文预览；只能做最低限度脱敏，不得改写原句语气和表达",
+  "quality_score": 0,
+  "process_result": "入库_切片|待人工确认|不入库_无上下文价值|不入库_强个案|不入库_乱码|不入库_简单确认|不入库_无答",
+  "business_stage": "商业阶段或 null",
+  "business_scenario_code": "商业场景 code 或 null",
+  "business_scenario_name": "商业场景中文名或 null",
+  "scenario_match_reason": "命中依据，必须说明触发语义，不要只复述结论",
+  "usage_boundary": "使用边界；说明什么情况下可用/不可用",
+  "skip_reason": "不入库原因；入库或待人工确认时为 null",
+  "publish_target": "正式知识库候选：knowledge_document + knowledge_chunk 或 null",
+  "business_line": "多元|笔译|口译|印刷|礼品定制|会展|视频/多媒体|普通资料|未知",
+  "language_pair": "中英|中日|中韩|中德|中法|中英/多语|多元|未知|null"
+}}
+
+硬性规则：
+1. 只处理当前 messages 内的原始行，不得引用相邻切片内容。
+2. content 原始字段不得改写；slice_question 和 slice_answer 必须尽量使用原文合并。
+3. normalized_content 不是润色话术，只允许脱敏人名、手机号、邮箱、账号、具体联系人等；不要把“你看看垃圾邮箱里有不”改成“您可以先看下垃圾邮箱”。
+4. 公司名“事必达、上海嘉赛、嘉赛”等我方/通用公司名不要脱敏；客户个人姓名、手机号、邮箱、微信号等要脱敏。
+5. 问答组成一个完整知识切片。客户多行问合并到 slice_question，销售多行答合并到 slice_answer。
+6. 销售主动触达没有客户问时，slice_question 写真实触发场景/适用条件，slice_answer 写销售原话。
+7. 只有“好的、收到、谢谢、OK”等简单确认，通常为 不入库_简单确认。
+8. 未知消息类型、乱码、无法识别内容为 不入库_乱码，商业场景可为 null。
+9. 客户有问题但没有销售有效答复为 不入库_无答。
+10. 纯推广、群发模板、视频号内容不是自动不入库；若可复用且不误导，可给入库或待人工确认。
+11. 强个案、具体联系人电话、具体供应商路径、特殊价格等检索后容易误导的内容，应 不入库_强个案 或 待人工确认。
+12. 入库_切片和待人工确认必须有 business_stage、business_scenario_code、business_scenario_name、scenario_match_reason、usage_boundary。
+13. quality_score 0-100；同一 slice_id 内所有行后续会共享该分数。
+
+当前切片原始消息 JSON：
+{json.dumps(messages, ensure_ascii=False)}
+"""
+
+
+def _wecom_clean_llm_text(value) -> str | None:
+    if value is None:
+        return None
+    text_value = str(value).strip()
+    if text_value.lower() in {"null", "none", "nil"} or text_value in {"-", "—", "无", "未知"}:
+        return None
+    return text_value if text_value else None
+
+
+def _wecom_strip_role_prefix(value: str | None) -> str | None:
+    text_value = _wecom_clean_llm_text(value)
+    if not text_value:
+        return None
+    text_value = re.sub(r"^(客户原话|客户问|触发场景|销售原话|销售答|参考回复)\s*[：:]\s*", "", text_value).strip()
+    return text_value or None
+
+
+def _wecom_minimal_desensitize(value: str | None) -> str | None:
+    text_value = _wecom_strip_role_prefix(value)
+    if not text_value:
+        return None
+    text_value = re.sub(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}", "[客户邮箱]", text_value)
+    text_value = re.sub(r"(?<!\d)1[3-9]\d(?:[\s-]?\d){8}(?!\d)", "[客户电话]", text_value)
+    text_value = re.sub(r"(?<!\d)(?:\d[\s-]?){7,}(?!\d)", "[客户电话]", text_value)
+    text_value = re.sub(r"^[A-Z][A-Za-z ._\-]{1,30}[，,]", "[客户联系人]，", text_value)
+    return text_value.strip()
+
+
+def _wecom_default_quality(process_result: str, quality_score: float) -> float:
+    if quality_score > 0:
+        return quality_score
+    defaults = {
+        "入库_切片": 70,
+        "待人工确认": 55,
+        "不入库_强个案": 30,
+        "不入库_无上下文价值": 20,
+        "不入库_无答": 20,
+        "不入库_简单确认": 10,
+        "不入库_乱码": 0,
+    }
+    return float(defaults.get(process_result, quality_score))
+
+
+def _wecom_has_service_intro_signal(text_value: str) -> bool:
+    return any(token in text_value for token in ["笔译", "口译", "印刷", "视频译制", "展台搭建", "服务", "业务介绍", "公司介绍"])
+
+
+def _wecom_has_holiday_greeting_signal(text_value: str) -> bool:
+    return any(token in text_value for token in ["新年", "春节", "元旦", "开工", "开业", "节日", "节气", "中秋", "国庆", "端午", "祝您", "祝贵司"])
+
+
+def _wecom_validate_llm_payload(payload: dict, scenarios: list[dict]) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("LLM 返回不是 JSON 对象")
+    scenario_by_code = {str(s.get("scene_value") or ""): s for s in scenarios}
+    process_result = _wecom_clean_llm_text(payload.get("process_result"))
+    if process_result not in _WECOM_PROCESS_RESULTS:
+        raise ValueError(f"非法处理结论: {process_result}")
+    try:
+        quality_score = float(payload.get("quality_score"))
+    except Exception as exc:
+        raise ValueError("quality_score 必须是数字") from exc
+    quality_score = max(0, min(100, quality_score))
+    quality_score = _wecom_default_quality(process_result, quality_score)
+
+    scenario_code = _wecom_clean_llm_text(payload.get("business_scenario_code"))
+    scenario = scenario_by_code.get(scenario_code or "")
+    business_stage = _wecom_clean_llm_text(payload.get("business_stage"))
+    scenario_name = _wecom_clean_llm_text(payload.get("business_scenario_name"))
+    if scenario:
+        business_stage = scenario.get("category") or business_stage
+        scenario_name = scenario.get("scenario") or scenario_name
+    elif scenario_code:
+        scenario_code = None
+
+    row_status = "skipped" if process_result.startswith("不入库_") else "processed"
+    slice_question = _wecom_minimal_desensitize(payload.get("slice_question"))
+    slice_answer = _wecom_minimal_desensitize(payload.get("slice_answer"))
+    normalized_content = _wecom_minimal_desensitize(slice_answer or slice_question or payload.get("normalized_content"))
+    slice_title = _wecom_clean_llm_text(payload.get("slice_title")) or "企微历史记录预处理候选"
+    combined_text = "\n".join(x for x in [slice_title, slice_question, slice_answer, normalized_content] if x)
+    if scenario_code == "greetings" and not _wecom_has_holiday_greeting_signal(combined_text):
+        if _wecom_has_service_intro_signal(combined_text):
+            service_intro = scenario_by_code.get("service_intro")
+            if service_intro:
+                scenario_code = "service_intro"
+                business_stage = service_intro.get("category") or business_stage
+                scenario_name = service_intro.get("scenario") or scenario_name
+                if slice_question == "[客户邮箱]":
+                    slice_title = "客户提供邮箱后的多业务服务介绍"
+        else:
+            lead_activation = scenario_by_code.get("lead_activation")
+            if lead_activation:
+                scenario_code = "lead_activation"
+                business_stage = lead_activation.get("category") or business_stage
+                scenario_name = lead_activation.get("scenario") or scenario_name
+    usage_boundary = _wecom_clean_llm_text(payload.get("usage_boundary"))
+    skip_reason = _wecom_clean_llm_text(payload.get("skip_reason")) if row_status == "skipped" else None
+    if row_status == "skipped":
+        usage_boundary = usage_boundary or "仅作为原始企微上下文追溯，不进入正式知识库。"
+        skip_reason = skip_reason or process_result.replace("不入库_", "")
+    else:
+        usage_boundary = usage_boundary or "仅适用于同类企微销售沟通场景；使用前需结合当前客户关系、业务需求和上下文确认。"
+    return {
+        "slice_title": slice_title,
+        "slice_question": slice_question,
+        "slice_answer": slice_answer,
+        "normalized_content": normalized_content,
+        "quality_score": round(quality_score, 2),
+        "process_result": process_result,
+        "row_status": row_status,
+        "business_stage": business_stage,
+        "business_scenario_code": scenario_code,
+        "business_scenario_name": scenario_name,
+        "scenario_match_reason": _wecom_clean_llm_text(payload.get("scenario_match_reason")),
+        "usage_boundary": usage_boundary,
+        "skip_reason": skip_reason,
+        "publish_target": "正式知识库候选：knowledge_document + knowledge_chunk" if row_status == "processed" else None,
+        "business_line": _wecom_clean_llm_text(payload.get("business_line")),
+        "language_pair": _wecom_clean_llm_text(payload.get("language_pair")),
+    }
+
+
+def _wecom_update_slice_success(db: Session, slice_id: str, ids: list[int], payload: dict):
+    db.execute(text(
+        "UPDATE wecom_raw_import SET "
+        "slice_title = :slice_title, slice_question = :slice_question, slice_answer = :slice_answer, "
+        "normalized_content = :normalized_content, quality_score = :quality_score, slice_quality_score = :quality_score, "
+        "process_result = :process_result, slice_process_result = :process_result, "
+        "row_status = :row_status, slice_status = :row_status, "
+        "business_stage = :business_stage, business_scenario_code = :business_scenario_code, business_scenario_name = :business_scenario_name, "
+        "scenario_match_reason = :scenario_match_reason, usage_boundary = :usage_boundary, skip_reason = :skip_reason, "
+        "publish_target = :publish_target, business_line = :business_line, language_pair = :language_pair, "
+        "process_note = :process_note "
+        "WHERE id = ANY(:ids) AND row_status = 'pending' AND slice_id = :slice_id"
+    ), {
+        **payload,
+        "ids": ids,
+        "slice_id": slice_id,
+        "process_note": f"切片{slice_id}: {payload['slice_title']}。{payload.get('scenario_match_reason') or payload.get('skip_reason') or ''}".strip(),
+    })
+    db.commit()
+
+
+def _wecom_update_slice_failed(db: Session, slice_id: str, ids: list[int], reason: str):
+    reason_text = sanitize_text(str(reason or ""))[:1000]
+    db.execute(text(
+        "UPDATE wecom_raw_import SET "
+        "row_status = 'failed', slice_status = 'failed', "
+        "process_result = '处理失败', slice_process_result = '处理失败', "
+        "quality_score = NULL, slice_quality_score = NULL, "
+        "process_note = :note "
+        "WHERE id = ANY(:ids) AND row_status = 'pending' AND slice_id = :slice_id"
+    ), {"ids": ids, "slice_id": slice_id, "note": f"切片{slice_id}: LLM1预处理失败；{reason_text}"})
+    db.commit()
+
+
+def _wecom_preprocess_llm_config(overrides: dict | None = None) -> dict:
+    overrides = overrides or {}
+    base = _runtime_llm_values("LLM1")
+    config = {
+        "api_url": str(overrides.get("api_url") or base.get("api_url") or "").strip(),
+        "api_key": str(overrides.get("api_key") or base.get("api_key") or "").strip(),
+        "model": str(overrides.get("model") or base.get("model") or "").strip(),
+        "timeout_seconds": int(overrides.get("timeout_seconds") or base.get("timeout_seconds") or _WECOM_PREPROCESS_LLM_TIMEOUT_DEFAULT),
+    }
+    if not _runtime_llm_configured(config):
+        raise RuntimeError("LLM1_API_URL / LLM1_API_KEY / LLM1_MODEL 未完整配置")
+    return config
+
+
+def _run_wecom_preprocess_bg(
+    job_id: str,
+    batch_id: str,
+    row_limit: int,
+    timeout_seconds: int,
+    database_url: str,
+    llm_overrides: dict | None = None,
+):
+    from sqlalchemy import create_engine as _ce
+    from sqlalchemy.orm import sessionmaker as _sm
+    _engine = _ce(database_url, pool_pre_ping=True)
+    _Session = _sm(bind=_engine)
+    db = _Session()
+    started = perf_counter()
+    try:
+        _wecom_preprocess_jobs[job_id].update({
+            "status": "running",
+            "batch_id": batch_id,
+            "row_limit": row_limit,
+            "timeout_seconds": timeout_seconds,
+            "processed_slices": 0,
+            "failed_slices": 0,
+            "processed_rows": 0,
+            "failed_rows": 0,
+            "current_slice_id": None,
+        })
+        pending_rows = _wecom_fetch_pending_rows(db, batch_id, row_limit)
+        if not pending_rows:
+            _wecom_preprocess_jobs[job_id].update({"status": "done", "message": "没有待处理行"})
+            return
+        rows = _wecom_assign_slice_ids(db, pending_rows, batch_id)
+        scenarios = _wecom_business_scenarios(db)
+        llm_config = _wecom_preprocess_llm_config({
+            **(llm_overrides or {}),
+            "timeout_seconds": max(30, int(timeout_seconds or _WECOM_PREPROCESS_LLM_TIMEOUT_DEFAULT)),
+        })
+        _wecom_preprocess_jobs[job_id].update({
+            "llm_provider": _llm_provider_label(llm_config.get("api_key")),
+            "llm_model": llm_config.get("model") or "",
+            "llm_url": llm_config.get("api_url") or "",
+        })
+        grouped: dict[str, list[dict]] = {}
+        for row in rows:
+            grouped.setdefault(row["slice_id"], []).append(row)
+
+        _wecom_preprocess_jobs[job_id]["selected_rows"] = len(rows)
+        _wecom_preprocess_jobs[job_id]["selected_slices"] = len(grouped)
+        row_numbers = [int(row.get("row_index") or 0) + 1 for row in rows]
+        row_ids = [int(row.get("id") or 0) for row in rows]
+        _wecom_preprocess_jobs[job_id].update({
+            "selected_row_start": min(row_numbers) if row_numbers else None,
+            "selected_row_end": max(row_numbers) if row_numbers else None,
+            "selected_id_start": min(row_ids) if row_ids else None,
+            "selected_id_end": max(row_ids) if row_ids else None,
+        })
+
+        for slice_id, slice_rows in grouped.items():
+            ids = [r["id"] for r in slice_rows]
+            _wecom_preprocess_jobs[job_id]["current_slice_id"] = slice_id
+            try:
+                prompt = _wecom_llm_preprocess_prompt(slice_id, slice_rows, scenarios)
+                request_spec = {
+                    "user_id": f"wecom_preprocess_{slice_id}",
+                    "full_prompt": prompt,
+                    "api_url": llm_config["api_url"],
+                    "api_key": llm_config["api_key"],
+                    "model": llm_config["model"],
+                    "timeout_seconds": llm_config["timeout_seconds"],
+                    "label": "WECOM_PREPROCESS_LLM1",
+                    "disable_json_repair": True,
+                    "prompt_trace": {
+                        "label": "WECOM_PREPROCESS_LLM1",
+                        "model": llm_config["model"],
+                        "api_url": llm_config["api_url"],
+                        "prompt": prompt,
+                        "prompt_chars": len(prompt),
+                        "status": "ready",
+                        "sent_to_ai": True,
+                        "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                    },
+                }
+                bundle = IntentEngine.run_llm1_request(request_spec)
+                payload = _wecom_validate_llm_payload(bundle.get("summary") or {}, scenarios)
+                _wecom_update_slice_success(db, slice_id, ids, payload)
+                _wecom_preprocess_jobs[job_id]["processed_slices"] += 1
+                _wecom_preprocess_jobs[job_id]["processed_rows"] += len(ids)
+            except Exception as slice_error:
+                logger.error("[wecom_preprocess] slice failed slice_id=%s: %s", slice_id, slice_error, exc_info=True)
+                _wecom_update_slice_failed(db, slice_id, ids, str(slice_error))
+                _wecom_preprocess_jobs[job_id]["failed_slices"] += 1
+                _wecom_preprocess_jobs[job_id]["failed_rows"] += len(ids)
+
+        _wecom_preprocess_jobs[job_id].update({
+            "status": "done",
+            "current_slice_id": None,
+            "elapsed_ms": round((perf_counter() - started) * 1000, 2),
+        })
+    except Exception as e:
+        logger.error("[wecom_preprocess] job failed batch=%s: %s", batch_id, e, exc_info=True)
+        _wecom_preprocess_jobs[job_id].update({"status": "error", "error": sanitize_text(str(e))})
+    finally:
+        db.close()
+        _engine.dispose()
+        with _wecom_preprocess_lock:
+            active_key = f"active:{batch_id}"
+            if _wecom_preprocess_jobs.get(active_key) == job_id:
+                _wecom_preprocess_jobs.pop(active_key, None)
+
+
+@app.post("/api/wecom/raw/preprocess")
+def preprocess_wecom_raw(req: WecomRawPreprocessRequest, db: Session = Depends(get_db)):
+    batch_id = (req.batch_id or "").strip()
+    if not batch_id:
+        raise HTTPException(status_code=400, detail="batch_id 不能为空")
+    existing = db.execute(text("SELECT COUNT(*) FROM wecom_raw_import WHERE import_batch_id = :bid"), {"bid": batch_id}).scalar()
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"批次不存在: {batch_id}")
+    pending = db.execute(text(
+        "SELECT COUNT(*) FROM wecom_raw_import WHERE import_batch_id = :bid AND row_status = 'pending'"
+    ), {"bid": batch_id}).scalar()
+    if not pending:
+        return {"status": "done", "batch_id": batch_id, "message": "没有待处理行", "pending_rows": 0}
+
+    with _wecom_preprocess_lock:
+        active_key = f"active:{batch_id}"
+        active_job_id = _wecom_preprocess_jobs.get(active_key)
+        if active_job_id:
+            active_job = _wecom_preprocess_jobs.get(active_job_id)
+            if active_job and active_job.get("status") == "running":
+                return {"status": "running", "job_id": active_job_id, "batch_id": batch_id, **active_job}
+        job_id = f"wrp_{uuid.uuid4().hex[:12]}"
+        _wecom_preprocess_jobs[active_key] = job_id
+        _wecom_preprocess_jobs[job_id] = {"status": "queued", "batch_id": batch_id, "pending_rows": pending}
+
+    from database import engine as _db_engine
+    database_url = _db_engine.url.render_as_string(hide_password=False)
+    llm_overrides = {
+        "api_url": req.llm1_api_url,
+        "api_key": req.llm1_api_key,
+        "model": req.llm1_model,
+    }
+    t = threading.Thread(
+        target=_run_wecom_preprocess_bg,
+        args=(job_id, batch_id, req.row_limit, req.timeout_seconds, database_url, llm_overrides),
+        daemon=True,
+        name=f"wecom_preprocess_{job_id}",
+    )
+    t.start()
+    return {"status": "accepted", "job_id": job_id, "batch_id": batch_id, "pending_rows": pending}
+
+
+@app.get("/api/wecom/raw/preprocess/status/{job_id}")
+def wecom_raw_preprocess_status(job_id: str):
+    job = _wecom_preprocess_jobs.get(job_id)
+    if not job:
+        return {"job_id": job_id, "status": "not_found"}
+    return {"job_id": job_id, **job}
 
 
 import tempfile as _tempfile
@@ -15517,7 +16239,7 @@ async def import_wecom_raw_file(
 
     _wecom_import_jobs[batch_id] = {"status": "running", "inserted": 0}
     from database import engine as _db_engine
-    database_url = str(_db_engine.url)
+    database_url = _db_engine.url.render_as_string(hide_password=False)
 
     def _bg_with_cleanup(fp, bid, ff, dburl):
         try:
@@ -15575,7 +16297,10 @@ def list_wecom_raw_messages(
     total = db.execute(text(f"SELECT COUNT(*) FROM wecom_raw_import WHERE {where}"), params).scalar()
     rows = db.execute(text(
         f"SELECT id, import_batch_id, sender, receiver, group_id, msg_time, content, from_id, to_id, "
-        f"stage, section, quality_score, process_note, process_result, row_status, group_key, role, row_index "
+        f"stage, section, quality_score, process_note, process_result, row_status, group_key, role, row_index, "
+        f"business_line, language_pair, kb_unit_id, slice_id, slice_title, slice_question, slice_answer, "
+        f"normalized_content, slice_quality_score, slice_process_result, slice_status, slice_row_start, slice_row_end, "
+        f"business_stage, business_scenario_code, business_scenario_name, scenario_match_reason, usage_boundary, skip_reason, publish_target "
         f"FROM wecom_raw_import WHERE {where} ORDER BY id ASC "
         f"LIMIT :limit OFFSET :offset"
     ), params).fetchall()
@@ -15588,6 +16313,15 @@ def list_wecom_raw_messages(
             "stage": r[9], "section": r[10], "quality_score": str(r[11]) if r[11] is not None else None,
             "process_note": r[12], "process_result": r[13], "row_status": r[14],
             "group_key": r[15], "role": r[16], "row_index": r[17],
+            "business_line": r[18], "language_pair": r[19],
+            "kb_unit_id": r[20], "slice_id": r[21], "slice_title": r[22],
+            "slice_question": r[23], "slice_answer": r[24], "normalized_content": r[25],
+            "slice_quality_score": str(r[26]) if r[26] is not None else None,
+            "slice_process_result": r[27], "slice_status": r[28],
+            "slice_row_start": r[29], "slice_row_end": r[30],
+            "business_stage": r[31], "business_scenario_code": r[32],
+            "business_scenario_name": r[33], "scenario_match_reason": r[34],
+            "usage_boundary": r[35], "skip_reason": r[36], "publish_target": r[37],
         }
 
     return {"total": total, "items": [row_to_dict(r) for r in rows]}
@@ -15597,7 +16331,10 @@ def list_wecom_raw_messages(
 def get_wecom_raw_group(group_key: str, db: Session = Depends(get_db)):
     rows = db.execute(text(
         "SELECT id, sender, receiver, group_id, msg_time, content, from_id, to_id, "
-        "stage, section, quality_score, process_note, process_result, row_status, group_key, role, row_index "
+        "stage, section, quality_score, process_note, process_result, row_status, group_key, role, row_index, "
+        "business_line, language_pair, kb_unit_id, slice_id, slice_title, slice_question, slice_answer, "
+        "normalized_content, slice_quality_score, slice_process_result, slice_status, slice_row_start, slice_row_end, "
+        "business_stage, business_scenario_code, business_scenario_name, scenario_match_reason, usage_boundary, skip_reason, publish_target "
         "FROM wecom_raw_import WHERE group_key = :gk ORDER BY row_index ASC, id ASC"
     ), {"gk": group_key}).fetchall()
 
@@ -15609,6 +16346,1565 @@ def get_wecom_raw_group(group_key: str, db: Session = Depends(get_db)):
             "quality_score": str(r[10]) if r[10] is not None else None,
             "process_note": r[11], "process_result": r[12], "row_status": r[13],
             "group_key": r[14], "role": r[15], "row_index": r[16],
+            "business_line": r[17], "language_pair": r[18],
+            "kb_unit_id": r[19], "slice_id": r[20], "slice_title": r[21],
+            "slice_question": r[22], "slice_answer": r[23], "normalized_content": r[24],
+            "slice_quality_score": str(r[25]) if r[25] is not None else None,
+            "slice_process_result": r[26], "slice_status": r[27],
+            "slice_row_start": r[28], "slice_row_end": r[29],
+            "business_stage": r[30], "business_scenario_code": r[31],
+            "business_scenario_name": r[32], "scenario_match_reason": r[33],
+            "usage_boundary": r[34], "skip_reason": r[35], "publish_target": r[36],
         }
 
     return {"group_key": group_key, "items": [row_to_dict(r) for r in rows]}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 原始沟通清洗（raw_comm）
+#   新 tab 位于"导入中心"之前，作为原始数据统一入口。
+#   企微原始数据 → 企微数据 tab（wecom_raw_import）
+#   其他原始数据（邮件/附件等）→ 知识候选 tab（knowledge_candidate）
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Pydantic 请求体 ──────────────────────────────────────────────────────────
+
+class RawCommMailToCandidate(BaseModel):
+    mail_uid: str
+    title: str | None = None
+    knowledge_type: str = "faq"
+    chunk_type: str = "example"
+    business_line: str = "general"
+    language_pair: str | None = None
+    source_type: str = "raw_mail"
+
+class RawCommWecomToRaw(BaseModel):
+    conversation_uid: str
+    batch_label: str | None = None
+
+class RawCommMailAccountCreate(BaseModel):
+    account_name: str
+    email_address: str
+    provider_type: str = "imap"   # imap | gmail | outlook
+    imap_host: str = ""
+    imap_port: int = 993
+    imap_username: str = ""
+    imap_password: str = ""
+    imap_use_ssl: bool = True
+    sync_inbox_enabled: bool = True
+    sync_sent_enabled: bool = False
+
+class RawCommMailAccountUpdate(BaseModel):
+    account_name: str | None = None
+    imap_host: str | None = None
+    imap_port: int | None = None
+    imap_username: str | None = None
+    imap_password: str | None = None
+    imap_use_ssl: bool | None = None
+    sync_inbox_enabled: bool | None = None
+    sync_sent_enabled: bool | None = None
+    status: str | None = None
+
+# ── 邮件批次列表 ─────────────────────────────────────────────────────────────
+
+@app.get("/api/raw_comm/mail/batches")
+def rc_list_mail_batches(db: Session = Depends(get_db)):
+    try:
+        rows = db.execute(text(
+            "SELECT id, import_type, source_name, file_count, success_count, failed_count, import_status, created_at "
+            "FROM mail_import_batch ORDER BY created_at DESC LIMIT 100"
+        )).fetchall()
+        return {"batches": [
+            {"id": r[0], "import_type": r[1], "source_name": r[2],
+             "file_count": r[3], "success_count": r[4], "failed_count": r[5],
+             "import_status": r[6], "created_at": str(r[7]) if r[7] else None}
+            for r in rows
+        ]}
+    except Exception as exc:
+        logger.warning("[raw_comm] 读取 mail_import_batch 失败: %s", exc)
+        return {"batches": []}
+
+# ── 邮件原始列表 ─────────────────────────────────────────────────────────────
+
+@app.get("/api/raw_comm/mail/messages")
+def rc_list_mail_messages(
+    batch_id: int | None = None,
+    clean_status: str | None = None,
+    keyword: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    try:
+        wheres = ["1=1"]
+        params: dict = {}
+        if batch_id:
+            wheres.append("m.import_batch_id = :batch_id")
+            params["batch_id"] = batch_id
+        if clean_status:
+            wheres.append("mc.clean_status = :clean_status")
+            params["clean_status"] = clean_status
+        if keyword:
+            wheres.append("(m.subject ILIKE :kw OR m.body_text ILIKE :kw)")
+            params["kw"] = f"%{keyword}%"
+        where_sql = " AND ".join(wheres)
+        count = db.execute(text(
+            f"SELECT COUNT(*) FROM mail_raw_unified m "
+            f"LEFT JOIN mail_cleaned mc ON mc.mail_uid = m.mail_uid "
+            f"WHERE {where_sql}"
+        ), params).scalar() or 0
+        rows = db.execute(text(
+            f"SELECT m.mail_uid, m.subject, m.from_email, m.sent_at, m.has_attachment, "
+            f"m.import_batch_id, m.source_type, m.ingested_at, "
+            f"mc.clean_status, mc.body_main_text, mc.customer_key, mc.sender_side "
+            f"FROM mail_raw_unified m "
+            f"LEFT JOIN mail_cleaned mc ON mc.mail_uid = m.mail_uid "
+            f"WHERE {where_sql} "
+            f"ORDER BY m.ingested_at DESC LIMIT :lim OFFSET :off"
+        ), {**params, "lim": min(limit, 200), "off": max(0, offset)}).fetchall()
+        return {
+            "total": count,
+            "items": [
+                {
+                    "mail_uid": r[0], "subject": r[1], "from_email": r[2],
+                    "sent_at": str(r[3]) if r[3] else None,
+                    "has_attachment": bool(r[4]), "import_batch_id": r[5],
+                    "source_type": r[6], "ingested_at": str(r[7]) if r[7] else None,
+                    "clean_status": r[8] or "pending",
+                    "body_main_text": (r[9] or "")[:300],
+                    "customer_key": r[10] or "", "sender_side": r[11] or "",
+                }
+                for r in rows
+            ],
+        }
+    except Exception as exc:
+        logger.warning("[raw_comm] 读取 mail_raw_unified 失败: %s", exc)
+        return {"total": 0, "items": []}
+
+# ── 单封邮件详情 ─────────────────────────────────────────────────────────────
+
+@app.get("/api/raw_comm/mail/messages/{mail_uid}")
+def rc_get_mail_message(mail_uid: str, db: Session = Depends(get_db)):
+    try:
+        row = db.execute(text(
+            "SELECT m.mail_uid, m.subject, m.from_email, m.to_emails, m.cc_emails, "
+            "m.sent_at, m.body_text, m.has_attachment, m.source_type, m.ingested_at, "
+            "m.raw_payload_path, "
+            "mc.body_main_text, mc.body_quoted_text, mc.body_text_clean, "
+            "mc.sender_side, mc.customer_key, mc.clean_status, mc.clean_error "
+            "FROM mail_raw_unified m "
+            "LEFT JOIN mail_cleaned mc ON mc.mail_uid = m.mail_uid "
+            "WHERE m.mail_uid = :uid"
+        ), {"uid": mail_uid}).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="mail not found")
+        def _nonempty(v: str | None) -> str | None:
+            s = (v or "").strip()
+            return s if len(s) >= 5 else None
+        raw_body = _nonempty(row[6])
+        # if raw EML exists at path, try to read it
+        raw_path = row[10] or ""
+        if not raw_body and raw_path and not raw_path.startswith("sqlserver://"):
+            import pathlib
+            p = pathlib.Path(raw_path)
+            if p.exists():
+                try:
+                    from raw_comm_service import parse_eml_bytes
+                    parsed = parse_eml_bytes(p.read_bytes())
+                    raw_body = _nonempty(parsed.get("body_text", ""))
+                except Exception:
+                    pass
+        return {
+            "mail_uid": row[0], "subject": row[1], "from_email": row[2],
+            "to_emails": row[3] or [], "cc_emails": row[4] or [],
+            "sent_at": str(row[5]) if row[5] else None,
+            "body_text": raw_body,
+            "has_attachment": bool(row[7]), "source_type": row[8],
+            "ingested_at": str(row[9]) if row[9] else None,
+            "raw_payload_path": raw_path,
+            "body_main_text": _nonempty(row[11]),
+            "body_quoted_text": _nonempty(row[12]),
+            "body_text_clean": _nonempty(row[13]),
+            "sender_side": row[14], "customer_key": row[15],
+            "clean_status": row[16] or "pending",
+            "clean_error": row[17],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+# ── 上传邮件文件（.eml / .msg / .zip） ──────────────────────────────────────
+
+@app.post("/api/raw_comm/mail/import/file")
+async def rc_import_mail_file(
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    results = []
+    errors = []
+    batch_id = create_mail_batch(db, source_name=f"upload_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}", import_type="manual_eml")
+    for upload in files:
+        try:
+            payload = await upload.read()
+            filename = upload.filename or "mail.eml"
+            suffix = Path(filename).suffix.lower()
+            if suffix == ".zip":
+                mails = expand_zip(payload, filename)
+            else:
+                mails = [parse_mail_file(payload, filename)]
+            for mail in mails:
+                uid = insert_mail_raw(db, mail, batch_id=batch_id)
+                results.append({"mail_uid": uid, "subject": mail.get("subject", ""), "filename": filename})
+        except Exception as exc:
+            errors.append({"filename": upload.filename, "error": str(exc)})
+    db.execute(text(
+        "UPDATE mail_import_batch SET file_count=:fc, success_count=:sc, failed_count=:ec, import_status='done' WHERE id=:bid"
+    ), {"fc": len(files), "sc": len(results), "ec": len(errors), "bid": batch_id})
+    db.commit()
+    return {"status": "ok", "batch_id": batch_id, "imported": len(results), "errors": errors, "items": results}
+
+# ── 清洗邮件 ─────────────────────────────────────────────────────────────────
+
+@app.post("/api/raw_comm/mail/clean/{mail_uid}")
+def rc_clean_mail(mail_uid: str, db: Session = Depends(get_db)):
+    row = db.execute(text(
+        "SELECT mail_uid, subject, from_email, to_emails, cc_emails, body_text "
+        "FROM mail_raw_unified WHERE mail_uid = :uid"
+    ), {"uid": mail_uid}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="mail not found")
+    raw_mail = {
+        "mail_uid": row[0], "subject": row[1], "from_email": row[2],
+        "to_emails": row[3] or [], "cc_emails": row[4] or [], "body_text": row[5] or "",
+    }
+    try:
+        upsert_mail_cleaned(db, raw_mail)
+        db.commit()
+        return {"status": "ok", "mail_uid": mail_uid}
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.post("/api/raw_comm/mail/batch_clean")
+def rc_batch_clean_mail(
+    batch_id: int | None = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+):
+    """批量清洗 mail_raw_unified 中尚未清洗的邮件（clean_status is null or pending）"""
+    where = "mc.clean_status IS NULL OR mc.clean_status = 'pending'"
+    params: dict = {"lim": min(limit, 500)}
+    if batch_id:
+        where = f"m.import_batch_id = :bid AND ({where})"
+        params["bid"] = batch_id
+    rows = db.execute(text(
+        f"SELECT m.mail_uid, m.subject, m.from_email, m.to_emails, m.cc_emails, m.body_text "
+        f"FROM mail_raw_unified m "
+        f"LEFT JOIN mail_cleaned mc ON mc.mail_uid = m.mail_uid "
+        f"WHERE {where} LIMIT :lim"
+    ), params).fetchall()
+    ok_count = 0
+    fail_count = 0
+    for row in rows:
+        raw_mail = {
+            "mail_uid": row[0], "subject": row[1], "from_email": row[2],
+            "to_emails": row[3] or [], "cc_emails": row[4] or [], "body_text": row[5] or "",
+        }
+        try:
+            upsert_mail_cleaned(db, raw_mail)
+            ok_count += 1
+        except Exception as exc:
+            logger.warning("[raw_comm] 批量清洗失败 %s: %s", row[0], exc)
+            fail_count += 1
+    db.commit()
+    return {"status": "ok", "cleaned": ok_count, "failed": fail_count, "total": len(rows)}
+
+# ── 邮件 → 知识候选 ──────────────────────────────────────────────────────────
+
+@app.post("/api/raw_comm/mail/to_candidate")
+def rc_mail_to_candidate(req: RawCommMailToCandidate, db: Session = Depends(get_db)):
+    """将一封已清洗邮件的正文路由到知识候选池"""
+    row = db.execute(text(
+        "SELECT m.mail_uid, m.subject, mc.body_main_text, mc.customer_key, mc.sender_side, "
+        "mc.normalized_subject, mc.clean_status "
+        "FROM mail_raw_unified m "
+        "LEFT JOIN mail_cleaned mc ON mc.mail_uid = m.mail_uid "
+        "WHERE m.mail_uid = :uid"
+    ), {"uid": req.mail_uid}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="mail not found")
+    clean_status = row[6] or "pending"
+    if clean_status not in ("completed",):
+        raise HTTPException(status_code=400, detail=f"邮件尚未清洗（clean_status={clean_status}），请先清洗")
+    body_main_text = row[2] or ""
+    if not body_main_text.strip():
+        raise HTTPException(status_code=400, detail="邮件清洗正文为空，无法生成候选")
+    subject_text = row[5] or row[1] or req.mail_uid
+    title = req.title or f"[邮件] {subject_text[:80]}"
+    candidate = KnowledgeCandidate(
+        title=title,
+        content=body_main_text,
+        knowledge_type=req.knowledge_type,
+        chunk_type=req.chunk_type,
+        business_line=req.business_line,
+        language_pair=req.language_pair,
+        source_type=req.source_type,
+        source_ref=req.mail_uid,
+        source_snapshot={
+            "mail_uid": req.mail_uid,
+            "subject": row[1],
+            "customer_key": row[3] or "",
+            "sender_side": row[4] or "",
+        },
+        status="candidate",
+        risk_level="medium",
+    )
+    db.add(candidate)
+    db.commit()
+    db.refresh(candidate)
+    return {"status": "ok", "candidate_id": str(candidate.candidate_id), "title": candidate.title}
+
+# ── 批量邮件 → 知识候选 ───────────────────────────────────────────────────────
+
+class RawCommBatchToCandidate(BaseModel):
+    mail_uids: list[str]
+    knowledge_type: str = "faq"
+    chunk_type: str = "example"
+    business_line: str = "general"
+    source_type: str = "raw_mail"
+
+@app.post("/api/raw_comm/mail/batch_to_candidate")
+def rc_batch_mail_to_candidate(req: RawCommBatchToCandidate, db: Session = Depends(get_db)):
+    ok_list = []
+    err_list = []
+    for mail_uid in req.mail_uids:
+        row = db.execute(text(
+            "SELECT m.mail_uid, m.subject, mc.body_main_text, mc.normalized_subject, mc.clean_status "
+            "FROM mail_raw_unified m "
+            "LEFT JOIN mail_cleaned mc ON mc.mail_uid = m.mail_uid "
+            "WHERE m.mail_uid = :uid"
+        ), {"uid": mail_uid}).fetchone()
+        if not row or (row[4] or "") != "completed" or not (row[2] or "").strip():
+            err_list.append({"mail_uid": mail_uid, "error": "未找到或尚未清洗"})
+            continue
+        title = f"[邮件] {(row[3] or row[1] or mail_uid)[:80]}"
+        candidate = KnowledgeCandidate(
+            title=title, content=row[2],
+            knowledge_type=req.knowledge_type, chunk_type=req.chunk_type,
+            business_line=req.business_line, source_type=req.source_type,
+            source_ref=mail_uid,
+            source_snapshot={"mail_uid": mail_uid, "subject": row[1]},
+            status="candidate", risk_level="medium",
+        )
+        db.add(candidate)
+        ok_list.append(mail_uid)
+    db.commit()
+    return {"status": "ok", "promoted": len(ok_list), "errors": err_list}
+
+# ── 邮件账号管理 ─────────────────────────────────────────────────────────────
+
+def _rc_row_to_account(r) -> dict:
+    return {
+        "id": r[0], "account_name": r[1], "email_address": r[2],
+        "provider_type": r[3], "status": r[4],
+        "imap_host": r[5], "imap_port": r[6], "imap_username": r[7],
+        "imap_use_ssl": bool(r[8]),
+        "sync_inbox_enabled": bool(r[9]), "sync_sent_enabled": bool(r[10]),
+        "last_sync_at": str(r[11]) if r[11] else None,
+        "created_at": str(r[12]) if r[12] else None,
+    }
+
+@app.get("/api/raw_comm/mail/accounts")
+def rc_list_mail_accounts(db: Session = Depends(get_db)):
+    try:
+        rows = db.execute(text(
+            "SELECT id, account_name, email_address, provider_type, status, "
+            "imap_host, imap_port, imap_username, imap_use_ssl, "
+            "sync_inbox_enabled, sync_sent_enabled, last_sync_at, created_at "
+            "FROM mail_account ORDER BY id DESC"
+        )).fetchall()
+        return {"accounts": [_rc_row_to_account(r) for r in rows]}
+    except Exception as exc:
+        logger.warning("[raw_comm] 读取 mail_account 失败: %s", exc)
+        return {"accounts": []}
+
+@app.post("/api/raw_comm/mail/accounts")
+def rc_create_mail_account(req: RawCommMailAccountCreate, db: Session = Depends(get_db)):
+    now = datetime.utcnow()
+    try:
+        row = db.execute(text(
+            "INSERT INTO mail_account (account_name, email_address, provider_type, auth_type, "
+            "imap_host, imap_port, imap_username, imap_password, imap_use_ssl, "
+            "sync_inbox_enabled, sync_sent_enabled, sync_deleted_enabled, sync_folder_config, "
+            "status, access_scope, oauth_client_id, oauth_client_secret, oauth_tenant_id, "
+            "oauth_redirect_uri, oauth_scope, created_at, updated_at) "
+            "VALUES (:name, :email, :ptype, :atype, :host, :port, :uname, :pwd, :ssl, "
+            ":inbox, :sent, false, '[]'::jsonb, 'draft', '', '', '', 'common', '', '', :now, :now) "
+            "RETURNING id"
+        ), {
+            "name": req.account_name, "email": req.email_address, "ptype": req.provider_type,
+            "atype": "password" if req.provider_type == "imap" else "oauth",
+            "host": req.imap_host, "port": req.imap_port, "uname": req.imap_username,
+            "pwd": req.imap_password, "ssl": req.imap_use_ssl,
+            "inbox": req.sync_inbox_enabled, "sent": req.sync_sent_enabled, "now": now,
+        }).fetchone()
+        db.commit()
+        acc = db.execute(text(
+            "SELECT id, account_name, email_address, provider_type, status, "
+            "imap_host, imap_port, imap_username, imap_use_ssl, "
+            "sync_inbox_enabled, sync_sent_enabled, last_sync_at, created_at "
+            "FROM mail_account WHERE id = :id"
+        ), {"id": row[0]}).fetchone()
+        return _rc_row_to_account(acc)
+    except Exception as exc:
+        db.rollback()
+        if "unique" in str(exc).lower():
+            raise HTTPException(status_code=400, detail="该邮箱已存在")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.put("/api/raw_comm/mail/accounts/{account_id}")
+def rc_update_mail_account(account_id: int, req: RawCommMailAccountUpdate, db: Session = Depends(get_db)):
+    existing = db.execute(text("SELECT id FROM mail_account WHERE id = :id"), {"id": account_id}).fetchone()
+    if not existing:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    sets, params = [], {"id": account_id, "now": datetime.utcnow()}
+    if req.account_name is not None:
+        sets.append("account_name = :name"); params["name"] = req.account_name
+    if req.imap_host is not None:
+        sets.append("imap_host = :host"); params["host"] = req.imap_host
+    if req.imap_port is not None:
+        sets.append("imap_port = :port"); params["port"] = req.imap_port
+    if req.imap_username is not None:
+        sets.append("imap_username = :uname"); params["uname"] = req.imap_username
+    if req.imap_password is not None:
+        sets.append("imap_password = :pwd"); params["pwd"] = req.imap_password
+    if req.imap_use_ssl is not None:
+        sets.append("imap_use_ssl = :ssl"); params["ssl"] = req.imap_use_ssl
+    if req.sync_inbox_enabled is not None:
+        sets.append("sync_inbox_enabled = :inbox"); params["inbox"] = req.sync_inbox_enabled
+    if req.sync_sent_enabled is not None:
+        sets.append("sync_sent_enabled = :sent"); params["sent"] = req.sync_sent_enabled
+    if req.status is not None:
+        sets.append("status = :status"); params["status"] = req.status
+    if not sets:
+        raise HTTPException(status_code=400, detail="无更新字段")
+    sets.append("updated_at = :now")
+    db.execute(text(f"UPDATE mail_account SET {', '.join(sets)} WHERE id = :id"), params)
+    db.commit()
+    acc = db.execute(text(
+        "SELECT id, account_name, email_address, provider_type, status, "
+        "imap_host, imap_port, imap_username, imap_use_ssl, "
+        "sync_inbox_enabled, sync_sent_enabled, last_sync_at, created_at "
+        "FROM mail_account WHERE id = :id"
+    ), {"id": account_id}).fetchone()
+    return _rc_row_to_account(acc)
+
+@app.delete("/api/raw_comm/mail/accounts/{account_id}")
+def rc_delete_mail_account(account_id: int, db: Session = Depends(get_db)):
+    existing = db.execute(text("SELECT id FROM mail_account WHERE id = :id"), {"id": account_id}).fetchone()
+    if not existing:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    db.execute(text("DELETE FROM mail_sync_job WHERE account_id = :id"), {"id": account_id})
+    db.execute(text("DELETE FROM mail_account WHERE id = :id"), {"id": account_id})
+    db.commit()
+    return {"status": "ok"}
+
+@app.post("/api/raw_comm/mail/accounts/{account_id}/test")
+def rc_test_mail_account(account_id: int, db: Session = Depends(get_db)):
+    from mail_crypto import decrypt_text as _dec
+    row = db.execute(text(
+        "SELECT id, imap_host, imap_port, imap_username, imap_password, imap_use_ssl, "
+        "email_address, oauth_access_token, oauth_refresh_token, oauth_token_expires_at, "
+        "oauth_client_id, oauth_client_secret, oauth_tenant_id, provider_type "
+        "FROM mail_account WHERE id = :id"
+    ), {"id": account_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    acc = dict(zip(
+        ["id","imap_host","imap_port","imap_username","imap_password","imap_use_ssl",
+         "email_address","oauth_access_token","oauth_refresh_token","oauth_token_expires_at",
+         "oauth_client_id","oauth_client_secret","oauth_tenant_id","provider_type"], row))
+    provider = acc.get("provider_type", "imap")
+    if provider == "imap":
+        import imaplib
+        host, port = acc["imap_host"], int(acc.get("imap_port") or 993)
+        uname, pwd = acc["imap_username"], _dec(acc.get("imap_password", ""))
+        use_ssl = bool(acc.get("imap_use_ssl", True))
+        try:
+            conn = imaplib.IMAP4_SSL(host, port, timeout=10) if use_ssl else imaplib.IMAP4(host, port, timeout=10)
+            conn.login(uname, pwd)
+            _, data = conn.list()
+            import re as _re
+            pattern = _re.compile(r'\(.*?\)\s+"?[^"]*"?\s+(.+)$')
+            folders = []
+            for d in (data or []):
+                if isinstance(d, bytes):
+                    raw = d.decode("utf-8", errors="ignore")
+                    m = pattern.match(raw)
+                    folders.append((m.group(1) if m else raw).strip().strip('"'))
+            conn.logout()
+            db.execute(text("UPDATE mail_account SET status='authorized', updated_at=:now WHERE id=:id"),
+                       {"now": datetime.utcnow(), "id": account_id})
+            db.commit()
+            return {"status": "ok", "folders": folders[:30]}
+        except Exception as exc:
+            db.execute(text("UPDATE mail_account SET status='error', updated_at=:now WHERE id=:id"),
+                       {"now": datetime.utcnow(), "id": account_id})
+            db.commit()
+            return {"status": "error", "detail": str(exc)}
+    else:
+        return {"status": "info", "detail": f"{provider} 账号需通过 OAuth 授权后才能验证，请点击获取授权链接按钮完成 OAuth 流程"}
+
+@app.get("/api/raw_comm/mail/accounts/{account_id}/sync_jobs")
+def rc_list_sync_jobs(account_id: int, db: Session = Depends(get_db)):
+    try:
+        rows = db.execute(text(
+            "SELECT id, job_type, status, detail, started_at, finished_at, "
+            "success_count, failed_count "
+            "FROM mail_sync_job WHERE account_id = :id ORDER BY id DESC LIMIT 20"
+        ), {"id": account_id}).fetchall()
+        return {"jobs": [
+            {"id": r[0], "job_type": r[1], "status": r[2], "detail": r[3],
+             "started_at": str(r[4]) if r[4] else None, "finished_at": str(r[5]) if r[5] else None,
+             "success_count": r[6], "failed_count": r[7]}
+            for r in rows
+        ]}
+    except Exception:
+        return {"jobs": []}
+
+# ── OAuth 授权（Gmail / Outlook）──────────────────────────────────────────────
+
+class RawCommOAuthConfig(BaseModel):
+    oauth_client_id: str
+    oauth_client_secret: str = ""
+    oauth_redirect_uri: str
+    oauth_scope: str = ""
+    oauth_tenant_id: str = "common"
+
+@app.post("/api/raw_comm/mail/accounts/{account_id}/oauth/configure")
+def rc_configure_oauth(account_id: int, req: RawCommOAuthConfig, db: Session = Depends(get_db)):
+    """Save OAuth client credentials to mail_account."""
+    from mail_crypto import encrypt_text as _enc
+    existing = db.execute(text("SELECT id FROM mail_account WHERE id = :id"), {"id": account_id}).fetchone()
+    if not existing:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    db.execute(text("""
+        UPDATE mail_account SET
+            oauth_client_id = :cid, oauth_client_secret = :cs,
+            oauth_redirect_uri = :ru, oauth_scope = :scope,
+            oauth_tenant_id = :tid, updated_at = :now
+        WHERE id = :id
+    """), {"cid": req.oauth_client_id, "cs": _enc(req.oauth_client_secret),
+           "ru": req.oauth_redirect_uri, "scope": req.oauth_scope,
+           "tid": req.oauth_tenant_id or "common", "now": datetime.utcnow(), "id": account_id})
+    db.commit()
+    return {"status": "ok"}
+
+@app.post("/api/raw_comm/mail/accounts/{account_id}/oauth/authorize-url")
+def rc_oauth_authorize_url(account_id: int, db: Session = Depends(get_db)):
+    """Get OAuth authorization URL for Gmail or Outlook."""
+    from mail_crypto import decrypt_text as _dec
+    row = db.execute(text(
+        "SELECT provider_type, oauth_client_id, oauth_client_secret, oauth_redirect_uri, "
+        "oauth_scope, oauth_tenant_id, email_address "
+        "FROM mail_account WHERE id = :id"
+    ), {"id": account_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    provider, cid, cs, ru, scope, tid, email = row
+    account = {
+        "oauth_client_id": cid or "", "oauth_client_secret": _dec(cs or ""),
+        "oauth_redirect_uri": ru or "", "oauth_scope": scope or "",
+        "oauth_tenant_id": tid or "common",
+    }
+    state = f"{account_id}:{datetime.utcnow().isoformat()}:{email}"
+    try:
+        if provider == "gmail":
+            result = build_gmail_authorize_url(account, state=state)
+        elif provider == "outlook":
+            result = build_outlook_authorize_url(account, state=state)
+        else:
+            raise HTTPException(status_code=400, detail=f"provider_type={provider} 不支持 OAuth")
+        db.execute(text("UPDATE mail_account SET oauth_state=:s, updated_at=:now WHERE id=:id"),
+                   {"s": state, "now": datetime.utcnow(), "id": account_id})
+        db.commit()
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@app.get("/api/raw_comm/oauth/callback")
+async def rc_oauth_callback(code: str = Query(...), state: str = Query(...),
+                            db: Session = Depends(get_db)):
+    """OAuth callback — exchange code for tokens and save to DB."""
+    from mail_crypto import decrypt_text as _dec, encrypt_text as _enc
+    try:
+        account_id = int(state.split(":")[0])
+    except Exception:
+        raise HTTPException(status_code=400, detail="无效的 state 参数")
+    row = db.execute(text(
+        "SELECT provider_type, oauth_client_id, oauth_client_secret, oauth_redirect_uri, "
+        "oauth_scope, oauth_tenant_id, oauth_refresh_token "
+        "FROM mail_account WHERE id = :id"
+    ), {"id": account_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    provider, cid, cs, ru, scope, tid, old_rt = row
+    account = {
+        "oauth_client_id": cid or "", "oauth_client_secret": _dec(cs or ""),
+        "oauth_redirect_uri": ru or "", "oauth_scope": scope or "",
+        "oauth_tenant_id": tid or "common", "oauth_refresh_token": _dec(old_rt or ""),
+    }
+    try:
+        if provider == "gmail":
+            tokens = await exchange_gmail_code(account, code)
+        elif provider == "outlook":
+            tokens = await exchange_outlook_code(account, code)
+        else:
+            raise HTTPException(status_code=400, detail=f"不支持的 provider: {provider}")
+        db.execute(text("""
+            UPDATE mail_account SET
+                oauth_access_token = :at, oauth_refresh_token = :rt,
+                oauth_token_expires_at = :exp, status = 'authorized',
+                updated_at = :now
+            WHERE id = :id
+        """), {"at": _enc(tokens["access_token"]), "rt": _enc(tokens["refresh_token"]),
+               "exp": tokens["expires_at"], "now": datetime.utcnow(), "id": account_id})
+        db.commit()
+        return {"status": "ok", "message": f"OAuth 授权成功，account_id={account_id}"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+# ── 触发邮件同步（后台线程） ──────────────────────────────────────────────────
+
+class RawCommSyncRequest(BaseModel):
+    job_type: str = "incremental_sync"   # full_sync | incremental_sync
+    lookback_days: int | None = 30
+
+@app.post("/api/raw_comm/mail/accounts/{account_id}/sync")
+def rc_trigger_sync(account_id: int, req: RawCommSyncRequest,
+                    background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Trigger background mail sync for an account."""
+    row = db.execute(text(
+        "SELECT id, provider_type, imap_host, imap_port, imap_username, imap_password, imap_use_ssl, "
+        "email_address, oauth_client_id, oauth_client_secret, oauth_access_token, oauth_refresh_token, "
+        "oauth_token_expires_at, oauth_tenant_id, oauth_redirect_uri, oauth_scope, "
+        "sync_inbox_enabled, sync_sent_enabled, sync_deleted_enabled, sync_folder_config "
+        "FROM mail_account WHERE id = :id"
+    ), {"id": account_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    acc_dict = dict(zip(
+        ["id","provider_type","imap_host","imap_port","imap_username","imap_password","imap_use_ssl",
+         "email_address","oauth_client_id","oauth_client_secret","oauth_access_token","oauth_refresh_token",
+         "oauth_token_expires_at","oauth_tenant_id","oauth_redirect_uri","oauth_scope",
+         "sync_inbox_enabled","sync_sent_enabled","sync_deleted_enabled","sync_folder_config"], row))
+    provider = acc_dict.get("provider_type", "imap")
+
+    def _run_sync():
+        from database import SessionLocal as _SL
+        _db = _SL()
+        try:
+            if provider == "imap":
+                run_imap_sync(_db, acc_dict, job_type=req.job_type, lookback_days=req.lookback_days)
+            elif provider == "gmail":
+                run_gmail_sync(_db, acc_dict, job_type=req.job_type)
+            elif provider == "outlook":
+                run_outlook_sync(_db, acc_dict, job_type=req.job_type)
+        finally:
+            _db.close()
+
+    background_tasks.add_task(_run_sync)
+    return {"status": "started", "account_id": account_id, "provider": provider,
+            "message": "同步已在后台启动，请稍后查看同步记录"}
+
+# ── 附件解析工具 ──────────────────────────────────────────────────────────────
+
+@app.get("/api/raw_comm/mail/parsers")
+def rc_list_parsers():
+    """Report which optional attachment parsers are available."""
+    return {"parsers": get_available_parsers()}
+
+
+# ── 邮件定时同步配置 ──────────────────────────────────────────────────────────
+
+class RawCommScheduleUpsert(BaseModel):
+    enabled: bool = True
+    interval_minutes: int = 60
+    job_type: str = "incremental_sync"
+    lookback_days: int = 7
+
+
+@app.get("/api/raw_comm/mail/accounts/{account_id}/schedule")
+def rc_get_schedule(account_id: int, db: Session = Depends(get_db)):
+    row = db.execute(text(
+        "SELECT id, enabled, interval_minutes, job_type, lookback_days, last_run_at, next_run_at, updated_at "
+        "FROM mail_sync_schedule WHERE account_id = :id"
+    ), {"id": account_id}).fetchone()
+    if not row:
+        return {"schedule": None, "next_run": None}
+    next_run = get_next_run(account_id)
+    return {"schedule": {
+        "id": row[0], "enabled": row[1], "interval_minutes": row[2],
+        "job_type": row[3], "lookback_days": row[4],
+        "last_run_at": str(row[5]) if row[5] else None,
+        "next_run_at": next_run or (str(row[6]) if row[6] else None),
+        "updated_at": str(row[7]) if row[7] else None,
+    }, "next_run": next_run}
+
+
+@app.put("/api/raw_comm/mail/accounts/{account_id}/schedule")
+def rc_upsert_schedule(account_id: int, body: RawCommScheduleUpsert, db: Session = Depends(get_db)):
+    acc = db.execute(text("SELECT id FROM mail_account WHERE id = :id"), {"id": account_id}).fetchone()
+    if not acc:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    db.execute(text("""
+        INSERT INTO mail_sync_schedule (account_id, enabled, interval_minutes, job_type, lookback_days, updated_at)
+        VALUES (:aid, :en, :im, :jt, :ld, NOW())
+        ON CONFLICT (account_id) DO UPDATE SET
+            enabled = EXCLUDED.enabled,
+            interval_minutes = EXCLUDED.interval_minutes,
+            job_type = EXCLUDED.job_type,
+            lookback_days = EXCLUDED.lookback_days,
+            updated_at = NOW()
+    """), {"aid": account_id, "en": body.enabled, "im": body.interval_minutes,
+           "jt": body.job_type, "ld": body.lookback_days})
+    db.commit()
+    if body.enabled:
+        add_account_schedule(account_id, body.interval_minutes, body.job_type, body.lookback_days)
+    else:
+        remove_account_schedule(account_id)
+    next_run = get_next_run(account_id)
+    return {"ok": True, "enabled": body.enabled, "next_run": next_run,
+            "message": f"定时同步已{'启用' if body.enabled else '停用'}，间隔 {body.interval_minutes} 分钟"}
+
+
+@app.delete("/api/raw_comm/mail/accounts/{account_id}/schedule")
+def rc_delete_schedule(account_id: int, db: Session = Depends(get_db)):
+    remove_account_schedule(account_id)
+    db.execute(text("DELETE FROM mail_sync_schedule WHERE account_id = :id"), {"id": account_id})
+    db.commit()
+    return {"ok": True, "message": "定时同步配置已删除"}
+
+@app.post("/api/raw_comm/mail/messages/{mail_uid}/parse_attachments")
+def rc_parse_attachments(mail_uid: str, db: Session = Depends(get_db)):
+    """Parse all attachments of a mail and return results."""
+    row = db.execute(text(
+        "SELECT mail_uid FROM mail_raw_unified WHERE mail_uid = :uid"
+    ), {"uid": mail_uid}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="邮件不存在")
+    att_rows = db.execute(text(
+        "SELECT attachment_uid, filename, file_ext, storage_path "
+        "FROM attachment_raw_unified WHERE mail_uid = :uid"
+    ), {"uid": mail_uid}).fetchall()
+    results = []
+    for r in att_rows:
+        att = {"attachment_uid": r[0], "filename": r[1], "file_ext": r[2], "storage_path": r[3]}
+        res = parse_and_store(mail_uid, att)
+        results.append(res)
+    return {"mail_uid": mail_uid, "results": results, "total": len(results)}
+
+# ── 企微会话列表（来自 wecom_conversation_raw） ───────────────────────────────
+
+@app.get("/api/raw_comm/wecom/conversations")
+def rc_list_wecom_conversations(
+    room_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    try:
+        wheres = ["1=1"]
+        params: dict = {}
+        if room_id:
+            wheres.append("c.room_id ILIKE :rid")
+            params["rid"] = f"%{room_id}%"
+        if date_from:
+            wheres.append("c.last_message_at >= :df")
+            params["df"] = date_from
+        if date_to:
+            wheres.append("c.last_message_at <= :dt")
+            params["dt"] = date_to + " 23:59:59"
+        where_sql = " AND ".join(wheres)
+        count = db.execute(text(
+            f"SELECT COUNT(*) FROM wecom_conversation_raw c WHERE {where_sql}"
+        ), params).scalar() or 0
+        rows = db.execute(text(
+            f"SELECT c.conversation_uid, c.room_id, c.conversation_type, c.sender_id, "
+            f"c.title, c.first_message_at, c.last_message_at, "
+            f"(SELECT COUNT(*) FROM wecom_message_raw WHERE conversation_uid = c.conversation_uid) as msg_count "
+            f"FROM wecom_conversation_raw c WHERE {where_sql} "
+            f"ORDER BY c.last_message_at DESC NULLS LAST LIMIT :lim OFFSET :off"
+        ), {**params, "lim": min(limit, 200), "off": max(0, offset)}).fetchall()
+        return {
+            "total": count,
+            "items": [
+                {
+                    "conversation_uid": r[0], "room_id": r[1], "conversation_type": r[2],
+                    "sender_id": r[3], "title": r[4],
+                    "first_message_at": str(r[5]) if r[5] else None,
+                    "last_message_at": str(r[6]) if r[6] else None,
+                    "message_count": int(r[7] or 0),
+                }
+                for r in rows
+            ],
+        }
+    except Exception as exc:
+        logger.warning("[raw_comm] 读取 wecom_conversation_raw 失败: %s", exc)
+        return {"total": 0, "items": []}
+
+# ── 企微会话消息列表 ──────────────────────────────────────────────────────────
+
+@app.get("/api/raw_comm/wecom/conversations/{conv_uid}/messages")
+def rc_get_wecom_conv_messages(conv_uid: str, db: Session = Depends(get_db)):
+    try:
+        rows = db.execute(text(
+            "SELECT m.message_uid, m.msg_seq, m.msg_type, m.sender_id, m.send_time, m.content_text, "
+            "mc.sender_side, mc.normalized_text, mc.is_noise, mc.clean_status "
+            "FROM wecom_message_raw m "
+            "LEFT JOIN wecom_message_cleaned mc ON mc.message_uid = m.message_uid "
+            "WHERE m.conversation_uid = :uid "
+            "ORDER BY m.msg_seq ASC, m.send_time ASC LIMIT 500"
+        ), {"uid": conv_uid}).fetchall()
+        return {"conversation_uid": conv_uid, "messages": [
+            {
+                "message_uid": r[0], "msg_seq": r[1], "msg_type": r[2],
+                "sender_id": r[3], "send_time": str(r[4]) if r[4] else None,
+                "content_text": r[5], "sender_side": r[6] or "",
+                "normalized_text": r[7] or "", "is_noise": bool(r[8]),
+                "clean_status": r[9] or "pending",
+            }
+            for r in rows
+        ]}
+    except Exception as exc:
+        logger.warning("[raw_comm] 读取会话消息失败 %s: %s", conv_uid, exc)
+        return {"conversation_uid": conv_uid, "messages": []}
+
+# ── 企微会话 → 企微数据 tab（写入 wecom_raw_import，用 QW 已有格式） ──────────
+
+@app.post("/api/raw_comm/wecom/to_wecom_raw")
+def rc_wecom_to_raw(req: RawCommWecomToRaw, db: Session = Depends(get_db)):
+    """
+    将 wecom_conversation_raw + wecom_message_raw 中的会话数据路由到
+    QW 的 wecom_raw_import 表，格式与现有企微数据 tab 完全兼容。
+    """
+    conv_uid = req.conversation_uid
+    conv = db.execute(text(
+        "SELECT conversation_uid, room_id, conversation_type, sender_id, title, first_message_at "
+        "FROM wecom_conversation_raw WHERE conversation_uid = :uid"
+    ), {"uid": conv_uid}).fetchone()
+    if not conv:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    msgs = db.execute(text(
+        "SELECT m.message_uid, m.sender_id, m.send_time, m.content_text, m.msg_type, "
+        "mc.sender_side, mc.normalized_text, mc.is_noise "
+        "FROM wecom_message_raw m "
+        "LEFT JOIN wecom_message_cleaned mc ON mc.message_uid = m.message_uid "
+        "WHERE m.conversation_uid = :uid AND (mc.is_noise IS NULL OR mc.is_noise = FALSE) "
+        "ORDER BY m.msg_seq ASC, m.send_time ASC"
+    ), {"uid": conv_uid}).fetchall()
+
+    if not msgs:
+        raise HTTPException(status_code=400, detail="该会话无有效消息可导入")
+
+    batch_label = req.batch_label or f"wecom_conv_{conv_uid[:12]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    existing = db.execute(text(
+        "SELECT COUNT(*) FROM wecom_raw_import WHERE import_batch_id = :bid"
+    ), {"bid": batch_label}).scalar()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"批次 {batch_label} 已存在，请使用不同标签")
+
+    rows_to_insert = []
+    for idx, msg in enumerate(msgs):
+        msg_uid, sender_id, send_time, content_text, msg_type, sender_side, normalized_text, is_noise = msg
+        role = sender_side or ("seller" if sender_id else "unknown")
+        content = normalized_text or content_text or ""
+        if not content.strip():
+            continue
+        rows_to_insert.append({
+            "import_batch_id": batch_label,
+            "row_index": idx,
+            "sender": sender_id or "",
+            "receiver": "",
+            "group_id": conv[1] or conv_uid,
+            "msg_time": send_time,
+            "content": content[:4000],
+            "from_id": sender_id or "",
+            "to_id": "",
+            "stage": "",
+            "section": "",
+            "quality_score": None,
+            "process_note": "",
+            "process_result": "",
+            "row_status": "pending",
+            "group_key": conv_uid,
+            "role": role,
+            "business_line": "",
+            "language_pair": "",
+            "imported_at": datetime.utcnow(),
+        })
+
+    if not rows_to_insert:
+        raise HTTPException(status_code=400, detail="过滤噪声后无有效消息行")
+
+    for r in rows_to_insert:
+        db.execute(text("""
+            INSERT INTO wecom_raw_import (
+                import_batch_id, row_index, sender, receiver, group_id,
+                msg_time, content, from_id, to_id, stage, section,
+                quality_score, process_note, process_result, row_status,
+                group_key, role, business_line, language_pair, imported_at
+            ) VALUES (
+                :import_batch_id, :row_index, :sender, :receiver, :group_id,
+                :msg_time, :content, :from_id, :to_id, :stage, :section,
+                :quality_score, :process_note, :process_result, :row_status,
+                :group_key, :role, :business_line, :language_pair, :imported_at
+            )
+        """), r)
+    db.commit()
+    return {
+        "status": "ok",
+        "batch_id": batch_label,
+        "inserted": len(rows_to_insert),
+        "conversation_uid": conv_uid,
+    }
+
+
+# ===============================================================
+# 经典案例迭代优化 (Case Library Iteration)
+# 新增独立表：case_library_case / case_iteration_run / case_iteration_result
+# 与正式企微回复/统计分析数据完全隔离，含历史版本概念
+# ===============================================================
+
+CASELIB_BACKGROUND_THREAD: dict[str, threading.Thread] = {}
+
+
+def _caselib_resolve_git_info() -> dict:
+    info = {"sha": None, "short_sha": None, "branch": None, "dirty": False}
+    try:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root,
+                             capture_output=True, text=True, timeout=5)
+        if sha.returncode == 0:
+            info["sha"] = sha.stdout.strip()
+            info["short_sha"] = info["sha"][:8]
+        br = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root,
+                            capture_output=True, text=True, timeout=5)
+        if br.returncode == 0:
+            info["branch"] = br.stdout.strip()
+        st = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root,
+                            capture_output=True, text=True, timeout=5)
+        if st.returncode == 0:
+            info["dirty"] = bool(st.stdout.strip())
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"git info fail: {e}")
+    return info
+
+
+def _caselib_next_version_no(db: Session) -> int:
+    row = db.execute(text("SELECT COALESCE(MAX(version_no), 0) FROM case_iteration_run")).fetchone()
+    return int((row[0] if row else 0) or 0) + 1
+
+
+def _caselib_load_json(v):
+    if v is None: return None
+    if isinstance(v, (dict, list)): return v
+    try:
+        return json.loads(v)
+    except Exception:
+        return v
+
+
+def _caselib_serialize_case(c: CaseLibraryCase) -> dict:
+    return {
+        "case_id": str(c.case_id),
+        "scenario_code": c.scenario_code,
+        "scenario_name": c.scenario_name,
+        "scenario_rank": c.scenario_rank,
+        "case_title": c.case_title or "",
+        "group_key": c.group_key,
+        "session_date": c.session_date.date().isoformat() if c.session_date else None,
+        "batch_id": c.batch_id,
+        "slice_ids": _caselib_load_json(c.slice_ids) or [],
+        "row_start": c.row_start,
+        "row_end": c.row_end,
+        "quality_score_md": float(c.quality_score_md) if c.quality_score_md is not None else None,
+        "core_dialog": _caselib_load_json(c.core_dialog) or [],
+        "context_messages": _caselib_load_json(c.context_messages) or [],
+        "md_source_path": c.md_source_path,
+        "md_section_anchor": c.md_section_anchor,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+    }
+
+
+def _caselib_serialize_run(r: CaseIterationRun) -> dict:
+    return {
+        "run_id": str(r.run_id),
+        "version_no": r.version_no,
+        "git_commit_sha": r.git_commit_sha,
+        "git_short_sha": r.git_short_sha,
+        "git_branch": r.git_branch,
+        "git_dirty": r.git_dirty,
+        "changed_paths": _caselib_load_json(r.changed_paths) or [],
+        "change_summary": r.change_summary or "",
+        "pipeline_config": _caselib_load_json(r.pipeline_config) or {},
+        "status": r.status,
+        "total_cases": r.total_cases,
+        "completed_cases": r.completed_cases,
+        "success_cases": r.success_cases,
+        "failed_cases": r.failed_cases,
+        "avg_quality_score": float(r.avg_quality_score) if r.avg_quality_score is not None else None,
+        "min_quality_score": float(r.min_quality_score) if r.min_quality_score is not None else None,
+        "max_quality_score": float(r.max_quality_score) if r.max_quality_score is not None else None,
+        "avg_latency_ms": r.avg_latency_ms,
+        "improvement_analysis": r.improvement_analysis or "",
+        "ai_next_step_plan": r.ai_next_step_plan or "",
+        "backup_commit_sha": r.backup_commit_sha,
+        "backup_status": r.backup_status,
+        "triggered_by": r.triggered_by,
+        "triggered_at": r.triggered_at.isoformat() if r.triggered_at else None,
+        "started_at": r.started_at.isoformat() if r.started_at else None,
+        "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+        "error_message": r.error_message or "",
+    }
+
+
+def _caselib_serialize_result(rr: CaseIterationResult, case_meta: dict | None = None) -> dict:
+    payload = {
+        "result_id": str(rr.result_id),
+        "run_id": str(rr.run_id),
+        "case_id": str(rr.case_id),
+        "scenario_code": rr.scenario_code,
+        "scenario_rank": rr.scenario_rank,
+        "step1_summary": _caselib_load_json(rr.step1_summary),
+        "step2_crm_info": _caselib_load_json(rr.step2_crm_info),
+        "step3_thread_business_fact": _caselib_load_json(rr.step3_thread_business_fact),
+        "step4_knowledge": _caselib_load_json(rr.step4_knowledge),
+        "step5_llm1_compare": _caselib_load_json(rr.step5_llm1_compare),
+        "step6_sales_advice": rr.step6_sales_advice,
+        "step6_compare_advice": rr.step6_compare_advice,
+        "step7_reply_styles": _caselib_load_json(rr.step7_reply_styles),
+        "step7_reply_scores": _caselib_load_json(rr.step7_reply_scores),
+        "snapshot_id": rr.snapshot_id,
+        "trigger_record_id": rr.trigger_record_id,
+        "quality_score": float(rr.quality_score) if rr.quality_score is not None else None,
+        "kb1_eval_score": float(rr.kb1_eval_score) if rr.kb1_eval_score is not None else None,
+        "kb2_eval_score": float(rr.kb2_eval_score) if rr.kb2_eval_score is not None else None,
+        "quality_status": rr.quality_status,
+        "latency_ms": rr.latency_ms,
+        "stage_status": _caselib_load_json(rr.stage_status),
+        "error_message": rr.error_message,
+        "status": rr.status,
+        "started_at": rr.started_at.isoformat() if rr.started_at else None,
+        "finished_at": rr.finished_at.isoformat() if rr.finished_at else None,
+    }
+    if case_meta:
+        payload["case"] = case_meta
+    return payload
+
+
+@app.get("/api/case_lib/cases")
+async def caselib_list_cases(scenario_code: str | None = Query(default=None)):
+    db = SessionLocal()
+    try:
+        q = db.query(CaseLibraryCase)
+        if scenario_code:
+            q = q.filter(CaseLibraryCase.scenario_code == scenario_code)
+        rows = q.order_by(CaseLibraryCase.scenario_code, CaseLibraryCase.scenario_rank).all()
+        return {
+            "status": "success",
+            "total": len(rows),
+            "cases": [_caselib_serialize_case(c) for c in rows],
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/case_lib/cases/{case_id}")
+async def caselib_get_case(case_id: str):
+    db = SessionLocal()
+    try:
+        c = db.query(CaseLibraryCase).filter(CaseLibraryCase.case_id == case_id).first()
+        if not c:
+            raise HTTPException(status_code=404, detail="case not found")
+        return {"status": "success", "case": _caselib_serialize_case(c)}
+    finally:
+        db.close()
+
+
+@app.get("/api/case_lib/iterations")
+async def caselib_list_iterations(limit: int = Query(default=50, ge=1, le=500)):
+    db = SessionLocal()
+    try:
+        rows = db.query(CaseIterationRun).order_by(
+            CaseIterationRun.triggered_at.desc()
+        ).limit(limit).all()
+        return {
+            "status": "success",
+            "total": len(rows),
+            "iterations": [_caselib_serialize_run(r) for r in rows],
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/case_lib/iterations/{run_id}")
+async def caselib_get_iteration_detail(run_id: str):
+    db = SessionLocal()
+    try:
+        r = db.query(CaseIterationRun).filter(CaseIterationRun.run_id == run_id).first()
+        if not r:
+            raise HTTPException(status_code=404, detail="iteration not found")
+        results = db.query(CaseIterationResult).filter(
+            CaseIterationResult.run_id == run_id
+        ).all()
+        case_ids = [str(rr.case_id) for rr in results]
+        case_map = {}
+        if case_ids:
+            cases = db.query(CaseLibraryCase).filter(
+                CaseLibraryCase.case_id.in_(case_ids)
+            ).all()
+            case_map = {str(c.case_id): _caselib_serialize_case(c) for c in cases}
+        rows = []
+        for rr in results:
+            rows.append(_caselib_serialize_result(rr, case_map.get(str(rr.case_id))))
+        rows.sort(key=lambda x: (
+            x.get("quality_score") is None,
+            x.get("quality_score") if x.get("quality_score") is not None else 1e9,
+        ))
+        return {
+            "status": "success",
+            "iteration": _caselib_serialize_run(r),
+            "results": rows,
+        }
+    finally:
+        db.close()
+
+
+class CaseLibStartIterationRequest(BaseModel):
+    change_summary: str | None = None
+    mode: str = "dry_run"  # dry_run / real
+    triggered_by: str | None = None
+
+
+def _caselib_run_dry(case_payload: dict) -> dict:
+    core = case_payload.get("core_dialog") or []
+    ctx = case_payload.get("context_messages") or []
+    customer_msgs = [m for m in core if m.get("role") == "customer"]
+    sales_msgs = [m for m in core if m.get("role") == "sales"]
+    base_score = 60 + min(20, len(core) * 1.5)
+    if customer_msgs and sales_msgs: base_score += 5
+    if len(ctx) >= 10: base_score += 3
+    base_score = round(min(95.0, base_score) + (hash(case_payload.get("case_id","")) % 7), 2)
+    kb1 = round(min(95.0, base_score - 2 + (hash(case_payload.get("case_id","")+"kb1") % 5)), 2)
+    kb2 = round(min(95.0, base_score - 4 + (hash(case_payload.get("case_id","")+"kb2") % 6)), 2)
+    advice = (
+        f"[DryRun] 针对 {case_payload.get('scenario_code')} 场景"
+        f"（{case_payload.get('scenario_name')}），建议结合客户最新关切，"
+        f"引用案例ID={case_payload.get('md_section_anchor')} 复盘要点。"
+    )
+    return {
+        "step1_summary": {
+            "topic": case_payload.get("case_title"),
+            "core_demand": (customer_msgs[-1]["content"] if customer_msgs else ""),
+            "status": "dry_run",
+        },
+        "step2_crm_info": {"customer_tier": "unknown", "history_orders": 0},
+        "step3_thread_business_fact": {"business_state": "exploration"},
+        "step4_knowledge": {"hits": [], "knowledge_status": "dry_run_stub"},
+        "step5_llm1_compare": {"note": "dry_run skipped"},
+        "step6_sales_advice": advice,
+        "step6_compare_advice": advice + "（对比模型 dry_run）",
+        "step7_reply_styles": [
+            {"style": "professional", "text": advice},
+            {"style": "friendly", "text": advice + " 加表情"},
+        ],
+        "step7_reply_scores": {"professional": kb1, "friendly": kb2},
+        "quality_score": base_score,
+        "kb1_eval_score": kb1,
+        "kb2_eval_score": kb2,
+        "quality_status": "dry_run_success",
+        "latency_ms": 50 + (hash(case_payload.get("case_id","")) % 200),
+        "stage_status": {"mode": "dry_run"},
+    }
+
+
+def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
+    db = SessionLocal()
+    cid = case_payload.get("case_id", "0")[:12]
+    external_userid = f"caselib_ext_{cid}"
+    sales_userid = f"caselib_sales_{run_id[:8]}"
+    session_id_candidates = [
+        f"{sales_userid}|{external_userid}",
+        f"{sales_userid}_{external_userid}",
+    ]
+    started = perf_counter()
+    try:
+        all_msgs = (case_payload.get("context_messages") or []) + (case_payload.get("core_dialog") or [])
+        for sid in session_id_candidates:
+            db.execute(text("DELETE FROM message_logs WHERE user_id=:sid AND is_mock=TRUE"), {"sid": sid})
+        base_ts = datetime.utcnow() - timedelta(days=30)
+        for i, m in enumerate(all_msgs):
+            try:
+                ts = datetime.fromisoformat((m.get("msg_time") or base_ts.isoformat())[:19])
+            except Exception:
+                ts = base_ts + timedelta(seconds=i)
+            db.execute(text("""
+                INSERT INTO message_logs (user_id, sender_type, content, timestamp, is_mock)
+                VALUES (:uid, :st, :c, :ts, TRUE)
+            """), {
+                "uid": session_id_candidates[0],
+                "st": m.get("role") or "customer",
+                "c": m.get("content") or "",
+                "ts": ts,
+            })
+        db.commit()
+
+        port = int(os.environ.get("PORT", 8000))
+        host = os.environ.get("BACKEND_HOST", "127.0.0.1")
+        url = f"http://{host}:{port}/api/wecom/sidebar_assist"
+        resp = requests.post(url, json={
+            "external_userid": external_userid,
+            "userid": sales_userid,
+            "force_refresh": True,
+            "sync_archive_before_read": False,
+            "trigger_source": "caselib_iteration",
+        }, timeout=120)
+        latency_ms = int((perf_counter() - started) * 1000)
+
+        snap = db.execute(text("""
+            SELECT snapshot_id, topic, core_demand, key_facts, todo_items, risks, status,
+                   crm_info, thread_business_fact, knowledge_v2, knowledge_external_api,
+                   knowledge_status, knowledge_confidence_score,
+                   llm1_compare_summary, sales_advice_v2, sales_advice_compare_v2,
+                   reply_style_results_v2, reply_scores_v2, stage_status
+            FROM reply_chain_snapshot
+            WHERE session_id=:sid
+            ORDER BY updated_at DESC LIMIT 1
+        """), {"sid": session_id_candidates[0]}).fetchone()
+
+        if snap:
+            qs = None
+            scores_obj = _caselib_load_json(snap[17])
+            try:
+                if isinstance(scores_obj, dict) and scores_obj:
+                    qs = float(next(iter(scores_obj.values())))
+                elif isinstance(scores_obj, list) and scores_obj:
+                    qs = float(scores_obj[0].get("score", 0))
+            except Exception:
+                qs = None
+            return {
+                "step1_summary": {
+                    "topic": snap[1], "core_demand": snap[2],
+                    "key_facts": _caselib_load_json(snap[3]),
+                    "todo_items": _caselib_load_json(snap[4]),
+                    "risks": snap[5], "status": snap[6],
+                },
+                "step2_crm_info": _caselib_load_json(snap[7]),
+                "step3_thread_business_fact": _caselib_load_json(snap[8]),
+                "step4_knowledge": {
+                    "knowledge_v2": _caselib_load_json(snap[9]),
+                    "knowledge_external_api": _caselib_load_json(snap[10]),
+                    "knowledge_status": snap[11],
+                    "knowledge_confidence_score": float(snap[12]) if snap[12] is not None else None,
+                },
+                "step5_llm1_compare": _caselib_load_json(snap[13]),
+                "step6_sales_advice": snap[14], "step6_compare_advice": snap[15],
+                "step7_reply_styles": _caselib_load_json(snap[16]),
+                "step7_reply_scores": scores_obj,
+                "snapshot_id": str(snap[0]) if snap[0] else None,
+                "quality_score": qs,
+                "quality_status": "real_success" if snap[14] else "real_partial",
+                "latency_ms": latency_ms,
+                "stage_status": _caselib_load_json(snap[18]),
+            }
+        out = _caselib_run_dry(case_payload)
+        out["quality_status"] = "real_no_snapshot_fallback_dry"
+        out["latency_ms"] = latency_ms
+        return out
+    except Exception as e:
+        out = _caselib_run_dry(case_payload)
+        out["quality_status"] = f"real_error_fallback_dry: {str(e)[:120]}"
+        return out
+    finally:
+        try:
+            for sid in session_id_candidates:
+                db.execute(text("DELETE FROM message_logs WHERE user_id=:sid AND is_mock=TRUE"), {"sid": sid})
+            db.commit()
+        except Exception:
+            pass
+        db.close()
+
+
+def _caselib_compose_improvement_analysis(db: Session, run: CaseIterationRun, scores: list[float]) -> str:
+    lines = []
+    lines.append(f"本次迭代版本号 v{run.version_no}，案例总数 {run.total_cases}，成功 {run.success_cases}，失败 {run.failed_cases}。")
+    if scores:
+        avg = sum(scores) / len(scores)
+        lines.append(f"平均质量分 {avg:.2f}，最低 {min(scores):.2f}，最高 {max(scores):.2f}。")
+        below = [s for s in scores if s < avg - 5]
+        if below:
+            lines.append(f"低于均值5分以上的案例数：{len(below)}（占 {len(below)*100//len(scores)}%）。")
+    rows = db.execute(text("""
+        SELECT scenario_code, COUNT(*), AVG(quality_score), MIN(quality_score)
+        FROM case_iteration_result
+        WHERE run_id=:rid AND quality_score IS NOT NULL
+        GROUP BY scenario_code ORDER BY AVG(quality_score) ASC
+    """), {"rid": str(run.run_id)}).fetchall()
+    if rows:
+        lines.append("\n各场景平均分（升序，优先改进前3场景）：")
+        for r in rows:
+            lines.append(f"  {r[0]}: n={r[1]} avg={float(r[2] or 0):.2f} min={float(r[3] or 0):.2f}")
+        worst = rows[:3]
+        if worst:
+            lines.append("\n下一步重点优化建议：")
+            for r in worst:
+                lines.append(f"  - {r[0]} 平均{float(r[2] or 0):.2f}：检查该场景 prompt 模板/知识检索过滤条件/示例对照。")
+    return "\n".join(lines)
+
+
+def _caselib_compose_ai_next_plan(run: CaseIterationRun) -> str:
+    return (
+        f"# 下一次案例迭代测试自我要求（基于 v{run.version_no} 结果）\n\n"
+        f"1. 先重新执行 `python backend/_case_lib_import.py` 确保案例库与 sales_scenario_cases_v2.md 同步。\n"
+        f"2. 启动后端：`uvicorn main:app` 并通过页面发起一次 mode=real 的迭代（不可仅 dry_run 应付）。\n"
+        f"3. 跑完 60 案例后，在前端「案例分析」页确认行数=60、failed=0；任一案例 status=failed 视作未完成。\n"
+        f"4. 详情页按分数升序逐条核对 step1-step7 字段非空；空字段记入本次 changed_paths 复核清单。\n"
+        f"5. 重点关注上一版平均分倒数前3场景，对照本次结果是否提升 ≥1.0；未达标则禁止 git 备份。\n"
+        f"6. 完成后产物：本次 run_id、git_short_sha、avg_quality_score 必须三者一致写入「案例迭代日志」段。\n"
+        f"7. 触发本接口必须由人工或定时任务发起，禁止伪造空跑（dry_run 标识不计入正式迭代记录）。"
+    )
+
+
+def _caselib_git_backup(version_no: int) -> tuple[str | None, str]:
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        st = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root,
+                            capture_output=True, text=True, timeout=10)
+        if st.returncode != 0:
+            return None, f"status_failed: {st.stderr.strip()[:120]}"
+        if not st.stdout.strip():
+            sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root,
+                                 capture_output=True, text=True, timeout=10)
+            return (sha.stdout.strip() if sha.returncode == 0 else None), "clean_no_change"
+        add = subprocess.run(["git", "add", "-A"], cwd=repo_root,
+                             capture_output=True, text=True, timeout=20)
+        if add.returncode != 0:
+            return None, f"add_failed: {add.stderr.strip()[:120]}"
+        msg = f"chore(caselib): iteration v{version_no} auto-backup"
+        cm = subprocess.run(["git", "commit", "-m", msg], cwd=repo_root,
+                            capture_output=True, text=True, timeout=20)
+        if cm.returncode != 0:
+            return None, f"commit_failed: {cm.stderr.strip()[:120]}"
+        sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root,
+                             capture_output=True, text=True, timeout=10)
+        return (sha.stdout.strip() if sha.returncode == 0 else None), "committed"
+    except Exception as e:
+        return None, f"exception: {str(e)[:120]}"
+
+
+def _caselib_run_iteration_background(run_id: str, mode: str):
+    log = logging.getLogger(__name__)
+    db = SessionLocal()
+    try:
+        run = db.query(CaseIterationRun).filter(CaseIterationRun.run_id == run_id).first()
+        if not run:
+            log.warning(f"caselib run not found: {run_id}")
+            return
+        run.status = "running"
+        run.started_at = datetime.utcnow()
+        db.commit()
+
+        cases = db.query(CaseLibraryCase).order_by(
+            CaseLibraryCase.scenario_code, CaseLibraryCase.scenario_rank
+        ).all()
+        run.total_cases = len(cases)
+        db.commit()
+
+        for c in cases:
+            existing = db.query(CaseIterationResult).filter(
+                CaseIterationResult.run_id == run_id,
+                CaseIterationResult.case_id == c.case_id,
+            ).first()
+            if existing: continue
+            r = CaseIterationResult(
+                run_id=run.run_id, case_id=c.case_id,
+                scenario_code=c.scenario_code, scenario_rank=c.scenario_rank,
+                status="queued",
+            )
+            db.add(r)
+        db.commit()
+
+        scores = []; latencies = []
+        success_n = 0; failed_n = 0; completed_n = 0
+        for c in cases:
+            case_payload = _caselib_serialize_case(c)
+            rr = db.query(CaseIterationResult).filter(
+                CaseIterationResult.run_id == run_id,
+                CaseIterationResult.case_id == c.case_id,
+            ).first()
+            rr.status = "running"
+            rr.started_at = datetime.utcnow()
+            db.commit()
+
+            try:
+                if mode == "real":
+                    out = _caselib_run_real(case_payload, run_id=run_id)
+                else:
+                    out = _caselib_run_dry(case_payload)
+                rr.step1_summary = out.get("step1_summary")
+                rr.step2_crm_info = out.get("step2_crm_info")
+                rr.step3_thread_business_fact = out.get("step3_thread_business_fact")
+                rr.step4_knowledge = out.get("step4_knowledge")
+                rr.step5_llm1_compare = out.get("step5_llm1_compare")
+                rr.step6_sales_advice = out.get("step6_sales_advice")
+                rr.step6_compare_advice = out.get("step6_compare_advice")
+                rr.step7_reply_styles = out.get("step7_reply_styles")
+                rr.step7_reply_scores = out.get("step7_reply_scores")
+                rr.snapshot_id = out.get("snapshot_id")
+                rr.quality_score = out.get("quality_score")
+                rr.kb1_eval_score = out.get("kb1_eval_score")
+                rr.kb2_eval_score = out.get("kb2_eval_score")
+                rr.quality_status = out.get("quality_status")
+                rr.latency_ms = out.get("latency_ms")
+                rr.stage_status = out.get("stage_status")
+                rr.status = "success"
+                if out.get("quality_score") is not None:
+                    scores.append(float(out["quality_score"]))
+                if out.get("latency_ms") is not None:
+                    latencies.append(int(out["latency_ms"]))
+                success_n += 1
+            except Exception as e:
+                rr.status = "failed"
+                rr.error_message = str(e)[:500]
+                failed_n += 1
+            rr.finished_at = datetime.utcnow()
+            completed_n += 1
+            run.completed_cases = completed_n
+            run.success_cases = success_n
+            run.failed_cases = failed_n
+            db.commit()
+
+        if scores:
+            avg = sum(scores) / len(scores)
+            run.avg_quality_score = round(avg, 2)
+            run.min_quality_score = round(min(scores), 2)
+            run.max_quality_score = round(max(scores), 2)
+        if latencies:
+            run.avg_latency_ms = int(sum(latencies) / len(latencies))
+        run.status = "success" if failed_n == 0 else ("partial" if success_n > 0 else "failed")
+        run.finished_at = datetime.utcnow()
+        run.improvement_analysis = _caselib_compose_improvement_analysis(db, run, scores)
+        run.ai_next_step_plan = _caselib_compose_ai_next_plan(run)
+        db.commit()
+
+        try:
+            sha, status = _caselib_git_backup(run.version_no)
+            run.backup_commit_sha = sha
+            run.backup_status = status
+            db.commit()
+        except Exception as e:
+            run.backup_status = f"failed: {str(e)[:120]}"
+            db.commit()
+    except Exception as e:
+        log.exception("caselib iteration failed")
+        try:
+            run = db.query(CaseIterationRun).filter(CaseIterationRun.run_id == run_id).first()
+            if run:
+                run.status = "failed"
+                run.error_message = str(e)[:500]
+                run.finished_at = datetime.utcnow()
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+        CASELIB_BACKGROUND_THREAD.pop(run_id, None)
+
+
+@app.post("/api/case_lib/iterations/start")
+async def caselib_start_iteration(payload: CaseLibStartIterationRequest):
+    db = SessionLocal()
+    try:
+        gi = _caselib_resolve_git_info()
+        version_no = _caselib_next_version_no(db)
+        prev = db.query(CaseIterationRun).order_by(
+            CaseIterationRun.version_no.desc()
+        ).first()
+        changed_paths: list[str] = []
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if prev and prev.git_commit_sha and gi["sha"] and prev.git_commit_sha != gi["sha"]:
+            try:
+                diff = subprocess.run(
+                    ["git", "diff", "--name-only", prev.git_commit_sha, gi["sha"]],
+                    cwd=repo_root, capture_output=True, text=True, timeout=10
+                )
+                if diff.returncode == 0:
+                    changed_paths = [x for x in diff.stdout.splitlines() if x.strip()]
+            except Exception:
+                pass
+        if gi["dirty"]:
+            try:
+                st = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root,
+                                    capture_output=True, text=True, timeout=5)
+                if st.returncode == 0:
+                    pending = [ln[3:].strip() for ln in st.stdout.splitlines() if ln.strip()]
+                    changed_paths = list(set(changed_paths) | set(pending))
+            except Exception:
+                pass
+
+        run = CaseIterationRun(
+            version_no=version_no,
+            git_commit_sha=gi["sha"], git_short_sha=gi["short_sha"],
+            git_branch=gi["branch"], git_dirty=gi["dirty"],
+            changed_paths=changed_paths,
+            change_summary=payload.change_summary or "",
+            pipeline_config={
+                "mode": payload.mode,
+                "scripts": ["backend/main.py", "backend/intent_engine.py", "backend/_case_lib_import.py"],
+            },
+            status="queued",
+            triggered_by=payload.triggered_by or "frontend",
+            triggered_at=datetime.utcnow(),
+        )
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+
+        t = threading.Thread(
+            target=_caselib_run_iteration_background,
+            args=(str(run.run_id), payload.mode),
+            daemon=True,
+        )
+        CASELIB_BACKGROUND_THREAD[str(run.run_id)] = t
+        t.start()
+
+        return {"status": "success", "iteration": _caselib_serialize_run(run)}
+    finally:
+        db.close()
+
+
+@app.post("/api/case_lib/reimport")
+async def caselib_reimport():
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    script = os.path.join(repo_root, "backend", "_case_lib_import.py")
+    try:
+        proc = subprocess.run(["python", script], cwd=repo_root,
+                              capture_output=True, text=True, timeout=120)
+        return {
+            "status": "success" if proc.returncode == 0 else "failed",
+            "stdout": proc.stdout[-4000:],
+            "stderr": proc.stderr[-2000:],
+        }
+    except Exception as e:
+        return {"status": "failed", "error": str(e)}
+

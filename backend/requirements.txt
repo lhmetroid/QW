@@ -10,3 +10,17 @@ pycryptodome
 pgvector
 pyodbc
 openpyxl
+
+# ── 邮件同步与附件解析（mail_sync / mail_oauth / attachment_service） ─────────
+httpx                  # Gmail / Outlook Graph API 异步 HTTP
+cryptography           # Fernet 密码加密（mail_crypto）
+extract-msg            # .msg 邮件解析
+pypdf                  # PDF 文本提取
+python-docx            # DOCX 文本提取
+xlrd                   # 旧版 XLS
+olefile                # 旧版 DOC/OLE 格式
+apscheduler>=3.10      # 定时同步调度器
+pytesseract            # Tesseract OCR Python 绑定（需系统安装 tesseract + chi_sim 语言包）
+# 以下为可选，不安装会降级（不解压 7z/rar）：
+# py7zr                # 7z 压缩包解析
+# rarfile              # RAR 压缩包解析（需系统安装 unrar）
