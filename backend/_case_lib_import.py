@@ -109,6 +109,14 @@ def parse_cases(body, scenario_code):
                 'content': content,
             })
         case['core_dialog'] = msgs
+        # 标题缺失/占位时，从核心对话首条客户消息回退；无客户消息时取首条任意消息
+        title_raw = (case.get('case_title') or '').strip()
+        if not title_raw or '无标题' in title_raw or title_raw in ('-', '（无）'):
+            first_customer = next((m for m in msgs if m.get('role') == 'customer' and m.get('content')), None)
+            fallback = first_customer or (msgs[0] if msgs else None)
+            if fallback:
+                content = (fallback.get('content') or '').replace('\n', ' ').strip()
+                case['case_title'] = content[:30] + ('…' if len(content) > 30 else '') if content else '（暂无对话）'
         cases.append(case)
     return cases
 

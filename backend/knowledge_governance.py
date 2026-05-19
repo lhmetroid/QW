@@ -608,7 +608,19 @@ def build_thread_business_fact(
     sales_messages = [_text(item.get("content")) for item in normalized_messages if _text(item.get("sender_type")) == "sales" and _text(item.get("content"))]
     latest_sales_message = sales_messages[-1] if sales_messages else ""
     recent_sales_messages = sales_messages[-2:] if sales_messages else []
-    latest_customer_message = next((_text(item.get("content")) for item in reversed(normalized_messages) if _text(item.get("sender_type")) == "customer"), "")
+    trailing_customer_messages: list[str] = []
+    if latest_sender == "customer":
+        for item in reversed(normalized_messages):
+            if _text(item.get("sender_type")) != "customer":
+                break
+            content = _text(item.get("content"))
+            if content:
+                trailing_customer_messages.append(content)
+        trailing_customer_messages.reverse()
+    latest_customer_message = "\n".join(trailing_customer_messages).strip() if trailing_customer_messages else next(
+        (_text(item.get("content")) for item in reversed(normalized_messages) if _text(item.get("sender_type")) == "customer"),
+        "",
+    )
     latest_customer_reply_type = _detect_latest_customer_reply_type(latest_customer_message)
     latest_customer_time_mentions = _extract_time_mentions(latest_customer_message)
     awaiting_customer_reply = latest_sender == "sales" and sales_message_count > 0

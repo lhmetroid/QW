@@ -10,6 +10,7 @@ BEIJING = timezone(timedelta(hours=8))
 WORKSPACE = Path(__file__).resolve().parent
 CODEX_SESSIONS = Path.home() / ".codex" / "sessions" / "2026" / "05" / "15"
 OUTPUT = WORKSPACE / "codex-2026-05-15-dialog-table-linebreaks.html"
+OUTPUT_QUESTIONS = WORKSPACE / "codex-2026-05-15-questions-only.html"
 
 
 BASE64_RE = re.compile(r"data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=\r\n]+")
@@ -139,7 +140,7 @@ def collect_records():
     return records
 
 
-def render_html(records):
+def render_html(records, title, subtitle):
     generated_at = datetime.now(BEIJING).strftime("%Y-%m-%d %H:%M:%S")
     rows = []
     for record in records:
@@ -161,7 +162,7 @@ def render_html(records):
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <title>Codex 2026-05-15 对话记录</title>
+  <title>{title}</title>
   <style>
     body {{
       margin: 24px;
@@ -235,8 +236,8 @@ def render_html(records):
   </style>
 </head>
 <body>
-  <h1>Codex 2026-05-15 对话记录</h1>
-  <p class="meta">生成时间：{generated_at}（北京时间）；记录数：{count}</p>
+  <h1>{title}</h1>
+  <p class="meta">{subtitle}；生成时间：{generated_at}（北京时间）；记录数：{count}</p>
   <table>
     <thead>
       <tr>
@@ -251,14 +252,32 @@ def render_html(records):
   </table>
 </body>
 </html>
-""".format(generated_at=escape(generated_at), count=len(records), rows="\n".join(rows))
+""".format(
+        title=escape(title),
+        subtitle=escape(subtitle),
+        generated_at=escape(generated_at),
+        count=len(records),
+        rows="\n".join(rows),
+    )
 
 
 def main():
     records = collect_records()
-    OUTPUT.write_text(render_html(records), encoding="utf-8")
+    questions = [record for record in records if record["speaker"] == "用户"]
+
+    OUTPUT.write_text(
+        render_html(records, "Codex 2026-05-15 对话记录", "问 + 答"),
+        encoding="utf-8",
+    )
+    OUTPUT_QUESTIONS.write_text(
+        render_html(questions, "Codex 2026-05-15 提问记录", "仅用户提问"),
+        encoding="utf-8",
+    )
+
     print(f"records={len(records)}")
-    print(f"output={OUTPUT}")
+    print(f"questions={len(questions)}")
+    print(f"output_full={OUTPUT}")
+    print(f"output_questions={OUTPUT_QUESTIONS}")
 
 
 if __name__ == "__main__":

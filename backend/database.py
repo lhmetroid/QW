@@ -648,8 +648,13 @@ class CaseIterationRun(Base):
     min_quality_score = Column(Numeric(6, 2), nullable=True)
     max_quality_score = Column(Numeric(6, 2), nullable=True)
     avg_latency_ms = Column(Integer, nullable=True)
-    improvement_analysis = Column(Text, nullable=True)          # 本次得分分析
-    ai_next_step_plan = Column(Text, nullable=True)             # AI自我测试迭代步骤及要求（避免跳过/假执行）
+    improvement_analysis = Column(Text, nullable=True)          # 本次得分分析（机器生成基线）
+    ai_next_step_plan = Column(Text, nullable=True)             # AI自我测试迭代步骤及要求（机器生成基线）
+    # 三个 AI 编码工具各自填写的"分析与下一步建议"——人工填，便于横向对比
+    analysis_codex = Column(Text, nullable=True)                # Codex 给出的分析与下一步
+    analysis_antigravity = Column(Text, nullable=True)          # Antigravity 给出的分析与下一步
+    analysis_claude_code = Column(Text, nullable=True)          # Claude Code 给出的分析与下一步
+    analysis_summary = Column(Text, nullable=True)              # 三者填完后 LLM-1 自动生成的汇总
     backup_commit_sha = Column(String(64), nullable=True)       # 完成后自动提交的commit SHA
     backup_status = Column(String(30), nullable=True)
     triggered_by = Column(String(120), nullable=True)

@@ -77,7 +77,7 @@
 </head>
 <body>
   <h1>Codex 2026-05-15 对话记录</h1>
-  <p class="meta">生成时间：2026-05-15 18:02:01（北京时间）；记录数：259</p>
+  <p class="meta">问 + 答；生成时间：2026-05-18 18:17:04（北京时间）；记录数：263</p>
   <table>
     <thead>
       <tr>
@@ -2830,6 +2830,78 @@ qwen14b
         <td class="time">2026-05-15 18:01:45</td>
         <td class="speaker">AI</td>
         <td class="content">抽查没有发现 `data:image` 或典型 base64 片段；命中的 `base64` 是你原始要求里的文字。图片标记有重复，我会把 `[图片]` 包裹标签单独跳过，只保留实际图片占位。</td>
+      </tr>
+      <tr class="ai-row">
+        <td class="time">2026-05-15 18:02:26</td>
+        <td class="speaker">AI</td>
+        <td class="content">已完成导出，解析了当天已落盘的 Codex 会话 jsonl 日志。
+
+共解析对话记录：`259` 条  
+生成文件路径：[codex-2026-05-15-dialog-table-linebreaks.html](&lt;/d:/items/QW/codex-2026-05-15-dialog-table-linebreaks.html&gt;)
+
+我也保留了本次解析脚本：[parse_codex_logs_515.py](&lt;/d:/items/QW/parse_codex_logs_515.py&gt;)。HTML 已按要求保留换行、用户行浅黄色高亮、AI 行白底，并过滤了工具调用、token 统计、元数据等内容；图片已用 `[图片]` 标记，没有导出 base64 原文。</td>
+      </tr>
+      <tr class="user-row">
+        <td class="time">2026-05-15 18:02:28</td>
+        <td class="speaker">用户</td>
+        <td class="content"># Context from my IDE setup:
+
+## Active file: .env
+
+## Active selection of the file:
+qwen14b
+## Open tabs:
+- .env: .env
+- 企微历史记录导入知识库.md: 企微历史记录导入知识库.md
+
+## My request for Codex:
+再总结下当日进展实现功能</td>
+      </tr>
+      <tr class="ai-row">
+        <td class="time">2026-05-15 18:02:38</td>
+        <td class="speaker">AI</td>
+        <td class="content">我会从今天的 Codex 对话导出和项目进展文档里提炼实现项，按功能模块汇总，避免把讨论项当成已完成项。</td>
+      </tr>
+      <tr class="ai-row">
+        <td class="time">2026-05-15 18:03:32</td>
+        <td class="speaker">AI</td>
+        <td class="content">今天主要完成了企微历史记录入知识库这条线的落地和验证，重点如下。
+
+**当日已实现**
+
+1. 企微历史入库方案文档化  
+   新增并持续更新 `企微历史记录导入知识库.md`，明确了目标、字段、流程、边界、质量分、标准化规则、切片规则、详情展示规则。核心口径已从“逐行判断”改为“先生成切片号，再按切片整体做入库预处理”。
+
+2. 企微数据页展示和交互优化  
+   企微数据列表隐藏了 `from` / `tolist` 列，新增/展示 `切片号`，点击整行即可切换右侧详情。右侧详情从“完整原始对话”改成“入知识库详细信息”，优先展示知识标题、知识切片、触发场景、参考回复、使用边界、质量分、处理结论、命中依据等字段。
+
+3. 前 182 行样例重处理  
+   已把前 182 行旧的单行预处理结果改成切片级结果，并根据真实样例补充了字段边界：客户画像不等于知识库知识、外部供应商价格不能直接入报价规则、销售单向触达有复用价值时可作为模板候选、系统验证消息可作为首次触达切片的触发语等。
+
+4. 正式知识库字段扩展  
+   `knowledge_chunk` 已新增商业场景相关字段：`business_stage`、`business_scenario_code`，并建立索引。方案上明确后续正式知识库使用“商业阶段 / 商业场景”，不再继续混用旧的 `stage / section / intent` 表达。
+
+5. 自动预处理后端接口  
+   新增 `POST /api/wecom/raw/preprocess`，支持按批次处理企微原始数据。实现逻辑是：只取 `pending` 行，先按角色和时间规则生成 `slice_id`，再按 `slice_id` 调用 LLM1 生成入库字段。失败切片会标记为 `failed`，不会反复进入 pending 批次。
+
+6. 前端“数据预处理”按钮启用  
+   企微数据页的数据预处理按钮已接入后端接口，并增加 `failed` 状态筛选。每批默认约 100 行，若第 100 行仍在某个切片中，会延伸到该切片结束，避免切片被截断。
+
+7. LLM1 自动预处理配置  
+   自动预处理明确使用运行时 `LLM1_*` 配置，不受 `STAGE1_USE_LLM2` 影响。可以通过接口或启动脚本临时覆盖 LLM1 配置，不需要修改 `.env`。
+
+8. 本地一键启动和自动循环预处理  
+   `一键启动后台.bat` 已改为调用 `start_backend_wecom_preprocess.ps1`。脚本会启动 8071 后端、等待健康检查，然后按批循环调用企微预处理接口，并在控制台/日志里显示本批范围和处理进度。
+
+9. 启动脚本问题修复  
+   修复了后台线程数据库 URL 隐藏密码导致 PostgreSQL 认证失败的问题，改为传递未隐藏密码的连接串。启动脚本也增加了 UTF-8 控制台设置，并避免把底层异常乱码直接刷到控制台。
+
+10. 当日 Codex 对话归档  
+   已自动解析 2026-05-15 的 Codex jsonl 日志，导出 HTML 对话表：`codex-2026-05-15-dialog-table-linebreaks.html`，共 259 条对话记录，图片已替换为 `[图片]`。
+
+**仍未完成**
+
+企微历史记录从 `wecom_raw_import` 正式发布到 `knowledge_document / knowledge_chunk` 的专用入库链路还没开放。当前完成的是导入、切片、预处理、页面复核、字段结构和自动预处理批处理，不是最终批量发布到正式知识库。</td>
       </tr>
     </tbody>
   </table>

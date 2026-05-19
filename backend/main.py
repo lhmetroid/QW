@@ -10620,23 +10620,67 @@ def _message_chain_dict(item: MessageLog) -> dict:
         "timestamp": item.timestamp,
     }
 
+def _message_fact_dict(item: MessageLog) -> dict:
+    return {
+        "content": item.content,
+        "sender_type": item.sender_type,
+        "timestamp": item.timestamp,
+    }
+
+def _recent_logs_chronological(recent_logs: list[MessageLog]) -> list[MessageLog]:
+    return list(reversed(recent_logs or []))
+
+def _message_fact_dicts(logs: list[MessageLog]) -> list[dict]:
+    return [_message_fact_dict(item) for item in (logs or [])]
+
 def _load_session_messages(db: Session, session_id: str) -> list[MessageLog]:
     return db.query(MessageLog).filter(
         MessageLog.user_id == session_id,
         MessageLog.is_mock.is_(False),
-    ).order_by(MessageLog.id.asc()).all()
+    ).order_by(MessageLog.timestamp.asc(), MessageLog.id.asc()).all()
 
 def _visible_messages_until_anchor(messages: list[MessageLog], anchor_message_id: int | None = None) -> list[MessageLog]:
     if not anchor_message_id:
         return list(messages)
-    return [item for item in messages if item.id <= anchor_message_id]
+    resolved_anchor_id = _resolve_customer_trigger_anchor_id(messages, anchor_message_id) or anchor_message_id
+    cutoff_index = next((idx for idx, item in enumerate(messages or []) if item.id == resolved_anchor_id), None)
+    if cutoff_index is None:
+        return [item for item in messages if item.id <= resolved_anchor_id]
+    return list(messages[:cutoff_index + 1])
+
+def _resolve_customer_trigger_anchor_id(messages: list[MessageLog], anchor_message_id: int | None) -> int | None:
+    """Expand a customer anchor to the end of a short consecutive customer burst."""
+    if not anchor_message_id:
+        return anchor_message_id
+    ordered = list(messages or [])
+    anchor_index = next((idx for idx, item in enumerate(ordered) if item.id == anchor_message_id), None)
+    if anchor_index is None:
+        return anchor_message_id
+    anchor = ordered[anchor_index]
+    if anchor.sender_type != "customer":
+        return anchor_message_id
+    resolved = anchor
+    previous = anchor
+    for item in ordered[anchor_index + 1:]:
+        if item.sender_type != "customer":
+            break
+        if previous.timestamp and item.timestamp:
+            gap_seconds = abs((item.timestamp - previous.timestamp).total_seconds())
+            if gap_seconds > 90:
+                break
+        resolved = item
+        previous = item
+    return int(resolved.id)
 
 def _collect_actual_sales_replies(messages: list[MessageLog], anchor_message_id: int) -> list[dict]:
+    anchor_message_id = _resolve_customer_trigger_anchor_id(messages, anchor_message_id) or anchor_message_id
     replies: list[dict] = []
     collecting = False
-    for item in messages:
-        if item.id <= anchor_message_id:
-            continue
+    anchor_index = next((idx for idx, item in enumerate(messages or []) if item.id == anchor_message_id), None)
+    scan_messages = list(messages or [])[anchor_index + 1:] if anchor_index is not None else [
+        item for item in (messages or []) if item.id > anchor_message_id
+    ]
+    for item in scan_messages:
         if item.sender_type == "sales":
             collecting = True
             replies.append({
@@ -11909,7 +11953,7 @@ def _build_thread_fact_payload_for_context(
         session_id=session_id,
         summary=summary_json,
         crm_context=crm_context,
-        messages=[{"content": item.content, "sender_type": item.sender_type} for item in messages],
+        messages=_message_fact_dicts(messages),
         external_userid=extract_external_userid(session_id),
         sales_userid=_parse_sales_userid_from_session(session_id),
     )
@@ -12333,6 +12377,9 @@ def _upsert_reply_chain_snapshot(
     anchor_message: MessageLog,
     all_messages: list[MessageLog],
 ) -> ReplyChainSnapshot:
+    resolved_anchor_id = _resolve_customer_trigger_anchor_id(all_messages, anchor_message.id)
+    if resolved_anchor_id and resolved_anchor_id != anchor_message.id:
+        anchor_message = next((item for item in all_messages if item.id == resolved_anchor_id), anchor_message)
     visible_messages = _visible_messages_until_anchor(all_messages, anchor_message.id)
     item = db.query(ReplyChainSnapshot).filter(
         ReplyChainSnapshot.session_id == session_id,
@@ -12724,7 +12771,7 @@ def refresh_session_knowledge_task(user_id: str, channel: str, analytics_record_
             session_id=user_id,
             summary_json=summary_json,
             crm_context=crm_context,
-            messages=[{"content": item.content, "sender_type": item.sender_type} for item in recent_logs],
+            messages=_message_fact_dicts(_recent_logs_chronological(recent_logs)),
             external_userid=extract_external_userid(user_id),
         )
         summary.thread_business_fact = _thread_fact_to_dict(current_thread_fact)
@@ -12907,7 +12954,7 @@ def reanalyze_snapshot_task(session_id: str, snapshot_id: str, step: int = 1, an
                 db.commit()
                 final_status = "skipped_no_messages"
                 return
-            context = [{"content": item.content, "sender_type": item.sender_type} for item in visible_messages]
+            context = _message_fact_dicts(visible_messages)
             llm1_started = perf_counter()
             summary = IntentEngine._run_llm1(f"{session_id}#{snapshot.anchor_message_id}", context)
             _set_node_timing(
@@ -13318,7 +13365,7 @@ def reanalyze_session_task(user_id: str, step: int = 1, analytics_record_id: str
                     session_id=user_id,
                     summary_json=summary_json,
                     crm_context=crm_context,
-                    messages=[{"content": item.content, "sender_type": item.sender_type} for item in recent_logs],
+                    messages=_message_fact_dicts(_recent_logs_chronological(recent_logs)),
                     external_userid=extract_external_userid(user_id),
                 )
                 summary.thread_business_fact = _thread_fact_to_dict(current_thread_fact)
@@ -14764,7 +14811,7 @@ async def sidebar_assist(
                 session_id=session_id,
                 summary_json={**summary_json, "status": summary.status},
                 crm_context=crm_context,
-                messages=[{"content": item.content, "sender_type": item.sender_type} for item in recent_logs],
+                messages=_message_fact_dicts(_recent_logs_chronological(recent_logs)),
                 external_userid=external_userid,
                 sales_userid=sales_userid,
             )
@@ -15227,7 +15274,7 @@ async def sidebar_assist(
                         "status": summary.status,
                     },
                     crm_context=crm_context,
-                    messages=[{"content": item.content, "sender_type": item.sender_type} for item in recent_logs],
+                    messages=_message_fact_dicts(_recent_logs_chronological(recent_logs)),
                     external_userid=external_userid,
                     sales_userid=sales_userid,
                 )
@@ -17588,6 +17635,104 @@ def _caselib_run_dry(case_payload: dict) -> dict:
     }
 
 
+def _caselib_parse_msg_time(raw_value: str | None, fallback: datetime) -> datetime:
+    try:
+        return datetime.fromisoformat(str(raw_value or "")[:19])
+    except Exception:
+        return fallback
+
+
+def _caselib_sorted_messages(messages: list[dict], *, base_ts: datetime) -> list[dict]:
+    indexed: list[tuple[datetime, int, dict]] = []
+    for idx, item in enumerate(messages or []):
+        msg = dict(item or {})
+        msg["_case_order"] = idx
+        indexed.append((_caselib_parse_msg_time(msg.get("msg_time"), base_ts + timedelta(seconds=idx)), idx, msg))
+    indexed.sort(key=lambda item: (item[0], item[1]))
+    return [item[2] for item in indexed]
+
+
+def _caselib_split_for_api_trigger(case_payload: dict) -> dict:
+    base_ts = datetime.utcnow() - timedelta(days=30)
+    context_messages = _caselib_sorted_messages(case_payload.get("context_messages") or [], base_ts=base_ts)
+    core_dialog = _caselib_sorted_messages(case_payload.get("core_dialog") or [], base_ts=base_ts + timedelta(hours=1))
+    if not core_dialog:
+        return {
+            "visible_messages": context_messages,
+            "post_trigger_messages": [],
+            "trigger_message": None,
+            "actual_sales_replies": [],
+            "trigger_index": None,
+        }
+
+    actual_start_idx = None
+    for idx in range(len(core_dialog) - 1, -1, -1):
+        if core_dialog[idx].get("role") != "sales":
+            continue
+        if any(item.get("role") == "customer" for item in core_dialog[:idx]):
+            actual_start_idx = idx
+            break
+
+    if actual_start_idx is not None:
+        while actual_start_idx > 0 and core_dialog[actual_start_idx - 1].get("role") == "sales":
+            actual_start_idx -= 1
+        trigger_idx = None
+        for idx in range(actual_start_idx - 1, -1, -1):
+            if core_dialog[idx].get("role") == "customer":
+                trigger_idx = idx
+                break
+    else:
+        trigger_idx = None
+        for idx in range(len(core_dialog) - 1, -1, -1):
+            if core_dialog[idx].get("role") == "customer":
+                trigger_idx = idx
+                break
+
+    if trigger_idx is None:
+        trigger_idx = len(core_dialog) - 1
+
+    visible_core = core_dialog[:trigger_idx + 1]
+    post_trigger = core_dialog[trigger_idx + 1:]
+    actual_sales_replies: list[dict] = []
+    collecting = False
+    for item in post_trigger:
+        if item.get("role") == "sales":
+            collecting = True
+            actual_sales_replies.append(item)
+            continue
+        if collecting and item.get("role") == "customer":
+            break
+
+    trigger_message = core_dialog[trigger_idx] if 0 <= trigger_idx < len(core_dialog) else None
+    return {
+        "visible_messages": context_messages + visible_core,
+        "post_trigger_messages": post_trigger,
+        "trigger_message": trigger_message,
+        "actual_sales_replies": actual_sales_replies,
+        "trigger_index": trigger_idx,
+    }
+
+
+def _caselib_real_failure(
+    *,
+    quality_status: str,
+    latency_ms: int,
+    error_message: str,
+    stage_status: dict | None = None,
+) -> dict:
+    stage = dict(stage_status or {})
+    stage["caselib_error"] = sanitize_text(error_message)[:300]
+    return {
+        "quality_status": quality_status[:50],
+        "latency_ms": latency_ms,
+        "stage_status": stage,
+        "error_message": error_message[:500],
+        "quality_score": None,
+        "kb1_eval_score": None,
+        "kb2_eval_score": None,
+    }
+
+
 def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
     db = SessionLocal()
     cid = case_payload.get("case_id", "0")[:12]
@@ -17599,12 +17744,21 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
     session_id_candidates = [session_id]
     started = perf_counter()
     try:
-        all_msgs = (case_payload.get("context_messages") or []) + (case_payload.get("core_dialog") or [])
+        split_payload = _caselib_split_for_api_trigger(case_payload)
+        visible_msgs = split_payload.get("visible_messages") or []
+        trigger_message = split_payload.get("trigger_message") or {}
+        if not visible_msgs or not trigger_message or trigger_message.get("role") != "customer":
+            return _caselib_real_failure(
+                quality_status="real_no_customer_trigger",
+                latency_ms=int((perf_counter() - started) * 1000),
+                error_message="案例无法解析出客户触发点，已停止真实模式运行",
+                stage_status={"mode": "real", "caselib_split": split_payload},
+            )
         # is_mock=False 才会被 find_existing_single_session_id 命中；
         # 用 caselib_* 前缀的 session_id 保证不会与真实企微 session 重叠，跑完即清理
         db.execute(text("DELETE FROM message_logs WHERE user_id=:sid"), {"sid": session_id})
         base_ts = datetime.utcnow() - timedelta(days=30)
-        for i, m in enumerate(all_msgs):
+        for i, m in enumerate(visible_msgs):
             try:
                 ts = datetime.fromisoformat((m.get("msg_time") or base_ts.isoformat())[:19])
             except Exception:
@@ -17644,15 +17798,19 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
                 last_err = e
         latency_ms = int((perf_counter() - started) * 1000)
         if resp is None:
-            out = _caselib_run_dry(case_payload)
-            out["quality_status"] = f"real_conn_fail"[:50]
-            out["latency_ms"] = latency_ms
-            return out
+            return _caselib_real_failure(
+                quality_status="real_conn_fail",
+                latency_ms=latency_ms,
+                error_message=f"无法连接本地后端: {last_err}",
+                stage_status={"mode": "real", "caselib_split": split_payload},
+            )
         if resp.status_code != 200:
-            out = _caselib_run_dry(case_payload)
-            out["quality_status"] = f"real_http_{resp.status_code}"[:50]
-            out["latency_ms"] = latency_ms
-            return out
+            return _caselib_real_failure(
+                quality_status=f"real_http_{resp.status_code}",
+                latency_ms=latency_ms,
+                error_message=(resp.text or "")[:500],
+                stage_status={"mode": "real", "caselib_split": split_payload},
+            )
         body = resp.json() or {}
         # sidebar_assist 把 7 步结果直接平铺在 body 顶层
         crm = body.get("crm_info") or {}
@@ -17666,6 +17824,13 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
         styles = body.get("reply_style_results_v2") or body.get("reply_style_results") or []
         scores_obj = body.get("reply_scores_v2") or body.get("reply_scores") or {}
         stage_status = body.get("stage_status") or {}
+        stage_status["caselib_split"] = {
+            "trigger_message": trigger_message,
+            "visible_message_count": len(visible_msgs),
+            "post_trigger_message_count": len(split_payload.get("post_trigger_messages") or []),
+            "actual_sales_reply_count": len(split_payload.get("actual_sales_replies") or []),
+            "actual_sales_replies": split_payload.get("actual_sales_replies") or [],
+        }
         snap_id = body.get("snapshot_id") or body.get("api_invocation_id")
 
         # 若顶层无 advice，取 styles[0]['reply_reference'] 或 ['text']
@@ -17696,15 +17861,12 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
                 kb2 = max(kb2_pool) if kb2_pool else None
         except Exception:
             pass
-        # 退化：有 advice 文本但没评分 → 启发式给个保守分
-        if qs is None and sales_advice:
-            qs = 65.0 + min(15.0, len(sales_advice) / 80.0)
         has_advice = bool(sales_advice)
         has_llm1 = (stage_status.get("llm1") == "done")
         has_llm2 = (stage_status.get("llm2") == "done")
         status_label = (
-            "real_success" if (has_advice and has_llm1 and has_llm2)
-            else ("real_partial" if has_advice else "real_pipeline_empty")
+            "real_success" if (has_advice and has_llm1 and has_llm2 and qs is not None)
+            else ("real_score_missing" if (has_advice and has_llm1 and has_llm2) else ("real_partial" if has_advice else "real_pipeline_empty"))
         )
         return {
             "step1_summary": {
@@ -17740,14 +17902,12 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
             "stage_status": stage_status,
         }
     except Exception as e:
-        out = _caselib_run_dry(case_payload)
-        # 错误详情写入 stage_status，避免 quality_status 超长截断
-        existing_stage = out.get("stage_status") or {}
-        if isinstance(existing_stage, dict):
-            existing_stage["caselib_error"] = str(e)[:300]
-            out["stage_status"] = existing_stage
-        out["quality_status"] = "real_error_fallback_dry"[:50]
-        return out
+        return _caselib_real_failure(
+            quality_status="real_error",
+            latency_ms=int((perf_counter() - started) * 1000),
+            error_message=str(e),
+            stage_status={"mode": "real"},
+        )
     finally:
         # 跑完即清理本案例注入的所有 caselib_* 消息和摘要，避免污染统计页面
         try:
@@ -17960,12 +18120,18 @@ def _caselib_run_iteration_background(run_id: str, mode: str):
                 rr.quality_status = (out.get("quality_status") or "")[:50]  # DB列上限50
                 rr.latency_ms = out.get("latency_ms")
                 rr.stage_status = out.get("stage_status")
-                rr.status = "success"
-                if out.get("quality_score") is not None:
+                is_real_failure = mode == "real" and out.get("quality_status") != "real_success"
+                if is_real_failure:
+                    rr.status = "failed"
+                    rr.error_message = out.get("error_message") or out.get("quality_status") or "real mode failed"
+                    failed_n += 1
+                else:
+                    rr.status = "success"
+                    success_n += 1
+                if not is_real_failure and out.get("quality_score") is not None:
                     scores.append(float(out["quality_score"]))
-                if out.get("latency_ms") is not None:
+                if not is_real_failure and out.get("latency_ms") is not None:
                     latencies.append(int(out["latency_ms"]))
-                success_n += 1
             except Exception as e:
                 rr.status = "failed"
                 rr.error_message = str(e)[:500]
