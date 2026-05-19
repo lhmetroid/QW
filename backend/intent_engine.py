@@ -2190,100 +2190,6 @@ class IntentEngine:
         return int(max(minimum, min(maximum, round(value))))
 
     @classmethod
-    def _reply_dimension_scores(
-        cls,
-        *,
-        reply_text: str,
-        validation: dict | None,
-        summary_json: dict | None,
-        thread_fact: dict | None,
-        style: dict | None,
-    ) -> dict:
-        validation = validation or {}
-        style = style or {}
-        merged_facts = (thread_fact or {}).get("merged_facts") or {}
-        latest_sales_message = str(merged_facts.get("latest_sales_message") or "").strip()
-        recent_sales_messages = [str(item or "").strip() for item in (merged_facts.get("recent_sales_messages") or []) if str(item or "").strip()]
-        reply_len = len(re.sub(r"\s+", "", reply_text))
-        style_text = f"{style.get('title', '')} {style.get('content', '')}".strip()
-
-        conciseness = 96
-        if reply_len <= 8:
-            conciseness = 70
-        elif reply_len <= 16:
-            conciseness = 90
-        elif reply_len <= 50:
-            conciseness = 96
-        elif reply_len <= 80:
-            conciseness = 82
-        else:
-            conciseness = 62
-
-        low_barrier = 72
-        if any(token in reply_text for token in ["还是", "有/没有", "有或没有", "有的话", "没有的话"]):
-            low_barrier += 12
-        if any(token in reply_text for token in ["吗", "呢", "可否", "方便", "是否", "?","？"]):
-            low_barrier += 10
-        if any(token in reply_text for token in ["回我", "回个", "确认下", "简单说", "短答"]):
-            low_barrier += 6
-        low_barrier = cls._clamp_score(low_barrier)
-
-        max_overlap = 0.0
-        for old_message in recent_sales_messages[:3] or ([latest_sales_message] if latest_sales_message else []):
-            max_overlap = max(max_overlap, cls._text_overlap_ratio(reply_text, old_message))
-        non_repetition = cls._clamp_score(100 - max_overlap * 90)
-
-        safety = 94
-        safety -= len(validation.get("warnings") or []) * 6
-        safety -= len(validation.get("blocking_issues") or []) * 18
-        if validation.get("manual_review_required"):
-            safety -= 10
-        safety = cls._clamp_score(safety)
-
-        style_match = 82
-        if "商务" in style_text or "正式" in style_text or "稳重" in style_text:
-            if any(token in reply_text for token in ["您好", "请问", "请教", "确认", "是否", "方便"]):
-                style_match += 10
-            if any(token in reply_text for token in ["哈", "啦", "呐"]):
-                style_match -= 8
-        elif "亲和" in style_text or "自然" in style_text or "微信" in style_text:
-            if any(token in reply_text for token in ["最近", "忙吗", "辛苦", "回我", "就行"]):
-                style_match += 10
-            if reply_len > 48:
-                style_match -= 8
-        style_match = cls._clamp_score(style_match)
-
-        context_alignment = 80
-        focus_text = " ".join([
-            str((summary_json or {}).get("topic") or ""),
-            str((summary_json or {}).get("core_demand") or ""),
-            str(merged_facts.get("latest_customer_message") or ""),
-        ])
-        keyword_hits = 0
-        for token in ["负责", "项目", "翻译", "报价", "资料", "对接", "确认", "推进"]:
-            if token in focus_text and token in reply_text:
-                keyword_hits += 1
-        context_alignment = cls._clamp_score(context_alignment + keyword_hits * 4)
-
-        overall = cls._clamp_score(
-            conciseness * 0.18
-            + low_barrier * 0.24
-            + non_repetition * 0.22
-            + safety * 0.22
-            + style_match * 0.08
-            + context_alignment * 0.06
-        )
-        return {
-            "conciseness": conciseness,
-            "low_barrier": low_barrier,
-            "non_repetition": non_repetition,
-            "safety": safety,
-            "style_match": style_match,
-            "context_alignment": context_alignment,
-            "overall": overall,
-        }
-
-    @classmethod
     def score_reply_candidates(
         cls,
         *,
@@ -2292,23 +2198,15 @@ class IntentEngine:
         crm_context: dict | None = None,
         candidates: list[dict] | None = None,
         actual_sales_replies: list[dict] | None = None,
-        skip_llm: bool = False,
     ) -> dict:
+        # 不要在此函数添加规则启发式打分兜底逻辑，LLM-1 失败应明确返回 llm1_failed 状态
         thread_fact = knowledge_payload.get("thread_business_fact") if isinstance(knowledge_payload, dict) else None
         ai_candidates: list[dict] = []
-        heuristic_by_ai_id: dict[str, dict] = {}
+        candidate_by_id: dict[str, dict] = {}
         for item in candidates or []:
             if item.get("status") != "done" or not item.get("content"):
                 continue
-            validation = item.get("validation") or cls.validate_sales_assist_output(item.get("content"), knowledge_payload, crm_context=crm_context)
             reply_text = cls.extract_reply_reference_text(item.get("content"))
-            heuristic_scores = cls._reply_dimension_scores(
-                reply_text=reply_text,
-                validation=validation,
-                summary_json=summary_json,
-                thread_fact=thread_fact,
-                style=item.get("reply_style"),
-            )
             entry = {
                 "candidate_id": item.get("candidate_id"),
                 "model_slot": item.get("model_slot"),
@@ -2319,83 +2217,71 @@ class IntentEngine:
                 "style_id": item.get("style_id"),
                 "style_title": item.get("style_title"),
                 "reply_text": reply_text,
-                "overall_score": heuristic_scores["overall"],
-                "scores": heuristic_scores,
-                "validation_status": validation.get("status"),
-                "manual_review_required": bool(validation.get("manual_review_required")),
-                "score_reason": "heuristic_fallback",
+                "overall_score": None,
+                "scores": None,
+                "score_reason": None,
             }
             ai_candidates.append(entry)
             if entry["candidate_id"]:
-                heuristic_by_ai_id[entry["candidate_id"]] = entry
+                candidate_by_id[entry["candidate_id"]] = entry
 
         sales_scores: list[dict] = []
-        heuristic_by_sales_id: dict[str, dict] = {}
+        sales_by_id: dict[str, dict] = {}
         for item in actual_sales_replies or []:
             content = str(item.get("content") or "").strip()
             if not content:
                 continue
-            validation = cls.validate_sales_assist_output(content, knowledge_payload, crm_context=crm_context)
-            heuristic_scores = cls._reply_dimension_scores(
-                reply_text=content,
-                validation=validation,
-                summary_json=summary_json,
-                thread_fact=thread_fact,
-                style=None,
-            )
             entry = {
                 "reply_id": item.get("id"),
                 "time": item.get("time"),
                 "content": content,
-                "overall_score": heuristic_scores["overall"],
-                "scores": heuristic_scores,
-                "validation_status": validation.get("status"),
-                "manual_review_required": bool(validation.get("manual_review_required")),
-                "score_reason": "heuristic_fallback",
+                "overall_score": None,
+                "scores": None,
+                "score_reason": None,
             }
             sales_scores.append(entry)
-            heuristic_by_sales_id[str(item.get("id"))] = entry
+            sales_by_id[str(item.get("id"))] = entry
 
-        evaluation_payload = {
-            "summary": {
-                "topic": (summary_json or {}).get("topic"),
-                "core_demand": (summary_json or {}).get("core_demand"),
-                "status": (summary_json or {}).get("status"),
-            },
-            "thread_context": cls.sanitize_thread_fact_for_prompt(thread_fact),
-            "crm_context": cls.sanitize_crm_context_for_prompt(crm_context),
-            "candidates": [
-                {
-                    "candidate_id": item.get("candidate_id"),
-                    "model_slot": item.get("model_slot"),
-                    "model_label": item.get("model_label"),
-                    "model_display_name": item.get("model_display_name"),
-                    "knowledge_source": item.get("knowledge_source"),
-                    "knowledge_source_label": item.get("knowledge_source_label"),
-                    "style_title": item.get("style_title"),
-                    "reply_text": item.get("reply_text"),
-                }
-                for item in ai_candidates
-            ],
-            "actual_sales_replies": [
-                {
-                    "reply_id": item.get("reply_id"),
-                    "time": item.get("time"),
-                    "content": item.get("content"),
-                }
-                for item in sales_scores
-            ],
-            "dimensions": [
-                "overall",
-                "low_barrier",
-                "non_repetition",
-                "safety",
-                "conciseness",
-                "style_match",
-                "context_alignment",
-            ],
-        }
-        if not skip_llm and (ai_candidates or sales_scores):
+        if ai_candidates or sales_scores:
+            evaluation_payload = {
+                "summary": {
+                    "topic": (summary_json or {}).get("topic"),
+                    "core_demand": (summary_json or {}).get("core_demand"),
+                    "status": (summary_json or {}).get("status"),
+                },
+                "thread_context": cls.sanitize_thread_fact_for_prompt(thread_fact),
+                "crm_context": cls.sanitize_crm_context_for_prompt(crm_context),
+                "candidates": [
+                    {
+                        "candidate_id": item.get("candidate_id"),
+                        "model_slot": item.get("model_slot"),
+                        "model_label": item.get("model_label"),
+                        "model_display_name": item.get("model_display_name"),
+                        "knowledge_source": item.get("knowledge_source"),
+                        "knowledge_source_label": item.get("knowledge_source_label"),
+                        "style_title": item.get("style_title"),
+                        "reply_text": item.get("reply_text"),
+                    }
+                    for item in ai_candidates
+                ],
+                "actual_sales_replies": [
+                    {
+                        "reply_id": item.get("reply_id"),
+                        "time": item.get("time"),
+                        "content": item.get("content"),
+                    }
+                    for item in sales_scores
+                ],
+                "dimensions": [
+                    "overall",
+                    "low_barrier",
+                    "non_repetition",
+                    "safety",
+                    "conciseness",
+                    "style_match",
+                    "context_alignment",
+                ],
+            }
             score_prompt = (
                 "你是销售回复评分器。请使用当前 LLM-1 模型，对下列候选回复和销售实发回复分别打分。\n"
                 "评分维度：overall, low_barrier, non_repetition, safety, conciseness, style_match, context_alignment。\n"
@@ -2412,42 +2298,50 @@ class IntentEngine:
                 llm_scores = cls.run_llm1_json_prompt(score_prompt, user_id="reply_score")
                 for item in llm_scores.get("ai_candidates") or []:
                     candidate_id = str(item.get("candidate_id") or "").strip()
-                    target = heuristic_by_ai_id.get(candidate_id)
+                    target = candidate_by_id.get(candidate_id)
                     if not target:
                         continue
                     score_block = item.get("scores") or {}
                     normalized = {}
                     for key in ["overall", "low_barrier", "non_repetition", "safety", "conciseness", "style_match", "context_alignment"]:
-                        base_value = score_block.get(key, target["scores"].get(key))
-                        normalized[key] = cls._clamp_score(float(base_value))
-                    target["scores"] = normalized
-                    target["overall_score"] = normalized["overall"]
-                    target["score_reason"] = str(item.get("reason") or "llm1_scored").strip()
+                        v = score_block.get(key)
+                        if v is not None:
+                            normalized[key] = cls._clamp_score(float(v))
+                    if normalized:
+                        target["scores"] = normalized
+                        target["overall_score"] = normalized.get("overall")
+                        target["score_reason"] = str(item.get("reason") or "llm1_scored").strip()
                 for item in llm_scores.get("actual_sales_replies") or []:
                     reply_id = str(item.get("reply_id") or "").strip()
-                    target = heuristic_by_sales_id.get(reply_id)
+                    target = sales_by_id.get(reply_id)
                     if not target:
                         continue
                     score_block = item.get("scores") or {}
                     normalized = {}
                     for key in ["overall", "low_barrier", "non_repetition", "safety", "conciseness", "style_match", "context_alignment"]:
-                        base_value = score_block.get(key, target["scores"].get(key))
-                        normalized[key] = cls._clamp_score(float(base_value))
-                    target["scores"] = normalized
-                    target["overall_score"] = normalized["overall"]
-                    target["score_reason"] = str(item.get("reason") or "llm1_scored").strip()
+                        v = score_block.get(key)
+                        if v is not None:
+                            normalized[key] = cls._clamp_score(float(v))
+                    if normalized:
+                        target["scores"] = normalized
+                        target["overall_score"] = normalized.get("overall")
+                        target["score_reason"] = str(item.get("reason") or "llm1_scored").strip()
             except Exception as exc:
-                logger.error("LLM-1 评分失败，回退启发式评分: %s", exc)
+                logger.error("LLM-1 评分失败: %s", exc)
+                for entry in ai_candidates:
+                    entry["score_reason"] = "llm1_failed"
+                for entry in sales_scores:
+                    entry["score_reason"] = "llm1_failed"
 
-        ai_candidates.sort(key=lambda item: item.get("overall_score", 0), reverse=True)
-        sales_scores.sort(key=lambda item: item.get("overall_score", 0), reverse=True)
+        ai_candidates.sort(key=lambda item: item.get("overall_score") or 0, reverse=True)
+        sales_scores.sort(key=lambda item: item.get("overall_score") or 0, reverse=True)
 
         return {
             "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
             "scored_by": {
                 "model": settings.LLM1_MODEL,
                 "provider": cls._llm_provider_label(settings.LLM1_API_KEY),
-                "score_mode": "llm1_with_heuristic_fallback",
+                "score_mode": "llm1",
             },
             "dimensions": [
                 {"key": "overall", "label": "总分"},

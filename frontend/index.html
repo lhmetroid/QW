@@ -1881,8 +1881,8 @@
                 '悬停每行单元格可看该案例的 7 维分明细。'
             );
             const mdHeaderTip = (
-                '人工原始分（满分100）= sales_scenario_cases_v2.md「质量分（最高）」字段，案例入库时固化。\n' +
-                '人工分目前是单一分值，无子维度。悬停单元格可看：场景 / 排名 / 案例标题 / 章节锚点。'
+                '人工原始分（满分100）：人工销售实际回复的质量评估，来自 sales_scenario_cases_v2.md 手动标注，案例入库时固化。\n' +
+                '仅单一总分，无子维度。悬停单元格可看该案例的分值 / 场景 / 排名 / 案例标题。'
             );
             const salesReplyHeaderTip = (
                 '销售原始回复：该案例中人工销售在对话触发点之后发出的第一条回复原文。\n' +
@@ -1899,7 +1899,7 @@
                             <th class="px-2 py-2 text-left" title="本案例端到端 7 步链路总耗时（毫秒）">耗时</th>
                             <th class="px-2 py-2 text-left" title="步骤1：大模型1 抽取的当前主线话题。悬停看全文">第1步·主线话题</th>
                             <th class="px-2 py-2 text-left" title="步骤4：知识检索的最终状态（命中 / 待人工复核 / 未启动 / 干跑占位）">第4步·知识检索</th>
-                            <th class="px-2 py-2 text-left" title="步骤6：大模型2 基于前 5 步生成的销售话术建议（截断显示前 80 字，悬停看全文）">第6步·销售建议</th>
+                            <th class="px-2 py-2 text-left" title="步骤6：大模型2 基于前 5 步生成的 AI 回复建议（截断显示前 80 字，悬停看全文）">第6步·AI生成回复</th>
                             <th class="px-2 py-2 text-left" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" title="${escapeHtml(mdHeaderTip)}">人工原始分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
@@ -1929,21 +1929,21 @@
                 }
                 return String(v).slice(0, 30);
             };
-            const _scoreModeLabel = (scoresObj, topCandidate) => {
-                const mode = (scoresObj && scoresObj.scored_by && scoresObj.scored_by.score_mode) || '';
-                const reason = (topCandidate && topCandidate.score_reason) || '';
-                if (mode.includes('llm1') || reason === 'llm1_scored') return 'LLM-1 直接评分';
-                return '规则启发式打分（非 LLM）';
-            };
             const buildAiCellTip = (r) => {
                 const scoresObj = r.step7_reply_scores;
                 const ac = (scoresObj && typeof scoresObj === 'object') ? (scoresObj.ai_candidates || []) : [];
                 if (!ac.length) {
-                    return 'AI 质量分（满分100）= ai_candidates 中 overall_score 最高者；本案例尚无 7 维评分数据。'
-                        + '\n如需获得 7 维分，请点击页面顶部「重新打分（AI+人工）」。';
+                    return 'AI 质量分（满分100）= ai_candidates 中 overall_score 最高者；本案例尚无评分数据。' +
+                        '\n请点击页面顶部「重新打分（AI+人工）」。';
                 }
                 const top = ac[0] || {};
+                if (top.score_reason === 'llm1_failed') {
+                    return 'AI 质量分：LLM-1 打分失败，请检查服务连通性后重试「重新打分（AI+人工）」。';
+                }
                 const sub = top.scores || {};
+                if (!Object.keys(sub).length) {
+                    return 'AI 质量分：评分进行中或尚未完成，请稍后刷新。';
+                }
                 const dimMap = [
                     ['overall', '总分'],
                     ['low_barrier', '易回复'],
@@ -1959,22 +1959,28 @@
                     if (v != null) lines.push(`  • ${l}（${k}）= ${Number(v).toFixed(1)}`);
                 });
                 const reason = top.score_reason || '';
-                if (reason && reason !== 'heuristic_fallback' && reason !== 'llm1_scored') {
-                    lines.push('AI 评价：' + reason.slice(0, 240));
+                if (reason && reason !== 'llm1_scored') {
+                    lines.push('LLM 评价：' + reason.slice(0, 240));
                 }
                 if (top.knowledge_source_label || top.style_title) {
                     lines.push(`来源：${top.knowledge_source_label || ''} · ${top.style_title || ''}`);
                 }
-                lines.push('打分方式：' + _scoreModeLabel(scoresObj, top));
+                lines.push('打分方式：LLM-1（' + (scoresObj.scored_by && scoresObj.scored_by.model || 'qwen14b') + '）');
                 lines.push('（候选数：' + ac.length + '；其它候选可在弹窗"第7步 · 候选评分"查看）');
                 return lines.join('\n');
             };
             const buildSalesReplyCellTip = (r) => {
                 const scoresObj = r.step7_reply_scores;
                 const ar = (scoresObj && typeof scoresObj === 'object') ? (scoresObj.actual_sales_replies || []) : [];
-                if (!ar.length) return '销售原始回复：本案例尚无 7 维评分数据。';
+                if (!ar.length) return '销售原始回复：本案例尚无评分数据。\n请点击页面顶部「重新打分（AI+人工）」。';
                 const top = ar[0] || {};
+                if (top.score_reason === 'llm1_failed') {
+                    return '销售原始回复：LLM-1 打分失败，请检查服务连通性后重试「重新打分（AI+人工）」。';
+                }
                 const sub = top.scores || {};
+                if (!Object.keys(sub).length) {
+                    return '销售原始回复：评分进行中或尚未完成，请稍后刷新。';
+                }
                 const dimMap = [
                     ['overall', '总分'],
                     ['low_barrier', '易回复'],
@@ -1984,22 +1990,24 @@
                     ['style_match', '风格匹配'],
                     ['context_alignment', '上下文贴合'],
                 ];
-                const lines = ['销售原始回复 7 维明细（规则启发式打分）：'];
+                const lines = ['销售原始回复 7 维明细：'];
                 dimMap.forEach(([k, l]) => {
                     const v = sub[k];
                     if (v != null) lines.push(`  • ${l}（${k}）= ${Number(v).toFixed(1)}`);
                 });
-                const txt = (top.reply_text || '').slice(0, 200);
-                if (txt) lines.push('原文：' + txt + (top.reply_text && top.reply_text.length > 200 ? '…' : ''));
-                lines.push('打分方式：规则启发式打分（非 LLM）');
+                const rawTxt = top.reply_text || top.content || '';
+                const txt = rawTxt.slice(0, 200);
+                if (txt) lines.push('原文：' + txt + (rawTxt.length > 200 ? '…' : ''));
+                lines.push('打分方式：LLM-1（' + (scoresObj.scored_by && scoresObj.scored_by.model || 'qwen14b') + '）');
                 return lines.join('\n');
             };
             const buildMdCellTip = (r, c) => {
-                const lines = ['人工原始分（满分100）来自 sales_scenario_cases_v2.md「质量分（最高）」字段。'];
+                const md = c && c.quality_score_md;
+                const lines = ['人工原始分（满分100）= ' + (md != null ? Number(md).toFixed(1) : '—')];
+                lines.push('来源：sales_scenario_cases_v2.md 手动标注，案例入库时固化，仅单一总分无子维度。');
                 if (r.scenario_code) lines.push(`场景：${r.scenario_code} · 场内第 ${r.scenario_rank} 名`);
                 if (c && c.case_title) lines.push('案例：' + c.case_title);
                 if (c && c.md_section_anchor) lines.push('章节锚点：' + c.md_section_anchor);
-                lines.push('人工分为单一分值，无子维度评价字段。');
                 return lines.join('\n');
             };
             const body = rows.map(r => {

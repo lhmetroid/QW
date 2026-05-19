@@ -18135,7 +18135,6 @@ def _caselib_rescore_one_result(rr: CaseIterationResult) -> dict:
             crm_context=crm,
             candidates=candidates,
             actual_sales_replies=None,
-            skip_llm=True,
         )
     except Exception as exc:
         return {"scored": False, "reason": f"score_err:{str(exc)[:100]}"}
