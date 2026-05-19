@@ -1722,6 +1722,13 @@
             }
         }
 
+        function getSalesScore(r) {
+            const ar = ((r.step7_reply_scores && r.step7_reply_scores.actual_sales_replies) || []);
+            const s = ar[0];
+            if (!s || s.score_reason === 'llm1_failed') return null;
+            return s.overall_score != null ? s.overall_score : ((s.scores || {}).overall ?? null);
+        }
+
         function renderCaselibDetail(data) {
             const it = data.iteration;
             const allRows = data.results || [];
@@ -1734,12 +1741,6 @@
                 `代码版本 = ${it.git_short_sha || '-'}${it.git_dirty ? ' (含未提交改动)' : ''}  ｜  触发于 ${tt}  ｜  运行状态 = ${caselibRunStatusLabel(it.status)}`;
 
             // === 顶部速览卡片：本次平均 / 原始平均 / Δ ===
-            const getSalesScore = r => {
-                const ar = ((r.step7_reply_scores && r.step7_reply_scores.actual_sales_replies) || []);
-                const s = ar[0];
-                if (!s || s.score_reason === 'llm1_failed') return null;
-                return s.overall_score != null ? s.overall_score : ((s.scores || {}).overall ?? null);
-            };
             const aiScores = allRows.map(r => r.quality_score).filter(v => v != null);
             const mdScores = allRows.map(r => getSalesScore(r)).filter(v => v != null);
             const aiAvg = aiScores.length ? (aiScores.reduce((a,b)=>a+b,0) / aiScores.length) : null;
