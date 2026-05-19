@@ -2163,6 +2163,31 @@
                 const stateMap = { inquiry: '询价阶段', follow_up: '跟进阶段', negotiation: '谈判阶段', closed: '已成交', process: '推进中' };
                 const styleMap = { wechat_brief: '微信口语', formal: '正式', mixed: '混合' };
                 const activeSignals = Object.entries(sig).filter(([k,v]) => v === true && sigMap[k]).map(([k]) => sigMap[k]);
+
+                // 最近销售消息：优先取数组，回退单条
+                const recentSalesMsgs = Array.isArray(mf.recent_sales_messages) && mf.recent_sales_messages.length
+                    ? mf.recent_sales_messages
+                    : (mf.latest_sales_message ? [mf.latest_sales_message] : []);
+
+                // 触发点消息 + 触发点之后的后续客户消息（从 core_dialog 提取）
+                const triggerMsg = mf.latest_customer_message || '';
+                const postTriggerCustomerMsgs = (() => {
+                    if (!triggerMsg) return [];
+                    const dialog = c.core_dialog || [];
+                    let triggerIdx = -1;
+                    for (let i = dialog.length - 1; i >= 0; i--) {
+                        if (dialog[i].role === 'customer' && dialog[i].content === triggerMsg) {
+                            triggerIdx = i; break;
+                        }
+                    }
+                    if (triggerIdx < 0) return [];
+                    const msgs = [];
+                    for (let i = triggerIdx + 1; i < dialog.length; i++) {
+                        if (dialog[i].role === 'customer' && dialog[i].content) msgs.push(dialog[i].content);
+                    }
+                    return msgs;
+                })();
+
                 html02 = `
                     ${frow('业务阶段', stateMap[s3.business_state] || s3.business_state)}
                     ${frow('场景标签', s3.scenario_label)}
@@ -2171,8 +2196,16 @@
                     ${activeSignals.length
                         ? `<div class="text-[10px] text-slate-500 mt-1.5 mb-0.5">已激活信号</div>${chips(activeSignals, 'bg-amber-50 text-amber-800 border border-amber-200')}`
                         : '<div class="text-[10px] text-slate-400 mt-1">无活跃业务信号</div>'}
-                    ${mf.latest_sales_message ? `<div class="mt-1.5"><div class="text-[10px] text-slate-500 mb-0.5">最近销售消息</div><div class="text-[11px] text-slate-700 bg-emerald-50 rounded px-2 py-1">${escapeHtml(mf.latest_sales_message)}</div></div>` : ''}
-                    ${mf.latest_customer_message ? `<div class="mt-1"><div class="text-[10px] text-slate-500 mb-0.5">最近客户消息</div><div class="text-[11px] text-slate-700 bg-blue-50 rounded px-2 py-1">${escapeHtml(mf.latest_customer_message)}</div></div>` : ''}`;
+                    ${recentSalesMsgs.length ? `<div class="mt-1.5">
+                        <div class="text-[10px] text-slate-500 mb-0.5">最近销售消息（${recentSalesMsgs.length}条）</div>
+                        ${recentSalesMsgs.map(m => `<div class="text-[11px] text-slate-700 bg-emerald-50 rounded px-2 py-1 mb-0.5">${escapeHtml(m)}</div>`).join('')}
+                    </div>` : ''}
+                    ${triggerMsg ? `<div class="mt-1">
+                        <div class="text-[10px] text-blue-600 font-semibold mb-0.5">触发点消息 <span class="font-normal text-slate-400">（pipeline 响应此消息）</span></div>
+                        <div class="text-[11px] text-blue-800 bg-blue-100 rounded px-2 py-1 border border-blue-200">${escapeHtml(triggerMsg)}</div>
+                        ${postTriggerCustomerMsgs.length ? `<div class="text-[10px] text-slate-500 mt-1 mb-0.5">触发后客户消息（${postTriggerCustomerMsgs.length}条，触发时未纳入 pipeline）</div>
+                        ${postTriggerCustomerMsgs.map(m => `<div class="text-[11px] text-slate-600 bg-slate-100 rounded px-2 py-0.5 mb-0.5 opacity-75">${escapeHtml(m)}</div>`).join('')}` : ''}
+                    </div>` : ''}`;
             }
             const s3State = s3 ? ({ inquiry:'询价阶段',follow_up:'跟进阶段',negotiation:'谈判阶段',closed:'已成交',process:'推进中' }[s3.business_state] || s3.business_state || '') : '';
             const step02 = stepCard('02', '强信号扫描', html02, s3State, s3 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700');
