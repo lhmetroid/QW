@@ -435,6 +435,11 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE wecom_trigger_record ADD COLUMN IF NOT EXISTS kb2_eval_score NUMERIC(6, 2);"))
         db.execute(text("ALTER TABLE wecom_trigger_record ADD COLUMN IF NOT EXISTS kb2_eval_reason TEXT;"))
         db.execute(text("ALTER TABLE wecom_trigger_record ADD COLUMN IF NOT EXISTS quality_annotations JSON;"))
+        # case_iteration_run 三 AI 分析字段 + 汇总
+        db.execute(text("ALTER TABLE case_iteration_run ADD COLUMN IF NOT EXISTS analysis_codex TEXT;"))
+        db.execute(text("ALTER TABLE case_iteration_run ADD COLUMN IF NOT EXISTS analysis_antigravity TEXT;"))
+        db.execute(text("ALTER TABLE case_iteration_run ADD COLUMN IF NOT EXISTS analysis_claude_code TEXT;"))
+        db.execute(text("ALTER TABLE case_iteration_run ADD COLUMN IF NOT EXISTS analysis_summary TEXT;"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS wecom_trigger_record ("
             "record_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -12049,6 +12054,9 @@ def _refresh_api_invocation_result_payload(item: ApiAssistInvocation) -> bool:
 
 def _sanitize_api_sidebar_result_payload(payload: dict | None) -> dict:
     result = dict(_jsonable(payload) or {})
+    # 案例库评测路径会带上 evaluation_full_pipeline=True，保留全部对比模型结果不做剥离
+    if result.get("evaluation_full_pipeline"):
+        return result
     stage_status = dict(result.get("stage_status") or {})
     stage_status["llm2_compare"] = "skipped_api_isolated"
     # API 路径不运行对比模型，清除缓存摘要带入的 llm2_compare_ms，防止污染分析面板
@@ -14492,6 +14500,9 @@ class SidebarAssistRequest(BaseModel):
     force_refresh: bool = False
     sync_archive_before_read: bool = settings.SIDEBAR_ASSIST_SYNC_ARCHIVE_BEFORE_READ_DEFAULT
     trigger_source: str | None = None
+    # 案例库批量评测专用：True 时强制走完整 7 步真实链路
+    # （LLM1 对比 / LLM2 对比 / reply scoring / KB2 全部打开），生产请求不传，保持默认行为
+    evaluation_full_pipeline: bool = False
 
 class SessionArchiveSyncRequest(BaseModel):
     session_id: str | None = None
@@ -14693,10 +14704,19 @@ async def sidebar_assist(
                 _apply_summary_fields(summary_record, summary_payload)
                 summary_record.llm1_compare_summary = None
                 summary_record.llm1_compare_prompt_trace = None
+                # 案例库评测：补跑 LLM-1 对比模型，与主 LLM-1 同输入横向校验
+                if request.evaluation_full_pipeline:
+                    llm1_compare_started = perf_counter()
+                    llm1_compare_bundle = _run_llm1_compare_bundle(context, user_id=session_id)
+                    mark_timing("llm1_compare_ms", llm1_compare_started)
+                    summary_record.llm1_compare_summary = llm1_compare_bundle.get("summary")
+                    summary_record.llm1_compare_prompt_trace = llm1_compare_bundle.get("prompt_trace")
+                    stage_status["llm1_compare"] = llm1_compare_bundle.get("status") or "unknown"
                 summary_record.stage_status = {
                     "conversation_input": "done" if context else "empty",
                     "fast_track": "done",
                     "llm1": "done",
+                    "llm1_compare": stage_status.get("llm1_compare") or ("not_started" if not request.evaluation_full_pipeline else "unknown"),
                     "crm_profile": "not_started",
                     "knowledge_v2": "not_started",
                     "knowledge_external_api": "not_started",
@@ -14760,6 +14780,9 @@ async def sidebar_assist(
                 IntentEngine.get_ai_settings().get("API_KB2_ENABLED", True),
                 default=True,
             )
+            # 案例库评测：强制启用 KB2，确保外部库分有真实返回
+            if request.evaluation_full_pipeline:
+                api_kb2_enabled = True
             stage_status["api_kb2_enabled"] = api_kb2_enabled
             if summary.core_demand:
                 stage_started = perf_counter()
@@ -14997,6 +15020,8 @@ async def sidebar_assist(
             # ── 非流式路径（原逻辑不变）───────────────────────────────────────
 
             stage_started = perf_counter()
+            # 案例库评测：放开单模型单风格限制，同时启用打分，给前端"私域库分 / 外部库分 / 第7步候选评分"提供真实值
+            _eval_full = bool(request.evaluation_full_pipeline)
             generation_bundle = _generate_reply_style_candidates(
                 summary_json=summary_json,
                 knowledge=knowledge_v2,
@@ -15004,8 +15029,8 @@ async def sidebar_assist(
                 crm_context=crm_context,
                 actual_sales_replies=[],
                 runtime_key=session_id,
-                single_model_single_style=True,
-                enable_scoring=False,
+                single_model_single_style=False if _eval_full else True,
+                enable_scoring=True if _eval_full else False,
                 kb2_enabled=api_kb2_enabled,
             )
             mark_timing("llm2_generate_ms", stage_started)
@@ -15024,7 +15049,12 @@ async def sidebar_assist(
             summary.assist_validation = primary_candidate.get("validation") if primary_candidate else None
             summary.assist_compare_validation = compare_candidate.get("validation") if compare_candidate else None
             llm2_stage_timing = generation_bundle.get("stage_timings_ms") or {}
-            llm2_compare_status = "skipped_api_isolated"
+            # 评测模式下用真实 llm2_compare_status；生产仍维持 skipped_api_isolated
+            llm2_compare_status = (
+                (generation_bundle.get("llm2_compare_status") or "unknown")
+                if _eval_full
+                else "skipped_api_isolated"
+            )
             _set_node_timing(
                 stage_status,
                 "llm2",
@@ -15055,10 +15085,18 @@ async def sidebar_assist(
             stage_status["llm2_compare"] = "skipped_api_isolated"
 
         # 3. 封装全量字段给侧边栏前端
-        compare_runtime_status = {
-            "status": "skipped_api_isolated",
-            "reason": "API 调用链路已禁用 LLM-2 对比模型",
-        }
+        if request.evaluation_full_pipeline:
+            compare_runtime_status = {
+                "status": stage_status.get("llm2_compare") or "unknown",
+                "reason": "案例库评测：已启用 LLM-2 对比模型",
+            }
+            compare_configured_flag = _runtime_llm_configured(_runtime_llm_values("LLM2_COMPARE"))
+        else:
+            compare_runtime_status = {
+                "status": "skipped_api_isolated",
+                "reason": "API 调用链路已禁用 LLM-2 对比模型",
+            }
+            compare_configured_flag = False
         result = {
             "status": "success",
             "external_userid": external_userid,
@@ -15072,9 +15110,11 @@ async def sidebar_assist(
             "has_v2": False,
             "has_v2_compare": False,
             "llm_runtime": _llm_runtime_config(),
-            "llm2_compare_configured": False,
+            "llm2_compare_configured": compare_configured_flag,
             "llm2_compare_runtime_status": compare_runtime_status,
-            "stage_status": stage_status
+            "stage_status": stage_status,
+            # 案例库评测路径专用标记，sanitize 函数会跳过对对比模型字段的剥离
+            "evaluation_full_pipeline": bool(request.evaluation_full_pipeline),
         }
         
         if summary:
@@ -15087,6 +15127,11 @@ async def sidebar_assist(
                 "todo_items": summary.todo_items,
                 "to_be_confirmed": summary.to_be_confirmed
             })
+            # 评测模式下回传 LLM-1 对比模型摘要（生产模式 summary 上该字段为 None，不影响）
+            if summary.llm1_compare_summary is not None:
+                result["llm1_compare_summary"] = summary.llm1_compare_summary
+            if summary.llm1_compare_prompt_trace is not None:
+                result["llm1_compare_prompt_trace"] = summary.llm1_compare_prompt_trace
             if summary.sales_advice_v2:
                 result["has_v2"] = True
                 _apply_sales_advice_output_fields(result, summary.sales_advice_v2)
@@ -15859,9 +15904,10 @@ def _wecom_llm_preprocess_prompt(slice_id: str, rows: list[dict], scenarios: lis
 8. 未知消息类型、乱码、无法识别内容为 不入库_乱码，商业场景可为 null。
 9. 客户有问题但没有销售有效答复为 不入库_无答。
 10. 纯推广、群发模板、视频号内容不是自动不入库；若可复用且不误导，可给入库或待人工确认。
-11. 强个案、具体联系人电话、具体供应商路径、特殊价格等检索后容易误导的内容，应 不入库_强个案 或 待人工确认。
-12. 入库_切片和待人工确认必须有 business_stage、business_scenario_code、business_scenario_name、scenario_match_reason、usage_boundary。
-13. quality_score 0-100；同一 slice_id 内所有行后续会共享该分数。
+11. 强个案、具体联系人电话、具体供应商路径、特殊价格等检索后容易误导的内容，默认 不入库_强个案；只有存在可抽象复用的销售处理动作时才允许 待人工确认。
+12. 客户只是指向具体联系人、销售只是说明某个联系人电话未接通/留言/找不到人，属于联系人路径强个案，必须 不入库_强个案，quality_score 不高于 45。
+13. 入库_切片和待人工确认必须有 business_stage、business_scenario_code、business_scenario_name、scenario_match_reason、usage_boundary。
+14. quality_score 0-100；同一 slice_id 内所有行后续会共享该分数。
 
 当前切片原始消息 JSON：
 {json.dumps(messages, ensure_ascii=False)}
@@ -17368,6 +17414,10 @@ def _caselib_serialize_run(r: CaseIterationRun) -> dict:
         "avg_latency_ms": r.avg_latency_ms,
         "improvement_analysis": r.improvement_analysis or "",
         "ai_next_step_plan": r.ai_next_step_plan or "",
+        "analysis_codex": r.analysis_codex or "",
+        "analysis_antigravity": r.analysis_antigravity or "",
+        "analysis_claude_code": r.analysis_claude_code or "",
+        "analysis_summary": r.analysis_summary or "",
         "backup_commit_sha": r.backup_commit_sha,
         "backup_status": r.backup_status,
         "triggered_by": r.triggered_by,
@@ -17585,6 +17635,8 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
                     "force_refresh": True,
                     "sync_archive_before_read": False,
                     "trigger_source": "web_manual",
+                    # 案例库评测必须走完整 7 步真实链路：开 LLM1 对比 / LLM2 对比 / reply scoring / KB2
+                    "evaluation_full_pipeline": True,
                 }, timeout=180)
                 resp = r
                 break
@@ -17621,23 +17673,27 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
             first = styles[0] or {}
             sales_advice = first.get("reply_reference") or first.get("text") or first.get("content") or ""
 
-        # 质量分：reply_scores_v2 通常是 {candidate_id: {kb1_score,kb2_score,total} ...}
+        # 质量分：reply_scores_v2 结构是 {ai_candidates:[{overall_score, scores:{...}, knowledge_source}], actual_sales_replies:[...], dimensions:[...]}
+        # AI 质量分 = ai_candidates 中 overall_score 最高者
+        # 私域库分 = knowledge_source==knowledge_v2 的候选 overall 最高
+        # 外部库分 = knowledge_source==knowledge_external_api 的候选 overall 最高
         qs = None
         kb1 = None; kb2 = None
         try:
-            if isinstance(scores_obj, dict) and scores_obj:
-                first = next(iter(scores_obj.values()))
-                if isinstance(first, dict):
-                    qs = first.get("total") or first.get("score") or first.get("avg")
-                    kb1 = first.get("kb1_score") or first.get("kb1")
-                    kb2 = first.get("kb2_score") or first.get("kb2")
-                    qs = float(qs) if qs is not None else None
-                    kb1 = float(kb1) if kb1 is not None else None
-                    kb2 = float(kb2) if kb2 is not None else None
-                elif isinstance(first, (int, float)):
-                    qs = float(first)
-            elif isinstance(scores_obj, list) and scores_obj:
-                qs = float(scores_obj[0].get("score") or scores_obj[0].get("total") or 0) or None
+            ai_candidates = []
+            if isinstance(scores_obj, dict):
+                ai_candidates = scores_obj.get("ai_candidates") or []
+            if ai_candidates:
+                # 最佳总分
+                qs = max(
+                    (float(c.get("overall_score") or 0) for c in ai_candidates if c.get("overall_score") is not None),
+                    default=None,
+                )
+                # 按知识来源分组取最高
+                kb1_pool = [float(c.get("overall_score") or 0) for c in ai_candidates if c.get("knowledge_source") == "knowledge_v2" and c.get("overall_score") is not None]
+                kb2_pool = [float(c.get("overall_score") or 0) for c in ai_candidates if c.get("knowledge_source") == "knowledge_external_api" and c.get("overall_score") is not None]
+                kb1 = max(kb1_pool) if kb1_pool else None
+                kb2 = max(kb2_pool) if kb2_pool else None
         except Exception:
             pass
         # 退化：有 advice 文本但没评分 → 启发式给个保守分
@@ -17789,28 +17845,52 @@ def _caselib_compose_ai_next_plan(run: CaseIterationRun, db: Session | None = No
 
 
 def _caselib_git_backup(version_no: int) -> tuple[str | None, str]:
+    """完成迭代后：本地 commit + push 到 GitHub origin（当前分支）。
+    任一环节失败都安全返回（不阻塞迭代），状态码体现到 backup_status。
+    """
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     try:
         st = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root,
                             capture_output=True, text=True, timeout=10)
         if st.returncode != 0:
             return None, f"status_failed: {st.stderr.strip()[:120]}"
-        if not st.stdout.strip():
-            sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root,
-                                 capture_output=True, text=True, timeout=10)
-            return (sha.stdout.strip() if sha.returncode == 0 else None), "clean_no_change"
-        add = subprocess.run(["git", "add", "-A"], cwd=repo_root,
-                             capture_output=True, text=True, timeout=20)
-        if add.returncode != 0:
-            return None, f"add_failed: {add.stderr.strip()[:120]}"
-        msg = f"chore(caselib): iteration v{version_no} auto-backup"
-        cm = subprocess.run(["git", "commit", "-m", msg], cwd=repo_root,
-                            capture_output=True, text=True, timeout=20)
-        if cm.returncode != 0:
-            return None, f"commit_failed: {cm.stderr.strip()[:120]}"
-        sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root,
-                             capture_output=True, text=True, timeout=10)
-        return (sha.stdout.strip() if sha.returncode == 0 else None), "committed"
+        commit_made = False
+        if st.stdout.strip():
+            add = subprocess.run(["git", "add", "-A"], cwd=repo_root,
+                                 capture_output=True, text=True, timeout=20)
+            if add.returncode != 0:
+                return None, f"add_failed: {add.stderr.strip()[:120]}"
+            msg = f"chore(caselib): iteration v{version_no} auto-backup"
+            cm = subprocess.run(["git", "commit", "-m", msg], cwd=repo_root,
+                                capture_output=True, text=True, timeout=20)
+            if cm.returncode != 0:
+                return None, f"commit_failed: {cm.stderr.strip()[:120]}"
+            commit_made = True
+        sha_proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root,
+                                  capture_output=True, text=True, timeout=10)
+        head_sha = sha_proc.stdout.strip() if sha_proc.returncode == 0 else None
+
+        # 推送当前分支到 origin
+        branch_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                                     cwd=repo_root, capture_output=True, text=True, timeout=10)
+        branch = branch_proc.stdout.strip() if branch_proc.returncode == 0 else None
+        push_status = "skipped_no_branch"
+        if branch:
+            push = subprocess.run(["git", "push", "origin", branch], cwd=repo_root,
+                                  capture_output=True, text=True, timeout=60)
+            if push.returncode == 0:
+                push_status = "pushed"
+            else:
+                push_status = f"push_failed: {push.stderr.strip()[:120]}"
+        # 组合 backup_status：commit + push 两阶段
+        if commit_made and push_status == "pushed":
+            return head_sha, "committed_and_pushed"
+        if commit_made:
+            return head_sha, f"committed_only_{push_status}"
+        # 无新改动，但仍可推
+        if push_status == "pushed":
+            return head_sha, "clean_no_change_pushed"
+        return head_sha, f"clean_no_change_{push_status}"
     except Exception as e:
         return None, f"exception: {str(e)[:120]}"
 
@@ -18010,4 +18090,252 @@ async def caselib_reimport():
         }
     except Exception as e:
         return {"status": "failed", "error": str(e)}
+
+
+def _caselib_rescore_one_result(rr: CaseIterationResult) -> dict:
+    """对单个 case_iteration_result 重新打分：基于已存的 step7_reply_styles + step4_knowledge + step1_summary
+    重新调用 IntentEngine.score_reply_candidates，把 7 维评分（含 reason）写回 step7_reply_scores，
+    并刷新 quality_score / kb1_eval_score / kb2_eval_score。返回 {scored:bool, reason}。"""
+    styles = rr.step7_reply_styles if isinstance(rr.step7_reply_styles, list) else (_caselib_load_json(rr.step7_reply_styles) or [])
+    if not styles:
+        return {"scored": False, "reason": "no_styles"}
+    summary_json = _caselib_load_json(rr.step1_summary) or {}
+    knowledge = _caselib_load_json(rr.step4_knowledge) or {}
+    crm = _caselib_load_json(rr.step2_crm_info) or {}
+    tbf = _caselib_load_json(rr.step3_thread_business_fact) or {}
+    knowledge_payload = {
+        "knowledge_v2": knowledge.get("knowledge_v2") or {},
+        "knowledge_external_api": knowledge.get("knowledge_external_api") or {},
+        "thread_business_fact": tbf,
+    }
+    candidates = []
+    for s in styles:
+        if not isinstance(s, dict):
+            continue
+        candidates.append({
+            "candidate_id": s.get("candidate_id"),
+            "model_slot": s.get("model_slot"),
+            "model_label": s.get("model_label"),
+            "model_display_name": s.get("model_display_name"),
+            "knowledge_source": s.get("knowledge_source"),
+            "knowledge_source_label": s.get("knowledge_source_label"),
+            "style_id": s.get("style_id"),
+            "style_title": s.get("style_title"),
+            "reply_style": s.get("reply_style"),
+            "content": s.get("reply_reference") or s.get("text") or s.get("content") or "",
+            "status": s.get("status") or "done",
+            "validation": s.get("validation"),
+        })
+    if not candidates:
+        return {"scored": False, "reason": "no_candidates"}
+    try:
+        scores = IntentEngine.score_reply_candidates(
+            summary_json=summary_json,
+            knowledge_payload=knowledge_payload,
+            crm_context=crm,
+            candidates=candidates,
+            actual_sales_replies=None,
+        )
+    except Exception as exc:
+        return {"scored": False, "reason": f"score_err:{str(exc)[:100]}"}
+    rr.step7_reply_scores = scores
+    ac = scores.get("ai_candidates") or []
+    if ac:
+        rr.quality_score = round(float(ac[0].get("overall_score") or 0), 2)
+        kb1_pool = [float(c.get("overall_score") or 0) for c in ac if c.get("knowledge_source") == "knowledge_v2"]
+        kb2_pool = [float(c.get("overall_score") or 0) for c in ac if c.get("knowledge_source") == "knowledge_external_api"]
+        rr.kb1_eval_score = round(max(kb1_pool), 2) if kb1_pool else rr.kb1_eval_score
+        rr.kb2_eval_score = round(max(kb2_pool), 2) if kb2_pool else rr.kb2_eval_score
+    return {"scored": True, "candidates": len(ac), "score_mode": (scores.get("scored_by") or {}).get("score_mode")}
+
+
+@app.post("/api/case_lib/iterations/{run_id}/rescore")
+async def caselib_rescore_iteration(run_id: str):
+    """重打两个评分：
+    1. AI 质量分：基于已存 step7_reply_styles + step1_summary + step4_knowledge 重新调用 IntentEngine.score_reply_candidates，
+       把 7 维评分（含 reason）写回 step7_reply_scores 并刷新 quality_score / kb1 / kb2。
+    2. 人工原始分：执行 backend/_case_lib_import.py 从 sales_scenario_cases_v2.md 重新装载 quality_score_md。
+    最后刷新 run 的 avg/min/max。
+    """
+    db = SessionLocal()
+    try:
+        run = db.query(CaseIterationRun).filter(CaseIterationRun.run_id == run_id).first()
+        if not run:
+            return {"status": "failed", "error": f"run_id 不存在: {run_id}"}
+        results = db.query(CaseIterationResult).filter(CaseIterationResult.run_id == run_id).all()
+        scored_n = 0; skipped_n = 0; reasons: dict = {}
+        for rr in results:
+            ret = _caselib_rescore_one_result(rr)
+            if ret.get("scored"):
+                scored_n += 1
+            else:
+                skipped_n += 1
+                tag = ret.get("reason") or "unknown"
+                reasons[tag] = reasons.get(tag, 0) + 1
+        # 刷新 run 汇总
+        valid_scores = [float(r.quality_score) for r in results if r.quality_score is not None]
+        if valid_scores:
+            run.avg_quality_score = round(sum(valid_scores) / len(valid_scores), 2)
+            run.min_quality_score = round(min(valid_scores), 2)
+            run.max_quality_score = round(max(valid_scores), 2)
+        run.updated_at = datetime.utcnow()
+        db.commit()
+
+        # 重新装载 quality_score_md
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        script = os.path.join(repo_root, "backend", "_case_lib_import.py")
+        md_status = "skipped"
+        md_stderr = ""
+        try:
+            proc = subprocess.run(["python", script], cwd=repo_root,
+                                  capture_output=True, text=True, timeout=120)
+            md_status = "success" if proc.returncode == 0 else f"failed_rc{proc.returncode}"
+            md_stderr = proc.stderr[-500:] if proc.stderr else ""
+        except Exception as e:
+            md_status = f"err:{str(e)[:120]}"
+
+        return {
+            "status": "success",
+            "run_id": run_id,
+            "version_no": run.version_no,
+            "ai_rescore": {
+                "scored": scored_n,
+                "skipped": skipped_n,
+                "skip_reasons": reasons,
+            },
+            "md_reimport": {
+                "status": md_status,
+                "stderr_tail": md_stderr,
+            },
+            "iteration": _caselib_serialize_run(run),
+        }
+    finally:
+        db.close()
+
+
+# ============== 三 AI 分析与下一步建议：人工填 + LLM-1 汇总 ==============
+
+CASELIB_ANALYSIS_FIELDS = {
+    "codex": "analysis_codex",
+    "antigravity": "analysis_antigravity",
+    "claude_code": "analysis_claude_code",
+}
+
+
+class CaseLibAnalysisUpsertRequest(BaseModel):
+    source: str            # codex / antigravity / claude_code
+    content: str            # 该 AI 给出的"分析与下一步建议"全文（markdown 可）
+
+
+def _caselib_compose_three_ai_summary(run: CaseIterationRun) -> tuple[str, str]:
+    """三个 AI 字段都非空时调用：交给 LLM-1 生成"分析与下一步建议(汇总)"，返回 (summary_text, status)。
+    LLM-1 未配置或调用失败时回退为带 ## 分段标题的纯拼接，并在状态里说明。"""
+    codex = (run.analysis_codex or "").strip()
+    anti = (run.analysis_antigravity or "").strip()
+    cc = (run.analysis_claude_code or "").strip()
+    fallback = (
+        f"# v{run.version_no} 三 AI 分析与下一步建议汇总（拼接版）\n\n"
+        f"## Codex\n{codex or '_未填写_'}\n\n"
+        f"## Antigravity\n{anti or '_未填写_'}\n\n"
+        f"## Claude Code\n{cc or '_未填写_'}\n"
+    )
+    llm1_cfg = _runtime_llm_values("LLM1")
+    if not _runtime_llm_configured(llm1_cfg):
+        return fallback + "\n> LLM-1 未配置，本汇总仅做拼接，无 AI 综合。", "fallback_concat_no_llm1"
+    if not (codex and anti and cc):
+        return fallback + "\n> 三个 AI 内容未齐，本汇总仅做拼接。", "fallback_concat_incomplete"
+    prompt = (
+        "你是迭代评测复盘助手。下面是同一轮案例库迭代评测后，三个独立 AI 编码工具各自给出的"
+        "「分析与下一步建议」。请仔细对比并产出一份综合复盘，**严格按以下 4 个段落输出 markdown，每段都要有内容**：\n"
+        "## 1. 三方共识点（多个 AI 都明确指出的同类问题/方向）\n"
+        "## 2. 三方分歧点（结论不同甚至冲突的地方，列出每个 AI 的观点）\n"
+        "## 3. 优先级排序（按重要度从高到低，列 3~5 个最该先做的事项；每条注明源自哪个/哪些 AI）\n"
+        "## 4. 下一轮具体执行清单（可直接 copy 到 change_summary 的可执行步骤）\n\n"
+        "约束：\n"
+        "- 不允许编造未在原文出现的事项；\n"
+        "- 引用 AI 观点时用「Codex:」「Antigravity:」「Claude Code:」开头；\n"
+        "- 用词精简，避免空话。\n\n"
+        f"=== Codex ===\n{codex}\n\n=== Antigravity ===\n{anti}\n\n=== Claude Code ===\n{cc}\n"
+    )
+    try:
+        request_spec = IntentEngine.build_llm1_request(
+            [{"content": prompt, "sender_type": "system"}],
+            user_id=f"caselib_run_{run.run_id}",
+            api_url=llm1_cfg["api_url"],
+            api_key=llm1_cfg["api_key"],
+            model=llm1_cfg["model"],
+            timeout_seconds=llm1_cfg["timeout_seconds"],
+            label="LLM1_CASELIB_SUMMARY",
+        )
+        bundle = IntentEngine.run_llm1_request(request_spec)
+        summary_payload = bundle.get("summary") or {}
+        # 优先取裸文本字段；若 LLM 返回结构化 dict 则 json 序列化兜底
+        text_out = ""
+        for key in ("text", "content", "summary", "answer"):
+            v = summary_payload.get(key) if isinstance(summary_payload, dict) else None
+            if isinstance(v, str) and v.strip():
+                text_out = v.strip()
+                break
+        if not text_out and isinstance(summary_payload, dict):
+            text_out = json.dumps(summary_payload, ensure_ascii=False, indent=2)
+        if not text_out:
+            return fallback + "\n> LLM-1 调用成功但返回空文本，回退拼接。", "fallback_llm1_empty"
+        header = f"# v{run.version_no} 三 AI 分析与下一步建议汇总（LLM-1 综合）\n\n"
+        return header + text_out, "llm1_summarized"
+    except Exception as exc:
+        logger.error("LLM-1 汇总三AI分析失败: %s", exc)
+        return fallback + f"\n> LLM-1 调用失败：{str(exc)[:200]}", "fallback_llm1_error"
+
+
+@app.put("/api/case_lib/iterations/{run_id}/analysis")
+async def caselib_upsert_iteration_analysis(run_id: str, body: CaseLibAnalysisUpsertRequest):
+    """提交某个 AI 工具对本轮迭代的分析。3 个都填完后自动触发 LLM-1 汇总。"""
+    src = (body.source or "").strip().lower()
+    col = CASELIB_ANALYSIS_FIELDS.get(src)
+    if not col:
+        return {"status": "failed", "error": f"unknown source: {src}; 必须是 codex / antigravity / claude_code"}
+    db = SessionLocal()
+    try:
+        run = db.query(CaseIterationRun).filter(CaseIterationRun.run_id == run_id).first()
+        if not run:
+            return {"status": "failed", "error": f"run_id 不存在: {run_id}"}
+        setattr(run, col, (body.content or "").strip())
+        # 检查另外两个是否都已填
+        filled = [bool((getattr(run, c) or "").strip()) for c in CASELIB_ANALYSIS_FIELDS.values()]
+        summary_status = "skipped_incomplete"
+        if all(filled):
+            run.analysis_summary, summary_status = _caselib_compose_three_ai_summary(run)
+        run.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(run)
+        return {
+            "status": "success",
+            "source": src,
+            "summary_status": summary_status,
+            "filled_sources": [k for k, c in CASELIB_ANALYSIS_FIELDS.items() if (getattr(run, c) or "").strip()],
+            "iteration": _caselib_serialize_run(run),
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/case_lib/iterations/{run_id}/analysis/regenerate_summary")
+async def caselib_regenerate_iteration_summary(run_id: str):
+    """手动重新触发"三 AI 分析汇总"——例如某个 AI 内容改过后想重跑。"""
+    db = SessionLocal()
+    try:
+        run = db.query(CaseIterationRun).filter(CaseIterationRun.run_id == run_id).first()
+        if not run:
+            return {"status": "failed", "error": f"run_id 不存在: {run_id}"}
+        run.analysis_summary, summary_status = _caselib_compose_three_ai_summary(run)
+        run.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(run)
+        return {
+            "status": "success",
+            "summary_status": summary_status,
+            "iteration": _caselib_serialize_run(run),
+        }
+    finally:
+        db.close()
 

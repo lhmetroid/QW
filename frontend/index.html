@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>智能销售辅助看板</title>
-    <script async src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="tailwind.css">
     <style>
         body { font-family: -apple-system, system-ui, sans-serif; background-color: #f1f5f9; }
         .session-item.active-session { background-color: #ffffff; border-left: 4px solid #3b82f6; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
@@ -119,6 +119,8 @@
                 color: #f8fafc;
                 font-size: 11px;
                 line-height: 1.55;
+                /* 浮动框内文字一律靠左，防止表格 td/th 的 text-align 继承导致居中或居右 */
+                text-align: left;
                 white-space: pre-line;
                 box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
                 pointer-events: none;
@@ -347,38 +349,38 @@
         <div class="shrink-0 border-b bg-white">
             <div class="px-6 pt-5 pb-3 flex flex-wrap items-end justify-between gap-4">
                 <div>
-                    <h1 class="text-xl font-bold text-slate-900">经典案例迭代优化</h1>
-                    <p class="text-xs text-slate-500 mt-1">12场景 × 每场景5个最佳案例 = 60 个核心案例，批量跑 7 步链路，记录版本号、平均分、AI 下一步计划。</p>
+                    <h1 class="text-xl font-bold text-slate-900" title="把12个销售场景每个挑出5个最高质量案例(共60)，反复批跑企微7步回复链路，对比版本得分，自动生成下次优化方向">经典案例迭代优化</h1>
+                    <p class="text-xs text-slate-500 mt-1" title="60个固定案例作为回归集，每次代码或Prompt改动后跑一遍，看平均质量分有无提升">12个销售场景 × 每场景5个最佳案例 = 60个核心案例，反复批量跑7步回复链路，记录版本号、平均分、AI下一步迭代计划。</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">返回企微实时智能</button>
-                    <button id="caselib-reimport-btn" onclick="caselibReimport()" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">重导案例库</button>
-                    <button id="caselib-refresh-btn" onclick="loadCaselibList(true)" class="px-4 py-2 rounded-lg bg-purple-500 text-white text-xs font-bold hover:bg-purple-600">刷新列表</button>
+                    <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="返回主页面：企微实时会话工作区">返回企微实时智能</button>
+                    <button id="caselib-reimport-btn" onclick="caselibReimport()" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="从 sales_scenario_cases_v2.md 重新抽取每场景前5案例 + 各案例前15条背景对话，覆盖式写入 case_library_case 表">重新导入案例库</button>
+                    <button id="caselib-refresh-btn" onclick="loadCaselibList(true)" class="px-4 py-2 rounded-lg bg-purple-500 text-white text-xs font-bold hover:bg-purple-600" title="重新加载迭代历史列表">刷新列表</button>
                 </div>
             </div>
             <!-- 子页签 -->
             <div class="px-6 pb-3 flex gap-2 text-xs">
-                <button id="caselib-sub-tab-list" onclick="caselibSwitchSubTab('list')" class="px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 font-bold">① 案例分析（迭代记录）</button>
-                <button id="caselib-sub-tab-cases" onclick="caselibSwitchSubTab('cases')" class="px-3 py-1.5 rounded-lg border bg-white text-slate-700 hover:bg-slate-50">③ 案例库（60案例）</button>
-                <span class="text-[11px] text-slate-400 self-center ml-2">提示：在迭代记录里双击行或点详细，可进入"② 60案例详情"页查看 7 步结果。</span>
+                <button id="caselib-sub-tab-list" onclick="caselibSwitchSubTab('list')" class="px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 font-bold" title="历次迭代的统计表 + 最近一次的得分分析 + AI 下一步迭代步骤">① 迭代记录</button>
+                <button id="caselib-sub-tab-cases" onclick="caselibSwitchSubTab('cases')" class="px-3 py-1.5 rounded-lg border bg-white text-slate-700 hover:bg-slate-50" title="只读浏览案例库 60 个核心案例的元信息、核心对话和背景上文">② 案例库（60案例）</button>
+                <span class="text-[11px] text-slate-400 self-center ml-2">提示：在「迭代记录」表里双击任一行或点"详细"，可进入该轮 60 案例的逐条结果详情页查看 7 步链路输出。</span>
             </div>
         </div>
 
         <!-- 子页1：迭代列表 -->
         <div id="caselib-sub-list" class="flex-1 overflow-hidden flex flex-col">
             <div class="shrink-0 px-6 py-3 bg-white border-b flex flex-wrap items-center gap-3">
-                <label class="text-[11px] text-slate-600 font-bold">运行模式：</label>
-                <select id="caselib-mode" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs">
-                    <option value="dry_run">dry_run（不调LLM，仅打通链路验证）</option>
-                    <option value="real">real（真实调用sidebar_assist 7步）</option>
+                <label class="text-[11px] text-slate-600 font-bold" title="干跑模式只跑链路、得分为公式估算；真实模式调真LLM和知识库">运行模式：</label>
+                <select id="caselib-mode" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs" title="选择本轮迭代的执行模式">
+                    <option value="dry_run" title="不调用任何大模型，得分由消息长度等公式估算，仅用于打通链路验证字段">干跑模式（不调用大模型，仅验证链路通畅）</option>
+                    <option value="real" title="真实调用 7 步链路：LLM1摘要 + CRM画像 + 线程业务事实 + 知识检索 + LLM1对比 + LLM2销售建议 + 风格候选评分">真实模式（调用真实7步链路：LLM+知识库）</option>
                 </select>
-                <input id="caselib-change-summary" type="text" placeholder="本次相对上一版本修改了什么（必填）" class="flex-1 min-w-[300px] rounded-lg border border-slate-200 px-3 py-1.5 text-xs">
-                <button onclick="caselibStartIteration()" class="px-4 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700">▶ 启动新一轮迭代（跑60案例）</button>
+                <input id="caselib-change-summary" type="text" placeholder="本轮相对上一版本改动了什么（必填，将写入迭代记录便于追溯）" class="flex-1 min-w-[300px] rounded-lg border border-slate-200 px-3 py-1.5 text-xs" title="必填：例如「调整LLM2提示词中的风格示例」「新增价格知识库切片」等">
+                <button onclick="caselibStartIteration()" class="px-4 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700" title="启动后台异步任务，依次跑 60 个案例的完整 7 步链路；完成后自动生成改进分析、AI下一步计划，并 git commit + push 备份">▶ 启动新一轮迭代（跑60个案例）</button>
                 <span id="caselib-start-status" class="text-[11px] text-slate-500"></span>
             </div>
             <div class="flex-1 overflow-auto px-6 py-4">
                 <div id="caselib-list-table" class="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                    <div class="p-8 text-center text-sm text-slate-400">加载迭代历史中...</div>
+                    <div class="p-8 text-center text-sm text-slate-400">正在加载迭代历史…</div>
                 </div>
                 <div id="caselib-list-analysis" class="mt-4"></div>
             </div>
@@ -388,7 +390,7 @@
         <div id="caselib-sub-detail" class="hidden flex-1 overflow-hidden flex flex-col">
             <div class="shrink-0 px-6 py-3 bg-white border-b flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <button onclick="caselibSwitchSubTab('list')" class="text-[11px] text-purple-700 hover:underline">← 返回迭代列表</button>
+                    <button onclick="caselibSwitchSubTab('list')" class="text-[11px] text-purple-700 hover:underline" title="返回迭代记录列表">← 返回迭代记录</button>
                     <span id="caselib-detail-title" class="ml-3 text-sm font-bold text-slate-900">迭代详情</span>
                     <span id="caselib-detail-subtitle" class="ml-2 text-[11px] text-slate-500"></span>
                 </div>
@@ -406,7 +408,7 @@
         <div id="caselib-sub-cases" class="hidden flex-1 overflow-auto">
             <div class="px-6 py-4">
                 <div id="caselib-cases-table" class="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                    <div class="p-8 text-center text-sm text-slate-400">加载案例库中...</div>
+                    <div class="p-8 text-center text-sm text-slate-400">正在加载案例库…</div>
                 </div>
             </div>
         </div>
@@ -1191,13 +1193,105 @@
 
         // ============== 经典案例迭代优化 ==============
         const caselibState = {
-            subTab: 'list',       // list / detail / cases
+            subTab: 'list',           // list / detail / cases
             iterations: [],
             cases: [],
             currentRunId: null,
             currentDetail: null,
             pollingTimer: null,
+            selectedRunId: null,      // 列表页选中查看分析的迭代
+            detailAllRows: null,      // 详情页的全集 results
+            detailFilter: {scenario: '', sort: 'score_asc'},
         };
+
+        // 强制走当前 origin (localhost:8071)，绕过 localStorage 缓存的外部 api_base。
+        // 经典案例迭代是本机特性，不能走 api.speedasia.net（那里没有这些表/端点）。
+        async function caselibFetch(path, init) {
+            const url = `${window.location.origin}${path}`;
+            const res = await RAW_FETCH(url, init || {});
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status} ${path}`);
+            }
+            return res;
+        }
+
+        // 12 个销售场景的完整业务定义（用于 tooltip / 显示）
+        const CASELIB_SCENARIO_DEFS = {
+            S01: {name: '方案确认与正式报价', desc: '客户对方案、规格和正式报价进入确认签字阶段，销售需要快速响应价格细节、付款条款、交付计划，把订单往下推一格。'},
+            S02: {name: '新客激活', desc: '首次接触或加微后长期沉默的新客户的激活动作；销售主动发起破冰，目的是建立初次信任、摸需求、约下一步。'},
+            S03: {name: '产品/服务细节对标', desc: '客户问到产品规格、服务能力、技术参数、交付样品等具体细节，要给精确专业的对标信息（不能含糊）。'},
+            S04: {name: '价格竞争/比价', desc: '客户拿同行报价对比、明示或暗示议价；销售要稳住价格锚点、强调差异化价值、给替代方案而非直接降价。'},
+            S05: {name: '紧急响应/确定性交付', desc: '客户出现加急、改时间、必须按期交付等紧急诉求；销售要给明确时间承诺、责任人、应急方案，不能含糊。'},
+            S06: {name: '售后纠偏/客诉处理', desc: '已交付服务出现质量/进度/票据问题，客户表达不满；要先共情致歉、定位原因、给可执行的补救方案与时间表。'},
+            S07: {name: '预算收紧', desc: '客户告知预算被砍、紧张、年内不能立项等；销售目标是保住订单不被替换，给降配/分期/换品类等灵活方案。'},
+            S08: {name: '业务深度介绍', desc: '客户首次了解公司或换了对接人，需要系统化介绍主营业务范围、典型案例、能力边界、配合流程。'},
+            S09: {name: '节气/开工问候', desc: '春节/中秋/开工等关键时点的群发或定向问候。销售主动发起，用低频高质的"看一眼"维持长期关系。'},
+            S10: {name: '案例分享', desc: '客户犹豫时主动分享同行/同类客户成功案例、视频、效果数据，作为软性促单的信任素材。'},
+            S11: {name: '老客户激活/推新业务', desc: '针对沉默/低频老客户重新唤醒，顺势介绍新服务线（如翻译之外的印刷/展台/视频），扩客单价。'},
+            S12: {name: '转介绍请求', desc: '请求老客户把销售/服务推荐给其同事或行业伙伴，转化率是冷开发的 3-5 倍，是裂变获客成本最低的动作。'},
+        };
+        function caselibScenarioTip(code) {
+            const d = CASELIB_SCENARIO_DEFS[code];
+            if (!d) return code;
+            return `${code} · ${d.name}\n${d.desc}`;
+        }
+        function caselibScenarioName(code) {
+            const d = CASELIB_SCENARIO_DEFS[code];
+            return d ? d.name : '';
+        }
+
+        // 迭代轮次级 status -> 中文
+        function caselibRunStatusLabel(s) {
+            return ({success:'成功', partial:'部分成功', failed:'失败',
+                    running:'运行中', queued:'排队中'})[s] || (s || '');
+        }
+        // 单案例 status -> 中文
+        function caselibResultStatusLabel(s) {
+            return ({success:'成功', failed:'失败', running:'运行中', queued:'排队中'})[s] || (s || '');
+        }
+        // quality_status -> 中文（含已知前缀匹配）
+        function caselibQualityStatusLabel(s) {
+            if (!s) return '';
+            const m = {
+                real_success: '真实成功',
+                real_partial: '真实部分成功',
+                real_pipeline_empty: '真实链路空输出',
+                real_no_snapshot_fallback_dry: '快照缺失·回退干跑',
+                real_conn_fail: '后端连接失败',
+                real_error_fallback_dry: '真实异常·回退干跑',
+                dry_run_success: '干跑成功',
+            };
+            if (m[s]) return m[s];
+            if (s.startsWith('real_http_')) return `HTTP错误·${s.slice(10)}`;
+            return s;
+        }
+        // 消息角色 -> 中文
+        function caselibRoleLabel(r) {
+            return ({customer:'客户', sales:'销售', unknown:'未知'})[r] || (r || '');
+        }
+        // 运行模式 -> 中文
+        function caselibModeLabel(m) {
+            return ({dry_run:'干跑模式', real:'真实模式'})[m] || (m || '');
+        }
+        // 时间 ISO -> 本地友好显示
+        function caselibFormatTime(s) {
+            if (!s) return '-';
+            return String(s).replace('T', ' ').replace(/\.\d+.*$/, '').slice(0, 19);
+        }
+        // 数字格式化（保留 n 位小数；null -> '-'）
+        function caselibFmtNum(v, n) {
+            if (v == null || isNaN(v)) return '-';
+            return Number(v).toFixed(n == null ? 2 : n);
+        }
+        // 单案例 quality_status 给个颜色 class
+        function caselibQualityStatusColor(s) {
+            if (!s) return 'bg-slate-100 text-slate-600';
+            if (s === 'real_success') return 'bg-emerald-100 text-emerald-700';
+            if (s.startsWith('real_partial')) return 'bg-amber-100 text-amber-700';
+            if (s.startsWith('dry_run_')) return 'bg-sky-100 text-sky-700';
+            if (s.startsWith('real_http_') || s.includes('fail') || s.includes('error')) return 'bg-red-100 text-red-700';
+            return 'bg-slate-100 text-slate-600';
+        }
 
         function caselibSwitchSubTab(name) {
             caselibState.subTab = name;
@@ -1232,7 +1326,7 @@
 
         async function loadCaselibList(force) {
             try {
-                const res = await apiFetch(`${API_BASE}/api/case_lib/iterations?limit=100`);
+                const res = await caselibFetch(`/api/case_lib/iterations?limit=100`);
                 const data = await res.json();
                 caselibState.iterations = data.iterations || [];
                 renderCaselibList(caselibState.iterations);
@@ -1245,74 +1339,294 @@
         function renderCaselibList(rows) {
             const wrap = document.getElementById('caselib-list-table');
             if (!rows.length) {
-                wrap.innerHTML = '<div class="p-8 text-center text-sm text-slate-400">还没有迭代记录。点击上方"启动新一轮迭代"开始第一次。</div>';
+                wrap.innerHTML = '<div class="p-8 text-center text-sm text-slate-400">还没有任何迭代记录。请在上方填写「本次修改说明」→ 选择模式 → 点「启动新一轮迭代」。</div>';
                 document.getElementById('caselib-list-analysis').innerHTML = '';
                 return;
             }
+
+            // 顶部速览：取最近一次 success（用于关键指标），同时算与前一次成功的差值
+            const successes = rows.filter(r => r.status === 'success' && r.avg_quality_score != null);
+            const latest = successes[0];
+            const prev = successes[1];
+            const delta = (latest && prev && latest.avg_quality_score != null && prev.avg_quality_score != null)
+                ? (latest.avg_quality_score - prev.avg_quality_score) : null;
+            const totalRuns = rows.length;
+            const succN = rows.filter(r => r.status === 'success').length;
+            const failN = rows.filter(r => r.status === 'failed').length;
+            const runningN = rows.filter(r => r.status === 'running' || r.status === 'queued').length;
+            const summaryCard = `
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                    <div class="rounded-xl border border-purple-100 bg-purple-50 p-3" title="累计触发的迭代次数（含失败和正在跑的）">
+                        <div class="text-[10px] text-purple-700 font-bold">累计迭代轮次</div>
+                        <div class="text-xl font-bold text-purple-800">${totalRuns}</div>
+                        <div class="text-[10px] text-slate-500 mt-0.5">成功 ${succN} · 失败 ${failN} · 进行中 ${runningN}</div>
+                    </div>
+                    <div class="rounded-xl border ${latest ? 'border-emerald-100 bg-emerald-50' : 'border-slate-200 bg-slate-50'} p-3" title="最近一次成功跑完的版本号 + 平均质量分">
+                        <div class="text-[10px] ${latest ? 'text-emerald-700' : 'text-slate-500'} font-bold">最新成功版本</div>
+                        <div class="text-xl font-bold ${latest ? 'text-emerald-800' : 'text-slate-400'}">${latest ? 'v'+latest.version_no : '—'}</div>
+                        <div class="text-[10px] text-slate-500 mt-0.5">${latest ? '平均分 ' + caselibFmtNum(latest.avg_quality_score,2) : '尚无成功迭代'}</div>
+                    </div>
+                    <div class="rounded-xl border ${delta == null ? 'border-slate-200 bg-slate-50' : (delta > 0 ? 'border-emerald-100 bg-emerald-50' : (delta < 0 ? 'border-red-100 bg-red-50' : 'border-slate-200 bg-slate-50'))} p-3" title="本次成功迭代的平均分 减去 上一次成功迭代的平均分。正=提升，负=回退。">
+                        <div class="text-[10px] ${delta == null ? 'text-slate-500' : (delta > 0 ? 'text-emerald-700' : (delta < 0 ? 'text-red-700' : 'text-slate-500'))} font-bold">较上版变化</div>
+                        <div class="text-xl font-bold ${delta == null ? 'text-slate-400' : (delta > 0 ? 'text-emerald-800' : (delta < 0 ? 'text-red-800' : 'text-slate-500'))}">${delta == null ? '—' : (delta > 0 ? '+' : '') + delta.toFixed(2)}</div>
+                        <div class="text-[10px] text-slate-500 mt-0.5">${prev ? '对比 v' + prev.version_no : '无对照版本'}</div>
+                    </div>
+                    <div class="rounded-xl border border-sky-100 bg-sky-50 p-3" title="最近一次成功迭代单案例的平均耗时">
+                        <div class="text-[10px] text-sky-700 font-bold">单案例平均耗时</div>
+                        <div class="text-xl font-bold text-sky-800">${latest && latest.avg_latency_ms ? latest.avg_latency_ms + ' ms' : '—'}</div>
+                        <div class="text-[10px] text-slate-500 mt-0.5">含 LLM1+知识检索+LLM2</div>
+                    </div>
+                    <div class="rounded-xl border border-amber-100 bg-amber-50 p-3" title="GitHub 远程仓库当前的备份状态">
+                        <div class="text-[10px] text-amber-700 font-bold">GitHub 备份</div>
+                        <div class="text-sm font-bold text-amber-800 truncate">${latest && latest.backup_commit_sha ? latest.backup_commit_sha.slice(0,8) : '—'}</div>
+                        <div class="text-[10px] text-slate-500 mt-0.5 truncate" title="${escapeHtml(latest && latest.backup_status || '')}">${latest && latest.backup_status === 'committed_and_pushed' ? '已提交并推送' : (latest && latest.backup_status || '尚未备份')}</div>
+                    </div>
+                </div>`;
+
             const head = `
+                ${summaryCard}
                 <table class="w-full text-xs">
                     <thead class="bg-slate-50 text-slate-600">
                         <tr>
-                            <th class="px-3 py-2 text-left">v#</th>
-                            <th class="px-3 py-2 text-left">触发时间</th>
-                            <th class="px-3 py-2 text-left">git版本</th>
-                            <th class="px-3 py-2 text-left">本次修改</th>
-                            <th class="px-3 py-2 text-left">状态</th>
-                            <th class="px-3 py-2 text-right">完成/总</th>
-                            <th class="px-3 py-2 text-right">平均分</th>
-                            <th class="px-3 py-2 text-right">min/max</th>
-                            <th class="px-3 py-2 text-right">平均耗时</th>
-                            <th class="px-3 py-2 text-left">备份SHA</th>
-                            <th class="px-3 py-2 text-center">详细</th>
+                            <th class="px-3 py-2 text-left" title="迭代版本号。每点一次「启动新一轮迭代」就生成一个新版本号 v1、v2、v3 ...。用作纵向对比的坐标，可在 GitHub 上回滚到对应代码状态。">版本号 v#</th>
+                            <th class="px-3 py-2 text-left" title="本轮迭代被点击「启动」的本地时间，格式 YYYY-MM-DD HH:MM:SS。">触发时间</th>
+                            <th class="px-3 py-2 text-left" title="启动迭代时 git HEAD 提交的短 SHA（前 8 位），用于在 GitHub 上回滚定位代码版本。「·待提交」表示启动时工作区有未提交的改动。">代码版本</th>
+                            <th class="px-3 py-2 text-left" title="触发者填写的本轮相对上一版本的代码/Prompt/知识库改动说明，是分析得分变化的关键线索。">本次修改说明</th>
+                            <th class="px-3 py-2 text-left" title="迭代整体运行状态：成功(60全跑完) / 部分成功(有失败) / 失败(全失败) / 运行中(后台跑) / 排队中">运行状态</th>
+                            <th class="px-3 py-2 text-right" title="已处理案例数 / 本轮总案例数（默认60个核心案例）。运行中可观察进度。">完成进度</th>
+                            <th class="px-3 py-2 text-right" title="本轮所有成功案例的质量分(0-100)的算术平均，是评估本轮效果的最核心指标。">平均分</th>
+                            <th class="px-3 py-2 text-right" title="本轮所有案例的最低 / 最高质量分。差距大说明效果不稳定，差距小说明效果均匀。">最低 / 最高</th>
+                            <th class="px-3 py-2 text-right" title="本轮单个案例从输入到 7 步链路全跑完的平均耗时(毫秒)，含 LLM1+知识库+LLM2 的总和。">平均耗时</th>
+                            <th class="px-3 py-2 text-left" title="本轮完成后自动 git commit + git push 到 GitHub 远程的 commit 短 SHA。鼠标悬停可看「已提交并推送」等中文状态。">GitHub 备份</th>
+                            <th class="px-3 py-2 text-center" title="点击进入该轮 60 个案例的逐条 7 步链路详情，可对照原销售打分。">查看详情</th>
                         </tr>
                     </thead>
                     <tbody>`;
-            const body = rows.map(r => {
-                const tt = (r.triggered_at || '').replace('T', ' ').slice(0, 19);
+            const body = rows.map((r, i) => {
+                const tt = caselibFormatTime(r.triggered_at);
                 const shortSha = r.git_short_sha || (r.git_commit_sha || '').slice(0, 8) || '-';
                 const sumTxt = (r.change_summary || '').slice(0, 60);
                 const stColors = {success: 'bg-emerald-100 text-emerald-700', partial: 'bg-amber-100 text-amber-700',
                     failed: 'bg-red-100 text-red-700', running: 'bg-blue-100 text-blue-700',
                     queued: 'bg-slate-100 text-slate-600'};
                 const stCls = stColors[r.status] || 'bg-slate-100 text-slate-600';
-                const avg = r.avg_quality_score != null ? r.avg_quality_score.toFixed(2) : '-';
-                const mn = r.min_quality_score != null ? r.min_quality_score.toFixed(1) : '-';
-                const mx = r.max_quality_score != null ? r.max_quality_score.toFixed(1) : '-';
-                const lat = r.avg_latency_ms ? `${r.avg_latency_ms}ms` : '-';
-                const backup = r.backup_commit_sha ? r.backup_commit_sha.slice(0, 8) : (r.backup_status || '-');
-                return `<tr class="border-t hover:bg-purple-50 cursor-pointer" ondblclick="caselibOpenDetail('${r.run_id}')">
-                    <td class="px-3 py-2 font-bold text-purple-700">v${r.version_no}</td>
-                    <td class="px-3 py-2 text-slate-600">${tt}</td>
-                    <td class="px-3 py-2 font-mono text-[11px] text-slate-700">${shortSha}${r.git_dirty ? ' <span class="text-amber-600">*dirty</span>' : ''}</td>
-                    <td class="px-3 py-2 text-slate-700 max-w-[280px] truncate" title="${escapeHtml(r.change_summary || '')}">${escapeHtml(sumTxt)}</td>
-                    <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${stCls}">${r.status}</span></td>
-                    <td class="px-3 py-2 text-right">${r.completed_cases}/${r.total_cases}</td>
-                    <td class="px-3 py-2 text-right font-bold text-purple-700">${avg}</td>
-                    <td class="px-3 py-2 text-right text-[11px] text-slate-500">${mn} / ${mx}</td>
-                    <td class="px-3 py-2 text-right text-[11px] text-slate-500">${lat}</td>
-                    <td class="px-3 py-2 font-mono text-[11px] text-slate-600" title="${r.backup_status || ''}">${backup}</td>
-                    <td class="px-3 py-2 text-center"><button onclick="event.stopPropagation();caselibOpenDetail('${r.run_id}')" class="text-purple-600 hover:underline text-[11px]">详细 →</button></td>
+                const stLabel = caselibRunStatusLabel(r.status);
+                const avg = caselibFmtNum(r.avg_quality_score, 2);
+                const mn = caselibFmtNum(r.min_quality_score, 1);
+                const mx = caselibFmtNum(r.max_quality_score, 1);
+                const lat = r.avg_latency_ms ? `${r.avg_latency_ms} 毫秒` : '-';
+                const backup = r.backup_commit_sha ? r.backup_commit_sha.slice(0, 8) : '-';
+                const backupTip = r.backup_status === 'committed_and_pushed' ? '已提交本地且推送到 GitHub 远程' :
+                                 r.backup_status === 'committed_only_pushed' ? '已提交并推送' :
+                                 r.backup_status === 'clean_no_change_pushed' ? '本轮无新代码改动，已确认推送' :
+                                 r.backup_status === 'clean_no_change' ? '本轮无新代码改动，仅本地' :
+                                 (r.backup_status || '未备份');
+                const selectedCls = caselibState.selectedRunId === r.run_id
+                    ? 'bg-purple-50 ring-2 ring-purple-300 ring-inset' : 'hover:bg-purple-50';
+                return `<tr class="border-t ${selectedCls} cursor-pointer transition" onclick="caselibSelectRun('${r.run_id}')" ondblclick="caselibOpenDetail('${r.run_id}')" title="单击在下方显示这一轮的分析；双击进入 60 案例详情">
+                    <td class="px-3 py-2 font-bold text-purple-700" title="第 ${r.version_no} 轮迭代">v${r.version_no}</td>
+                    <td class="px-3 py-2 text-slate-600" title="本轮触发时间：${tt}">${tt}</td>
+                    <td class="px-3 py-2 font-mono text-[11px] text-slate-700" title="完整 git commit SHA：${r.git_commit_sha || '-'}\n分支：${r.git_branch || '-'}">${shortSha}${r.git_dirty ? ' <span class="text-amber-600" title="启动时工作区有未提交的改动">·待提交</span>' : ''}</td>
+                    <td class="px-3 py-2 text-slate-700 max-w-[280px] truncate" title="${escapeHtml(r.change_summary || '（未填写）')}">${escapeHtml(sumTxt) || '<span class="text-slate-400">（未填写）</span>'}</td>
+                    <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${stCls}" title="迭代整体运行状态：${stLabel}">${stLabel}</span></td>
+                    <td class="px-3 py-2 text-right" title="已完成 ${r.completed_cases} 个 / 共 ${r.total_cases} 个案例">${r.completed_cases}/${r.total_cases}</td>
+                    <td class="px-3 py-2 text-right font-bold text-purple-700" title="${r.status === 'success' ? '本轮平均质量分（满分100）' : '尚未完成或失败，分数不可信'}">${avg}</td>
+                    <td class="px-3 py-2 text-right text-[11px] text-slate-500" title="最低分 ${mn} / 最高分 ${mx}（满分100）">${mn} / ${mx}</td>
+                    <td class="px-3 py-2 text-right text-[11px] text-slate-500" title="单案例 7 步链路平均耗时">${lat}</td>
+                    <td class="px-3 py-2 font-mono text-[11px] text-slate-600" title="${escapeHtml(backupTip)}">${backup}</td>
+                    <td class="px-3 py-2 text-center"><button onclick="event.stopPropagation();caselibOpenDetail('${r.run_id}')" class="text-purple-600 hover:underline text-[11px] font-bold" title="点击查看本轮 60 个案例的逐条 7 步结果">详情 →</button></td>
                 </tr>`;
             }).join('');
             wrap.innerHTML = head + body + '</tbody></table>';
 
-            // 最近一次的改进分析 + AI 下一步计划
-            const last = rows[0];
-            if (last && (last.improvement_analysis || last.ai_next_step_plan)) {
-                document.getElementById('caselib-list-analysis').innerHTML = `
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                        <div class="rounded-xl border border-purple-100 bg-purple-50 p-4">
-                            <div class="text-xs font-bold text-purple-800 mb-2">📊 最近一次得分分析（v${last.version_no}）</div>
-                            <pre class="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(last.improvement_analysis || '')}</pre>
-                        </div>
-                        <div class="rounded-xl border border-amber-100 bg-amber-50 p-4">
-                            <div class="text-xs font-bold text-amber-800 mb-2">🤖 下次迭代 AI 自检步骤（避免跳过/假执行）</div>
-                            <pre class="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(last.ai_next_step_plan || '')}</pre>
-                        </div>
-                    </div>`;
-            } else {
-                document.getElementById('caselib-list-analysis').innerHTML = '';
+            // 自动选中：当前已选 / 否则选最近一次成功 / 否则选第一行
+            if (!caselibState.selectedRunId || !rows.find(x => x.run_id === caselibState.selectedRunId)) {
+                const target = (rows.find(x => x.status === 'success') || rows[0]);
+                caselibState.selectedRunId = target ? target.run_id : null;
             }
+            caselibRenderAnalysisFor(caselibState.selectedRunId);
+        }
+
+        // 选中某行：高亮 + 下方分析切换
+        function caselibSelectRun(runId) {
+            caselibState.selectedRunId = runId;
+            renderCaselibList(caselibState.iterations);  // 重渲染以更新选中态
+        }
+
+        // 把 "本轮改进分析 + AI 自检计划" 渲染到下方
+        function caselibRenderAnalysisFor(runId) {
+            const wrap = document.getElementById('caselib-list-analysis');
+            const r = (caselibState.iterations || []).find(x => x.run_id === runId);
+            if (!r) { wrap.innerHTML = ''; return; }
+            const hasAnalysis = r.improvement_analysis || r.ai_next_step_plan;
+            const hint = `<div class="text-[11px] text-slate-500 mb-2">下面是 <b class="text-purple-700">v${r.version_no}</b>（${caselibFormatTime(r.triggered_at)}）的得分分析与下一步建议。<span class="ml-2 text-slate-400">点击上方任一行可切换显示对应轮次。</span></div>`;
+            if (!hasAnalysis) {
+                wrap.innerHTML = hint + `<div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">v${r.version_no} 状态为 <b>${caselibRunStatusLabel(r.status)}</b>，未生成完整的得分分析与 AI 自检计划。</div>`;
+                return;
+            }
+            wrap.innerHTML = hint + `
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    <div class="rounded-xl border border-purple-100 bg-purple-50 p-4" title="本轮 60 案例按场景聚合得分，给出优化方向（每场景5个案例的平均分）">
+                        <div class="text-xs font-bold text-purple-800 mb-2">📊 v${r.version_no} 得分分析（按场景平均分升序，优先优化前 3 场景）</div>
+                        ${caselibRenderImprovementAnalysis(r.improvement_analysis || '')}
+                    </div>
+                    <div class="rounded-xl border border-amber-100 bg-amber-50 p-4" title="自动生成的下一次迭代检查清单 + 历史已知坑">
+                        <div class="text-xs font-bold text-amber-800 mb-2">🤖 v${r.version_no} 完成后的 AI 自检步骤（避免跳过 / 假执行）</div>
+                        ${caselibRenderAiPlan(r.ai_next_step_plan || '')}
+                    </div>
+                </div>
+                ${caselibRenderThreeAiAnalysis(r)}`;
+        }
+
+        // 三 AI 分析与下一步建议（Codex / Antigravity / Claude Code + 汇总）
+        function caselibRenderThreeAiAnalysis(r) {
+            const runId = r.run_id;
+            const ai = [
+                {key: 'codex',        label: 'Codex',        color: 'sky',      content: r.analysis_codex || ''},
+                {key: 'antigravity',  label: 'Antigravity',  color: 'fuchsia',  content: r.analysis_antigravity || ''},
+                {key: 'claude_code',  label: 'Claude Code',  color: 'emerald',  content: r.analysis_claude_code || ''},
+            ];
+            const filledCount = ai.filter(a => a.content.trim()).length;
+            const summaryReady = filledCount === 3;
+            const summaryTxt = r.analysis_summary || '';
+            const cards = ai.map(a => `
+                <div class="rounded-xl border border-${a.color}-200 bg-${a.color}-50 p-3" title="该 AI 工具针对本轮迭代给出的'分析与下一步建议'。空白时由人工粘贴 ${a.label} 输出，点击保存后入库；三个 AI 都保存后自动触发 LLM-1 汇总。">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-xs font-bold text-${a.color}-800">🧠 ${a.label}</div>
+                        <span class="text-[10px] px-2 py-0.5 rounded ${a.content.trim() ? 'bg-'+a.color+'-200 text-'+a.color+'-800' : 'bg-slate-200 text-slate-500'}">${a.content.trim() ? '已填' : '未填'}</span>
+                    </div>
+                    <textarea id="caselib-ai-${runId}-${a.key}" class="w-full rounded border border-${a.color}-200 bg-white p-2 text-[11px] text-slate-700 font-mono" rows="10" placeholder="粘贴 ${a.label} 对本轮迭代给出的分析与下一步建议（支持 markdown）">${escapeHtml(a.content)}</textarea>
+                    <div class="flex items-center gap-2 mt-2">
+                        <button onclick="caselibSaveAiAnalysis('${runId}','${a.key}')" class="px-3 py-1 rounded bg-${a.color}-600 text-white text-[11px] font-bold hover:bg-${a.color}-700" title="保存到数据库。如果其他两个 AI 也已填，将自动触发 LLM-1 生成「汇总」">💾 保存 ${a.label}</button>
+                        <span id="caselib-ai-status-${runId}-${a.key}" class="text-[10px] text-slate-500"></span>
+                    </div>
+                </div>
+            `).join('');
+            const summaryBlock = `
+                <div class="rounded-xl border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-indigo-50 p-4 mt-3" title="三个 AI 工具都填写后，由 LLM-1 综合得出的汇总（共识点 / 分歧点 / 优先级 / 下一轮执行清单）">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-xs font-bold text-purple-900">🎯 v${r.version_no} 三 AI 分析与下一步建议（LLM-1 汇总） ${summaryReady ? '' : `<span class="text-[10px] font-normal text-slate-500 ml-2">尚有 ${3-filledCount} 个 AI 未填，无法触发汇总</span>`}</div>
+                        <button onclick="caselibRegenerateSummary('${runId}')" class="px-2 py-0.5 rounded bg-purple-600 text-white text-[10px] hover:bg-purple-700" title="手动重新让 LLM-1 综合三个 AI 的内容（任一文本修改后可用）">🔄 重新汇总</button>
+                    </div>
+                    <div id="caselib-summary-${runId}" class="text-[12px] text-slate-700 whitespace-pre-wrap leading-relaxed max-h-[420px] overflow-auto">${summaryTxt ? escapeHtml(summaryTxt) : '<span class="text-slate-400 text-xs">'+(summaryReady ? '待生成（点击「重新汇总」）' : '等待三个 AI 都填写完毕…')+'</span>'}</div>
+                </div>`;
+            return `
+                <div class="mt-4">
+                    <div class="text-xs font-bold text-slate-700 mb-2" title="三个独立 AI 编码工具（Codex / Antigravity / Claude Code）分别给出对本轮的分析与下一步建议；三者都填完后由 LLM-1 综合输出最终的汇总">🧩 三 AI 分析与下一步建议（${filledCount}/3 已填，${summaryReady ? '汇总已生成' : '汇总待触发'}）</div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">${cards}</div>
+                    ${summaryBlock}
+                </div>`;
+        }
+
+        async function caselibSaveAiAnalysis(runId, source) {
+            const ta = document.getElementById(`caselib-ai-${runId}-${source}`);
+            const statusEl = document.getElementById(`caselib-ai-status-${runId}-${source}`);
+            if (!ta) return;
+            statusEl.textContent = '保存中…';
+            statusEl.className = 'text-[10px] text-blue-600';
+            try {
+                const res = await caselibFetch(`/api/case_lib/iterations/${runId}/analysis`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({source: source, content: ta.value}),
+                });
+                const data = await res.json();
+                if (data.status !== 'success') {
+                    statusEl.textContent = '失败：' + (data.error || '未知错误');
+                    statusEl.className = 'text-[10px] text-red-600';
+                    return;
+                }
+                statusEl.textContent = `已保存${data.summary_status === 'llm1_summarized' ? '（已触发 LLM-1 汇总）' : data.summary_status && data.summary_status.startsWith('fallback') ? '（汇总回退拼接：' + data.summary_status + '）' : ''}`;
+                statusEl.className = 'text-[10px] text-emerald-700';
+                // 把更新后的迭代覆盖回 state，再重渲染右侧分析区
+                const idx = (caselibState.iterations || []).findIndex(x => x.run_id === runId);
+                if (idx >= 0 && data.iteration) {
+                    caselibState.iterations[idx] = data.iteration;
+                    caselibRenderAnalysisFor(runId);
+                }
+            } catch (e) {
+                statusEl.textContent = '失败：' + (e.message || e);
+                statusEl.className = 'text-[10px] text-red-600';
+            }
+        }
+
+        async function caselibRegenerateSummary(runId) {
+            const target = document.getElementById(`caselib-summary-${runId}`);
+            if (target) target.innerHTML = '<span class="text-blue-600 text-xs">LLM-1 综合中…</span>';
+            try {
+                const res = await caselibFetch(`/api/case_lib/iterations/${runId}/analysis/regenerate_summary`, {method: 'POST'});
+                const data = await res.json();
+                if (data.status !== 'success') {
+                    if (target) target.innerHTML = '<span class="text-red-600 text-xs">失败：' + escapeHtml(data.error || '') + '</span>';
+                    return;
+                }
+                const idx = (caselibState.iterations || []).findIndex(x => x.run_id === runId);
+                if (idx >= 0 && data.iteration) {
+                    caselibState.iterations[idx] = data.iteration;
+                    caselibRenderAnalysisFor(runId);
+                }
+            } catch (e) {
+                if (target) target.innerHTML = '<span class="text-red-600 text-xs">失败：' + escapeHtml(e.message || String(e)) + '</span>';
+            }
+        }
+
+        // 渲染改进分析（识别"S0X: avg=xx"行渲染成场景卡片）
+        function caselibRenderImprovementAnalysis(txt) {
+            if (!txt) return '<div class="text-xs text-slate-400">无</div>';
+            const lines = String(txt).split('\n');
+            const html = lines.map(line => {
+                const m = line.match(/^\s+(S\d{2}):\s+n=(\d+)\s+avg=([\d.]+)\s+min=([\d.]+)/);
+                if (m) {
+                    const code = m[1], n = m[2], avg = parseFloat(m[3]), mn = parseFloat(m[4]);
+                    const avgCls = avg >= 80 ? 'text-emerald-700' : avg >= 65 ? 'text-amber-700' : 'text-red-700';
+                    return `<div class="flex items-center gap-2 py-0.5 text-[11px]" title="${escapeHtml(caselibScenarioTip(code))}">
+                        <span class="inline-block w-12 font-bold text-purple-700">${code}</span>
+                        <span class="text-slate-700 truncate" style="max-width:280px">${escapeHtml(caselibScenarioName(code))}</span>
+                        <span class="ml-auto text-slate-500">${n} 个</span>
+                        <span class="ml-2 font-bold ${avgCls}" style="min-width:50px;text-align:right">${avg.toFixed(2)}</span>
+                        <span class="text-slate-400 text-[10px]">min ${mn.toFixed(1)}</span>
+                    </div>`;
+                }
+                const m2 = line.match(/^\s+-\s+(S\d{2})\s+平均([\d.]+)：(.*)$/);
+                if (m2) {
+                    const code = m2[1], advice = m2[3];
+                    return `<div class="mt-1 py-1 px-2 rounded bg-white border border-amber-200 text-[11px]" title="${escapeHtml(caselibScenarioTip(code))}">
+                        <b class="text-amber-700">${code} · ${escapeHtml(caselibScenarioName(code))}</b>
+                        <span class="text-slate-600 ml-2">${escapeHtml(advice)}</span>
+                    </div>`;
+                }
+                if (line.startsWith('各场景平均分')) {
+                    return `<div class="mt-3 mb-1 text-[11px] font-bold text-slate-600">${escapeHtml(line)}</div>`;
+                }
+                if (line.startsWith('下一步重点优化建议')) {
+                    return `<div class="mt-3 mb-1 text-[11px] font-bold text-amber-700">${escapeHtml(line)}</div>`;
+                }
+                if (!line.trim()) return '';
+                return `<div class="text-[11px] text-slate-700 py-0.5">${escapeHtml(line)}</div>`;
+            }).join('');
+            return html;
+        }
+
+        // 渲染 AI 计划（识别 markdown ## 段标题、数字列表）
+        function caselibRenderAiPlan(txt) {
+            if (!txt) return '<div class="text-xs text-slate-400">无</div>';
+            const lines = String(txt).split('\n');
+            return lines.map(line => {
+                if (/^#{2,3}\s/.test(line)) {
+                    return `<div class="mt-3 mb-1 text-[11px] font-bold text-amber-800">${escapeHtml(line.replace(/^#+\s/, ''))}</div>`;
+                }
+                if (/^#\s/.test(line)) {
+                    return `<div class="text-xs font-bold text-amber-900 mb-2">${escapeHtml(line.replace(/^#\s/, ''))}</div>`;
+                }
+                if (/^\d+\.\s/.test(line)) {
+                    return `<div class="text-[11px] text-slate-700 py-0.5 pl-3">${escapeHtml(line)}</div>`;
+                }
+                if (/^-\s/.test(line)) {
+                    return `<div class="text-[11px] text-slate-700 py-0.5 pl-3">${escapeHtml(line)}</div>`;
+                }
+                if (!line.trim()) return '';
+                return `<div class="text-[11px] text-slate-700 py-0.5">${escapeHtml(line)}</div>`;
+            }).join('');
         }
 
         async function caselibStartIteration() {
@@ -1326,7 +1640,7 @@
             document.getElementById('caselib-start-status').innerHTML =
                 '<span class="text-blue-600">提交中...</span>';
             try {
-                const res = await apiFetch(`${API_BASE}/api/case_lib/iterations/start`, {
+                const res = await caselibFetch(`/api/case_lib/iterations/start`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({change_summary: summary, mode}),
@@ -1334,12 +1648,12 @@
                 const data = await res.json();
                 if (data.status === 'success') {
                     document.getElementById('caselib-start-status').innerHTML =
-                        `<span class="text-emerald-600">已启动 v${data.iteration.version_no}（${mode}），后台运行中…</span>`;
+                        `<span class="text-emerald-600">已启动 v${data.iteration.version_no}（${caselibModeLabel(mode)}），正在后台运行 60 个案例…</span>`;
                     document.getElementById('caselib-change-summary').value = '';
                     setTimeout(() => loadCaselibList(true), 500);
                 } else {
                     document.getElementById('caselib-start-status').innerHTML =
-                        `<span class="text-red-600">启动失败：${JSON.stringify(data)}</span>`;
+                        `<span class="text-red-600">启动失败：${escapeHtml(JSON.stringify(data))}</span>`;
                 }
             } catch (e) {
                 document.getElementById('caselib-start-status').innerHTML =
@@ -1349,16 +1663,46 @@
 
         async function caselibReimport() {
             const btn = document.getElementById('caselib-reimport-btn');
-            if (btn) { btn.disabled = true; btn.textContent = '重导中...'; }
+            if (btn) { btn.disabled = true; btn.textContent = '重新导入中…'; }
             try {
-                const res = await apiFetch(`${API_BASE}/api/case_lib/reimport`, {method: 'POST'});
+                const res = await caselibFetch(`/api/case_lib/reimport`, {method: 'POST'});
                 const data = await res.json();
-                alert(`重导${data.status}\n\n${(data.stdout || '').slice(-800)}\n\n${data.stderr || ''}`);
+                const statusLabel = data.status === 'success' ? '成功' : '失败';
+                alert(`重新导入案例库 - ${statusLabel}\n\n${(data.stdout || '').slice(-800)}\n\n${data.stderr || ''}`);
                 if (caselibState.subTab === 'cases') loadCaselibCases();
             } catch (e) {
-                alert('重导失败：' + ((e && e.message) || e));
+                alert('重新导入失败：' + ((e && e.message) || e));
             } finally {
-                if (btn) { btn.disabled = false; btn.textContent = '重导案例库'; }
+                if (btn) { btn.disabled = false; btn.textContent = '重新导入案例库'; }
+            }
+        }
+
+        async function caselibRescoreCurrent() {
+            const runId = caselibState.currentRunId;
+            if (!runId) { alert('当前未打开迭代详情'); return; }
+            const btn = document.getElementById('caselib-rescore-btn');
+            const status = document.getElementById('caselib-rescore-status');
+            if (btn) { btn.disabled = true; btn.textContent = '重打分中…'; }
+            if (status) status.textContent = '后端正在重新计算 AI 7 维分 + 重新装载人工分…';
+            try {
+                const res = await caselibFetch(`/api/case_lib/iterations/${runId}/rescore`, {method: 'POST'});
+                const data = await res.json();
+                if (data.status !== 'success') {
+                    alert('重打分失败：' + (data.error || JSON.stringify(data).slice(0, 400)));
+                    return;
+                }
+                const ai = data.ai_rescore || {};
+                const md = data.md_reimport || {};
+                const reasonsTxt = Object.keys(ai.skip_reasons || {}).length
+                    ? '\n跳过原因：' + Object.entries(ai.skip_reasons).map(([k,v])=>`${k}=${v}`).join(', ')
+                    : '';
+                alert(`重打分完成\n\nAI 评分：成功 ${ai.scored} 个 / 跳过 ${ai.skipped} 个${reasonsTxt}\n人工原始分重新装载：${md.status}` + (md.stderr_tail?('\nstderr：'+md.stderr_tail):''));
+                if (status) status.textContent = `AI 重打分 ${ai.scored}/${(ai.scored||0)+(ai.skipped||0)} 成功；人工分 ${md.status}`;
+                await caselibOpenDetail(runId);
+            } catch (e) {
+                alert('重打分失败：' + ((e && e.message) || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '重新打分（AI + 人工）'; }
             }
         }
 
@@ -1366,9 +1710,9 @@
             caselibState.currentRunId = runId;
             caselibSwitchSubTab('detail');
             document.getElementById('caselib-detail-table').innerHTML =
-                '<div class="p-8 text-center text-sm text-slate-400">加载中...</div>';
+                '<div class="p-8 text-center text-sm text-slate-400">正在加载详情…</div>';
             try {
-                const res = await apiFetch(`${API_BASE}/api/case_lib/iterations/${runId}`);
+                const res = await caselibFetch(`/api/case_lib/iterations/${runId}`);
                 const data = await res.json();
                 caselibState.currentDetail = data;
                 renderCaselibDetail(data);
@@ -1380,78 +1724,295 @@
 
         function renderCaselibDetail(data) {
             const it = data.iteration;
-            const rows = data.results || [];
-            const tt = (it.triggered_at || '').replace('T', ' ').slice(0, 19);
+            const allRows = data.results || [];
+            caselibState.detailAllRows = allRows;          // 保存原始全集供筛选
+            caselibState.detailFilter = caselibState.detailFilter || {scenario: '', sort: 'score_asc'};
+            const tt = caselibFormatTime(it.triggered_at);
             document.getElementById('caselib-detail-title').textContent =
-                `v${it.version_no} 迭代详情（${rows.length} 个案例，按分数升序）`;
+                `v${it.version_no} 迭代详情（共 ${allRows.length} 个案例）`;
             document.getElementById('caselib-detail-subtitle').textContent =
-                `git=${it.git_short_sha || '-'} ${it.git_dirty ? '(dirty)' : ''} | ${tt} | 状态=${it.status}`;
-            document.getElementById('caselib-detail-summary').innerHTML =
-                `<span class="mr-3">平均 <b class="text-purple-700">${it.avg_quality_score ?? '-'}</b></span>` +
-                `<span class="mr-3">min ${it.min_quality_score ?? '-'} / max ${it.max_quality_score ?? '-'}</span>` +
-                `<span class="mr-3">成功 ${it.success_cases} / 失败 ${it.failed_cases}</span>` +
-                `<span>备份 ${it.backup_commit_sha ? it.backup_commit_sha.slice(0,8) : (it.backup_status || '-')}</span>`;
+                `代码版本 = ${it.git_short_sha || '-'}${it.git_dirty ? ' (含未提交改动)' : ''}  ｜  触发于 ${tt}  ｜  运行状态 = ${caselibRunStatusLabel(it.status)}`;
 
+            // === 顶部速览卡片：本次平均 / 原始平均 / Δ ===
+            const aiScores = allRows.map(r => r.quality_score).filter(v => v != null);
+            const mdScores = allRows.map(r => (r.case && r.case.quality_score_md)).filter(v => v != null);
+            const aiAvg = aiScores.length ? (aiScores.reduce((a,b)=>a+b,0) / aiScores.length) : null;
+            const mdAvg = mdScores.length ? (mdScores.reduce((a,b)=>a+b,0) / mdScores.length) : null;
+            const delta = (aiAvg != null && mdAvg != null) ? (aiAvg - mdAvg) : null;
+            const successN = allRows.filter(r => r.quality_status === 'real_success').length;
+            const dryN = allRows.filter(r => (r.quality_status||'').startsWith('dry_run')).length;
+            const errN = allRows.filter(r => {
+                const s = r.quality_status||''; return s.includes('fail') || s.includes('error') || s.includes('empty') || s.startsWith('real_http_');
+            }).length;
+            const aiCardTip = (
+                'AI 本轮平均分 = 60 案例 quality_score 的算术平均（满分100）。\n' +
+                '单案例 quality_score = reply_scores_v2.ai_candidates 中 overall_score 最高者。\n' +
+                'overall 由 LLM-1 综合 7 维评估：overall / low_barrier / non_repetition / safety / conciseness / style_match / context_alignment（每维 0-100）。\n' +
+                'LLM-1 失败时回退启发式；reply_scores 为空时按 advice 字数兜底。\n' +
+                '若想拿到 7 维分，点击下方「重新打分（AI + 人工）」。'
+            );
+            const mdCardTip = (
+                '人工原始分平均 = 60 案例 quality_score_md 的算术平均（满分100）。\n' +
+                '单案例 quality_score_md = sales_scenario_cases_v2.md「质量分（最高）」字段，案例入库时固化。\n' +
+                '人工分为单一分值，无子维度。'
+            );
+            const summaryCard = `
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                    <div class="rounded-xl border border-purple-100 bg-purple-50 p-3" title="${escapeHtml(aiCardTip)}">
+                        <div class="text-[10px] text-purple-700 font-bold">AI 本轮平均分 <span class="text-slate-400">ⓘ</span></div>
+                        <div class="text-xl font-bold text-purple-800">${aiAvg != null ? aiAvg.toFixed(2) : '—'}</div>
+                    </div>
+                    <div class="rounded-xl border border-sky-100 bg-sky-50 p-3" title="${escapeHtml(mdCardTip)}">
+                        <div class="text-[10px] text-sky-700 font-bold">人工原始分平均 <span class="text-slate-400">ⓘ</span></div>
+                        <div class="text-xl font-bold text-sky-800">${mdAvg != null ? mdAvg.toFixed(2) : '—'}</div>
+                    </div>
+                    <div class="rounded-xl border ${delta == null ? 'border-slate-200 bg-slate-50' : (delta > 0 ? 'border-emerald-100 bg-emerald-50' : 'border-red-100 bg-red-50')} p-3" title="AI 评分 - 人工原始分。正值表示 AI 比人工评分高（可能高估），负值表示 AI 比人工低（可能 AI 更严苛或链路有问题）">
+                        <div class="text-[10px] ${delta == null ? 'text-slate-500' : (delta > 0 ? 'text-emerald-700' : 'text-red-700')} font-bold">Δ（AI − 人工）</div>
+                        <div class="text-xl font-bold ${delta == null ? 'text-slate-400' : (delta > 0 ? 'text-emerald-800' : 'text-red-800')}">${delta == null ? '—' : (delta > 0 ? '+' : '') + delta.toFixed(2)}</div>
+                    </div>
+                    <div class="rounded-xl border border-emerald-100 bg-emerald-50 p-3" title="本轮真实链路成功跑完的案例数（含 reply_reference 非空）">
+                        <div class="text-[10px] text-emerald-700 font-bold">真实成功</div>
+                        <div class="text-xl font-bold text-emerald-800">${successN}/${allRows.length}</div>
+                    </div>
+                    <div class="rounded-xl border border-amber-100 bg-amber-50 p-3" title="干跑 ${dryN} 个（不调 LLM）+ 异常/HTTP错误 ${errN} 个（回退干跑或失败）">
+                        <div class="text-[10px] text-amber-700 font-bold">干跑 / 异常</div>
+                        <div class="text-xl font-bold text-amber-800">${dryN} / ${errN}</div>
+                    </div>
+                </div>`;
+
+            const backupTxt = it.backup_commit_sha ? it.backup_commit_sha.slice(0,8) : (it.backup_status || '未备份');
+            document.getElementById('caselib-detail-summary').innerHTML =
+                `<span class="mr-3" title="本轮 AI 平均质量分">平均 <b class="text-purple-700">${caselibFmtNum(it.avg_quality_score, 2)}</b></span>` +
+                `<span class="mr-3" title="本轮最低/最高分">最低 ${caselibFmtNum(it.min_quality_score,1)} / 最高 ${caselibFmtNum(it.max_quality_score,1)}</span>` +
+                `<span class="mr-3" title="成功案例数 / 失败案例数">成功 ${it.success_cases} / 失败 ${it.failed_cases}</span>` +
+                `<span title="完成后自动 git 备份的 commit SHA">备份 ${backupTxt}</span>`;
+
+            // 工具栏（场景筛选 + 排序）
+            const scenarioOptions = ['<option value="">全部场景</option>'].concat(
+                Object.keys(CASELIB_SCENARIO_DEFS).map(k =>
+                    `<option value="${k}" ${caselibState.detailFilter.scenario===k?'selected':''}>${k} · ${CASELIB_SCENARIO_DEFS[k].name}</option>`)
+            ).join('');
+            const sortOptions = [
+                ['score_asc','AI 质量分 升序（最低先）'],
+                ['score_desc','AI 质量分 降序（最高先）'],
+                ['delta_desc','AI − 人工 差值 降序（AI高估在前）'],
+                ['delta_asc','AI − 人工 差值 升序（AI偏低在前）'],
+                ['scenario','按场景代码排序'],
+                ['latency_desc','耗时降序'],
+            ].map(([k,l])=>`<option value="${k}" ${caselibState.detailFilter.sort===k?'selected':''}>${l}</option>`).join('');
+            const rescoreTip = (
+                '重打两个评分（仅本轮，不重跑 7 步链路）：\n' +
+                '  1) AI 质量分：基于已存的 step7_reply_styles + step1_summary + step4_knowledge ' +
+                '重新调用 IntentEngine.score_reply_candidates，把 7 维评分（含 reason）写回 step7_reply_scores，' +
+                '并刷新 quality_score / 私域库分 / 外部库分（私域、外部已隐藏，但仍会更新）。\n' +
+                '  2) 人工原始分：执行 backend/_case_lib_import.py 从 sales_scenario_cases_v2.md 重新装载 quality_score_md。\n' +
+                '完成后自动刷新 run 的 avg/min/max。'
+            );
+            const toolbar = `
+                <div class="flex flex-wrap items-center gap-3 mb-3 px-1">
+                    <label class="text-[11px] text-slate-600 font-bold" title="只展示指定场景的案例（5个）">筛选场景：</label>
+                    <select id="caselib-detail-scenario-filter" onchange="caselibApplyDetailFilter()" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs">${scenarioOptions}</select>
+                    <label class="text-[11px] text-slate-600 font-bold ml-3" title="表格行的排序方式">排序方式：</label>
+                    <select id="caselib-detail-sort" onchange="caselibApplyDetailFilter()" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs">${sortOptions}</select>
+                    <button id="caselib-rescore-btn" onclick="caselibRescoreCurrent()" class="ml-3 rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-1 text-xs font-bold" title="${escapeHtml(rescoreTip)}">重新打分（AI + 人工）</button>
+                    <span id="caselib-rescore-status" class="text-[11px] text-slate-500"></span>
+                    <span id="caselib-detail-count" class="text-[11px] text-slate-500 ml-auto"></span>
+                </div>`;
+
+            // 先渲染顶部 + 工具栏，再渲染主表格（receive filter 状态）
+            const tableHost = document.getElementById('caselib-detail-table');
+            tableHost.innerHTML = summaryCard + toolbar + '<div id="caselib-detail-rows"></div>';
+            caselibRenderDetailRows();
+
+            // 底部分析
+            document.getElementById('caselib-detail-analysis').innerHTML = `
+                <div class="rounded-xl border border-purple-100 bg-purple-50 p-4 mt-3" title="基于本轮60案例的得分分布，按场景给出优化方向">
+                    <div class="text-xs font-bold text-purple-800 mb-2">📊 本轮改进分析（按场景平均分升序，优先优化前 3 场景）</div>
+                    ${caselibRenderImprovementAnalysis(it.improvement_analysis || '')}
+                </div>
+                <div class="rounded-xl border border-amber-100 bg-amber-50 p-4 mt-3" title="给下一次迭代准备的检查清单 + 本轮调试中遇到的已知坑">
+                    <div class="text-xs font-bold text-amber-800 mb-2">🤖 下次迭代 AI 自检步骤（含本轮已知坑）</div>
+                    ${caselibRenderAiPlan(it.ai_next_step_plan || '')}
+                </div>
+            `;
+        }
+
+        function caselibApplyDetailFilter() {
+            const sc = document.getElementById('caselib-detail-scenario-filter').value;
+            const sort = document.getElementById('caselib-detail-sort').value;
+            caselibState.detailFilter = {scenario: sc, sort};
+            caselibRenderDetailRows();
+        }
+
+        function caselibRenderDetailRows() {
+            const host = document.getElementById('caselib-detail-rows');
+            if (!host) return;
+            const f = caselibState.detailFilter || {scenario:'', sort:'score_asc'};
+            let rows = (caselibState.detailAllRows || []).slice();
+            if (f.scenario) rows = rows.filter(r => r.scenario_code === f.scenario);
+            const deltaOf = r => {
+                const ai = r.quality_score;
+                const md = r.case && r.case.quality_score_md;
+                return (ai != null && md != null) ? (ai - md) : null;
+            };
+            const cmpNullLast = (a, b) => (a == null) - (b == null) || (a == null ? 0 : a - b);
+            const cmpNullLastDesc = (a, b) => (a == null) - (b == null) || (a == null ? 0 : b - a);
+            switch (f.sort) {
+                case 'score_desc':  rows.sort((a,b)=>cmpNullLastDesc(a.quality_score, b.quality_score)); break;
+                case 'delta_desc':  rows.sort((a,b)=>cmpNullLastDesc(deltaOf(a), deltaOf(b))); break;
+                case 'delta_asc':   rows.sort((a,b)=>cmpNullLast(deltaOf(a), deltaOf(b))); break;
+                case 'scenario':    rows.sort((a,b)=> (a.scenario_code+a.scenario_rank).localeCompare(b.scenario_code+b.scenario_rank)); break;
+                case 'latency_desc':rows.sort((a,b)=>cmpNullLastDesc(a.latency_ms, b.latency_ms)); break;
+                default:            rows.sort((a,b)=>cmpNullLast(a.quality_score, b.quality_score));
+            }
+            document.getElementById('caselib-detail-count').textContent =
+                `共 ${rows.length} 行 / 全集 ${(caselibState.detailAllRows||[]).length} 行`;
+
+            const aiHeaderTip = (
+                'AI 质量分（满分100）= reply_scores_v2.ai_candidates 中 overall_score 最高者。\n' +
+                '评分由 LLM-1 给出，包含 7 个维度（每维 0-100）：\n' +
+                '  • overall（总分）：综合质量\n' +
+                '  • low_barrier（易回复）：客户是否容易接住下一句\n' +
+                '  • non_repetition（差异化）：与最近我方已发消息有无重复\n' +
+                '  • safety（稳妥度）：是否触发风险词/承诺过头\n' +
+                '  • conciseness（微信感）：长度与口吻是否像微信短消息\n' +
+                '  • style_match（风格匹配）：是否贴合所选 reply_style\n' +
+                '  • context_alignment（上下文贴合）：是否扣紧线程事实与 CRM\n' +
+                'LLM-1 调用失败时回退为启发式 heuristic_fallback；reply_scores 空时按 advice 字数兜底。\n' +
+                '鼠标悬停在每行 AI 质量分单元格上可看该案例的 7 维分 + LLM 评价理由。'
+            );
+            const mdHeaderTip = (
+                '人工原始分（满分100）= sales_scenario_cases_v2.md「质量分（最高）」字段，案例入库时固化。\n' +
+                '人工分目前是单一分值，无子维度。悬停单元格可看：场景 / 排名 / 案例标题 / 章节锚点。'
+            );
             const head = `
                 <table class="w-full text-xs">
-                    <thead class="bg-slate-50 text-slate-600 sticky top-0">
+                    <thead class="bg-slate-50 text-slate-600 sticky top-0 z-10">
                         <tr>
-                            <th class="px-2 py-2 text-left">场景</th>
-                            <th class="px-2 py-2 text-left">案例</th>
-                            <th class="px-2 py-2 text-right">分</th>
-                            <th class="px-2 py-2 text-right">kb1</th>
-                            <th class="px-2 py-2 text-right">kb2</th>
-                            <th class="px-2 py-2 text-left">状态</th>
-                            <th class="px-2 py-2 text-left">耗时</th>
-                            <th class="px-2 py-2 text-left">step1 topic</th>
-                            <th class="px-2 py-2 text-left">step4 知识</th>
-                            <th class="px-2 py-2 text-left">step6 销售建议</th>
-                            <th class="px-2 py-2 text-left">step7 风格分</th>
+                            <th class="px-2 py-2 text-left" title="销售场景代码 S01~S12。鼠标悬停每个单元格可看场景的完整业务定义">场景</th>
+                            <th class="px-2 py-2 text-left" title="该案例在场景内的排名（1=场景内人工质量分最高，5=该场景最低）+ 案例标题">案例（排名+标题）</th>
+                            <th class="px-2 py-2 text-right" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
+                            <th class="px-2 py-2 text-right" title="${escapeHtml(mdHeaderTip)}">人工原始分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
+                            <th class="px-2 py-2 text-right" title="AI 质量分 − 人工原始分。正值=AI 给得比人工高（可能 AI 高估）；负值=AI 给得比人工低（可能 AI 严苛或链路缺数据）">Δ（AI−人工）</th>
+                            <th class="px-2 py-2 text-left" title="本案例的链路最终状态：真实成功 / 真实部分 / 干跑成功 / 异常回退 / HTTP错误 等">链路状态</th>
+                            <th class="px-2 py-2 text-left" title="本案例端到端 7 步链路总耗时（毫秒）">耗时</th>
+                            <th class="px-2 py-2 text-left" title="步骤1：大模型1 抽取的当前主线话题。悬停看全文">第1步·主线话题</th>
+                            <th class="px-2 py-2 text-left" title="步骤4：知识检索的最终状态（命中 / 待人工复核 / 未启动 / 干跑占位）">第4步·知识检索</th>
+                            <th class="px-2 py-2 text-left" title="步骤6：大模型2 基于前 5 步生成的销售话术建议（截断显示前 80 字，悬停看全文）">第6步·销售建议</th>
+                            <th class="px-2 py-2 text-left" title="步骤7：多风格候选回复的评分明细，「主模型·私域库·风格1=65.3」表示主模型在私域知识库下的"风格1"候选得分">第7步·风格候选分</th>
                         </tr>
                     </thead>
                     <tbody>`;
+            const candidateIdToCn = (cid) => {
+                if (!cid) return cid;
+                return String(cid)
+                    .replace(/llm2_compare/g, '对比模型')
+                    .replace(/llm2/g, '主模型')
+                    .replace(/llm1/g, '大模型1')
+                    .replace(/knowledge_v2/g, '私域库')
+                    .replace(/knowledge_external_api/g, '外部库')
+                    .replace(/knowledge_base/g, '基础库')
+                    .replace(/style_(\d+)/g, '风格$1')
+                    .replace(/__+/g, '·');
+            };
+            const fmtScoreVal = (v) => {
+                if (v == null) return '-';
+                if (typeof v === 'number') return v.toFixed(1);
+                if (typeof v === 'object') {
+                    const total = v.total ?? v.score ?? v.avg;
+                    return total != null ? Number(total).toFixed(1) : JSON.stringify(v).slice(0,30);
+                }
+                return String(v).slice(0, 30);
+            };
+            const buildAiCellTip = (r) => {
+                const scoresObj = r.step7_reply_scores;
+                const ac = (scoresObj && typeof scoresObj === 'object') ? (scoresObj.ai_candidates || []) : [];
+                if (!ac.length) {
+                    return 'AI 质量分（满分100）= reply_scores_v2.ai_candidates 中 overall_score 最高者；本案例尚无维度数据（reply_scores_v2 为空，分值来自启发式 advice 字数兜底）。'
+                        + '\n如需获得 7 维分，请点击页面顶部「重新打分（AI+人工）」。';
+                }
+                const top = ac[0] || {};
+                const sub = top.scores || {};
+                const dimMap = [
+                    ['overall', '总分'],
+                    ['low_barrier', '易回复'],
+                    ['non_repetition', '差异化'],
+                    ['safety', '稳妥度'],
+                    ['conciseness', '微信感'],
+                    ['style_match', '风格匹配'],
+                    ['context_alignment', '上下文贴合'],
+                ];
+                const lines = ['AI 质量分 7 维明细（最高分候选）：'];
+                dimMap.forEach(([k, l]) => {
+                    const v = sub[k];
+                    if (v != null) lines.push(`  • ${l}（${k}）= ${Number(v).toFixed(1)}`);
+                });
+                if (top.score_reason) lines.push('LLM 评价：' + String(top.score_reason).slice(0, 240));
+                if (top.knowledge_source_label || top.style_title) {
+                    lines.push(`来源：${top.knowledge_source_label || ''} · ${top.style_title || ''}`);
+                }
+                const mode = (scoresObj.scored_by || {}).score_mode || '';
+                if (mode) lines.push('打分模式：' + mode);
+                lines.push('（候选数：' + ac.length + '；其它候选可在弹窗"第7步 · 候选评分"查看）');
+                return lines.join('\n');
+            };
+            const buildMdCellTip = (r, c) => {
+                const lines = ['人工原始分（满分100）来自 sales_scenario_cases_v2.md「质量分（最高）」字段。'];
+                if (r.scenario_code) lines.push(`场景：${r.scenario_code} · 场内第 ${r.scenario_rank} 名`);
+                if (c && c.case_title) lines.push('案例：' + c.case_title);
+                if (c && c.md_section_anchor) lines.push('章节锚点：' + c.md_section_anchor);
+                lines.push('人工分为单一分值，无子维度评价字段。');
+                return lines.join('\n');
+            };
             const body = rows.map(r => {
                 const c = r.case || {};
                 const sc = r.scenario_code || '-';
+                const scTip = caselibScenarioTip(sc);
                 const title = `${r.scenario_rank || '?'}. ${c.case_title || ''}`;
-                const qs = r.quality_score != null ? r.quality_score.toFixed(2) : '-';
-                const k1 = r.kb1_eval_score != null ? r.kb1_eval_score.toFixed(1) : '-';
-                const k2 = r.kb2_eval_score != null ? r.kb2_eval_score.toFixed(1) : '-';
-                const stCls = r.status === 'success' ? 'text-emerald-700' :
-                              (r.status === 'failed' ? 'text-red-600' : 'text-slate-500');
+                const ai = r.quality_score;
+                const md = c.quality_score_md;
+                const dlt = (ai != null && md != null) ? (ai - md) : null;
+                const aiTxt = ai != null ? ai.toFixed(2) : '-';
+                const mdTxt = md != null ? Number(md).toFixed(1) : '-';
+                const dltTxt = dlt != null ? (dlt > 0 ? '+' : '') + dlt.toFixed(2) : '-';
+                const dltCls = dlt == null ? 'text-slate-400' :
+                               (Math.abs(dlt) < 1 ? 'text-slate-600' :
+                                (dlt > 0 ? 'text-emerald-700 font-bold' : 'text-red-700 font-bold'));
+                const aiTip = buildAiCellTip(r);
+                const mdTip = buildMdCellTip(r, c);
+                const qstatus = caselibQualityStatusLabel(r.quality_status);
+                const qstatusCls = caselibQualityStatusColor(r.quality_status);
                 const topic = (r.step1_summary && (r.step1_summary.topic || r.step1_summary.core_demand)) || '';
                 const kb = r.step4_knowledge && r.step4_knowledge.knowledge_status || '';
+                const kbLabel = ({done:'命中', manual_review_required:'待人工复核', not_started:'未启动',
+                                  dry_run_stub:'干跑占位', '':''})[kb] || kb;
                 const advice = (r.step6_sales_advice || '').slice(0, 80);
-                const styleScores = r.step7_reply_scores
-                    ? (typeof r.step7_reply_scores === 'object'
-                        ? Object.entries(r.step7_reply_scores).map(([k,v]) => `${k}:${v}`).join(' ')
-                        : String(r.step7_reply_scores).slice(0, 60))
-                    : '';
-                return `<tr class="border-t hover:bg-purple-50 cursor-pointer" onclick="caselibOpenCaseModal('${r.case_id}', '${r.result_id}')">
-                    <td class="px-2 py-2 font-bold text-purple-700">${sc}</td>
-                    <td class="px-2 py-2 max-w-[180px] truncate" title="${escapeHtml(c.case_title || '')}">${escapeHtml(title)}</td>
-                    <td class="px-2 py-2 text-right font-bold text-purple-700">${qs}</td>
-                    <td class="px-2 py-2 text-right text-slate-600">${k1}</td>
-                    <td class="px-2 py-2 text-right text-slate-600">${k2}</td>
-                    <td class="px-2 py-2 ${stCls}">${r.status}</td>
-                    <td class="px-2 py-2 text-slate-500">${r.latency_ms || '-'}ms</td>
-                    <td class="px-2 py-2 max-w-[200px] truncate text-slate-700" title="${escapeHtml(topic)}">${escapeHtml(topic)}</td>
-                    <td class="px-2 py-2 text-slate-500">${escapeHtml(kb)}</td>
-                    <td class="px-2 py-2 max-w-[260px] truncate text-slate-700" title="${escapeHtml(r.step6_sales_advice || '')}">${escapeHtml(advice)}</td>
-                    <td class="px-2 py-2 text-slate-600 text-[10px]">${escapeHtml(styleScores)}</td>
+                const styleScores = (() => {
+                    const so = r.step7_reply_scores;
+                    if (!so || typeof so !== 'object') return '';
+                    const ac = so.ai_candidates;
+                    if (Array.isArray(ac) && ac.length) {
+                        return ac.slice(0, 4).map(x =>
+                            `${candidateIdToCn(x.candidate_id || '')}=${Number(x.overall_score || 0).toFixed(1)}`
+                        ).join('  ');
+                    }
+                    return Object.entries(so).map(([k,v]) => `${candidateIdToCn(k)}=${fmtScoreVal(v)}`).join('  ');
+                })();
+                return `<tr class="border-t hover:bg-purple-50 cursor-pointer transition" onclick="caselibOpenCaseModal('${r.case_id}', '${r.result_id}')" title="点击查看 ${sc}-${r.scenario_rank} 的完整 7 步链路详情">
+                    <td class="px-2 py-2 font-bold text-purple-700" title="${escapeHtml(scTip)}">${sc}</td>
+                    <td class="px-2 py-2 max-w-[210px] truncate" title="${escapeHtml(c.case_title || '')}">${escapeHtml(title)}</td>
+                    <td class="px-2 py-2 text-right font-bold text-purple-700" title="${escapeHtml(aiTip)}">${aiTxt}</td>
+                    <td class="px-2 py-2 text-right text-sky-700 font-bold" title="${escapeHtml(mdTip)}">${mdTxt}</td>
+                    <td class="px-2 py-2 text-right ${dltCls}" title="AI − 人工。差值绝对值 ≥1 时高亮：正值AI偏高，负值AI偏低">${dltTxt}</td>
+                    <td class="px-2 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="原始状态码：${r.quality_status || ''}">${escapeHtml(qstatus)}</span></td>
+                    <td class="px-2 py-2 text-slate-500" title="完整 7 步链路耗时">${r.latency_ms ? r.latency_ms + ' ms' : '-'}</td>
+                    <td class="px-2 py-2 max-w-[200px] truncate text-slate-700" title="${escapeHtml(topic)}">${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 text-slate-500" title="原始知识状态：${kb}">${escapeHtml(kbLabel) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 max-w-[280px] truncate text-slate-700" title="${escapeHtml(r.step6_sales_advice || '')}">${escapeHtml(advice) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 text-slate-600 text-[10px]" title="候选评分明细">${escapeHtml(styleScores) || '<span class="text-slate-400">（无）</span>'}</td>
                 </tr>`;
             }).join('');
-            document.getElementById('caselib-detail-table').innerHTML = head + body + '</tbody></table>';
-            document.getElementById('caselib-detail-analysis').innerHTML = `
-                <div class="rounded-xl border border-purple-100 bg-purple-50 p-4 mt-3">
-                    <div class="text-xs font-bold text-purple-800 mb-2">📊 改进分析</div>
-                    <pre class="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(it.improvement_analysis || '')}</pre>
-                </div>
-                <div class="rounded-xl border border-amber-100 bg-amber-50 p-4 mt-3">
-                    <div class="text-xs font-bold text-amber-800 mb-2">🤖 下次迭代 AI 自检步骤</div>
-                    <pre class="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(it.ai_next_step_plan || '')}</pre>
-                </div>
-            `;
+            host.innerHTML = '<div class="rounded-xl border border-slate-200 bg-white overflow-auto">' + head + body + '</tbody></table></div>';
         }
 
         function caselibOpenCaseModal(caseId, resultId) {
@@ -1461,46 +2022,70 @@
             if (!r) return;
             const c = r.case || {};
             const ctxList = (c.context_messages || []).map(m =>
-                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}">[${m.role}]</b> <span class="text-slate-400">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
             ).join('');
             const coreList = (c.core_dialog || []).map(m =>
-                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}">[${m.role}]</b> <span class="text-slate-400">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
             ).join('');
-            const stepBlock = (label, val) => `
-                <div class="rounded-lg border bg-white p-3 mb-2">
+            const stepBlock = (label, tip, val) => `
+                <div class="rounded-lg border bg-white p-3 mb-2" title="${escapeHtml(tip)}">
                     <div class="text-[10px] font-bold text-slate-500 mb-1">${label}</div>
                     <pre class="text-[11px] text-slate-700 whitespace-pre-wrap leading-snug max-h-[200px] overflow-auto">${escapeHtml(typeof val === 'string' ? val : JSON.stringify(val, null, 2))}</pre>
                 </div>`;
             const modal = document.createElement('div');
             modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
             modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            const qstatus = caselibQualityStatusLabel(r.quality_status);
+            const scTip = caselibScenarioTip(r.scenario_code);
+            const scName = caselibScenarioName(r.scenario_code);
+            const ai = r.quality_score, md = c.quality_score_md;
+            const dlt = (ai != null && md != null) ? (ai - md) : null;
+            const dltStr = dlt != null ? (dlt > 0 ? '+' : '') + dlt.toFixed(2) : '—';
+            const dltCls = dlt == null ? 'text-slate-500' : (dlt > 0 ? 'text-emerald-700' : 'text-red-700');
             modal.innerHTML = `
                 <div class="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-                    <div class="px-5 py-3 border-b flex justify-between items-center bg-purple-50">
-                        <div>
-                            <div class="font-bold text-slate-900">${r.scenario_code}-${r.scenario_rank} ${escapeHtml(c.case_title || '')}</div>
-                            <div class="text-[11px] text-slate-500">${c.group_key} @ ${c.session_date} | 质量分=${r.quality_score ?? '-'} | 状态=${r.status}</div>
+                    <div class="px-5 py-3 border-b bg-purple-50">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="px-2 py-0.5 rounded bg-purple-200 text-purple-800 text-[10px] font-bold" title="${escapeHtml(scTip)}">${r.scenario_code}</span>
+                                    <span class="text-[11px] text-slate-600" title="${escapeHtml(scTip)}">${escapeHtml(scName)}</span>
+                                    <span class="text-[11px] text-slate-400">·</span>
+                                    <span class="text-[11px] text-slate-500" title="该案例在场景内的排名（1=场景内最高，5=最低）">场内第 ${r.scenario_rank} 名</span>
+                                </div>
+                                <div class="font-bold text-slate-900" title="${escapeHtml(c.case_title || '')}">${escapeHtml(c.case_title || '')}</div>
+                                <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                                    <span title="wecom_raw_import 中标识同一会话的 group_key">对话组 ${c.group_key}</span>
+                                    <span title="该案例核心对话发生的日期">日期 ${c.session_date}</span>
+                                    <span title="本轮 AI 给出的质量分（满分100）">AI 评分 <b class="text-purple-700">${caselibFmtNum(ai,2)}</b></span>
+                                    <span title="人工销售在 v2.md 中给的原始质量分（满分100）">人工原始分 <b class="text-sky-700">${md != null ? Number(md).toFixed(1) : '—'}</b></span>
+                                    <span title="AI 评分 − 人工评分。正值=AI高估，负值=AI严苛" class="${dltCls}">Δ = <b>${dltStr}</b></span>
+                                    <span title="链路最终状态">链路 ${escapeHtml(qstatus)}</span>
+                                    <span title="本案例 7 步链路总耗时">耗时 ${r.latency_ms || '-'} ms</span>
+                                </div>
+                            </div>
+                            <button onclick="this.closest('.fixed').remove()" class="text-slate-500 hover:text-slate-800 text-xl ml-3" title="关闭">×</button>
                         </div>
-                        <button onclick="this.closest('.fixed').remove()" class="text-slate-500 hover:text-slate-800 text-xl">×</button>
+                        <div class="mt-2 text-[10px] text-slate-500 italic" title="本场景的业务含义">📖 ${escapeHtml((CASELIB_SCENARIO_DEFS[r.scenario_code]||{}).desc || '')}</div>
                     </div>
                     <div class="flex-1 overflow-auto p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <div>
-                            <div class="text-xs font-bold text-slate-700 mb-2">背景对话（核心对话之前${(c.context_messages||[]).length}条）</div>
+                            <div class="text-xs font-bold text-slate-700 mb-2" title="抽取自核心对话之前的 15 条前序消息，作为 7 步链路的背景输入">背景对话（核心对话之前 ${(c.context_messages||[]).length} 条）</div>
                             <div class="rounded border bg-slate-50 p-2 max-h-[200px] overflow-auto mb-3">${ctxList || '<span class="text-slate-400 text-xs">无</span>'}</div>
-                            <div class="text-xs font-bold text-slate-700 mb-2">核心对话（${(c.core_dialog||[]).length}条）</div>
+                            <div class="text-xs font-bold text-slate-700 mb-2" title="本案例的核心对话内容，最多 16 条">核心对话（共 ${(c.core_dialog||[]).length} 条）</div>
                             <div class="rounded border bg-emerald-50 p-2 max-h-[260px] overflow-auto">${coreList || '<span class="text-slate-400 text-xs">无</span>'}</div>
                         </div>
                         <div>
-                            <div class="text-xs font-bold text-slate-700 mb-2">企微7步链路结果</div>
-                            ${stepBlock('Step1 摘要', r.step1_summary)}
-                            ${stepBlock('Step2 CRM', r.step2_crm_info)}
-                            ${stepBlock('Step3 线程业务事实', r.step3_thread_business_fact)}
-                            ${stepBlock('Step4 知识检索', r.step4_knowledge)}
-                            ${stepBlock('Step5 LLM1对比', r.step5_llm1_compare)}
-                            ${stepBlock('Step6 销售建议', r.step6_sales_advice)}
-                            ${stepBlock('Step6 对比建议', r.step6_compare_advice)}
-                            ${stepBlock('Step7 风格候选', r.step7_reply_styles)}
-                            ${stepBlock('Step7 候选评分', r.step7_reply_scores)}
+                            <div class="text-xs font-bold text-slate-700 mb-2" title="企微智能回复接口跑出的 7 步真实链路结果">企微 7 步回复链路结果</div>
+                            ${stepBlock('第1步 · 会话摘要', '大模型1抽取的当前主线话题 / 核心诉求 / 关键事实 / 待跟进 / 风险 / 状态', r.step1_summary)}
+                            ${stepBlock('第2步 · 客户画像', '从 CRM 查询到的客户基础信息、客户等级、历史订单', r.step2_crm_info)}
+                            ${stepBlock('第3步 · 线程业务事实', '业务状态、阶段信号、合并后的关键事实层', r.step3_thread_business_fact)}
+                            ${stepBlock('第4步 · 知识检索', '私域知识库 + 外部知识库 API 的召回结果与状态', r.step4_knowledge)}
+                            ${stepBlock('第5步 · 大模型1对比摘要', '对比模型对第1步摘要的另一版输出，用于横向校验主模型', r.step5_llm1_compare)}
+                            ${stepBlock('第6步 · 销售建议（主模型）', '大模型2基于前 5 步生成的主销售话术建议', r.step6_sales_advice)}
+                            ${stepBlock('第6步 · 销售建议（对比模型）', '对比大模型给出的另一版回复，用于横向对照', r.step6_compare_advice)}
+                            ${stepBlock('第7步 · 风格候选回复', '多风格（亲和 / 专业 / 简洁 等）的候选回复列表', r.step7_reply_styles)}
+                            ${stepBlock('第7步 · 候选评分', '每个候选回复的「私域库 / 外部库 / 总分」得分', r.step7_reply_scores)}
                         </div>
                     </div>
                 </div>`;
@@ -1509,7 +2094,7 @@
 
         async function loadCaselibCases() {
             try {
-                const res = await apiFetch(`${API_BASE}/api/case_lib/cases`);
+                const res = await caselibFetch(`/api/case_lib/cases`);
                 const data = await res.json();
                 caselibState.cases = data.cases || [];
                 renderCaselibCases(caselibState.cases);
@@ -1522,36 +2107,38 @@
         function renderCaselibCases(rows) {
             const wrap = document.getElementById('caselib-cases-table');
             if (!rows.length) {
-                wrap.innerHTML = '<div class="p-8 text-center text-sm text-slate-400">案例库为空。点击右上"重导案例库"。</div>';
+                wrap.innerHTML = '<div class="p-8 text-center text-sm text-slate-400">案例库为空。请点击右上角"重新导入案例库"。</div>';
                 return;
             }
             const head = `
                 <table class="w-full text-xs">
                     <thead class="bg-slate-50 text-slate-600 sticky top-0">
                         <tr>
-                            <th class="px-3 py-2 text-left">场景</th>
-                            <th class="px-3 py-2 text-left">排名</th>
-                            <th class="px-3 py-2 text-left">案例标题</th>
-                            <th class="px-3 py-2 text-left">group_key</th>
-                            <th class="px-3 py-2 text-left">会话日期</th>
-                            <th class="px-3 py-2 text-right">质量分</th>
-                            <th class="px-3 py-2 text-right">核心对话</th>
-                            <th class="px-3 py-2 text-right">背景上文</th>
-                            <th class="px-3 py-2 text-left">md锚</th>
+                            <th class="px-3 py-2 text-left" title="销售场景代码 S01~S12，对应 12 个典型销售场景。鼠标悬停每个单元格可看完整业务定义">场景</th>
+                            <th class="px-3 py-2 text-left" title="该场景的中文名称（如「价格竞争/比价」），悬停看完整业务含义">场景名称</th>
+                            <th class="px-3 py-2 text-left" title="该案例在场景内的排名：1=场景内人工质量分最高，5=该场景最低">场内排名</th>
+                            <th class="px-3 py-2 text-left" title="案例的主题摘要（由 sales_scenario_cases_v2.md 提取）">案例标题</th>
+                            <th class="px-3 py-2 text-left" title="wecom_raw_import 中标识同一会话的 group_key（同一会话的全部消息共用一个 group_key）">对话组 ID</th>
+                            <th class="px-3 py-2 text-left" title="该案例核心对话发生的日期">会话日期</th>
+                            <th class="px-3 py-2 text-right" title="人工销售在 sales_scenario_cases_v2.md 中标注的质量分（满分100），是案例入库时固化的原始分">人工原始分</th>
+                            <th class="px-3 py-2 text-right" title="本案例的核心对话消息数（最多 16 条）">核心对话条数</th>
+                            <th class="px-3 py-2 text-right" title="抽取的核心对话之前的前序上下文条数（最多 15 条），用作 7 步链路的背景输入">背景上文条数</th>
+                            <th class="px-3 py-2 text-left" title="该案例在 sales_scenario_cases_v2.md 中的章节锚点（如 S01-03）">案例编号</th>
                         </tr>
                     </thead>
                     <tbody>`;
             const body = rows.map(c => `
-                <tr class="border-t hover:bg-purple-50 cursor-pointer" onclick="caselibPreviewCase('${c.case_id}')">
-                    <td class="px-3 py-2 font-bold text-purple-700">${c.scenario_code}</td>
-                    <td class="px-3 py-2">${c.scenario_rank}</td>
+                <tr class="border-t hover:bg-purple-50 cursor-pointer" onclick="caselibPreviewCase('${c.case_id}')" title="点击预览 ${c.scenario_code}-${c.scenario_rank} 的核心对话和背景上文">
+                    <td class="px-3 py-2 font-bold text-purple-700" title="${escapeHtml(caselibScenarioTip(c.scenario_code))}">${c.scenario_code}</td>
+                    <td class="px-3 py-2 text-slate-600 max-w-[180px] truncate" title="${escapeHtml(caselibScenarioTip(c.scenario_code))}">${escapeHtml(caselibScenarioName(c.scenario_code))}</td>
+                    <td class="px-3 py-2" title="该案例在场景内的排名：1=场景内人工质量分最高，5=该场景最低">${c.scenario_rank}</td>
                     <td class="px-3 py-2 max-w-[260px] truncate" title="${escapeHtml(c.case_title || '')}">${escapeHtml(c.case_title || '')}</td>
-                    <td class="px-3 py-2 font-mono text-[11px] text-slate-600">${c.group_key}</td>
-                    <td class="px-3 py-2 text-slate-600">${c.session_date || '-'}</td>
-                    <td class="px-3 py-2 text-right">${c.quality_score_md ?? '-'}</td>
-                    <td class="px-3 py-2 text-right">${(c.core_dialog || []).length}</td>
-                    <td class="px-3 py-2 text-right">${(c.context_messages || []).length}</td>
-                    <td class="px-3 py-2 font-mono text-[11px] text-slate-500">${c.md_section_anchor || '-'}</td>
+                    <td class="px-3 py-2 font-mono text-[11px] text-slate-600" title="对话组 ID（同一会话的全部消息共用一个 group_key，定位到 wecom_raw_import 表）">${c.group_key}</td>
+                    <td class="px-3 py-2 text-slate-600" title="该案例核心对话发生的日期">${c.session_date || '-'}</td>
+                    <td class="px-3 py-2 text-right text-sky-700 font-bold" title="人工销售在 sales_scenario_cases_v2.md 中给的质量分（满分100），是案例入库时固化的原始分">${c.quality_score_md ?? '-'}</td>
+                    <td class="px-3 py-2 text-right" title="本案例的核心对话消息数（最多16条）">${(c.core_dialog || []).length}</td>
+                    <td class="px-3 py-2 text-right" title="抽取的核心对话之前的前序上下文条数（最多15条），用作 7 步链路的背景输入">${(c.context_messages || []).length}</td>
+                    <td class="px-3 py-2 font-mono text-[11px] text-slate-500" title="该案例在 sales_scenario_cases_v2.md 中的章节锚点（如 S01-03）">${c.md_section_anchor || '-'}</td>
                 </tr>`).join('');
             wrap.innerHTML = head + body + '</tbody></table>';
         }
@@ -1560,27 +2147,41 @@
             const c = (caselibState.cases || []).find(x => x.case_id === caseId);
             if (!c) return;
             const ctxList = (c.context_messages || []).map(m =>
-                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}">[${m.role}]</b> <span class="text-slate-400">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
             ).join('');
             const coreList = (c.core_dialog || []).map(m =>
-                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}">[${m.role}]</b> <span class="text-slate-400">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
             ).join('');
             const modal = document.createElement('div');
             modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
             modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
             modal.innerHTML = `
                 <div class="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-                    <div class="px-5 py-3 border-b flex justify-between items-center bg-purple-50">
-                        <div>
-                            <div class="font-bold text-slate-900">${c.scenario_code}-${c.scenario_rank} ${escapeHtml(c.case_title || '')}</div>
-                            <div class="text-[11px] text-slate-500">${c.group_key} @ ${c.session_date} | 质量分=${c.quality_score_md ?? '-'} | ${c.md_section_anchor || ''}</div>
+                    <div class="px-5 py-3 border-b bg-purple-50">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="px-2 py-0.5 rounded bg-purple-200 text-purple-800 text-[10px] font-bold" title="${escapeHtml(caselibScenarioTip(c.scenario_code))}">${c.scenario_code}</span>
+                                    <span class="text-[11px] text-slate-600" title="${escapeHtml(caselibScenarioTip(c.scenario_code))}">${escapeHtml(caselibScenarioName(c.scenario_code))}</span>
+                                    <span class="text-[11px] text-slate-400">·</span>
+                                    <span class="text-[11px] text-slate-500" title="该案例在场景内的排名（1=最高 / 5=最低）">场内第 ${c.scenario_rank} 名</span>
+                                </div>
+                                <div class="font-bold text-slate-900" title="${escapeHtml(c.case_title || '')}">${escapeHtml(c.case_title || '')}</div>
+                                <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                                    <span title="同一会话的 group_key">对话组 ${c.group_key}</span>
+                                    <span title="案例发生日期">@ ${c.session_date}</span>
+                                    <span title="人工销售在 v2.md 中给的原始质量分（满分100）">人工原始分 = <b class="text-sky-700">${c.quality_score_md ?? '—'}</b></span>
+                                    <span title="案例在 v2.md 中的章节锚点">编号 ${c.md_section_anchor || ''}</span>
+                                </div>
+                            </div>
+                            <button onclick="this.closest('.fixed').remove()" class="text-slate-500 hover:text-slate-800 text-xl ml-3" title="关闭">×</button>
                         </div>
-                        <button onclick="this.closest('.fixed').remove()" class="text-slate-500 hover:text-slate-800 text-xl">×</button>
+                        <div class="mt-2 text-[10px] text-slate-500 italic" title="本场景的业务含义">📖 ${escapeHtml((CASELIB_SCENARIO_DEFS[c.scenario_code]||{}).desc || '')}</div>
                     </div>
                     <div class="flex-1 overflow-auto p-4">
-                        <div class="text-xs font-bold text-slate-700 mb-2">背景对话（${(c.context_messages||[]).length}条）</div>
+                        <div class="text-xs font-bold text-slate-700 mb-2" title="抽取自核心对话之前的 15 条前序消息，作为 7 步链路的背景输入">背景对话（共 ${(c.context_messages||[]).length} 条）</div>
                         <div class="rounded border bg-slate-50 p-3 mb-3">${ctxList || '<span class="text-slate-400 text-xs">无</span>'}</div>
-                        <div class="text-xs font-bold text-slate-700 mb-2">核心对话（${(c.core_dialog||[]).length}条）</div>
+                        <div class="text-xs font-bold text-slate-700 mb-2" title="本案例的核心对话内容，最多 16 条">核心对话（共 ${(c.core_dialog||[]).length} 条）</div>
                         <div class="rounded border bg-emerald-50 p-3">${coreList || '<span class="text-slate-400 text-xs">无</span>'}</div>
                     </div>
                 </div>`;
@@ -8088,16 +8689,21 @@
                 }
             });
 
-            const stableSliceColor = (sliceId) => {
+            const stableSliceColor = (item) => {
+                const sliceId = item?.slice_id;
                 const raw = String(sliceId || '');
-                let hash = 0;
-                for (let j = 0; j < raw.length; j++) hash = ((hash * 31) + raw.charCodeAt(j)) >>> 0;
-                return _WR_GROUP_COLORS[hash % _WR_GROUP_COLORS.length];
+                const m = raw.match(/(?:^|[_-])s(\d+)$/i) || raw.match(/(\d+)$/);
+                if (m) {
+                    const n = Math.max(1, Number(m[1] || 1));
+                    return _WR_GROUP_COLORS[(n - 1) % _WR_GROUP_COLORS.length];
+                }
+                const start = Number(item?.slice_row_start);
+                return _WR_GROUP_COLORS[(Number.isFinite(start) ? Math.max(0, start) : 0) % _WR_GROUP_COLORS.length];
             };
             const hasLockedMultiRowSlice = (item) => {
-                const start = Number(item.slice_row_start || 0);
-                const end = Number(item.slice_row_end || 0);
-                return Boolean(item.slice_id) && start > 0 && end > start;
+                const start = Number(item.slice_row_start);
+                const end = Number(item.slice_row_end);
+                return Boolean(item.slice_id) && Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start;
             };
 
             return items.map((item, i) => {
@@ -8111,7 +8717,7 @@
                 let bgClass;
                 if (hasLockedMultiRowSlice(item)) {
                     // 已锁定切片后优先用数据库边界着色，避免分页首尾把同一红/绿对话块误判成黄/紫单向块。
-                    bgClass = stableSliceColor(item.slice_id);
+                    bgClass = stableSliceColor(item);
                 } else if (!hasSales)  bgClass = 'bg-amber-100';   // 仅客户（无回复）
                 else if (!hasCustomer) bgClass = 'bg-violet-100';  // 仅销售主动触达
                 else                   bgClass = roundBgMap[rk];   // 未切片兜底：有问有答循环色
