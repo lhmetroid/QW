@@ -677,53 +677,58 @@ class IntentEngine:
         return text.strip()
 
     @classmethod
-    def run_llm1_json_prompt(cls, prompt: str, user_id: str = "kb_assist"):
-        """Run the configured LLM-1 endpoint with a custom prompt and parse JSON."""
+    def run_llm1_json_prompt(cls, prompt: str, user_id: str = "kb_assist", max_retries: int = 1, timeout_seconds: int | None = None):
+        """Run the configured LLM-1 endpoint with a custom prompt and parse JSON.
+        max_retries: total attempts (1 = no retry). timeout_seconds overrides LLM1_TIMEOUT_SECONDS."""
         headers = {
             "Authorization": f"Bearer {settings.LLM1_API_KEY}",
             "Content-Type": "application/json"
         }
-        try:
-            if settings.LLM1_API_KEY.startswith("app-"):
-                payload = {
-                    "inputs": {},
-                    "query": prompt,
-                    "response_mode": "blocking",
-                    "user": user_id
-                }
-                response, _, _ = cls._request_dify_blocking(
-                    api_url=settings.LLM1_API_URL,
-                    headers=headers,
-                    payload=payload,
-                    timeout_seconds=settings.LLM1_TIMEOUT_SECONDS,
-                    model=settings.LLM1_MODEL,
-                    prompt=prompt,
-                    log_label="KB_ASSIST_DIFY",
-                )
-                if response.status_code != 200:
-                    detail = cls._response_detail(response)
-                    raise RuntimeError(f"知识库 LLM 辅助 Dify 调用失败: HTTP {response.status_code}; {detail}")
-                raw_text = response.json().get("answer", "")
-            else:
-                url = settings.LLM1_API_URL.rstrip("/") + "/chat/completions"
-                payload = {
-                    "model": settings.LLM1_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.1
-                }
-                cls._log_llm_prompt("KB_ASSIST_OPENAI", settings.LLM1_MODEL, url, prompt)
-                response = cls._post_json(url, headers, payload, settings.LLM1_TIMEOUT_SECONDS)
-                if response.status_code != 200:
-                    raise RuntimeError(f"知识库 LLM 辅助 OpenAI-compatible 调用失败: HTTP {response.status_code}")
-                data = response.json()
-                raw_text = data["choices"][0]["message"]["content"] if "choices" in data else ""
-            return json.loads(cls._strip_json_fences(raw_text))
-        except json.JSONDecodeError as e:
-            logger.error("知识库 LLM 辅助返回 JSON 解析失败: %s", e)
-            raise RuntimeError(f"知识库 LLM 辅助返回 JSON 解析失败: {e}") from e
-        except Exception as e:
-            logger.error("知识库 LLM 辅助调用异常: %s", e)
-            raise
+        eff_timeout = timeout_seconds if timeout_seconds is not None else settings.LLM1_TIMEOUT_SECONDS
+        last_exc: Exception | None = None
+        for attempt in range(max(1, max_retries)):
+            try:
+                if settings.LLM1_API_KEY.startswith("app-"):
+                    payload = {
+                        "inputs": {},
+                        "query": prompt,
+                        "response_mode": "blocking",
+                        "user": user_id
+                    }
+                    response, _, _ = cls._request_dify_blocking(
+                        api_url=settings.LLM1_API_URL,
+                        headers=headers,
+                        payload=payload,
+                        timeout_seconds=eff_timeout,
+                        model=settings.LLM1_MODEL,
+                        prompt=prompt,
+                        log_label="KB_ASSIST_DIFY",
+                    )
+                    if response.status_code != 200:
+                        detail = cls._response_detail(response)
+                        raise RuntimeError(f"知识库 LLM 辅助 Dify 调用失败: HTTP {response.status_code}; {detail}")
+                    raw_text = response.json().get("answer", "")
+                else:
+                    url = settings.LLM1_API_URL.rstrip("/") + "/chat/completions"
+                    payload = {
+                        "model": settings.LLM1_MODEL,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.1
+                    }
+                    cls._log_llm_prompt("KB_ASSIST_OPENAI", settings.LLM1_MODEL, url, prompt)
+                    response = cls._post_json(url, headers, payload, eff_timeout)
+                    if response.status_code != 200:
+                        raise RuntimeError(f"知识库 LLM 辅助 OpenAI-compatible 调用失败: HTTP {response.status_code}")
+                    data = response.json()
+                    raw_text = data["choices"][0]["message"]["content"] if "choices" in data else ""
+                return json.loads(cls._strip_json_fences(raw_text))
+            except json.JSONDecodeError as e:
+                logger.error("知识库 LLM 辅助返回 JSON 解析失败(attempt %d): %s", attempt + 1, e)
+                last_exc = RuntimeError(f"知识库 LLM 辅助返回 JSON 解析失败: {e}")
+            except Exception as e:
+                logger.error("知识库 LLM 辅助调用异常(attempt %d): %s", attempt + 1, e)
+                last_exc = e
+        raise last_exc  # type: ignore[misc]
 
     @classmethod
     def fast_track_scan(cls, user_id: str, content: str):
@@ -2275,15 +2280,21 @@ class IntentEngine:
             ]
             ai_prompt = (
                 "你是销售回复评分器。请使用当前 LLM-1 模型，对下列 AI 候选回复打分。\n"
-                "评分维度：overall, low_barrier, non_repetition, safety, conciseness, style_match, context_alignment。\n"
+                "评分维度：low_barrier, non_repetition, safety, conciseness, style_match, context_alignment。\n"
                 "每个维度取 0-100 的整数。评分要结合线程历史、最近我方已发内容、客户最后状态、风格要求和 CRM 风险。\n"
+                "特别注意：\n"
+                "- conciseness（微信感）字数规则：≤50字应给80-95分，严禁对≤50字的回复给低于75分；"
+                "50-80字给40-70分；>80字给0-30分。\n"
+                "- safety（稳妥度）基准：普通跟进/确认/报价类回复给70-75分；"
+                "只有明确规避违约/法律/品牌风险的回复才可给90+，禁止随意给100分。\n"
+                "- low_barrier（易回复）要求话术一句话结束，没有多余客套。\n"
                 "请只返回 JSON 对象，不要输出 markdown。\n"
                 "JSON 结构：\n"
                 "{\"ai_candidates\": [{\"candidate_id\": \"...\", \"scores\": {...}, \"reason\": \"一句话原因\"}]}\n\n"
                 f"评分输入：{json.dumps(ai_payload, ensure_ascii=False)}"
             )
             try:
-                llm_ai = cls.run_llm1_json_prompt(ai_prompt, user_id="reply_score_ai")
+                llm_ai = cls.run_llm1_json_prompt(ai_prompt, user_id="reply_score_ai", max_retries=2, timeout_seconds=30)
                 for item in llm_ai.get("ai_candidates") or []:
                     candidate_id = str(item.get("candidate_id") or "").strip()
                     target = candidate_by_id.get(candidate_id)
@@ -2291,14 +2302,31 @@ class IntentEngine:
                         continue
                     normalized = {}
                     for key in score_dims:
+                        if key == "overall": continue
                         v = (item.get("scores") or {}).get(key)
                         if v is not None:
                             normalized[key] = cls._clamp_score(float(v))
                     if normalized:
-                        target["scores"] = normalized
-                        target["overall_score"] = normalized.get("overall")
-                        target["score_reason"] = "llm1_scored"
+                        overall_val = (
+                            normalized.get("conciseness", 0) * 0.18 +
+                            normalized.get("low_barrier", 0) * 0.24 +
+                            normalized.get("non_repetition", 0) * 0.22 +
+                            normalized.get("safety", 0) * 0.22 +
+                            normalized.get("style_match", 0) * 0.08 +
+                            normalized.get("context_alignment", 0) * 0.06
+                        )
                         note = str(item.get("reason") or "").strip()
+                        # 硬约束：分项过低时限制总分上限
+                        if normalized.get("conciseness", 100) < 75:
+                            overall_val = min(overall_val, 84)
+                        if normalized.get("low_barrier", 100) < 75:
+                            overall_val = min(overall_val, 84)
+                        if any(kw in note for kw in ["未直接回应", "缺关键事实", "缺具体行动"]):
+                            overall_val = min(overall_val, 82)
+                        normalized["overall"] = cls._clamp_score(overall_val)
+                        target["scores"] = normalized
+                        target["overall_score"] = normalized["overall"]
+                        target["score_reason"] = "llm1_scored"
                         if note:
                             target["score_note"] = note
             except Exception as exc:
@@ -2319,15 +2347,21 @@ class IntentEngine:
             ]
             sales_prompt = (
                 "你是销售回复评分器。请使用当前 LLM-1 模型，对下列销售实发回复打分。\n"
-                "评分维度：overall, low_barrier, non_repetition, safety, conciseness, style_match, context_alignment。\n"
+                "评分维度：low_barrier, non_repetition, safety, conciseness, style_match, context_alignment。\n"
                 "每个维度取 0-100 的整数。评分要结合线程历史、最近我方已发内容、客户最后状态、风格要求和 CRM 风险。\n"
+                "特别注意：\n"
+                "- conciseness（微信感）字数规则：≤50字应给80-95分，严禁对≤50字的回复给低于75分；"
+                "50-80字给40-70分；>80字给0-30分。\n"
+                "- safety（稳妥度）基准：普通跟进/确认/报价类回复给70-75分；"
+                "只有明确规避违约/法律/品牌风险的回复才可给90+，禁止随意给100分。\n"
+                "- low_barrier（易回复）要求话术一句话结束，没有多余客套。\n"
                 "请只返回 JSON 对象，不要输出 markdown。\n"
                 "JSON 结构：\n"
                 "{\"actual_sales_replies\": [{\"reply_id\": \"...\", \"scores\": {...}, \"reason\": \"一句话原因\"}]}\n\n"
                 f"评分输入：{json.dumps(sales_payload, ensure_ascii=False)}"
             )
             try:
-                llm_sales = cls.run_llm1_json_prompt(sales_prompt, user_id="reply_score_sales")
+                llm_sales = cls.run_llm1_json_prompt(sales_prompt, user_id="reply_score_sales", max_retries=2, timeout_seconds=30)
                 for item in llm_sales.get("actual_sales_replies") or []:
                     reply_id = str(item.get("reply_id") or "").strip()
                     target = sales_by_id.get(reply_id)
@@ -2335,14 +2369,31 @@ class IntentEngine:
                         continue
                     normalized = {}
                     for key in score_dims:
+                        if key == "overall": continue
                         v = (item.get("scores") or {}).get(key)
                         if v is not None:
                             normalized[key] = cls._clamp_score(float(v))
                     if normalized:
-                        target["scores"] = normalized
-                        target["overall_score"] = normalized.get("overall")
-                        target["score_reason"] = "llm1_scored"
+                        overall_val = (
+                            normalized.get("conciseness", 0) * 0.18 +
+                            normalized.get("low_barrier", 0) * 0.24 +
+                            normalized.get("non_repetition", 0) * 0.22 +
+                            normalized.get("safety", 0) * 0.22 +
+                            normalized.get("style_match", 0) * 0.08 +
+                            normalized.get("context_alignment", 0) * 0.06
+                        )
                         note = str(item.get("reason") or "").strip()
+                        # 硬约束：分项过低时限制总分上限
+                        if normalized.get("conciseness", 100) < 75:
+                            overall_val = min(overall_val, 84)
+                        if normalized.get("low_barrier", 100) < 75:
+                            overall_val = min(overall_val, 84)
+                        if any(kw in note for kw in ["未直接回应", "缺关键事实", "缺具体行动"]):
+                            overall_val = min(overall_val, 82)
+                        normalized["overall"] = cls._clamp_score(overall_val)
+                        target["scores"] = normalized
+                        target["overall_score"] = normalized["overall"]
+                        target["score_reason"] = "llm1_scored"
                         if note:
                             target["score_note"] = note
             except Exception as exc:
