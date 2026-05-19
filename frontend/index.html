@@ -1891,14 +1891,15 @@
                         <tr>
                             <th class="px-2 py-2 text-left" title="销售场景代码 S01~S12。鼠标悬停每个单元格可看场景的完整业务定义">场景</th>
                             <th class="px-2 py-2 text-left" title="该案例在场景内的排名（1=场景内人工质量分最高，5=该场景最低）+ 案例标题">案例（排名+标题）</th>
-                            <th class="px-2 py-2 text-right" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
-                            <th class="px-2 py-2 text-right" title="${escapeHtml(mdHeaderTip)}">人工原始分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
-                            <th class="px-2 py-2 text-right" title="AI 质量分 − 人工原始分。正值=AI 给得比人工高（可能 AI 高估）；负值=AI 给得比人工低（可能 AI 严苛或链路缺数据）">Δ（AI−人工）</th>
                             <th class="px-2 py-2 text-left" title="本案例的链路最终状态：真实成功 / 真实部分 / 干跑成功 / 异常回退 / HTTP错误 等">链路状态</th>
                             <th class="px-2 py-2 text-left" title="本案例端到端 7 步链路总耗时（毫秒）">耗时</th>
                             <th class="px-2 py-2 text-left" title="步骤1：大模型1 抽取的当前主线话题。悬停看全文">第1步·主线话题</th>
                             <th class="px-2 py-2 text-left" title="步骤4：知识检索的最终状态（命中 / 待人工复核 / 未启动 / 干跑占位）">第4步·知识检索</th>
                             <th class="px-2 py-2 text-left" title="步骤6：大模型2 基于前 5 步生成的销售话术建议（截断显示前 80 字，悬停看全文）">第6步·销售建议</th>
+                            <th class="px-2 py-2 text-left" title="该案例中人工销售实际回复的原文（取核心对话最后一条销售消息）。悬停看全文">销售原始回复</th>
+                            <th class="px-2 py-2 text-right" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
+                            <th class="px-2 py-2 text-right" title="${escapeHtml(mdHeaderTip)}">人工原始分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
+                            <th class="px-2 py-2 text-right" title="AI 质量分 − 人工原始分。正值=AI 给得比人工高（可能 AI 高估）；负值=AI 给得比人工低（可能 AI 严苛或链路缺数据）">Δ（AI−人工）</th>
                             <th class="px-2 py-2 text-left" title="步骤7：多风格候选回复的评分明细，「主模型·私域库·风格1=65.3」表示主模型在私域知识库下的"风格1"候选得分">第7步·风格候选分</th>
                         </tr>
                     </thead>
@@ -1987,6 +1988,14 @@
                 const kbLabel = ({done:'命中', manual_review_required:'待人工复核', not_started:'未启动',
                                   dry_run_stub:'干跑占位', '':''})[kb] || kb;
                 const advice = (r.step6_sales_advice || '').slice(0, 80);
+                // 取核心对话最后一条销售消息作为原始回复
+                const lastSalesReply = (() => {
+                    const dialog = c.core_dialog || [];
+                    for (let i = dialog.length - 1; i >= 0; i--) {
+                        if (dialog[i].role === 'sales' && dialog[i].content) return dialog[i].content;
+                    }
+                    return '';
+                })();
                 const styleScores = (() => {
                     const so = r.step7_reply_scores;
                     if (!so || typeof so !== 'object') return '';
@@ -2001,14 +2010,15 @@
                 return `<tr class="border-t hover:bg-purple-50 cursor-pointer transition" onclick="caselibOpenCaseModal('${r.case_id}', '${r.result_id}')" title="点击查看 ${sc}-${r.scenario_rank} 的完整 7 步链路详情">
                     <td class="px-2 py-2 font-bold text-purple-700" title="${escapeHtml(scTip)}">${sc}</td>
                     <td class="px-2 py-2 max-w-[210px] truncate" title="${escapeHtml(c.case_title || '')}">${escapeHtml(title)}</td>
-                    <td class="px-2 py-2 text-right font-bold text-purple-700" title="${escapeHtml(aiTip)}">${aiTxt}</td>
-                    <td class="px-2 py-2 text-right text-sky-700 font-bold" title="${escapeHtml(mdTip)}">${mdTxt}</td>
-                    <td class="px-2 py-2 text-right ${dltCls}" title="AI − 人工。差值绝对值 ≥1 时高亮：正值AI偏高，负值AI偏低">${dltTxt}</td>
                     <td class="px-2 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="原始状态码：${r.quality_status || ''}">${escapeHtml(qstatus)}</span></td>
                     <td class="px-2 py-2 text-slate-500" title="完整 7 步链路耗时">${r.latency_ms ? r.latency_ms + ' ms' : '-'}</td>
                     <td class="px-2 py-2 max-w-[200px] truncate text-slate-700" title="${escapeHtml(topic)}">${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 text-slate-500" title="原始知识状态：${kb}">${escapeHtml(kbLabel) || '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 max-w-[280px] truncate text-slate-700" title="${escapeHtml(r.step6_sales_advice || '')}">${escapeHtml(advice) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 max-w-[200px] truncate text-slate-600" title="${escapeHtml(lastSalesReply)}">${escapeHtml(lastSalesReply.slice(0,60)) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 text-right font-bold text-purple-700" title="${escapeHtml(aiTip)}">${aiTxt}</td>
+                    <td class="px-2 py-2 text-right text-sky-700 font-bold" title="${escapeHtml(mdTip)}">${mdTxt}</td>
+                    <td class="px-2 py-2 text-right ${dltCls}" title="AI − 人工。差值绝对值 ≥1 时高亮：正值AI偏高，负值AI偏低">${dltTxt}</td>
                     <td class="px-2 py-2 text-slate-600 text-[10px]" title="候选评分明细">${escapeHtml(styleScores) || '<span class="text-slate-400">（无）</span>'}</td>
                 </tr>`;
             }).join('');
