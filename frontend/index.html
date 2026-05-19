@@ -1869,21 +1869,25 @@
                 `共 ${rows.length} 行 / 全集 ${(caselibState.detailAllRows||[]).length} 行`;
 
             const aiHeaderTip = (
-                'AI 质量分（满分100）= reply_scores_v2.ai_candidates 中 overall_score 最高者。\n' +
-                '评分由 LLM-1 给出，包含 7 个维度（每维 0-100）：\n' +
-                '  • overall（总分）：综合质量\n' +
-                '  • low_barrier（易回复）：客户是否容易接住下一句\n' +
-                '  • non_repetition（差异化）：与最近我方已发消息有无重复\n' +
-                '  • safety（稳妥度）：是否触发风险词/承诺过头\n' +
-                '  • conciseness（微信感）：长度与口吻是否像微信短消息\n' +
-                '  • style_match（风格匹配）：是否贴合所选 reply_style\n' +
-                '  • context_alignment（上下文贴合）：是否扣紧线程事实与 CRM\n' +
-                'LLM-1 调用失败时回退为启发式 heuristic_fallback；reply_scores 空时按 advice 字数兜底。\n' +
-                '鼠标悬停在每行 AI 质量分单元格上可看该案例的 7 维分 + LLM 评价理由。'
+                'AI 质量分（满分100）：AI 生成候选中得分最高者。\n' +
+                '包含 7 个维度（每维 0-100）：\n' +
+                '  • 总分（overall）：综合质量\n' +
+                '  • 易回复（low_barrier）：客户是否容易接住下一句\n' +
+                '  • 差异化（non_repetition）：与最近我方已发消息有无重复\n' +
+                '  • 稳妥度（safety）：是否触发风险词或承诺过头\n' +
+                '  • 微信感（conciseness）：长度与口吻是否像微信短消息\n' +
+                '  • 风格匹配（style_match）：是否贴合所选回复风格\n' +
+                '  • 上下文贴合（context_alignment）：是否扣紧线程事实与 CRM\n' +
+                '悬停每行单元格可看该案例的 7 维分明细。'
             );
             const mdHeaderTip = (
                 '人工原始分（满分100）= sales_scenario_cases_v2.md「质量分（最高）」字段，案例入库时固化。\n' +
                 '人工分目前是单一分值，无子维度。悬停单元格可看：场景 / 排名 / 案例标题 / 章节锚点。'
+            );
+            const salesReplyHeaderTip = (
+                '销售原始回复：该案例中人工销售在对话触发点之后发出的第一条回复原文。\n' +
+                '触发点 = step3 强信号扫描识别到的最近客户消息；取触发点之后第一条销售消息。\n' +
+                '同样用 7 维规则打分，可与 AI 候选分对比。悬停单元格可看全文及 7 维分明细。'
             );
             const head = `
                 <table class="w-full text-xs">
@@ -1896,7 +1900,7 @@
                             <th class="px-2 py-2 text-left" title="步骤1：大模型1 抽取的当前主线话题。悬停看全文">第1步·主线话题</th>
                             <th class="px-2 py-2 text-left" title="步骤4：知识检索的最终状态（命中 / 待人工复核 / 未启动 / 干跑占位）">第4步·知识检索</th>
                             <th class="px-2 py-2 text-left" title="步骤6：大模型2 基于前 5 步生成的销售话术建议（截断显示前 80 字，悬停看全文）">第6步·销售建议</th>
-                            <th class="px-2 py-2 text-left" title="该案例中人工销售实际回复的原文（取核心对话最后一条销售消息）。悬停看全文">销售原始回复</th>
+                            <th class="px-2 py-2 text-left" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" title="${escapeHtml(mdHeaderTip)}">人工原始分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" title="AI 质量分 − 人工原始分。正值=AI 给得比人工高（可能 AI 高估）；负值=AI 给得比人工低（可能 AI 严苛或链路缺数据）">Δ（AI−人工）</th>
@@ -1925,11 +1929,17 @@
                 }
                 return String(v).slice(0, 30);
             };
+            const _scoreModeLabel = (scoresObj, topCandidate) => {
+                const mode = (scoresObj && scoresObj.scored_by && scoresObj.scored_by.score_mode) || '';
+                const reason = (topCandidate && topCandidate.score_reason) || '';
+                if (mode.includes('llm1') || reason === 'llm1_scored') return 'LLM-1 直接评分';
+                return '规则启发式打分（非 LLM）';
+            };
             const buildAiCellTip = (r) => {
                 const scoresObj = r.step7_reply_scores;
                 const ac = (scoresObj && typeof scoresObj === 'object') ? (scoresObj.ai_candidates || []) : [];
                 if (!ac.length) {
-                    return 'AI 质量分（满分100）= reply_scores_v2.ai_candidates 中 overall_score 最高者；本案例尚无维度数据（reply_scores_v2 为空，分值来自启发式 advice 字数兜底）。'
+                    return 'AI 质量分（满分100）= ai_candidates 中 overall_score 最高者；本案例尚无 7 维评分数据。'
                         + '\n如需获得 7 维分，请点击页面顶部「重新打分（AI+人工）」。';
                 }
                 const top = ac[0] || {};
@@ -1948,13 +1958,40 @@
                     const v = sub[k];
                     if (v != null) lines.push(`  • ${l}（${k}）= ${Number(v).toFixed(1)}`);
                 });
-                if (top.score_reason) lines.push('LLM 评价：' + String(top.score_reason).slice(0, 240));
+                const reason = top.score_reason || '';
+                if (reason && reason !== 'heuristic_fallback' && reason !== 'llm1_scored') {
+                    lines.push('AI 评价：' + reason.slice(0, 240));
+                }
                 if (top.knowledge_source_label || top.style_title) {
                     lines.push(`来源：${top.knowledge_source_label || ''} · ${top.style_title || ''}`);
                 }
-                const mode = (scoresObj.scored_by || {}).score_mode || '';
-                if (mode) lines.push('打分模式：' + mode);
+                lines.push('打分方式：' + _scoreModeLabel(scoresObj, top));
                 lines.push('（候选数：' + ac.length + '；其它候选可在弹窗"第7步 · 候选评分"查看）');
+                return lines.join('\n');
+            };
+            const buildSalesReplyCellTip = (r) => {
+                const scoresObj = r.step7_reply_scores;
+                const ar = (scoresObj && typeof scoresObj === 'object') ? (scoresObj.actual_sales_replies || []) : [];
+                if (!ar.length) return '销售原始回复：本案例尚无 7 维评分数据。';
+                const top = ar[0] || {};
+                const sub = top.scores || {};
+                const dimMap = [
+                    ['overall', '总分'],
+                    ['low_barrier', '易回复'],
+                    ['non_repetition', '差异化'],
+                    ['safety', '稳妥度'],
+                    ['conciseness', '微信感'],
+                    ['style_match', '风格匹配'],
+                    ['context_alignment', '上下文贴合'],
+                ];
+                const lines = ['销售原始回复 7 维明细（规则启发式打分）：'];
+                dimMap.forEach(([k, l]) => {
+                    const v = sub[k];
+                    if (v != null) lines.push(`  • ${l}（${k}）= ${Number(v).toFixed(1)}`);
+                });
+                const txt = (top.reply_text || '').slice(0, 200);
+                if (txt) lines.push('原文：' + txt + (top.reply_text && top.reply_text.length > 200 ? '…' : ''));
+                lines.push('打分方式：规则启发式打分（非 LLM）');
                 return lines.join('\n');
             };
             const buildMdCellTip = (r, c) => {
@@ -1988,9 +2025,28 @@
                 const kbLabel = ({done:'命中', manual_review_required:'待人工复核', not_started:'未启动',
                                   dry_run_stub:'干跑占位', '':''})[kb] || kb;
                 const advice = (r.step6_sales_advice || '').slice(0, 80);
-                // 取核心对话最后一条销售消息作为原始回复
+                // 取触发点（latest_customer_message）之后的第一条销售消息作为原始回复
                 const lastSalesReply = (() => {
                     const dialog = c.core_dialog || [];
+                    const trigger = r.step3_thread_business_fact
+                        && r.step3_thread_business_fact.merged_facts
+                        && r.step3_thread_business_fact.merged_facts.latest_customer_message;
+                    if (trigger) {
+                        // 找到触发消息最后一次出现的位置
+                        let triggerIdx = -1;
+                        for (let i = dialog.length - 1; i >= 0; i--) {
+                            if (dialog[i].role === 'customer' && dialog[i].content === trigger) {
+                                triggerIdx = i;
+                                break;
+                            }
+                        }
+                        if (triggerIdx >= 0) {
+                            for (let i = triggerIdx + 1; i < dialog.length; i++) {
+                                if (dialog[i].role === 'sales' && dialog[i].content) return dialog[i].content;
+                            }
+                        }
+                    }
+                    // 回退：取最后一条销售消息
                     for (let i = dialog.length - 1; i >= 0; i--) {
                         if (dialog[i].role === 'sales' && dialog[i].content) return dialog[i].content;
                     }
@@ -2015,7 +2071,7 @@
                     <td class="px-2 py-2 max-w-[200px] truncate text-slate-700" title="${escapeHtml(topic)}">${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 text-slate-500" title="原始知识状态：${kb}">${escapeHtml(kbLabel) || '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 max-w-[280px] truncate text-slate-700" title="${escapeHtml(r.step6_sales_advice || '')}">${escapeHtml(advice) || '<span class="text-slate-400">（无）</span>'}</td>
-                    <td class="px-2 py-2 max-w-[200px] truncate text-slate-600" title="${escapeHtml(lastSalesReply)}">${escapeHtml(lastSalesReply.slice(0,60)) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 max-w-[200px] truncate text-slate-600" title="${escapeHtml(buildSalesReplyCellTip(r))}">${escapeHtml(lastSalesReply.slice(0,60)) || '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 text-right font-bold text-purple-700" title="${escapeHtml(aiTip)}">${aiTxt}</td>
                     <td class="px-2 py-2 text-right text-sky-700 font-bold" title="${escapeHtml(mdTip)}">${mdTxt}</td>
                     <td class="px-2 py-2 text-right ${dltCls}" title="AI − 人工。差值绝对值 ≥1 时高亮：正值AI偏高，负值AI偏低">${dltTxt}</td>
