@@ -1734,8 +1734,14 @@
                 `代码版本 = ${it.git_short_sha || '-'}${it.git_dirty ? ' (含未提交改动)' : ''}  ｜  触发于 ${tt}  ｜  运行状态 = ${caselibRunStatusLabel(it.status)}`;
 
             // === 顶部速览卡片：本次平均 / 原始平均 / Δ ===
+            const getSalesScore = r => {
+                const ar = ((r.step7_reply_scores && r.step7_reply_scores.actual_sales_replies) || []);
+                const s = ar[0];
+                if (!s || s.score_reason === 'llm1_failed') return null;
+                return s.overall_score != null ? s.overall_score : ((s.scores || {}).overall ?? null);
+            };
             const aiScores = allRows.map(r => r.quality_score).filter(v => v != null);
-            const mdScores = allRows.map(r => (r.case && r.case.quality_score_md)).filter(v => v != null);
+            const mdScores = allRows.map(r => getSalesScore(r)).filter(v => v != null);
             const aiAvg = aiScores.length ? (aiScores.reduce((a,b)=>a+b,0) / aiScores.length) : null;
             const mdAvg = mdScores.length ? (mdScores.reduce((a,b)=>a+b,0) / mdScores.length) : null;
             const delta = (aiAvg != null && mdAvg != null) ? (aiAvg - mdAvg) : null;
@@ -1752,9 +1758,9 @@
                 '若想拿到 7 维分，点击下方「重新打分（AI + 人工）」。'
             );
             const mdCardTip = (
-                '人工原始分平均 = 60 案例 quality_score_md 的算术平均（满分100）。\n' +
-                '单案例 quality_score_md = sales_scenario_cases_v2.md「质量分（最高）」字段，案例入库时固化。\n' +
-                '人工分为单一分值，无子维度。'
+                '销售原始回复平均分 = 已打分案例的 LLM-1 overall 算术平均（满分100）。\n' +
+                '单案例分值来自 step7_reply_scores.actual_sales_replies[0].overall_score，与 AI 质量分同一评分器、同 7 维度。\n' +
+                '未打分或打分失败的案例不计入平均。'
             );
             const summaryCard = `
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
@@ -1763,10 +1769,10 @@
                         <div class="text-xl font-bold text-purple-800">${aiAvg != null ? aiAvg.toFixed(2) : '—'}</div>
                     </div>
                     <div class="rounded-xl border border-sky-100 bg-sky-50 p-3" title="${escapeHtml(mdCardTip)}">
-                        <div class="text-[10px] text-sky-700 font-bold">人工原始分平均 <span class="text-slate-400">ⓘ</span></div>
+                        <div class="text-[10px] text-sky-700 font-bold">销售原始回复分平均 <span class="text-slate-400">ⓘ</span></div>
                         <div class="text-xl font-bold text-sky-800">${mdAvg != null ? mdAvg.toFixed(2) : '—'}</div>
                     </div>
-                    <div class="rounded-xl border ${delta == null ? 'border-slate-200 bg-slate-50' : (delta > 0 ? 'border-emerald-100 bg-emerald-50' : 'border-red-100 bg-red-50')} p-3" title="AI 评分 - 人工原始分。正值表示 AI 比人工评分高（可能高估），负值表示 AI 比人工低（可能 AI 更严苛或链路有问题）">
+                    <div class="rounded-xl border ${delta == null ? 'border-slate-200 bg-slate-50' : (delta > 0 ? 'border-emerald-100 bg-emerald-50' : 'border-red-100 bg-red-50')} p-3" title="AI 质量分 − 销售原始回复分（均为 LLM-1 打分）。正值表示 AI 回复比人工原始回复得分更高；负值表示 AI 回复不如人工原始回复">
                         <div class="text-[10px] ${delta == null ? 'text-slate-500' : (delta > 0 ? 'text-emerald-700' : 'text-red-700')} font-bold">Δ（AI − 人工）</div>
                         <div class="text-xl font-bold ${delta == null ? 'text-slate-400' : (delta > 0 ? 'text-emerald-800' : 'text-red-800')}">${delta == null ? '—' : (delta > 0 ? '+' : '') + delta.toFixed(2)}</div>
                     </div>
@@ -1852,7 +1858,7 @@
             if (f.scenario) rows = rows.filter(r => r.scenario_code === f.scenario);
             const deltaOf = r => {
                 const ai = r.quality_score;
-                const md = r.case && r.case.quality_score_md;
+                const md = getSalesScore(r);
                 return (ai != null && md != null) ? (ai - md) : null;
             };
             const cmpNullLast = (a, b) => (a == null) - (b == null) || (a == null ? 0 : a - b);
@@ -1881,8 +1887,8 @@
                 '悬停每行单元格可看该案例的 7 维分明细。'
             );
             const mdHeaderTip = (
-                '人工原始分（满分100）：人工销售实际回复的质量评估，来自 sales_scenario_cases_v2.md 手动标注，案例入库时固化。\n' +
-                '仅单一总分，无子维度。悬停单元格可看该案例的分值 / 场景 / 排名 / 案例标题。'
+                '销售原始回复分（满分100）：LLM-1 对人工销售实际发出的回复打的分，与 AI 质量分同一评分器、同 7 维度。\n' +
+                '来自 step7_reply_scores.actual_sales_replies[0]，悬停单元格可看 7 维明细。'
             );
             const salesReplyHeaderTip = (
                 '销售原始回复：该案例中人工销售在对话触发点之后发出的第一条回复原文。\n' +
@@ -1902,8 +1908,8 @@
                             <th class="px-2 py-2 text-left" title="步骤6：大模型2 基于前 5 步生成的 AI 回复建议（截断显示前 80 字，悬停看全文）">第6步·AI生成回复</th>
                             <th class="px-2 py-2 text-left" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
-                            <th class="px-2 py-2 text-right" title="${escapeHtml(mdHeaderTip)}">人工原始分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
-                            <th class="px-2 py-2 text-right" title="AI 质量分 − 人工原始分。正值=AI 给得比人工高（可能 AI 高估）；负值=AI 给得比人工低（可能 AI 严苛或链路缺数据）">Δ（AI−人工）</th>
+                            <th class="px-2 py-2 text-right" title="${escapeHtml(mdHeaderTip)}">原始回复分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
+                            <th class="px-2 py-2 text-right" title="AI 质量分 − 销售原始回复分（均为 LLM-1 打分）。正值=AI 回复比销售原始回复评分高；负值=AI 回复比销售原始回复评分低">Δ（AI−原始）</th>
                             <th class="px-2 py-2 text-left" title="步骤7：多风格候选回复的评分明细，「主模型·私域库·风格1=65.3」表示主模型在私域知识库下的"风格1"候选得分">第7步·风格候选分</th>
                         </tr>
                     </thead>
@@ -2016,7 +2022,7 @@
                 const scTip = caselibScenarioTip(sc);
                 const title = `${r.scenario_rank || '?'}. ${c.case_title || ''}`;
                 const ai = r.quality_score;
-                const md = c.quality_score_md;
+                const md = getSalesScore(r);
                 const dlt = (ai != null && md != null) ? (ai - md) : null;
                 const aiTxt = ai != null ? ai.toFixed(2) : '-';
                 const mdTxt = md != null ? Number(md).toFixed(1) : '-';
@@ -2025,7 +2031,7 @@
                                (Math.abs(dlt) < 1 ? 'text-slate-600' :
                                 (dlt > 0 ? 'text-emerald-700 font-bold' : 'text-red-700 font-bold'));
                 const aiTip = buildAiCellTip(r);
-                const mdTip = buildMdCellTip(r, c);
+                const mdTip = buildSalesReplyCellTip(r);
                 const qstatus = caselibQualityStatusLabel(r.quality_status);
                 const qstatusCls = caselibQualityStatusColor(r.quality_status);
                 const topic = (r.step1_summary && (r.step1_summary.topic || r.step1_summary.core_demand)) || '';
