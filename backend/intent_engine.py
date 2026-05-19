@@ -2242,94 +2242,111 @@ class IntentEngine:
             sales_scores.append(entry)
             sales_by_id[str(item.get("id"))] = entry
 
-        if ai_candidates or sales_scores:
-            evaluation_payload = {
-                "summary": {
-                    "topic": (summary_json or {}).get("topic"),
-                    "core_demand": (summary_json or {}).get("core_demand"),
-                    "status": (summary_json or {}).get("status"),
-                },
-                "thread_context": cls.sanitize_thread_fact_for_prompt(thread_fact),
-                "crm_context": cls.sanitize_crm_context_for_prompt(crm_context),
-                "candidates": [
-                    {
-                        "candidate_id": item.get("candidate_id"),
-                        "model_slot": item.get("model_slot"),
-                        "model_label": item.get("model_label"),
-                        "model_display_name": item.get("model_display_name"),
-                        "knowledge_source": item.get("knowledge_source"),
-                        "knowledge_source_label": item.get("knowledge_source_label"),
-                        "style_title": item.get("style_title"),
-                        "reply_text": item.get("reply_text"),
-                    }
-                    for item in ai_candidates
-                ],
-                "actual_sales_replies": [
-                    {
-                        "reply_id": item.get("reply_id"),
-                        "time": item.get("time"),
-                        "content": item.get("content"),
-                    }
-                    for item in sales_scores
-                ],
-                "dimensions": [
-                    "overall",
-                    "low_barrier",
-                    "non_repetition",
-                    "safety",
-                    "conciseness",
-                    "style_match",
-                    "context_alignment",
-                ],
-            }
-            score_prompt = (
-                "你是销售回复评分器。请使用当前 LLM-1 模型，对下列候选回复和销售实发回复分别打分。\n"
+        base_context = {
+            "summary": {
+                "topic": (summary_json or {}).get("topic"),
+                "core_demand": (summary_json or {}).get("core_demand"),
+                "status": (summary_json or {}).get("status"),
+            },
+            "thread_context": cls.sanitize_thread_fact_for_prompt(thread_fact),
+            "crm_context": cls.sanitize_crm_context_for_prompt(crm_context),
+            "dimensions": [
+                "overall", "low_barrier", "non_repetition", "safety",
+                "conciseness", "style_match", "context_alignment",
+            ],
+        }
+        score_dims = ["overall", "low_barrier", "non_repetition", "safety", "conciseness", "style_match", "context_alignment"]
+
+        # --- AI 候选独立评分 ---
+        if ai_candidates:
+            ai_payload = dict(base_context)
+            ai_payload["candidates"] = [
+                {
+                    "candidate_id": item.get("candidate_id"),
+                    "model_slot": item.get("model_slot"),
+                    "model_label": item.get("model_label"),
+                    "model_display_name": item.get("model_display_name"),
+                    "knowledge_source": item.get("knowledge_source"),
+                    "knowledge_source_label": item.get("knowledge_source_label"),
+                    "style_title": item.get("style_title"),
+                    "reply_text": item.get("reply_text"),
+                }
+                for item in ai_candidates
+            ]
+            ai_prompt = (
+                "你是销售回复评分器。请使用当前 LLM-1 模型，对下列 AI 候选回复打分。\n"
                 "评分维度：overall, low_barrier, non_repetition, safety, conciseness, style_match, context_alignment。\n"
                 "每个维度取 0-100 的整数。评分要结合线程历史、最近我方已发内容、客户最后状态、风格要求和 CRM 风险。\n"
                 "请只返回 JSON 对象，不要输出 markdown。\n"
                 "JSON 结构：\n"
-                "{\n"
-                "  \"ai_candidates\": [{\"candidate_id\": \"...\", \"scores\": {...}, \"reason\": \"一句话原因\"}],\n"
-                "  \"actual_sales_replies\": [{\"reply_id\": \"...\", \"scores\": {...}, \"reason\": \"一句话原因\"}]\n"
-                "}\n\n"
-                f"评分输入：{json.dumps(evaluation_payload, ensure_ascii=False)}"
+                "{\"ai_candidates\": [{\"candidate_id\": \"...\", \"scores\": {...}, \"reason\": \"一句话原因\"}]}\n\n"
+                f"评分输入：{json.dumps(ai_payload, ensure_ascii=False)}"
             )
             try:
-                llm_scores = cls.run_llm1_json_prompt(score_prompt, user_id="reply_score")
-                for item in llm_scores.get("ai_candidates") or []:
+                llm_ai = cls.run_llm1_json_prompt(ai_prompt, user_id="reply_score_ai")
+                for item in llm_ai.get("ai_candidates") or []:
                     candidate_id = str(item.get("candidate_id") or "").strip()
                     target = candidate_by_id.get(candidate_id)
                     if not target:
                         continue
-                    score_block = item.get("scores") or {}
                     normalized = {}
-                    for key in ["overall", "low_barrier", "non_repetition", "safety", "conciseness", "style_match", "context_alignment"]:
-                        v = score_block.get(key)
+                    for key in score_dims:
+                        v = (item.get("scores") or {}).get(key)
                         if v is not None:
                             normalized[key] = cls._clamp_score(float(v))
                     if normalized:
                         target["scores"] = normalized
                         target["overall_score"] = normalized.get("overall")
-                        target["score_reason"] = str(item.get("reason") or "llm1_scored").strip()
-                for item in llm_scores.get("actual_sales_replies") or []:
+                        target["score_reason"] = "llm1_scored"
+                        note = str(item.get("reason") or "").strip()
+                        if note:
+                            target["score_note"] = note
+            except Exception as exc:
+                logger.error("LLM-1 AI评分失败: %s", exc)
+                for entry in ai_candidates:
+                    entry["score_reason"] = "llm1_failed"
+
+        # --- 销售原始回复独立评分 ---
+        if sales_scores:
+            sales_payload = dict(base_context)
+            sales_payload["actual_sales_replies"] = [
+                {
+                    "reply_id": item.get("reply_id"),
+                    "time": item.get("time"),
+                    "content": item.get("content"),
+                }
+                for item in sales_scores
+            ]
+            sales_prompt = (
+                "你是销售回复评分器。请使用当前 LLM-1 模型，对下列销售实发回复打分。\n"
+                "评分维度：overall, low_barrier, non_repetition, safety, conciseness, style_match, context_alignment。\n"
+                "每个维度取 0-100 的整数。评分要结合线程历史、最近我方已发内容、客户最后状态、风格要求和 CRM 风险。\n"
+                "请只返回 JSON 对象，不要输出 markdown。\n"
+                "JSON 结构：\n"
+                "{\"actual_sales_replies\": [{\"reply_id\": \"...\", \"scores\": {...}, \"reason\": \"一句话原因\"}]}\n\n"
+                f"评分输入：{json.dumps(sales_payload, ensure_ascii=False)}"
+            )
+            try:
+                llm_sales = cls.run_llm1_json_prompt(sales_prompt, user_id="reply_score_sales")
+                for item in llm_sales.get("actual_sales_replies") or []:
                     reply_id = str(item.get("reply_id") or "").strip()
                     target = sales_by_id.get(reply_id)
                     if not target:
                         continue
-                    score_block = item.get("scores") or {}
                     normalized = {}
-                    for key in ["overall", "low_barrier", "non_repetition", "safety", "conciseness", "style_match", "context_alignment"]:
-                        v = score_block.get(key)
+                    for key in score_dims:
+                        v = (item.get("scores") or {}).get(key)
                         if v is not None:
                             normalized[key] = cls._clamp_score(float(v))
                     if normalized:
                         target["scores"] = normalized
                         target["overall_score"] = normalized.get("overall")
-                        target["score_reason"] = str(item.get("reason") or "llm1_scored").strip()
+                        target["score_reason"] = "llm1_scored"
+                        note = str(item.get("reason") or "").strip()
+                        if note:
+                            target["score_note"] = note
             except Exception as exc:
-                logger.error("LLM-1 评分失败: %s", exc)
-                for entry in ai_candidates:
-                    entry["score_reason"] = "llm1_failed"
+                logger.error("LLM-1 销售评分失败: %s", exc)
                 for entry in sales_scores:
                     entry["score_reason"] = "llm1_failed"
 
