@@ -2292,6 +2292,7 @@ class IntentEngine:
         crm_context: dict | None = None,
         candidates: list[dict] | None = None,
         actual_sales_replies: list[dict] | None = None,
+        skip_llm: bool = False,
     ) -> dict:
         thread_fact = knowledge_payload.get("thread_business_fact") if isinstance(knowledge_payload, dict) else None
         ai_candidates: list[dict] = []
@@ -2394,7 +2395,7 @@ class IntentEngine:
                 "context_alignment",
             ],
         }
-        if ai_candidates or sales_scores:
+        if not skip_llm and (ai_candidates or sales_scores):
             score_prompt = (
                 "你是销售回复评分器。请使用当前 LLM-1 模型，对下列候选回复和销售实发回复分别打分。\n"
                 "评分维度：overall, low_barrier, non_repetition, safety, conciseness, style_match, context_alignment。\n"
