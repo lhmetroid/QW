@@ -18157,60 +18157,66 @@ async def caselib_rescore_iteration(run_id: str):
     2. 人工原始分：执行 backend/_case_lib_import.py 从 sales_scenario_cases_v2.md 重新装载 quality_score_md。
     最后刷新 run 的 avg/min/max。
     """
-    db = SessionLocal()
-    try:
-        run = db.query(CaseIterationRun).filter(CaseIterationRun.run_id == run_id).first()
-        if not run:
-            return {"status": "failed", "error": f"run_id 不存在: {run_id}"}
-        results = db.query(CaseIterationResult).filter(CaseIterationResult.run_id == run_id).all()
-        scored_n = 0; skipped_n = 0; reasons: dict = {}
-        for rr in results:
-            ret = _caselib_rescore_one_result(rr)
-            if ret.get("scored"):
-                scored_n += 1
-            else:
-                skipped_n += 1
-                tag = ret.get("reason") or "unknown"
-                reasons[tag] = reasons.get(tag, 0) + 1
-        # 刷新 run 汇总
-        valid_scores = [float(r.quality_score) for r in results if r.quality_score is not None]
-        if valid_scores:
-            run.avg_quality_score = round(sum(valid_scores) / len(valid_scores), 2)
-            run.min_quality_score = round(min(valid_scores), 2)
-            run.max_quality_score = round(max(valid_scores), 2)
-        run.updated_at = datetime.utcnow()
-        db.commit()
+    import asyncio
+    loop = asyncio.get_event_loop()
 
-        # 重新装载 quality_score_md
-        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        script = os.path.join(repo_root, "backend", "_case_lib_import.py")
-        md_status = "skipped"
-        md_stderr = ""
+    def _do_rescore():
+        db = SessionLocal()
         try:
-            proc = subprocess.run(["python", script], cwd=repo_root,
-                                  capture_output=True, text=True, timeout=120)
-            md_status = "success" if proc.returncode == 0 else f"failed_rc{proc.returncode}"
-            md_stderr = proc.stderr[-500:] if proc.stderr else ""
-        except Exception as e:
-            md_status = f"err:{str(e)[:120]}"
+            run = db.query(CaseIterationRun).filter(CaseIterationRun.run_id == run_id).first()
+            if not run:
+                return {"status": "failed", "error": f"run_id 不存在: {run_id}"}
+            results = db.query(CaseIterationResult).filter(CaseIterationResult.run_id == run_id).all()
+            scored_n = 0; skipped_n = 0; reasons: dict = {}
+            for rr in results:
+                ret = _caselib_rescore_one_result(rr)
+                if ret.get("scored"):
+                    scored_n += 1
+                else:
+                    skipped_n += 1
+                    tag = ret.get("reason") or "unknown"
+                    reasons[tag] = reasons.get(tag, 0) + 1
+            # 刷新 run 汇总
+            valid_scores = [float(r.quality_score) for r in results if r.quality_score is not None]
+            if valid_scores:
+                run.avg_quality_score = round(sum(valid_scores) / len(valid_scores), 2)
+                run.min_quality_score = round(min(valid_scores), 2)
+                run.max_quality_score = round(max(valid_scores), 2)
+            run.updated_at = datetime.utcnow()
+            db.commit()
 
-        return {
-            "status": "success",
-            "run_id": run_id,
-            "version_no": run.version_no,
-            "ai_rescore": {
-                "scored": scored_n,
-                "skipped": skipped_n,
-                "skip_reasons": reasons,
-            },
-            "md_reimport": {
-                "status": md_status,
-                "stderr_tail": md_stderr,
-            },
-            "iteration": _caselib_serialize_run(run),
-        }
-    finally:
-        db.close()
+            # 重新装载 quality_score_md
+            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            script = os.path.join(repo_root, "backend", "_case_lib_import.py")
+            md_status = "skipped"
+            md_stderr = ""
+            try:
+                proc = subprocess.run(["python", script], cwd=repo_root,
+                                      capture_output=True, text=True, timeout=120)
+                md_status = "success" if proc.returncode == 0 else f"failed_rc{proc.returncode}"
+                md_stderr = proc.stderr[-500:] if proc.stderr else ""
+            except Exception as e:
+                md_status = f"err:{str(e)[:120]}"
+
+            return {
+                "status": "success",
+                "run_id": run_id,
+                "version_no": run.version_no,
+                "ai_rescore": {
+                    "scored": scored_n,
+                    "skipped": skipped_n,
+                    "skip_reasons": reasons,
+                },
+                "md_reimport": {
+                    "status": md_status,
+                    "stderr_tail": md_stderr,
+                },
+                "iteration": _caselib_serialize_run(run),
+            }
+        finally:
+            db.close()
+
+    return await loop.run_in_executor(None, _do_rescore)
 
 
 # ============== 三 AI 分析与下一步建议：人工填 + LLM-1 汇总 ==============

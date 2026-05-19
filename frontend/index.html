@@ -2021,20 +2021,14 @@
             const r = (detail.results || []).find(x => x.result_id === resultId);
             if (!r) return;
             const c = r.case || {};
+
             const ctxList = (c.context_messages || []).map(m =>
                 `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
             ).join('');
             const coreList = (c.core_dialog || []).map(m =>
                 `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
             ).join('');
-            const stepBlock = (label, tip, val) => `
-                <div class="rounded-lg border bg-white p-3 mb-2" title="${escapeHtml(tip)}">
-                    <div class="text-[10px] font-bold text-slate-500 mb-1">${label}</div>
-                    <pre class="text-[11px] text-slate-700 whitespace-pre-wrap leading-snug max-h-[200px] overflow-auto">${escapeHtml(typeof val === 'string' ? val : JSON.stringify(val, null, 2))}</pre>
-                </div>`;
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
-            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
             const qstatus = caselibQualityStatusLabel(r.quality_status);
             const scTip = caselibScenarioTip(r.scenario_code);
             const scName = caselibScenarioName(r.scenario_code);
@@ -2042,6 +2036,208 @@
             const dlt = (ai != null && md != null) ? (ai - md) : null;
             const dltStr = dlt != null ? (dlt > 0 ? '+' : '') + dlt.toFixed(2) : '—';
             const dltCls = dlt == null ? 'text-slate-500' : (dlt > 0 ? 'text-emerald-700' : 'text-red-700');
+
+            // parse possibly-string JSON field
+            const safeObj = (v) => {
+                if (!v) return null;
+                if (typeof v === 'string') { try { return JSON.parse(v); } catch { return null; } }
+                return v;
+            };
+            const safeArr = (v) => {
+                if (Array.isArray(v)) return v;
+                if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return v ? [v] : []; } }
+                return [];
+            };
+
+            // step card wrapper
+            const stepCard = (num, title, content, statusLabel = '', statusCls = '') => `
+                <div class="rounded-lg border bg-white p-3 mb-2">
+                    <div class="flex items-center gap-1.5 mb-2">
+                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800 min-w-[22px] text-center">${num}</span>
+                        <span class="text-[10px] font-bold text-slate-700">${title}</span>
+                        ${statusLabel ? `<span class="ml-auto text-[9px] px-1.5 py-0.5 rounded ${statusCls||'bg-slate-100 text-slate-600'}">${statusLabel}</span>` : ''}
+                    </div>
+                    ${content}
+                </div>`;
+
+            // labeled field row
+            const frow = (label, val, cls = '') => (val != null && val !== '' && val !== undefined)
+                ? `<div class="flex gap-1 text-[11px] mb-0.5"><span class="text-slate-400 shrink-0 w-[68px]">${label}</span><span class="${cls||'text-slate-800'}">${escapeHtml(String(val))}</span></div>`
+                : '';
+
+            // tag badges row
+            const chips = (items, cls = 'bg-slate-100 text-slate-700') => items.length
+                ? `<div class="flex flex-wrap gap-1 mt-1">${items.map(i => `<span class="text-[9px] px-1.5 py-0.5 rounded-full ${cls}">${escapeHtml(String(i))}</span>`).join('')}</div>`
+                : '';
+
+            // ===== 02 强信号扫描 (step3_thread_business_fact) =====
+            const s3 = safeObj(r.step3_thread_business_fact);
+            let html02;
+            if (!s3) {
+                html02 = `<div class="text-[11px] text-red-500">失败：无线程业务事实数据</div>`;
+            } else {
+                const sig = s3.stage_signals || {};
+                const mf = s3.merged_facts || {};
+                const sigMap = {
+                    awaiting_customer_reply: '等待客户回复', followup_after_no_reply: '无回复后跟进',
+                    has_formal_quote: '已报价', crm_has_quote_history: 'CRM有报价记录',
+                    payment_discussed: '已讨论付款', payment_confirmed: '付款已确认',
+                    shipment_discussed: '已讨论发货', shipment_confirmed: '发货已确认',
+                    after_sales_open: '售后跟进中', waiting_customer_material: '等待客户素材',
+                    sales_only_conversation: '仅销售发言'
+                };
+                const stateMap = { inquiry: '询价阶段', follow_up: '跟进阶段', negotiation: '谈判阶段', closed: '已成交', process: '推进中' };
+                const styleMap = { wechat_brief: '微信口语', formal: '正式', mixed: '混合' };
+                const activeSignals = Object.entries(sig).filter(([k,v]) => v === true && sigMap[k]).map(([k]) => sigMap[k]);
+                html02 = `
+                    ${frow('业务阶段', stateMap[s3.business_state] || s3.business_state)}
+                    ${frow('场景标签', s3.scenario_label)}
+                    ${frow('语言风格', styleMap[s3.language_style] || s3.language_style)}
+                    ${frow('会话状态', mf.summary_status || s3.core_demand)}
+                    ${activeSignals.length
+                        ? `<div class="text-[10px] text-slate-500 mt-1.5 mb-0.5">已激活信号</div>${chips(activeSignals, 'bg-amber-50 text-amber-800 border border-amber-200')}`
+                        : '<div class="text-[10px] text-slate-400 mt-1">无活跃业务信号</div>'}
+                    ${mf.latest_sales_message ? `<div class="mt-1.5"><div class="text-[10px] text-slate-500 mb-0.5">最近销售消息</div><div class="text-[11px] text-slate-700 bg-emerald-50 rounded px-2 py-1">${escapeHtml(mf.latest_sales_message)}</div></div>` : ''}
+                    ${mf.latest_customer_message ? `<div class="mt-1"><div class="text-[10px] text-slate-500 mb-0.5">最近客户消息</div><div class="text-[11px] text-slate-700 bg-blue-50 rounded px-2 py-1">${escapeHtml(mf.latest_customer_message)}</div></div>` : ''}`;
+            }
+            const s3State = s3 ? ({ inquiry:'询价阶段',follow_up:'跟进阶段',negotiation:'谈判阶段',closed:'已成交',process:'推进中' }[s3.business_state] || s3.business_state || '') : '';
+            const step02 = stepCard('02', '强信号扫描', html02, s3State, s3 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700');
+
+            // ===== 03 第一阶段特征提取 (step1_summary) =====
+            const s1 = safeObj(r.step1_summary);
+            let html03;
+            if (!s1) {
+                html03 = `<div class="text-[11px] text-red-500">失败：无 LLM-1 摘要数据</div>`;
+            } else {
+                const kf = s1.key_facts || {};
+                const todos = safeArr(s1.todo_items);
+                const risks = safeArr(s1.risks);
+                const timeline = Array.isArray(kf.timeline_items) ? kf.timeline_items : [];
+                html03 = `
+                    ${frow('主线话题', s1.topic, 'text-slate-900 font-medium')}
+                    ${frow('核心诉求', s1.core_demand)}
+                    ${kf.current_focus ? frow('当前焦点', kf.current_focus) : ''}
+                    ${timeline.length ? `<div class="mt-1.5"><div class="text-[10px] text-slate-500 mb-0.5">时间轴事项（${timeline.length}）</div>${timeline.map(t => `<div class="text-[11px] text-slate-700 bg-slate-50 rounded px-2 py-0.5 mb-0.5">${escapeHtml(t.time||'')} · ${escapeHtml(t.topic||'')} <span class="text-slate-400">[${escapeHtml(t.status||'')}]</span></div>`).join('')}</div>` : ''}
+                    ${todos.length ? `<div class="mt-1.5"><div class="text-[10px] text-slate-500 mb-0.5">待跟进（${todos.length}）</div><ul class="list-disc list-inside">${todos.map(t => `<li class="text-[11px] text-slate-700">${escapeHtml(t)}</li>`).join('')}</ul></div>` : ''}
+                    ${risks.length ? `<div class="mt-1.5"><div class="text-[10px] text-slate-500 mb-0.5">风险</div>${chips(risks, 'bg-red-50 text-red-700 border border-red-200')}</div>` : ''}`;
+            }
+            const step03 = stepCard('03', '第一阶段特征提取', html03, s1 ? '已完成' : '失败', s1 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700');
+
+            // ===== 04 客户画像 (step2_crm_info) =====
+            const s2 = safeObj(r.step2_crm_info);
+            let html04;
+            if (!s2) {
+                html04 = `<div class="text-[11px] text-red-500">失败：无 CRM 数据</div>`;
+            } else if (s2.crm_profile_status === 'not_found') {
+                html04 = `
+                    <div class="text-[11px] text-slate-500 italic mb-1">${escapeHtml(s2.crm_profile_error || '未找到客户资料')}</div>
+                    ${frow('客户ID', s2.crm_external_userid, 'font-mono text-slate-500')}`;
+            } else {
+                html04 = `
+                    ${frow('联系人', s2.crm_contact_name)}
+                    ${frow('公司', s2.company_name)}
+                    ${frow('行业', s2.company_industry)}
+                    ${frow('客户等级', s2.customer_tier)}
+                    ${frow('支付风险', s2.payment_risk_level)}
+                    ${frow('生命周期', s2.customer_lifecycle_stage)}
+                    ${s2.recent_opportunities ? frow('近期商机', s2.recent_opportunities) : ''}
+                    ${s2.recent_quote_summary ? frow('报价摘要', s2.recent_quote_summary) : ''}
+                    ${(s2.high_risk_flags||[]).length ? `<div class="mt-1">${chips(s2.high_risk_flags,'bg-red-50 text-red-700 border border-red-200')}</div>` : ''}`;
+            }
+            const step04StatusLabel = !s2 ? '失败' : s2.crm_profile_status === 'not_found' ? 'CRM未找到' : '已获取';
+            const step04StatusCls = !s2 ? 'bg-red-50 text-red-700' : s2.crm_profile_status === 'not_found' ? 'bg-slate-100 text-slate-600' : 'bg-green-50 text-green-700';
+            const step04 = stepCard('04', '客户画像', html04, step04StatusLabel, step04StatusCls);
+
+            // ===== 05 知识库 (step4_knowledge.knowledge_v2) =====
+            const s4 = safeObj(r.step4_knowledge);
+            const kv2 = s4 ? safeObj(s4.knowledge_v2) : null;
+            let html05;
+            if (!kv2) {
+                html05 = `<div class="text-[11px] text-red-500">失败：无知识库数据</div>`;
+            } else {
+                const kStatusMap = {
+                    manual_review_required:'需人工复核', ok:'正常', low_confidence:'低置信度',
+                    skipped_no_query:'无检索问题跳过', skipped_missing_knowledge:'无知识跳过', failed:'失败'
+                };
+                const refs = kv2.evidence_refs || [];
+                html05 = `
+                    ${frow('检索问题', kv2.query_text)}
+                    ${kv2.retrieval_quality != null ? frow('检索质量', kv2.retrieval_quality) : ''}
+                    ${refs.length ? `<div class="mt-1.5"><div class="text-[10px] text-slate-500 mb-0.5">知识证据（${refs.length} 条）</div>${refs.slice(0,3).map(ref => `<div class="text-[11px] bg-sky-50 border border-sky-100 rounded px-2 py-1 mb-1"><div class="font-medium text-sky-800 text-[10px] mb-0.5">${escapeHtml(ref.title||'')}</div><div class="text-slate-600">${escapeHtml(ref.snippet||'')}</div></div>`).join('')}</div>` : ''}
+                    ${kv2.no_hit_reason ? `<div class="text-[11px] text-slate-500 italic mt-1">无命中：${escapeHtml(kv2.no_hit_reason)}</div>` : ''}
+                    ${kv2.manual_review_required ? `<div class="text-[10px] text-amber-700 mt-1">⚠ 知识命中需人工复核，话术需保守使用</div>` : ''}`;
+            }
+            const kv2Status = kv2 ? kv2.status : '';
+            const step05StatusLabel = !kv2 ? '失败' : kv2Status === 'manual_review_required' ? '需复核' : kv2Status === 'ok' ? '正常' : (kv2Status||'');
+            const step05StatusCls = !kv2 ? 'bg-red-50 text-red-700' : kv2Status === 'manual_review_required' ? 'bg-amber-50 text-amber-700' : kv2Status === 'ok' ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-600';
+            const step05 = stepCard('05', '知识库（当前）', html05, step05StatusLabel, step05StatusCls);
+
+            // ===== 06 第二阶段话术生成 (step7_reply_styles[0]) =====
+            const styles7 = Array.isArray(r.step7_reply_styles) ? r.step7_reply_styles : safeArr(r.step7_reply_styles);
+            const s7s = styles7.length ? styles7[0] : null;
+            let html06;
+            if (!s7s) {
+                html06 = `<div class="text-[11px] text-red-500">失败：无话术生成数据</div>`;
+            } else if (s7s.status !== 'done' && s7s.status !== 'ready') {
+                html06 = `<div class="text-[11px] text-red-500">失败：${escapeHtml(s7s.reason || s7s.status || '未知')}</div>`;
+            } else {
+                const warns = (s7s.validation || {}).warnings || [];
+                html06 = `
+                    <div class="flex gap-1 flex-wrap mb-2">
+                        <span class="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-800">${escapeHtml(s7s.model_label||'')}</span>
+                        <span class="text-[9px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">${escapeHtml(s7s.style_title||'')}</span>
+                        <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">${escapeHtml(s7s.knowledge_source_label||s7s.knowledge_source||'')}</span>
+                    </div>
+                    <div class="text-[10px] text-slate-500 mb-1">生成话术</div>
+                    <div class="text-[12px] text-slate-900 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 leading-relaxed">${escapeHtml(s7s.reply_reference||'')}</div>
+                    ${warns.length ? `<div class="mt-1.5">${warns.map(w=>`<div class="text-[10px] text-amber-700">⚠ ${escapeHtml(w)}</div>`).join('')}</div>` : ''}`;
+            }
+            const step06StatusLabel = !s7s ? '失败' : s7s.status === 'done' ? '已生成' : s7s.status;
+            const step06StatusCls = !s7s ? 'bg-red-50 text-red-700' : s7s.status === 'done' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700';
+            const step06 = stepCard('06', '第二阶段话术生成', html06, step06StatusLabel, step06StatusCls);
+
+            // ===== 07 评分对比 (step7_reply_scores) =====
+            const s7sc = safeObj(r.step7_reply_scores);
+            const hasScores = s7sc && (Array.isArray(s7sc.ai_candidates) || Array.isArray(s7sc.actual_sales_replies));
+            const dimNames = { low_barrier:'低门槛', non_repetition:'不重复', safety:'安全', conciseness:'简洁', style_match:'风格匹配', context_alignment:'场景对齐' };
+            const scoreBars = (scores) => {
+                if (!scores) return '';
+                return Object.entries(scores).filter(([k])=>k!=='overall').map(([k,v])=>{
+                    const pct = Math.min(Math.max(Number(v)||0, 0), 100);
+                    const clr = pct>=80?'bg-emerald-400':pct>=60?'bg-amber-400':'bg-red-400';
+                    return `<div class="flex items-center gap-1 text-[10px] mb-0.5"><span class="text-slate-500 w-[60px] shrink-0">${dimNames[k]||k}</span><div class="flex-1 bg-slate-100 rounded-full h-1.5"><div class="h-1.5 rounded-full ${clr}" style="width:${pct}%"></div></div><span class="text-slate-700 w-[22px] text-right">${v}</span></div>`;
+                }).join('');
+            };
+            let html07;
+            if (!hasScores) {
+                html07 = `<div class="text-[11px] text-slate-500 italic">尚未评分，请点击工具栏"重新打分"按钮</div>`;
+            } else {
+                const aiCand = (s7sc.ai_candidates || [])[0];
+                const actSales = (s7sc.actual_sales_replies || [])[0];
+                const halfCls = 'flex-1 min-w-0 p-2 rounded border bg-slate-50';
+                html07 = `<div class="flex gap-2">
+                    ${actSales ? `<div class="${halfCls}">
+                        <div class="text-[10px] font-bold text-sky-700 mb-1">原始销售回复</div>
+                        ${actSales.reply_text ? `<div class="text-[10px] text-slate-600 italic mb-1.5">"${escapeHtml(String(actSales.reply_text).slice(0,60))}…"</div>` : ''}
+                        <div class="text-[14px] font-bold text-sky-700 mb-1">总分 ${actSales.overall_score ?? actSales.scores?.overall ?? '—'}</div>
+                        ${scoreBars(actSales.scores)}
+                    </div>` : '<div class="flex-1 text-[11px] text-slate-400 italic p-2">无原始回复评分</div>'}
+                    ${aiCand ? `<div class="${halfCls}">
+                        <div class="text-[10px] font-bold text-purple-700 mb-1">AI 生成回复</div>
+                        ${s7s&&s7s.reply_reference ? `<div class="text-[10px] text-slate-600 italic mb-1.5">"${escapeHtml(String(s7s.reply_reference).slice(0,60))}…"</div>` : ''}
+                        <div class="text-[14px] font-bold text-purple-700 mb-1">总分 ${aiCand.overall_score ?? aiCand.scores?.overall ?? '—'}</div>
+                        ${scoreBars(aiCand.scores)}
+                        ${aiCand.score_reason ? `<div class="text-[9px] text-slate-500 mt-1 italic">${escapeHtml(String(aiCand.score_reason).slice(0,80))}</div>` : ''}
+                    </div>` : '<div class="flex-1 text-[11px] text-slate-400 italic p-2">无 AI 候选评分</div>'}
+                </div>`;
+            }
+            const step07StatusLabel = !hasScores ? '未评分' : '已评分';
+            const step07StatusCls = !hasScores ? 'bg-slate-100 text-slate-500' : 'bg-green-50 text-green-700';
+            const step07 = stepCard('07', '评分对比', html07, step07StatusLabel, step07StatusCls);
+
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
             modal.innerHTML = `
                 <div class="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
                     <div class="px-5 py-3 border-b bg-purple-50">
@@ -2051,41 +2247,38 @@
                                     <span class="px-2 py-0.5 rounded bg-purple-200 text-purple-800 text-[10px] font-bold" title="${escapeHtml(scTip)}">${r.scenario_code}</span>
                                     <span class="text-[11px] text-slate-600" title="${escapeHtml(scTip)}">${escapeHtml(scName)}</span>
                                     <span class="text-[11px] text-slate-400">·</span>
-                                    <span class="text-[11px] text-slate-500" title="该案例在场景内的排名（1=场景内最高，5=最低）">场内第 ${r.scenario_rank} 名</span>
+                                    <span class="text-[11px] text-slate-500">场内第 ${r.scenario_rank} 名</span>
                                 </div>
-                                <div class="font-bold text-slate-900" title="${escapeHtml(c.case_title || '')}">${escapeHtml(c.case_title || '')}</div>
+                                <div class="font-bold text-slate-900">${escapeHtml(c.case_title || '')}</div>
                                 <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                                    <span title="wecom_raw_import 中标识同一会话的 group_key">对话组 ${c.group_key}</span>
-                                    <span title="该案例核心对话发生的日期">日期 ${c.session_date}</span>
-                                    <span title="本轮 AI 给出的质量分（满分100）">AI 评分 <b class="text-purple-700">${caselibFmtNum(ai,2)}</b></span>
-                                    <span title="人工销售在 v2.md 中给的原始质量分（满分100）">人工原始分 <b class="text-sky-700">${md != null ? Number(md).toFixed(1) : '—'}</b></span>
-                                    <span title="AI 评分 − 人工评分。正值=AI高估，负值=AI严苛" class="${dltCls}">Δ = <b>${dltStr}</b></span>
-                                    <span title="链路最终状态">链路 ${escapeHtml(qstatus)}</span>
-                                    <span title="本案例 7 步链路总耗时">耗时 ${r.latency_ms || '-'} ms</span>
+                                    <span>对话组 ${c.group_key}</span>
+                                    <span>日期 ${c.session_date}</span>
+                                    <span>AI评分 <b class="text-purple-700">${caselibFmtNum(ai,2)}</b></span>
+                                    <span>人工分 <b class="text-sky-700">${md != null ? Number(md).toFixed(1) : '—'}</b></span>
+                                    <span class="${dltCls}">Δ = <b>${dltStr}</b></span>
+                                    <span>链路 ${escapeHtml(qstatus)}</span>
+                                    <span>耗时 ${r.latency_ms || '-'} ms</span>
                                 </div>
                             </div>
                             <button onclick="this.closest('.fixed').remove()" class="text-slate-500 hover:text-slate-800 text-xl ml-3" title="关闭">×</button>
                         </div>
-                        <div class="mt-2 text-[10px] text-slate-500 italic" title="本场景的业务含义">📖 ${escapeHtml((CASELIB_SCENARIO_DEFS[r.scenario_code]||{}).desc || '')}</div>
+                        <div class="mt-2 text-[10px] text-slate-500 italic">📖 ${escapeHtml((CASELIB_SCENARIO_DEFS[r.scenario_code]||{}).desc || '')}</div>
                     </div>
                     <div class="flex-1 overflow-auto p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <div>
-                            <div class="text-xs font-bold text-slate-700 mb-2" title="抽取自核心对话之前的 15 条前序消息，作为 7 步链路的背景输入">背景对话（核心对话之前 ${(c.context_messages||[]).length} 条）</div>
+                            <div class="text-xs font-bold text-slate-700 mb-2">背景对话（${(c.context_messages||[]).length} 条）</div>
                             <div class="rounded border bg-slate-50 p-2 max-h-[200px] overflow-auto mb-3">${ctxList || '<span class="text-slate-400 text-xs">无</span>'}</div>
-                            <div class="text-xs font-bold text-slate-700 mb-2" title="本案例的核心对话内容，最多 16 条">核心对话（共 ${(c.core_dialog||[]).length} 条）</div>
+                            <div class="text-xs font-bold text-slate-700 mb-2">核心对话（共 ${(c.core_dialog||[]).length} 条）</div>
                             <div class="rounded border bg-emerald-50 p-2 max-h-[260px] overflow-auto">${coreList || '<span class="text-slate-400 text-xs">无</span>'}</div>
                         </div>
                         <div>
-                            <div class="text-xs font-bold text-slate-700 mb-2" title="企微智能回复接口跑出的 7 步真实链路结果">企微 7 步回复链路结果</div>
-                            ${stepBlock('第1步 · 会话摘要', '大模型1抽取的当前主线话题 / 核心诉求 / 关键事实 / 待跟进 / 风险 / 状态', r.step1_summary)}
-                            ${stepBlock('第2步 · 客户画像', '从 CRM 查询到的客户基础信息、客户等级、历史订单', r.step2_crm_info)}
-                            ${stepBlock('第3步 · 线程业务事实', '业务状态、阶段信号、合并后的关键事实层', r.step3_thread_business_fact)}
-                            ${stepBlock('第4步 · 知识检索', '私域知识库 + 外部知识库 API 的召回结果与状态', r.step4_knowledge)}
-                            ${stepBlock('第5步 · 大模型1对比摘要', '对比模型对第1步摘要的另一版输出，用于横向校验主模型', r.step5_llm1_compare)}
-                            ${stepBlock('第6步 · 销售建议（主模型）', '大模型2基于前 5 步生成的主销售话术建议', r.step6_sales_advice)}
-                            ${stepBlock('第6步 · 销售建议（对比模型）', '对比大模型给出的另一版回复，用于横向对照', r.step6_compare_advice)}
-                            ${stepBlock('第7步 · 风格候选回复', '多风格（亲和 / 专业 / 简洁 等）的候选回复列表', r.step7_reply_styles)}
-                            ${stepBlock('第7步 · 候选评分', '每个候选回复的「私域库 / 外部库 / 总分」得分', r.step7_reply_scores)}
+                            <div class="text-xs font-bold text-slate-700 mb-2">AI 链路详情（步骤 02–07）</div>
+                            ${step02}
+                            ${step03}
+                            ${step04}
+                            ${step05}
+                            ${step06}
+                            ${step07}
                         </div>
                     </div>
                 </div>`;
