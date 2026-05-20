@@ -2638,7 +2638,7 @@
             modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
             modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
             modal.innerHTML =
-                `<div class=”bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col”>` +
+                `<div class=”bg-white rounded-xl shadow-2xl max-w-3xl w-full overflow-hidden flex flex-col” style=”max-height:90vh”>` +
                     `<div class=”px-5 py-3 border-b bg-purple-50 flex items-start justify-between”>` +
                         `<div><div class=”font-bold text-sm text-slate-900”>${escapeHtml(c.scenario_code)} · ${escapeHtml(c.case_title||'')}</div>` +
                         `<div class=”text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3”>` +
