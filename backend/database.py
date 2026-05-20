@@ -626,6 +626,35 @@ class CaseLibraryCase(Base):
     )
 
 
+class CaseLibraryDialogueTurn(Base):
+    """经典案例库的核心问答轮次，按 case_id 关联回原案例和场景。"""
+    __tablename__ = "case_library_dialogue_turn"
+
+    turn_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    case_id = Column(UUID(as_uuid=False), ForeignKey("case_library_case.case_id"), nullable=False)
+    scenario_code = Column(String(10), nullable=False)
+    scenario_rank = Column(Integer, nullable=False)
+    turn_no = Column(Integer, nullable=False)
+    group_key = Column(String(120), nullable=False)
+    row_start = Column(Integer, nullable=True)
+    row_end = Column(Integer, nullable=True)
+    customer_text = Column(Text, nullable=True)
+    sales_text = Column(Text, nullable=True)
+    messages = Column(JSON, nullable=False)
+    context_messages = Column(JSON, nullable=True)
+    actual_sales_score = Column(Numeric(6, 2), nullable=True)
+    actual_sales_scores = Column(JSON, nullable=True)
+    score_status = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("case_id", "turn_no", name="uq_case_library_dialogue_turn_no"),
+        Index("idx_cldt_case", "case_id", "turn_no"),
+        Index("idx_cldt_scenario", "scenario_code", "scenario_rank"),
+    )
+
+
 class CaseIterationRun(Base):
     """案例迭代运行记录：每点击/触发一次跑60个案例为一行。"""
     __tablename__ = "case_iteration_run"
