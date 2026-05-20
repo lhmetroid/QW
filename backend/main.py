@@ -18418,6 +18418,123 @@ async def caselib_reimport():
         return {"status": "failed", "error": str(e)}
 
 
+def _heuristic_score_sales_text(sales_text: str, customer_text: str = "") -> dict:
+    """对销售回复做规则启发式打分（不调用LLM），返回 7 维度分 + overall。
+    维度权重与 AI 质量分完全一致：
+      overall = conciseness*0.18 + low_barrier*0.24 + non_repetition*0.22
+              + safety*0.22 + style_match*0.08 + context_alignment*0.06
+    """
+    import re as _re
+    text = (sales_text or "").strip()
+    char_count = len(_re.sub(r'\s+', '', text))  # 不含空白的字符数
+
+    # 1. conciseness（微信感）：纯字数规则
+    if char_count == 0:
+        conciseness = 0
+    elif char_count <= 50:
+        conciseness = 87   # 80-95 区间取中偏上
+    elif char_count <= 80:
+        conciseness = 55   # 40-70 区间取中
+    else:
+        conciseness = 20   # 0-30 区间取中偏上
+
+    # 2. low_barrier（易回复）：问号数量 + 内容丰富度
+    q_count = text.count('？') + text.count('?')
+    if char_count == 0:
+        low_barrier = 20
+    elif q_count == 0:
+        low_barrier = 55 if char_count <= 3 else 82   # 极短语气词扣分
+    elif q_count == 1:
+        low_barrier = 68
+    elif q_count == 2:
+        low_barrier = 50
+    else:
+        low_barrier = 38
+
+    # 3. non_repetition（差异化）：避免客套套话
+    cliche_matches = sum(
+        1 for pat in ['您好', '感谢关注', '非常抱歉', '亲爱的', '如有疑问', '欢迎光临', '很高兴为您', '随时为您服务']
+        if pat in text
+    )
+    non_repetition = max(0, 80 - cliche_matches * 20)
+
+    # 4. safety（稳妥度）：规避风险承诺；普通跟进基准 72
+    safety = 72
+    for w in ['一定', '保证', '承诺', '绝对', '肯定没问题', '100%', '无条件', '全额退款', '赔偿']:
+        if w in text:
+            safety = max(0, safety - 15)
+    if _re.search(r'[¥￥]\s*\d+|报价\s*\d+|总价\s*\d+|单价\s*\d+', text):
+        safety = max(0, safety - 8)
+
+    # 5. style_match（风格匹配）：微信口语化，避免过度书面
+    style_match = 75
+    for w in ['敬请', '谨此', '特此告知', '烦请', '恳请', '兹', '顺此']:
+        if w in text:
+            style_match = max(0, style_match - 20)
+
+    # 6. context_alignment（上下文贴合）：无 LLM 时只做基础判断
+    context_alignment = 20 if char_count == 0 else 72
+
+    # 加权总分（与 AI 评分公式完全一致）
+    overall_float = (
+        conciseness * 0.18 +
+        low_barrier * 0.24 +
+        non_repetition * 0.22 +
+        safety * 0.22 +
+        style_match * 0.08 +
+        context_alignment * 0.06
+    )
+    # 硬约束（与 LLM 评分一致）
+    if conciseness < 75:
+        overall_float = min(overall_float, 84)
+    if low_barrier < 75:
+        overall_float = min(overall_float, 84)
+
+    return {
+        "conciseness": conciseness,
+        "low_barrier": low_barrier,
+        "non_repetition": non_repetition,
+        "safety": safety,
+        "style_match": style_match,
+        "context_alignment": context_alignment,
+        "overall": round(overall_float),
+        "score_method": "heuristic",
+    }
+
+
+@app.post("/api/case_lib/cases/score_original_replies")
+async def caselib_score_original_replies(case_id: str | None = Query(default=None)):
+    """对所有（或指定案例的）对话轮次原销售回复做启发式规则打分（不调用LLM）。
+    完成后 actual_sales_score / actual_sales_scores / score_status 被写入 DB，
+    案例列表的人工原始分会自动取各轮平均值。"""
+    db = SessionLocal()
+    try:
+        q = db.query(CaseLibraryDialogueTurn)
+        if case_id:
+            q = q.filter(CaseLibraryDialogueTurn.case_id == case_id)
+        turns = q.order_by(CaseLibraryDialogueTurn.case_id, CaseLibraryDialogueTurn.turn_no).all()
+        scored = 0
+        skipped = 0
+        for t in turns:
+            sales = (t.sales_text or "").strip()
+            if not sales:
+                t.score_status = "missing_sales_text"
+                skipped += 1
+                continue
+            scores = _heuristic_score_sales_text(sales, t.customer_text or "")
+            t.actual_sales_score = scores["overall"]
+            t.actual_sales_scores = scores
+            t.score_status = "heuristic_scored"
+            scored += 1
+        db.commit()
+        return {"status": "success", "scored": scored, "skipped": skipped, "total": len(turns)}
+    except Exception as e:
+        logger.exception("score_original_replies 失败")
+        return {"status": "failed", "error": str(e)}
+    finally:
+        db.close()
+
+
 def _caselib_rescore_one_result(rr: CaseIterationResult) -> dict:
     """对单个 case_iteration_result 重新打分：基于已存的 step7_reply_styles + step4_knowledge + step1_summary
     重新调用 IntentEngine.score_reply_candidates，把 7 维评分（含 reason）写回 step7_reply_scores，

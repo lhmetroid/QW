@@ -22,6 +22,7 @@ def load_env(path: str) -> None:
 
 load_env(os.path.join(os.path.dirname(__file__), "..", ".env"))
 os.environ["PORT"] = os.environ.get("CASELIB_BACKEND_PORT") or "8071"
+os.environ.setdefault("CASELIB_REQUEST_TIMEOUT_SECONDS", "900")
 
 from database import CaseIterationResult, CaseIterationRun, CaseLibraryCase, SessionLocal
 from main import (
