@@ -467,6 +467,16 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE case_library_dialogue_turn ADD COLUMN IF NOT EXISTS score_status VARCHAR(50);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_cldt_case ON case_library_dialogue_turn (case_id, turn_no);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_cldt_scenario ON case_library_dialogue_turn (scenario_code, scenario_rank);"))
+        db.execute(text("ALTER TABLE case_iteration_result ADD COLUMN IF NOT EXISTS turn_id UUID;"))
+        db.execute(text("ALTER TABLE case_iteration_result ADD COLUMN IF NOT EXISTS turn_no INTEGER;"))
+        db.execute(text("ALTER TABLE case_iteration_result DROP CONSTRAINT IF EXISTS uq_case_iter_result_run_case;"))
+        db.execute(text(
+            "DO $$ BEGIN "
+            "IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uq_case_iter_result_run_case_turn') THEN "
+            "ALTER TABLE case_iteration_result ADD CONSTRAINT uq_case_iter_result_run_case_turn UNIQUE(run_id, case_id, turn_no); "
+            "END IF; END $$;"
+        ))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_cir_run_case_turn ON case_iteration_result (run_id, case_id, turn_no);"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS wecom_trigger_record ("
             "record_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -17564,8 +17574,10 @@ def _caselib_serialize_result(rr: CaseIterationResult, case_meta: dict | None = 
         "result_id": str(rr.result_id),
         "run_id": str(rr.run_id),
         "case_id": str(rr.case_id),
+        "turn_id": str(rr.turn_id) if rr.turn_id else None,
         "scenario_code": rr.scenario_code,
         "scenario_rank": rr.scenario_rank,
+        "turn_no": rr.turn_no,
         "step1_summary": _caselib_load_json(rr.step1_summary),
         "step2_crm_info": _caselib_load_json(rr.step2_crm_info),
         "step3_thread_business_fact": _caselib_load_json(rr.step3_thread_business_fact),

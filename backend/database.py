@@ -702,14 +702,16 @@ class CaseIterationRun(Base):
 
 
 class CaseIterationResult(Base):
-    """案例迭代逐案例结果：1 run x 60 cases = 60 行；记录 7 步链路每步快照。"""
+    """案例迭代逐轮结果：1 run x case dialogue turns；记录 7 步链路每步快照。"""
     __tablename__ = "case_iteration_result"
 
     result_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
     run_id = Column(UUID(as_uuid=False), ForeignKey("case_iteration_run.run_id"), nullable=False)
     case_id = Column(UUID(as_uuid=False), ForeignKey("case_library_case.case_id"), nullable=False)
+    turn_id = Column(UUID(as_uuid=False), ForeignKey("case_library_dialogue_turn.turn_id"), nullable=True)
     scenario_code = Column(String(10), nullable=False)
     scenario_rank = Column(Integer, nullable=False)
+    turn_no = Column(Integer, nullable=True)
     # 7 步骤结果快照
     step1_summary = Column(JSON, nullable=True)         # topic/core_demand/key_facts/todo/risks/status
     step2_crm_info = Column(JSON, nullable=True)
@@ -738,8 +740,9 @@ class CaseIterationResult(Base):
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("run_id", "case_id", name="uq_case_iter_result_run_case"),
+        UniqueConstraint("run_id", "case_id", "turn_no", name="uq_case_iter_result_run_case_turn"),
         Index("idx_cir_run_scenario", "run_id", "scenario_code"),
+        Index("idx_cir_run_case_turn", "run_id", "case_id", "turn_no"),
         Index("idx_cir_quality", "run_id", "quality_score"),
     )
 
