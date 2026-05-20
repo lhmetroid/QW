@@ -1,0 +1,154 @@
+{
+  "case_id": "f62107a7-9e7e-4ea3-91be-e4b6c78aa31c",
+  "scenario": "S01-5",
+  "title": "不开票但总价不降的付款口径确认",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 1993,
+      "row_end": 1994,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-10-10 09:54:33",
+          "msg_id": 1903,
+          "row_index": 1993,
+          "content": "你看看什么价格能做，我在跟同事解释一下"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-10-10 09:54:50",
+          "msg_id": 1904,
+          "row_index": 1994,
+          "content": "好滴，方便电话下哇"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 1995,
+      "row_end": 2001,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-10-10 09:55:02",
+          "msg_id": 1905,
+          "row_index": 1995,
+          "content": "可以的"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-10-10 09:55:18",
+          "msg_id": 1906,
+          "row_index": 1996,
+          "content": "打你手机哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-10-10 10:40:12",
+          "msg_id": 1908,
+          "row_index": 1998,
+          "content": "亲，如上午沟通，去掉彩页， 内页还是定制印上logo（可以选横线版/方格版）各一半，或者单一款都行"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-10-10 10:44:18",
+          "msg_id": 1909,
+          "row_index": 1999,
+          "content": "这些打包1000本， 按20元/本算最低了，可以的话，尽量帮忙争取到22元/本"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-10-10 12:50:13",
+          "msg_id": 1911,
+          "row_index": 2001,
+          "content": "好嘞，辛苦你沟通啦[偷笑]"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 2002,
+      "row_end": 2003,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-10-10 14:45:41",
+          "msg_id": 1912,
+          "row_index": 2002,
+          "content": "「何珺：这些打包1000本， 按20元/本算最低了，可以的话，尽量帮忙争取到22元/本」\n- - - - - - - - - - - - - - -\n报价含税，开票对伐？"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-10-10 14:46:12",
+          "msg_id": 1913,
+          "row_index": 2003,
+          "content": "含税，6% 开票哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 2004,
+      "row_end": 2006,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-10-10 14:48:21",
+          "msg_id": 1914,
+          "row_index": 2004,
+          "content": "过去我们订的台历是供应商帮我们直接寄给客户，运费另算，你们可以帮忙寄嘛？"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-10-10 14:48:47",
+          "msg_id": 1915,
+          "row_index": 2005,
+          "content": "可以滴，包物流，运费另算就行"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-10-10 14:48:54",
+          "msg_id": 1916,
+          "row_index": 2006,
+          "content": "回头清单发我就行"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 2007,
+      "row_end": 2011,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-10-10 15:02:33",
+          "msg_id": 1918,
+          "row_index": 2007,
+          "content": "「何珺：含税，6% 开票哦」\n- - - - - - - - - - - - - - -\n可不开票，只开收据盖财务章即可"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2024-10-10 15:03:27",
+          "msg_id": 1923,
+          "row_index": 2009,
+          "content": "那总价少6%？"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-10-10 15:05:58",
+          "msg_id": 1930,
+          "row_index": 2010,
+          "content": "总价还是一样哦，少不了了"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-10-10 15:08:56",
+          "msg_id": 1932,
+          "row_index": 2011,
+          "content": "看看报价出多少哦，老样子操作"
+        }
+      ]
+    }
+  ]
+}

@@ -17799,7 +17799,12 @@ def _caselib_run_dry(case_payload: dict) -> dict:
         "kb2_eval_score": kb2,
         "quality_status": "dry_run_success",
         "latency_ms": 50 + (hash(case_payload.get("case_id","")) % 200),
-        "stage_status": {"mode": "dry_run"},
+        "stage_status": {
+            "mode": "dry_run",
+            "turn_no": case_payload.get("turn_no"),
+            "customer_question": case_payload.get("customer_question"),
+            "actual_sales_reply": case_payload.get("actual_sales_reply"),
+        },
     }
 
 
@@ -18018,6 +18023,9 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
         stage_status = body.get("stage_status") or {}
         stage_status["caselib_split"] = {
             "trigger_message": trigger_message,
+            "turn_no": case_payload.get("turn_no"),
+            "customer_question": case_payload.get("customer_question"),
+            "actual_sales_reply": case_payload.get("actual_sales_reply"),
             "visible_message_count": len(visible_msgs),
             "post_trigger_message_count": len(split_payload.get("post_trigger_messages") or []),
             "actual_sales_reply_count": len(split_payload.get("actual_sales_replies") or []),
@@ -18272,18 +18280,37 @@ def _caselib_run_iteration_background(run_id: str, mode: str):
         cases = db.query(CaseLibraryCase).order_by(
             CaseLibraryCase.scenario_code, CaseLibraryCase.scenario_rank
         ).all()
-        run.total_cases = len(cases)
+        case_ids = [str(c.case_id) for c in cases]
+        turns = db.query(CaseLibraryDialogueTurn).filter(
+            CaseLibraryDialogueTurn.case_id.in_(case_ids)
+        ).order_by(
+            CaseLibraryDialogueTurn.scenario_code,
+            CaseLibraryDialogueTurn.scenario_rank,
+            CaseLibraryDialogueTurn.turn_no,
+        ).all() if case_ids else []
+        turns_by_case: dict[str, list[CaseLibraryDialogueTurn]] = {}
+        for t in turns:
+            turns_by_case.setdefault(str(t.case_id), []).append(t)
+        jobs: list[tuple[CaseLibraryCase, CaseLibraryDialogueTurn]] = [
+            (c, t) for c in cases for t in turns_by_case.get(str(c.case_id), [])
+        ]
+        run.total_cases = len(jobs)
         db.commit()
 
-        for c in cases:
+        for c, t in jobs:
             existing = db.query(CaseIterationResult).filter(
                 CaseIterationResult.run_id == run_id,
                 CaseIterationResult.case_id == c.case_id,
+                CaseIterationResult.turn_no == t.turn_no,
             ).first()
             if existing: continue
             r = CaseIterationResult(
-                run_id=run.run_id, case_id=c.case_id,
-                scenario_code=c.scenario_code, scenario_rank=c.scenario_rank,
+                run_id=run.run_id,
+                case_id=c.case_id,
+                turn_id=t.turn_id,
+                scenario_code=c.scenario_code,
+                scenario_rank=c.scenario_rank,
+                turn_no=t.turn_no,
                 status="queued",
             )
             db.add(r)
@@ -18291,11 +18318,15 @@ def _caselib_run_iteration_background(run_id: str, mode: str):
 
         scores = []; latencies = []
         success_n = 0; failed_n = 0; completed_n = 0
-        for c in cases:
-            case_payload = _caselib_serialize_case(c)
+        for c, t in jobs:
+            case_payload = _caselib_case_payload_for_turn(
+                _caselib_serialize_case(c),
+                _caselib_serialize_turn(t),
+            )
             rr = db.query(CaseIterationResult).filter(
                 CaseIterationResult.run_id == run_id,
                 CaseIterationResult.case_id == c.case_id,
+                CaseIterationResult.turn_no == t.turn_no,
             ).first()
             rr.status = "running"
             rr.started_at = datetime.utcnow()

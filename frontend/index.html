@@ -1815,10 +1815,10 @@
             const it = data.iteration;
             const allRows = data.results || [];
             caselibState.detailAllRows = allRows;          // 保存原始全集供筛选
-            caselibState.detailFilter = caselibState.detailFilter || {scenario: '', sort: 'score_asc'};
+            caselibState.detailFilter = caselibState.detailFilter || {scenario: '', sort: 'scenario_turn'};
             const tt = caselibFormatTime(it.triggered_at);
             document.getElementById('caselib-detail-title').textContent =
-                `v${it.version_no} 迭代详情（共 ${allRows.length} 个案例）`;
+                `v${it.version_no} 迭代详情（共 ${allRows.length} 个对话轮次）`;
             document.getElementById('caselib-detail-subtitle').textContent =
                 `代码版本 = ${it.git_short_sha || '-'}${it.git_dirty ? ' (含未提交改动)' : ''}  ｜  触发于 ${tt}  ｜  运行状态 = ${caselibRunStatusLabel(it.status)}`;
 
@@ -1886,7 +1886,7 @@
                 ['score_desc','AI 质量分 降序（最高先）'],
                 ['delta_desc','AI − 人工 差值 降序（AI高估在前）'],
                 ['delta_asc','AI − 人工 差值 升序（AI偏低在前）'],
-                ['scenario','按场景代码排序'],
+                ['scenario_turn','按场景-案例-轮次排序（默认）'],
                 ['latency_desc','耗时降序'],
             ].map(([k,l])=>`<option value="${k}" ${caselibState.detailFilter.sort===k?'selected':''}>${l}</option>`).join('');
             const rescoreTip = (
@@ -1936,7 +1936,7 @@
         function caselibRenderDetailRows() {
             const host = document.getElementById('caselib-detail-rows');
             if (!host) return;
-            const f = caselibState.detailFilter || {scenario:'', sort:'score_asc'};
+            const f = caselibState.detailFilter || {scenario:'', sort:'scenario_turn'};
             let rows = (caselibState.detailAllRows || []).slice();
             if (f.scenario) rows = rows.filter(r => r.scenario_code === f.scenario);
             const deltaOf = r => {
@@ -1950,7 +1950,11 @@
                 case 'score_desc':  rows.sort((a,b)=>cmpNullLastDesc(a.quality_score, b.quality_score)); break;
                 case 'delta_desc':  rows.sort((a,b)=>cmpNullLastDesc(deltaOf(a), deltaOf(b))); break;
                 case 'delta_asc':   rows.sort((a,b)=>cmpNullLast(deltaOf(a), deltaOf(b))); break;
-                case 'scenario':    rows.sort((a,b)=> (a.scenario_code+a.scenario_rank).localeCompare(b.scenario_code+b.scenario_rank)); break;
+                case 'scenario_turn': rows.sort((a,b)=>
+                    (a.scenario_code || '').localeCompare(b.scenario_code || '')
+                    || ((a.scenario_rank || 0) - (b.scenario_rank || 0))
+                    || ((a.turn_no || 0) - (b.turn_no || 0))
+                ); break;
                 case 'latency_desc':rows.sort((a,b)=>cmpNullLastDesc(a.latency_ms, b.latency_ms)); break;
                 default:            rows.sort((a,b)=>cmpNullLast(a.quality_score, b.quality_score));
             }
@@ -1984,16 +1988,17 @@
                         <tr>
                             <th class="px-2 py-2 text-left" title="销售场景代码 S01~S12。鼠标悬停每个单元格可看场景的完整业务定义">场景</th>
                             <th class="px-2 py-2 text-left" title="该案例在场景内的排名（1=场景内人工质量分最高，5=该场景最低）+ 案例标题">案例（排名+标题）</th>
-                            <th class="px-2 py-2 text-left" title="本案例的链路最终状态：真实成功 / 真实部分 / 干跑成功 / 异常回退 / HTTP错误 等">链路状态</th>
-                            <th class="px-2 py-2 text-left" title="本案例端到端 7 步链路总耗时（毫秒）">耗时</th>
+                            <th class="px-2 py-2 text-center" title="该案例内按时间顺序切出的对话轮次">轮次</th>
+                            <th class="px-1 py-2 text-left" title="本轮对话的链路最终状态：真实成功 / 真实部分 / 干跑成功 / 异常回退 / HTTP错误 等">链路状态</th>
+                            <th class="px-1 py-2 text-left" title="本轮对话端到端 7 步链路总耗时（毫秒）">耗时</th>
                             <th class="px-2 py-2 text-left" title="步骤1：大模型1 抽取的当前主线话题。悬停看全文">第1步·主线话题</th>
                             <th class="px-2 py-2 text-left" title="步骤4：知识检索的最终状态（命中 / 待人工复核 / 未启动 / 干跑占位）">第4步·知识检索</th>
+                            <th class="px-2 py-2 text-left w-[240px]" title="本轮真实输入给AI的原客户问；背景只包含客户问之前的15行，不包含本轮销售参考答案">原客户问</th>
                             <th class="px-2 py-2 text-left" title="步骤6：大模型2 基于前 5 步生成的 AI 回复建议（截断显示前 80 字，悬停看全文）">第6步·AI生成回复</th>
                             <th class="px-2 py-2 text-left" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" title="${escapeHtml(mdHeaderTip)}">原始回复分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" title="AI 质量分 − 销售原始回复分（均为 LLM-1 打分）。正值=AI 回复比销售原始回复评分高；负值=AI 回复比销售原始回复评分低">Δ（AI−原始）</th>
-                            <th class="px-2 py-2 text-left" title="步骤7：多风格候选回复的评分明细，「主模型·私域库·风格1=65.3」表示主模型在私域知识库下的"风格1"候选得分">第7步·风格候选分</th>
                         </tr>
                     </thead>
                     <tbody>`;

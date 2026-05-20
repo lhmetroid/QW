@@ -1,0 +1,196 @@
+{
+  "case_id": "5c442242-3ea0-4ffa-a3df-31ef616d985d",
+  "scenario": "S01-4",
+  "title": "场地布置费用归属说明",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 3861,
+      "row_end": 3863,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-10 10:53:37",
+          "msg_id": 5022,
+          "row_index": 3861,
+          "content": "第一个收到啦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-10 10:55:09",
+          "msg_id": 5024,
+          "row_index": 3862,
+          "content": "好嘞，第二个看看有没有哦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-10 12:46:00",
+          "msg_id": 5025,
+          "row_index": 3863,
+          "content": "第二个收到哇"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 3864,
+      "row_end": 3868,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-10 12:48:28",
+          "msg_id": 5026,
+          "row_index": 3864,
+          "content": "收到啦"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-10 12:48:35",
+          "msg_id": 5027,
+          "row_index": 3865,
+          "content": "谢谢啦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-10 12:50:43",
+          "msg_id": 5028,
+          "row_index": 3866,
+          "content": "客气啦~~ 期待有合作的机会[抱拳]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-17 11:09:02",
+          "msg_id": 5029,
+          "row_index": 3867,
+          "content": "Hi  上午好呀"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-17 11:09:09",
+          "msg_id": 5030,
+          "row_index": 3868,
+          "content": "有木有消息更新呀"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 3869,
+      "row_end": 3872,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-17 16:48:02",
+          "msg_id": 5032,
+          "row_index": 3869,
+          "content": "hello，这两天我们合肥审计，稍等下我后面回复你"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-18 14:35:39",
+          "msg_id": 5035,
+          "row_index": 3871,
+          "content": "你好何经理"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-18 14:35:52",
+          "msg_id": 5036,
+          "row_index": 3872,
+          "content": "你好呀"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 3873,
+      "row_end": 3879,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-18 14:35:55",
+          "msg_id": 5038,
+          "row_index": 3873,
+          "content": "我们礼拜四开个会定主意。"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-18 14:36:05",
+          "msg_id": 5039,
+          "row_index": 3874,
+          "content": "因为我们德国这边的老大也提了些建议"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-18 14:36:23",
+          "msg_id": 5041,
+          "row_index": 3875,
+          "content": "然后关于报价我想问下场地租赁那边"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-18 14:36:43",
+          "msg_id": 5042,
+          "row_index": 3876,
+          "content": "一楼二楼可选对应的单价和金额分别是12000和6000"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-18 14:37:15",
+          "msg_id": 5044,
+          "row_index": 3877,
+          "content": "这个是什么意思呢，因为上面二楼的话价格是40000"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-18 14:37:24",
+          "msg_id": 5045,
+          "row_index": 3878,
+          "content": "稍等下下哦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-18 14:37:39",
+          "msg_id": 5047,
+          "row_index": 3879,
+          "content": "我看下先"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 3880,
+      "row_end": 3883,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-18 15:11:24",
+          "msg_id": 5049,
+          "row_index": 3880,
+          "content": "你好呀何经理。我还想问个事就是咱们场地布置这块我看没有很多价格体现的地方"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-18 15:11:32",
+          "msg_id": 5050,
+          "row_index": 3881,
+          "content": "你能说下具体是在哪一块吗"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-18 15:20:48",
+          "msg_id": 5052,
+          "row_index": 3882,
+          "content": "是指报价单吗"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-18 15:21:07",
+          "msg_id": 5053,
+          "row_index": 3883,
+          "content": "现在是在活动物料这里了"
+        }
+      ]
+    }
+  ]
+}
