@@ -608,6 +608,7 @@ class CaseLibraryCase(Base):
     group_key = Column(String(120), nullable=False)
     session_date = Column(DateTime, nullable=False)           # 会话日期
     batch_id = Column(String(120), nullable=True)
+    external_userid = Column(String(120), nullable=True)      # 客户真实 external_userid（按 group_key 从原始企微数据找回，用于 CRM 画像）
     slice_ids = Column(JSON, nullable=True)
     row_start = Column(Integer, nullable=True)
     row_end = Column(Integer, nullable=True)

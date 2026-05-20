@@ -162,6 +162,20 @@ def fetch_group_messages(conn, group_key):
     return [normalize_db_message(r) for r in rows]
 
 
+def fetch_customer_external_userid(conn, group_key):
+    """按 group_key 找回客户真实 external_userid（role='customer' 行出现最多的 from_id）。"""
+    if not group_key:
+        return None
+    row = conn.execute(text("""
+        SELECT from_id, COUNT(*) AS n
+        FROM wecom_raw_import
+        WHERE group_key=:gk AND role='customer'
+          AND from_id IS NOT NULL AND from_id <> ''
+        GROUP BY from_id ORDER BY n DESC LIMIT 1
+    """), {'gk': group_key}).fetchone()
+    return row[0] if row and row[0] else None
+
+
 def _parse_msg_dt(msg):
     raw = msg.get('msg_time')
     if not raw:
@@ -919,6 +933,7 @@ def upsert_cases(conn, scenarios):
                 'group_key': gk,
                 'session_date': sd,
                 'batch_id': c.get('batch_id'),
+                'external_userid': fetch_customer_external_userid(conn, gk),
                 'slice_ids': json.dumps(c.get('slice_ids', []), ensure_ascii=False),
                 'row_start': c.get('row_start'),
                 'row_end': c.get('row_end'),
@@ -932,12 +947,12 @@ def upsert_cases(conn, scenarios):
             row = conn.execute(text("""
                 INSERT INTO case_library_case
                     (case_id, scenario_code, scenario_name, scenario_rank, case_title,
-                     group_key, session_date, batch_id, slice_ids, row_start, row_end,
+                     group_key, session_date, batch_id, external_userid, slice_ids, row_start, row_end,
                      quality_score_md, core_dialog, context_messages,
                      md_source_path, md_section_anchor, created_at, updated_at)
                 VALUES
                     (gen_random_uuid(), :scenario_code, :scenario_name, :scenario_rank, :case_title,
-                     :group_key, :session_date, :batch_id, CAST(:slice_ids AS JSON), :row_start, :row_end,
+                     :group_key, :session_date, :batch_id, :external_userid, CAST(:slice_ids AS JSON), :row_start, :row_end,
                      :quality_score_md, CAST(:core_dialog AS JSON), CAST(:context_messages AS JSON),
                      :md_source_path, :md_section_anchor, NOW(), NOW())
                 ON CONFLICT (scenario_code, scenario_rank) DO UPDATE SET
@@ -946,6 +961,7 @@ def upsert_cases(conn, scenarios):
                     group_key=EXCLUDED.group_key,
                     session_date=EXCLUDED.session_date,
                     batch_id=EXCLUDED.batch_id,
+                    external_userid=EXCLUDED.external_userid,
                     slice_ids=EXCLUDED.slice_ids,
                     row_start=EXCLUDED.row_start,
                     row_end=EXCLUDED.row_end,

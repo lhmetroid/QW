@@ -465,6 +465,8 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE case_library_dialogue_turn ADD COLUMN IF NOT EXISTS actual_sales_score NUMERIC(6, 2);"))
         db.execute(text("ALTER TABLE case_library_dialogue_turn ADD COLUMN IF NOT EXISTS actual_sales_scores JSON;"))
         db.execute(text("ALTER TABLE case_library_dialogue_turn ADD COLUMN IF NOT EXISTS score_status VARCHAR(50);"))
+        # 客户真实 external_userid：从原始企微数据按 group_key 找回，用于 CRM 客户画像（与实时智能页面一致）
+        db.execute(text("ALTER TABLE case_library_case ADD COLUMN IF NOT EXISTS external_userid VARCHAR(120);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_cldt_case ON case_library_dialogue_turn (case_id, turn_no);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_cldt_scenario ON case_library_dialogue_turn (scenario_code, scenario_rank);"))
         db.execute(text("ALTER TABLE case_iteration_result ADD COLUMN IF NOT EXISTS turn_id UUID;"))
@@ -17523,6 +17525,7 @@ def _caselib_serialize_case(
         "group_key": c.group_key,
         "session_date": c.session_date.date().isoformat() if c.session_date else None,
         "batch_id": c.batch_id,
+        "external_userid": getattr(c, "external_userid", None),
         "slice_ids": _caselib_load_json(c.slice_ids) or [],
         "row_start": c.row_start,
         "row_end": c.row_end,
@@ -17944,10 +17947,39 @@ CASELIB_EVAL_SINGLE_VERSION = True
 CASELIB_EVAL_SKIP_SCORING = True
 
 
+def _caselib_real_external_userid(db, group_key: str | None) -> str | None:
+    """按案例 group_key 从原始企微数据(wecom_raw_import)找回客户真实 external_userid。
+
+    案例库源于真实企微会话，客户真实 ID 存在原始表 role='customer' 行的 from_id 列
+    （例如 wmS8sICwAA1yHly1pg8N0_fuYPW6M-4w）。取该 group 下出现最多的客户 from_id。
+    找不到时返回 None，调用方回退到合成 ID（保持原行为，不报错）。
+    """
+    if not group_key:
+        return None
+    try:
+        row = db.execute(text("""
+            SELECT from_id, COUNT(*) AS n
+            FROM wecom_raw_import
+            WHERE group_key = :gk AND role = 'customer'
+              AND from_id IS NOT NULL AND from_id <> ''
+            GROUP BY from_id
+            ORDER BY n DESC
+            LIMIT 1
+        """), {"gk": group_key}).fetchone()
+        return row[0] if row and row[0] else None
+    except Exception:
+        return None
+
+
 def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
     db = SessionLocal()
     cid = case_payload.get("case_id", "0")[:12]
-    external_userid = f"caselib_ext_{cid}"
+    # 客户侧优先用真实 external_userid，使 CRM 客户画像与「企微实时智能」页面一致；
+    # 优先取案例表已回填的字段，其次按 group_key 实时找回，都没有才回退合成 ID。
+    # 销售侧始终用 caselib_ 合成 ID，保证注入会话与真实企微会话隔离、跑完即清。
+    real_ext = (case_payload.get("external_userid")
+                or _caselib_real_external_userid(db, case_payload.get("group_key")))
+    external_userid = real_ext or f"caselib_ext_{cid}"
     sales_userid = f"caselib_sales_{run_id[:8]}"
     # 与 build_single_session_id 严格一致：sorted + 'single_' 前缀 + '_' 连接
     participants = sorted([sales_userid.strip(), external_userid.strip()])
