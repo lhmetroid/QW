@@ -1454,6 +1454,43 @@
         }
 
         // 把 "本轮改进分析 + AI 自检计划" 渲染到下方
+        function caselibShowAnalysisPopup(runId, section) {
+            const r = (caselibState.iterations || []).find(x => x.run_id === runId);
+            if (!r) return;
+            let title = '', bodyHtml = '';
+            if (section === 'improvement') {
+                title = `📊 v${r.version_no} 得分分析`;
+                bodyHtml = `<div class="p-4">${caselibRenderImprovementAnalysis(r.improvement_analysis || '')}</div>`;
+            } else if (section === 'ai_plan') {
+                title = `🤖 v${r.version_no} AI 自检步骤`;
+                bodyHtml = `<div class="p-4">${caselibRenderAiPlan(r.ai_next_step_plan || '')}</div>`;
+            } else if (section === 'summary') {
+                title = `🎯 v${r.version_no} 三AI汇总（LLM-1）`;
+                const txt = r.analysis_summary || '';
+                bodyHtml = `<div class="p-4"><pre class="text-[12px] text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(txt) || '<span class="text-slate-400">暂无汇总</span>'}</pre></div>`;
+            } else if (['codex','antigravity','claude_code'].includes(section)) {
+                const labelMap = {codex:'Codex', antigravity:'Antigravity', claude_code:'Claude Code'};
+                title = `🧠 v${r.version_no} · ${labelMap[section]} 分析`;
+                const txt = r['analysis_' + section] || '';
+                bodyHtml = `<div class="p-4"><pre class="text-[12px] text-slate-700 whitespace-pre-wrap leading-relaxed font-sans">${escapeHtml(txt) || '<span class="text-slate-400">暂未填写</span>'}</pre></div>`;
+            }
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') modal.remove(); });
+            modal.setAttribute('tabindex', '-1');
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl flex flex-col" style="width:min(96vw,860px);max-height:92vh;overflow:hidden">
+                    <div class="px-5 py-3 border-b bg-slate-50 flex items-center justify-between shrink-0">
+                        <div class="text-sm font-bold text-slate-800">${escapeHtml(title)}</div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-slate-500 hover:text-slate-800 text-2xl ml-4 shrink-0 leading-none" title="关闭（Esc）">×</button>
+                    </div>
+                    <div class="flex-1 overflow-auto">${bodyHtml}</div>
+                </div>`;
+            document.body.appendChild(modal);
+            modal.focus();
+        }
+
         function caselibRenderAnalysisFor(runId) {
             const wrap = document.getElementById('caselib-list-analysis');
             const r = (caselibState.iterations || []).find(x => x.run_id === runId);
@@ -1466,12 +1503,18 @@
             }
             wrap.innerHTML = hint + `
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    <div class="rounded-xl border border-purple-100 bg-purple-50 p-4" title="本轮 60 案例按场景聚合得分，给出优化方向（每场景5个案例的平均分）">
-                        <div class="text-xs font-bold text-purple-800 mb-2">📊 v${r.version_no} 得分分析（按场景平均分升序，优先优化前 3 场景）</div>
+                    <div class="rounded-xl border border-purple-100 bg-purple-50 p-4 cursor-pointer hover:border-purple-300 transition" title="点击展开完整得分分析" onclick="caselibShowAnalysisPopup('${runId}','improvement')">
+                        <div class="flex items-center mb-2">
+                            <span class="text-xs font-bold text-purple-800">📊 v${r.version_no} 得分分析（按场景平均分升序，优先优化前 3 场景）</span>
+                            <span class="ml-auto text-[10px] text-purple-500 hover:text-purple-700 shrink-0">↗ 展开</span>
+                        </div>
                         ${caselibRenderImprovementAnalysis(r.improvement_analysis || '')}
                     </div>
-                    <div class="rounded-xl border border-amber-100 bg-amber-50 p-4" title="自动生成的下一次迭代检查清单 + 历史已知坑">
-                        <div class="text-xs font-bold text-amber-800 mb-2">🤖 v${r.version_no} 完成后的 AI 自检步骤（避免跳过 / 假执行）</div>
+                    <div class="rounded-xl border border-amber-100 bg-amber-50 p-4 cursor-pointer hover:border-amber-300 transition" title="点击展开完整 AI 自检步骤" onclick="caselibShowAnalysisPopup('${runId}','ai_plan')">
+                        <div class="flex items-center mb-2">
+                            <span class="text-xs font-bold text-amber-800">🤖 v${r.version_no} 完成后的 AI 自检步骤（避免跳过 / 假执行）</span>
+                            <span class="ml-auto text-[10px] text-amber-500 hover:text-amber-700 shrink-0">↗ 展开</span>
+                        </div>
                         ${caselibRenderAiPlan(r.ai_next_step_plan || '')}
                     </div>
                 </div>
@@ -1493,7 +1536,10 @@
                 <div class="rounded-xl border border-${a.color}-200 bg-${a.color}-50 p-3" title="该 AI 工具针对本轮迭代给出的'分析与下一步建议'。空白时由人工粘贴 ${a.label} 输出，点击保存后入库；三个 AI 都保存后自动触发 LLM-1 汇总。">
                     <div class="flex items-center justify-between mb-2">
                         <div class="text-xs font-bold text-${a.color}-800">🧠 ${a.label}</div>
-                        <span class="text-[10px] px-2 py-0.5 rounded ${a.content.trim() ? 'bg-'+a.color+'-200 text-'+a.color+'-800' : 'bg-slate-200 text-slate-500'}">${a.content.trim() ? '已填' : '未填'}</span>
+                        <div class="flex items-center gap-2">
+                            ${a.content.trim() ? `<button onclick="event.stopPropagation();caselibShowAnalysisPopup('${runId}','${a.key}')" class="text-[10px] text-${a.color}-600 hover:text-${a.color}-900 px-1.5 py-0.5 rounded border border-${a.color}-300 hover:bg-${a.color}-100" title="展开完整内容">↗ 展开</button>` : ''}
+                            <span class="text-[10px] px-2 py-0.5 rounded ${a.content.trim() ? 'bg-'+a.color+'-200 text-'+a.color+'-800' : 'bg-slate-200 text-slate-500'}">${a.content.trim() ? '已填' : '未填'}</span>
+                        </div>
                     </div>
                     <textarea id="caselib-ai-${runId}-${a.key}" class="w-full rounded border border-${a.color}-200 bg-white p-2 text-[11px] text-slate-700 font-mono" rows="10" placeholder="粘贴 ${a.label} 对本轮迭代给出的分析与下一步建议（支持 markdown）">${escapeHtml(a.content)}</textarea>
                     <div class="flex items-center gap-2 mt-2">
@@ -1506,7 +1552,10 @@
                 <div class="rounded-xl border-2 border-purple-300 bg-gradient-to-br from-purple-50 to-indigo-50 p-4 mt-3" title="三个 AI 工具都填写后，由 LLM-1 综合得出的汇总（共识点 / 分歧点 / 优先级 / 下一轮执行清单）">
                     <div class="flex items-center justify-between mb-2">
                         <div class="text-xs font-bold text-purple-900">🎯 v${r.version_no} 三 AI 分析与下一步建议（LLM-1 汇总） ${summaryReady ? '' : `<span class="text-[10px] font-normal text-slate-500 ml-2">尚有 ${3-filledCount} 个 AI 未填，无法触发汇总</span>`}</div>
-                        <button onclick="caselibRegenerateSummary('${runId}')" class="px-2 py-0.5 rounded bg-purple-600 text-white text-[10px] hover:bg-purple-700" title="手动重新让 LLM-1 综合三个 AI 的内容（任一文本修改后可用）">🔄 重新汇总</button>
+                        <div class="flex items-center gap-2">
+                            ${summaryTxt ? `<button onclick="caselibShowAnalysisPopup('${runId}','summary')" class="text-[10px] text-purple-600 hover:text-purple-900 px-1.5 py-0.5 rounded border border-purple-300 hover:bg-purple-100" title="展开完整汇总内容">↗ 展开</button>` : ''}
+                            <button onclick="caselibRegenerateSummary('${runId}')" class="px-2 py-0.5 rounded bg-purple-600 text-white text-[10px] hover:bg-purple-700" title="手动重新让 LLM-1 综合三个 AI 的内容（任一文本修改后可用）">🔄 重新汇总</button>
+                        </div>
                     </div>
                     <div id="caselib-summary-${runId}" class="text-[12px] text-slate-700 whitespace-pre-wrap leading-relaxed max-h-[420px] overflow-auto">${summaryTxt ? escapeHtml(summaryTxt) : '<span class="text-slate-400 text-xs">'+(summaryReady ? '待生成（点击「重新汇总」）' : '等待三个 AI 都填写完毕…')+'</span>'}</div>
                 </div>`;
