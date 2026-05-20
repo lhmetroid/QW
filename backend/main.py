@@ -17982,6 +17982,16 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
             "actual_sales_replies": split_payload.get("actual_sales_replies") or [],
         }
         snap_id = body.get("snapshot_id") or body.get("api_invocation_id")
+        # 排除评分耗时，只记录到 AI 回复生成为止
+        try:
+            scoring_ms = float(
+                (stage_status.get("node_timings_ms") or {})
+                .get("llm2", {}).get("parts_ms", {})
+                .get("reply_scoring_ms") or 0
+            )
+            latency_ms = max(0, latency_ms - int(scoring_ms))
+        except Exception:
+            pass
 
         # 若顶层无 advice，取 styles[0]['reply_reference'] 或 ['text']
         if not sales_advice and isinstance(styles, list) and styles:

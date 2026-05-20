@@ -2078,22 +2078,24 @@
                     }
                     return Object.entries(so).map(([k,v]) => `${candidateIdToCn(k)}=${fmtScoreVal(v)}`).join('  ');
                 })();
+                const clickStep = (step) => `onclick="event.stopPropagation();caselibOpenStepModal('${r.result_id}','${step}')" title="点击查看${step}完整数据" class="cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition"`;
                 return `<tr class="border-t hover:bg-purple-50 cursor-pointer transition" onclick="caselibOpenCaseModal('${r.case_id}', '${r.result_id}')" title="点击查看 ${sc}-${r.scenario_rank} 的完整 7 步链路详情">
                     <td class="px-2 py-2 font-bold text-purple-700" title="${escapeHtml(scTip)}">${sc}</td>
                     <td class="px-2 py-2 max-w-[210px] truncate" title="${escapeHtml(c.case_title || '')}">${escapeHtml(title)}</td>
                     <td class="px-2 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="原始状态码：${r.quality_status || ''}">${escapeHtml(qstatus)}</span></td>
-                    <td class="px-2 py-2 text-slate-500" title="完整 7 步链路耗时">${r.latency_ms ? r.latency_ms + ' ms' : '-'}</td>
-                    <td class="px-2 py-2 max-w-[200px] truncate text-slate-700" title="${escapeHtml(topic)}">${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
-                    <td class="px-2 py-2 text-slate-500" title="原始知识状态：${kb}">${escapeHtml(kbLabel) || '<span class="text-slate-400">（无）</span>'}</td>
-                    <td class="px-2 py-2 max-w-[280px] truncate text-slate-700" title="${escapeHtml(r.step6_sales_advice || '')}">${escapeHtml(advice) || '<span class="text-slate-400">（无）</span>'}</td>
-                    <td class="px-2 py-2 max-w-[200px] truncate text-slate-600" title="${escapeHtml(buildSalesReplyCellTip(r))}">${escapeHtml(lastSalesReply.slice(0,60)) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 text-slate-500" title="AI生成回复耗时（已排除评分环节）">${r.latency_ms ? r.latency_ms + ' ms' : '-'}</td>
+                    <td class="px-2 py-2 max-w-[200px] truncate text-slate-700" ${clickStep('第1步·主线话题')}>${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 text-slate-500" ${clickStep('第4步·知识检索')}>${escapeHtml(kbLabel) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 max-w-[280px] truncate text-slate-700" ${clickStep('第6步·AI生成回复')}>${escapeHtml(advice) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 max-w-[200px] truncate text-slate-600" ${clickStep('销售原始回复')}>${escapeHtml(lastSalesReply.slice(0,60)) || '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 text-right font-bold text-purple-700" title="${escapeHtml(aiTip)}">${aiTxt}</td>
                     <td class="px-2 py-2 text-right text-sky-700 font-bold" title="${escapeHtml(mdTip)}">${mdTxt}</td>
                     <td class="px-2 py-2 text-right ${dltCls}" title="AI − 人工。差值绝对值 ≥1 时高亮：正值AI偏高，负值AI偏低">${dltTxt}</td>
-                    <td class="px-2 py-2 text-slate-600 text-[10px]" title="候选评分明细">${escapeHtml(styleScores) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 text-slate-600 text-[10px]" ${clickStep('第7步·风格候选分')}>${escapeHtml(styleScores) || '<span class="text-slate-400">（无）</span>'}</td>
                 </tr>`;
             }).join('');
-            host.innerHTML = '<div class="rounded-xl border border-slate-200 bg-white overflow-auto">' + head + body + '</tbody></table></div>';
+            host.innerHTML = '<div class="rounded-xl border border-slate-200 bg-white" style="overflow-y:auto;max-height:calc(100vh - 260px)">'
+                + head + body + '</tbody></table></div>';
         }
 
         function caselibOpenCaseModal(caseId, resultId) {
@@ -2113,7 +2115,7 @@
             const qstatus = caselibQualityStatusLabel(r.quality_status);
             const scTip = caselibScenarioTip(r.scenario_code);
             const scName = caselibScenarioName(r.scenario_code);
-            const ai = r.quality_score, md = c.quality_score_md;
+            const ai = r.quality_score, md = getSalesScore(r);
             const dlt = (ai != null && md != null) ? (ai - md) : null;
             const dltStr = dlt != null ? (dlt > 0 ? '+' : '') + dlt.toFixed(2) : '—';
             const dltCls = dlt == null ? 'text-slate-500' : (dlt > 0 ? 'text-emerald-700' : 'text-red-700');
@@ -2417,6 +2419,13 @@
                 wrap.innerHTML = '<div class="p-8 text-center text-sm text-slate-400">案例库为空。请点击右上角"重新导入案例库"。</div>';
                 return;
             }
+            const manualScoreText = (c) => c.manual_quality_score_avg != null ? Number(c.manual_quality_score_avg).toFixed(1) : '—';
+            const manualScoreTip = (c) => {
+                const src = c.manual_quality_score_source;
+                if (src === 'dialogue_turns') return '人工原始分 = 本案例各对话轮次原销售回复 LLM 评分的平均分。当前轮次评分字段已预留，空值不参与平均。';
+                if (src === 'iteration_sales_replies') return '人工原始分 = 已跑迭代中 step7_reply_scores.actual_sales_replies 的 LLM 评分平均分；不再使用 markdown 默认分。';
+                return '人工原始分尚无 LLM 评分；显示为空，不回退默认 70。';
+            };
             const head = `
                 <table class="w-full text-xs">
                     <thead class="bg-slate-50 text-slate-600 sticky top-0">
@@ -2427,8 +2436,8 @@
                             <th class="px-3 py-2 text-left" title="案例的主题摘要（由 sales_scenario_cases_v2.md 提取）">案例标题</th>
                             <th class="px-3 py-2 text-left" title="wecom_raw_import 中标识同一会话的 group_key（同一会话的全部消息共用一个 group_key）">对话组 ID</th>
                             <th class="px-3 py-2 text-left" title="该案例核心对话发生的日期">会话日期</th>
-                            <th class="px-3 py-2 text-right" title="人工销售在 sales_scenario_cases_v2.md 中标注的质量分（满分100），是案例入库时固化的原始分">人工原始分</th>
-                            <th class="px-3 py-2 text-right" title="本案例的核心对话消息数（最多 16 条）">核心对话条数</th>
+                            <th class="px-3 py-2 text-right" title="人工原始分优先读取 LLM 已评分的原销售回复；多轮对话时取各轮原销售回复评分平均。无评分显示为空，不回退默认70。">人工原始分</th>
+                            <th class="px-3 py-2 text-right" title="按客户问、销售答切出的业务对话轮次数量；点击数量查看详细清单">对话轮次</th>
                             <th class="px-3 py-2 text-right" title="抽取的核心对话之前的前序上下文条数（最多 15 条），用作 7 步链路的背景输入">背景上文条数</th>
                             <th class="px-3 py-2 text-left" title="该案例在 sales_scenario_cases_v2.md 中的章节锚点（如 S01-03）">案例编号</th>
                         </tr>
@@ -2442,8 +2451,10 @@
                     <td class="px-3 py-2 max-w-[260px] truncate" title="${escapeHtml(c.case_title || '')}">${escapeHtml(c.case_title || '')}</td>
                     <td class="px-3 py-2 font-mono text-[11px] text-slate-600" title="对话组 ID（同一会话的全部消息共用一个 group_key，定位到 wecom_raw_import 表）">${c.group_key}</td>
                     <td class="px-3 py-2 text-slate-600" title="该案例核心对话发生的日期">${c.session_date || '-'}</td>
-                    <td class="px-3 py-2 text-right text-sky-700 font-bold" title="人工销售在 sales_scenario_cases_v2.md 中给的质量分（满分100），是案例入库时固化的原始分">${c.quality_score_md ?? '-'}</td>
-                    <td class="px-3 py-2 text-right" title="本案例的核心对话消息数（最多16条）">${(c.core_dialog || []).length}</td>
+                    <td class="px-3 py-2 text-right text-sky-700 font-bold" title="${escapeHtml(manualScoreTip(c))}">${manualScoreText(c)}</td>
+                    <td class="px-3 py-2 text-right" title="点击查看 ${c.scenario_code}-${c.scenario_rank} 的对话轮次清单">
+                        <button onclick="event.stopPropagation();caselibOpenTurnsModal('${c.case_id}')" class="text-purple-700 font-bold underline decoration-dotted hover:text-purple-900">${c.dialogue_turn_count ?? (c.dialogue_turns || []).length}</button>
+                    </td>
                     <td class="px-3 py-2 text-right" title="抽取的核心对话之前的前序上下文条数（最多15条），用作 7 步链路的背景输入">${(c.context_messages || []).length}</td>
                     <td class="px-3 py-2 font-mono text-[11px] text-slate-500" title="该案例在 sales_scenario_cases_v2.md 中的章节锚点（如 S01-03）">${c.md_section_anchor || '-'}</td>
                 </tr>`).join('');
@@ -2477,7 +2488,7 @@
                                 <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                                     <span title="同一会话的 group_key">对话组 ${c.group_key}</span>
                                     <span title="案例发生日期">@ ${c.session_date}</span>
-                                    <span title="人工销售在 v2.md 中给的原始质量分（满分100）">人工原始分 = <b class="text-sky-700">${c.quality_score_md ?? '—'}</b></span>
+                                    <span title="优先读取已跑迭代中的原销售回复 LLM 评分；多轮对话时取各轮平均">人工原始分 = <b class="text-sky-700">${c.manual_quality_score_avg != null ? Number(c.manual_quality_score_avg).toFixed(1) : '—'}</b></span>
                                     <span title="案例在 v2.md 中的章节锚点">编号 ${c.md_section_anchor || ''}</span>
                                 </div>
                             </div>
@@ -2493,6 +2504,238 @@
                     </div>
                 </div>`;
             document.body.appendChild(modal);
+        }
+
+        function caselibOpenTurnsModal(caseId) {
+            const c = (caselibState.cases || []).find(x => x.case_id === caseId)
+                || (((caselibState.currentDetail || {}).results || []).map(r => r.case).find(x => x && x.case_id === caseId));
+            if (!c) return;
+            const turns = c.dialogue_turns || [];
+            const renderMsg = (m) =>
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`;
+            const list = turns.length ? turns.map(t => {
+                const score = t.actual_sales_score != null ? Number(t.actual_sales_score).toFixed(1) : '—';
+                return `<div class="rounded border bg-white p-3 mb-2">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[10px] font-bold">第 ${t.turn_no} 轮</span>
+                        <span class="text-[10px] text-slate-500">row ${t.row_start ?? '-'} ~ ${t.row_end ?? '-'}</span>
+                        <span class="ml-auto text-[10px] text-sky-700 font-bold" title="预留字段：该轮原销售回复的 LLM 评价分；空值不报错、不参与平均">原销售回复分 ${score}</span>
+                    </div>
+                    ${(t.messages || []).map(renderMsg).join('') || '<span class="text-slate-400 text-xs">无消息</span>'}
+                </div>`;
+            }).join('') : '<div class="text-sm text-slate-400 text-center p-8">暂无对话轮次明细，请点击“重新导入案例库”生成。</div>';
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                    <div class="px-5 py-3 border-b bg-purple-50 flex items-start justify-between">
+                        <div>
+                            <div class="text-sm font-bold text-slate-900">${escapeHtml(c.scenario_code)} · ${escapeHtml(c.case_title || '')}</div>
+                            <div class="text-[11px] text-slate-500 mt-1">对话轮次 ${turns.length} · 对话组 ${escapeHtml(c.group_key || '')} · 编号 ${escapeHtml(c.md_section_anchor || '')}</div>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-slate-500 hover:text-slate-800 text-xl ml-3" title="关闭">×</button>
+                    </div>
+                    <div class="flex-1 overflow-auto p-4 bg-slate-50">${list}</div>
+                </div>`;
+            document.body.appendChild(modal);
+        }
+
+        function caselibOpenStepModal(resultId, stepKey) {
+            const detail = caselibState.currentDetail;
+            if (!detail) return;
+            const r = (detail.results || []).find(x => x.result_id === resultId);
+            if (!r) return;
+            const c = r.case || {};
+
+            const safeObj = (v) => {
+                if (!v) return null;
+                if (typeof v === 'string') { try { return JSON.parse(v); } catch { return null; } }
+                return v;
+            };
+            const safeArr = (v) => {
+                if (Array.isArray(v)) return v;
+                if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return v ? [v] : []; } }
+                return [];
+            };
+            const frow = (label, val, cls = '') => (val != null && val !== '' && val !== undefined)
+                ? `<div class="flex gap-2 text-[11px] mb-1"><span class="text-slate-400 shrink-0 w-[80px]">${label}</span><span class="${cls||'text-slate-800'}">${escapeHtml(String(val))}</span></div>`
+                : '';
+            const chips = (items, cls = 'bg-slate-100 text-slate-700') => items.length
+                ? `<div class="flex flex-wrap gap-1 mt-1">${items.map(i => `<span class="text-[9px] px-1.5 py-0.5 rounded-full ${cls}">${escapeHtml(String(i))}</span>`).join('')}</div>`
+                : '';
+            const scoreBars = (scores) => {
+                if (!scores) return '';
+                const dimNames = { overall:'总分', low_barrier:'低门槛', non_repetition:'不重复', safety:'安全', conciseness:'简洁', style_match:'风格匹配', context_alignment:'场景对齐' };
+                const order = ['overall','conciseness','low_barrier','non_repetition','safety','style_match','context_alignment'];
+                const keys = [...order.filter(k => k in scores), ...Object.keys(scores).filter(k => !order.includes(k))];
+                return keys.map(k => {
+                    const v = scores[k];
+                    const pct = Math.min(Math.max(Number(v)||0, 0), 100);
+                    const clr = k === 'overall'
+                        ? (pct >= 80 ? 'bg-purple-500' : pct >= 60 ? 'bg-amber-400' : 'bg-red-400')
+                        : (pct >= 80 ? 'bg-emerald-400' : pct >= 60 ? 'bg-amber-400' : 'bg-red-400');
+                    return `<div class="flex items-center gap-2 text-[11px] mb-1"><span class="text-slate-500 w-[76px] shrink-0">${dimNames[k]||k}</span><div class="flex-1 bg-slate-100 rounded-full h-2"><div class="h-2 rounded-full ${clr}" style="width:${pct}%"></div></div><span class="text-slate-700 w-[24px] text-right font-medium">${v}</span></div>`;
+                }).join('');
+            };
+            const candidateIdToCn = (cid) => {
+                if (!cid) return cid;
+                return String(cid)
+                    .replace(/llm2_compare/g, '对比模型').replace(/llm2/g, '主模型').replace(/llm1/g, '大模型1')
+                    .replace(/knowledge_v2/g, '私域库').replace(/knowledge_external_api/g, '外部库').replace(/knowledge_base/g, '基础库')
+                    .replace(/style_(\d+)/g, '风格$1').replace(/__+/g, '·');
+            };
+
+            let bodyHtml = '';
+
+            if (stepKey === '第1步·主线话题') {
+                const s1 = safeObj(r.step1_summary);
+                if (!s1) {
+                    bodyHtml = `<div class="text-sm text-red-500 p-4">无 step1_summary 数据</div>`;
+                } else {
+                    const kf = s1.key_facts || {};
+                    const todos = safeArr(s1.todo_items);
+                    const risks = safeArr(s1.risks);
+                    const timeline = Array.isArray(kf.timeline_items) ? kf.timeline_items : [];
+                    bodyHtml = `<div class="p-4">
+                        ${frow('主线话题', s1.topic, 'text-slate-900 font-semibold')}
+                        ${frow('核心诉求', s1.core_demand)}
+                        ${kf.current_focus ? frow('当前焦点', kf.current_focus) : ''}
+                        ${kf.product_mentioned ? frow('提及产品', kf.product_mentioned) : ''}
+                        ${kf.price_info ? frow('价格信息', kf.price_info) : ''}
+                        ${timeline.length ? `<div class="mt-3"><div class="text-[10px] font-semibold text-slate-500 mb-1">时间轴事项（${timeline.length}）</div>${timeline.map(t => `<div class="text-[11px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-3 py-1.5 mb-1"><span class="text-slate-500">${escapeHtml(t.time||'')}</span> · ${escapeHtml(t.topic||'')} <span class="text-slate-400 ml-1">[${escapeHtml(t.status||'')}]</span></div>`).join('')}</div>` : ''}
+                        ${todos.length ? `<div class="mt-3"><div class="text-[10px] font-semibold text-slate-500 mb-1">待跟进（${todos.length}）</div><ul class="list-disc list-inside">${todos.map(t => `<li class="text-[11px] text-slate-700 mb-0.5">${escapeHtml(t)}</li>`).join('')}</ul></div>` : ''}
+                        ${risks.length ? `<div class="mt-3"><div class="text-[10px] font-semibold text-slate-500 mb-1">风险</div>${chips(risks, 'bg-red-50 text-red-700 border border-red-200')}</div>` : ''}
+                        <div class="mt-4 pt-3 border-t"><div class="text-[10px] font-semibold text-slate-500 mb-2">原始 JSON</div><pre class="text-[10px] text-slate-600 bg-slate-50 border rounded p-3 overflow-auto whitespace-pre-wrap">${escapeHtml(JSON.stringify(s1, null, 2))}</pre></div>
+                    </div>`;
+                }
+            } else if (stepKey === '第4步·知识检索') {
+                const s4 = safeObj(r.step4_knowledge);
+                if (!s4) {
+                    bodyHtml = `<div class="text-sm text-red-500 p-4">无 step4_knowledge 数据</div>`;
+                } else {
+                    const kv2 = safeObj(s4.knowledge_v2) || {};
+                    const kStatusMap = { manual_review_required:'需人工复核', ok:'正常', low_confidence:'低置信度', skipped_no_query:'无检索问题跳过', skipped_missing_knowledge:'无知识跳过', failed:'失败', done:'已完成', not_started:'未启动', dry_run_stub:'干跑占位' };
+                    const refs = kv2.evidence_refs || [];
+                    bodyHtml = `<div class="p-4">
+                        ${frow('知识库状态', kStatusMap[s4.knowledge_status] || s4.knowledge_status)}
+                        ${frow('v2 状态', kStatusMap[kv2.status] || kv2.status)}
+                        ${frow('检索问题', kv2.query_text, 'text-slate-900 font-medium')}
+                        ${kv2.retrieval_quality != null ? frow('检索质量', kv2.retrieval_quality) : ''}
+                        ${kv2.manual_review_required ? `<div class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 mt-2 mb-2">⚠ 知识命中需人工复核，话术需保守使用</div>` : ''}
+                        ${kv2.no_hit_reason ? frow('无命中原因', kv2.no_hit_reason, 'text-slate-500 italic') : ''}
+                        ${refs.length ? `<div class="mt-3"><div class="text-[10px] font-semibold text-slate-500 mb-2">知识证据（${refs.length} 条）</div>${refs.map(ref => `<div class="bg-sky-50 border border-sky-100 rounded px-3 py-2 mb-2"><div class="font-semibold text-sky-800 text-[11px] mb-1">${escapeHtml(ref.title||'')}</div><div class="text-[11px] text-slate-700 leading-relaxed">${escapeHtml(ref.snippet||'')}</div>${ref.source ? `<div class="text-[10px] text-slate-400 mt-1">来源：${escapeHtml(ref.source)}</div>` : ''}</div>`).join('')}</div>` : '<div class="text-[11px] text-slate-400 mt-3 italic">无知识证据命中</div>'}
+                        <div class="mt-4 pt-3 border-t"><div class="text-[10px] font-semibold text-slate-500 mb-2">原始 JSON</div><pre class="text-[10px] text-slate-600 bg-slate-50 border rounded p-3 overflow-auto whitespace-pre-wrap">${escapeHtml(JSON.stringify(s4, null, 2))}</pre></div>
+                    </div>`;
+                }
+            } else if (stepKey === '第6步·AI生成回复') {
+                const advice = r.step6_sales_advice || '';
+                const styles7 = safeArr(r.step7_reply_styles);
+                bodyHtml = `<div class="p-4">
+                    ${advice ? `<div class="mb-4"><div class="text-[10px] font-semibold text-slate-500 mb-1">AI 销售建议（step6_sales_advice）</div><div class="text-sm text-slate-900 bg-emerald-50 border border-emerald-200 rounded px-4 py-3 leading-relaxed whitespace-pre-wrap">${escapeHtml(advice)}</div></div>` : '<div class="text-[11px] text-slate-400 italic mb-4">无 AI 销售建议</div>'}
+                    ${styles7.length ? `<div><div class="text-[10px] font-semibold text-slate-500 mb-2">风格候选回复（${styles7.length} 个）</div>${styles7.map((s, i) => {
+                        const warns = (s.validation || {}).warnings || [];
+                        return `<div class="rounded-lg border bg-white p-3 mb-2">
+                            <div class="flex items-center gap-1.5 mb-2 flex-wrap">
+                                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800">#${i+1}</span>
+                                ${s.model_label ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-700">${escapeHtml(s.model_label)}</span>` : ''}
+                                ${s.style_title ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700">${escapeHtml(s.style_title)}</span>` : ''}
+                                ${s.knowledge_source_label ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">${escapeHtml(s.knowledge_source_label)}</span>` : ''}
+                                <span class="ml-auto text-[9px] px-1.5 py-0.5 rounded ${s.status==='done'?'bg-green-50 text-green-700':'bg-slate-100 text-slate-600'}">${escapeHtml(s.status||'')}</span>
+                            </div>
+                            ${s.reply_reference ? `<div class="text-[12px] text-slate-900 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 leading-relaxed whitespace-pre-wrap">${escapeHtml(s.reply_reference)}</div>` : '<div class="text-[11px] text-slate-400 italic">无回复内容</div>'}
+                            ${warns.length ? `<div class="mt-2">${warns.map(w=>`<div class="text-[10px] text-amber-700">⚠ ${escapeHtml(w)}</div>`).join('')}</div>` : ''}
+                        </div>`;
+                    }).join('')}</div>` : '<div class="text-[11px] text-slate-400 italic">无风格候选数据</div>'}
+                </div>`;
+            } else if (stepKey === '销售原始回复') {
+                const dialog = c.core_dialog || [];
+                const trigger = r.step3_thread_business_fact
+                    && r.step3_thread_business_fact.merged_facts
+                    && r.step3_thread_business_fact.merged_facts.latest_customer_message;
+                let triggerIdx = -1;
+                if (trigger) {
+                    for (let i = dialog.length - 1; i >= 0; i--) {
+                        if (dialog[i].role === 'customer' && dialog[i].content === trigger) { triggerIdx = i; break; }
+                    }
+                }
+                const salesReplies = [];
+                if (triggerIdx >= 0) {
+                    for (let i = triggerIdx + 1; i < dialog.length; i++) {
+                        if (dialog[i].role === 'sales' && dialog[i].content) salesReplies.push(dialog[i]);
+                    }
+                } else {
+                    for (let i = dialog.length - 1; i >= 0; i--) {
+                        if (dialog[i].role === 'sales' && dialog[i].content) { salesReplies.push(dialog[i]); break; }
+                    }
+                }
+                const scoresObj = safeObj(r.step7_reply_scores);
+                const actSales = scoresObj ? (scoresObj.actual_sales_replies || []) : [];
+                bodyHtml = `<div class="p-4">
+                    ${trigger ? `<div class="mb-4"><div class="text-[10px] font-semibold text-blue-600 mb-1">触发点（客户消息）</div><div class="text-[12px] text-blue-800 bg-blue-50 border border-blue-200 rounded px-3 py-2 leading-relaxed">${escapeHtml(trigger)}</div></div>` : ''}
+                    <div class="mb-4"><div class="text-[10px] font-semibold text-slate-500 mb-1">销售原始回复${salesReplies.length ? '（'+salesReplies.length+'条）' : ''}</div>${salesReplies.length ? salesReplies.map(m => `<div class="text-[13px] text-slate-900 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 mb-2 leading-relaxed whitespace-pre-wrap">${escapeHtml(m.content)}</div>`).join('') : '<div class="text-[11px] text-slate-400 italic">未找到触发点后的销售回复</div>'}</div>
+                    ${actSales.length ? `<div><div class="text-[10px] font-semibold text-slate-500 mb-2">LLM 评分明细（${actSales.length} 条）</div>${actSales.map(s => `<div class="rounded-lg border bg-slate-50 p-3 mb-2">
+                        <div class="flex items-center gap-2 mb-2"><span class="text-[13px] font-bold text-sky-700">总分 ${s.overall_score ?? s.scores?.overall ?? '—'}</span>${s.score_reason ? `<span class="text-[9px] text-slate-500 italic">${escapeHtml(s.score_reason)}</span>` : ''}</div>
+                        ${s.reply_text ? `<div class="text-[11px] text-slate-600 italic mb-2 bg-white border rounded px-2 py-1">${escapeHtml(String(s.reply_text).slice(0,160))}${s.reply_text.length>160?'…':''}</div>` : ''}
+                        ${scoreBars(s.scores)}
+                        ${s.score_note ? `<div class="text-[10px] text-slate-500 mt-1">${escapeHtml(s.score_note)}</div>` : ''}
+                    </div>`).join('')}</div>` : '<div class="text-[11px] text-slate-400 italic">暂无 LLM 评分，请点击"重新打分"</div>'}
+                </div>`;
+            } else if (stepKey === '第7步·风格候选分') {
+                const scoresObj = safeObj(r.step7_reply_scores);
+                const aiCandidates = scoresObj ? (scoresObj.ai_candidates || []) : [];
+                if (!aiCandidates.length) {
+                    bodyHtml = `<div class="p-4 text-[11px] text-slate-400 italic">尚未评分，请点击工具栏"重新打分"按钮</div>`;
+                } else {
+                    bodyHtml = `<div class="p-4">
+                        ${scoresObj && scoresObj.scored_by ? `<div class="text-[10px] text-slate-500 mb-3">打分模型：${escapeHtml(scoresObj.scored_by.model||'')} ${scoresObj.scored_at ? '· ' + escapeHtml(String(scoresObj.scored_at).slice(0,16)) : ''}</div>` : ''}
+                        ${aiCandidates.map((cand, i) => {
+                            const scores = cand.scores || {};
+                            const overall = cand.overall_score ?? scores.overall ?? '—';
+                            const overallNum = parseFloat(overall);
+                            const overallCls = overallNum >= 80 ? 'text-emerald-700' : overallNum >= 65 ? 'text-amber-700' : 'text-red-700';
+                            return `<div class="rounded-lg border bg-white p-3 mb-3 shadow-sm">
+                                <div class="flex items-start justify-between mb-2">
+                                    <div class="flex items-center gap-1.5 flex-wrap"><span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800">#${i+1}</span><span class="text-[11px] text-slate-700 font-medium">${escapeHtml(candidateIdToCn(cand.candidate_id||''))}</span></div>
+                                    <span class="text-[18px] font-bold ${overallCls}">${overall}</span>
+                                </div>
+                                ${cand.reply_text ? `<div class="text-[12px] text-slate-900 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 mb-2 leading-relaxed whitespace-pre-wrap">${escapeHtml(cand.reply_text)}</div>` : ''}
+                                ${Object.keys(scores).length ? `<div class="mt-2">${scoreBars(scores)}</div>` : ''}
+                                ${cand.score_reason ? `<div class="text-[10px] text-slate-500 mt-1.5 italic">${escapeHtml(String(cand.score_reason).slice(0,240))}</div>` : ''}
+                                ${cand.score_note ? `<div class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(cand.score_note)}</div>` : ''}
+                            </div>`;
+                        }).join('')}
+                    </div>`;
+                }
+            } else {
+                bodyHtml = `<div class="p-4 text-sm text-slate-500">未知步骤：${escapeHtml(stepKey)}</div>`;
+            }
+
+            const scTip = caselibScenarioTip(r.scenario_code);
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') modal.remove(); });
+            modal.setAttribute('tabindex', '-1');
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl shadow-2xl flex flex-col" style="width:min(96vw,740px);max-height:90vh;overflow:hidden">
+                    <div class="px-5 py-3 border-b bg-slate-50 flex items-start justify-between shrink-0">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="px-2 py-0.5 rounded bg-purple-200 text-purple-800 text-[10px] font-bold" title="${escapeHtml(scTip)}">${escapeHtml(r.scenario_code)}</span>
+                                <span class="text-[11px] text-slate-600">${escapeHtml(caselibScenarioName(r.scenario_code))}</span>
+                                <span class="text-[11px] text-slate-400">·</span>
+                                <span class="text-[11px] text-slate-500">第 ${r.scenario_rank} 名</span>
+                            </div>
+                            <div class="text-sm font-bold text-slate-800">${escapeHtml(stepKey)}</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5">${escapeHtml((c.case_title||'').slice(0,60))}</div>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-slate-500 hover:text-slate-800 text-2xl ml-4 shrink-0 leading-none" title="关闭（Esc）">×</button>
+                    </div>
+                    <div class="flex-1 overflow-auto">${bodyHtml}</div>
+                </div>`;
+            document.body.appendChild(modal);
+            modal.focus();
         }
 
         function escapeHtml(s) {
