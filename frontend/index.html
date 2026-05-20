@@ -2745,6 +2745,21 @@
                         <div class="mt-4 pt-3 border-t"><div class="text-[10px] font-semibold text-slate-500 mb-2">原始 JSON</div><pre class="text-[10px] text-slate-600 bg-slate-50 border rounded p-3 overflow-auto whitespace-pre-wrap">${escapeHtml(JSON.stringify(s4, null, 2))}</pre></div>
                     </div>`;
                 }
+            } else if (stepKey === '原客户问') {
+                const turn = r.turn || {};
+                const split = r.stage_status && r.stage_status.caselib_split || {};
+                const question = turn.customer_text || split.customer_question || r.stage_status?.customer_question || '';
+                const bg = turn.context_messages || [];
+                bodyHtml = `<div class="p-4">
+                    <div class="mb-4">
+                        <div class="text-[10px] font-semibold text-blue-600 mb-1">本轮输入给 AI 的原客户问</div>
+                        <div class="text-[13px] text-blue-900 bg-blue-50 border border-blue-200 rounded px-3 py-2 leading-relaxed whitespace-pre-wrap">${escapeHtml(question) || '（无）'}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-semibold text-slate-500 mb-1">客户问之前的背景（${bg.length} 条，不含本轮销售参考答案）</div>
+                        ${bg.length ? bg.map(m => `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content||'')}</div>`).join('') : '<div class="text-[11px] text-slate-400 italic">无背景</div>'}
+                    </div>
+                </div>`;
             } else if (stepKey === '第6步·AI生成回复') {
                 const advice = r.step6_sales_advice || '';
                 const styles7 = safeArr(r.step7_reply_styles);
@@ -2766,22 +2781,28 @@
                     }).join('')}</div>` : '<div class="text-[11px] text-slate-400 italic">无风格候选数据</div>'}
                 </div>`;
             } else if (stepKey === '销售原始回复') {
-                const dialog = c.core_dialog || [];
+                const turn = r.turn || {};
+                const dialog = turn.messages || c.core_dialog || [];
                 const trigger = r.step3_thread_business_fact
                     && r.step3_thread_business_fact.merged_facts
-                    && r.step3_thread_business_fact.merged_facts.latest_customer_message;
+                    && r.step3_thread_business_fact.merged_facts.latest_customer_message
+                    || turn.customer_text
+                    || (r.stage_status && r.stage_status.caselib_split && r.stage_status.caselib_split.customer_question);
                 let triggerIdx = -1;
                 if (trigger) {
                     for (let i = dialog.length - 1; i >= 0; i--) {
                         if (dialog[i].role === 'customer' && dialog[i].content === trigger) { triggerIdx = i; break; }
                     }
                 }
-                const salesReplies = [];
-                if (triggerIdx >= 0) {
+                let salesReplies = [];
+                if (turn.sales_text) {
+                    salesReplies = [{content: turn.sales_text, role: 'sales'}];
+                }
+                if (!salesReplies.length && triggerIdx >= 0) {
                     for (let i = triggerIdx + 1; i < dialog.length; i++) {
                         if (dialog[i].role === 'sales' && dialog[i].content) salesReplies.push(dialog[i]);
                     }
-                } else {
+                } else if (!salesReplies.length) {
                     for (let i = dialog.length - 1; i >= 0; i--) {
                         if (dialog[i].role === 'sales' && dialog[i].content) { salesReplies.push(dialog[i]); break; }
                     }
