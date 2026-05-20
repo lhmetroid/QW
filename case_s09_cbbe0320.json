@@ -1,0 +1,147 @@
+{
+  "case_id": "cbbe0320-5462-445a-9ee1-5ddfce1697fe",
+  "scenario": "S09",
+  "title": "新年开工问候及业务回顾",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 5930,
+      "row_end": 5932,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:30:47",
+          "msg_id": 8733,
+          "row_index": 5930,
+          "content": "是的  易派客展会是前年的了"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:31:13",
+          "msg_id": 8734,
+          "row_index": 5931,
+          "content": "去年9月，我倒是在成都，正好橡塑展在成都， 日本的住友摩登委托我们执行展台设计搭建的活"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:31:29",
+          "msg_id": 8736,
+          "row_index": 5932,
+          "content": "这是一条引用/回复消息：\n\"杨超：\n还以为是真人拍的呢[捂脸]\"\n------\n哈哈，以假乱真了"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 5933,
+      "row_end": 5934,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:31:53",
+          "msg_id": 8737,
+          "row_index": 5933,
+          "content": "我们参加的行业会议就比较小了 都是酒店里的那种小展台"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:32:10",
+          "msg_id": 8739,
+          "row_index": 5934,
+          "content": "嗯嗯，记得滴， 也是不错的，毕竟有针对性"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 5935,
+      "row_end": 5937,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:32:12",
+          "msg_id": 8740,
+          "row_index": 5935,
+          "content": "展台商统一弄个背景，放张桌子那种"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:32:31",
+          "msg_id": 8742,
+          "row_index": 5936,
+          "content": "这种费用上也不会很贵"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:33:00",
+          "msg_id": 8743,
+          "row_index": 5937,
+          "content": "是呀，性价比还蛮高的， 24年你家销售情况还好哇"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 5938,
+      "row_end": 5940,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:33:34",
+          "msg_id": 8744,
+          "row_index": 5938,
+          "content": "没有之前好  而且嘉兴工厂投资开销也很大"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:33:43",
+          "msg_id": 8746,
+          "row_index": 5939,
+          "content": "今年过年回来感觉好像还不错"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:34:42",
+          "msg_id": 8747,
+          "row_index": 5940,
+          "content": "工厂投资确实，开销大的，今年又要大干一场啦"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 5941,
+      "row_end": 5944,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:35:08",
+          "msg_id": 8749,
+          "row_index": 5941,
+          "content": "嗯  今年要继续努力了[偷笑]"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:35:13",
+          "msg_id": 8750,
+          "row_index": 5942,
+          "content": "开年还可以的"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:36:14",
+          "msg_id": 8752,
+          "row_index": 5943,
+          "content": "去年Q4，我们翻译有一大块业务是欧洲语种的， 中译西班牙，德语，法语， 也是我们国企的叉车销往海外了，这种说明书，操作手册之类的"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:36:58",
+          "msg_id": 8754,
+          "row_index": 5944,
+          "content": "有机会随时联系哈~~"
+        }
+      ]
+    }
+  ]
+}

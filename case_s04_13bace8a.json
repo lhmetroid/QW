@@ -1,0 +1,189 @@
+{
+  "case_id": "13bace8a-cccf-4034-b5da-48452dfcf50e",
+  "scenario": "S04",
+  "title": "价格优惠请求及回复",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 6686,
+      "row_end": 6688,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-03-30 13:49:07",
+          "msg_id": 10281,
+          "row_index": 6686,
+          "content": "「何珺：那就是巴葡比较好了」\n- - - - - - - - - - - - - - -\n嗯嗯??"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-03-30 14:10:17",
+          "msg_id": 10282,
+          "row_index": 6687,
+          "content": "统计单发邮件了哈，请查收下哦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-03-30 14:11:02",
+          "msg_id": 10284,
+          "row_index": 6688,
+          "content": "统计文件明细麻烦先看下哦，看看是不是有哪些不用翻译的"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 6689,
+      "row_end": 6691,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-03-30 14:12:45",
+          "msg_id": 10286,
+          "row_index": 6689,
+          "content": "??"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-01 09:58:18",
+          "msg_id": 10288,
+          "row_index": 6690,
+          "content": "早呀~~ Lily"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-01 09:58:34",
+          "msg_id": 10290,
+          "row_index": 6691,
+          "content": "那个翻译统计单，我们要核对沟通下哇"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 6692,
+      "row_end": 6697,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-01 09:59:17",
+          "msg_id": 10292,
+          "row_index": 6692,
+          "content": "需要的"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-01 09:59:27",
+          "msg_id": 10294,
+          "row_index": 6693,
+          "content": "但我这两天还在忙其他的，忙好和你对"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-01 10:00:04",
+          "msg_id": 10296,
+          "row_index": 6694,
+          "content": "好滴，你方便时，随时找我呗"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-01 10:04:23",
+          "msg_id": 10299,
+          "row_index": 6696,
+          "content": "这是昨天的联博发票，麻烦报销下"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-01 11:19:50",
+          "msg_id": 10301,
+          "row_index": 6697,
+          "content": "呀，发给财务的，发错人了，哈哈"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 6698,
+      "row_end": 6701,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-01 11:24:57",
+          "msg_id": 10304,
+          "row_index": 6698,
+          "content": "没事～"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-03 10:49:55",
+          "msg_id": 10306,
+          "row_index": 6699,
+          "content": "有些问题的，我标注在表格里了"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-03 10:51:21",
+          "msg_id": 10308,
+          "row_index": 6700,
+          "content": "然后就是总体报价，现在这个AI时代，这个报价标准，估计公司老板也挺难接受 恨不得AI直接翻[破涕为笑]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-03 10:51:47",
+          "msg_id": 10310,
+          "row_index": 6701,
+          "content": "哈哈，我研究下哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 6702,
+      "row_end": 6707,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-03 10:51:54",
+          "msg_id": 10312,
+          "row_index": 6702,
+          "content": "看看你们这里尽可能的优惠程度吧"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-03 10:52:18",
+          "msg_id": 10314,
+          "row_index": 6703,
+          "content": "看看最后是否能达成共识"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-03 10:52:32",
+          "msg_id": 10316,
+          "row_index": 6704,
+          "content": "现在AI太害了"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-03 10:52:42",
+          "msg_id": 10318,
+          "row_index": 6705,
+          "content": "说是能做 其实也就是80%"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-03 10:52:53",
+          "msg_id": 10320,
+          "row_index": 6706,
+          "content": "嗯嗯，明白啦，我尽力哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-03 10:53:08",
+          "msg_id": 10322,
+          "row_index": 6707,
+          "content": "再保证翻译质量的情况下，申请个最低价"
+        }
+      ]
+    }
+  ]
+}

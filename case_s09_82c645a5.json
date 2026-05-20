@@ -1,0 +1,189 @@
+{
+  "case_id": "82c645a5-8bc7-4329-b982-90647ed35a7c",
+  "scenario": "S09",
+  "title": "开工问候",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 9054,
+      "row_end": 9062,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-01-13 17:20:05",
+          "msg_id": 15178,
+          "row_index": 9054,
+          "content": "酱紫？我问问。"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-01-13 17:20:41",
+          "msg_id": 15180,
+          "row_index": 9055,
+          "content": "这三份已经是最近的翻译项目是吧，没有其他的"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-01-13 17:21:03",
+          "msg_id": 15184,
+          "row_index": 9057,
+          "content": "好的。"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-01-20 13:26:40",
+          "msg_id": 15186,
+          "row_index": 9058,
+          "content": "Alice,我们有个视频需要请贵方帮忙翻译的。以往大概什么流程？直接丢条链接过去给你报价，确认了就可以开工么？"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-01-20 13:27:01",
+          "msg_id": 15188,
+          "row_index": 9059,
+          "content": "一段内部高管采访的视频"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-01-20 13:27:33",
+          "msg_id": 15190,
+          "row_index": 9060,
+          "content": "Hi 是呀"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-01-20 13:27:41",
+          "msg_id": 15192,
+          "row_index": 9061,
+          "content": "链接发我下就行"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-01-20 13:27:51",
+          "msg_id": 15194,
+          "row_index": 9062,
+          "content": "提供报价邮件和完成时间，确认就开工哈"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 9063,
+      "row_end": 9066,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-01-20 13:32:09",
+          "msg_id": 15196,
+          "row_index": 9063,
+          "content": "[OK]发邮件给你了，麻烦帮忙看看"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-01-20 13:32:18",
+          "msg_id": 15203,
+          "row_index": 9065,
+          "content": "能在节前搞定最好[呲牙]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-01-20 13:32:36",
+          "msg_id": 15205,
+          "row_index": 9066,
+          "content": "好呀， 你们几号开始休假呀"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 9067,
+      "row_end": 9070,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-01-20 13:36:55",
+          "msg_id": 15207,
+          "row_index": 9067,
+          "content": "25还是26号"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-01-20 13:37:05",
+          "msg_id": 15209,
+          "row_index": 9068,
+          "content": "26号"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-01-20 13:42:18",
+          "msg_id": 15211,
+          "row_index": 9069,
+          "content": "这链接打不开呢"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-01-20 13:42:37",
+          "msg_id": 15213,
+          "row_index": 9070,
+          "content": "有下载好的视频哇"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 9071,
+      "row_end": 9076,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-01-20 13:43:40",
+          "msg_id": 15215,
+          "row_index": 9071,
+          "content": "打不开是吧，那我只能下载给你"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-01-20 13:55:09",
+          "msg_id": 15219,
+          "row_index": 9073,
+          "content": "Hi Alice，我搞混了，这个项目你已经搞定了"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-01-20 13:55:30",
+          "msg_id": 15221,
+          "row_index": 9074,
+          "content": "请忽略"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-08 15:07:56",
+          "msg_id": 15225,
+          "row_index": 9076,
+          "content": "新年好呀，开工大吉哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 9077,
+      "row_end": 9078,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-08 15:08:14",
+          "msg_id": 15227,
+          "row_index": 9077,
+          "content": "这么爽？今天才开工?"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-08 15:08:55",
+          "msg_id": 15229,
+          "row_index": 9078,
+          "content": "哈哈，好几天啦，不是还没和你打招呼吗~~"
+        }
+      ]
+    }
+  ]
+}

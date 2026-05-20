@@ -1,0 +1,245 @@
+{
+  "case_id": "81a9fa77-bdac-41c8-a21c-4c567d6e3427",
+  "scenario": "S02-2",
+  "title": "关于工厂找的服务",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 6738,
+      "row_end": 6741,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 10:21:44",
+          "msg_id": 10384,
+          "row_index": 6738,
+          "content": "看这两页"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 11:05:01",
+          "msg_id": 10388,
+          "row_index": 6740,
+          "content": "按优先级排序的双语种金额哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 11:05:22",
+          "msg_id": 10390,
+          "row_index": 6741,
+          "content": "你看看领导预算想要几个钱，我去直接找大老板申请哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 6742,
+      "row_end": 6751,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 11:18:41",
+          "msg_id": 10392,
+          "row_index": 6742,
+          "content": "我老板让给我去网上找供应商，现在就是CN-A有报价4400的/两种语言，还有2400/两种语言"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 11:19:09",
+          "msg_id": 10394,
+          "row_index": 6743,
+          "content": "我想，还是先问你这里5000以内能做吗"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 11:19:28",
+          "msg_id": 10396,
+          "row_index": 6744,
+          "content": "2400的哪个差太多了 我不去申请那个了"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 11:20:21",
+          "msg_id": 10398,
+          "row_index": 6745,
+          "content": "其实4-5000，我们这边是否能批 我也还不是太确定"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 11:20:55",
+          "msg_id": 10400,
+          "row_index": 6746,
+          "content": "但我按照我的经验 会先报老板 看能否通过"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 11:21:10",
+          "msg_id": 10402,
+          "row_index": 6747,
+          "content": "太便宜的 我也怕质量不行"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 11:22:49",
+          "msg_id": 10404,
+          "row_index": 6748,
+          "content": "这是一条引用/回复消息：\n\"Lily Xu ：\n我想，还是先问你这里5000以内能做吗\"\n------\n谢谢亲， 这个5000以内，是指什么呀"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 11:22:53",
+          "msg_id": 10405,
+          "row_index": 6749,
+          "content": "没太看懂呢"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 13:46:31",
+          "msg_id": 10407,
+          "row_index": 6750,
+          "content": "大老板正好在，5K以内OK，他说撸起袖子干[偷笑]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 13:46:50",
+          "msg_id": 10409,
+          "row_index": 6751,
+          "content": "等你老板那边消息，我们再沟通哈"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 6752,
+      "row_end": 6761,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 13:50:36",
+          "msg_id": 10411,
+          "row_index": 6752,
+          "content": "「何珺：大老板正好在，5K以内OK，他说撸起袖子干[偷笑]」\n- - - - - - - - - - - - - - -\n[呲牙][呲牙]"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 13:50:46",
+          "msg_id": 10413,
+          "row_index": 6753,
+          "content": "「何珺：等你老板那边消息，我们再沟通哈」\n- - - - - - - - - - - - - - -\n行 我去申请"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 15:00:06",
+          "msg_id": 10414,
+          "row_index": 6754,
+          "content": "对了 这个手册是要印刷的"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 15:00:29",
+          "msg_id": 10416,
+          "row_index": 6755,
+          "content": "我提供的就是可印刷的文件"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 15:00:35",
+          "msg_id": 10418,
+          "row_index": 6756,
+          "content": "翻译好的也可以吧？"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 15:14:52",
+          "msg_id": 10420,
+          "row_index": 6757,
+          "content": "我按之前报价的6折去申请了？"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 15:15:31",
+          "msg_id": 10422,
+          "row_index": 6758,
+          "content": "3596+4576=8172*0.6=4903"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 15:22:11",
+          "msg_id": 10424,
+          "row_index": 6759,
+          "content": "嗯嗯，价格ok的哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 15:22:49",
+          "msg_id": 10426,
+          "row_index": 6760,
+          "content": "印刷文件我要去看下哦，是不是指的打印呀~~"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-14 10:37:04",
+          "msg_id": 10428,
+          "row_index": 6761,
+          "content": "早呀，PDF文件研究了哈，翻译好可以做成同样版本的文件哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 6762,
+      "row_end": 6765,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-14 10:37:22",
+          "msg_id": 10429,
+          "row_index": 6762,
+          "content": "嗯嗯 可以直接印刷 对吧"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-14 10:38:27",
+          "msg_id": 10431,
+          "row_index": 6763,
+          "content": "可以的"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-14 10:38:42",
+          "msg_id": 10433,
+          "row_index": 6764,
+          "content": "如果原来中文就用这个版本印刷滴话，哈哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-14 10:39:01",
+          "msg_id": 10434,
+          "row_index": 6765,
+          "content": "话说，中英版本印刷找的是什么供应商呀"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 6766,
+      "row_end": 6767,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-14 10:39:17",
+          "msg_id": 10437,
+          "row_index": 6766,
+          "content": "不知道 工厂找的"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-14 10:39:29",
+          "msg_id": 10439,
+          "row_index": 6767,
+          "content": "我这儿也专门做印刷的哈，20多年了~~"
+        }
+      ]
+    }
+  ]
+}

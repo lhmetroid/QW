@@ -1,0 +1,168 @@
+{
+  "case_id": "44bbbd80-305d-4a0b-bcc2-931db9661df4",
+  "scenario": "S04",
+  "title": "关于特殊折扣价格的沟通",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 6786,
+      "row_end": 6789,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-14 14:15:32",
+          "msg_id": 10476,
+          "row_index": 6786,
+          "content": "好??"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 09:57:44",
+          "msg_id": 10478,
+          "row_index": 6787,
+          "content": "Alice邮件我没收到"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 09:57:49",
+          "msg_id": 10480,
+          "row_index": 6788,
+          "content": "昨天下午我外出了"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-15 09:57:55",
+          "msg_id": 10482,
+          "row_index": 6789,
+          "content": "看下哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 6790,
+      "row_end": 6792,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 09:57:55",
+          "msg_id": 10484,
+          "row_index": 6790,
+          "content": "今天上午来没看到"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-15 09:58:41",
+          "msg_id": 10486,
+          "row_index": 6791,
+          "content": "2点发出的邮件"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-15 09:58:48",
+          "msg_id": 10488,
+          "row_index": 6792,
+          "content": "帮忙看下会不会进垃圾邮箱了呀"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 6793,
+      "row_end": 6795,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 10:00:21",
+          "msg_id": 10490,
+          "row_index": 6793,
+          "content": "也没有"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 10:00:27",
+          "msg_id": 10492,
+          "row_index": 6794,
+          "content": "再发一下吧"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-15 10:00:35",
+          "msg_id": 10493,
+          "row_index": 6795,
+          "content": "刚刚发了"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 6796,
+      "row_end": 6798,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 10:02:20",
+          "msg_id": 10495,
+          "row_index": 6796,
+          "content": "也没有"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-15 10:03:53",
+          "msg_id": 10498,
+          "row_index": 6798,
+          "content": "文件这里先发下哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 6800,
+      "row_end": 6805,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 11:05:11",
+          "msg_id": 10501,
+          "row_index": 6800,
+          "content": "我们老板回复了"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 11:05:22",
+          "msg_id": 10503,
+          "row_index": 6801,
+          "content": "他担心你们降价后 质量下降"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 11:06:18",
+          "msg_id": 10505,
+          "row_index": 6802,
+          "content": "所以想先翻译一个中议葡的看看效果"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 11:06:21",
+          "msg_id": 10507,
+          "row_index": 6803,
+          "content": "[破涕为笑]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-15 11:07:08",
+          "msg_id": 10508,
+          "row_index": 6804,
+          "content": "不会的哈，这么多年了，质量请放心哦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-15 11:07:20",
+          "msg_id": 10510,
+          "row_index": 6805,
+          "content": "这个我还是要负责滴"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,178 @@
+{
+  "case_id": "58035fa5-148a-4868-bae9-552a30920d9f",
+  "scenario": "S11",
+  "title": "还可以的  跟之前差不多[笑脸]",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 5912,
+      "row_end": 5916,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:24:38",
+          "msg_id": null,
+          "row_index": 5912,
+          "content": "请帮我写一条微信消息，激活一位很久没有联系的老客户，语气自然亲切，不要太营销，并顺带了解近期是否有新的合作需求。",
+          "synthetic": true,
+          "synthetic_reason": "scenario_test_prompt"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:24:38",
+          "msg_id": 8706,
+          "row_index": 5913,
+          "content": "还可以的  跟之前差不多[笑脸]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:25:34",
+          "msg_id": 8708,
+          "row_index": 5914,
+          "content": "那还不错[胜利]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:26:14",
+          "msg_id": 8711,
+          "row_index": 5916,
+          "content": "刚发的是我家今年新做的视频号~~ 哈哈  欢迎浏览哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 5916,
+      "row_end": 5919,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:26:37",
+          "msg_id": null,
+          "row_index": 5916,
+          "content": "老客户有了简短回复，请帮我继续发一条微信，围绕我们可提供的业务做自然跟进，避免硬推销，争取了解对方是否有近期需求。",
+          "synthetic": true,
+          "synthetic_reason": "scenario_test_prompt"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:26:37",
+          "msg_id": 8712,
+          "row_index": 5917,
+          "content": "好的  关注了  视频号做的不错[强]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:26:41",
+          "msg_id": 8714,
+          "row_index": 5918,
+          "content": "里面有很多安排视频介绍什么滴~~"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:27:29",
+          "msg_id": 8715,
+          "row_index": 5919,
+          "content": "[太阳] 今年刚做的，想通过多个渠道做下推广"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 5919,
+      "row_end": 5921,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:27:48",
+          "msg_id": null,
+          "row_index": 5919,
+          "content": "请帮我继续跟进这位老客户，保持轻松自然的微信语气，承接对方上一句回复，并把话题推进到是否有新的合作机会。",
+          "synthetic": true,
+          "synthetic_reason": "scenario_test_prompt"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:27:48",
+          "msg_id": 8717,
+          "row_index": 5920,
+          "content": "这是你们同事拍的还是外聘的人拍的呀  拍的很不错"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:27:57",
+          "msg_id": 8718,
+          "row_index": 5921,
+          "content": "你家宣传这块，今年有什么新计划哇"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 5921,
+      "row_end": 5923,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:28:28",
+          "msg_id": null,
+          "row_index": 5921,
+          "content": "老客户有了简短回复，请帮我继续发一条微信，围绕我们可提供的业务做自然跟进，避免硬推销，争取了解对方是否有近期需求。",
+          "synthetic": true,
+          "synthetic_reason": "scenario_test_prompt"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:28:28",
+          "msg_id": 8720,
+          "row_index": 5922,
+          "content": "暂时我这边还没有收到通知  目前只报了一个行业的会议参加下  在成都"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:28:38",
+          "msg_id": 8721,
+          "row_index": 5923,
+          "content": "这是一条引用/回复消息：\n\"杨超：\n这是你们同事拍的还是外聘的人拍的呀  拍的很不错\"\n------\n我家视频号呀， 这些是最新的AI人，hoho~~"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 5923,
+      "row_end": 5926,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:28:47",
+          "msg_id": null,
+          "row_index": 5923,
+          "content": "请帮我继续跟进这位老客户，保持轻松自然的微信语气，承接对方上一句回复，并把话题推进到是否有新的合作机会。",
+          "synthetic": true,
+          "synthetic_reason": "scenario_test_prompt"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:28:47",
+          "msg_id": 8723,
+          "row_index": 5924,
+          "content": "大的展会可能跟去年一样，参加的可能性不大了"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:29:02",
+          "msg_id": 8725,
+          "row_index": 5925,
+          "content": "ai人啊？？哇塞  好真实"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:29:23",
+          "msg_id": 8727,
+          "row_index": 5926,
+          "content": "嗯嗯， 现在AI是蛮厉害的， AI美女和帅哥[偷笑]"
+        }
+      ]
+    }
+  ]
+}

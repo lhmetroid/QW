@@ -1,0 +1,133 @@
+{
+  "case_id": "03d56a43-6733-4b3c-9869-36cc59904e79",
+  "scenario": "S10",
+  "title": "关于易派客展会和橡塑展的合作",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 5920,
+      "row_end": 5921,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:27:48",
+          "msg_id": 8717,
+          "row_index": 5920,
+          "content": "这是你们同事拍的还是外聘的人拍的呀  拍的很不错"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:27:57",
+          "msg_id": 8718,
+          "row_index": 5921,
+          "content": "你家宣传这块，今年有什么新计划哇"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 5922,
+      "row_end": 5923,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:28:28",
+          "msg_id": 8720,
+          "row_index": 5922,
+          "content": "暂时我这边还没有收到通知  目前只报了一个行业的会议参加下  在成都"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:28:38",
+          "msg_id": 8721,
+          "row_index": 5923,
+          "content": "这是一条引用/回复消息：\n\"杨超：\n这是你们同事拍的还是外聘的人拍的呀  拍的很不错\"\n------\n我家视频号呀， 这些是最新的AI人，hoho~~"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 5924,
+      "row_end": 5926,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:28:47",
+          "msg_id": 8723,
+          "row_index": 5924,
+          "content": "大的展会可能跟去年一样，参加的可能性不大了"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:29:02",
+          "msg_id": 8725,
+          "row_index": 5925,
+          "content": "ai人啊？？哇塞  好真实"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:29:23",
+          "msg_id": 8727,
+          "row_index": 5926,
+          "content": "嗯嗯， 现在AI是蛮厉害的， AI美女和帅哥[偷笑]"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 5927,
+      "row_end": 5929,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:29:41",
+          "msg_id": 8728,
+          "row_index": 5927,
+          "content": "还以为是真人拍的呢[捂脸]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:29:51",
+          "msg_id": 8730,
+          "row_index": 5928,
+          "content": "拍摄花的成本太高，形象也不如AI人养眼"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:30:15",
+          "msg_id": 8731,
+          "row_index": 5929,
+          "content": "这是一条引用/回复消息：\n\"杨超：\n大的展会可能跟去年一样，参加的可能性不大了\"\n------\n是滴呀，上次展会还是苏州的易派客呢"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 5930,
+      "row_end": 5932,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-25 14:30:47",
+          "msg_id": 8733,
+          "row_index": 5930,
+          "content": "是的  易派客展会是前年的了"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:31:13",
+          "msg_id": 8734,
+          "row_index": 5931,
+          "content": "去年9月，我倒是在成都，正好橡塑展在成都， 日本的住友摩登委托我们执行展台设计搭建的活"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-25 14:31:29",
+          "msg_id": 8736,
+          "row_index": 5932,
+          "content": "这是一条引用/回复消息：\n\"杨超：\n还以为是真人拍的呢[捂脸]\"\n------\n哈哈，以假乱真了"
+        }
+      ]
+    }
+  ]
+}

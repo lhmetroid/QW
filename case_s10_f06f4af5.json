@@ -1,0 +1,182 @@
+{
+  "case_id": "f06f4af5-e9aa-4e80-8516-9ca6e94b6bf8",
+  "scenario": "S10",
+  "title": "德企大连办公室开业活动案例分享",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 3819,
+      "row_end": 3821,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-05-19 16:15:19",
+          "msg_id": 4957,
+          "row_index": 3819,
+          "content": "ok，邮箱能打给我下嘛"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-05-19 16:15:30",
+          "msg_id": 4958,
+          "row_index": 3820,
+          "content": "alice@speed-asia.com"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-05-20 10:31:41",
+          "msg_id": 4960,
+          "row_index": 3821,
+          "content": "早呀，我上线了哈，随时可以开始哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 3823,
+      "row_end": 3826,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-05-20 10:38:40",
+          "msg_id": 4963,
+          "row_index": 3823,
+          "content": "马上好"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-05-26 09:56:56",
+          "msg_id": 4966,
+          "row_index": 3825,
+          "content": "hello 何经理，咱们的报价大概什么时候能完成呀"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-05-26 09:57:41",
+          "msg_id": 4968,
+          "row_index": 3826,
+          "content": "早呀， 稍等我确认下哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 3827,
+      "row_end": 3829,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-05-26 15:11:50",
+          "msg_id": 4969,
+          "row_index": 3827,
+          "content": "你好呀，确认好了吗"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-05-26 17:14:53",
+          "msg_id": 4971,
+          "row_index": 3828,
+          "content": "有消息吗何经理"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-05-26 17:15:47",
+          "msg_id": 4972,
+          "row_index": 3829,
+          "content": "实在不好意思，回复晚了，这周都在活动现场，实在太忙了。  预计6月6日出方案和报价哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 3831,
+      "row_end": 3832,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-05-27 15:58:04",
+          "msg_id": 4975,
+          "row_index": 3831,
+          "content": "你好何经理，我再同步下消息，我这边一定要在节前拿到个初版方案，可以不详细，但是一定要有"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-05-27 15:59:05",
+          "msg_id": 4976,
+          "row_index": 3832,
+          "content": "那么着急呀， 我去问下能不能出来哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 3833,
+      "row_end": 3841,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-05-27 15:59:25",
+          "msg_id": 4978,
+          "row_index": 3833,
+          "content": "嗯是的，因为后面总负责出差了没空看了。"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-05-27 15:59:39",
+          "msg_id": 4979,
+          "row_index": 3834,
+          "content": "要先确定个初版才好开展工作"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-05-29 10:15:35",
+          "msg_id": 4981,
+          "row_index": 3835,
+          "content": "你好，这礼拜能出来吗"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-05-29 10:32:33",
+          "msg_id": 4982,
+          "row_index": 3836,
+          "content": "确实比较急，这礼拜出不来的话我们确实也等不了那么久了"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-04 14:07:34",
+          "msg_id": 4984,
+          "row_index": 3837,
+          "content": "Hi~~ 不好意思哦， 上周实在是一个接一个活动。 方案和初步报价好了哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-04 14:09:39",
+          "msg_id": 4985,
+          "row_index": 3838,
+          "content": "文件比较大，微信先发下哦， 邮件估计收不到"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-06 09:14:48",
+          "msg_id": 4987,
+          "row_index": 3839,
+          "content": "早呀，昨天电话正好在会上"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-06 09:15:10",
+          "msg_id": 4988,
+          "row_index": 3840,
+          "content": "今天方便，通个话哇"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-06 13:19:21",
+          "msg_id": 4990,
+          "row_index": 3841,
+          "content": "【活动案例分享】成功策划并执行德企大连办公室盛大开业活动~~\n融合德式严谨与大连热情，打造沉浸式庆典体验。专业团队助力品牌落地！\n如果您正在寻找一家能够理解您的品牌理念，并能将其转化为难忘体验的专业活动策划团队，欢迎随时联系我哈~~~"
+        }
+      ]
+    }
+  ]
+}

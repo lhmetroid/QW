@@ -1,0 +1,154 @@
+{
+  "case_id": "56868114-2b4b-4ac2-9f5a-03882429b6a5",
+  "scenario": "S06",
+  "title": "询问上一笔费用支付情况",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 6376,
+      "row_end": 6377,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-08-21 16:29:18",
+          "msg_id": 9550,
+          "row_index": 6376,
+          "content": "嗯嗯 看看价格 哈哈哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-08-21 16:29:56",
+          "msg_id": 9552,
+          "row_index": 6377,
+          "content": "这段3分钟，估计要15W"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 6379,
+      "row_end": 6380,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-08-21 16:30:31",
+          "msg_id": 9557,
+          "row_index": 6379,
+          "content": "我们这竞争对手 真有钱"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-08-21 16:31:39",
+          "msg_id": 9559,
+          "row_index": 6380,
+          "content": "是滴，一般不会整段三维，会穿插几秒，这样效果好"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 6382,
+      "row_end": 6387,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-08-21 16:31:58",
+          "msg_id": 9563,
+          "row_index": 6382,
+          "content": "先了解一下"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2024-08-28 15:55:31",
+          "msg_id": 9567,
+          "row_index": 6383,
+          "content": "Alice 你这里视频业务的介绍有课吗？"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-08-28 16:04:25",
+          "msg_id": 9569,
+          "row_index": 6384,
+          "content": "是上次聊的介绍和报价哇"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-08-28 16:05:02",
+          "msg_id": 9574,
+          "row_index": 6386,
+          "content": "稍等我下好哇，最近比较忙"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-08-28 16:05:12",
+          "msg_id": 9576,
+          "row_index": 6387,
+          "content": "我周末做完，周一发出好哇"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 6388,
+      "row_end": 6392,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-08-28 16:05:15",
+          "msg_id": 9578,
+          "row_index": 6388,
+          "content": "恩情好的 等你好了发我"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2024-08-28 16:05:31",
+          "msg_id": 9581,
+          "row_index": 6389,
+          "content": "没事 暂时没那么急"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2024-08-28 16:05:44",
+          "msg_id": 9584,
+          "row_index": 6390,
+          "content": "如果领导催 我再和你说"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2024-08-28 16:05:52",
+          "msg_id": 9586,
+          "row_index": 6391,
+          "content": "周末就不要加班了 [偷笑]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-08-28 16:05:58",
+          "msg_id": 9591,
+          "row_index": 6392,
+          "content": "哈哈，谢谢啦，那我下周整好发出哦[偷笑]"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 6393,
+      "row_end": 6394,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-08-28 16:08:40",
+          "msg_id": 9593,
+          "row_index": 6393,
+          "content": "嗯[偷笑]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-08-28 16:13:39",
+          "msg_id": 9595,
+          "row_index": 6394,
+          "content": "对了，我家之前那笔费用，这个月来得及付出哇"
+        }
+      ]
+    }
+  ]
+}

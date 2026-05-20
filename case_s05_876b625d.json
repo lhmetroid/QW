@@ -1,0 +1,168 @@
+{
+  "case_id": "876b625d-70f3-41da-85b7-f3ca294a659e",
+  "scenario": "S05",
+  "title": "翻译审核请求与响应",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 11158,
+      "row_end": 11160,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:32:43",
+          "msg_id": 20000,
+          "row_index": 11158,
+          "content": "Hi Alice"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:32:48",
+          "msg_id": 20002,
+          "row_index": 11159,
+          "content": "上午好呀"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-25 10:32:51",
+          "msg_id": 20005,
+          "row_index": 11160,
+          "content": "早呀，亲"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 11161,
+      "row_end": 11164,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:32:58",
+          "msg_id": 20006,
+          "row_index": 11161,
+          "content": "要麻烦你安排翻译个东西"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:33:16",
+          "msg_id": 20011,
+          "row_index": 11163,
+          "content": "要把中文的翻译成法语和西班牙语"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-25 10:33:46",
+          "msg_id": 20013,
+          "row_index": 11164,
+          "content": "没问题"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 11165,
+      "row_end": 11168,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:34:01",
+          "msg_id": 20015,
+          "row_index": 11165,
+          "content": "注意文件中不要把英文删了，需要保留英法、英语西班牙语对照"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:34:49",
+          "msg_id": 20020,
+          "row_index": 11167,
+          "content": "谢谢l，比较急，可以今天给到我me"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-25 10:35:09",
+          "msg_id": 20023,
+          "row_index": 11168,
+          "content": "可以滴，下午晚一点的样子"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 11170,
+      "row_end": 11174,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:35:30",
+          "msg_id": 20028,
+          "row_index": 11170,
+          "content": "谢谢Alice"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-25 10:45:31",
+          "msg_id": 20030,
+          "row_index": 11171,
+          "content": "客气啦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-25 10:45:36",
+          "msg_id": 20032,
+          "row_index": 11172,
+          "content": "报价邮件回复下哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-25 16:22:58",
+          "msg_id": 20038,
+          "row_index": 11174,
+          "content": "文件发出了，查收下邮件哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 11176,
+      "row_end": 11180,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 16:24:19",
+          "msg_id": 20042,
+          "row_index": 11176,
+          "content": "还没收到呢"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 16:31:55",
+          "msg_id": 20044,
+          "row_index": 11177,
+          "content": "[OK]"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-26 13:10:33",
+          "msg_id": 20046,
+          "row_index": 11178,
+          "content": "hi Alice 可否麻烦你们帮忙看下这个翻译有没有不对的地方呀"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-26 13:11:03",
+          "msg_id": 20048,
+          "row_index": 11179,
+          "content": "翻译成法语跟西班牙语的部分"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-26 13:12:24",
+          "msg_id": 20051,
+          "row_index": 11180,
+          "content": "着急吗 我今天休假 明天OK哇"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,154 @@
+{
+  "case_id": "b3eb22b7-04dc-49fb-b5df-41a02a8ebff0",
+  "scenario": "S09",
+  "title": "活动案例分享及问候",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 5949,
+      "row_end": 5952,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-12 09:36:44",
+          "msg_id": 8761,
+          "row_index": 5949,
+          "content": "还行吧  没啥变化[笑脸]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-12 09:37:13",
+          "msg_id": 8763,
+          "row_index": 5950,
+          "content": "那还不错~~"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-12 09:40:54",
+          "msg_id": 8764,
+          "row_index": 5951,
+          "content": "这次正好老客户大连开业仪式，找到我这边做了策划和执行，效果还蛮好的。 德国领导都很满意~~"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-12 09:41:15",
+          "msg_id": 8766,
+          "row_index": 5952,
+          "content": "我一把年纪，也在不断的学习和转型，哈哈，难呀"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 5953,
+      "row_end": 5956,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-12 09:42:34",
+          "msg_id": 8768,
+          "row_index": 5953,
+          "content": "厉害的，你能力很强的，而且沟通也很顺畅"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-12 09:42:43",
+          "msg_id": 8770,
+          "row_index": 5954,
+          "content": "很容易get到客户的需求"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-12 09:44:37",
+          "msg_id": 8771,
+          "row_index": 5955,
+          "content": "多谢夸奖~~也是靠大家的信任， 不然也不会给我合作的机会"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-12 09:45:37",
+          "msg_id": 8775,
+          "row_index": 5956,
+          "content": "这2年大家都比较艰难一点点， 各方面预算都紧缩了"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 5957,
+      "row_end": 5958,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-12 09:45:50",
+          "msg_id": 8776,
+          "row_index": 5957,
+          "content": "合作起来很愉快，我们这两年都没有参展计划什么的，如果有项目可以合作一定跟你们联系~"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-12 09:45:59",
+          "msg_id": 8778,
+          "row_index": 5958,
+          "content": "我也是业绩压力大，多多寻找合作的机会"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 5959,
+      "row_end": 5962,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-12 09:46:00",
+          "msg_id": 8780,
+          "row_index": 5959,
+          "content": "是的  我们会议也减少了"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-12 09:46:25",
+          "msg_id": 8782,
+          "row_index": 5960,
+          "content": "嗯嗯  是的  你的能力很强的  如果有项目可以合作  客户肯定第一时间都愿意联系你"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-12 09:47:37",
+          "msg_id": 8783,
+          "row_index": 5961,
+          "content": "嗯嗯，大家都一样， 我家同事做的欧莱雅，医药这块的客户，就比较活跃。 很多活动，会议，都会用同传口译。 还有大批的音频做听写字幕"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-12 09:48:17",
+          "msg_id": 8784,
+          "row_index": 5962,
+          "content": "估计还是行业不同，哈哈，没关系滴，我们保持多多联系沟通，每次和你聊天都很开心[爱心]"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 5963,
+      "row_end": 5964,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-12 09:48:41",
+          "msg_id": 8786,
+          "row_index": 5963,
+          "content": "嗯嗯  好的 ~[玫瑰]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-12 09:49:58",
+          "msg_id": 8788,
+          "row_index": 5964,
+          "content": "对了，你们会不会考虑做些小礼品呀，我这儿有些水笔的渠道，蛮便宜的，质量也不错，加印个logo，几元钱这样子"
+        }
+      ]
+    }
+  ]
+}

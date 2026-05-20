@@ -1,0 +1,168 @@
+{
+  "case_id": "55afc6a2-61f9-41aa-bc9e-76a577bad82d",
+  "scenario": "S05",
+  "title": "确认未收到邮件",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 11086,
+      "row_end": 11087,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-24 11:16:38",
+          "msg_id": 19839,
+          "row_index": 11086,
+          "content": "谢谢啦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-24 11:20:11",
+          "msg_id": 19842,
+          "row_index": 11087,
+          "content": "客气啦，随便联系哈"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 11088,
+      "row_end": 11090,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-26 11:44:37",
+          "msg_id": 19844,
+          "row_index": 11088,
+          "content": "Hi Alice"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-26 11:45:17",
+          "msg_id": 19846,
+          "row_index": 11089,
+          "content": "这个要麻烦你安排重新翻译一下，里面全部中文翻译成日文，只有蓝色字体需要翻译英文的"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-26 12:25:50",
+          "msg_id": 19848,
+          "row_index": 11090,
+          "content": "好滴，没问题哈"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 11091,
+      "row_end": 11095,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-26 12:27:57",
+          "msg_id": 19850,
+          "row_index": 11091,
+          "content": "我同步发了邮件给你了哈"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-26 12:28:07",
+          "msg_id": 19853,
+          "row_index": 11092,
+          "content": "这个比较急，可以明天上午发给我么"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-26 12:28:09",
+          "msg_id": 19854,
+          "row_index": 11093,
+          "content": "嗯嗯，邮件收到了"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-26 12:28:39",
+          "msg_id": 19856,
+          "row_index": 11094,
+          "content": "我先加急安排哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-26 12:28:44",
+          "msg_id": 19858,
+          "row_index": 11095,
+          "content": "明天中午的样子发出好哇"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 11096,
+      "row_end": 11101,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-26 12:31:23",
+          "msg_id": 19860,
+          "row_index": 11096,
+          "content": "也可以"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-26 12:31:32",
+          "msg_id": 19862,
+          "row_index": 11097,
+          "content": "其实很多跟之前一样的"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-26 12:31:41",
+          "msg_id": 19865,
+          "row_index": 11098,
+          "content": "只是我不想去一个个对了，没时间"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-27 10:28:10",
+          "msg_id": 19870,
+          "row_index": 11100,
+          "content": "早呀，亲"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-27 10:28:15",
+          "msg_id": 19872,
+          "row_index": 11101,
+          "content": "翻译文件发出了，请查收下邮件哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 11103,
+      "row_end": 11105,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-27 10:28:23",
+          "msg_id": 19877,
+          "row_index": 11103,
+          "content": "谢谢哈"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-27 10:28:25",
+          "msg_id": 19880,
+          "row_index": 11104,
+          "content": "我看下"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-27 10:28:31",
+          "msg_id": 19882,
+          "row_index": 11105,
+          "content": "嗯嗯，客气啦"
+        }
+      ]
+    }
+  ]
+}

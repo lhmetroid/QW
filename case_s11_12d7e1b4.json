@@ -1,0 +1,255 @@
+{
+  "case_id": "12d7e1b4-e499-4dc3-a2fb-a99428b5f94b",
+  "scenario": "S11",
+  "title": "询问长时间未合作原因",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 9603,
+      "row_end": 9606,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 13:54:16",
+          "msg_id": null,
+          "row_index": 9603,
+          "content": "请帮我写一条微信消息，激活一位很久没有联系的老客户，语气自然亲切，不要太营销，并顺带了解近期是否有新的合作需求。",
+          "synthetic": true,
+          "synthetic_reason": "scenario_test_prompt"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 13:54:16",
+          "msg_id": 16407,
+          "row_index": 9604,
+          "content": "网站上应该有"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2022-03-29 13:54:31",
+          "msg_id": 16409,
+          "row_index": 9605,
+          "content": "好滴， 我们以前日语有翻译过哇"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2022-03-29 13:54:38",
+          "msg_id": 16415,
+          "row_index": 9606,
+          "content": "或者有没有参考之类的"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 9606,
+      "row_end": 9612,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 13:55:05",
+          "msg_id": null,
+          "row_index": 9606,
+          "content": "请帮我继续跟进这位老客户，保持轻松自然的微信语气，承接对方上一句回复，并把话题推进到是否有新的合作机会。",
+          "synthetic": true,
+          "synthetic_reason": "scenario_test_prompt"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 13:55:05",
+          "msg_id": 16417,
+          "row_index": 9607,
+          "content": "好像没有过日语翻译"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 13:55:07",
+          "msg_id": 16419,
+          "row_index": 9608,
+          "content": "我问问"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 13:55:23",
+          "msg_id": 16422,
+          "row_index": 9609,
+          "content": "没有翻译过日语"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 13:55:32",
+          "msg_id": 16425,
+          "row_index": 9610,
+          "content": "翻完会给日本同事检查"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 13:55:44",
+          "msg_id": 16430,
+          "row_index": 9611,
+          "content": "加油噢，好好翻[Chuckle]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2022-03-29 13:55:56",
+          "msg_id": 16432,
+          "row_index": 9612,
+          "content": "好滴好滴~~ 主要有些词汇呀表达呀， 看看有没有参考滴"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 9612,
+      "row_end": 9615,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 13:56:36",
+          "msg_id": null,
+          "row_index": 9612,
+          "content": "请帮我继续跟进这位老客户，保持轻松自然的微信语气，承接对方上一句回复，并把话题推进到是否有新的合作机会。",
+          "synthetic": true,
+          "synthetic_reason": "scenario_test_prompt"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 13:56:36",
+          "msg_id": 16434,
+          "row_index": 9613,
+          "content": "这边没有参考，因为以前也没翻译过[皱眉]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2022-03-29 13:56:48",
+          "msg_id": 16437,
+          "row_index": 9614,
+          "content": "哈哈哈，好滴，明白了"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2022-03-29 13:57:04",
+          "msg_id": 16441,
+          "row_index": 9615,
+          "content": "我们日本事业部士刚成立呀？"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 9615,
+      "row_end": 9618,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 13:57:31",
+          "msg_id": null,
+          "row_index": 9615,
+          "content": "请帮我继续跟进这位老客户，保持轻松自然的微信语气，承接对方上一句回复，并把话题推进到是否有新的合作机会。",
+          "synthetic": true,
+          "synthetic_reason": "scenario_test_prompt"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 13:57:31",
+          "msg_id": 16444,
+          "row_index": 9616,
+          "content": "那边一直都有吧"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2022-03-29 13:57:58",
+          "msg_id": 16447,
+          "row_index": 9617,
+          "content": "是哇~~那有日语网站哇，也可以给翻译看看额"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2022-03-29 14:02:16",
+          "msg_id": 16449,
+          "row_index": 9618,
+          "content": "报价发出了哦，收到回复下就好"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 9618,
+      "row_end": 9628,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 14:05:53",
+          "msg_id": null,
+          "row_index": 9618,
+          "content": "请帮我继续跟进这位老客户，保持轻松自然的微信语气，承接对方上一句回复，并把话题推进到是否有新的合作机会。",
+          "synthetic": true,
+          "synthetic_reason": "scenario_test_prompt"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 14:05:53",
+          "msg_id": 16455,
+          "row_index": 9619,
+          "content": "对了，这里三个文件的是一样的，所以只要翻译其中一个文件的就可以了"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 14:06:32",
+          "msg_id": 16457,
+          "row_index": 9620,
+          "content": "这个部分"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 14:08:38",
+          "msg_id": 16459,
+          "row_index": 9621,
+          "content": "标红的不用翻译"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 14:08:44",
+          "msg_id": 16463,
+          "row_index": 9622,
+          "content": "不好意思，刚没看清楚"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2022-03-29 14:13:29",
+          "msg_id": 16468,
+          "row_index": 9623,
+          "content": "看这个"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2022-03-29 15:13:20",
+          "msg_id": 16470,
+          "row_index": 9624,
+          "content": "亲，下次方便的话，翻译文件可以发到公司邮箱哈，麻烦拉"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2022-05-12 14:04:05",
+          "msg_id": 16476,
+          "row_index": 9626,
+          "content": "Hi Lily亲~~"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2022-05-12 15:04:48",
+          "msg_id": 16478,
+          "row_index": 9627,
+          "content": "好久没安排翻译了呢~~"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2022-05-12 15:05:03",
+          "msg_id": 16482,
+          "row_index": 9628,
+          "content": "是我们有哪里配合没跟上吗"
+        }
+      ]
+    }
+  ]
+}

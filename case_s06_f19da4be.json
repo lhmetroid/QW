@@ -1,0 +1,161 @@
+{
+  "case_id": "f19da4be-7c55-4107-a9f8-bea5977d4ae6",
+  "scenario": "S06",
+  "title": "客户反馈技术有道翻译错误及销售请求可编辑版本",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 5840,
+      "row_end": 5845,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-07-03 14:06:10",
+          "msg_id": 8581,
+          "row_index": 5840,
+          "content": "可以呀"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2024-07-10 12:00:00",
+          "msg_id": 8583,
+          "row_index": 5841,
+          "content": "何珺，我们这三个文档着急要翻一下，里面所有中文都要翻译，麻烦帮忙报个价格和可以翻译完成的时间"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2024-07-10 12:01:36",
+          "msg_id": 8585,
+          "row_index": 5842,
+          "content": "看看最快什么时候可以翻译好[捂脸]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-07-10 12:34:11",
+          "msg_id": 8586,
+          "row_index": 5843,
+          "content": "好的，看下哦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-07-10 12:45:25",
+          "msg_id": 8589,
+          "row_index": 5845,
+          "content": "文件里已经有的中英文，就保留了哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 5846,
+      "row_end": 5850,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-07-10 12:45:58",
+          "msg_id": 8591,
+          "row_index": 5846,
+          "content": "中文保留  英文全删了吧"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2024-07-10 12:46:01",
+          "msg_id": 8593,
+          "row_index": 5847,
+          "content": "换成你们的"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2024-07-10 12:46:08",
+          "msg_id": 8594,
+          "row_index": 5848,
+          "content": "不然弄混了"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2024-07-10 12:46:43",
+          "msg_id": 8596,
+          "row_index": 5849,
+          "content": "现有的英文是错的"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-07-10 12:47:11",
+          "msg_id": 8598,
+          "row_index": 5850,
+          "content": "是错哒"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 5851,
+      "row_end": 5853,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-07-10 12:47:29",
+          "msg_id": 8600,
+          "row_index": 5851,
+          "content": "嗯  就是把错的变成你们正确的翻译[捂脸]"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2024-07-10 12:47:41",
+          "msg_id": 8602,
+          "row_index": 5852,
+          "content": "那个是我们技术有道弄的翻译"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-07-10 13:02:30",
+          "msg_id": 8604,
+          "row_index": 5853,
+          "content": "这3个文件都是转曲的呢，文字不能copy， 可以发我下可编辑版本的哇"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 5855,
+      "row_end": 5856,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-07-10 13:05:58",
+          "msg_id": 8606,
+          "row_index": 5855,
+          "content": "这三个文档麻烦看下能用吗？"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-07-10 13:07:35",
+          "msg_id": 8608,
+          "row_index": 5856,
+          "content": "好像可以呢"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 5857,
+      "row_end": 5859,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2024-07-10 13:08:11",
+          "msg_id": 8610,
+          "row_index": 5857,
+          "content": "那就用这个改吧  把我们同事翻译的英文替换成你们的就可以了[捂脸]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2024-07-10 13:24:27",
+          "msg_id": 8613,
+          "row_index": 5859,
+          "content": "翻译费用2159元，安排下周一完成"
+        }
+      ]
+    }
+  ]
+}

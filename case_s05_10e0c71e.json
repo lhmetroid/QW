@@ -1,0 +1,140 @@
+{
+  "case_id": "10e0c71e-f463-4e61-9020-606bde3c2c41",
+  "scenario": "S05",
+  "title": "紧急响应时间确认",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 11153,
+      "row_end": 11155,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-05-29 09:47:50",
+          "msg_id": 19990,
+          "row_index": 11153,
+          "content": "谢谢了哦"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-05-30 15:00:07",
+          "msg_id": 19992,
+          "row_index": 11154,
+          "content": "收到，不好意思，昨天太忙了，忘记回复了"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-12 14:09:53",
+          "msg_id": 19994,
+          "row_index": 11155,
+          "content": "Hi Lily亲，下午好呀，分享个活动案例~~也许这块以后有机会合作\n\n成功策划并执行南德意志集团大连办公室盛大开业活动~~\n融合德式严谨与大连的热情好客，打造沉浸式庆典体验。专业团队助力品牌落地！\nSPEED自1997年起专注于翻译、口译、同传、平面设计、印刷及视频译制在内的全方位服务，为您的品牌传播保驾护航。"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 11156,
+      "row_end": 11157,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-12 14:35:52",
+          "msg_id": 19996,
+          "row_index": 11156,
+          "content": "好的哦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-12 14:40:35",
+          "msg_id": 19998,
+          "row_index": 11157,
+          "content": "最近还是很忙哇，如果有参加展会，活动，这类涉及设计策划搭建滴，可以联系我哈"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 11158,
+      "row_end": 11160,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:32:43",
+          "msg_id": 20000,
+          "row_index": 11158,
+          "content": "Hi Alice"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:32:48",
+          "msg_id": 20002,
+          "row_index": 11159,
+          "content": "上午好呀"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-25 10:32:51",
+          "msg_id": 20005,
+          "row_index": 11160,
+          "content": "早呀，亲"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 11161,
+      "row_end": 11164,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:32:58",
+          "msg_id": 20006,
+          "row_index": 11161,
+          "content": "要麻烦你安排翻译个东西"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:33:16",
+          "msg_id": 20011,
+          "row_index": 11163,
+          "content": "要把中文的翻译成法语和西班牙语"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-25 10:33:46",
+          "msg_id": 20013,
+          "row_index": 11164,
+          "content": "没问题"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 11165,
+      "row_end": 11168,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:34:01",
+          "msg_id": 20015,
+          "row_index": 11165,
+          "content": "注意文件中不要把英文删了，需要保留英法、英语西班牙语对照"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-06-25 10:34:49",
+          "msg_id": 20020,
+          "row_index": 11167,
+          "content": "谢谢l，比较急，可以今天给到我me"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-06-25 10:35:09",
+          "msg_id": 20023,
+          "row_index": 11168,
+          "content": "可以滴，下午晚一点的样子"
+        }
+      ]
+    }
+  ]
+}

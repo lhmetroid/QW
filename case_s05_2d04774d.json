@@ -1,0 +1,182 @@
+{
+  "case_id": "2d04774d-60c3-4c4e-9174-05b4156845af",
+  "scenario": "S05",
+  "title": "紧急响应邮件发送",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 11074,
+      "row_end": 11076,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-19 13:25:24",
+          "msg_id": 19816,
+          "row_index": 11074,
+          "content": "发了哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-19 13:37:01",
+          "msg_id": 19818,
+          "row_index": 11075,
+          "content": "收到哦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-20 13:57:52",
+          "msg_id": 19820,
+          "row_index": 11076,
+          "content": "文件发出了哈"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 11077,
+      "row_end": 11084,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-20 13:58:19",
+          "msg_id": 19821,
+          "row_index": 11077,
+          "content": "可以发一个到我的微信么"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-20 13:58:22",
+          "msg_id": 19822,
+          "row_index": 11078,
+          "content": "我今天出差了"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-20 13:58:27",
+          "msg_id": 19824,
+          "row_index": 11079,
+          "content": "没打开电脑"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-20 14:01:02",
+          "msg_id": 19828,
+          "row_index": 11081,
+          "content": "好的，收到，谢谢啦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-20 14:01:33",
+          "msg_id": 19830,
+          "row_index": 11082,
+          "content": "不客气啦 哈哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-24 11:14:51",
+          "msg_id": 19832,
+          "row_index": 11083,
+          "content": "亲，上午好哦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-24 11:14:59",
+          "msg_id": 19834,
+          "row_index": 11084,
+          "content": "日语翻译刚发出了，请查收下邮件哈"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 11086,
+      "row_end": 11087,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-24 11:16:38",
+          "msg_id": 19839,
+          "row_index": 11086,
+          "content": "谢谢啦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-24 11:20:11",
+          "msg_id": 19842,
+          "row_index": 11087,
+          "content": "客气啦，随便联系哈"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 11088,
+      "row_end": 11090,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-26 11:44:37",
+          "msg_id": 19844,
+          "row_index": 11088,
+          "content": "Hi Alice"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-26 11:45:17",
+          "msg_id": 19846,
+          "row_index": 11089,
+          "content": "这个要麻烦你安排重新翻译一下，里面全部中文翻译成日文，只有蓝色字体需要翻译英文的"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-26 12:25:50",
+          "msg_id": 19848,
+          "row_index": 11090,
+          "content": "好滴，没问题哈"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 11091,
+      "row_end": 11095,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2025-02-26 12:27:57",
+          "msg_id": 19850,
+          "row_index": 11091,
+          "content": "我同步发了邮件给你了哈"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2025-02-26 12:28:07",
+          "msg_id": 19853,
+          "row_index": 11092,
+          "content": "这个比较急，可以明天上午发给我么"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-26 12:28:09",
+          "msg_id": 19854,
+          "row_index": 11093,
+          "content": "嗯嗯，邮件收到了"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-26 12:28:39",
+          "msg_id": 19856,
+          "row_index": 11094,
+          "content": "我先加急安排哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2025-02-26 12:28:44",
+          "msg_id": 19858,
+          "row_index": 11095,
+          "content": "明天中午的样子发出好哇"
+        }
+      ]
+    }
+  ]
+}

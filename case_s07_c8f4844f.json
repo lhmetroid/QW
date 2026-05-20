@@ -1,0 +1,210 @@
+{
+  "case_id": "c8f4844f-140c-4922-93ff-e375d23e463c",
+  "scenario": "S07",
+  "title": "关于5000元以内报价的确认",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 6727,
+      "row_end": 6728,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-09 13:18:41",
+          "msg_id": 10362,
+          "row_index": 6727,
+          "content": "一下20万的确是困难"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-09 13:18:52",
+          "msg_id": 10364,
+          "row_index": 6728,
+          "content": "领导有啥想法子，我们来盘一盘"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 6729,
+      "row_end": 6732,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-09 13:18:54",
+          "msg_id": 10366,
+          "row_index": 6729,
+          "content": "我下午有事外出"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-09 13:19:08",
+          "msg_id": 10368,
+          "row_index": 6730,
+          "content": "明天我把先后次序发给你看看"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-09 13:19:55",
+          "msg_id": 10370,
+          "row_index": 6731,
+          "content": "嗯嗯，我明天在展会上，后天我们对着盘哦"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-09 13:20:01",
+          "msg_id": 10372,
+          "row_index": 6732,
+          "content": "哈哈，下周一"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 6733,
+      "row_end": 6737,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-09 13:25:30",
+          "msg_id": 10374,
+          "row_index": 6733,
+          "content": "好??"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 10:16:30",
+          "msg_id": 10376,
+          "row_index": 6734,
+          "content": "早呀~~ Lily"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 10:16:40",
+          "msg_id": 10378,
+          "row_index": 6735,
+          "content": "麻烦先后次序发我下哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 10:19:08",
+          "msg_id": 10380,
+          "row_index": 6736,
+          "content": "我们先算 Priority 1的哇"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 10:20:22",
+          "msg_id": 10382,
+          "row_index": 6737,
+          "content": "这个没有打勾的，葡萄牙语不用了对哇"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 6738,
+      "row_end": 6741,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 10:21:44",
+          "msg_id": 10384,
+          "row_index": 6738,
+          "content": "看这两页"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 11:05:01",
+          "msg_id": 10388,
+          "row_index": 6740,
+          "content": "按优先级排序的双语种金额哈"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 11:05:22",
+          "msg_id": 10390,
+          "row_index": 6741,
+          "content": "你看看领导预算想要几个钱，我去直接找大老板申请哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 6742,
+      "row_end": 6751,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 11:18:41",
+          "msg_id": 10392,
+          "row_index": 6742,
+          "content": "我老板让给我去网上找供应商，现在就是CN-A有报价4400的/两种语言，还有2400/两种语言"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 11:19:09",
+          "msg_id": 10394,
+          "row_index": 6743,
+          "content": "我想，还是先问你这里5000以内能做吗"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 11:19:28",
+          "msg_id": 10396,
+          "row_index": 6744,
+          "content": "2400的哪个差太多了 我不去申请那个了"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 11:20:21",
+          "msg_id": 10398,
+          "row_index": 6745,
+          "content": "其实4-5000，我们这边是否能批 我也还不是太确定"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 11:20:55",
+          "msg_id": 10400,
+          "row_index": 6746,
+          "content": "但我按照我的经验 会先报老板 看能否通过"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-13 11:21:10",
+          "msg_id": 10402,
+          "row_index": 6747,
+          "content": "太便宜的 我也怕质量不行"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 11:22:49",
+          "msg_id": 10404,
+          "row_index": 6748,
+          "content": "这是一条引用/回复消息：\n\"Lily Xu ：\n我想，还是先问你这里5000以内能做吗\"\n------\n谢谢亲， 这个5000以内，是指什么呀"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 11:22:53",
+          "msg_id": 10405,
+          "row_index": 6749,
+          "content": "没太看懂呢"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 13:46:31",
+          "msg_id": 10407,
+          "row_index": 6750,
+          "content": "大老板正好在，5K以内OK，他说撸起袖子干[偷笑]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-13 13:46:50",
+          "msg_id": 10409,
+          "row_index": 6751,
+          "content": "等你老板那边消息，我们再沟通哈"
+        }
+      ]
+    }
+  ]
+}

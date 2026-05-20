@@ -1,0 +1,175 @@
+{
+  "case_id": "a6e97c55-efaf-4501-b509-55fb81422912",
+  "scenario": "S04",
+  "title": "关于降价后质量下降的担忧",
+  "turns": [
+    {
+      "turn_no": 1,
+      "row_start": 6777,
+      "row_end": 6785,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-14 13:43:02",
+          "msg_id": 10459,
+          "row_index": 6777,
+          "content": "另外 每个产品单价也给我一下 方便我和上次做对比"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-14 13:43:17",
+          "msg_id": 10461,
+          "row_index": 6778,
+          "content": "「何珺：[图片]」\n- - - - - - - - - - - - - - -\n是的"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-14 13:43:43",
+          "msg_id": 10465,
+          "row_index": 6780,
+          "content": "「Lily Xu ：另外 每个产品单价也给我一下 方便我和上次做对比」\n- - - - - - - - - - - - - - -\n就是你20万的那张报价 再多一列6折价格"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-14 13:43:59",
+          "msg_id": 10469,
+          "row_index": 6782,
+          "content": "然后按照3个阶段排序 汇总"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-14 13:44:06",
+          "msg_id": 10471,
+          "row_index": 6783,
+          "content": "这样老板容易看些"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-14 13:44:08",
+          "msg_id": 10473,
+          "row_index": 6784,
+          "content": "[破涕为笑]"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-14 14:06:18",
+          "msg_id": 10475,
+          "row_index": 6785,
+          "content": "发邮件了哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 2,
+      "row_start": 6786,
+      "row_end": 6789,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-14 14:15:32",
+          "msg_id": 10476,
+          "row_index": 6786,
+          "content": "好??"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 09:57:44",
+          "msg_id": 10478,
+          "row_index": 6787,
+          "content": "Alice邮件我没收到"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 09:57:49",
+          "msg_id": 10480,
+          "row_index": 6788,
+          "content": "昨天下午我外出了"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-15 09:57:55",
+          "msg_id": 10482,
+          "row_index": 6789,
+          "content": "看下哦"
+        }
+      ]
+    },
+    {
+      "turn_no": 3,
+      "row_start": 6790,
+      "row_end": 6792,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 09:57:55",
+          "msg_id": 10484,
+          "row_index": 6790,
+          "content": "今天上午来没看到"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-15 09:58:41",
+          "msg_id": 10486,
+          "row_index": 6791,
+          "content": "2点发出的邮件"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-15 09:58:48",
+          "msg_id": 10488,
+          "row_index": 6792,
+          "content": "帮忙看下会不会进垃圾邮箱了呀"
+        }
+      ]
+    },
+    {
+      "turn_no": 4,
+      "row_start": 6793,
+      "row_end": 6795,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 10:00:21",
+          "msg_id": 10490,
+          "row_index": 6793,
+          "content": "也没有"
+        },
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 10:00:27",
+          "msg_id": 10492,
+          "row_index": 6794,
+          "content": "再发一下吧"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-15 10:00:35",
+          "msg_id": 10493,
+          "row_index": 6795,
+          "content": "刚刚发了"
+        }
+      ]
+    },
+    {
+      "turn_no": 5,
+      "row_start": 6796,
+      "row_end": 6798,
+      "messages": [
+        {
+          "role": "customer",
+          "msg_time": "2026-04-15 10:02:20",
+          "msg_id": 10495,
+          "row_index": 6796,
+          "content": "也没有"
+        },
+        {
+          "role": "sales",
+          "msg_time": "2026-04-15 10:03:53",
+          "msg_id": 10498,
+          "row_index": 6798,
+          "content": "文件这里先发下哦"
+        }
+      ]
+    }
+  ]
+}
