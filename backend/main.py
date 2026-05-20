@@ -63,7 +63,7 @@ from database import (
     KnowledgeVersionSnapshot, JobTask, ThreadBusinessFact, EmailThreadAsset,
     EmailFragmentAsset, EmailEffectFeedback, ModelTrainingSample, ReplyChainSnapshot,
     ApiAssistInvocation, WecomTriggerRecord,
-    CaseLibraryCase, CaseIterationRun, CaseIterationResult,
+    CaseLibraryCase, CaseLibraryDialogueTurn, CaseIterationRun, CaseIterationResult,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -440,6 +440,33 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE case_iteration_run ADD COLUMN IF NOT EXISTS analysis_antigravity TEXT;"))
         db.execute(text("ALTER TABLE case_iteration_run ADD COLUMN IF NOT EXISTS analysis_claude_code TEXT;"))
         db.execute(text("ALTER TABLE case_iteration_run ADD COLUMN IF NOT EXISTS analysis_summary TEXT;"))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS case_library_dialogue_turn ("
+            "turn_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "case_id UUID NOT NULL REFERENCES case_library_case(case_id) ON DELETE CASCADE,"
+            "scenario_code VARCHAR(10) NOT NULL,"
+            "scenario_rank INTEGER NOT NULL,"
+            "turn_no INTEGER NOT NULL,"
+            "group_key VARCHAR(120) NOT NULL,"
+            "row_start INTEGER,"
+            "row_end INTEGER,"
+            "customer_text TEXT,"
+            "sales_text TEXT,"
+            "messages JSON NOT NULL,"
+            "context_messages JSON,"
+            "actual_sales_score NUMERIC(6, 2),"
+            "actual_sales_scores JSON,"
+            "score_status VARCHAR(50),"
+            "created_at TIMESTAMP DEFAULT now(),"
+            "updated_at TIMESTAMP DEFAULT now(),"
+            "CONSTRAINT uq_case_library_dialogue_turn_no UNIQUE(case_id, turn_no)"
+            ");"
+        ))
+        db.execute(text("ALTER TABLE case_library_dialogue_turn ADD COLUMN IF NOT EXISTS actual_sales_score NUMERIC(6, 2);"))
+        db.execute(text("ALTER TABLE case_library_dialogue_turn ADD COLUMN IF NOT EXISTS actual_sales_scores JSON;"))
+        db.execute(text("ALTER TABLE case_library_dialogue_turn ADD COLUMN IF NOT EXISTS score_status VARCHAR(50);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_cldt_case ON case_library_dialogue_turn (case_id, turn_no);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_cldt_scenario ON case_library_dialogue_turn (scenario_code, scenario_rank);"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS wecom_trigger_record ("
             "record_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -17416,7 +17443,60 @@ def _caselib_load_json(v):
         return v
 
 
-def _caselib_serialize_case(c: CaseLibraryCase) -> dict:
+def _caselib_sales_score_from_step7(step7) -> float | None:
+    data = _caselib_load_json(step7) or {}
+    if not isinstance(data, dict):
+        return None
+    replies = data.get("actual_sales_replies") or []
+    if not replies:
+        return None
+    scores = []
+    for item in replies:
+        if not isinstance(item, dict) or item.get("score_reason") == "llm1_failed":
+            continue
+        val = item.get("overall_score")
+        if val is None and isinstance(item.get("scores"), dict):
+            val = item["scores"].get("overall")
+        try:
+            if val is not None:
+                scores.append(float(val))
+        except Exception:
+            continue
+    return round(sum(scores) / len(scores), 2) if scores else None
+
+
+def _caselib_serialize_turn(t: CaseLibraryDialogueTurn) -> dict:
+    return {
+        "turn_id": str(t.turn_id),
+        "case_id": str(t.case_id),
+        "scenario_code": t.scenario_code,
+        "scenario_rank": t.scenario_rank,
+        "turn_no": t.turn_no,
+        "group_key": t.group_key,
+        "row_start": t.row_start,
+        "row_end": t.row_end,
+        "customer_text": t.customer_text or "",
+        "sales_text": t.sales_text or "",
+        "messages": _caselib_load_json(t.messages) or [],
+        "context_messages": _caselib_load_json(t.context_messages) or [],
+        "actual_sales_score": float(t.actual_sales_score) if t.actual_sales_score is not None else None,
+        "actual_sales_scores": _caselib_load_json(t.actual_sales_scores) or {},
+        "score_status": t.score_status,
+    }
+
+
+def _caselib_serialize_case(
+    c: CaseLibraryCase,
+    dialogue_turns: list[CaseLibraryDialogueTurn] | None = None,
+    manual_score_avg: float | None = None,
+) -> dict:
+    turns = [_caselib_serialize_turn(t) for t in (dialogue_turns or [])]
+    turn_scores = [
+        float(t.actual_sales_score)
+        for t in (dialogue_turns or [])
+        if t.actual_sales_score is not None
+    ]
+    score_avg = round(sum(turn_scores) / len(turn_scores), 2) if turn_scores else manual_score_avg
     return {
         "case_id": str(c.case_id),
         "scenario_code": c.scenario_code,
@@ -17430,8 +17510,12 @@ def _caselib_serialize_case(c: CaseLibraryCase) -> dict:
         "row_start": c.row_start,
         "row_end": c.row_end,
         "quality_score_md": float(c.quality_score_md) if c.quality_score_md is not None else None,
+        "manual_quality_score_avg": score_avg,
+        "manual_quality_score_source": "dialogue_turns" if turn_scores else ("iteration_sales_replies" if score_avg is not None else "missing"),
         "core_dialog": _caselib_load_json(c.core_dialog) or [],
         "context_messages": _caselib_load_json(c.context_messages) or [],
+        "dialogue_turns": turns,
+        "dialogue_turn_count": len(turns),
         "md_source_path": c.md_source_path,
         "md_section_anchor": c.md_section_anchor,
         "created_at": c.created_at.isoformat() if c.created_at else None,
@@ -17517,10 +17601,39 @@ async def caselib_list_cases(scenario_code: str | None = Query(default=None)):
         if scenario_code:
             q = q.filter(CaseLibraryCase.scenario_code == scenario_code)
         rows = q.order_by(CaseLibraryCase.scenario_code, CaseLibraryCase.scenario_rank).all()
+        case_ids = [str(c.case_id) for c in rows]
+        turns_by_case: dict[str, list[CaseLibraryDialogueTurn]] = {cid: [] for cid in case_ids}
+        if case_ids:
+            turn_rows = db.query(CaseLibraryDialogueTurn).filter(
+                CaseLibraryDialogueTurn.case_id.in_(case_ids)
+            ).order_by(CaseLibraryDialogueTurn.case_id, CaseLibraryDialogueTurn.turn_no).all()
+            for t in turn_rows:
+                turns_by_case.setdefault(str(t.case_id), []).append(t)
+        sales_scores_by_case: dict[str, list[float]] = {}
+        if case_ids:
+            rr_rows = db.query(CaseIterationResult.case_id, CaseIterationResult.step7_reply_scores).filter(
+                CaseIterationResult.case_id.in_(case_ids)
+            ).all()
+            for cid, step7 in rr_rows:
+                score = _caselib_sales_score_from_step7(step7)
+                if score is not None:
+                    sales_scores_by_case.setdefault(str(cid), []).append(score)
+        manual_avg_by_case = {
+            cid: round(sum(vals) / len(vals), 2)
+            for cid, vals in sales_scores_by_case.items()
+            if vals
+        }
         return {
             "status": "success",
             "total": len(rows),
-            "cases": [_caselib_serialize_case(c) for c in rows],
+            "cases": [
+                _caselib_serialize_case(
+                    c,
+                    turns_by_case.get(str(c.case_id), []),
+                    manual_avg_by_case.get(str(c.case_id)),
+                )
+                for c in rows
+            ],
         }
     finally:
         db.close()
@@ -17533,7 +17646,19 @@ async def caselib_get_case(case_id: str):
         c = db.query(CaseLibraryCase).filter(CaseLibraryCase.case_id == case_id).first()
         if not c:
             raise HTTPException(status_code=404, detail="case not found")
-        return {"status": "success", "case": _caselib_serialize_case(c)}
+        turns = db.query(CaseLibraryDialogueTurn).filter(
+            CaseLibraryDialogueTurn.case_id == case_id
+        ).order_by(CaseLibraryDialogueTurn.turn_no).all()
+        score_rows = db.query(CaseIterationResult.step7_reply_scores).filter(
+            CaseIterationResult.case_id == case_id
+        ).all()
+        scores = [
+            s for (step7,) in score_rows
+            for s in [_caselib_sales_score_from_step7(step7)]
+            if s is not None
+        ]
+        avg = round(sum(scores) / len(scores), 2) if scores else None
+        return {"status": "success", "case": _caselib_serialize_case(c, turns, avg)}
     finally:
         db.close()
 
@@ -17570,7 +17695,32 @@ async def caselib_get_iteration_detail(run_id: str):
             cases = db.query(CaseLibraryCase).filter(
                 CaseLibraryCase.case_id.in_(case_ids)
             ).all()
-            case_map = {str(c.case_id): _caselib_serialize_case(c) for c in cases}
+            case_ids2 = [str(c.case_id) for c in cases]
+            turns_by_case: dict[str, list[CaseLibraryDialogueTurn]] = {cid: [] for cid in case_ids2}
+            if case_ids2:
+                turn_rows = db.query(CaseLibraryDialogueTurn).filter(
+                    CaseLibraryDialogueTurn.case_id.in_(case_ids2)
+                ).order_by(CaseLibraryDialogueTurn.case_id, CaseLibraryDialogueTurn.turn_no).all()
+                for t in turn_rows:
+                    turns_by_case.setdefault(str(t.case_id), []).append(t)
+            sales_scores_by_case: dict[str, list[float]] = {}
+            for rr in results:
+                score = _caselib_sales_score_from_step7(rr.step7_reply_scores)
+                if score is not None:
+                    sales_scores_by_case.setdefault(str(rr.case_id), []).append(score)
+            manual_avg_by_case = {
+                cid: round(sum(vals) / len(vals), 2)
+                for cid, vals in sales_scores_by_case.items()
+                if vals
+            }
+            case_map = {
+                str(c.case_id): _caselib_serialize_case(
+                    c,
+                    turns_by_case.get(str(c.case_id), []),
+                    manual_avg_by_case.get(str(c.case_id)),
+                )
+                for c in cases
+            }
         rows = []
         for rr in results:
             rows.append(_caselib_serialize_result(rr, case_map.get(str(rr.case_id))))
@@ -17791,7 +17941,7 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
                     "trigger_source": "web_manual",
                     # 案例库评测必须走完整 7 步真实链路：开 LLM1 对比 / LLM2 对比 / reply scoring / KB2
                     "evaluation_full_pipeline": True,
-                }, timeout=180)
+                }, timeout=int(os.environ.get("CASELIB_REQUEST_TIMEOUT_SECONDS") or "180"))
                 resp = r
                 break
             except Exception as e:
@@ -18306,13 +18456,22 @@ def _caselib_rescore_one_result(rr: CaseIterationResult) -> dict:
         return {"scored": False, "reason": f"score_err:{str(exc)[:100]}"}
     rr.step7_reply_scores = scores
     ac = scores.get("ai_candidates") or []
+    scored_ok = False
     if ac:
-        rr.quality_score = round(float(ac[0].get("overall_score") or 0), 2)
-        kb1_pool = [float(c.get("overall_score") or 0) for c in ac if c.get("knowledge_source") == "knowledge_v2"]
-        kb2_pool = [float(c.get("overall_score") or 0) for c in ac if c.get("knowledge_source") == "knowledge_external_api"]
-        rr.kb1_eval_score = round(max(kb1_pool), 2) if kb1_pool else rr.kb1_eval_score
-        rr.kb2_eval_score = round(max(kb2_pool), 2) if kb2_pool else rr.kb2_eval_score
-    return {"scored": True, "candidates": len(ac), "score_mode": (scores.get("scored_by") or {}).get("score_mode")}
+        best = next((c for c in ac if c.get("overall_score") is not None), None)
+        if best is not None:
+            rr.quality_score = round(float(best["overall_score"]), 2)
+            kb1_pool = [float(c.get("overall_score") or 0) for c in ac if c.get("knowledge_source") == "knowledge_v2" and c.get("overall_score") is not None]
+            kb2_pool = [float(c.get("overall_score") or 0) for c in ac if c.get("knowledge_source") == "knowledge_external_api" and c.get("overall_score") is not None]
+            rr.kb1_eval_score = round(max(kb1_pool), 2) if kb1_pool else rr.kb1_eval_score
+            rr.kb2_eval_score = round(max(kb2_pool), 2) if kb2_pool else rr.kb2_eval_score
+            # 打分成功：修正单条状态
+            if rr.quality_status in ("real_score_missing", "real_partial"):
+                rr.quality_status = "real_success"
+            if rr.status == "failed" and rr.quality_status == "real_success":
+                rr.status = "success"
+            scored_ok = True
+    return {"scored": scored_ok, "candidates": len(ac), "score_mode": (scores.get("scored_by") or {}).get("score_mode")}
 
 
 @app.post("/api/case_lib/iterations/{run_id}/rescore")
@@ -18342,12 +18501,21 @@ async def caselib_rescore_iteration(run_id: str):
                     skipped_n += 1
                     tag = ret.get("reason") or "unknown"
                     reasons[tag] = reasons.get(tag, 0) + 1
-            # 刷新 run 汇总
-            valid_scores = [float(r.quality_score) for r in results if r.quality_score is not None]
+            # 刷新 run 汇总（重查最新状态避免缓存）
+            db.expire_all()
+            results_fresh = db.query(CaseIterationResult).filter(CaseIterationResult.run_id == run_id).all()
+            valid_scores = [float(r.quality_score) for r in results_fresh if r.quality_score is not None]
             if valid_scores:
                 run.avg_quality_score = round(sum(valid_scores) / len(valid_scores), 2)
                 run.min_quality_score = round(min(valid_scores), 2)
                 run.max_quality_score = round(max(valid_scores), 2)
+            success_n = sum(1 for r in results_fresh if r.status == "success")
+            failed_n = sum(1 for r in results_fresh if r.status != "success")
+            run.success_cases = success_n
+            run.failed_cases = failed_n
+            run.status = "success" if failed_n == 0 else ("partial" if success_n > 0 else "failed")
+            if valid_scores:
+                run.improvement_analysis = _caselib_compose_improvement_analysis(db, run, valid_scores)
             run.updated_at = datetime.utcnow()
             db.commit()
 

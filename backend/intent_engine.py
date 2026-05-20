@@ -2294,7 +2294,7 @@ class IntentEngine:
                 f"评分输入：{json.dumps(ai_payload, ensure_ascii=False)}"
             )
             try:
-                llm_ai = cls.run_llm1_json_prompt(ai_prompt, user_id="reply_score_ai", max_retries=2, timeout_seconds=30)
+                llm_ai = cls.run_llm1_json_prompt(ai_prompt, user_id="reply_score_ai", max_retries=2, timeout_seconds=65)
                 for item in llm_ai.get("ai_candidates") or []:
                     candidate_id = str(item.get("candidate_id") or "").strip()
                     target = candidate_by_id.get(candidate_id)
@@ -2361,7 +2361,7 @@ class IntentEngine:
                 f"评分输入：{json.dumps(sales_payload, ensure_ascii=False)}"
             )
             try:
-                llm_sales = cls.run_llm1_json_prompt(sales_prompt, user_id="reply_score_sales", max_retries=2, timeout_seconds=30)
+                llm_sales = cls.run_llm1_json_prompt(sales_prompt, user_id="reply_score_sales", max_retries=2, timeout_seconds=65)
                 for item in llm_sales.get("actual_sales_replies") or []:
                     reply_id = str(item.get("reply_id") or "").strip()
                     target = sales_by_id.get(reply_id)
