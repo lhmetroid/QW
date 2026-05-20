@@ -2223,11 +2223,23 @@
             };
 
             // step card wrapper
-            const stepCard = (num, title, content, statusLabel = '', statusCls = '') => `
+            // 读取本案例某节点的耗时(ms)：来自 stage_status.node_timings_ms[key].total_ms
+            const nodeMs = (key) => {
+                const t = ((r.stage_status || {}).node_timings_ms || {})[key];
+                return (t && t.total_ms != null) ? t.total_ms : null;
+            };
+            // 读取节点子项耗时(ms)，如评分耗时 llm2.parts_ms.reply_scoring_ms（跳过评分时为空）
+            const nodePartMs = (key, part) => {
+                const t = ((r.stage_status || {}).node_timings_ms || {})[key];
+                const v = (t && t.parts_ms) ? t.parts_ms[part] : null;
+                return (v != null) ? v : null;
+            };
+            const stepCard = (num, title, content, statusLabel = '', statusCls = '', timingMs = null) => `
                 <div class="rounded-lg border bg-white p-3 mb-2">
                     <div class="flex items-center gap-1.5 mb-2">
                         <span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800 min-w-[22px] text-center">${num}</span>
                         <span class="text-[10px] font-bold text-slate-700">${title}</span>
+                        ${timingMs != null ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500" title="本节点耗时">耗时 ${formatTimingMs(timingMs)}</span>` : ''}
                         ${statusLabel ? `<span class="ml-auto text-[9px] px-1.5 py-0.5 rounded ${statusCls||'bg-slate-100 text-slate-600'}">${statusLabel}</span>` : ''}
                     </div>
                     ${content}
@@ -2307,7 +2319,7 @@
                     </div>` : ''}`;
             }
             const s3State = s3 ? ({ inquiry:'询价阶段',follow_up:'跟进阶段',negotiation:'谈判阶段',closed:'已成交',process:'推进中' }[s3.business_state] || s3.business_state || '') : '';
-            const step02 = stepCard('02', '强信号扫描', html02, s3State, s3 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700');
+            const step02 = stepCard('02', '强信号扫描', html02, s3State, s3 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700', nodeMs('fast_track'));
 
             // ===== 03 第一阶段特征提取 (step1_summary) =====
             const s1 = safeObj(r.step1_summary);
@@ -2327,7 +2339,7 @@
                     ${todos.length ? `<div class="mt-1.5"><div class="text-[10px] text-slate-500 mb-0.5">待跟进（${todos.length}）</div><ul class="list-disc list-inside">${todos.map(t => `<li class="text-[11px] text-slate-700">${escapeHtml(t)}</li>`).join('')}</ul></div>` : ''}
                     ${risks.length ? `<div class="mt-1.5"><div class="text-[10px] text-slate-500 mb-0.5">风险</div>${chips(risks, 'bg-red-50 text-red-700 border border-red-200')}</div>` : ''}`;
             }
-            const step03 = stepCard('03', '第一阶段特征提取', html03, s1 ? '已完成' : '失败', s1 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700');
+            const step03 = stepCard('03', '第一阶段特征提取', html03, s1 ? '已完成' : '失败', s1 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700', nodeMs('llm1'));
 
             // ===== 04 客户画像 (step2_crm_info) =====
             // 状态徽标按 crm_profile_status 真实分流：success=已获取 / not_found=CRM未找到 / empty=无画像 / error=查询失败 / 无字段=失败
@@ -2370,7 +2382,7 @@
             const [step04StatusLabel, step04StatusCls] = !s2
                 ? ['失败', 'bg-red-50 text-red-700']
                 : (step04Meta[crmStatus] || ['已获取', 'bg-green-50 text-green-700']);
-            const step04 = stepCard('04', '客户画像', html04, step04StatusLabel, step04StatusCls);
+            const step04 = stepCard('04', '客户画像', html04, step04StatusLabel, step04StatusCls, nodeMs('crm_profile'));
 
             // ===== 05 知识库 (step4_knowledge.knowledge_v2) =====
             const s4 = safeObj(r.step4_knowledge);
@@ -2394,7 +2406,7 @@
             const kv2Status = kv2 ? kv2.status : '';
             const step05StatusLabel = !kv2 ? '失败' : kv2Status === 'manual_review_required' ? '需复核' : kv2Status === 'ok' ? '正常' : (kv2Status||'');
             const step05StatusCls = !kv2 ? 'bg-red-50 text-red-700' : kv2Status === 'manual_review_required' ? 'bg-amber-50 text-amber-700' : kv2Status === 'ok' ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-600';
-            const step05 = stepCard('05', '知识库（当前）', html05, step05StatusLabel, step05StatusCls);
+            const step05 = stepCard('05', '知识库（当前）', html05, step05StatusLabel, step05StatusCls, nodeMs('knowledge'));
 
             // ===== 06 第二阶段话术生成 (step7_reply_styles[0]) =====
             const styles7 = Array.isArray(r.step7_reply_styles) ? r.step7_reply_styles : safeArr(r.step7_reply_styles);
@@ -2418,7 +2430,7 @@
             }
             const step06StatusLabel = !s7s ? '失败' : s7s.status === 'done' ? '已生成' : s7s.status;
             const step06StatusCls = !s7s ? 'bg-red-50 text-red-700' : s7s.status === 'done' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700';
-            const step06 = stepCard('06', '第二阶段话术生成', html06, step06StatusLabel, step06StatusCls);
+            const step06 = stepCard('06', '第二阶段话术生成', html06, step06StatusLabel, step06StatusCls, nodeMs('llm2'));
 
             // ===== 07 评分对比 (step7_reply_scores) =====
             const s7sc = safeObj(r.step7_reply_scores);
@@ -2457,7 +2469,7 @@
             }
             const step07StatusLabel = !hasScores ? '未评分' : '已评分';
             const step07StatusCls = !hasScores ? 'bg-slate-100 text-slate-500' : 'bg-green-50 text-green-700';
-            const step07 = stepCard('07', '评分对比', html07, step07StatusLabel, step07StatusCls);
+            const step07 = stepCard('07', '评分对比', html07, step07StatusLabel, step07StatusCls, nodePartMs('llm2', 'reply_scoring_ms'));
 
             const modal = document.createElement('div');
             modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
