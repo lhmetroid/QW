@@ -2058,27 +2058,23 @@
                     if (v != null) lines.push(`  • ${l}（${k}）= ${Number(v).toFixed(1)}`);
                 });
                 const reason = top.score_reason || '';
-                if (reason && reason !== 'llm1_scored') {
-                    lines.push('LLM 评价：' + reason.slice(0, 240));
+                if (reason && reason !== 'llm1_scored' && reason !== 'manual') {
+                    lines.push('评分点评：' + reason.slice(0, 240));
                 }
                 if (top.knowledge_source_label || top.style_title) {
                     lines.push(`来源：${top.knowledge_source_label || ''} · ${top.style_title || ''}`);
                 }
-                lines.push('打分方式：LLM-1（' + (scoresObj.scored_by && scoresObj.scored_by.model || 'qwen14b') + '）');
+                const aiMode = scoresObj.scored_by && scoresObj.scored_by.score_mode;
+                lines.push('打分方式：' + (aiMode === 'manual' ? '人工逐轮（manual）' : ('LLM-1（' + (scoresObj.scored_by && scoresObj.scored_by.model || 'qwen14b') + '）')));
                 lines.push('（候选数：' + ac.length + '；其它候选可在弹窗"第7步 · 候选评分"查看）');
                 return lines.join('\n');
             };
             const buildSalesReplyCellTip = (r) => {
                 const scoresObj = r.step7_reply_scores;
                 const ar = (scoresObj && typeof scoresObj === 'object') ? (scoresObj.actual_sales_replies || []) : [];
-                if (!ar.length) return '销售原始回复：本案例尚无评分数据。\n请点击页面顶部「重新打分（AI+人工）」。';
                 const top = ar[0] || {};
                 if (top.score_reason === 'llm1_failed') {
                     return '销售原始回复：LLM-1 打分失败，请检查服务连通性后重试「重新打分（AI+人工）」。';
-                }
-                const sub = top.scores || {};
-                if (!Object.keys(sub).length) {
-                    return '销售原始回复：评分进行中或尚未完成，请稍后刷新。';
                 }
                 const dimMap = [
                     ['overall', '总分'],
@@ -2089,15 +2085,32 @@
                     ['style_match', '风格匹配'],
                     ['context_alignment', '上下文贴合'],
                 ];
+                let sub = top.scores || {};
+                let fromTurn = false;
+                let reason = top.score_reason || '';
+                let rawTxt = top.reply_text || top.content || '';
+                // 回退：迭代结果无 actual_sales_replies 时，用对话轮次的人工逐轮分（嵌套 dims 展平）
+                if (!Object.keys(sub).length) {
+                    const turn = r.turn || (r.case && (r.case.dialogue_turns || []).find(t => t.turn_no === r.turn_no)) || {};
+                    const ts = turn.actual_sales_scores;
+                    if (ts && typeof ts === 'object') {
+                        sub = { ...ts, ...(ts.dims || {}) };
+                        fromTurn = true;
+                        reason = ts.score_reason || '';
+                    }
+                }
+                if (!Object.keys(sub).length) {
+                    return '销售原始回复：本案例尚无评分数据。\n请点击页面顶部「重新打分（AI+人工）」。';
+                }
                 const lines = ['销售原始回复 7 维明细：'];
                 dimMap.forEach(([k, l]) => {
                     const v = sub[k];
                     if (v != null) lines.push(`  • ${l}（${k}）= ${Number(v).toFixed(1)}`);
                 });
-                const rawTxt = top.reply_text || top.content || '';
                 const txt = rawTxt.slice(0, 200);
                 if (txt) lines.push('原文：' + txt + (rawTxt.length > 200 ? '…' : ''));
-                lines.push('打分方式：LLM-1（' + (scoresObj.scored_by && scoresObj.scored_by.model || 'qwen14b') + '）');
+                if (reason && reason !== 'llm1_scored' && reason !== 'manual') lines.push('评分点评：' + String(reason).slice(0, 240));
+                lines.push('打分方式：' + (fromTurn ? '人工逐轮（manual）' : ('LLM-1（' + (scoresObj.scored_by && scoresObj.scored_by.model || 'qwen14b') + '）')));
                 return lines.join('\n');
             };
             const buildMdCellTip = (r, c) => {
