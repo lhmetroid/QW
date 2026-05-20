@@ -1398,7 +1398,10 @@
                             <th class="px-3 py-2 text-right" title="本轮所有案例的最低 / 最高质量分。差距大说明效果不稳定，差距小说明效果均匀。">最低 / 最高</th>
                             <th class="px-3 py-2 text-right" title="本轮单个案例从输入到 7 步链路全跑完的平均耗时(毫秒)，含 LLM1+知识库+LLM2 的总和。">平均耗时</th>
                             <th class="px-3 py-2 text-left" title="本轮完成后自动 git commit + git push 到 GitHub 远程的 commit 短 SHA。鼠标悬停可看「已提交并推送」等中文状态。">GitHub 备份</th>
-                            <th class="px-3 py-2 text-center" title="点击进入该轮 60 个案例的逐条 7 步链路详情，可对照原销售打分。">查看详情</th>
+                            <th class="px-3 py-2 text-center" title="点击查看本轮得分分析（按场景平均分排列）">得分分析</th>
+                            <th class="px-3 py-2 text-center" title="点击查看 AI 自检步骤（下轮迭代检查清单）">AI自检步骤</th>
+                            <th class="px-3 py-2 text-center" title="点击查看三AI汇总（LLM-1综合分析）">LLM汇总</th>
+                            <th class="px-3 py-2 text-center" title="点击进入该轮 60 个案例的逐条 7 步链路详情，可对照原销售打分。">60案例详情</th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -1434,6 +1437,9 @@
                     <td class="px-3 py-2 text-right text-[11px] text-slate-500" title="最低分 ${mn} / 最高分 ${mx}（满分100）">${mn} / ${mx}</td>
                     <td class="px-3 py-2 text-right text-[11px] text-slate-500" title="单案例 7 步链路平均耗时">${lat}</td>
                     <td class="px-3 py-2 font-mono text-[11px] text-slate-600" title="${escapeHtml(backupTip)}">${backup}</td>
+                    <td class="px-3 py-2 text-center">${r.improvement_analysis ? `<button onclick="event.stopPropagation();caselibShowAnalysisPopup('${r.run_id}','improvement')" class="text-purple-600 hover:text-purple-900 hover:underline text-[11px] font-bold px-1" title="点击查看得分分析">📊 查看</button>` : '<span class="text-slate-300 text-[11px]">—</span>'}</td>
+                    <td class="px-3 py-2 text-center">${r.ai_next_step_plan ? `<button onclick="event.stopPropagation();caselibShowAnalysisPopup('${r.run_id}','ai_plan')" class="text-amber-600 hover:text-amber-900 hover:underline text-[11px] font-bold px-1" title="点击查看 AI 自检步骤">🤖 查看</button>` : '<span class="text-slate-300 text-[11px]">—</span>'}</td>
+                    <td class="px-3 py-2 text-center">${r.analysis_summary ? `<button onclick="event.stopPropagation();caselibShowAnalysisPopup('${r.run_id}','summary')" class="text-indigo-600 hover:text-indigo-900 hover:underline text-[11px] font-bold px-1" title="点击查看三AI汇总">🎯 查看</button>` : '<span class="text-slate-300 text-[11px]">—</span>'}</td>
                     <td class="px-3 py-2 text-center"><button onclick="event.stopPropagation();caselibOpenDetail('${r.run_id}')" class="text-purple-600 hover:underline text-[11px] font-bold" title="点击查看本轮 60 个案例的逐条 7 步结果">详情 →</button></td>
                 </tr>`;
             }).join('');
