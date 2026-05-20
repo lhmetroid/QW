@@ -14587,6 +14587,10 @@ class SidebarAssistRequest(BaseModel):
     # 案例库批量评测专用：True 时强制走完整 7 步真实链路
     # （LLM1 对比 / LLM2 对比 / reply scoring / KB2 全部打开），生产请求不传，保持默认行为
     evaluation_full_pipeline: bool = False
+    # 案例库迭代 V9 起：评测收敛为单一版本（主模型 + 单风格 + 单知识库），仅生成 1 条 AI 回复
+    eval_single_version: bool = False
+    # 案例库迭代 V9 起：跳过 step7 评分，链路到 step6 AI 生成即截止；评分改由 rescore 端点单独补
+    eval_skip_scoring: bool = False
 
 class SessionArchiveSyncRequest(BaseModel):
     session_id: str | None = None
@@ -14864,9 +14868,9 @@ async def sidebar_assist(
                 IntentEngine.get_ai_settings().get("API_KB2_ENABLED", True),
                 default=True,
             )
-            # 案例库评测：强制启用 KB2，确保外部库分有真实返回
+            # 案例库评测：单版本模式只用私域库(KB1)；多版本对比模式强制启用 KB2，确保外部库分有真实返回
             if request.evaluation_full_pipeline:
-                api_kb2_enabled = True
+                api_kb2_enabled = False if request.eval_single_version else True
             stage_status["api_kb2_enabled"] = api_kb2_enabled
             if summary.core_demand:
                 stage_started = perf_counter()
@@ -15104,8 +15108,11 @@ async def sidebar_assist(
             # ── 非流式路径（原逻辑不变）───────────────────────────────────────
 
             stage_started = perf_counter()
-            # 案例库评测：放开单模型单风格限制，同时启用打分，给前端"私域库分 / 外部库分 / 第7步候选评分"提供真实值
+            # 案例库评测：默认放开单模型单风格(全矩阵对比)并启用打分；
+            # V9 起可按 eval_single_version 收敛为单版本，按 eval_skip_scoring 跳过 step7 评分(到 step6 截止)
             _eval_full = bool(request.evaluation_full_pipeline)
+            _eval_single = bool(request.eval_single_version)
+            _eval_skip_scoring = bool(request.eval_skip_scoring)
             generation_bundle = _generate_reply_style_candidates(
                 summary_json=summary_json,
                 knowledge=knowledge_v2,
@@ -15113,8 +15120,8 @@ async def sidebar_assist(
                 crm_context=crm_context,
                 actual_sales_replies=[],
                 runtime_key=session_id,
-                single_model_single_style=False if _eval_full else True,
-                enable_scoring=True if _eval_full else False,
+                single_model_single_style=True if (not _eval_full or _eval_single) else False,
+                enable_scoring=(_eval_full and not _eval_skip_scoring),
                 kb2_enabled=api_kb2_enabled,
             )
             mark_timing("llm2_generate_ms", stage_started)
@@ -17930,6 +17937,13 @@ def _caselib_real_failure(
     }
 
 
+# 案例库迭代评测策略（V9 起）：
+#   - 单版本：每轮只生成 1 条 AI 回复（主模型 + 单风格 + 单知识库），不再跑 8 个对比版本
+#   - 跳过评分：链路到 step6 AI 生成即截止，不调用 step7 LLM 评分；评分可后续用 rescore 端点单独补
+CASELIB_EVAL_SINGLE_VERSION = True
+CASELIB_EVAL_SKIP_SCORING = True
+
+
 def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
     db = SessionLocal()
     cid = case_payload.get("case_id", "0")[:12]
@@ -17986,8 +18000,10 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
                     "force_refresh": True,
                     "sync_archive_before_read": False,
                     "trigger_source": "web_manual",
-                    # 案例库评测必须走完整 7 步真实链路：开 LLM1 对比 / LLM2 对比 / reply scoring / KB2
+                    # 案例库评测走真实链路；V9 起：单版本(主模型+单风格+单知识库) + 跳过 step7 评分(到 step6 截止)
                     "evaluation_full_pipeline": True,
+                    "eval_single_version": CASELIB_EVAL_SINGLE_VERSION,
+                    "eval_skip_scoring": CASELIB_EVAL_SKIP_SCORING,
                 }, timeout=int(os.environ.get("CASELIB_REQUEST_TIMEOUT_SECONDS") or "180"))
                 resp = r
                 break
@@ -18074,9 +18090,11 @@ def _caselib_run_real(case_payload: dict, run_id: str) -> dict:
         has_advice = bool(sales_advice)
         has_llm1 = (stage_status.get("llm1") == "done")
         has_llm2 = (stage_status.get("llm2") == "done")
+        # 跳过评分模式下，链路到 step6 即算完整成功（qs 必然为 None，不能据此判失败）
+        pipeline_ok = has_advice and has_llm1 and has_llm2
         status_label = (
-            "real_success" if (has_advice and has_llm1 and has_llm2 and qs is not None)
-            else ("real_score_missing" if (has_advice and has_llm1 and has_llm2) else ("real_partial" if has_advice else "real_pipeline_empty"))
+            "real_success" if (pipeline_ok and (CASELIB_EVAL_SKIP_SCORING or qs is not None))
+            else ("real_score_missing" if pipeline_ok else ("real_partial" if has_advice else "real_pipeline_empty"))
         )
         return {
             "step1_summary": {

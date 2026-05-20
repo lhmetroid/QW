@@ -2330,13 +2330,24 @@
             const step03 = stepCard('03', '第一阶段特征提取', html03, s1 ? '已完成' : '失败', s1 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700');
 
             // ===== 04 客户画像 (step2_crm_info) =====
+            // 状态徽标按 crm_profile_status 真实分流：success=已获取 / not_found=CRM未找到 / empty=无画像 / error=查询失败 / 无字段=失败
+            // 旧逻辑只识别 not_found，把 error/empty 也误显示为绿色"已获取"，导致"成功但无值"的误导
             const s2 = safeObj(r.step2_crm_info);
+            const crmStatus = s2 ? (s2.crm_profile_status || 'empty') : null;
             let html04;
             if (!s2) {
                 html04 = `<div class="text-[11px] text-red-500">失败：无 CRM 数据</div>`;
-            } else if (s2.crm_profile_status === 'not_found') {
+            } else if (crmStatus === 'error') {
                 html04 = `
-                    <div class="text-[11px] text-slate-500 italic mb-1">${escapeHtml(s2.crm_profile_error || '未找到客户资料')}</div>
+                    <div class="text-[11px] text-red-600 mb-1">查询失败：${escapeHtml(s2.crm_profile_error || 'CRM 数据库查询出错')}</div>
+                    ${frow('客户ID', s2.crm_external_userid, 'font-mono text-slate-500')}`;
+            } else if (crmStatus === 'not_found') {
+                html04 = `
+                    <div class="text-[11px] text-slate-500 italic mb-1">${escapeHtml(s2.crm_profile_error || 'CRM 中未找到该客户')}</div>
+                    ${frow('客户ID', s2.crm_external_userid, 'font-mono text-slate-500')}`;
+            } else if (crmStatus === 'empty') {
+                html04 = `
+                    <div class="text-[11px] text-slate-500 italic mb-1">${escapeHtml(s2.crm_profile_error || '无 external_userid，未发起 CRM 查询')}</div>
                     ${frow('客户ID', s2.crm_external_userid, 'font-mono text-slate-500')}`;
             } else {
                 html04 = `
@@ -2350,8 +2361,15 @@
                     ${s2.recent_quote_summary ? frow('报价摘要', s2.recent_quote_summary) : ''}
                     ${(s2.high_risk_flags||[]).length ? `<div class="mt-1">${chips(s2.high_risk_flags,'bg-red-50 text-red-700 border border-red-200')}</div>` : ''}`;
             }
-            const step04StatusLabel = !s2 ? '失败' : s2.crm_profile_status === 'not_found' ? 'CRM未找到' : '已获取';
-            const step04StatusCls = !s2 ? 'bg-red-50 text-red-700' : s2.crm_profile_status === 'not_found' ? 'bg-slate-100 text-slate-600' : 'bg-green-50 text-green-700';
+            const step04Meta = {
+                'success':   ['已获取',    'bg-green-50 text-green-700'],
+                'not_found': ['CRM未找到', 'bg-slate-100 text-slate-600'],
+                'empty':     ['无画像',    'bg-slate-100 text-slate-600'],
+                'error':     ['查询失败',  'bg-red-50 text-red-700'],
+            };
+            const [step04StatusLabel, step04StatusCls] = !s2
+                ? ['失败', 'bg-red-50 text-red-700']
+                : (step04Meta[crmStatus] || ['已获取', 'bg-green-50 text-green-700']);
             const step04 = stepCard('04', '客户画像', html04, step04StatusLabel, step04StatusCls);
 
             // ===== 05 知识库 (step4_knowledge.knowledge_v2) =====
