@@ -1988,7 +1988,7 @@
                 '同样用 7 维规则打分，可与 AI 候选分对比。悬停单元格可看全文及 7 维分明细。'
             );
             const head = `
-                <table class="text-xs" style="table-layout: fixed; min-width: 1675px; width: 1675px;">
+                <table class="text-xs" style="table-layout: fixed; min-width: 2155px; width: 2155px;">
                     <thead class="bg-slate-50 text-slate-600 sticky top-0 z-10">
                         <tr>
                             <th class="px-2 py-2 text-left" style="width:50px; min-width:50px; max-width:50px; overflow:hidden;" title="销售场景代码 S01~S12。鼠标悬停每个单元格可看场景的完整业务定义">场景</th>
@@ -1998,9 +1998,9 @@
                             <th class="px-0.5 py-2 text-left" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="本轮对话端到端 7 步链路总耗时（毫秒）">耗时</th>
                             <th class="px-2 py-2 text-left" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" title="步骤1：大模型1 抽取的当前主线话题。悬停看全文">第1步·主线话题</th>
                             <th class="px-2 py-2 text-left" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="步骤4：知识检索的最终状态（命中 / 待人工复核 / 未启动 / 干跑占位）">第4步·知识检索</th>
-                            <th class="px-2 py-2 text-left" style="width:240px; min-width:240px; max-width:240px; overflow:hidden;" title="本轮真实输入给AI的原客户问；背景只包含客户问之前的15行，不包含本轮销售参考答案">原客户问</th>
-                            <th class="px-2 py-2 text-left" style="width:240px; min-width:240px; max-width:240px; overflow:hidden;" title="步骤6：大模型2 基于前 5 步生成的 AI 回复建议（截断显示前 80 字，悬停看全文）">第6步·AI生成回复</th>
-                            <th class="px-2 py-2 text-left" style="width:240px; min-width:240px; max-width:240px; overflow:hidden;" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
+                            <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="本轮真实输入给AI的原客户问；背景只包含客户问之前的15行，不包含本轮销售参考答案">原客户问</th>
+                            <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="步骤6：大模型2 基于前 5 步生成的 AI 回复建议（截断显示前 80 字，悬停看全文）">第6步·AI生成回复</th>
+                            <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="${escapeHtml(mdHeaderTip)}">原始回复分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="AI 质量分 − 销售原始回复分（均为 LLM-1 打分）。正值=AI 回复比销售原始回复评分高；负值=AI 回复比销售原始回复评分低">Δ（AI−原始）</th>
@@ -2113,7 +2113,7 @@
             const twoLineCell = (text, clickStepHtml = '', cls = 'text-slate-700') => {
                 const content = String(text || '').trim();
                 const clickAttrs = clickStepHtml || '';
-                return `<td class="px-2 py-2 ${cls}" style="width:240px; max-width:240px; min-width:240px; overflow:hidden;" ${clickAttrs}>
+                return `<td class="px-2 py-2 ${cls}" style="width:400px; max-width:400px; min-width:400px; overflow:hidden;" ${clickAttrs}>
                     <div style="${lineClamp2Style}" title="${escapeHtml(content)}">${escapeHtml(content) || '<span class="text-slate-400">（无）</span>'}</div>
                 </td>`;
             };
