@@ -1742,7 +1742,7 @@
             if (btn) { btn.disabled = true; btn.textContent = '打分中…'; }
             if (status) status.textContent = '正在对全部对话轮次原销售回复做规则打分…';
             try {
-                const res = await caselibFetch('/api/case_lib/cases/score_original_replies', {method: 'POST'});
+                const res = await caselibFetch('/api/case_lib/score_original_replies', {method: 'POST'});
                 const data = await res.json();
                 if (data.status !== 'success') {
                     alert('打分失败：' + (data.error || JSON.stringify(data).slice(0, 300)));

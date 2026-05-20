@@ -18502,7 +18502,7 @@ def _heuristic_score_sales_text(sales_text: str, customer_text: str = "") -> dic
     }
 
 
-@app.post("/api/case_lib/cases/score_original_replies")
+@app.post("/api/case_lib/score_original_replies")
 async def caselib_score_original_replies(case_id: str | None = Query(default=None)):
     """对所有（或指定案例的）对话轮次原销售回复做启发式规则打分（不调用LLM）。
     完成后 actual_sales_score / actual_sales_scores / score_status 被写入 DB，
