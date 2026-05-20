@@ -1988,7 +1988,7 @@
                 '同样用 7 维规则打分，可与 AI 候选分对比。悬停单元格可看全文及 7 维分明细。'
             );
             const head = `
-                <table class="text-xs" style="table-layout: fixed; min-width: 2155px; width: 2155px;">
+                <table class="text-xs" style="table-layout: fixed; min-width: 2345px; width: 2345px;">
                     <thead class="bg-slate-50 text-slate-600 sticky top-0 z-10">
                         <tr>
                             <th class="px-2 py-2 text-left" style="width:50px; min-width:50px; max-width:50px; overflow:hidden;" title="销售场景代码 S01~S12。鼠标悬停每个单元格可看场景的完整业务定义">场景</th>
@@ -1997,7 +1997,9 @@
                             <th class="px-0.5 py-2 text-left" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="本轮对话的链路最终状态：真实成功 / 真实部分 / 干跑成功 / 异常回退 / HTTP错误 等">链路状态</th>
                             <th class="px-0.5 py-2 text-left" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="本轮对话端到端 7 步链路总耗时（毫秒）">耗时</th>
                             <th class="px-2 py-2 text-left" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" title="步骤1：大模型1 抽取的当前主线话题。悬停看全文">第1步·主线话题</th>
-                            <th class="px-2 py-2 text-left" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="步骤4：知识检索的最终状态（命中 / 待人工复核 / 未启动 / 干跑占位）">第4步·知识检索</th>
+                            <th class="px-2 py-2 text-left" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="步骤4：知识检索的最终状态（命中 / 待人工复核 / 未启动 / 干跑占位）。悬停单元格看知识库（当前）检索问题/证据/命中明细">第4步·知识检索</th>
+                            <th class="px-2 py-2 text-left" style="width:90px; min-width:90px; max-width:90px; overflow:hidden;" title="本轮触发点之前的背景对话（最多15行）。悬停单元格看全部背景对话">背景</th>
+                            <th class="px-2 py-2 text-left" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="步骤4：CRM 客户画像（联系人/公司/行业/等级/支付风险/生命周期）。悬停单元格看明细">客户画像</th>
                             <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="本轮真实输入给AI的原客户问；背景只包含客户问之前的15行，不包含本轮销售参考答案">原客户问</th>
                             <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="步骤6：大模型2 基于前 5 步生成的 AI 回复建议（截断显示前 80 字，悬停看全文）">第6步·AI生成回复</th>
                             <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
@@ -2130,8 +2132,110 @@
                     <div style="${lineClamp2Style}" title="${escapeHtml(content)}">${escapeHtml(content) || '<span class="text-slate-400">（无）</span>'}</div>
                 </td>`;
             };
-            const body = rows.map(r => {
+            const tipParse = (v) => {
+                if (v == null) return null;
+                if (typeof v === 'string') { try { return JSON.parse(v); } catch { return null; } }
+                return v;
+            };
+            // 第1步列 tooltip：强信号扫描(02) + 第一阶段特征提取(03)，纯文本换行
+            const tipMainTopic = (r) => {
+                const lines = ['【强信号扫描】'];
+                const s3 = tipParse(r.step3_thread_business_fact);
+                const stateMap = { inquiry:'询价阶段', follow_up:'跟进阶段', negotiation:'谈判阶段', closed:'已成交', process:'推进中' };
+                const styleMap = { wechat_brief:'微信口语', formal:'正式', mixed:'混合' };
+                const sigMap = { awaiting_customer_reply:'等待客户回复', followup_after_no_reply:'无回复后跟进', has_formal_quote:'已报价', crm_has_quote_history:'CRM有报价记录', payment_discussed:'已讨论付款', payment_confirmed:'付款已确认', shipment_discussed:'已讨论发货', shipment_confirmed:'发货已确认', after_sales_open:'售后跟进中', waiting_customer_material:'等待客户素材', sales_only_conversation:'仅销售发言' };
+                if (s3) {
+                    const mf = s3.merged_facts || {};
+                    const sig = s3.stage_signals || {};
+                    if (s3.business_state) lines.push('业务阶段：' + (stateMap[s3.business_state] || s3.business_state));
+                    if (s3.scenario_label) lines.push('场景标签：' + s3.scenario_label);
+                    if (s3.language_style) lines.push('语言风格：' + (styleMap[s3.language_style] || s3.language_style));
+                    const convState = mf.summary_status || s3.core_demand;
+                    if (convState) lines.push('会话状态：' + convState);
+                    const activeSignals = Object.entries(sig).filter(([k,v]) => v === true && sigMap[k]).map(([k]) => sigMap[k]);
+                    if (activeSignals.length) lines.push('已激活信号：' + activeSignals.join('、'));
+                    const recent = (Array.isArray(mf.recent_sales_messages) && mf.recent_sales_messages.length) ? mf.recent_sales_messages : (mf.latest_sales_message ? [mf.latest_sales_message] : []);
+                    if (recent.length) { lines.push('最近销售消息：'); recent.forEach(m => lines.push('  · ' + m)); }
+                    if (mf.latest_customer_message) lines.push('触发点消息：' + mf.latest_customer_message);
+                } else { lines.push('（无强信号数据）'); }
+                lines.push('');
+                lines.push('【第一阶段特征提取】');
+                const s1 = tipParse(r.step1_summary);
+                if (s1) {
+                    const kf = s1.key_facts || {};
+                    if (s1.topic) lines.push('主线话题：' + s1.topic);
+                    if (s1.core_demand) lines.push('核心诉求：' + s1.core_demand);
+                    if (kf.current_focus) lines.push('当前焦点：' + kf.current_focus);
+                    const timeline = Array.isArray(kf.timeline_items) ? kf.timeline_items : [];
+                    if (timeline.length) { lines.push('时间轴事项：'); timeline.forEach(t => lines.push('  · ' + (t.time||'') + ' ' + (t.topic||'') + ' [' + (t.status||'') + ']')); }
+                    const todos = Array.isArray(s1.todo_items) ? s1.todo_items : [];
+                    if (todos.length) { lines.push('待跟进：'); todos.forEach(t => lines.push('  · ' + t)); }
+                    const risks = Array.isArray(s1.risks) ? s1.risks : [];
+                    if (risks.length) lines.push('风险：' + risks.join('、'));
+                } else { lines.push('（无特征提取数据）'); }
+                return lines.join('\n');
+            };
+            // 第4步列 tooltip：知识库（当前）
+            const tipKnowledge = (r) => {
+                const lines = ['【知识库（当前）】'];
+                const s4 = tipParse(r.step4_knowledge);
+                const kv2 = s4 ? tipParse(s4.knowledge_v2) : null;
+                if (!kv2) { lines.push('（无知识库数据）'); return lines.join('\n'); }
+                if (kv2.query_text) lines.push('检索问题：' + kv2.query_text);
+                if (kv2.retrieval_quality != null) lines.push('检索质量：' + kv2.retrieval_quality);
+                const refs = kv2.evidence_refs || [];
+                if (refs.length) {
+                    lines.push('知识证据（' + refs.length + ' 条）：');
+                    refs.forEach((ref, i) => {
+                        lines.push('  ' + (i+1) + '. ' + (ref.title || ''));
+                        if (ref.snippet) lines.push('     ' + ref.snippet);
+                    });
+                }
+                if (kv2.no_hit_reason) lines.push('无命中：' + kv2.no_hit_reason);
+                if (kv2.manual_review_required) lines.push('⚠ 知识命中需人工复核，话术需保守使用');
+                return lines.join('\n');
+            };
+            // 背景列 tooltip：触发点之前的背景对话
+            const tipBackground = (c) => {
+                const lines = ['【背景对话】'];
+                const msgs = (c && c.context_messages) || [];
+                if (!msgs.length) { lines.push('（无背景对话）'); return lines.join('\n'); }
+                msgs.forEach(m => {
+                    const role = m.role === 'customer' ? '客户' : '销售';
+                    lines.push('[' + role + '] ' + ((m.msg_time || '').slice(0, 16)) + ' ' + (m.content || ''));
+                });
+                return lines.join('\n');
+            };
+            // 客户画像列 tooltip
+            const tipCrm = (r) => {
+                const lines = ['【客户画像】'];
+                const s2 = tipParse(r.step2_crm_info);
+                if (!s2) { lines.push('（无 CRM 数据）'); return lines.join('\n'); }
+                const status = s2.crm_profile_status || 'empty';
+                if (status === 'error') { lines.push('查询失败：' + (s2.crm_profile_error || 'CRM 查询出错')); return lines.join('\n'); }
+                if (status === 'not_found') { lines.push(s2.crm_profile_error || 'CRM 中未找到该客户'); return lines.join('\n'); }
+                if (status === 'empty') { lines.push(s2.crm_profile_error || '无 external_userid，未发起 CRM 查询'); return lines.join('\n'); }
+                if (s2.crm_contact_name) lines.push('联系人：' + s2.crm_contact_name);
+                if (s2.company_name) lines.push('公司：' + s2.company_name);
+                if (s2.company_industry) lines.push('行业：' + s2.company_industry);
+                if (s2.customer_tier) lines.push('客户等级：' + s2.customer_tier);
+                if (s2.payment_risk_level) lines.push('支付风险：' + s2.payment_risk_level);
+                if (s2.customer_lifecycle_stage) lines.push('生命周期：' + s2.customer_lifecycle_stage);
+                if (s2.recent_opportunities) lines.push('近期商机：' + s2.recent_opportunities);
+                if (s2.recent_quote_summary) lines.push('报价摘要：' + s2.recent_quote_summary);
+                return lines.join('\n');
+            };
+            const crmShortLabel = (r) => {
+                const s2 = tipParse(r.step2_crm_info);
+                if (!s2) return '';
+                const status = s2.crm_profile_status || 'empty';
+                if (status === 'success') return s2.crm_contact_name || s2.company_name || '已获取';
+                return ({ not_found:'未找到', empty:'无画像', error:'查询失败' })[status] || '';
+            };
+            const body = rows.map((r, idx) => {
                 const c = r.case || {};
+                const prevR = rows[idx - 1];
+                const sameCaseAsPrev = !!(prevR && prevR.case_id && prevR.case_id === r.case_id);
                 const turn = r.turn || (r.case && (r.case.dialogue_turns || []).find(t => t.turn_no === r.turn_no)) || {};
                 const sc = r.scenario_code || '-';
                 const scTip = caselibScenarioTip(sc);
@@ -2181,14 +2285,20 @@
                     if (!r || !r.result_id) return '';
                     return `onclick="event.stopPropagation();caselibOpenStepModal('${r.result_id}','${step}')" title="点击查看${step}完整数据" class="cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition"`;
                 };
+                const stepClick = (step) => (r && r.result_id)
+                    ? `onclick="event.stopPropagation();caselibOpenStepModal('${r.result_id}','${step}')"` : '';
+                const bgCount = ((c.context_messages || []).length);
+                const crmLabel = crmShortLabel(r);
                 return `<tr class="border-t hover:bg-purple-50 cursor-pointer transition" ${r.case_id && r.result_id ? `onclick="caselibOpenCaseModal('${r.case_id}', '${r.result_id}')"` : ''} title="点击查看 ${sc}-${r.scenario_rank} 的完整 7 步链路详情">
-                    <td class="px-2 py-2 font-bold text-purple-700" style="width:50px; min-width:50px; max-width:50px; overflow:hidden;" title="${escapeHtml(scTip)}">${sc}</td>
-                    <td class="px-2 py-2 truncate text-slate-700" style="width:210px; min-width:210px; max-width:210px; overflow:hidden;" title="${escapeHtml(c.case_title || '')}">${escapeHtml(title)}</td>
+                    <td class="px-2 py-2 font-bold text-purple-700" style="width:50px; min-width:50px; max-width:50px; overflow:hidden;" title="${sameCaseAsPrev ? '' : escapeHtml(scTip)}">${sameCaseAsPrev ? '' : sc}</td>
+                    <td class="px-2 py-2 truncate text-slate-700" style="width:210px; min-width:210px; max-width:210px; overflow:hidden;" title="${sameCaseAsPrev ? '' : escapeHtml(c.case_title || '')}">${sameCaseAsPrev ? '' : escapeHtml(title)}</td>
                     <td class="px-2 py-2 text-center font-mono text-[11px] text-purple-700" style="width:45px; min-width:45px; max-width:45px; overflow:hidden;" title="第 ${r.turn_no || turn.turn_no || '-'} 轮">${r.turn_no || turn.turn_no || '-'}</td>
                     <td class="px-0.5 py-2" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="原始状态码：${r.quality_status || ''}">${escapeHtml(qstatus)}</span></td>
                     <td class="px-0.5 py-2 text-slate-500 whitespace-nowrap" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="AI生成回复耗时（已排除评分环节）">${r.latency_ms ? r.latency_ms + ' ms' : '-'}</td>
-                    <td class="px-2 py-2 truncate text-slate-700" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" ${clickStep('第1步·主线话题')}>${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
-                    <td class="px-2 py-2 text-slate-500 truncate" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" ${clickStep('第4步·知识检索')}>${escapeHtml(kbLabel) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 truncate text-slate-700 cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" ${stepClick('第1步·主线话题')} title="${escapeHtml(tipMainTopic(r))}">${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 text-slate-500 truncate cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" ${stepClick('第4步·知识检索')} title="${escapeHtml(tipKnowledge(r))}">${escapeHtml(kbLabel) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 text-slate-500 truncate cursor-help" style="width:90px; min-width:90px; max-width:90px; overflow:hidden;" title="${escapeHtml(tipBackground(c))}">${bgCount ? bgCount + ' 条' : '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 text-slate-500 truncate cursor-help" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="${escapeHtml(tipCrm(r))}">${escapeHtml(crmLabel) || '<span class="text-slate-400">（无）</span>'}</td>
                     ${twoLineCell(customerQuestion, clickStep('原客户问'), 'text-slate-700')}
                     ${twoLineCell(advice, clickStep('第6步·AI生成回复'), 'text-slate-700')}
                     ${twoLineCell(lastSalesReply, clickStep('销售原始回复'), 'text-slate-600')}
