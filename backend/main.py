@@ -17769,6 +17769,7 @@ class CaseLibStartIterationRequest(BaseModel):
     change_summary: str | None = None
     mode: str = "dry_run"  # dry_run / real
     triggered_by: str | None = None
+    max_cases: int | None = None  # 仅跑前 N 个案例(按场景-排名序)，用于小批量验证；None=全部
 
 
 def _caselib_run_dry(case_payload: dict) -> dict:
@@ -18315,7 +18316,7 @@ def _caselib_git_backup(version_no: int) -> tuple[str | None, str]:
         return None, f"exception: {str(e)[:120]}"
 
 
-def _caselib_run_iteration_background(run_id: str, mode: str):
+def _caselib_run_iteration_background(run_id: str, mode: str, max_cases: int | None = None):
     log = logging.getLogger(__name__)
     db = SessionLocal()
     try:
@@ -18330,6 +18331,9 @@ def _caselib_run_iteration_background(run_id: str, mode: str):
         cases = db.query(CaseLibraryCase).order_by(
             CaseLibraryCase.scenario_code, CaseLibraryCase.scenario_rank
         ).all()
+        # 小批量验证：仅取前 N 个案例（按场景-排名序）
+        if max_cases and max_cases > 0:
+            cases = cases[:max_cases]
         case_ids = [str(c.case_id) for c in cases]
         turns = db.query(CaseLibraryDialogueTurn).filter(
             CaseLibraryDialogueTurn.case_id.in_(case_ids)
@@ -18502,6 +18506,9 @@ async def caselib_start_iteration(payload: CaseLibStartIterationRequest):
             change_summary=payload.change_summary or "",
             pipeline_config={
                 "mode": payload.mode,
+                "max_cases": payload.max_cases,
+                "eval_single_version": CASELIB_EVAL_SINGLE_VERSION,
+                "eval_skip_scoring": CASELIB_EVAL_SKIP_SCORING,
                 "scripts": ["backend/main.py", "backend/intent_engine.py", "backend/_case_lib_import.py"],
             },
             status="queued",
@@ -18514,7 +18521,7 @@ async def caselib_start_iteration(payload: CaseLibStartIterationRequest):
 
         t = threading.Thread(
             target=_caselib_run_iteration_background,
-            args=(str(run.run_id), payload.mode),
+            args=(str(run.run_id), payload.mode, payload.max_cases),
             daemon=True,
         )
         CASELIB_BACKGROUND_THREAD[str(run.run_id)] = t
