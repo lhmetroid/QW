@@ -17703,6 +17703,7 @@ async def caselib_get_iteration_detail(run_id: str):
         ).all()
         case_ids = [str(rr.case_id) for rr in results]
         case_map = {}
+        turn_map = {}
         if case_ids:
             cases = db.query(CaseLibraryCase).filter(
                 CaseLibraryCase.case_id.in_(case_ids)
@@ -17715,6 +17716,7 @@ async def caselib_get_iteration_detail(run_id: str):
                 ).order_by(CaseLibraryDialogueTurn.case_id, CaseLibraryDialogueTurn.turn_no).all()
                 for t in turn_rows:
                     turns_by_case.setdefault(str(t.case_id), []).append(t)
+                    turn_map[str(t.turn_id)] = _caselib_serialize_turn(t)
             sales_scores_by_case: dict[str, list[float]] = {}
             for rr in results:
                 score = _caselib_sales_score_from_step7(rr.step7_reply_scores)
@@ -17735,10 +17737,14 @@ async def caselib_get_iteration_detail(run_id: str):
             }
         rows = []
         for rr in results:
-            rows.append(_caselib_serialize_result(rr, case_map.get(str(rr.case_id))))
+            item = _caselib_serialize_result(rr, case_map.get(str(rr.case_id)))
+            if rr.turn_id:
+                item["turn"] = turn_map.get(str(rr.turn_id))
+            rows.append(item)
         rows.sort(key=lambda x: (
-            x.get("quality_score") is None,
-            x.get("quality_score") if x.get("quality_score") is not None else 1e9,
+            x.get("scenario_code") or "",
+            x.get("scenario_rank") or 0,
+            x.get("turn_no") or 0,
         ))
         return {
             "status": "success",
@@ -17873,6 +17879,30 @@ def _caselib_split_for_api_trigger(case_payload: dict) -> dict:
         "actual_sales_replies": actual_sales_replies,
         "trigger_index": trigger_idx,
     }
+
+
+def _caselib_case_payload_for_turn(case_payload: dict, turn_payload: dict) -> dict:
+    """Build one runnable test input from a case turn.
+
+    The visible context must stop before this turn's sales answer: background is
+    the 15 rows before the customer question, and core_dialog is only this turn
+    (customer question + reference sales answer for scoring/comparison).
+    """
+    payload = dict(case_payload)
+    messages = _caselib_sorted_messages(
+        turn_payload.get("messages") or [],
+        base_ts=datetime.utcnow() - timedelta(days=30),
+    )
+    customer_msgs = [m for m in messages if m.get("role") == "customer"]
+    sales_msgs = [m for m in messages if m.get("role") == "sales"]
+    payload["turn_id"] = turn_payload.get("turn_id")
+    payload["turn_no"] = turn_payload.get("turn_no")
+    payload["core_dialog"] = messages
+    payload["context_messages"] = turn_payload.get("context_messages") or []
+    payload["customer_question"] = "\n".join((m.get("content") or "").strip() for m in customer_msgs if (m.get("content") or "").strip())
+    payload["actual_sales_reply"] = "\n".join((m.get("content") or "").strip() for m in sales_msgs if (m.get("content") or "").strip())
+    payload["case_title"] = f"{case_payload.get('case_title') or ''} · 第{turn_payload.get('turn_no')}轮"
+    return payload
 
 
 def _caselib_real_failure(
