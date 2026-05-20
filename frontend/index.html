@@ -1988,7 +1988,7 @@
                 '同样用 7 维规则打分，可与 AI 候选分对比。悬停单元格可看全文及 7 维分明细。'
             );
             const head = `
-                <table class="text-xs" style="table-layout: fixed; min-width: 2345px; width: 2345px;">
+                <table class="text-xs" style="table-layout: fixed; min-width: 2435px; width: 2435px;">
                     <thead class="bg-slate-50 text-slate-600 sticky top-0 z-10">
                         <tr>
                             <th class="px-2 py-2 text-left" style="width:50px; min-width:50px; max-width:50px; overflow:hidden;" title="销售场景代码 S01~S12。鼠标悬停每个单元格可看场景的完整业务定义">场景</th>
@@ -1997,15 +1997,15 @@
                             <th class="px-0.5 py-2 text-left" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="本轮对话的链路最终状态：真实成功 / 真实部分 / 干跑成功 / 异常回退 / HTTP错误 等">链路状态</th>
                             <th class="px-0.5 py-2 text-left" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="本轮对话端到端 7 步链路总耗时（毫秒）">耗时</th>
                             <th class="px-2 py-2 text-left" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" title="步骤1：大模型1 抽取的当前主线话题。悬停看全文">第1步·主线话题</th>
-                            <th class="px-2 py-2 text-left" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="步骤4：知识检索的最终状态（命中 / 待人工复核 / 未启动 / 干跑占位）。悬停单元格看知识库（当前）检索问题/证据/命中明细">第4步·知识检索</th>
+                            <th class="px-2 py-2 text-left" style="width:130px; min-width:130px; max-width:130px; overflow:hidden; white-space:nowrap;" title="步骤4：知识检索的最终状态（命中 / 待人工复核 / 未启动 / 干跑占位）+ 命中知识条数。悬停单元格看知识库（当前）检索问题/证据/命中明细">第4步·知识检索</th>
                             <th class="px-2 py-2 text-left" style="width:90px; min-width:90px; max-width:90px; overflow:hidden;" title="本轮触发点之前的背景对话（最多15行）。悬停单元格看全部背景对话">背景</th>
                             <th class="px-2 py-2 text-left" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="步骤4：CRM 客户画像（联系人/公司/行业/等级/支付风险/生命周期）。悬停单元格看明细">客户画像</th>
                             <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="本轮真实输入给AI的原客户问；背景只包含客户问之前的15行，不包含本轮销售参考答案">原客户问</th>
                             <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="步骤6：大模型2 基于前 5 步生成的 AI 回复建议（截断显示前 80 字，悬停看全文）">第6步·AI生成回复</th>
                             <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
-                            <th class="px-2 py-2 text-right" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
-                            <th class="px-2 py-2 text-right" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="${escapeHtml(mdHeaderTip)}">原始回复分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
-                            <th class="px-2 py-2 text-right" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="AI 质量分 − 销售原始回复分（均为 LLM-1 打分）。正值=AI 回复比销售原始回复评分高；负值=AI 回复比销售原始回复评分低">Δ（AI−原始）</th>
+                            <th class="px-2 py-2 text-right" style="width:92px; min-width:92px; max-width:92px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
+                            <th class="px-2 py-2 text-right" style="width:92px; min-width:92px; max-width:92px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(mdHeaderTip)}">原始回复分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
+                            <th class="px-2 py-2 text-right" style="width:100px; min-width:100px; max-width:100px; overflow:hidden; white-space:nowrap;" title="AI 质量分 − 销售原始回复分（均为 LLM-1 打分）。正值=AI 回复比销售原始回复评分高；负值=AI 回复比销售原始回复评分低">Δ（AI−原始）</th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -2255,7 +2255,9 @@
                 const qstatusCls = caselibQualityStatusColor(r.quality_status);
                 const topic = (r.step1_summary && (r.step1_summary.topic || r.step1_summary.core_demand)) || '';
                 const kb = r.step4_knowledge && r.step4_knowledge.knowledge_status || '';
-                const kbLabel = ({done:'命中', manual_review_required:'待人工复核', not_started:'未启动',
+                const kbLabel = ({done:'命中', ok:'命中', manual_review_required:'待人工复核',
+                                  low_confidence:'低置信度', no_applicable_knowledge:'无适用知识',
+                                  ambiguous_query:'需澄清', not_started:'未启动',
                                   dry_run_stub:'干跑占位', '':''})[kb] || kb;
                 const customerQuestion =
                     (turn.customer_text || '')
@@ -2289,6 +2291,15 @@
                     ? `onclick="event.stopPropagation();caselibOpenStepModal('${r.result_id}','${step}')"` : '';
                 const bgCount = ((c.context_messages || []).length);
                 const crmLabel = crmShortLabel(r);
+                const kbHitCount = (() => {
+                    const s4 = tipParse(r.step4_knowledge);
+                    const kv2 = s4 ? tipParse(s4.knowledge_v2) : null;
+                    if (!kv2) return null;
+                    if (Array.isArray(kv2.hits)) return kv2.hits.length;
+                    if (Array.isArray(kv2.evidence_refs)) return kv2.evidence_refs.length;
+                    return null;
+                })();
+                const kbCellText = (escapeHtml(kbLabel) || '—') + (kbHitCount != null ? ` <span class="text-slate-400">·命中${kbHitCount}</span>` : '');
                 return `<tr class="border-t hover:bg-purple-50 cursor-pointer transition" ${r.case_id && r.result_id ? `onclick="caselibOpenCaseModal('${r.case_id}', '${r.result_id}')"` : ''} title="点击查看 ${sc}-${r.scenario_rank} 的完整 7 步链路详情">
                     <td class="px-2 py-2 font-bold text-purple-700" style="width:50px; min-width:50px; max-width:50px; overflow:hidden;" title="${sameCaseAsPrev ? '' : escapeHtml(scTip)}">${sameCaseAsPrev ? '' : sc}</td>
                     <td class="px-2 py-2 truncate text-slate-700" style="width:210px; min-width:210px; max-width:210px; overflow:hidden;" title="${sameCaseAsPrev ? '' : escapeHtml(c.case_title || '')}">${sameCaseAsPrev ? '' : escapeHtml(title)}</td>
@@ -2296,15 +2307,15 @@
                     <td class="px-0.5 py-2" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="原始状态码：${r.quality_status || ''}">${escapeHtml(qstatus)}</span></td>
                     <td class="px-0.5 py-2 text-slate-500 whitespace-nowrap" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="AI生成回复耗时（已排除评分环节）">${r.latency_ms ? r.latency_ms + ' ms' : '-'}</td>
                     <td class="px-2 py-2 truncate text-slate-700 cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" ${stepClick('第1步·主线话题')} title="${escapeHtml(tipMainTopic(r))}">${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
-                    <td class="px-2 py-2 text-slate-500 truncate cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" ${stepClick('第4步·知识检索')} title="${escapeHtml(tipKnowledge(r))}">${escapeHtml(kbLabel) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 text-slate-500 truncate cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:130px; min-width:130px; max-width:130px; overflow:hidden;" ${stepClick('第4步·知识检索')} title="${escapeHtml(tipKnowledge(r))}">${kbCellText}</td>
                     <td class="px-2 py-2 text-slate-500 truncate cursor-help" style="width:90px; min-width:90px; max-width:90px; overflow:hidden;" title="${escapeHtml(tipBackground(c))}">${bgCount ? bgCount + ' 条' : '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 text-slate-500 truncate cursor-help" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="${escapeHtml(tipCrm(r))}">${escapeHtml(crmLabel) || '<span class="text-slate-400">（无）</span>'}</td>
                     ${twoLineCell(customerQuestion, clickStep('原客户问'), 'text-slate-700')}
                     ${twoLineCell(advice, clickStep('第6步·AI生成回复'), 'text-slate-700')}
                     ${twoLineCell(lastSalesReply, clickStep('销售原始回复'), 'text-slate-600')}
-                    <td class="px-2 py-2 text-right font-bold text-purple-700" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="${escapeHtml(aiTip)}">${aiTxt}</td>
-                    <td class="px-2 py-2 text-right text-sky-700 font-bold" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="${escapeHtml(mdTip)}">${mdTxt}</td>
-                    <td class="px-2 py-2 text-right ${dltCls}" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="AI − 人工。差值绝对值 ≥1 时高亮：正值AI偏高，负值AI偏低">${dltTxt}</td>
+                    <td class="px-2 py-2 text-right font-bold text-purple-700" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(aiTip)}">${aiTxt}</td>
+                    <td class="px-2 py-2 text-right text-sky-700 font-bold" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(mdTip)}">${mdTxt}</td>
+                    <td class="px-2 py-2 text-right ${dltCls}" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="AI − 人工。差值绝对值 ≥1 时高亮：正值AI偏高，负值AI偏低">${dltTxt}</td>
                 </tr>`;
             }).join('');
             host.innerHTML = '<div class="rounded-xl border border-slate-200 bg-white" style="overflow:auto;max-height:calc(100vh - 260px);width:100%;">'
