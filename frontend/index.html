@@ -1805,6 +1805,10 @@
         }
 
         function getSalesScore(r) {
+            const turn = r.turn || (r.case && (r.case.dialogue_turns || []).find(t => t.turn_no === r.turn_no)) || {};
+            if (turn.actual_sales_score != null) {
+                return turn.actual_sales_score;
+            }
             const ar = ((r.step7_reply_scores && r.step7_reply_scores.actual_sales_replies) || []);
             const s = ar[0];
             if (!s || s.score_reason === 'llm1_failed') return null;
@@ -1989,13 +1993,13 @@
                             <th class="px-2 py-2 text-left" title="销售场景代码 S01~S12。鼠标悬停每个单元格可看场景的完整业务定义">场景</th>
                             <th class="px-2 py-2 text-left" title="该案例在场景内的排名（1=场景内人工质量分最高，5=该场景最低）+ 案例标题">案例（排名+标题）</th>
                             <th class="px-2 py-2 text-center" title="该案例内按时间顺序切出的对话轮次">轮次</th>
-                            <th class="px-1 py-2 text-left" title="本轮对话的链路最终状态：真实成功 / 真实部分 / 干跑成功 / 异常回退 / HTTP错误 等">链路状态</th>
-                            <th class="px-1 py-2 text-left" title="本轮对话端到端 7 步链路总耗时（毫秒）">耗时</th>
+                            <th class="px-0.5 py-2 text-left" title="本轮对话的链路最终状态：真实成功 / 真实部分 / 干跑成功 / 异常回退 / HTTP错误 等">链路状态</th>
+                            <th class="px-0.5 py-2 text-left" title="本轮对话端到端 7 步链路总耗时（毫秒）">耗时</th>
                             <th class="px-2 py-2 text-left" title="步骤1：大模型1 抽取的当前主线话题。悬停看全文">第1步·主线话题</th>
                             <th class="px-2 py-2 text-left" title="步骤4：知识检索的最终状态（命中 / 待人工复核 / 未启动 / 干跑占位）">第4步·知识检索</th>
-                            <th class="px-2 py-2 text-left w-[240px]" title="本轮真实输入给AI的原客户问；背景只包含客户问之前的15行，不包含本轮销售参考答案">原客户问</th>
-                            <th class="px-2 py-2 text-left" title="步骤6：大模型2 基于前 5 步生成的 AI 回复建议（截断显示前 80 字，悬停看全文）">第6步·AI生成回复</th>
-                            <th class="px-2 py-2 text-left" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
+                            <th class="px-2 py-2 text-left" style="width:240px; max-width:240px; min-width:240px;" title="本轮真实输入给AI的原客户问；背景只包含客户问之前的15行，不包含本轮销售参考答案">原客户问</th>
+                            <th class="px-2 py-2 text-left" style="width:240px; max-width:240px; min-width:240px;" title="步骤6：大模型2 基于前 5 步生成的 AI 回复建议（截断显示前 80 字，悬停看全文）">第6步·AI生成回复</th>
+                            <th class="px-2 py-2 text-left" style="width:240px; max-width:240px; min-width:240px;" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" title="${escapeHtml(mdHeaderTip)}">原始回复分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" title="AI 质量分 − 销售原始回复分（均为 LLM-1 打分）。正值=AI 回复比销售原始回复评分高；负值=AI 回复比销售原始回复评分低">Δ（AI−原始）</th>
@@ -2105,15 +2109,16 @@
                 return lines.join('\n');
             };
             const lineClamp2Style = 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35;max-height:2.7em;';
-            const twoLineCell = (text, step, cls = 'text-slate-700') => {
+            const twoLineCell = (text, clickStepHtml = '', cls = 'text-slate-700') => {
                 const content = String(text || '').trim();
-                return `<td class="px-2 py-2 w-[240px] max-w-[240px] ${cls}" ${clickStep(step)}>
+                const clickAttrs = clickStepHtml || '';
+                return `<td class="px-2 py-2 ${cls}" style="width:240px; max-width:240px; min-width:240px; overflow:hidden;" ${clickAttrs}>
                     <div style="${lineClamp2Style}" title="${escapeHtml(content)}">${escapeHtml(content) || '<span class="text-slate-400">（无）</span>'}</div>
                 </td>`;
             };
             const body = rows.map(r => {
                 const c = r.case || {};
-                const turn = r.turn || {};
+                const turn = r.turn || (r.case && (r.case.dialogue_turns || []).find(t => t.turn_no === r.turn_no)) || {};
                 const sc = r.scenario_code || '-';
                 const scTip = caselibScenarioTip(sc);
                 const title = `${r.scenario_rank || '?'}. ${c.case_title || ''}`;
@@ -2137,12 +2142,14 @@
                 const customerQuestion =
                     (turn.customer_text || '')
                     || (r.stage_status && r.stage_status.caselib_split && r.stage_status.caselib_split.customer_question)
+                    || (r.stage_status && r.stage_status.caselib_split && r.stage_status.caselib_split.trigger_message && r.stage_status.caselib_split.trigger_message.content)
                     || (r.stage_status && r.stage_status.customer_question)
                     || '';
                 const advice = r.step6_sales_advice || '';
                 const lastSalesReply =
                     (turn.sales_text || '')
                     || (r.stage_status && r.stage_status.caselib_split && r.stage_status.caselib_split.actual_sales_reply)
+                    || (r.stage_status && r.stage_status.caselib_split && r.stage_status.caselib_split.actual_sales_replies && r.stage_status.caselib_split.actual_sales_replies[0] && r.stage_status.caselib_split.actual_sales_replies[0].content)
                     || (r.stage_status && r.stage_status.actual_sales_reply)
                     || '';
                 const styleScores = (() => {
@@ -2156,18 +2163,21 @@
                     }
                     return Object.entries(so).map(([k,v]) => `${candidateIdToCn(k)}=${fmtScoreVal(v)}`).join('  ');
                 })();
-                const clickStep = (step) => `onclick="event.stopPropagation();caselibOpenStepModal('${r.result_id}','${step}')" title="点击查看${step}完整数据" class="cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition"`;
-                return `<tr class="border-t hover:bg-purple-50 cursor-pointer transition" onclick="caselibOpenCaseModal('${r.case_id}', '${r.result_id}')" title="点击查看 ${sc}-${r.scenario_rank} 的完整 7 步链路详情">
+                const clickStep = (step) => {
+                    if (!r || !r.result_id) return '';
+                    return `onclick="event.stopPropagation();caselibOpenStepModal('${r.result_id}','${step}')" title="点击查看${step}完整数据" class="cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition"`;
+                };
+                return `<tr class="border-t hover:bg-purple-50 cursor-pointer transition" ${r.case_id && r.result_id ? `onclick="caselibOpenCaseModal('${r.case_id}', '${r.result_id}')"` : ''} title="点击查看 ${sc}-${r.scenario_rank} 的完整 7 步链路详情">
                     <td class="px-2 py-2 font-bold text-purple-700" title="${escapeHtml(scTip)}">${sc}</td>
                     <td class="px-2 py-2 max-w-[210px] truncate" title="${escapeHtml(c.case_title || '')}">${escapeHtml(title)}</td>
                     <td class="px-2 py-2 text-center font-mono text-[11px] text-purple-700" title="第 ${r.turn_no || turn.turn_no || '-'} 轮">${r.turn_no || turn.turn_no || '-'}</td>
-                    <td class="px-1 py-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="原始状态码：${r.quality_status || ''}">${escapeHtml(qstatus)}</span></td>
-                    <td class="px-1 py-2 text-slate-500 whitespace-nowrap" title="AI生成回复耗时（已排除评分环节）">${r.latency_ms ? r.latency_ms + ' ms' : '-'}</td>
+                    <td class="px-0.5 py-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="原始状态码：${r.quality_status || ''}">${escapeHtml(qstatus)}</span></td>
+                    <td class="px-0.5 py-2 text-slate-500 whitespace-nowrap" title="AI生成回复耗时（已排除评分环节）">${r.latency_ms ? r.latency_ms + ' ms' : '-'}</td>
                     <td class="px-2 py-2 max-w-[200px] truncate text-slate-700" ${clickStep('第1步·主线话题')}>${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 text-slate-500" ${clickStep('第4步·知识检索')}>${escapeHtml(kbLabel) || '<span class="text-slate-400">（无）</span>'}</td>
-                    ${twoLineCell(customerQuestion, '原客户问', 'text-slate-700')}
-                    ${twoLineCell(advice, '第6步·AI生成回复', 'text-slate-700')}
-                    ${twoLineCell(lastSalesReply, '销售原始回复', 'text-slate-600')}
+                    ${twoLineCell(customerQuestion, clickStep('原客户问'), 'text-slate-700')}
+                    ${twoLineCell(advice, clickStep('第6步·AI生成回复'), 'text-slate-700')}
+                    ${twoLineCell(lastSalesReply, clickStep('销售原始回复'), 'text-slate-600')}
                     <td class="px-2 py-2 text-right font-bold text-purple-700" title="${escapeHtml(aiTip)}">${aiTxt}</td>
                     <td class="px-2 py-2 text-right text-sky-700 font-bold" title="${escapeHtml(mdTip)}">${mdTxt}</td>
                     <td class="px-2 py-2 text-right ${dltCls}" title="AI − 人工。差值绝对值 ≥1 时高亮：正值AI偏高，负值AI偏低">${dltTxt}</td>
