@@ -23,7 +23,7 @@ from time import perf_counter
 from typing import Any
 from urllib.parse import quote, urlparse
 from sqlalchemy import and_, or_, text, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 from pydantic import BaseModel
 from config import settings
 from logging_config import setup_logging, sanitize_text
@@ -17615,6 +17615,127 @@ def _caselib_serialize_result(rr: CaseIterationResult, case_meta: dict | None = 
     return payload
 
 
+def _caselib_kb_summary(step4) -> tuple[str, int | None]:
+    """从 step4_knowledge 只抽取列表需要的状态 + 命中条数(不下发庞大的证据明细)。"""
+    s4 = _caselib_load_json(step4)
+    if not isinstance(s4, dict):
+        return "", None
+    status = s4.get("knowledge_status") or ""
+    kv2 = s4.get("knowledge_v2")
+    if isinstance(kv2, str):
+        try:
+            kv2 = json.loads(kv2)
+        except Exception:
+            kv2 = None
+    hit_count = None
+    if isinstance(kv2, dict):
+        hits = kv2.get("hits")
+        refs = kv2.get("evidence_refs")
+        if isinstance(hits, list):
+            hit_count = len(hits)
+        elif isinstance(refs, list):
+            hit_count = len(refs)
+    return status, hit_count
+
+
+def _caselib_serialize_turn_thin(t: CaseLibraryDialogueTurn) -> dict:
+    """轮次轻量版：只保留单元格文本 + 评分回退所需，不带 messages/context_messages 大数组。"""
+    return {
+        "turn_id": str(t.turn_id),
+        "turn_no": t.turn_no,
+        "customer_text": t.customer_text or "",
+        "sales_text": t.sales_text or "",
+        "actual_sales_score": float(t.actual_sales_score) if t.actual_sales_score is not None else None,
+        "actual_sales_scores": _caselib_load_json(t.actual_sales_scores) or {},
+    }
+
+
+def _caselib_serialize_case_thin(
+    c: CaseLibraryCase,
+    manual_score_avg: float | None = None,
+    context_count: int | None = None,
+) -> dict:
+    """案例轻量版：仅元信息 + 背景条数，不带 core_dialog/context_messages/dialogue_turns 大数组。"""
+    return {
+        "case_id": str(c.case_id),
+        "scenario_code": c.scenario_code,
+        "scenario_name": c.scenario_name,
+        "scenario_rank": c.scenario_rank,
+        "case_title": c.case_title or "",
+        "quality_score_md": float(c.quality_score_md) if c.quality_score_md is not None else None,
+        "manual_quality_score_avg": manual_score_avg,
+        "md_section_anchor": c.md_section_anchor,
+        "context_count": context_count,
+    }
+
+
+def _caselib_serialize_result_thin(
+    rr: CaseIterationResult,
+    case_meta: dict | None = None,
+    bg_count: int | None = None,
+) -> dict:
+    """列表行轻量版：去掉 step3/step4明细/step5/step7候选全文等大字段，详情按需经
+    /api/case_lib/results/{id} 懒加载。"""
+    kb_status, kb_hit_count = _caselib_kb_summary(rr.step4_knowledge)
+    payload = {
+        "result_id": str(rr.result_id),
+        "run_id": str(rr.run_id),
+        "case_id": str(rr.case_id),
+        "turn_id": str(rr.turn_id) if rr.turn_id else None,
+        "scenario_code": rr.scenario_code,
+        "scenario_rank": rr.scenario_rank,
+        "turn_no": rr.turn_no,
+        "step1_summary": _caselib_load_json(rr.step1_summary),
+        "step2_crm_info": _caselib_load_json(rr.step2_crm_info),
+        "step6_sales_advice": rr.step6_sales_advice,
+        "step7_reply_scores": _caselib_load_json(rr.step7_reply_scores),
+        "stage_status": _caselib_load_json(rr.stage_status),
+        "kb_status": kb_status,
+        "kb_hit_count": kb_hit_count,
+        "bg_count": bg_count,
+        "quality_score": float(rr.quality_score) if rr.quality_score is not None else None,
+        "kb1_eval_score": float(rr.kb1_eval_score) if rr.kb1_eval_score is not None else None,
+        "kb2_eval_score": float(rr.kb2_eval_score) if rr.kb2_eval_score is not None else None,
+        "quality_status": rr.quality_status,
+        "latency_ms": rr.latency_ms,
+        "status": rr.status,
+    }
+    if case_meta:
+        payload["case"] = case_meta
+    return payload
+
+
+@app.get("/api/case_lib/results/{result_id}")
+async def caselib_get_result_detail(result_id: str):
+    """单行完整详情(7步链路 + 完整案例背景)，供前端 hover 浮层与双击弹窗按需懒加载。"""
+    db = SessionLocal()
+    try:
+        rr = db.query(CaseIterationResult).filter(
+            CaseIterationResult.result_id == result_id
+        ).first()
+        if not rr:
+            raise HTTPException(status_code=404, detail="result not found")
+        case_meta = None
+        c = db.query(CaseLibraryCase).filter(
+            CaseLibraryCase.case_id == str(rr.case_id)
+        ).first()
+        if c:
+            turns = db.query(CaseLibraryDialogueTurn).filter(
+                CaseLibraryDialogueTurn.case_id == str(rr.case_id)
+            ).order_by(CaseLibraryDialogueTurn.turn_no).all()
+            case_meta = _caselib_serialize_case(c, turns, None)
+        item = _caselib_serialize_result(rr, case_meta)
+        if rr.turn_id:
+            t = db.query(CaseLibraryDialogueTurn).filter(
+                CaseLibraryDialogueTurn.turn_id == rr.turn_id
+            ).first()
+            if t:
+                item["turn"] = _caselib_serialize_turn(t)
+        return {"status": "success", "result": item}
+    finally:
+        db.close()
+
+
 @app.get("/api/case_lib/cases")
 async def caselib_list_cases(scenario_code: str | None = Query(default=None)):
     db = SessionLocal()
@@ -17708,25 +17829,39 @@ async def caselib_get_iteration_detail(run_id: str):
         r = db.query(CaseIterationRun).filter(CaseIterationRun.run_id == run_id).first()
         if not r:
             raise HTTPException(status_code=404, detail="iteration not found")
-        results = db.query(CaseIterationResult).filter(
+        # 列表只取轻量字段：跳过 step3/step5/step7候选全文 大列(详情页/浮层按需懒加载)
+        results = db.query(CaseIterationResult).options(
+            defer(CaseIterationResult.step3_thread_business_fact),
+            defer(CaseIterationResult.step5_llm1_compare),
+            defer(CaseIterationResult.step7_reply_styles),
+        ).filter(
             CaseIterationResult.run_id == run_id
         ).all()
         case_ids = [str(rr.case_id) for rr in results]
         case_map = {}
         turn_map = {}
+        bg_count_by_case: dict[str, int] = {}
         if case_ids:
-            cases = db.query(CaseLibraryCase).filter(
+            # 案例只取元信息列 + context_messages(用于统计背景条数)，不带 core_dialog 大数组
+            cases = db.query(CaseLibraryCase).options(
+                defer(CaseLibraryCase.core_dialog),
+            ).filter(
                 CaseLibraryCase.case_id.in_(case_ids)
             ).all()
+            for c in cases:
+                ctx = _caselib_load_json(c.context_messages)
+                bg_count_by_case[str(c.case_id)] = len(ctx) if isinstance(ctx, list) else 0
             case_ids2 = [str(c.case_id) for c in cases]
-            turns_by_case: dict[str, list[CaseLibraryDialogueTurn]] = {cid: [] for cid in case_ids2}
             if case_ids2:
-                turn_rows = db.query(CaseLibraryDialogueTurn).filter(
+                # 轮次只取文本/评分列，跳过 messages/context_messages 大数组
+                turn_rows = db.query(CaseLibraryDialogueTurn).options(
+                    defer(CaseLibraryDialogueTurn.messages),
+                    defer(CaseLibraryDialogueTurn.context_messages),
+                ).filter(
                     CaseLibraryDialogueTurn.case_id.in_(case_ids2)
                 ).order_by(CaseLibraryDialogueTurn.case_id, CaseLibraryDialogueTurn.turn_no).all()
                 for t in turn_rows:
-                    turns_by_case.setdefault(str(t.case_id), []).append(t)
-                    turn_map[str(t.turn_id)] = _caselib_serialize_turn(t)
+                    turn_map[str(t.turn_id)] = _caselib_serialize_turn_thin(t)
             sales_scores_by_case: dict[str, list[float]] = {}
             for rr in results:
                 score = _caselib_sales_score_from_step7(rr.step7_reply_scores)
@@ -17738,16 +17873,20 @@ async def caselib_get_iteration_detail(run_id: str):
                 if vals
             }
             case_map = {
-                str(c.case_id): _caselib_serialize_case(
+                str(c.case_id): _caselib_serialize_case_thin(
                     c,
-                    turns_by_case.get(str(c.case_id), []),
                     manual_avg_by_case.get(str(c.case_id)),
+                    bg_count_by_case.get(str(c.case_id)),
                 )
                 for c in cases
             }
         rows = []
         for rr in results:
-            item = _caselib_serialize_result(rr, case_map.get(str(rr.case_id)))
+            item = _caselib_serialize_result_thin(
+                rr,
+                case_map.get(str(rr.case_id)),
+                bg_count_by_case.get(str(rr.case_id)),
+            )
             if rr.turn_id:
                 item["turn"] = turn_map.get(str(rr.turn_id))
             rows.append(item)

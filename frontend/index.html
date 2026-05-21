@@ -2120,75 +2120,8 @@
                 if (typeof v === 'string') { try { return JSON.parse(v); } catch { return null; } }
                 return v;
             };
-            // 第1步列 tooltip：强信号扫描(02) + 第一阶段特征提取(03)，纯文本换行
-            const tipMainTopic = (r) => {
-                const lines = ['【强信号扫描】'];
-                const s3 = tipParse(r.step3_thread_business_fact);
-                const stateMap = { inquiry:'询价阶段', follow_up:'跟进阶段', negotiation:'谈判阶段', closed:'已成交', process:'推进中' };
-                const styleMap = { wechat_brief:'微信口语', formal:'正式', mixed:'混合' };
-                const sigMap = { awaiting_customer_reply:'等待客户回复', followup_after_no_reply:'无回复后跟进', has_formal_quote:'已报价', crm_has_quote_history:'CRM有报价记录', payment_discussed:'已讨论付款', payment_confirmed:'付款已确认', shipment_discussed:'已讨论发货', shipment_confirmed:'发货已确认', after_sales_open:'售后跟进中', waiting_customer_material:'等待客户素材', sales_only_conversation:'仅销售发言' };
-                if (s3) {
-                    const mf = s3.merged_facts || {};
-                    const sig = s3.stage_signals || {};
-                    if (s3.business_state) lines.push('业务阶段：' + (stateMap[s3.business_state] || s3.business_state));
-                    if (s3.scenario_label) lines.push('场景标签：' + s3.scenario_label);
-                    if (s3.language_style) lines.push('语言风格：' + (styleMap[s3.language_style] || s3.language_style));
-                    const convState = mf.summary_status || s3.core_demand;
-                    if (convState) lines.push('会话状态：' + convState);
-                    const activeSignals = Object.entries(sig).filter(([k,v]) => v === true && sigMap[k]).map(([k]) => sigMap[k]);
-                    if (activeSignals.length) lines.push('已激活信号：' + activeSignals.join('、'));
-                    const recent = (Array.isArray(mf.recent_sales_messages) && mf.recent_sales_messages.length) ? mf.recent_sales_messages : (mf.latest_sales_message ? [mf.latest_sales_message] : []);
-                    if (recent.length) { lines.push('最近销售消息：'); recent.forEach(m => lines.push('  · ' + m)); }
-                    if (mf.latest_customer_message) lines.push('触发点消息：' + mf.latest_customer_message);
-                } else { lines.push('（无强信号数据）'); }
-                lines.push('');
-                lines.push('【第一阶段特征提取】');
-                const s1 = tipParse(r.step1_summary);
-                if (s1) {
-                    const kf = s1.key_facts || {};
-                    if (s1.topic) lines.push('主线话题：' + s1.topic);
-                    if (s1.core_demand) lines.push('核心诉求：' + s1.core_demand);
-                    if (kf.current_focus) lines.push('当前焦点：' + kf.current_focus);
-                    const timeline = Array.isArray(kf.timeline_items) ? kf.timeline_items : [];
-                    if (timeline.length) { lines.push('时间轴事项：'); timeline.forEach(t => lines.push('  · ' + (t.time||'') + ' ' + (t.topic||'') + ' [' + (t.status||'') + ']')); }
-                    const todos = Array.isArray(s1.todo_items) ? s1.todo_items : [];
-                    if (todos.length) { lines.push('待跟进：'); todos.forEach(t => lines.push('  · ' + t)); }
-                    const risks = Array.isArray(s1.risks) ? s1.risks : [];
-                    if (risks.length) lines.push('风险：' + risks.join('、'));
-                } else { lines.push('（无特征提取数据）'); }
-                return lines.join('\n');
-            };
-            // 第4步列 tooltip：知识库（当前）
-            const tipKnowledge = (r) => {
-                const lines = ['【知识库（当前）】'];
-                const s4 = tipParse(r.step4_knowledge);
-                const kv2 = s4 ? tipParse(s4.knowledge_v2) : null;
-                if (!kv2) { lines.push('（无知识库数据）'); return lines.join('\n'); }
-                if (kv2.query_text) lines.push('检索问题：' + kv2.query_text);
-                if (kv2.retrieval_quality != null) lines.push('检索质量：' + kv2.retrieval_quality);
-                const refs = kv2.evidence_refs || [];
-                if (refs.length) {
-                    lines.push('知识证据（' + refs.length + ' 条）：');
-                    refs.forEach((ref, i) => {
-                        lines.push('  ' + (i+1) + '. ' + (ref.title || ''));
-                        if (ref.snippet) lines.push('     ' + ref.snippet);
-                    });
-                }
-                if (kv2.no_hit_reason) lines.push('无命中：' + kv2.no_hit_reason);
-                if (kv2.manual_review_required) lines.push('⚠ 知识命中需人工复核，话术需保守使用');
-                return lines.join('\n');
-            };
-            // 背景列 tooltip：触发点之前的背景对话
-            const tipBackground = (c) => {
-                const lines = ['【背景对话】'];
-                const msgs = (c && c.context_messages) || [];
-                if (!msgs.length) { lines.push('（无背景对话）'); return lines.join('\n'); }
-                msgs.forEach(m => {
-                    const role = m.role === 'customer' ? '客户' : '销售';
-                    lines.push('[' + role + '] ' + ((m.msg_time || '').slice(0, 16)) + ' ' + (m.content || ''));
-                });
-                return lines.join('\n');
-            };
+            // 第1步/第4步/背景列 tooltip 改为 hover 懒加载浮层(caselibCellTip)，
+            // 完整数据经 /api/case_lib/results/{id} 按需取，渲染逻辑见全局 caselibTip* 函数。
             // 客户画像列 tooltip
             const tipCrm = (r) => {
                 const lines = ['【客户画像】'];
@@ -2237,7 +2170,7 @@
                 const qstatus = caselibQualityStatusLabel(r.quality_status);
                 const qstatusCls = caselibQualityStatusColor(r.quality_status);
                 const topic = (r.step1_summary && (r.step1_summary.topic || r.step1_summary.core_demand)) || '';
-                const kb = r.step4_knowledge && r.step4_knowledge.knowledge_status || '';
+                const kb = (r.step4_knowledge && r.step4_knowledge.knowledge_status) || r.kb_status || '';
                 const kbLabel = ({done:'命中', ok:'命中', manual_review_required:'待人工复核',
                                   low_confidence:'低置信度', no_applicable_knowledge:'无适用知识',
                                   ambiguous_query:'需澄清', not_started:'未启动',
@@ -2272,9 +2205,9 @@
                 };
                 const stepClick = (step) => (r && r.result_id)
                     ? `onclick="event.stopPropagation();caselibOpenStepModal('${r.result_id}','${step}')"` : '';
-                const bgCount = ((c.context_messages || []).length);
+                const bgCount = (r.bg_count != null) ? r.bg_count : ((c.context_messages || []).length);
                 const crmLabel = crmShortLabel(r);
-                const kbHitCount = (() => {
+                const kbHitCount = (r.kb_hit_count != null) ? r.kb_hit_count : (() => {
                     const s4 = tipParse(r.step4_knowledge);
                     const kv2 = s4 ? tipParse(s4.knowledge_v2) : null;
                     if (!kv2) return null;
@@ -2289,9 +2222,9 @@
                     <td class="px-2 py-2 text-center font-mono text-[11px] text-purple-700" style="width:45px; min-width:45px; max-width:45px; overflow:hidden;" title="第 ${r.turn_no || turn.turn_no || '-'} 轮">${r.turn_no || turn.turn_no || '-'}</td>
                     <td class="px-0.5 py-2" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="原始状态码：${r.quality_status || ''}">${escapeHtml(qstatus)}</span></td>
                     <td class="px-0.5 py-2 text-slate-500 whitespace-nowrap" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="AI生成回复耗时（已排除评分环节）">${r.latency_ms ? r.latency_ms + ' ms' : '-'}</td>
-                    <td class="px-2 py-2 truncate text-slate-700 cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" ${stepClick('第1步·主线话题')} title="${escapeHtml(tipMainTopic(r))}">${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
-                    <td class="px-2 py-2 text-slate-500 truncate cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:130px; min-width:130px; max-width:130px; overflow:hidden;" ${stepClick('第4步·知识检索')} title="${escapeHtml(tipKnowledge(r))}">${kbCellText}</td>
-                    <td class="px-2 py-2 text-slate-500 truncate cursor-help" style="width:90px; min-width:90px; max-width:90px; overflow:hidden;" title="${escapeHtml(tipBackground(c))}">${bgCount ? bgCount + ' 条' : '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 truncate text-slate-700 cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" ${stepClick('第1步·主线话题')} onmouseenter="caselibCellTip(event,'${r.result_id}','topic')" onmouseleave="caselibCellTipHide()">${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
+                    <td class="px-2 py-2 text-slate-500 truncate cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:130px; min-width:130px; max-width:130px; overflow:hidden;" ${stepClick('第4步·知识检索')} onmouseenter="caselibCellTip(event,'${r.result_id}','kb')" onmouseleave="caselibCellTipHide()">${kbCellText}</td>
+                    <td class="px-2 py-2 text-slate-500 truncate cursor-help" style="width:90px; min-width:90px; max-width:90px; overflow:hidden;" onmouseenter="caselibCellTip(event,'${r.result_id}','bg')" onmouseleave="caselibCellTipHide()">${bgCount ? bgCount + ' 条' : '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 text-slate-500 truncate cursor-help" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="${escapeHtml(tipCrm(r))}">${escapeHtml(crmLabel) || '<span class="text-slate-400">（无）</span>'}</td>
                     ${twoLineCell(customerQuestion, clickStep('原客户问'), 'text-slate-700')}
                     ${twoLineCell(advice, clickStep('第6步·AI生成回复'), 'text-slate-700')}
@@ -2305,9 +2238,158 @@
                 + head + body + '</tbody></table></div>';
         }
 
-        function caselibOpenCaseModal(caseId, resultId) {
+        // ===== 单行明细按需懒加载 + hover 浮层（列表只下发瘦字段，大字段悬停/双击时再取）=====
+        function caselibTipParse(v) {
+            if (v == null) return null;
+            if (typeof v === 'string') { try { return JSON.parse(v); } catch { return null; } }
+            return v;
+        }
+        // 第1步列 tooltip：强信号扫描(02) + 第一阶段特征提取(03)
+        function caselibTipMainTopic(r) {
+            const lines = ['【强信号扫描】'];
+            const s3 = caselibTipParse(r.step3_thread_business_fact);
+            const stateMap = { inquiry:'询价阶段', follow_up:'跟进阶段', negotiation:'谈判阶段', closed:'已成交', process:'推进中' };
+            const styleMap = { wechat_brief:'微信口语', formal:'正式', mixed:'混合' };
+            const sigMap = { awaiting_customer_reply:'等待客户回复', followup_after_no_reply:'无回复后跟进', has_formal_quote:'已报价', crm_has_quote_history:'CRM有报价记录', payment_discussed:'已讨论付款', payment_confirmed:'付款已确认', shipment_discussed:'已讨论发货', shipment_confirmed:'发货已确认', after_sales_open:'售后跟进中', waiting_customer_material:'等待客户素材', sales_only_conversation:'仅销售发言' };
+            if (s3) {
+                const mf = s3.merged_facts || {};
+                const sig = s3.stage_signals || {};
+                if (s3.business_state) lines.push('业务阶段：' + (stateMap[s3.business_state] || s3.business_state));
+                if (s3.scenario_label) lines.push('场景标签：' + s3.scenario_label);
+                if (s3.language_style) lines.push('语言风格：' + (styleMap[s3.language_style] || s3.language_style));
+                const convState = mf.summary_status || s3.core_demand;
+                if (convState) lines.push('会话状态：' + convState);
+                const activeSignals = Object.entries(sig).filter(([k,v]) => v === true && sigMap[k]).map(([k]) => sigMap[k]);
+                if (activeSignals.length) lines.push('已激活信号：' + activeSignals.join('、'));
+                const recent = (Array.isArray(mf.recent_sales_messages) && mf.recent_sales_messages.length) ? mf.recent_sales_messages : (mf.latest_sales_message ? [mf.latest_sales_message] : []);
+                if (recent.length) { lines.push('最近销售消息：'); recent.forEach(m => lines.push('  · ' + m)); }
+                if (mf.latest_customer_message) lines.push('触发点消息：' + mf.latest_customer_message);
+            } else { lines.push('（无强信号数据）'); }
+            lines.push('');
+            lines.push('【第一阶段特征提取】');
+            const s1 = caselibTipParse(r.step1_summary);
+            if (s1) {
+                const kf = s1.key_facts || {};
+                if (s1.topic) lines.push('主线话题：' + s1.topic);
+                if (s1.core_demand) lines.push('核心诉求：' + s1.core_demand);
+                if (kf.current_focus) lines.push('当前焦点：' + kf.current_focus);
+                const timeline = Array.isArray(kf.timeline_items) ? kf.timeline_items : [];
+                if (timeline.length) { lines.push('时间轴事项：'); timeline.forEach(t => lines.push('  · ' + (t.time||'') + ' ' + (t.topic||'') + ' [' + (t.status||'') + ']')); }
+                const todos = Array.isArray(s1.todo_items) ? s1.todo_items : [];
+                if (todos.length) { lines.push('待跟进：'); todos.forEach(t => lines.push('  · ' + t)); }
+                const risks = Array.isArray(s1.risks) ? s1.risks : [];
+                if (risks.length) lines.push('风险：' + risks.join('、'));
+            } else { lines.push('（无特征提取数据）'); }
+            return lines.join('\n');
+        }
+        // 第4步列 tooltip：知识库（当前）
+        function caselibTipKnowledge(r) {
+            const lines = ['【知识库（当前）】'];
+            const s4 = caselibTipParse(r.step4_knowledge);
+            const kv2 = s4 ? caselibTipParse(s4.knowledge_v2) : null;
+            if (!kv2) { lines.push('（无知识库数据）'); return lines.join('\n'); }
+            if (kv2.query_text) lines.push('检索问题：' + kv2.query_text);
+            if (kv2.retrieval_quality != null) lines.push('检索质量：' + kv2.retrieval_quality);
+            const refs = kv2.evidence_refs || [];
+            if (refs.length) {
+                lines.push('知识证据（' + refs.length + ' 条）：');
+                refs.forEach((ref, i) => {
+                    lines.push('  ' + (i+1) + '. ' + (ref.title || ''));
+                    if (ref.snippet) lines.push('     ' + ref.snippet);
+                });
+            }
+            if (kv2.no_hit_reason) lines.push('无命中：' + kv2.no_hit_reason);
+            if (kv2.manual_review_required) lines.push('⚠ 知识命中需人工复核，话术需保守使用');
+            return lines.join('\n');
+        }
+        // 背景列 tooltip：触发点之前的背景对话
+        function caselibTipBackground(c) {
+            const lines = ['【背景对话】'];
+            const msgs = (c && c.context_messages) || [];
+            if (!msgs.length) { lines.push('（无背景对话）'); return lines.join('\n'); }
+            msgs.forEach(m => {
+                const role = m.role === 'customer' ? '客户' : '销售';
+                lines.push('[' + role + '] ' + ((m.msg_time || '').slice(0, 16)) + ' ' + (m.content || ''));
+            });
+            return lines.join('\n');
+        }
+
+        const caselibResultDetailInflight = {};
+        // 确保某行已加载完整明细(step3/step4明细/step7候选/完整背景)，命中缓存则即时返回
+        async function caselibEnsureResultDetail(resultId) {
+            const detail = caselibState.currentDetail;
+            if (!detail) return null;
+            const r = (detail.results || []).find(x => x.result_id === resultId);
+            if (!r) return null;
+            if (r.__full) return r;
+            if (!caselibResultDetailInflight[resultId]) {
+                caselibResultDetailInflight[resultId] = (async () => {
+                    try {
+                        const res = await caselibFetch(`/api/case_lib/results/${resultId}`);
+                        const data = await res.json();
+                        if (data && data.result) { Object.assign(r, data.result); r.__full = true; }
+                    } catch (e) { /* 网络异常时保留瘦数据，浮层显示已有内容 */ }
+                    finally { delete caselibResultDetailInflight[resultId]; }
+                })();
+            }
+            await caselibResultDetailInflight[resultId];
+            return r;
+        }
+
+        let _caselibTipTimer = null;
+        let _caselibTipToken = 0;
+        function _caselibTipEl() {
+            let el = document.getElementById('caselib-cell-tip');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'caselib-cell-tip';
+                el.style.cssText = 'position:fixed;z-index:9999;max-width:560px;max-height:60vh;overflow:auto;background:#1e293b;color:#f1f5f9;font-size:11px;line-height:1.5;white-space:pre-wrap;padding:8px 10px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.28);pointer-events:none;display:none;';
+                document.body.appendChild(el);
+            }
+            return el;
+        }
+        function _caselibTipPos(el, x, y) {
+            const pad = 14;
+            el.style.display = 'block';
+            const w = el.offsetWidth, h = el.offsetHeight;
+            let left = x + pad, top = y + pad;
+            if (left + w > window.innerWidth - 8) left = Math.max(8, x - w - pad);
+            if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+            el.style.left = left + 'px';
+            el.style.top = top + 'px';
+        }
+        // 鼠标移入单元格 → 延迟取明细 → 浮层显示（topic/kb/bg 三类）
+        function caselibCellTip(ev, resultId, kind) {
+            const el = _caselibTipEl();
+            const x = ev.clientX, y = ev.clientY;
+            const token = ++_caselibTipToken;
+            clearTimeout(_caselibTipTimer);
+            _caselibTipTimer = setTimeout(async () => {
+                if (token !== _caselibTipToken) return;
+                el.textContent = '加载中…';
+                _caselibTipPos(el, x, y);
+                const r = await caselibEnsureResultDetail(resultId);
+                if (token !== _caselibTipToken) return;   // 期间已移走/切换
+                if (!r) { el.style.display = 'none'; return; }
+                let txt = '';
+                if (kind === 'topic') txt = caselibTipMainTopic(r);
+                else if (kind === 'kb') txt = caselibTipKnowledge(r);
+                else if (kind === 'bg') txt = caselibTipBackground(r.case || {});
+                el.textContent = txt || '（无数据）';
+                _caselibTipPos(el, x, y);
+            }, 200);
+        }
+        function caselibCellTipHide() {
+            _caselibTipToken++;
+            clearTimeout(_caselibTipTimer);
+            const el = document.getElementById('caselib-cell-tip');
+            if (el) el.style.display = 'none';
+        }
+
+        async function caselibOpenCaseModal(caseId, resultId) {
             const detail = caselibState.currentDetail;
             if (!detail) return;
+            await caselibEnsureResultDetail(resultId);   // 列表瘦数据 → 取完整 7 步链路 + 背景
             const r = (detail.results || []).find(x => x.result_id === resultId);
             if (!r) return;
             const c = r.case || {};
@@ -2817,9 +2899,10 @@
             document.body.appendChild(modal);
         }
 
-        function caselibOpenStepModal(resultId, stepKey) {
+        async function caselibOpenStepModal(resultId, stepKey) {
             const detail = caselibState.currentDetail;
             if (!detail) return;
+            await caselibEnsureResultDetail(resultId);   // 列表瘦数据 → 取完整步骤明细
             const r = (detail.results || []).find(x => x.result_id === resultId);
             if (!r) return;
             const c = r.case || {};
