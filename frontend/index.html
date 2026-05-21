@@ -347,10 +347,10 @@
 
     <main id="app-caselib" class="hidden flex-1 flex flex-col bg-slate-50 overflow-hidden">
         <div class="shrink-0 border-b bg-white">
-            <div class="px-6 pt-5 pb-3 flex flex-wrap items-end justify-between gap-4">
-                <div>
-                    <h1 class="text-xl font-bold text-slate-900" title="把12个销售场景每个挑出5个最高质量案例(共60)，反复批跑企微7步回复链路，对比版本得分，自动生成下次优化方向">经典案例迭代优化</h1>
-                    <p class="text-xs text-slate-500 mt-1" title="60个固定案例作为回归集，每次代码或Prompt改动后跑一遍，看平均质量分有无提升">12个销售场景 × 每场景5个最佳案例 = 60个核心案例，反复批量跑7步回复链路，记录版本号、平均分、AI下一步迭代计划。</p>
+            <div class="px-6 pt-3 pb-2 flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center gap-1.5">
+                    <h1 class="text-lg font-bold text-slate-900" title="把12个销售场景每个挑出5个最高质量案例(共60)，反复批跑企微7步回复链路，对比版本得分，自动生成下次优化方向">经典案例迭代优化</h1>
+                    <span class="text-slate-400 cursor-help text-sm" title="12个销售场景 × 每场景5个最佳案例 = 60个核心案例，反复批量跑7步回复链路，记录版本号、平均分、AI下一步迭代计划。（60个固定案例作为回归集，每次代码或Prompt改动后跑一遍，看平均质量分有无提升）">ⓘ</span>
                 </div>
                 <div class="flex flex-wrap gap-2">
                     <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="返回主页面：企微实时会话工作区">返回企微实时智能</button>
@@ -359,10 +359,10 @@
                 </div>
             </div>
             <!-- 子页签 -->
-            <div class="px-6 pb-3 flex gap-2 text-xs">
+            <div class="px-6 pb-2 flex gap-2 text-xs">
                 <button id="caselib-sub-tab-list" onclick="caselibSwitchSubTab('list')" class="px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 font-bold" title="历次迭代的统计表 + 最近一次的得分分析 + AI 下一步迭代步骤">① 迭代记录</button>
                 <button id="caselib-sub-tab-cases" onclick="caselibSwitchSubTab('cases')" class="px-3 py-1.5 rounded-lg border bg-white text-slate-700 hover:bg-slate-50" title="只读浏览案例库 60 个核心案例的元信息、核心对话和背景上文">② 案例库（60案例）</button>
-                <span class="text-[11px] text-slate-400 self-center ml-2">提示：在「迭代记录」表里双击任一行或点"详细"，可进入该轮 60 案例的逐条结果详情页查看 7 步链路输出。</span>
+                <span class="text-[11px] text-slate-400 self-center ml-1 cursor-help" title='提示：在「迭代记录」表里双击任一行或点"详细"，可进入该轮 60 案例的逐条结果详情页查看 7 步链路输出。'>ⓘ 使用提示</span>
             </div>
         </div>
 
@@ -396,11 +396,10 @@
                 </div>
                 <div id="caselib-detail-summary" class="text-[11px] text-slate-600"></div>
             </div>
-            <div class="flex-1 overflow-auto px-6 py-4">
-                <div id="caselib-detail-table" class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <div class="flex-1 overflow-hidden px-6 py-4 flex flex-col">
+                <div id="caselib-detail-table" class="flex flex-col flex-1 min-h-0">
                     <div class="p-8 text-center text-sm text-slate-400">加载详情中...</div>
                 </div>
-                <div id="caselib-detail-analysis" class="mt-4"></div>
             </div>
         </div>
 
@@ -1851,26 +1850,26 @@
                 '未打分或打分失败的案例不计入平均。'
             );
             const summaryCard = `
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-                    <div class="rounded-xl border border-purple-100 bg-purple-50 p-3" title="${escapeHtml(aiCardTip)}">
-                        <div class="text-[10px] text-purple-700 font-bold">AI 本轮平均分 <span class="text-slate-400">ⓘ</span></div>
-                        <div class="text-xl font-bold text-purple-800">${aiAvg != null ? aiAvg.toFixed(2) : '—'}</div>
+                <div class="shrink-0 grid grid-cols-2 md:grid-cols-5 gap-2 mb-2">
+                    <div class="rounded-lg border border-purple-100 bg-purple-50 px-2.5 py-1.5 flex items-center justify-between gap-2" title="${escapeHtml(aiCardTip)}">
+                        <span class="text-[10px] text-purple-700 font-bold">AI 本轮平均分 <span class="text-slate-400">ⓘ</span></span>
+                        <span class="text-sm font-bold text-purple-800">${aiAvg != null ? aiAvg.toFixed(2) : '—'}</span>
                     </div>
-                    <div class="rounded-xl border border-sky-100 bg-sky-50 p-3" title="${escapeHtml(mdCardTip)}">
-                        <div class="text-[10px] text-sky-700 font-bold">销售原始回复分平均 <span class="text-slate-400">ⓘ</span></div>
-                        <div class="text-xl font-bold text-sky-800">${mdAvg != null ? mdAvg.toFixed(2) : '—'}</div>
+                    <div class="rounded-lg border border-sky-100 bg-sky-50 px-2.5 py-1.5 flex items-center justify-between gap-2" title="${escapeHtml(mdCardTip)}">
+                        <span class="text-[10px] text-sky-700 font-bold">销售原始回复分平均 <span class="text-slate-400">ⓘ</span></span>
+                        <span class="text-sm font-bold text-sky-800">${mdAvg != null ? mdAvg.toFixed(2) : '—'}</span>
                     </div>
-                    <div class="rounded-xl border ${delta == null ? 'border-slate-200 bg-slate-50' : (delta > 0 ? 'border-emerald-100 bg-emerald-50' : 'border-red-100 bg-red-50')} p-3" title="AI 质量分 − 销售原始回复分（均为 LLM-1 打分）。正值表示 AI 回复比人工原始回复得分更高；负值表示 AI 回复不如人工原始回复">
-                        <div class="text-[10px] ${delta == null ? 'text-slate-500' : (delta > 0 ? 'text-emerald-700' : 'text-red-700')} font-bold">Δ（AI − 人工）</div>
-                        <div class="text-xl font-bold ${delta == null ? 'text-slate-400' : (delta > 0 ? 'text-emerald-800' : 'text-red-800')}">${delta == null ? '—' : (delta > 0 ? '+' : '') + delta.toFixed(2)}</div>
+                    <div class="rounded-lg border ${delta == null ? 'border-slate-200 bg-slate-50' : (delta > 0 ? 'border-emerald-100 bg-emerald-50' : 'border-red-100 bg-red-50')} px-2.5 py-1.5 flex items-center justify-between gap-2" title="AI 质量分 − 销售原始回复分（均为 LLM-1 打分）。正值表示 AI 回复比人工原始回复得分更高；负值表示 AI 回复不如人工原始回复">
+                        <span class="text-[10px] ${delta == null ? 'text-slate-500' : (delta > 0 ? 'text-emerald-700' : 'text-red-700')} font-bold">Δ（AI − 人工）</span>
+                        <span class="text-sm font-bold ${delta == null ? 'text-slate-400' : (delta > 0 ? 'text-emerald-800' : 'text-red-800')}">${delta == null ? '—' : (delta > 0 ? '+' : '') + delta.toFixed(2)}</span>
                     </div>
-                    <div class="rounded-xl border border-emerald-100 bg-emerald-50 p-3" title="本轮真实链路成功跑完的案例数（含 reply_reference 非空）">
-                        <div class="text-[10px] text-emerald-700 font-bold">真实成功</div>
-                        <div class="text-xl font-bold text-emerald-800">${successN}/${allRows.length}</div>
+                    <div class="rounded-lg border border-emerald-100 bg-emerald-50 px-2.5 py-1.5 flex items-center justify-between gap-2" title="本轮真实链路成功跑完的案例数（含 reply_reference 非空）">
+                        <span class="text-[10px] text-emerald-700 font-bold">真实成功</span>
+                        <span class="text-sm font-bold text-emerald-800">${successN}/${allRows.length}</span>
                     </div>
-                    <div class="rounded-xl border border-amber-100 bg-amber-50 p-3" title="干跑 ${dryN} 个（不调 LLM）+ 异常/HTTP错误 ${errN} 个（回退干跑或失败）">
-                        <div class="text-[10px] text-amber-700 font-bold">干跑 / 异常</div>
-                        <div class="text-xl font-bold text-amber-800">${dryN} / ${errN}</div>
+                    <div class="rounded-lg border border-amber-100 bg-amber-50 px-2.5 py-1.5 flex items-center justify-between gap-2" title="干跑 ${dryN} 个（不调 LLM）+ 异常/HTTP错误 ${errN} 个（回退干跑或失败）">
+                        <span class="text-[10px] text-amber-700 font-bold">干跑 / 异常</span>
+                        <span class="text-sm font-bold text-amber-800">${dryN} / ${errN}</span>
                     </div>
                 </div>`;
 
@@ -1903,7 +1902,7 @@
                 '完成后自动刷新 run 的 avg/min/max。'
             );
             const toolbar = `
-                <div class="flex flex-wrap items-center gap-3 mb-3 px-1">
+                <div class="shrink-0 flex flex-wrap items-center gap-3 mb-3 px-1">
                     <label class="text-[11px] text-slate-600 font-bold" title="只展示指定场景的案例（5个）">筛选场景：</label>
                     <select id="caselib-detail-scenario-filter" onchange="caselibApplyDetailFilter()" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs">${scenarioOptions}</select>
                     <label class="text-[11px] text-slate-600 font-bold ml-3" title="表格行的排序方式">排序方式：</label>
@@ -1915,20 +1914,8 @@
 
             // 先渲染顶部 + 工具栏，再渲染主表格（receive filter 状态）
             const tableHost = document.getElementById('caselib-detail-table');
-            tableHost.innerHTML = summaryCard + toolbar + '<div id="caselib-detail-rows"></div>';
+            tableHost.innerHTML = summaryCard + toolbar + '<div id="caselib-detail-rows" class="flex-1 min-h-0"></div>';
             caselibRenderDetailRows();
-
-            // 底部分析
-            document.getElementById('caselib-detail-analysis').innerHTML = `
-                <div class="rounded-xl border border-purple-100 bg-purple-50 p-4 mt-3" title="基于本轮60案例的得分分布，按场景给出优化方向">
-                    <div class="text-xs font-bold text-purple-800 mb-2">📊 本轮改进分析（按场景平均分升序，优先优化前 3 场景）</div>
-                    ${caselibRenderImprovementAnalysis(it.improvement_analysis || '')}
-                </div>
-                <div class="rounded-xl border border-amber-100 bg-amber-50 p-4 mt-3" title="给下一次迭代准备的检查清单 + 本轮调试中遇到的已知坑">
-                    <div class="text-xs font-bold text-amber-800 mb-2">🤖 下次迭代 AI 自检步骤（含本轮已知坑）</div>
-                    ${caselibRenderAiPlan(it.ai_next_step_plan || '')}
-                </div>
-            `;
         }
 
         function caselibApplyDetailFilter() {
@@ -2318,7 +2305,7 @@
                     <td class="px-2 py-2 text-right ${dltCls}" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="AI − 人工。差值绝对值 ≥1 时高亮：正值AI偏高，负值AI偏低">${dltTxt}</td>
                 </tr>`;
             }).join('');
-            host.innerHTML = '<div class="rounded-xl border border-slate-200 bg-white" style="overflow:auto;max-height:calc(100vh - 260px);width:100%;">'
+            host.innerHTML = '<div class="rounded-xl border border-slate-200 bg-white" style="overflow:auto;height:100%;width:100%;">'
                 + head + body + '</tbody></table></div>';
         }
 
