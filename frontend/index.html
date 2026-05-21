@@ -148,28 +148,24 @@
 <body class="h-screen flex flex-col text-slate-800 overflow-hidden">
 
     <header class="shrink-0 bg-white border-b border-slate-200">
-        <div class="px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-            <div>
-                <div class="text-xl font-bold text-slate-900">智能销售辅助工作台</div>
-                <div class="text-xs text-slate-500 mt-1">左侧为企业微信实时意图分析，右侧为知识库导入、审核、发布和检索治理。</div>
+        <div class="px-6 py-2 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-1.5">
+                <div class="text-lg font-bold text-slate-900">智能销售辅助工作台</div>
+                <span class="text-slate-400 cursor-help text-sm" title="左侧为企业微信实时意图分析，右侧为知识库导入、审核、发布和检索治理。">ⓘ</span>
             </div>
             <div class="flex flex-wrap items-center justify-end gap-3">
-                <nav class="grid grid-cols-4 gap-3 min-w-[820px]">
-                    <button id="main-tab-wecom" onclick="switchMainApp('wecom')" title="进入企业微信实时智能页面，用于查看真实会话、提取销售意图、生成建议话术。" aria-label="企微实时智能：进入真实会话分析页面" class="rounded-2xl border px-5 py-3 text-left transition bg-blue-600 text-white border-blue-600 shadow-sm">
-                        <div class="text-base font-bold">企微实时智能</div>
-                        <div class="text-xs opacity-85 mt-1">会话同步、意图识别、客户画像、销售建议</div>
+                <nav class="grid grid-cols-4 gap-2 min-w-[680px]">
+                    <button id="main-tab-wecom" onclick="switchMainApp('wecom')" title="进入企业微信实时智能页面，用于查看真实会话、提取销售意图、生成建议话术。（会话同步、意图识别、客户画像、销售建议）" aria-label="企微实时智能：进入真实会话分析页面" class="rounded-xl border px-4 py-2 text-center transition bg-blue-600 text-white border-blue-600 shadow-sm">
+                        <div class="text-sm font-bold">企微实时智能</div>
                     </button>
-                    <button id="main-tab-analytics" onclick="switchMainApp('analytics')" title="进入企微智能回复统计分析页面，用于按触发逐次查看7步链路、耗时、评分与人工回复。" aria-label="企微智能回复统计分析：进入逐触发统计分析页面" class="rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300">
-                        <div class="text-base font-bold">企微智能回复统计分析</div>
-                        <div class="text-xs text-slate-500 mt-1">按触发逐条查看步骤内容、耗时、质量分与人工回复</div>
+                    <button id="main-tab-analytics" onclick="switchMainApp('analytics')" title="进入企微智能回复统计分析页面，用于按触发逐次查看7步链路、耗时、评分与人工回复。（按触发逐条查看步骤内容、耗时、质量分与人工回复）" aria-label="企微智能回复统计分析：进入逐触发统计分析页面" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300">
+                        <div class="text-sm font-bold">企微智能回复统计分析</div>
                     </button>
-                    <button id="main-tab-kb" onclick="switchMainApp('kb')" title="进入知识库管理页面，用于导入、查看、审核、发布、检索和质量治理。" aria-label="知识库管理：进入知识库管理页面" class="rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300">
-                        <div class="text-base font-bold">知识库管理</div>
-                        <div class="text-xs text-slate-500 mt-1">导入、查看、审核、发布、检索、质量治理</div>
+                    <button id="main-tab-kb" onclick="switchMainApp('kb')" title="进入知识库管理页面，用于导入、查看、审核、发布、检索和质量治理。（导入、查看、审核、发布、检索、质量治理）" aria-label="知识库管理：进入知识库管理页面" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300">
+                        <div class="text-sm font-bold">知识库管理</div>
                     </button>
-                    <button id="main-tab-caselib" onclick="switchMainApp('caselib')" title="进入经典案例迭代优化页面：12场景x5案例=60案例的批量7步链路评测、版本回滚、AI自检计划。" aria-label="经典案例迭代优化：批量跑7步并迭代提升" class="rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300">
-                        <div class="text-base font-bold">经典案例迭代优化</div>
-                        <div class="text-xs text-slate-500 mt-1">60典型案例批量跑7步、版本号、平均分、AI下一步</div>
+                    <button id="main-tab-caselib" onclick="switchMainApp('caselib')" title="进入经典案例迭代优化页面：12场景x5案例=60案例的批量7步链路评测、版本回滚、AI自检计划。（60典型案例批量跑7步、版本号、平均分、AI下一步）" aria-label="经典案例迭代优化：批量跑7步并迭代提升" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300">
+                        <div class="text-sm font-bold">经典案例迭代优化</div>
                     </button>
                 </nav>
                 <div class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -347,22 +343,20 @@
 
     <main id="app-caselib" class="hidden flex-1 flex flex-col bg-slate-50 overflow-hidden">
         <div class="shrink-0 border-b bg-white">
-            <div class="px-6 pt-3 pb-2 flex flex-wrap items-center justify-between gap-4">
-                <div class="flex items-center gap-1.5">
+            <div class="px-6 py-2 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center gap-2">
                     <h1 class="text-lg font-bold text-slate-900" title="把12个销售场景每个挑出5个最高质量案例(共60)，反复批跑企微7步回复链路，对比版本得分，自动生成下次优化方向">经典案例迭代优化</h1>
                     <span class="text-slate-400 cursor-help text-sm" title="12个销售场景 × 每场景5个最佳案例 = 60个核心案例，反复批量跑7步回复链路，记录版本号、平均分、AI下一步迭代计划。（60个固定案例作为回归集，每次代码或Prompt改动后跑一遍，看平均质量分有无提升）">ⓘ</span>
+                    <span class="mx-1 h-4 w-px bg-slate-200"></span>
+                    <button id="caselib-sub-tab-list" onclick="caselibSwitchSubTab('list')" class="px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 text-xs font-bold" title="历次迭代的统计表 + 最近一次的得分分析 + AI 下一步迭代步骤">① 迭代记录</button>
+                    <button id="caselib-sub-tab-cases" onclick="caselibSwitchSubTab('cases')" class="px-3 py-1.5 rounded-lg border bg-white text-slate-700 text-xs hover:bg-slate-50" title="只读浏览案例库 60 个核心案例的元信息、核心对话和背景上文">② 案例库（60案例）</button>
+                    <span class="text-[11px] text-slate-400 self-center cursor-help" title='提示：在「迭代记录」表里双击任一行或点"详细"，可进入该轮 60 案例的逐条结果详情页查看 7 步链路输出。'>ⓘ 使用提示</span>
                 </div>
                 <div class="flex flex-wrap gap-2">
                     <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="返回主页面：企微实时会话工作区">返回企微实时智能</button>
                     <button id="caselib-reimport-btn" onclick="caselibReimport()" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="从 sales_scenario_cases_v2.md 重新抽取每场景前5案例 + 各案例前15条背景对话，覆盖式写入 case_library_case 表">重新导入案例库</button>
                     <button id="caselib-refresh-btn" onclick="loadCaselibList(true)" class="px-4 py-2 rounded-lg bg-purple-500 text-white text-xs font-bold hover:bg-purple-600" title="重新加载迭代历史列表">刷新列表</button>
                 </div>
-            </div>
-            <!-- 子页签 -->
-            <div class="px-6 pb-2 flex gap-2 text-xs">
-                <button id="caselib-sub-tab-list" onclick="caselibSwitchSubTab('list')" class="px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 font-bold" title="历次迭代的统计表 + 最近一次的得分分析 + AI 下一步迭代步骤">① 迭代记录</button>
-                <button id="caselib-sub-tab-cases" onclick="caselibSwitchSubTab('cases')" class="px-3 py-1.5 rounded-lg border bg-white text-slate-700 hover:bg-slate-50" title="只读浏览案例库 60 个核心案例的元信息、核心对话和背景上文">② 案例库（60案例）</button>
-                <span class="text-[11px] text-slate-400 self-center ml-1 cursor-help" title='提示：在「迭代记录」表里双击任一行或点"详细"，可进入该轮 60 案例的逐条结果详情页查看 7 步链路输出。'>ⓘ 使用提示</span>
             </div>
         </div>
 
@@ -388,11 +382,11 @@
 
         <!-- 子页2：单次迭代详情（60案例结果） -->
         <div id="caselib-sub-detail" class="hidden flex-1 overflow-hidden flex flex-col">
-            <div class="shrink-0 px-6 py-3 bg-white border-b flex flex-wrap items-center justify-between gap-3">
-                <div>
+            <div class="shrink-0 px-6 py-1.5 bg-white border-b flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-1">
                     <button onclick="caselibSwitchSubTab('list')" class="text-[11px] text-purple-700 hover:underline" title="返回迭代记录列表">← 返回迭代记录</button>
                     <span id="caselib-detail-title" class="ml-3 text-sm font-bold text-slate-900">迭代详情</span>
-                    <span id="caselib-detail-subtitle" class="ml-2 text-[11px] text-slate-500"></span>
+                    <span id="caselib-detail-subtitle" class="ml-1 text-[11px] text-slate-400 cursor-help"></span>
                 </div>
                 <div id="caselib-detail-summary" class="text-[11px] text-slate-600"></div>
             </div>
@@ -1823,7 +1817,9 @@
             const tt = caselibFormatTime(it.triggered_at);
             document.getElementById('caselib-detail-title').textContent =
                 `v${it.version_no} 迭代详情（共 ${allRows.length} 个对话轮次）`;
-            document.getElementById('caselib-detail-subtitle').textContent =
+            const detailSubtitleEl = document.getElementById('caselib-detail-subtitle');
+            detailSubtitleEl.textContent = 'ⓘ';
+            detailSubtitleEl.title =
                 `代码版本 = ${it.git_short_sha || '-'}${it.git_dirty ? ' (含未提交改动)' : ''}  ｜  触发于 ${tt}  ｜  运行状态 = ${caselibRunStatusLabel(it.status)}`;
 
             // === 顶部速览卡片：本次平均 / 原始平均 / Δ ===
