@@ -14775,15 +14775,10 @@ async def sidebar_assist(
             }
         
         need_v1 = request.force_refresh or summary is None
-        crm_future = None
         if need_v1:
             stage_status["analysis_mode"] = "force_refresh" if request.force_refresh else "first_analyze"
             if recent_logs:
                 context = [{"content": l.content, "sender_type": l.sender_type} for l in reversed(recent_logs)]
-                # CRM 画像与 LLM-1 无依赖(仅需 external_userid)，提前并行查询与 stage1 重叠省时；
-                # get_crm_context 自带独立 CRM 会话，不触主 db 会话，线程安全。
-                if external_userid:
-                    crm_future = REPLY_CHAIN_EXECUTOR.submit(IntentEngine.get_crm_context, external_userid)
                 stage_started = perf_counter()
                 summary_payload = IntentEngine._run_llm1(session_id, context)
                 mark_timing("llm1_analyze_ms", stage_started)
@@ -14846,11 +14841,7 @@ async def sidebar_assist(
             }
             # CRM 画像按外部联系人 ID 查询，不使用组合会话 ID
             stage_started = perf_counter()
-            # 优先取并行预查结果(已与 stage1 重叠)，未预查则即时查询
-            if crm_future is not None:
-                crm_context = crm_future.result()
-            else:
-                crm_context = IntentEngine.get_crm_context(external_userid)
+            crm_context = IntentEngine.get_crm_context(external_userid)
             mark_timing("crm_profile_ms", stage_started)
             _set_node_timing(
                 stage_status,
