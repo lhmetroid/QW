@@ -334,7 +334,8 @@ class IntentEngine:
     def build_retrieval_query(cls, summary_json: dict | None, thread_fact: dict | None = None) -> str:
         summary = summary_json or {}
         parts: list[str] = []
-        for key in ["core_demand", "topic", "status"]:
+        # status 实测恒为 success，对检索无区分度且会污染向量召回，故不拼入检索词
+        for key in ["core_demand", "topic"]:
             value = str(summary.get(key) or "").strip()
             if value and value not in {"未明确", "[]", "{}"} and value not in parts:
                 parts.append(value)
@@ -2134,6 +2135,38 @@ class IntentEngine:
         )
 
     @staticmethod
+    def clean_sendable_reply(text: str | None) -> str:
+        """剥离 LLM2 正文里混入的开发用元注释，只保留可直接发客户的微信正文。
+        覆盖 API / web / caselib 全部取 reply_reference 的路径。"""
+        s = str(text or "")
+        if not s.strip():
+            return ""
+        # 去掉 markdown 代码块
+        s = re.sub(r"```.*?```", "", s, flags=re.S)
+        s = s.replace("```", "")
+        # 元注释多为正文之后追加的开发说明(如 【说明】xxx、说明:xxx)，
+        # 这类标记一旦出现，其后(含标记本身)整体都是非正文，直接截断丢弃。
+        cut_patterns = [
+            r"【[^】]*(?:说明|备注|后续|风格|思路|提示|分析|推进)[^】]*】",
+            r"(?m)^\s*(?:说明|备注|后续推进说明|后续推进|本次回复风格要求|风格要求|跟进思路说明|思路)[：:]",
+        ]
+        cut_idx = len(s)
+        for pat in cut_patterns:
+            m = re.search(pat, s)
+            if m:
+                cut_idx = min(cut_idx, m.start())
+        s = s[:cut_idx]
+        # 去掉结尾处含开发用关键词的括号备注(中英文括号)
+        s = re.sub(
+            r"\s*[（(][^）)]*(?:说明|备注|后续|风格|思路|客户已|承接|推进|轻量|本次)[^）)]*[）)]\s*$",
+            "",
+            s,
+        )
+        # 收敛多余空白
+        s = re.sub(r"\n{2,}", "\n", s).strip()
+        return s
+
+    @staticmethod
     def split_sales_assist_output(response_text: str | None) -> dict[str, str]:
         text = str(response_text or "").strip()
         if not text:
@@ -2162,7 +2195,7 @@ class IntentEngine:
             reply_reference = text.splitlines()[0].strip()
 
         return {
-            "reply_reference": reply_reference.strip(),
+            "reply_reference": IntentEngine.clean_sendable_reply(reply_reference),
             "followup_rationale": followup_rationale.strip(),
         }
 
@@ -2768,7 +2801,9 @@ class IntentEngine:
                 "messages": [
                     {"role": "user", "content": final_prompt}
                 ],
-                "temperature": 0.7
+                "temperature": 0.7,
+                # 遇到开发用元注释开头标记即停，防止把说明/思路/代码块发给客户(不增耗时,反而省)
+                "stop": ["【跟进思路说明", "【说明", "【后续", "【本次回复风格", "```"],
             }
             cls._log_llm_prompt(f"{label}_OPENAI", model, url, final_prompt)
             response = cls._post_json(url, headers=headers, timeout=timeout_seconds, payload=payload)
@@ -2903,6 +2938,8 @@ class IntentEngine:
             "messages": [{"role": "user", "content": final_prompt}],
             "temperature": 0.7,
             "stream": True,
+            # 遇到开发用元注释开头标记即停，防止把说明/思路/代码块发给客户(不增耗时,反而省)
+            "stop": ["【跟进思路说明", "【说明", "【后续", "【本次回复风格", "```"],
         }
         cls._log_llm_prompt("LLM2_STREAM", model, url, final_prompt)
 
