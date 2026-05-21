@@ -16570,13 +16570,20 @@ def rc_list_mail_messages(
     batch_id: int | None = None,
     clean_status: str | None = None,
     keyword: str | None = None,
+    source_type: str | None = None,
     limit: int = 50,
     offset: int = 0,
     db: Session = Depends(get_db),
 ):
     try:
-        wheres = ["1=1"]
+        wheres = []
         params: dict = {}
+        if source_type:
+            wheres.append("m.source_type = :source_type")
+            params["source_type"] = source_type
+        else:
+            wheres.append("m.source_type != 'wecom'")
+
         if batch_id:
             wheres.append("m.import_batch_id = :batch_id")
             params["batch_id"] = batch_id
@@ -16586,7 +16593,7 @@ def rc_list_mail_messages(
         if keyword:
             wheres.append("(m.subject ILIKE :kw OR m.body_text ILIKE :kw)")
             params["kw"] = f"%{keyword}%"
-        where_sql = " AND ".join(wheres)
+        where_sql = " AND ".join(wheres) if wheres else "1=1"
         count = db.execute(text(
             f"SELECT COUNT(*) FROM mail_raw_unified m "
             f"LEFT JOIN mail_cleaned mc ON mc.mail_uid = m.mail_uid "
