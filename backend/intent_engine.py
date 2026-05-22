@@ -2055,6 +2055,13 @@ class IntentEngine:
         warnings.extend(thread_state_validation.get("warnings") or [])
         blocking_issues.extend(thread_state_validation.get("blocking_issues") or [])
 
+        # 占位符兜底(含邮箱/电话/PO): prompt 预防非100%(如 xxxx@xx.com 漏网),命中即人工复核
+        if re.search(r"(x{2,}|X{2,}|[xX]+@|@x+\.|1[xX]{3,}|PO[xX]{2,}|[xX]+折|[xX]+元)", text):
+            blocking_issues.append("话术疑似含未替换占位符(如 xxxx@xx.com / XX元 / X折),不可直接发送。")
+        # 守价软让步兜底: 主动暗示价格可降(非硬承诺,prompt 偶尔漏),命中即人工复核
+        if re.search(r"(能降一些|单价能降|可以让一点|算个具体数|算个低价|给你个低价|便宜一些)", text):
+            blocking_issues.append("话术主动暗示价格可降(守价软让步),需人工确认口径。")
+
         manual_review_required = bool(blocking_issues) or bool(knowledge_payload.get("manual_review_required")) if isinstance(knowledge_payload, dict) else bool(blocking_issues)
         if crm.get("payment_risk_level") == "high" and (mentioned_numbers or capability_claimed):
             manual_review_required = True
