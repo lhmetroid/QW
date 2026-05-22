@@ -1,0 +1,33 @@
+你在 /mnt/d/items/QW Git 仓库中工作，只处理 TASKS.md 的第一个未完成任务：Task 2《梳理邮件智能回复与企微智能回复的模块边界》。
+
+必须遵守：
+1. 只处理 Task 2，不要跳到 Task 3 及以后。
+2. 不能回滚现有改动，不能删除大量文件，不能推送，不能修改生产配置，不能访问或输出密钥。
+3. 邮件系统必须与企微主链路隔离：命名隔离、运行隔离、数据隔离。
+4. 不要把邮件功能直接塞入企微侧边栏主工作流；需要给出独立入口/独立模块建议。
+5. 尽量减少改动范围，优先补充文档与状态文件，而不是大规模重构代码。
+6. 完成后必须运行 VALIDATION.md 中当前阶段适用的验证命令。
+7. 完成后更新 TASKS.md、PROGRESS.md、TASK_HANDOFF.md、logs/codex-run.log。每完成一个小点写入完成时间。
+
+你已经可以假设以下上下文成立：
+- backend/main.py 目前同时承载企微回调 `/cb/qywx`、知识库接口、前端鉴权与多个管理接口，是企微主链路核心入口。
+- frontend/index.html 当前主导航只有企微实时智能、企微智能回复统计分析、知识库管理、经典案例迭代优化，整体偏企微工作台。
+- backend 中已经存在若干邮件相关模块/脚本，例如 mail_oauth.py、mail_sync.py、mail_scheduler.py、attachment_service.py、email_import_service.py、analyze_sources.py、inspect_mail_tables.py，但边界尚未系统梳理。
+- docs 中已有邮件相关数据文件和评估文件，但没有一份清晰的“邮件 vs 企微模块边界”设计说明。
+- 企微知识库标准定义文档强调：企微入库以 wecom_raw_import / slice_id / business_scenario 等规则为核心，不应让邮件 sequence 状态或邮件草稿状态混入企微会话状态机。
+- 邮件智能回复实现方案要求独立的 mail/email/sequence 命名、独立 API 路由 `/api/v1/mail/*` `/api/v1/sequence/*`、独立数据表前缀 `mail_*` / `email_*`、独立配置前缀 `MAIL_*` / `EMAIL_*`。
+
+请完成以下最小闭环：
+A. 读取并理解当前 backend/frontend/docs 中与企微、知识库、邮件相关的主要模块。
+B. 产出一份新的边界说明文档，建议文件名为 `docs/邮件与企微模块边界说明.md`，内容至少包含：
+   - 当前企微主链路模块清单
+   - 当前邮件相关模块/资产清单
+   - 可以复用的公共能力
+   - 必须隔离的业务状态、路由、数据表、配置、前端入口
+   - 推荐目录结构与命名规范
+   - 对 Task 3 的衔接建议（目录结构落地）
+C. 基于这份说明，更新 TASKS.md / PROGRESS.md / TASK_HANDOFF.md，使 Task 2 完成、Task 3 成为下一个未完成任务。
+D. 在 logs/codex-run.log 追加本次 Task 2 的完成记录，写明完成时间、产出文件、验证情况、下一步。
+E. 运行当前阶段适用验证（至少 git diff --check 针对本轮相关文件；如你改动范围安全，也可直接运行 git diff --check）。
+
+注意：如果发现高风险动作、登录问题、权限问题、需要人工授权，停止改动并把情况写入 TASK_HANDOFF.md 与 logs/codex-run.log。

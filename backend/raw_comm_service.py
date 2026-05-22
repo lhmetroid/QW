@@ -753,7 +753,7 @@ def insert_mail_raw(db: Session, mail: dict[str, Any], batch_id: int | None = No
         ) VALUES (
             :mail_uid, :source_type, :import_batch_id, :folder_name, :direction,
             :internet_message_id, :in_reply_to, :references_text, :conversation_key,
-            :subject, :body_text, :from_email, :to_emails::jsonb, :cc_emails::jsonb,
+            :subject, :body_text, :from_email, CAST(:to_emails AS jsonb), CAST(:cc_emails AS jsonb),
             :sent_at, :received_at, :has_attachment, :raw_payload_path, NOW()
         )
     """), {
@@ -816,8 +816,8 @@ def upsert_mail_cleaned(db: Session, raw_mail: dict[str, Any]) -> None:
         ) VALUES (
             :mail_uid, :body_text_clean, :body_main_text, :body_quoted_text,
             :signature_text, :disclaimer_text, :normalized_subject, :from_email_std,
-            :to_emails_std::jsonb, :cc_emails_std::jsonb, :participant_emails_std::jsonb, :sender_side,
-            :customer_key, :contact_emails_customer_side::jsonb, :contact_emails_all::jsonb,
+            CAST(:to_emails_std AS jsonb), CAST(:cc_emails_std AS jsonb), CAST(:participant_emails_std AS jsonb), :sender_side,
+            :customer_key, CAST(:contact_emails_customer_side AS jsonb), CAST(:contact_emails_all AS jsonb),
             :clean_status, :clean_error, :is_auto_mail, :auto_mail_type, :cleaned_at
         )
         ON CONFLICT (mail_uid) DO UPDATE SET
