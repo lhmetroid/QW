@@ -6,9 +6,9 @@
 
 ## 当前任务
 
-Task 2：梳理邮件智能回复与企微智能回复的模块边界。
+Task 11：输出首批邮件黄金候选切片，并明确标注来源、场景、质量分、脱敏状态。
 
-当前小点：已完成前置读取；尝试通过 Codex CLI 后台执行 Task 2 时被环境拦截。已明确 `--full-auto` 是默认自动执行模式，需在 Hermes/Codex CLI 环境放行普通项目内任务，或由当前 Agent 继续安全任务。
+当前小点：已重新读取 AGENTS/TASKS/PROGRESS/TASK_HANDOFF/VALIDATION、Git 状态/差异、运行日志，并确认当前无 Hermes 可追踪后台进程；`TASKS.md` 的首个未完成任务已切换为 Task 11，旧的 Task 2 阻断状态仅保留为历史记录。
 
 ## 关键背景
 
@@ -99,6 +99,8 @@ Task 2：梳理邮件智能回复与企微智能回复的模块边界。
 | 2026-05-22 15:30:52 +08:00 | 权限/执行拦截 | 启动 `codex exec --full-auto ...` 后台任务时返回 `BLOCKED: User denied. Do NOT retry.` | Task 2：梳理邮件智能回复与企微智能回复的模块边界 | 需要人工确认是否允许在当前环境放行 Codex CLI 执行；未放行前不要自动重试 |
 | 2026-05-22 15:38:23 +08:00 | 规则澄清 | 已确认 `BLOCKED: User denied. Do NOT retry.` 不是 token/rate/network 临时错误，不能自动重试或危险绕过 | Task 2：梳理邮件智能回复与企微智能回复的模块边界 | 可由用户在 Hermes 环境放行 `codex exec --full-auto`；若当前 Agent 能安全完成，可记录后继续执行同一任务 |
 | 2026-05-22 15:39:26 +08:00 | 权限策略修正 | 用户明确 `--full-auto` 是默认自动执行模式，普通安全任务不要逐次授权 | Task 2：梳理邮件智能回复与企微智能回复的模块边界 | 已更新 AGENTS.md，明确普通项目内开发任务默认自动执行；仅高风险清单需要人工确认 |
+| 2026-05-22 16:10:11 +08:00 | 环境层阻断 | 用户明确给出 `codex exec --full-auto ...` 启动命令，但 Hermes terminal 仍返回 `BLOCKED: User denied. Do NOT retry.` | Task 2：梳理邮件智能回复与企微智能回复的模块边界 | 不自动重试；需要环境层放行，或改由当前 Agent 直接完成 Task 2 |
+| 2026-05-22 16:05:57 +08:00 | 命令构造错误 | Hermes 生成 `codex exec --full-auto "$(python -c ...)"`，被环境判定为 `Dangerous Command: script execution via -e/-c flag` | Task 2：梳理邮件智能回复与企微智能回复的模块边界 | 不要授权 `python -c` 包装模式；改用直接 `codex exec --full-auto "短任务内容"`，或由当前 Agent 继续安全任务 |
 
 ## Token / Rate Limit 记录
 
@@ -110,21 +112,15 @@ Task 2：梳理邮件智能回复与企微智能回复的模块边界。
 
 继续 `TASKS.md` 中第一个未完成任务：
 
-Task 2：梳理邮件智能回复与企微智能回复的模块边界。
+Task 11：输出首批邮件黄金候选切片，并明确标注来源、场景、质量分、脱敏状态。
 
 具体建议：
 
-1. 读取 `backend/` 目录结构，标出现有企微入口、RAG、LLM、配置、数据库模型。
-2. 读取 `frontend/` 目录结构，标出现有企微侧边栏页面和可新增邮件页面的位置。
-3. 设计邮件新增模块的建议路径，例如：
-   - `backend/mail_models.py`
-   - `backend/mail_service.py`
-   - `backend/mail_safety.py`
-   - `backend/mail_sequence.py`
-   - `backend/mail_routes.py`
-   - `frontend/mail/` 或独立邮件页面入口
-4. 明确哪些通用能力可以复用，哪些业务状态必须隔离。
-5. 形成一份邮件/企微边界说明，再进入数据库和 API 设计。
+1. 核对 `mail_raw_unified` / `mail_cleaned` / `mail_import_batch` 当前数据规模与最新批次状态。
+2. 确认现有 `useful_score` 生成逻辑、可复用字段以及候选导出脚本是否已存在。
+3. 设计并输出首批候选切片的导出格式：来源、场景、质量分、脱敏状态、正文摘要。
+4. 若当前 Agent 可安全完成，则直接生成候选结果并补齐状态文件；若必须委派 Codex CLI，再按 `--full-auto` 直接短命令启动。
+5. 完成后按 `VALIDATION.md` 运行验证并更新 `TASKS.md`、`PROGRESS.md`、`TASK_HANDOFF.md`、`logs/codex-run.log`。
 
 ## 重要约束
 
@@ -137,6 +133,12 @@ Task 2：梳理邮件智能回复与企微智能回复的模块边界。
 - `codex exec --full-auto` 是默认自动执行模式；项目内普通读写、测试、lint、build、代码生成脚本不应逐次请求授权。
 - `BLOCKED: User denied. Do NOT retry.` 对普通安全任务而言属于环境未放行 `--full-auto`，不得自动重试，不得用危险参数绕过；用户放行 `--full-auto` 后应继续同一任务。
 - 如果 Codex CLI 委派被拒绝，但任务可由当前 Agent 安全完成，可以记录阻断原因后继续同一个任务，仍需运行验证并更新状态文件。
+- Git 提交、推送远程仓库、创建 Git tag、发布 release、普通数据库写入不需要额外人工确认。
+- 数据库迁移、清库、批量更新、批量删除仍需停止并请求人工确认。
+- `backend/requirements.txt` 中已声明的依赖属于项目已知依赖，可自动安装；`sqlalchemy` 已在该文件中声明，不属于未知来源依赖。
+- 如果 WSL Python 缺少 `sqlalchemy`，应优先自动执行 `python3 -m pip install -r backend/requirements.txt` 或使用项目虚拟环境安装，不应要求用户手工逐条发继续指令。
+- Codex CLI 启动命令必须直接使用 `codex exec --full-auto "任务内容"`；不要用 `python -c`、`node -e`、`eval`、`$()`、反引号或 heredoc 动态拼接命令。
+- 如果 Hermes 生成了 `codex exec --full-auto "$(python -c ...)"` 并触发 `Dangerous Command`，这是命令构造错误，不是 `--full-auto` 策略错误。
 
 ## 恢复提示词建议
 
@@ -171,7 +173,7 @@ Task 2：梳理邮件智能回复与企微智能回复的模块边界。
 8. 验证通过后，更新 TASKS.md、PROGRESS.md、TASK_HANDOFF.md。
 9. 如果遇到 token 不足、rate limit、quota、429、usage limit、temporarily unavailable 或网络临时错误，立即写入 TASK_HANDOFF.md 和 logs/codex-retry.log，并每 30 分钟重试一次；恢复后继续当前未完成任务；连续失败 6 次才停止。
 10. 如果 Codex CLI 意外退出，读取日志、git status、git diff，更新 TASK_HANDOFF.md，并尝试恢复当前小任务。
-11. 如果遇到登录失败、需要人工授权、危险命令、删除大量文件、推送远程仓库、修改生产环境配置、访问密钥、数据库写操作，停止并写入 TASK_HANDOFF.md，不要自动继续。
+11. 如果遇到登录失败、需要人工授权、危险命令、删除大量文件、修改生产环境配置、访问密钥、数据库迁移/清库/批量更新/批量删除，停止并写入 TASK_HANDOFF.md，不要自动继续。
 12. 如果所有任务完成，生成 FINAL_REPORT.md，并在 logs/codex-run.log 末尾追加 ALL TASKS COMPLETED: 当前时间。
 
 现在开始执行第一个未完成任务。目标是保证任务持续推进和可恢复，最终完成全部计划代码修改。

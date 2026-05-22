@@ -106,6 +106,12 @@ def sync_emails_from_crm(days: int = 90, limit: int = 5000):
         rows = crm_db.execute(crm_query, {"start_time": start_time}).fetchall()
         logger.info("从 CRM SQL Server 查询到 %d 条符合条件的邮件跟进记录", len(rows))
         
+        existing_uids_rows = pg_db.execute(text(
+            "SELECT mail_uid FROM mail_raw_unified WHERE mail_uid LIKE 'sqlserver_followup_%'"
+        )).fetchall()
+        existing_uids = {r[0] for r in existing_uids_rows}
+        logger.info("本地已存在 %d 封 CRM 邮件跟进记录，已载入内存进行高速查重", len(existing_uids))
+        
         success_count = 0
         duplicate_count = 0
         failed_count = 0
@@ -123,12 +129,8 @@ def sync_emails_from_crm(days: int = 90, limit: int = 5000):
             # 1. 唯一标识符
             mail_uid = f"sqlserver_followup_{follow_up_id}"
             
-            # 查重：检查 PostgreSQL 中是否已经导入过这封邮件
-            exists = pg_db.execute(text(
-                "SELECT 1 FROM mail_raw_unified WHERE mail_uid = :uid LIMIT 1"
-            ), {"uid": mail_uid}).fetchone()
-            
-            if exists:
+            # 查重：内存高速查重
+            if mail_uid in existing_uids:
                 duplicate_count += 1
                 continue
                 
@@ -208,20 +210,22 @@ def sync_emails_from_crm(days: int = 90, limit: int = 5000):
                     "att": parsed_mail["has_attachment"],
                     "path": parsed_mail["raw_payload_path"], "now": parsed_mail["ingested_at"]
                 })
-                pg_db.commit()
                 
                 # 自动触发清洗
                 upsert_mail_cleaned(pg_db, parsed_mail)
-                pg_db.commit()
                 
                 success_count += 1
                 if success_count % 200 == 0:
+                    pg_db.commit()
                     logger.info("已成功同步并清洗 %d 封 CRM 邮件...", success_count)
                     
             except Exception as exc:
                 pg_db.rollback()
                 failed_count += 1
                 logger.error("同步/清洗单条邮件失败 %s: %s", follow_up_id, exc)
+                
+        # 提交最后一批未提交的更改
+        pg_db.commit()
                 
         pg_db.execute(text("""
             UPDATE mail_import_batch 
