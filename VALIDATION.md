@@ -52,6 +52,7 @@ git status --short
 - `TASK_HANDOFF.md` 必须有 Token / Rate Limit 记录区域。
 - `PROGRESS.md` 必须记录当前任务、当前小点、状态、最近更新时间。
 - `logs/codex-run.log` 和 `logs/codex-retry.log` 不要求有大量内容，但必须存在。
+- 前台或后台长任务如果运行超过 5 分钟，`logs/codex-run.log` 必须存在对应心跳；如果没有实时心跳，`TASK_HANDOFF.md` 必须记录补记原因、运行时长和下一步。
 
 ## 后续代码阶段基础验证
 
@@ -142,6 +143,14 @@ node --check frontend/index.html
 - `TASK_HANDOFF.md`
 - `logs/codex-run.log`
 
+如果任务前台运行超过 5 分钟，还必须在恢复控制权后补写：
+
+- 前台运行总时长
+- 最后可见输出
+- 是否被 Ctrl+C 中断
+- 是否产生文件变更
+- 下一步动作
+
 如完成功能迭代，还应按 `项目进展.md` 的历史规范在末尾追加版本日志，不得修改或删除旧版本内容。
 
 如果所有任务完成，还必须生成：
@@ -153,4 +162,3 @@ node --check frontend/index.html
 ```text
 ALL TASKS COMPLETED: 当前时间
 ```
-
