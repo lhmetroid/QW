@@ -54,8 +54,8 @@
 
 ### P0：邮件知识库与 Few-Shot 结构
 
-- [ ] Task 13：设计邮件黄金切片字段结构
-- [ ] Task 14：定义邮件切片类型：`greetings`、`example`、`process`、`constraint`、`quotation`
+- [x] Task 13：设计邮件黄金切片字段结构 (已完成 `docs/mail_gold_snippet_schema.md`，字段结构对齐 latest 邮件黄金候选导出字段，并明确 Task 14/15/16 预留字段不在本任务实现)
+- [x] Task 14：定义邮件切片类型：`greetings`、`example`、`process`、`constraint`、`quotation` (已在 `docs/mail_gold_snippet_schema.md` 正式定义 5 类 `snippet_type` 的用途、边界、判定规则、可包含/不可包含内容、示例字段建议、判定优先级与内容安全口径)
 - [ ] Task 15：定义邮件切片适用场景：老客户唤醒、新业务推广、新联系人介绍
 - [ ] Task 16：定义行业、国家、客户等级、产品线、账期风险等过滤字段
 - [ ] Task 17：实现邮件 Few-Shot 检索准入阈值，默认 `useful_score >= 0.60`
@@ -146,15 +146,15 @@
 
 ## 当前第一个未完成任务
 
-Task 13：设计邮件黄金切片字段结构。
+Task 15：定义邮件切片适用场景：老客户唤醒、新业务推广、新联系人介绍。
 
 ## 任务执行规则
 
-- 每次只执行第一个未完成任务。
+- 每次只执行第一个未完成任务，完成并验证后更新本文件与日志再结束。
 - 每个任务完成后必须更新本文件。
 - 不允许跳过未完成任务。
 - 如果任务需要拆分，请在本文件中新增子任务。
-- 如果遇到 token、rate limit、quota、429、usage limit、temporarily unavailable 或网络临时错误，不要把任务标记失败；本轮如实记录后结束，由 gateway 的 cron 周期（如 every 20m）自动重试，断网不丢任务。
-- 任务通过 Hermes gateway + cron 循环驱动：每个 cron tick 是独立隔离会话，只做第一个未完成任务，做完即结束，下一 tick 继续。
+- 如果遇到 token、rate limit、quota、429、usage limit、temporarily unavailable 或网络临时错误，不要把任务标记失败；本轮如实记录后结束，由 gateway 的 cron 周期（如 every 2m）自动重试，断网不丢任务。
+- 任务通过 Hermes gateway + cron 循环驱动：每个 cron tick 是独立隔离会话，只做第一个未完成任务，做完即结束，下一 tick 继续（间隔 2 分钟，近似连续）。
 - 每个 tick 必须用中文向 `logs/codex-run.log` 追加进展或报错（含时间/任务号/做了什么/成功或失败/下一步）；失败如实写，严禁"假绿"。
 - 如果所有任务完成，必须生成 `FINAL_REPORT.md`，并在 `logs/codex-run.log` 末尾追加 `ALL TASKS COMPLETED: 当前时间`。

@@ -6,9 +6,9 @@
 
 ## 当前任务
 
-Task 13：设计邮件黄金切片字段结构。
+Task 15：定义邮件切片适用场景：老客户唤醒、新业务推广、新联系人介绍。
 
-当前小点：Task 11 已于 2026-05-22 18:40:00 完美完成。已对邮件数据做彻底盘点（有效非空 13 万余封，其中客户发来的能回复邮件 9,608 封，我方销售发出的黄金 Few-Shot 种子不可回复邮件 121,125 封，test 类及空邮件噪音已成功分离）；修复了 export_mail_gold_candidates.py 中 'sales'/'seller' 发送端判定 Bug 并成功导出首批 25 封黄金切片（完美脱敏）。同时，覆盖 20 年的 CRM 57.8 万封全量往来邮件大同步（task-987）已开启后台跑批。下一步切换到 Task 13 黄金切片字段结构设计。
+当前小点：Task 14 已完成，`docs/mail_gold_snippet_schema.md` 已在 Task 13 字段结构基础上正式定义 `snippet_type` 的 5 类固定枚举：`greetings`、`example`、`process`、`constraint`、`quotation`。文档现已补齐每类的用途、边界、判定规则、可包含/不可包含内容、示例字段建议、混合内容优先级与内容安全口径，并明确 Task 15/16 负责的场景映射与过滤字段边界仍未实现。
 
 ## 关键背景
 
@@ -76,10 +76,12 @@ Task 13：设计邮件黄金切片字段结构。
 - 已新增 `backend/export_mail_gold_candidates.py`，输出字段覆盖来源、场景、质量分、脱敏状态，并生成 JSON/CSV/Markdown 文件到 `docs/mail_gold_candidates/`。
 - 已运行 `python3 -m py_compile backend/export_mail_gold_candidates.py`，语法检查通过。
 - 已成功导出首批 25 条邮件黄金候选切片，并验证 `docs/mail_gold_candidates/latest_mail_gold_candidates.json`、`.csv`、`.md` 均存在且非空。
+- 已完成 Task 13：新增 `docs/mail_gold_snippet_schema.md`，字段结构对齐当前导出字段，并把 Task 14/15/16 相关字段显式标为预留。
+- 已完成 Task 14：在 `docs/mail_gold_snippet_schema.md` 正式定义 `greetings`、`example`、`process`、`constraint`、`quotation` 五类 `snippet_type` 的用途、边界、判定规则、可包含/不可包含内容、示例字段建议、判定优先级与内容安全口径。
 
 ## 未完成
 
-- 尚未开始 Task 13：设计邮件黄金切片字段结构。
+- 尚未开始 Task 15：定义邮件切片适用场景。
 - 未实现邮件 API。
 - 未实现邮件安全门。
 - 未实现邮件前端。
@@ -94,6 +96,7 @@ Task 13：设计邮件黄金切片字段结构。
 - `logs/codex-run.log`
 - `logs/codex-retry.log`
 - `backend/export_mail_gold_candidates.py`
+- `docs/mail_gold_snippet_schema.md`
 
 ## 最近中断记录
 
@@ -136,11 +139,11 @@ Task 13：设计邮件黄金切片字段结构。
 
 ## 建议下一步
 
-继续 Task 13：设计邮件黄金切片字段结构。
+继续 Task 15：定义邮件切片适用场景。
 
 ```bash
-python3 -m py_compile backend/export_mail_gold_candidates.py
-git diff --check -- backend/export_mail_gold_candidates.py TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log logs/codex-retry.log VALIDATION.md docs/mail_gold_candidates/latest_mail_gold_candidates.json docs/mail_gold_candidates/latest_mail_gold_candidates.csv docs/mail_gold_candidates/latest_mail_gold_candidates.md
+git diff --check -- docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md
+rg -n '[ \\t]+$' docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log
 ```
 
 Task 11 完成后可复查：
@@ -149,7 +152,7 @@ Task 11 完成后可复查：
 2. `docs/mail_gold_candidates/latest_mail_gold_candidates.csv`
 3. `docs/mail_gold_candidates/latest_mail_gold_candidates.md`
 
-通过标准：候选记录必须包含来源 `source_type/source_ref`、场景 `scenario`、质量分 `useful_score`、脱敏状态 `desensitized_status`，且正文/主题不暴露邮箱、电话、URL、金额和长 ID。
+Task 14 通过标准已满足：`docs/mail_gold_snippet_schema.md` 已正式定义 `snippet_type` 的 5 个固定枚举，并补齐用途、边界、判定规则、可包含/不可包含内容、示例字段建议、混合内容优先级与内容安全口径；本轮定向 `git diff --check -- docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md` 通过，且 `rg -n '[ \\t]+$' ...` 未发现本轮新增行尾空白。Task 15/16 相关场景与过滤字段仍未实现。
 
 ## 重要约束
 
@@ -166,18 +169,20 @@ Task 11 完成后可复查：
 - 数据库迁移、清库、批量更新、批量删除仍需停止并请求人工确认。
 - `backend/requirements.txt` 中已声明的依赖属于项目已知依赖，可自动安装。WSL Python 缺依赖且 PyPI DNS 不稳时，可改走 Windows Python（已验证 sqlalchemy 2.0.44 可跑）或 `uv run --with-requirements backend/requirements.txt python ...`。
 - Codex CLI 启动命令必须直接使用 `codex exec --sandbox workspace-write "任务内容"`；不要用 `python -c`、`node -e`、`eval`、`$()`、反引号或 heredoc 动态拼接命令。
-- 运行方式为 gateway + cron 循环：每个 cron tick 独立做第一个未完成任务，用中文写 `logs/codex-run.log`（成功与失败都写，严禁"假绿"）；失败由 cron 周期自动重试，不丢任务。不再要求单次会话内每 5 分钟心跳。
+- 运行方式为 gateway + cron 循环：每个 cron tick 独立只做第一个未完成任务，用中文写 `logs/codex-run.log`（成功与失败都写，严禁"假绿"）；失败由 cron 周期（间隔 2 分钟）自动重试，不丢任务。不再要求单次会话内每 5 分钟心跳。
 
 ## 恢复提示词建议（gateway + cron 循环版）
 
-前提：gateway 已配为常驻服务（systemd 用户服务，开机/登录自启），`HERMES_CRON_TIMEOUT=0`/`HERMES_AGENT_TIMEOUT=0` 已 drop-in 固化。无人值守长任务在 Hermes 聊天框用以下单行 `/cron add` 建立循环任务（schedule 按需调整）：
+前提：gateway 已配为常驻服务（systemd 用户服务，开机/登录自启），`HERMES_CRON_TIMEOUT=0`/`HERMES_AGENT_TIMEOUT=0` 已 drop-in 固化。无人值守长任务**在 WSL 终端**用 `hermes cron create` 建立（必须带 `--workdir`，聊天框 `/cron add` 不认 `--workdir` 会跑错目录）：
 
-```text
-/cron add "every 20m" "请加载 codex skill。当前目录是 Git 项目，通过 Codex CLI 执行任务，不要控制 Windows 的 Codex 插件或桌面版。读取 TASK_HANDOFF.md、TASKS.md、PROGRESS.md、VALIDATION.md 和 git diff，只继续第一个未完成任务。全程用中文把进展和报错写入 logs/codex-run.log(含时间/任务号/做了什么/成功或失败/下一步)，报错另写 logs/codex-retry.log。完成该任务后按 VALIDATION.md 验证并更新 TASKS.md/PROGRESS.md/TASK_HANDOFF.md。若 TASKS.md 全部完成则生成 FINAL_REPORT.md 并在 logs/codex-run.log 末尾追加 ALL TASKS COMPLETED 加当前时间，然后停止；不要再新建其他 cron 任务。"
+```bash
+hermes cron create "every 2m" '请加载 codex skill。当前目录是 Git 项目，通过 Codex CLI 执行任务，不要控制 Windows 的 Codex 插件或桌面版。读取 TASK_HANDOFF.md、TASKS.md、PROGRESS.md、VALIDATION.md 和 git diff，只继续第一个未完成任务。全程用中文把进展和报错写入 logs/codex-run.log(含时间/任务号/做了什么/成功或失败/下一步)，报错另写 logs/codex-retry.log。完成该任务后按 VALIDATION.md 验证并更新 TASKS.md/PROGRESS.md/TASK_HANDOFF.md。若 TASKS.md 全部完成则生成 FINAL_REPORT.md 并在 logs/codex-run.log 末尾追加 ALL TASKS COMPLETED 加当前时间，然后停止；不要再新建其他 cron 任务。' --workdir /mnt/d/items/QW --deliver local
 ```
 
+建完 `hermes cron list` 确认 `Workdir: /mnt/d/items/QW`、`Schedule: every 2m`，再 `hermes cron run <ID>` 立即开跑。
+
 每个 cron tick 的执行口径：
-1. 只处理 TASKS.md 第一个未完成任务，做完即结束，下一 tick 继续。
+1. 只处理 TASKS.md 第一个未完成任务，做完即结束，下一 tick 继续（间隔 2 分钟，近似连续）。
 2. 调用 Codex CLI 用 `codex exec --sandbox workspace-write "短任务内容"`，不要用 python -c/node -e/eval/$()/反引号/heredoc 拼接。
 3. 全程用中文写 logs/codex-run.log（时间/任务号/做了什么/成功或失败/下一步）；报错另写 logs/codex-retry.log；失败如实写，严禁"假绿"。
 4. 任务完成后按 VALIDATION.md 验证，再更新 TASKS.md/PROGRESS.md/TASK_HANDOFF.md。

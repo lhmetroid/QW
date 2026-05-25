@@ -2,9 +2,9 @@
 
 ## 当前阶段
 
-阶段一（邮件数据采矿与清洗）已交付：CRM 全量同步完成（`mail_raw_unified` 约 80 万、`mail_cleaned` 约 60 万），Task 11 已导出首批 25 条脱敏黄金候选。当前进入 Task 13：设计邮件黄金切片字段结构（P0 知识库与 Few-Shot 结构）。
+阶段一（邮件数据采矿与清洗）已交付：CRM 全量同步完成（`mail_raw_unified` 约 80 万、`mail_cleaned` 约 60 万），Task 11 已导出首批 25 条脱敏黄金候选。Task 14 已完成 `snippet_type` 定义，当前进入 Task 15：定义邮件切片适用场景（P0 知识库与 Few-Shot 结构）。
 
-运行方式：Hermes gateway + cron 循环（每个 cron tick 独立做第一个未完成任务，中文写日志，失败由 cron 周期自动重试）。
+运行方式：Hermes gateway + cron 循环（每个 cron tick 独立只做第一个未完成任务，中文写日志，失败由 cron 周期（间隔 2 分钟）自动重试，近似连续）。
 
 此阶段主要验证：
 

@@ -2,17 +2,19 @@
 
 ## 当前状态
 
-- 当前任务：Task 13：设计邮件黄金切片字段结构 (Task 6-12 已于 2026-05-25 彻底完成，20 年全量 CRM 邮件大同步已成功抓取 46.5 万封新记录，空正文数据通过 repair_cleaned_emails.py 成功重洗恢复 429 封)
-- 当前小点：已彻底盘点数据、修复 'sales'/'seller' 黄金切片筛选 Bug，成功导出 25 封黄金种子切片，全量完成 CRM 邮件抓取与数据清洗修复。
-- 状态：CRM数据全部同步且洗涤修复完成
-- 最近更新时间：2026-05-25 10:15:00 +08:00
+- 当前任务：Task 15：定义邮件切片适用场景：老客户唤醒、新业务推广、新联系人介绍
+- 当前小点：Task 14 已完成，已在 `docs/mail_gold_snippet_schema.md` 正式定义 `greetings`、`example`、`process`、`constraint`、`quotation` 五类 `snippet_type`，补齐用途、边界、判定规则、可包含/不可包含内容、示例字段建议、混合内容优先级与内容安全口径。
+- 状态：Task 14 已完成，Task 15 尚未开始
+- 最近更新时间：2026-05-25 14:49:00 +08:00
 
 ## 最近完成的小点
 
 | 时间 | 任务 | 小点 | 结果 | 验证 |
 |---|---|---|---|---|
+| 2026-05-25 14:49:00 | Task 14 | 定义邮件切片类型 | 已完成 | `docs/mail_gold_snippet_schema.md` 已正式定义 `greetings`/`example`/`process`/`constraint`/`quotation`，并补齐边界、判定规则、可包含/不可包含内容、优先级与内容安全口径 |
 | 2026-05-25 10:11:31 | Task 6-12 | 重新清洗并修复 body_main_text 为空的误伤邮件数据 | 已完成 | 成功修复并重洗 2,838 封空 main_text 记录，完美恢复 429 封 |
 | 2026-05-25 10:13:00 | Task 6-12 | 完成 20 年 CRM 全量 57.8 万封往来邮件的大同步抓取 | 已完成 | task-987 同步成功，新增: 465,576 封, 数据库总数: 800,163 封 |
+| 2026-05-25 14:20:18 | Task 13 | 设计邮件黄金切片字段结构 | 已完成 | 新增 `docs/mail_gold_snippet_schema.md`，对齐 latest 候选导出字段，并明确 Task 14/15/16 字段仅预留 |
 | 2026-05-22 18:40:00 | Task 11 | 修复 'sales' 与 'seller' 数据判断 Bug 并成功导出黄金案例 | 已完成 | 成功过滤脱敏导出 25 条 useful_score >= 0.60 黄金候选切片 |
 | 2026-05-22 18:41:00 | Task 6-12 | 启动 20 年 CRM 全量往来邮件大同步与洗涤任务 | 已完成 | 后台 task-987 已全速完成 57.8 万封邮件增量大拉取 |
 | 2026-05-22 15:56:08 | Task 6-12 | 修复 PG 绑定参数与批次表字段 Bug | 已完成 | 试跑 10 封数据完美插入并洗涤，0 失败 |
@@ -41,7 +43,7 @@
 
 ## 当前未完成
 
-- 尚未开始 Task 13：设计邮件黄金切片字段结构。
+- Task 14 已完成；尚未开始 Task 15：定义邮件切片适用场景。
 - 尚未实现邮件 API。
 - 尚未实现邮件安全门。
 - 尚未实现邮件诊断面板。
@@ -49,21 +51,21 @@
 ## 当前卡点
 
 - 当前无 Task 11 阻断；导出依赖在本次 `uv run --with-requirements` 执行时已可用。
-- 后续需在 Task 13 中把已导出的字段沉淀为正式黄金切片结构，避免导出字段与知识库入库字段长期分叉。
+- Task 13 已把已导出的字段沉淀为正式黄金切片结构，避免导出字段与知识库入库字段长期分叉。
+- Task 14 已把 `snippet_type` 正式收敛为 5 个固定枚举，并明确混合内容时按主用途拆片或单类型判定，避免把价格、流程、问候混入同一 Few-Shot。
 - 运行方式已切换为 gateway + cron 循环：每个 cron tick 独立做一个任务并用中文写 `logs/codex-run.log`，失败由 cron 周期自动重试，不再依赖前台会话保姆式心跳。
 
 需要下一步确认或执行：
 
-- 继续梳理 Task 13 所需黄金切片字段结构，复用本次导出已经落地的 `source_type/source_ref/scenario/useful_score/desensitized_status` 字段。
+- 继续 Task 15：定义三大邮件场景 `re_activation`、`new_business_promotion`、`new_contact_intro` 的适用边界与映射口径。
 - 如需复查导出结果，可优先查看 `docs/mail_gold_candidates/latest_mail_gold_candidates.md` 的脱敏摘要表。
 
 ## 下一步
 
-继续 Task 13：设计邮件黄金切片字段结构。
+继续 Task 15：定义邮件切片适用场景。
 
 ```bash
-python3 -m py_compile backend/export_mail_gold_candidates.py
-git diff --check -- backend/export_mail_gold_candidates.py TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log logs/codex-retry.log VALIDATION.md docs/mail_gold_candidates/latest_mail_gold_candidates.json docs/mail_gold_candidates/latest_mail_gold_candidates.csv docs/mail_gold_candidates/latest_mail_gold_candidates.md
+git diff --check -- docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log
 ```
 
 Task 11 已产出：
@@ -77,16 +79,16 @@ Task 11 已产出：
 本轮已执行：
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run --with-requirements backend/requirements.txt python backend/export_mail_gold_candidates.py --limit 25 --min-score 0.60
-python3 -m py_compile backend/export_mail_gold_candidates.py
-git diff --check -- backend/export_mail_gold_candidates.py TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log logs/codex-retry.log VALIDATION.md docs/mail_gold_candidates/latest_mail_gold_candidates.json docs/mail_gold_candidates/latest_mail_gold_candidates.csv docs/mail_gold_candidates/latest_mail_gold_candidates.md
+git diff --check
+git diff --check -- TASKS.md PROGRESS.md TASK_HANDOFF.md
+rg -n '[ \t]+$' docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log
 ```
 
-通过。导出命令成功输出 25 条脱敏候选，latest JSON/CSV/Markdown 均存在且非空。
+结果：`git diff --check -- docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md` 通过；`rg -n '[ \\t]+$' docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 未发现本轮新增行尾空白。全仓库 `git diff --check` 仍可能受既有无关改动影响，因此以本轮定向验证为准。Task 14 文档定义已完成，Task 15/16/17/18 仍未实现。
 
 ## 运行监控要求（gateway + cron 循环）
 
-- 任务由 Hermes gateway（每 60 秒 tick）+ cron 循环驱动；每个 cron tick 是独立隔离会话，做完一个任务即结束，下一 tick 继续。
+- 任务由 Hermes gateway（每 60 秒 tick）+ cron 循环驱动；每个 cron tick 是独立隔离会话，只做第一个未完成任务，做完即结束，下一 tick 继续（间隔 2 分钟，近似连续）。
 - 每个 tick 必须用中文向 `logs/codex-run.log` 追加记录：当前时间、当前任务（任务号）、本轮做了什么、成功或失败（失败写原因）、下一步动作。
 - 失败（网络/模型临时断开等）如实写入 `logs/codex-run.log` 和 `logs/codex-retry.log`，由 cron 周期自动重试，不丢任务，严禁"假绿"。
 - 真实进度以 `TASKS.md` 勾选 + `logs/codex-run.log` 实际内容 + 产出文件为准，不以 cron `last_status` 为准。
