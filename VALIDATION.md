@@ -2,14 +2,16 @@
 
 ## 当前阶段
 
-当前处于邮件智能回复方案拆分与状态文件初始化阶段。
+阶段一（邮件数据采矿与清洗）已交付：CRM 全量同步完成（`mail_raw_unified` 约 80 万、`mail_cleaned` 约 60 万），Task 11 已导出首批 25 条脱敏黄金候选。当前进入 Task 13：设计邮件黄金切片字段结构（P0 知识库与 Few-Shot 结构）。
+
+运行方式：Hermes gateway + cron 循环（每个 cron tick 独立做第一个未完成任务，中文写日志，失败由 cron 周期自动重试）。
 
 此阶段主要验证：
 
-- Markdown 文件是否创建成功。
-- 文件内容是否清晰、可接力。
+- 黄金切片字段结构是否清晰、可入库、与已导出字段（`source_type/source_ref/scenario/useful_score/desensitized_status`）对齐。
 - 邮件系统是否明确与企微系统隔离。
 - 当前任务是否明确排除四期规划。
+- 每个 cron tick 是否用中文如实写入 `logs/codex-run.log`（成功与失败都写，不"假绿"）。
 
 ## 当前必须执行
 
@@ -56,22 +58,22 @@ git status --short
 
 ## 后续代码阶段基础验证
 
-如后续修改 Python 后端，至少执行：
+如后续修改 Python 后端，至少执行（WSL 下用 `python3`；若 WSL 缺依赖，用 `uv run --with-requirements backend/requirements.txt python ...` 或改在 Windows Python 执行）：
 
 ```bash
-python -m py_compile backend/main.py backend/intent_engine.py backend/config.py
+python3 -m py_compile backend/main.py backend/intent_engine.py backend/config.py
 ```
 
 如新增邮件后端模块，按实际文件补充：
 
 ```bash
-python -m py_compile backend/mail_models.py backend/mail_service.py backend/mail_safety.py backend/mail_sequence.py backend/mail_routes.py
+python3 -m py_compile backend/mail_models.py backend/mail_service.py backend/mail_safety.py backend/mail_sequence.py backend/mail_routes.py
 ```
 
 如项目已有测试环境且依赖满足，执行：
 
 ```bash
-python -m pytest
+python3 -m pytest
 ```
 
 ## 后续前端阶段验证

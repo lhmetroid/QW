@@ -50,7 +50,7 @@
 
 - 当前无 Task 11 阻断；导出依赖在本次 `uv run --with-requirements` 执行时已可用。
 - 后续需在 Task 13 中把已导出的字段沉淀为正式黄金切片结构，避免导出字段与知识库入库字段长期分叉。
-- 监控规则偏差仍需持续遵守：前台或后台长任务每 5 分钟必须追加 `logs/codex-run.log` 心跳；前台无法实时写入时，恢复控制权后必须补记运行时长、最后输出和下一步。
+- 运行方式已切换为 gateway + cron 循环：每个 cron tick 独立做一个任务并用中文写 `logs/codex-run.log`，失败由 cron 周期自动重试，不再依赖前台会话保姆式心跳。
 
 需要下一步确认或执行：
 
@@ -84,9 +84,10 @@ git diff --check -- backend/export_mail_gold_candidates.py TASKS.md PROGRESS.md 
 
 通过。导出命令成功输出 25 条脱敏候选，latest JSON/CSV/Markdown 均存在且非空。
 
-## 运行监控要求
+## 运行监控要求（gateway + cron 循环）
 
-- 前台或后台长任务每 5 分钟必须追加 `logs/codex-run.log`。
-- 日志至少包含当前时间、当前任务、当前小点、运行形态、已运行时长、最近输出摘要、是否有新输出、下一步动作。
-- 如果前台运行期间无法实时写日志，恢复控制权后必须补写，例如：`elapsed=6m, foreground=true, no_new_output=true, last_visible_output=deliberating`。
-- 如果超过 5 分钟没有心跳日志，应在 `TASK_HANDOFF.md` 记录“前台心跳缺失”。
+- 任务由 Hermes gateway（每 60 秒 tick）+ cron 循环驱动；每个 cron tick 是独立隔离会话，做完一个任务即结束，下一 tick 继续。
+- 每个 tick 必须用中文向 `logs/codex-run.log` 追加记录：当前时间、当前任务（任务号）、本轮做了什么、成功或失败（失败写原因）、下一步动作。
+- 失败（网络/模型临时断开等）如实写入 `logs/codex-run.log` 和 `logs/codex-retry.log`，由 cron 周期自动重试，不丢任务，严禁"假绿"。
+- 真实进度以 `TASKS.md` 勾选 + `logs/codex-run.log` 实际内容 + 产出文件为准，不以 cron `last_status` 为准。
+- 查看：`hermes cron list` / `hermes cron status` / `~/.hermes/cron/output/<job_id>/`。

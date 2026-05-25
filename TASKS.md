@@ -154,6 +154,7 @@ Task 13：设计邮件黄金切片字段结构。
 - 每个任务完成后必须更新本文件。
 - 不允许跳过未完成任务。
 - 如果任务需要拆分，请在本文件中新增子任务。
-- 如果遇到 token、rate limit、quota、429、usage limit、temporarily unavailable 或网络临时错误，不要把任务标记失败；必须进入 `AGENTS.md` 定义的重试流程。
-- 前台或后台长任务运行期间，每 5 分钟必须追加 `logs/codex-run.log`；如果前台运行导致无法实时写入，恢复控制权后必须补写运行时长、最后输出和下一步。
+- 如果遇到 token、rate limit、quota、429、usage limit、temporarily unavailable 或网络临时错误，不要把任务标记失败；本轮如实记录后结束，由 gateway 的 cron 周期（如 every 20m）自动重试，断网不丢任务。
+- 任务通过 Hermes gateway + cron 循环驱动：每个 cron tick 是独立隔离会话，只做第一个未完成任务，做完即结束，下一 tick 继续。
+- 每个 tick 必须用中文向 `logs/codex-run.log` 追加进展或报错（含时间/任务号/做了什么/成功或失败/下一步）；失败如实写，严禁"假绿"。
 - 如果所有任务完成，必须生成 `FINAL_REPORT.md`，并在 `logs/codex-run.log` 末尾追加 `ALL TASKS COMPLETED: 当前时间`。

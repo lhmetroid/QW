@@ -159,53 +159,30 @@ Task 11 完成后可复查：
 - 不要默认开启真实邮件发送。
 - 不要把 Mock 数据描述为真实生产数据。
 - 不要暴露真实客户敏感信息、API Key、数据库密码或内部底价。
-- `codex exec --full-auto` 是默认自动执行模式；项目内普通读写、测试、lint、build、代码生成脚本不应逐次请求授权。
-- `BLOCKED: User denied. Do NOT retry.` 对普通安全任务而言属于环境未放行 `--full-auto`，不得自动重试，不得用危险参数绕过；用户放行 `--full-auto` 后应继续同一任务。
+- `codex exec --sandbox workspace-write` 是默认自动执行模式（旧 `--full-auto` 已废弃，等价）；项目内普通读写、测试、lint、build、代码生成脚本不应逐次请求授权。
+- `BLOCKED: User denied. Do NOT retry.` 对普通安全任务而言属于环境未放行自动执行，不得自动重试，不得用危险参数绕过；用户放行后应继续同一任务。
 - 如果 Codex CLI 委派被拒绝，但任务可由当前 Agent 安全完成，可以记录阻断原因后继续同一个任务，仍需运行验证并更新状态文件。
 - Git 提交、推送远程仓库、创建 Git tag、发布 release、普通数据库写入不需要额外人工确认。
 - 数据库迁移、清库、批量更新、批量删除仍需停止并请求人工确认。
-- `backend/requirements.txt` 中已声明的依赖属于项目已知依赖，可自动安装；`sqlalchemy` 已在该文件中声明，不属于未知来源依赖。
-- 如果 WSL Python 缺少 `sqlalchemy`，应优先自动执行 `python3 -m pip install -r backend/requirements.txt` 或使用项目虚拟环境安装，不应要求用户手工逐条发继续指令。
-- Codex CLI 启动命令必须直接使用 `codex exec --full-auto "任务内容"`；不要用 `python -c`、`node -e`、`eval`、`$()`、反引号或 heredoc 动态拼接命令。
-- 如果 Hermes 生成了 `codex exec --full-auto "$(python -c ...)"` 并触发 `Dangerous Command`，这是命令构造错误，不是 `--full-auto` 策略错误。
-- 前台或后台长任务都必须每 5 分钟追加 `logs/codex-run.log`；前台无法实时写时，恢复控制权后必须补写运行总时长、最后可见输出、是否中断、是否有产出变化和下一步。
-- 如果超过 5 分钟没有心跳日志，必须在本文件的“最近中断记录”中补记“前台心跳缺失”。
+- `backend/requirements.txt` 中已声明的依赖属于项目已知依赖，可自动安装。WSL Python 缺依赖且 PyPI DNS 不稳时，可改走 Windows Python（已验证 sqlalchemy 2.0.44 可跑）或 `uv run --with-requirements backend/requirements.txt python ...`。
+- Codex CLI 启动命令必须直接使用 `codex exec --sandbox workspace-write "任务内容"`；不要用 `python -c`、`node -e`、`eval`、`$()`、反引号或 heredoc 动态拼接命令。
+- 运行方式为 gateway + cron 循环：每个 cron tick 独立做第一个未完成任务，用中文写 `logs/codex-run.log`（成功与失败都写，严禁"假绿"）；失败由 cron 周期自动重试，不丢任务。不再要求单次会话内每 5 分钟心跳。
 
-## 恢复提示词建议
+## 恢复提示词建议（gateway + cron 循环版）
+
+前提：gateway 已配为常驻服务（systemd 用户服务，开机/登录自启），`HERMES_CRON_TIMEOUT=0`/`HERMES_AGENT_TIMEOUT=0` 已 drop-in 固化。无人值守长任务在 Hermes 聊天框用以下单行 `/cron add` 建立循环任务（schedule 按需调整）：
 
 ```text
-请加载 codex skill。当前目录是 Git 项目。
-
-最高优先级：任务必须可恢复、可重试、不中断。不要因为 Codex CLI token 不足、rate limit、quota、429、usage limit、temporarily unavailable、网络临时错误或进程意外退出而放弃任务。
-
-请先读取：
-- AGENTS.md
-- TASKS.md
-- PROGRESS.md
-- TASK_HANDOFF.md
-- VALIDATION.md
-- git status
-- git diff
-- logs/codex-run.log
-- logs/codex-retry.log
-
-如果上述文件或 logs 目录不存在，请先创建并初始化。
-
-你作为任务主管，通过 Codex CLI 执行任务，不要控制 Windows 的 Codex 插件、桌面版、VS Code 插件、Cursor、Antigravity 或任何图形界面。
-
-请严格按 AGENTS.md 的规则执行，重点遵守：
-1. 只处理 TASKS.md 中第一个未完成任务。
-2. 调用 Codex CLI 时默认使用 --full-auto。
-3. Codex CLI 长任务必须后台运行并监控。
-4. 每 2 分钟检查一次 Codex CLI 状态。
-5. 每 5 分钟更新 PROGRESS.md，并追加 logs/codex-run.log。
-6. 每完成一个小点，必须记录完成时间。
-7. 当前小任务完成后，运行 VALIDATION.md 中的验证命令。
-8. 验证通过后，更新 TASKS.md、PROGRESS.md、TASK_HANDOFF.md。
-9. 如果遇到 token 不足、rate limit、quota、429、usage limit、temporarily unavailable 或网络临时错误，立即写入 TASK_HANDOFF.md 和 logs/codex-retry.log，并每 30 分钟重试一次；恢复后继续当前未完成任务；连续失败 6 次才停止。
-10. 如果 Codex CLI 意外退出，读取日志、git status、git diff，更新 TASK_HANDOFF.md，并尝试恢复当前小任务。
-11. 如果遇到登录失败、需要人工授权、危险命令、删除大量文件、修改生产环境配置、访问密钥、数据库迁移/清库/批量更新/批量删除，停止并写入 TASK_HANDOFF.md，不要自动继续。
-12. 如果所有任务完成，生成 FINAL_REPORT.md，并在 logs/codex-run.log 末尾追加 ALL TASKS COMPLETED: 当前时间。
-
-现在开始执行第一个未完成任务。目标是保证任务持续推进和可恢复，最终完成全部计划代码修改。
+/cron add "every 20m" "请加载 codex skill。当前目录是 Git 项目，通过 Codex CLI 执行任务，不要控制 Windows 的 Codex 插件或桌面版。读取 TASK_HANDOFF.md、TASKS.md、PROGRESS.md、VALIDATION.md 和 git diff，只继续第一个未完成任务。全程用中文把进展和报错写入 logs/codex-run.log(含时间/任务号/做了什么/成功或失败/下一步)，报错另写 logs/codex-retry.log。完成该任务后按 VALIDATION.md 验证并更新 TASKS.md/PROGRESS.md/TASK_HANDOFF.md。若 TASKS.md 全部完成则生成 FINAL_REPORT.md 并在 logs/codex-run.log 末尾追加 ALL TASKS COMPLETED 加当前时间，然后停止；不要再新建其他 cron 任务。"
 ```
+
+每个 cron tick 的执行口径：
+1. 只处理 TASKS.md 第一个未完成任务，做完即结束，下一 tick 继续。
+2. 调用 Codex CLI 用 `codex exec --sandbox workspace-write "短任务内容"`，不要用 python -c/node -e/eval/$()/反引号/heredoc 拼接。
+3. 全程用中文写 logs/codex-run.log（时间/任务号/做了什么/成功或失败/下一步）；报错另写 logs/codex-retry.log；失败如实写，严禁"假绿"。
+4. 任务完成后按 VALIDATION.md 验证，再更新 TASKS.md/PROGRESS.md/TASK_HANDOFF.md。
+5. 遇到 token/rate limit/429/网络临时错误：本轮记录后结束，由 cron 周期自动重试，不放弃任务。
+6. 遇到登录失败、需人工授权、危险命令、删除大量文件、生产配置、密钥、数据库迁移/清库/批量更新/批量删除：停止并写入 TASK_HANDOFF.md，不自动继续。
+7. TASKS.md 全部完成则生成 FINAL_REPORT.md，并在 logs/codex-run.log 末尾追加 ALL TASKS COMPLETED 加当前时间，然后停止；不要再新建其他 cron 任务。
+
+查看/停止：`hermes cron list`、`hermes cron status`、`~/.hermes/cron/output/<job_id>/`；完成确认后 `hermes cron remove <job_id>`。
