@@ -97,7 +97,7 @@
 聊天框 `/cron add` 不认 `--workdir`，会让任务跑错目录（默认 `~/.hermes/hermes-agent`）。所以建任务一律在 WSL 终端：
 
 ```bash
-hermes cron create "every 2m" '请加载 codex skill。当前目录是 Git 项目，通过 Codex CLI 执行任务，不要控制 Windows 的 Codex 插件或桌面版。读取 TASK_HANDOFF.md、TASKS.md、PROGRESS.md、VALIDATION.md 和 git diff，只继续第一个未完成任务。全程用中文把进展和报错写入 logs/codex-run.log(含时间/任务号/做了什么/成功或失败/下一步)，报错另写 logs/codex-retry.log。完成该任务后按 VALIDATION.md 验证并更新 TASKS.md/PROGRESS.md/TASK_HANDOFF.md。若 TASKS.md 全部完成则生成 FINAL_REPORT.md 并在 logs/codex-run.log 末尾追加 ALL TASKS COMPLETED 加当前时间，然后停止；不要再新建其他 cron 任务。' --workdir /mnt/d/items/QW --deliver local
+hermes cron create "every 2m" '请加载 codex skill。当前目录是 Git 项目，通过 Codex CLI 执行任务，不要控制 Windows 的 Codex 插件或桌面版。读取 TASK_HANDOFF.md、TASKS.md、PROGRESS.md、VALIDATION.md 和 git diff，只继续第一个未完成任务。硬性顺序：先在 logs/codex-run.log 用中文写一条 START(时间/任务号/将做什么)，再开始干；完成后先按 VALIDATION.md 验证，再更新 TASKS.md/PROGRESS.md/TASK_HANDOFF.md，最后在 logs/codex-run.log 用中文写一条 DONE(成功或失败/验证结果/下一步)。START 和 DONE 两条日志不可省略，报错另写 logs/codex-retry.log。若 TASKS.md 全部完成则生成 FINAL_REPORT.md 并在 logs/codex-run.log 末尾追加 ALL TASKS COMPLETED 加当前时间，然后停止；不要再新建其他 cron 任务。' --workdir /mnt/d/items/QW --deliver local
 ```
 
 建完用 `hermes cron list` 确认 `Workdir: /mnt/d/items/QW`、`Schedule: every 2m`，再 `hermes cron run <ID>` 立即开跑。间隔 2 分钟≈近似连续：一轮结束约 2 分钟后接下一轮，失败也约 2 分钟后自动重试。
