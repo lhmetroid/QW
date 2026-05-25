@@ -183,7 +183,11 @@ def _frontend_path_requires_auth(path: str) -> bool:
         return False
     if path in {"/static/login.html"}:
         return False
-    return path == "/static/index.html" or path.startswith("/static/")
+    if path == "/static/index.html":
+        return True
+    if path.startswith("/static/"):
+        return path.lower().endswith((".html", ".htm"))
+    return False
 
 
 @app.middleware("http")
