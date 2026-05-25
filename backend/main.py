@@ -101,6 +101,8 @@ POSITIVE_FEEDBACK_STATUSES = {"useful", "adopted", "won", "advanced"}
 NEGATIVE_FEEDBACK_STATUSES = {"needs_fix", "rejected"}
 TRAINING_SAMPLE_TYPES = {"embedding_corpus", "reply_fragment_sft", "thread_reply_sft", "retrieval_pair"}
 LEGACY_SALES_KB_HOSTS = {"192.168.31.124"}
+MAIL_FEWSHOT_DEFAULT_MIN_USEFUL_SCORE = Decimal("0.60")
+MAIL_FEWSHOT_READY_STATUSES = {"ready", "active"}
 
 def _initial_cors_allow_origins() -> list[str]:
     origins = set()
@@ -535,6 +537,7 @@ def auto_patch_db():
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kcand_replyable ON knowledge_candidate (status, usable_for_reply, useful_score DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_effect_score ON knowledge_chunk (status, effect_score DESC, useful_score DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kcand_source ON knowledge_candidate (source_type, source_ref);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_efa_fewshot_admission ON email_fragment_asset (status, publishable, allowed_for_generation, usable_for_reply, useful_score DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_khl_status_created ON knowledge_hit_logs (status, created_at DESC);"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS wecom_raw_import ("
@@ -788,6 +791,14 @@ class KnowledgeRetrieveRequest(BaseModel):
     top_k: int = 5
     request_id: str | None = None
     session_id: str | None = None
+
+class MailFewShotRetrieveRequest(BaseModel):
+    query_text: str | None = None
+    scenario_label: str | None = None
+    function_fragment: str | None = None
+    source_type: str | None = None
+    min_useful_score: float | None = None
+    top_k: int = 5
 
 class KnowledgeChunkCreate(BaseModel):
     title: str
@@ -2558,6 +2569,58 @@ def _email_fragment_asset_to_dict(item: EmailFragmentAsset) -> dict:
         "created_at": item.created_at,
         "updated_at": item.updated_at,
     }
+
+def _mail_fewshot_min_score(value: float | None = None) -> Decimal:
+    raw_value = value
+    if raw_value is None:
+        raw_value = getattr(settings, "MAIL_FEWSHOT_MIN_USEFUL_SCORE", None)
+    try:
+        score = Decimal(str(raw_value))
+    except (InvalidOperation, TypeError, ValueError):
+        score = MAIL_FEWSHOT_DEFAULT_MIN_USEFUL_SCORE
+    if score < Decimal("0"):
+        return Decimal("0")
+    if score > Decimal("1"):
+        return Decimal("1")
+    return score.quantize(Decimal("0.0001"))
+
+def _mail_fewshot_admission_status(item: EmailFragmentAsset, min_score: Decimal) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    useful_score = Decimal(str(item.useful_score)) if item.useful_score is not None else None
+    if (item.status or "") not in MAIL_FEWSHOT_READY_STATUSES:
+        reasons.append(f"status={item.status or 'empty'}")
+    if not item.publishable:
+        reasons.append("publishable=false")
+    if not item.allowed_for_generation:
+        reasons.append("allowed_for_generation=false")
+    if not item.usable_for_reply:
+        reasons.append("usable_for_reply=false")
+    if useful_score is None or useful_score < min_score:
+        reasons.append(f"useful_score<{min_score}")
+
+    snapshot = item.source_snapshot or {}
+    if isinstance(snapshot, dict):
+        if snapshot.get("retrieval_enabled") is False:
+            reasons.append("retrieval_enabled=false")
+        if snapshot.get("is_safe_for_fewshot") is False:
+            reasons.append("is_safe_for_fewshot=false")
+        review_status = snapshot.get("review_status")
+        if review_status is not None and review_status != "approved":
+            reasons.append(f"review_status={review_status}")
+        desensitized_status = snapshot.get("desensitized_status")
+        if desensitized_status is not None and desensitized_status != "desensitized":
+            reasons.append(f"desensitized_status={desensitized_status}")
+    return not reasons, reasons
+
+def _mail_fewshot_to_dict(item: EmailFragmentAsset, min_score: Decimal) -> dict:
+    payload = _email_fragment_asset_to_dict(item)
+    admitted, reasons = _mail_fewshot_admission_status(item, min_score)
+    payload["fewshot_admission"] = {
+        "admitted": admitted,
+        "min_useful_score": float(min_score),
+        "rejected_reasons": reasons,
+    }
+    return payload
 
 def _email_effect_feedback_to_dict(item: EmailEffectFeedback) -> dict:
     return {
@@ -9309,6 +9372,67 @@ async def list_email_fragments(
         query = query.filter(EmailFragmentAsset.session_id == session_id)
     items = query.order_by(EmailFragmentAsset.created_at.desc()).limit(max(1, min(limit, 500))).all()
     return {"status": "success", "items": [_email_fragment_asset_to_dict(item) for item in items]}
+
+@app.post("/api/v1/mail/fewshot/retrieve")
+async def retrieve_mail_fewshots(payload: MailFewShotRetrieveRequest, db: Session = Depends(get_db)):
+    min_score = _mail_fewshot_min_score(payload.min_useful_score)
+    top_k = max(1, min(int(payload.top_k or 5), 20))
+    query = db.query(EmailFragmentAsset).filter(
+        EmailFragmentAsset.status.in_(sorted(MAIL_FEWSHOT_READY_STATUSES)),
+        EmailFragmentAsset.publishable.is_(True),
+        EmailFragmentAsset.allowed_for_generation.is_(True),
+        EmailFragmentAsset.usable_for_reply.is_(True),
+        EmailFragmentAsset.useful_score >= min_score,
+    )
+    if payload.source_type:
+        query = query.filter(EmailFragmentAsset.source_type == payload.source_type)
+    if payload.function_fragment:
+        query = query.filter(EmailFragmentAsset.function_fragment == payload.function_fragment)
+    if payload.scenario_label:
+        query = query.filter(EmailFragmentAsset.scenario_label == payload.scenario_label)
+    query_text = str(payload.query_text or "").strip()
+    if query_text:
+        terms = [term for term in re.split(r"\s+", query_text) if len(term) >= 2][:5]
+        if terms:
+            keyword_filters = []
+            for term in terms:
+                like_term = f"%{term}%"
+                keyword_filters.append(EmailFragmentAsset.title.ilike(like_term))
+                keyword_filters.append(EmailFragmentAsset.content.ilike(like_term))
+            query = query.filter(or_(*keyword_filters))
+
+    candidates = query.order_by(
+        EmailFragmentAsset.useful_score.desc(),
+        EmailFragmentAsset.effect_score.desc(),
+        EmailFragmentAsset.updated_at.desc(),
+    ).limit(top_k * 5).all()
+    admitted_items = [
+        _mail_fewshot_to_dict(item, min_score)
+        for item in candidates
+        if _mail_fewshot_admission_status(item, min_score)[0]
+    ][:top_k]
+    return {
+        "status": "success",
+        "admission": {
+            "min_useful_score": float(min_score),
+            "default_min_useful_score": float(_mail_fewshot_min_score()),
+            "required": [
+                "status in ready/active",
+                "publishable=true",
+                "allowed_for_generation=true",
+                "usable_for_reply=true",
+                "useful_score >= min_useful_score",
+            ],
+            "metadata_gates": [
+                "source_snapshot.retrieval_enabled is not false",
+                "source_snapshot.is_safe_for_fewshot is not false",
+                "source_snapshot.review_status is absent or approved",
+                "source_snapshot.desensitized_status is absent or desensitized",
+            ],
+        },
+        "count": len(admitted_items),
+        "items": admitted_items,
+    }
 
 @app.get("/api/email_effect_feedback")
 async def list_email_effect_feedback(

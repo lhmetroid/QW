@@ -111,6 +111,9 @@ class Settings(BaseSettings):
     SALES_KB_API_BASE_URL: str = "https://knowledgebase.speedasia.net"
     SALES_KB_API_TIMEOUT_SECONDS: int = 8
 
+    # Mail Few-Shot retrieval admission.
+    MAIL_FEWSHOT_MIN_USEFUL_SCORE: float = 0.60
+
     # Offline training pipeline runner.
     TRAINING_RUNNER_COMMAND: str = ""
     TRAINING_RUNNER_WORKDIR: str = ""

@@ -2,15 +2,17 @@
 
 ## 当前状态
 
-- 当前任务：Task 15：定义邮件切片适用场景：老客户唤醒、新业务推广、新联系人介绍
-- 当前小点：Task 14 已完成，已在 `docs/mail_gold_snippet_schema.md` 正式定义 `greetings`、`example`、`process`、`constraint`、`quotation` 五类 `snippet_type`，补齐用途、边界、判定规则、可包含/不可包含内容、示例字段建议、混合内容优先级与内容安全口径。
-- 状态：Task 14 已完成，Task 15 尚未开始
-- 最近更新时间：2026-05-25 14:49:00 +08:00
+- 当前任务：Task 18：实现人工纠偏后的高质量切片反哺逻辑，暂不自动污染黄金库
+- 当前小点：Task 17 已完成，邮件 Few-Shot 检索准入默认阈值已落地为 `useful_score >= 0.60`，并提供只读检索接口 `/api/v1/mail/fewshot/retrieve`。
+- 状态：Task 17 已完成，Task 18 尚未开始
+- 最近更新时间：2026-05-25 16:16:51 +08:00
 
 ## 最近完成的小点
 
 | 时间 | 任务 | 小点 | 结果 | 验证 |
 |---|---|---|---|---|
+| 2026-05-25 16:16:51 +08:00 | Task 17 | 实现邮件 Few-Shot 检索准入阈值 | 已完成 | `python3 -m py_compile backend/main.py backend/database.py backend/config.py` 通过；目标文件定向 `git diff --check` 通过；全仓 `git diff --check` 仍受既有无关文件历史行尾空白影响 |
+| 2026-05-25 15:29:06 +08:00 | Task 15 | 定义邮件切片适用场景 | 已完成 | `docs/mail_gold_snippet_schema.md` 已正式定义 `re_activation`/`new_business_promotion`/`new_contact_intro`，并补齐场景目标、触发条件、禁用边界、推荐 `snippet_type` 组合、Sequence Step 1-4 映射及字段关系；`git diff --check -- docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log` 通过 |
 | 2026-05-25 14:49:00 | Task 14 | 定义邮件切片类型 | 已完成 | `docs/mail_gold_snippet_schema.md` 已正式定义 `greetings`/`example`/`process`/`constraint`/`quotation`，并补齐边界、判定规则、可包含/不可包含内容、优先级与内容安全口径 |
 | 2026-05-25 10:11:31 | Task 6-12 | 重新清洗并修复 body_main_text 为空的误伤邮件数据 | 已完成 | 成功修复并重洗 2,838 封空 main_text 记录，完美恢复 429 封 |
 | 2026-05-25 10:13:00 | Task 6-12 | 完成 20 年 CRM 全量 57.8 万封往来邮件的大同步抓取 | 已完成 | task-987 同步成功，新增: 465,576 封, 数据库总数: 800,163 封 |
@@ -43,7 +45,7 @@
 
 ## 当前未完成
 
-- Task 14 已完成；尚未开始 Task 15：定义邮件切片适用场景。
+- Task 17 已完成；尚未开始 Task 18：实现人工纠偏后的高质量切片反哺逻辑，暂不自动污染黄金库。
 - 尚未实现邮件 API。
 - 尚未实现邮件安全门。
 - 尚未实现邮件诊断面板。
@@ -53,19 +55,20 @@
 - 当前无 Task 11 阻断；导出依赖在本次 `uv run --with-requirements` 执行时已可用。
 - Task 13 已把已导出的字段沉淀为正式黄金切片结构，避免导出字段与知识库入库字段长期分叉。
 - Task 14 已把 `snippet_type` 正式收敛为 5 个固定枚举，并明确混合内容时按主用途拆片或单类型判定，避免把价格、流程、问候混入同一 Few-Shot。
+- Task 16 已把 `industry`、`country`、`customer_tier`、`product_line`、`payment_risk` 正式收敛为可检索的结构化过滤字段，并明确来源优先级、归一化、缺失兜底与检索边界，避免把场景、类型或安全门职责混入过滤口径。
 - 运行方式已切换为 gateway + cron 循环：每个 cron tick 独立做一个任务并用中文写 `logs/codex-run.log`，失败由 cron 周期自动重试，不再依赖前台会话保姆式心跳。
 
 需要下一步确认或执行：
 
-- 继续 Task 15：定义三大邮件场景 `re_activation`、`new_business_promotion`、`new_contact_intro` 的适用边界与映射口径。
+- 继续 Task 18：实现人工纠偏后的高质量切片反哺逻辑，暂不自动污染黄金库。
 - 如需复查导出结果，可优先查看 `docs/mail_gold_candidates/latest_mail_gold_candidates.md` 的脱敏摘要表。
 
 ## 下一步
 
-继续 Task 15：定义邮件切片适用场景。
+继续 Task 18：实现人工纠偏后的高质量切片反哺逻辑，暂不自动污染黄金库。
 
 ```bash
-git diff --check -- docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log
+git diff --check -- backend/main.py backend/database.py backend/config.py docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log
 ```
 
 Task 11 已产出：
@@ -84,7 +87,7 @@ git diff --check -- TASKS.md PROGRESS.md TASK_HANDOFF.md
 rg -n '[ \t]+$' docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log
 ```
 
-结果：`git diff --check -- docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md` 通过；`rg -n '[ \\t]+$' docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 未发现本轮新增行尾空白。全仓库 `git diff --check` 仍可能受既有无关改动影响，因此以本轮定向验证为准。Task 14 文档定义已完成，Task 15/16/17/18 仍未实现。
+结果：`python3 -m py_compile backend/main.py backend/database.py backend/config.py` 通过；本轮目标文件定向 `git diff --check` 通过；全仓库 `git diff --check` 仍受既有无关文件的历史行尾空白影响，因此以本轮定向验证为准。Task 17 已完成，Task 18 仍未实现。
 
 ## 运行监控要求（gateway + cron 循环）
 
@@ -93,3 +96,4 @@ rg -n '[ \t]+$' docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDO
 - 失败（网络/模型临时断开等）如实写入 `logs/codex-run.log` 和 `logs/codex-retry.log`，由 cron 周期自动重试，不丢任务，严禁"假绿"。
 - 真实进度以 `TASKS.md` 勾选 + `logs/codex-run.log` 实际内容 + 产出文件为准，不以 cron `last_status` 为准。
 - 查看：`hermes cron list` / `hermes cron status` / `~/.hermes/cron/output/<job_id>/`。
+

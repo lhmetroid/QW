@@ -523,6 +523,7 @@ class EmailFragmentAsset(Base):
         Index("idx_efa_session", "session_id"),
         Index("idx_efa_source_ref", "source_type", "source_ref"),
         Index("idx_efa_status_quality", "status", "usable_for_reply", "useful_score"),
+        Index("idx_efa_fewshot_admission", "status", "publishable", "allowed_for_generation", "usable_for_reply", "useful_score"),
     )
 
 class EmailEffectFeedback(Base):

@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段一（邮件数据采矿与清洗）已交付：CRM 全量同步完成（`mail_raw_unified` 约 80 万、`mail_cleaned` 约 60 万），Task 11 已导出首批 25 条脱敏黄金候选。Task 14 已完成 `snippet_type` 定义，当前进入 Task 15：定义邮件切片适用场景（P0 知识库与 Few-Shot 结构）。
+阶段一（邮件数据采矿与清洗）已交付：CRM 全量同步完成（`mail_raw_unified` 约 80 万、`mail_cleaned` 约 60 万），Task 11 已导出首批 25 条脱敏黄金候选。Task 17 已完成邮件 Few-Shot 检索准入阈值，默认 `useful_score >= 0.60`；当前进入 Task 18：实现人工纠偏后的高质量切片反哺逻辑，暂不自动污染黄金库（P0 知识库与 Few-Shot 结构）。
 
 运行方式：Hermes gateway + cron 循环（每个 cron tick 独立只做第一个未完成任务，中文写日志，失败由 cron 周期（间隔 2 分钟）自动重试，近似连续）。
 
@@ -62,6 +62,13 @@ git status --short
 
 ```bash
 python3 -m py_compile backend/main.py backend/intent_engine.py backend/config.py
+```
+
+Task 17 修改邮件 Few-Shot 检索准入时，至少执行：
+
+```bash
+python3 -m py_compile backend/main.py backend/database.py backend/config.py
+git diff --check -- backend/main.py backend/database.py backend/config.py docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log
 ```
 
 如新增邮件后端模块，按实际文件补充：
@@ -164,3 +171,4 @@ node --check frontend/index.html
 ```text
 ALL TASKS COMPLETED: 当前时间
 ```
+
