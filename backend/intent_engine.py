@@ -2061,6 +2061,11 @@ class IntentEngine:
         # 守价软让步兜底: 主动暗示价格可降(非硬承诺,prompt 偶尔漏),命中即人工复核
         if re.search(r"(能降一些|单价能降|可以让一点|算个具体数|算个低价|给你个低价|便宜一些)", text):
             blocking_issues.append("话术主动暗示价格可降(守价软让步),需人工确认口径。")
+        # 编造兜底(虚假宣传红线): prompt 禁编造偶尔漏,输出未核实的具体自夸数量或具体公司/领域案例,命中即人工核对KB
+        if re.search(r"\d+\s*多?\s*(个|名|位|家)\s*(全职)?(译员|客户|项目|工程师|设计师|成员|员工)", text):
+            blocking_issues.append("话术含未核实的具体自夸数量(如 N个全职译员),涉虚假宣传,需人工核对KB。")
+        if re.search(r"(重工|集团|股份|电气|电子|机械|设备|汽车|科技).{0,6}(同行|案例)|案例.{0,8}(重工|集团|设备|科技)", text):
+            blocking_issues.append("话术提及具体公司/领域案例,需人工核对KB是否真有该案例(防编造)。")
 
         manual_review_required = bool(blocking_issues) or bool(knowledge_payload.get("manual_review_required")) if isinstance(knowledge_payload, dict) else bool(blocking_issues)
         if crm.get("payment_risk_level") == "high" and (mentioned_numbers or capability_claimed):
@@ -2361,10 +2366,19 @@ class IntentEngine:
                             normalized.get("context_alignment", 0) * 0.06
                         )
                         note = str(item.get("reason") or "").strip()
-                        # 硬约束：分项过低时限制总分上限
-                        # 占位符/元注释红线(conciseness<40)：标准3.2 总分必须<=55
+                        # 硬约束：标准3.2 红线硬封顶(基于模型给的语义子维度分，非关键词命中)
+                        # 占位符/元注释：conciseness<40 -> 总分<=55
                         if normalized.get("conciseness", 100) < 40:
                             overall_val = min(overall_val, 55)
+                        # 编造具体数字/案例(safety<50) -> 总分<=60；超额定价/越权让利/报低价/方式票(safety 50-77) -> 总分<=55
+                        _safe = normalized.get("safety", 100)
+                        if _safe < 50:
+                            overall_val = min(overall_val, 60)
+                        elif _safe < 78:
+                            overall_val = min(overall_val, 55)
+                        # 答非所问(context_alignment<60) -> 总分<=65
+                        if normalized.get("context_alignment", 100) < 60:
+                            overall_val = min(overall_val, 65)
                         if normalized.get("conciseness", 100) < 75:
                             overall_val = min(overall_val, 84)
                         if normalized.get("low_barrier", 100) < 75:
@@ -2436,10 +2450,19 @@ class IntentEngine:
                             normalized.get("context_alignment", 0) * 0.06
                         )
                         note = str(item.get("reason") or "").strip()
-                        # 硬约束：分项过低时限制总分上限
-                        # 占位符/元注释红线(conciseness<40)：标准3.2 总分必须<=55
+                        # 硬约束：标准3.2 红线硬封顶(基于模型给的语义子维度分，非关键词命中)
+                        # 占位符/元注释：conciseness<40 -> 总分<=55
                         if normalized.get("conciseness", 100) < 40:
                             overall_val = min(overall_val, 55)
+                        # 编造具体数字/案例(safety<50) -> 总分<=60；超额定价/越权让利/报低价/方式票(safety 50-77) -> 总分<=55
+                        _safe = normalized.get("safety", 100)
+                        if _safe < 50:
+                            overall_val = min(overall_val, 60)
+                        elif _safe < 78:
+                            overall_val = min(overall_val, 55)
+                        # 答非所问(context_alignment<60) -> 总分<=65
+                        if normalized.get("context_alignment", 100) < 60:
+                            overall_val = min(overall_val, 65)
                         if normalized.get("conciseness", 100) < 75:
                             overall_val = min(overall_val, 84)
                         if normalized.get("low_barrier", 100) < 75:
