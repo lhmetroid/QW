@@ -2,16 +2,41 @@
 
 ## 当前状态
 
-- 当前任务：Task 18：实现人工纠偏后的高质量切片反哺逻辑，暂不自动污染黄金库
-- 当前小点：Task 17 已完成，邮件 Few-Shot 检索准入默认阈值已落地为 `useful_score >= 0.60`，并提供只读检索接口 `/api/v1/mail/fewshot/retrieve`。
-- 状态：Task 17 已完成，Task 18 尚未开始
-- 最近更新时间：2026-05-25 16:16:51 +08:00
+- 当前任务：Task 43：实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本
+- 当前小点：Task 42 已完成；`backend/main.py` 已将收件域名防泄密门升级为“竞对域名黑名单 + 客户域名白名单”双校验，新增 `MAIL_CONFIDENTIALITY_COMPETITOR_DOMAIN_BLACKLIST`、`MAIL_CONFIDENTIALITY_CUSTOMER_DOMAIN_WHITELIST_BY_CUSTOMER_KEY`、`_mail_customer_domain_whitelist` 与通用域名匹配 helper；`POST /api/v1/mail/generate-draft` 现会在竞对/风险域名红牌拦截之外，额外要求 `contact_email` 与 `cc_emails` 落在当前客户域名白名单内，否则按 `non_whitelisted_customer_domain` 红牌阻断，继续保持 review-only、不真实发信。
+- 状态：Task 42 已完成，下一步进入 Task 43
+- 最近更新时间：2026-05-26 08:09:05 +0800
 
 ## 最近完成的小点
 
 | 时间 | 任务 | 小点 | 结果 | 验证 |
 |---|---|---|---|---|
+| 2026-05-26 08:09:05 +0800 | Task 42 | 实现竞对域名黑名单与客户域名白名单 | 已完成 | `backend/main.py` 已将收件域名防泄密门升级为“竞对域名黑名单 + 客户域名白名单”双校验：新增 `MAIL_CONFIDENTIALITY_COMPETITOR_DOMAIN_BLACKLIST`、`MAIL_CONFIDENTIALITY_CUSTOMER_DOMAIN_WHITELIST_BY_CUSTOMER_KEY`、`_mail_customer_domain_whitelist` 与通用域名匹配 helper；`POST /api/v1/mail/generate-draft` 现会在保留竞对/风险域名红牌拦截的同时，要求 `contact_email` 与 `cc_emails` 落在当前客户域名白名单内，否则按 `non_whitelisted_customer_domain` 红牌阻断；`backend/mail_recipient_domain_guardrail_checks.py` 已补充非白名单域名阻断、客户白名单别名放行与竞对黑名单断言；本轮 Codex CLI 因 usage limit 中断后已按规则记录并由当前 Agent 接手完成；`python3 -m unittest backend/mail_recipient_domain_guardrail_checks.py` 通过；`python3 -m py_compile backend/main.py backend/mail_recipient_domain_guardrail_checks.py` 通过；`git diff --check -- backend/main.py backend/mail_recipient_domain_guardrail_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log` 通过。 |
+| 2026-05-26 07:50:44 +0800 | Task 41 | 实现收件域名与抄送域名防泄密门 | 已完成 | `backend/main.py` 已新增 `_evaluate_mail_recipient_domain_confidentiality_guardrail`、域名归一化与竞对/风险域名拦截逻辑；`POST /api/v1/mail/generate-draft` 现会同时校验 `contact_email` 与可选 `cc_emails`，命中后返回 `status=blocked_by_recipient_domain_confidentiality_gate`、`safety_guardrail.status=red_card_hard_block`、`red_card_code=blocked_by_recipient_domain_confidentiality_gate`、`draft_status=blocked`、`real_sending_enabled=false` 与 `block_details`；新增 `backend/mail_recipient_domain_guardrail_checks.py` 定向校验竞对收件人、风险抄送和正常客户域名；`python3 -m unittest backend/mail_recipient_domain_guardrail_checks.py` 通过；`python3 -m py_compile backend/main.py backend/mail_recipient_domain_guardrail_checks.py` 通过；`git diff --check -- backend/main.py backend/mail_recipient_domain_guardrail_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 通过。 |
+| 2026-05-26 07:41:35 +0800 | Task 40 | 实现履约工期 SLA 校准门，低于标准 SLA 时物理拉正并黄牌锁定 | 已完成 | `backend/main.py` 已接入 `backend/mail_sla_guardrail.py` 的工期校准门，并把标准交期默认值收口为后端 `3 business days`；`POST /api/v1/mail/generate-draft` 现会把 `24 hours`、`1 day`、`next-day delivery` 等低于标准 SLA 的承诺物理替换为标准 SLA，并返回 `safety_guardrail.status=yellow_card_sla_calibrated_locked`、黄牌 warning、`block_details` 与锁定审核态；`python3 -m unittest backend/mail_sla_guardrail_checks.py` 通过；`python3 -m py_compile backend/main.py backend/mail_sla_guardrail.py backend/mail_sla_guardrail_checks.py` 通过；`git diff --check -- backend/main.py backend/mail_sla_guardrail.py backend/mail_sla_guardrail_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 通过。 |
+| 2026-05-26 07:31:09 +0800 | Task 39 | 实现价格正则提取，识别 RMB、元、USD、美元、per word、每千字、折扣等表达 | 已完成 | `backend/main.py` 已扩展 `_mail_pricing_context_unit`、`_mail_pricing_context_currency`、`_mail_explicit_price_mention_type`、`_extract_mail_explicit_price_mentions` 与 `_mail_floor_rule_for_price_mention`，补齐 RMB/CNY/人民币/元/USD/美元/美金/$/￥、per word、每词、每千字/千字符/1k、discount 10%/10% off/8折 等识别；`_evaluate_mail_financial_price_floor_guardrail` 现会跳过 `mention_type=discount`，避免把折扣表达误当作底价穿透红牌；`python3 -m py_compile backend/main.py` 通过；`git diff --check -- backend/main.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 通过；抽取冒烟脚本已确认 CNY/USD/per word/每千字/折扣样例均可识别。 |
+| 2026-05-26 07:20:01 +0800 | Task 38 | 实现财务价格底线门，低于底价红牌硬拦截 | 已完成 | `backend/main.py` 已为 `MailSafetyGuardrail` 新增 `hard_block` / `red_card_code` / `blocked_by` / `block_details`，补齐 `_active_mail_pricing_rules`、`_extract_mail_explicit_price_mentions`、`_mail_floor_rule_for_price_mention`、`_evaluate_mail_financial_price_floor_guardrail`；`POST /api/v1/mail/generate-draft` 现会对草稿正文与已解析商业价格执行底价校验，命中低于有效 `PricingRule.price_min` 时返回 `status=blocked_by_financial_safety_gate`、`safety_guardrail.status=red_card_hard_block`、`draft_status=blocked`、`real_sending_enabled=false` 与 `block_details`；`python3 -m py_compile backend/main.py` 通过；`git diff --check -- backend/main.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 通过；静态断言脚本输出 `task38_static_ok`。 |
+| 2026-05-26 07:09:41 +0800 | Task 37 | 中断事件写入邮件安全或操作日志 | 已完成 | `backend/main.py` 已新增 `MailSequenceInterruptOperationLogEntry`；`MailSequenceInterruptResponse` 顶层新增 `operation_log_entry`；`_build_mail_sequence_interrupt_response` 会构造 `operation_log_entry`、在 `audit_preview` 回传同一份日志预览，并通过 `logger.info("MAIL_SEQUENCE_INTERRUPT_REVIEW_ONLY ...")` 输出 review-only 中断操作日志；继续保持 `review_only=true`、`real_sending_enabled=false`、不写数据库、不真实删除或锁定草稿、不真实发信；`python3 -m py_compile backend/main.py` 通过；`git diff --check -- backend/main.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 通过。 |
+| 2026-05-26 07:00:25 +08:00 | Task 36 | 中断后返回被删除或锁定的待发草稿数量 | 已完成 | `backend/main.py` 已将 `deleted_pending_drafts_count` / `locked_pending_drafts_count` 改为按 planned dispositions 统计，并在 `audit_preview` 返回相同计数、`count_basis=planned_pending_draft_dispositions_only`、`will_write_database=false`、`will_delete_pending_drafts=false`、`will_lock_pending_drafts=false`、`will_send_email=false`；保持 review-only，不写库、不真实删锁草稿、不真实发信；`python3 -m py_compile backend/main.py` 通过。 |
+| 2026-05-26 06:54:32 +08:00 | Task 35 | 支持按客户、域名、联系人维度中断 | 已完成 | `backend/main.py` 已将 `MailSequenceInterruptRequest.customer_key` 调整为可选，并校验 `customer_key`、`recipient_domain`、`contact_email` 至少一个存在；新增 `_build_mail_sequence_interrupt_scope`，响应与 `audit_preview` 返回 `interruption_scope`、`interruption_target`、`scope_targets`；继续保持 `review_only=true`、`real_sending_enabled=false`、真实 `deleted_pending_drafts_count=0`/`locked_pending_drafts_count=0`；`python3 -m py_compile backend/main.py` 通过；`git diff --check -- backend/main.py logs/codex-run.log` 通过。 |
+| 2026-05-26 03:00:29 +08:00 | Task 34 | 支持销售手动强封印 | 已完成 | `backend/main.py` 已为 `MailSequenceInterruptRequest` 新增 `manual_seal_actor`、`manual_seal_reason`、`operator_id`、`sealed_at`，为 `MailSequenceInterruptResponse` 新增 `manual_seal_trigger`；`POST /api/v1/sequence/interrupt` 支持 `interrupt_reason=manual_seal`、`sales_manual_seal`、`manual_sealed_by_sales` 等别名，并复用 `mail_sequence_strategy` 的 `manual_sealed_by_sales` 切断规则与人工封印草稿处置规则；保持 `review_only=true`、`real_sending_enabled=false`、真实 `deleted_pending_drafts_count=0`/`locked_pending_drafts_count=0`；`python3 -m py_compile backend/main.py` 通过；`git diff --check -- backend/main.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 通过。 |
+| 2026-05-26 02:42:14 +08:00 | Task 33 | 支持 CRM 状态变更触发中断 | 已完成 | `backend/main.py` 已为 `MailSequenceInterruptRequest` 新增 `crm_event_type`、`crm_stage`、`previous_crm_stage`、`crm_changed_at`，并新增 CRM 阶段别名归一化/校验与 `crm_state_change_trigger` 响应预览；`POST /api/v1/sequence/interrupt` 现支持 `interrupt_reason=crm_state_change` + `crm_event_type=CRM_STAGE_CHANGED_TO_WON` 等 CRM 状态变更触发，同时保持 `review_only=true`、`real_sending_enabled=false`、真实 `deleted_pending_drafts_count=0`/`locked_pending_drafts_count=0`；`python3 -m py_compile backend/main.py backend/mail_sequence_strategy.py` 通过；`git diff --check -- backend/main.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 通过。 |
+| 2026-05-26 02:30:06 +08:00 | Task 32 | 设计并实现 `POST /api/v1/sequence/interrupt` | 已完成 | `backend/main.py` 已新增 `MailSequenceInterruptRequest`、`MailSequenceInterruptResponse`、中断响应构造 helper 与 `POST /api/v1/sequence/interrupt`；接口复用 `get_mail_sequence_cutoff_rule`、`get_mail_sequence_cutoff_terminal_status`、`should_cutoff_event_physically_stop_sequence`、`resolve_mail_pending_draft_disposition`，返回 `review_only=true`、`real_sending_enabled=false`、真实 `deleted_pending_drafts_count=0`/`locked_pending_drafts_count=0` 与 planned 草稿处置计数；`python3 -m py_compile backend/main.py backend/mail_sequence_strategy.py` 通过；`git diff --check -- backend/main.py` 通过。 |
+| 2026-05-26 02:21:30 +08:00 | Task 31 | 生成结果默认进入草稿与审核态且不默认真实发送 | 已完成 | `backend/main.py` 已在 `MailGenerateDraftResponse` 顶层新增并显式返回 `draft_status=drafted`、`review_required=true`、`review_mode=human_review_required`、`real_sending_enabled=false`；`safety_guardrail` 继续返回 `locked_for_approval`、`is_locked_for_approval=true`、`real_sending_enabled=false`；`python3 -m py_compile backend/main.py` 通过；`git diff --check -- backend/main.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 通过。 |
+| 2026-05-26 02:08:17 +08:00 | Task 30 | 邮件正文商业条款优先走后端物理占位符填充 | 已完成 | `backend/main.py` 已新增 `MailDraftCommercialTerms`、`_mail_commercial_placeholder`、`_resolve_mail_commercial_terms` 与 `admitted_fewshot_content` 商业条款脱敏逻辑；`/api/v1/mail/generate-draft` 正文现优先输出价格/工期/折扣/账期后端占位符，且在仅存在唯一有效 `PricingRule` 时价格可解析为后端规则值；`python3 -m py_compile backend/main.py` 通过；`git diff --check -- backend/main.py` 通过。 |
+| 2026-05-26 01:55:23 +08:00 | Task 29 | 将邮件草稿生成重构为二阶段流程 | 已完成 | `backend/main.py` 已新增 `MailDraftIntentProfile`、`MailDraftAssembledContent`、`_build_mail_draft_intent_profile`、`_mail_subject_from_intent_profile`、`_assemble_mail_draft_from_intent_profile`，先把请求/序列策略/Few-Shot 汇总为结构化画像，再统一组装 `final_subject`/`final_body_html`；`python3 -m py_compile backend/main.py` 通过；`git diff --check -- backend/main.py` 通过。 |
+| 2026-05-25 23:11:38 +08:00 | Task 28 | 核对 `POST /api/v1/mail/generate-draft` 响应参数契约 | 已完成 | 通过 Codex CLI 审核确认 `backend/main.py` 现有 `MailGenerateDraftResponse`、响应构造器和接口声明已完整覆盖 `mail_uid`、`final_subject`、`final_body_html`、`retrieved_fewshot_id`、`fewshot_match_score`、`safety_guardrail`；无需额外代码改动；`python3 -m py_compile backend/main.py backend/mail_sequence_strategy.py` 通过；响应契约脚本校验输出 `task28_contract_ok`。 |
+| 2026-05-25 22:54:58 +08:00 | Task 27 | 收紧 `POST /api/v1/mail/generate-draft` 请求参数契约 | 已完成 | `MailGenerateDraftRequest` 保持 6 个约定字段，并新增 `extra = "forbid"` 禁止额外请求字段；未实现 Task 28+；`python3 -m py_compile backend/main.py backend/mail_sequence_strategy.py` 通过。 |
+| 2026-05-25 22:45:52 +08:00 | Task 26 | 设计并实现 `POST /api/v1/mail/generate-draft` | 已完成 | `backend/main.py` 已新增 `MailGenerateDraftRequest`、`MailSafetyGuardrail`、`MailGenerateDraftResponse`、邮件草稿 helper 与 `POST /api/v1/mail/generate-draft`；接口复用 Sequence 策略和 Few-Shot 准入条件，仅生成待审核草稿响应，`real_sending_enabled=false`，不写库、不真实发信；`python3 -m py_compile backend/main.py backend/mail_sequence_strategy.py` 通过；`git diff --check -- backend/main.py` 通过；`UV_CACHE_DIR=/tmp/uv-cache uv run --with-requirements backend/requirements.txt ...` 冒烟导入因 PyPI DNS 解析 `extract-msg` 失败未执行完成，已记录为网络依赖验证阻断，不影响本轮语法与定向 diff 验证。 |
+| 2026-05-25 22:18:43 +08:00 | Task 25 | 实现待发草稿销毁或锁定规则 | 已完成 | `backend/mail_sequence_strategy.py` 已新增 `MailPendingDraftDispositionAction`、`MailPendingDraftDispositionRule`、`MAIL_UNSENT_DRAFT_STATUSES`、`MAIL_SENT_OR_TERMINAL_DRAFT_STATUSES`、`MAIL_PENDING_DRAFT_DISPOSITION_RULES`、`normalize_mail_pending_draft_disposition_action`、`get_mail_pending_draft_disposition_rule`、`resolve_mail_pending_draft_disposition`、`list_mail_pending_draft_disposition_rules`，覆盖客户回复、CRM 一般中断、CRM 勿扰/联系人失效严格销毁、人工封印全锁定四类口径；新增 `docs/mail_pending_draft_disposition.md` 固化规则；`python3 -m py_compile backend/mail_sequence_strategy.py` 通过；处置规则冒烟检查输出 `task25_smoke_ok`；定向 `git diff --check -- backend/mail_sequence_strategy.py logs/codex-run.log TASKS.md PROGRESS.md TASK_HANDOFF.md` 通过；`rg -n "[ \	]+$" backend/mail_sequence_strategy.py docs/mail_pending_draft_disposition.md TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log` 未发现新增行尾空白。 |
+| 2026-05-25 22:03:40 +08:00 | Task 24 | 定义状态机物理切断规则 | 已完成 | `backend/mail_sequence_strategy.py` 已新增 `MailSequenceCutoffEventType`、`MailSequenceInterruptionReason`、`MailSequenceCutoffRule`、`MAIL_SEQUENCE_CUTOFF_RULES`、`MAIL_SEQUENCE_CUTOFF_EVENT_TERMINAL_STATUS`、`normalize_mail_sequence_interruption_reason`、`get_mail_sequence_cutoff_rule`、`get_mail_sequence_cutoff_terminal_status`、`should_physically_stop_mail_sequence`、`should_cutoff_event_physically_stop_sequence`、`list_mail_sequence_cutoff_rules`、`list_mail_sequence_cutoff_rules_for_step`；覆盖客户邮件回复、同域回复、其他渠道回复、CRM 赢单/丢单/激活商机/投诉/禁止联系/人工跟进/联系人失效，以及销售/运营/主管人工封印；`python3 -m py_compile backend/mail_sequence_strategy.py` 通过；物理切断规则冒烟检查输出 `cutoff_rules_ok`；定向 `git diff --check -- backend/mail_sequence_strategy.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 通过 |
+| 2026-05-25 21:34:06 +08:00 | Task 23 | 定义 Step 触发间隔 | 已完成 | `backend/mail_sequence_strategy.py` 已新增 `MailSequenceTriggerAnchor`、`MailSequenceStepInterval`、`DEFAULT_MAIL_SEQUENCE_STEP_DELAYS_DAYS`、`DEFAULT_MAIL_SEQUENCE_STEP_CUMULATIVE_MIN_DAYS`、`MAIL_SEQUENCE_STEP_INTERVALS`、`get_mail_sequence_step_interval`、`list_mail_sequence_step_intervals`；新增 `docs/mail_sequence_step_intervals.md`；`python3 -m py_compile backend/mail_sequence_strategy.py` 通过；三场景四步骤间隔断言检查输出 `intervals_ok`；定向 `git diff --check -- backend/mail_sequence_strategy.py docs/mail_sequence_step_intervals.md docs/mail_re_activation_sequence.md docs/mail_new_business_promotion_sequence.md docs/mail_new_contact_intro_sequence.md` 通过 |
+| 2026-05-25 21:14:25 +08:00 | Task 22 | 定义 Sequence 状态枚举 | 已完成 | `backend/mail_sequence_strategy.py` 已补齐 `MailSequenceStatus`/`MailSequenceStatusMetadata`、`MAIL_SEQUENCE_*_STATUSES` 分类常量、`normalize_mail_sequence_status`、`is_known_mail_sequence_status`、`list_mail_sequence_statuses_by_category` 等辅助函数；`python3 -m py_compile backend/mail_sequence_strategy.py` 通过；状态枚举冒烟检查输出 `pending,drafted,approved,sent,replied,interrupted,blocked`；定向 `git diff --check -- backend/mail_sequence_strategy.py` 通过 |
+| 2026-05-25 18:23:50 +08:00 | Task 21 | 落地新接手联系人介绍 `new_contact_intro` 的 4 轮策略 | 已完成 | 扩展 `backend/mail_sequence_strategy.py` 新增 `new_contact_intro` 场景与 4-step 检索/禁用边界/退出条件；新增 `docs/mail_new_contact_intro_sequence.md`；`python3 -m py_compile backend/mail_sequence_strategy.py` 通过；`get_mail_sequence_step("new_contact_intro", 4)` 导入冒烟检查通过；目标文件定向 `git diff --check` 通过 |
+| 2026-05-25 18:12:43 +08:00 | Task 20 | 落地新业务推广 `new_business_promotion` 的 4 轮策略 | 已完成 | 扩展 `backend/mail_sequence_strategy.py` 新增 `new_business_promotion` 场景与 4-step 检索/禁用边界/退出条件；新增 `docs/mail_new_business_promotion_sequence.md`；`python3 -m py_compile backend/mail_sequence_strategy.py` 通过；`get_mail_sequence_step("new_business_promotion", 4)` 导入冒烟检查通过；目标文件与状态文件定向 `git diff --check` 通过 |
+| 2026-05-25 17:47:30 +08:00 | Task 19 | 落地老客户唤醒 `re_activation` 的 4 轮策略 | 已完成 | 新增 `backend/mail_sequence_strategy.py` 与 `docs/mail_re_activation_sequence.md`；`python3 -m py_compile backend/mail_sequence_strategy.py` 通过；`git diff --check -- backend/mail_sequence_strategy.py docs/mail_re_activation_sequence.md` 通过；导入冒烟检查 `get_mail_sequence_step("re_activation", 4)` 通过 |
 | 2026-05-25 16:16:51 +08:00 | Task 17 | 实现邮件 Few-Shot 检索准入阈值 | 已完成 | `python3 -m py_compile backend/main.py backend/database.py backend/config.py` 通过；目标文件定向 `git diff --check` 通过；全仓 `git diff --check` 仍受既有无关文件历史行尾空白影响 |
+| 2026-05-25 17:24:55 +08:00 | Task 18 | 实现人工纠偏后的高质量切片反哺逻辑 | 已完成 | `python3 -m py_compile backend/main.py backend/intent_engine.py backend/config.py` 通过；`git diff --check -- backend/main.py TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log` 通过；全仓 `git diff --check` 仍受既有无关文件历史行尾空白影响 |
 | 2026-05-25 15:29:06 +08:00 | Task 15 | 定义邮件切片适用场景 | 已完成 | `docs/mail_gold_snippet_schema.md` 已正式定义 `re_activation`/`new_business_promotion`/`new_contact_intro`，并补齐场景目标、触发条件、禁用边界、推荐 `snippet_type` 组合、Sequence Step 1-4 映射及字段关系；`git diff --check -- docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log` 通过 |
 | 2026-05-25 14:49:00 | Task 14 | 定义邮件切片类型 | 已完成 | `docs/mail_gold_snippet_schema.md` 已正式定义 `greetings`/`example`/`process`/`constraint`/`quotation`，并补齐边界、判定规则、可包含/不可包含内容、优先级与内容安全口径 |
 | 2026-05-25 10:11:31 | Task 6-12 | 重新清洗并修复 body_main_text 为空的误伤邮件数据 | 已完成 | 成功修复并重洗 2,838 封空 main_text 记录，完美恢复 429 封 |
@@ -45,9 +70,9 @@
 
 ## 当前未完成
 
-- Task 17 已完成；尚未开始 Task 18：实现人工纠偏后的高质量切片反哺逻辑，暂不自动污染黄金库。
-- 尚未实现邮件 API。
-- 尚未实现邮件安全门。
+- Task 42 已完成；下一步进入 Task 43：实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本。
+- 邮件 API 已完成 Task 26 草稿脚手架、Task 27 请求参数契约、Task 28 响应参数契约、Task 29 二阶段生成、Task 30 商业条款后端占位符装配、Task 31 草稿/审核默认态收口、Task 32-35 中断 API review-only 预览能力。
+- 已完成邮件安全门中的财务价格底线门、价格正则扩展、履约工期 SLA 校准门、收件域名防泄密门，以及竞对域名黑名单/客户域名白名单双校验；尚未实现敏感词扫描与统一红黄牌结果结构。
 - 尚未实现邮件诊断面板。
 
 ## 当前卡点
@@ -60,15 +85,20 @@
 
 需要下一步确认或执行：
 
-- 继续 Task 18：实现人工纠偏后的高质量切片反哺逻辑，暂不自动污染黄金库。
-- 如需复查导出结果，可优先查看 `docs/mail_gold_candidates/latest_mail_gold_candidates.md` 的脱敏摘要表。
+- 继续 Task 43：实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本。
+- Task 37 已为 Sequence 中断 API 补齐 review-only 操作日志预览与 `logger.info` 输出；后续 Task 38 可在此基础上实现财务价格底线门。
+- Task 25 已沉淀 `MailPendingDraftDispositionAction`、`MailPendingDraftDispositionRule`、`MAIL_PENDING_DRAFT_DISPOSITION_RULES`、`MAIL_UNSENT_DRAFT_STATUSES`、`MAIL_SENT_OR_TERMINAL_DRAFT_STATUSES`、`normalize_mail_pending_draft_disposition_action`、`get_mail_pending_draft_disposition_rule`、`resolve_mail_pending_draft_disposition`、`list_mail_pending_draft_disposition_rules`，后续草稿 API、Sequence 中断 API、调度器与执行层可直接复用客户回复销毁、CRM 销毁/锁定、勿扰严格销毁、人工封印锁定口径。
+- Task 24 已沉淀 `MailSequenceCutoffEventType`、`MailSequenceInterruptionReason`、`MailSequenceCutoffRule`、`MAIL_SEQUENCE_CUTOFF_RULES`、`MAIL_SEQUENCE_CUTOFF_EVENT_TERMINAL_STATUS` 及按事件/原因/场景步骤检索的切断辅助函数，后续 Task 26-37 可直接复用。
+- Task 23 已沉淀 `MailSequenceTriggerAnchor`、`MailSequenceStepInterval`、`DEFAULT_MAIL_SEQUENCE_STEP_DELAYS_DAYS`、`DEFAULT_MAIL_SEQUENCE_STEP_CUMULATIVE_MIN_DAYS`、`MAIL_SEQUENCE_STEP_INTERVALS` 及按场景/步骤读取的辅助函数，后续草稿 API、调度器与配置台可继续复用默认 Step 间隔元数据。
 
 ## 下一步
 
-继续 Task 18：实现人工纠偏后的高质量切片反哺逻辑，暂不自动污染黄金库。
+继续 Task 43：实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本。
 
 ```bash
-git diff --check -- backend/main.py backend/database.py backend/config.py docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log
+python3 -m unittest backend/mail_recipient_domain_guardrail_checks.py
+python3 -m py_compile backend/main.py backend/mail_recipient_domain_guardrail_checks.py
+git diff --check -- backend/main.py backend/mail_recipient_domain_guardrail_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log
 ```
 
 Task 11 已产出：
@@ -82,12 +112,11 @@ Task 11 已产出：
 本轮已执行：
 
 ```bash
-git diff --check
-git diff --check -- TASKS.md PROGRESS.md TASK_HANDOFF.md
-rg -n '[ \t]+$' docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log
+python3 -m py_compile backend/main.py
+git diff --check -- backend/main.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log
 ```
 
-结果：`python3 -m py_compile backend/main.py backend/database.py backend/config.py` 通过；本轮目标文件定向 `git diff --check` 通过；全仓库 `git diff --check` 仍受既有无关文件的历史行尾空白影响，因此以本轮定向验证为准。Task 17 已完成，Task 18 仍未实现。
+结果：`python3 -m unittest backend/mail_recipient_domain_guardrail_checks.py` 通过；`python3 -m py_compile backend/main.py backend/mail_recipient_domain_guardrail_checks.py` 通过；`git diff --check -- backend/main.py backend/mail_recipient_domain_guardrail_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log` 通过；Task 42 已完成，下一步进入 Task 43。
 
 ## 运行监控要求（gateway + cron 循环）
 
@@ -96,4 +125,3 @@ rg -n '[ \t]+$' docs/mail_gold_snippet_schema.md TASKS.md PROGRESS.md TASK_HANDO
 - 失败（网络/模型临时断开等）如实写入 `logs/codex-run.log` 和 `logs/codex-retry.log`，由 cron 周期自动重试，不丢任务，严禁"假绿"。
 - 真实进度以 `TASKS.md` 勾选 + `logs/codex-run.log` 实际内容 + 产出文件为准，不以 cron `last_status` 为准。
 - 查看：`hermes cron list` / `hermes cron status` / `~/.hermes/cron/output/<job_id>/`。
-

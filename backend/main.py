@@ -10,6 +10,7 @@ import logging
 import json
 import uuid
 import re
+import html
 import hashlib
 import hmac
 import subprocess
@@ -75,6 +76,22 @@ from knowledge_governance import (
     merge_tags,
     score_content_governance,
     validate_thread_state_consistency,
+)
+from mail_sequence_strategy import (
+    MAIL_UNSENT_DRAFT_STATUSES,
+    MailSequenceCutoffEventType,
+    MailSequenceInterruptionReason,
+    MailSequenceStatus,
+    get_mail_sequence_cutoff_rule,
+    get_mail_sequence_cutoff_terminal_status,
+    get_mail_sequence_step,
+    get_mail_sequence_step_interval,
+    resolve_mail_pending_draft_disposition,
+    should_cutoff_event_physically_stop_sequence,
+)
+from mail_sla_guardrail import (
+    MAIL_STANDARD_DELIVERY_SLA_LABEL,
+    evaluate_and_calibrate_mail_delivery_sla_guardrail as _evaluate_and_calibrate_mail_delivery_sla_guardrail,
 )
 
 FRONTEND_AUTH_COOKIE_NAME = "qw_frontend_auth"
@@ -800,6 +817,181 @@ class MailFewShotRetrieveRequest(BaseModel):
     min_useful_score: float | None = None
     top_k: int = 5
 
+class MailGenerateDraftRequest(BaseModel):
+    customer_key: str
+    contact_email: str
+    cc_emails: list[str] = []
+    scenario: str
+    suite_step: int
+    current_seller_name: str
+    current_seller_signature: str
+
+    class Config:
+        extra = "forbid"
+
+class MailSafetyGuardrail(BaseModel):
+    status: str
+    triggered_warnings: list[str] = []
+    is_locked_for_approval: bool = True
+    lock_reason: str | None = None
+    real_sending_enabled: bool = False
+    draft_status: str = MailSequenceStatus.DRAFTED.value
+    hard_block: bool = False
+    red_card_code: str | None = None
+    blocked_by: str | None = None
+    block_details: dict[str, Any] | None = None
+
+class MailGenerateDraftResponse(BaseModel):
+    status: str
+    draft_status: str = MailSequenceStatus.DRAFTED.value
+    review_required: bool = True
+    review_mode: str = "human_review_required"
+    real_sending_enabled: bool = False
+    mail_uid: str
+    final_subject: str
+    final_body_html: str
+    retrieved_fewshot_id: str | None = None
+    fewshot_match_score: float | None = None
+    safety_guardrail: MailSafetyGuardrail
+
+class MailSequenceInterruptRequest(BaseModel):
+    customer_key: str | None = None
+    interrupt_reason: str
+    operator_name: str
+    event_type: str | None = None
+    crm_event_type: str | None = None
+    crm_stage: str | None = None
+    previous_crm_stage: str | None = None
+    crm_changed_at: str | None = None
+    manual_seal_actor: str | None = None
+    manual_seal_reason: str | None = None
+    operator_id: str | None = None
+    sealed_at: str | None = None
+    contact_email: str | None = None
+    recipient_domain: str | None = None
+    scenario: str | None = None
+    suite_step: int | None = None
+    current_sequence_status: str | None = None
+    pending_draft_statuses: list[str] = []
+    metadata: dict[str, Any] = {}
+
+    class Config:
+        extra = "forbid"
+
+class MailPendingDraftInterruptPlan(BaseModel):
+    draft_status: str
+    disposition_action: str
+    blocks_real_sending: bool
+    removes_body_content: bool
+    preserve_audit_record: bool
+    reason: str | None = None
+
+class MailSequenceInterruptOperationLogEntry(BaseModel):
+    log_type: str = "mail_sequence_interrupt_operation"
+    operation: str = "sequence_interrupt"
+    operation_status: str = "review_only_preview"
+    review_only: bool = True
+    review_required: bool = True
+    real_sending_enabled: bool = False
+    will_write_database: bool = False
+    will_delete_pending_drafts: bool = False
+    will_lock_pending_drafts: bool = False
+    will_send_email: bool = False
+    interrupted_at: str
+    operator_name: str
+    operator_id: str | None = None
+    interruption_scope: str
+    interruption_target: str
+    scope_targets: dict[str, str] = {}
+    customer_key: str | None = None
+    contact_email: str | None = None
+    recipient_domain: str | None = None
+    interrupt_reason: str
+    event_type: str
+    terminal_status: str
+    current_sequence_status: str | None = None
+    scenario: str | None = None
+    suite_step: int | None = None
+    physically_stops_sequence: bool
+    planned_destroy_pending_drafts_count: int = 0
+    planned_lock_pending_drafts_count: int = 0
+    deleted_pending_drafts_count: int = 0
+    locked_pending_drafts_count: int = 0
+    pending_draft_dispositions: list[dict[str, Any]] = []
+    crm_state_change_trigger: dict[str, Any] | None = None
+    manual_seal_trigger: dict[str, Any] | None = None
+    metadata: dict[str, Any] = {}
+    note: str = (
+        "Preview-only operation log entry. It is emitted to application logs only; "
+        "no database write, pending-draft mutation, or real email sending is performed."
+    )
+
+class MailSequenceInterruptResponse(BaseModel):
+    status: str
+    terminal_status: str
+    customer_key: str | None = None
+    contact_email: str | None = None
+    recipient_domain: str | None = None
+    interruption_scope: str
+    interruption_target: str
+    scope_targets: dict[str, str] = {}
+    interrupt_reason: str
+    event_type: str
+    operator_name: str
+    physically_stops_sequence: bool
+    review_only: bool = True
+    review_required: bool = True
+    real_sending_enabled: bool = False
+    deleted_pending_drafts_count: int = 0
+    locked_pending_drafts_count: int = 0
+    planned_destroy_pending_drafts_count: int = 0
+    planned_lock_pending_drafts_count: int = 0
+    pending_draft_dispositions: list[MailPendingDraftInterruptPlan] = []
+    cutoff_rule: dict[str, Any]
+    crm_state_change_trigger: dict[str, Any] | None = None
+    manual_seal_trigger: dict[str, Any] | None = None
+    interrupted_at: str
+    operation_log_entry: MailSequenceInterruptOperationLogEntry
+    audit_preview: dict[str, Any]
+
+class MailDraftResolvedTerm(BaseModel):
+    value: str
+    source: str
+    is_placeholder: bool = True
+
+class MailDraftCommercialTerms(BaseModel):
+    price: MailDraftResolvedTerm
+    delivery: MailDraftResolvedTerm
+    discount: MailDraftResolvedTerm
+    payment_terms: MailDraftResolvedTerm
+    warnings: tuple[str, ...] = ()
+
+class MailDraftIntentProfile(BaseModel):
+    customer_key: str
+    contact_email: str
+    recipient_name: str
+    seller_name: str
+    seller_signature: str
+    scenario: str
+    scenario_label: str
+    suite_step: int
+    step_key: str
+    objective: str
+    cta_style: str
+    subject_hint: str
+    recommended_snippet_types: tuple[str, ...]
+    retrieval_filter_requirements: tuple[str, ...]
+    forbidden_boundaries: tuple[str, ...]
+    interval_delay_days: int
+    admitted_fewshot_id: str | None = None
+    admitted_fewshot_score: float | None = None
+    admitted_fewshot_content: str | None = None
+    commercial_terms: MailDraftCommercialTerms
+
+class MailDraftAssembledContent(BaseModel):
+    subject: str
+    body_html: str
+
 class KnowledgeChunkCreate(BaseModel):
     title: str
     content: str
@@ -1469,11 +1661,19 @@ def _apply_candidate_governance(candidate: KnowledgeCandidate) -> dict:
     source_snapshot["tags"] = quality["structured_tags"]
     source_snapshot["quality_notes"] = quality["quality_notes"]
     source_snapshot["mixed_knowledge"] = detect_mixed_knowledge(candidate.content, quality["structured_tags"])
+    requires_manual_review = _mail_fragment_requires_manual_review(candidate.source_type, source_snapshot)
+    approved_for_fewshot = str(source_snapshot.get("review_status") or "").strip() == "approved"
+    if requires_manual_review:
+        source_snapshot = _apply_mail_fragment_review_gate(source_snapshot, approved=approved_for_fewshot)
     candidate.source_snapshot = source_snapshot
     candidate.library_type = quality["library_type"]
     candidate.allowed_for_generation = bool(quality["allowed_for_generation"])
     candidate.usable_for_reply = bool(quality["usable_for_reply"])
     candidate.publishable = bool(quality["publishable"])
+    if requires_manual_review and not approved_for_fewshot:
+        candidate.allowed_for_generation = False
+        candidate.usable_for_reply = False
+        candidate.publishable = False
     candidate.topic_clarity_score = _decimal_score(quality["topic_clarity_score"])
     candidate.completeness_score = _decimal_score(quality["completeness_score"])
     candidate.reusability_score = _decimal_score(quality["reusability_score"])
@@ -2622,6 +2822,1133 @@ def _mail_fewshot_to_dict(item: EmailFragmentAsset, min_score: Decimal) -> dict:
     }
     return payload
 
+def _mail_generate_draft_fewshot(
+    db: Session,
+    *,
+    scenario: str,
+    function_fragments: tuple[str, ...],
+    min_score: Decimal,
+) -> dict | None:
+    query = db.query(EmailFragmentAsset).filter(
+        EmailFragmentAsset.status.in_(sorted(MAIL_FEWSHOT_READY_STATUSES)),
+        EmailFragmentAsset.publishable.is_(True),
+        EmailFragmentAsset.allowed_for_generation.is_(True),
+        EmailFragmentAsset.usable_for_reply.is_(True),
+        EmailFragmentAsset.useful_score >= min_score,
+    )
+    if function_fragments:
+        query = query.filter(EmailFragmentAsset.function_fragment.in_(list(function_fragments)))
+
+    candidates = query.order_by(
+        EmailFragmentAsset.useful_score.desc(),
+        EmailFragmentAsset.effect_score.desc(),
+        EmailFragmentAsset.updated_at.desc(),
+    ).limit(10).all()
+    for item in candidates:
+        if _mail_fewshot_admission_status(item, min_score)[0]:
+            return _mail_fewshot_to_dict(item, min_score)
+
+    relaxed_query = db.query(EmailFragmentAsset).filter(
+        EmailFragmentAsset.status.in_(sorted(MAIL_FEWSHOT_READY_STATUSES)),
+        EmailFragmentAsset.publishable.is_(True),
+        EmailFragmentAsset.allowed_for_generation.is_(True),
+        EmailFragmentAsset.usable_for_reply.is_(True),
+        EmailFragmentAsset.useful_score >= min_score,
+    )
+    if scenario:
+        relaxed_query = relaxed_query.filter(EmailFragmentAsset.scenario_label == scenario)
+    relaxed_items = relaxed_query.order_by(
+        EmailFragmentAsset.useful_score.desc(),
+        EmailFragmentAsset.effect_score.desc(),
+        EmailFragmentAsset.updated_at.desc(),
+    ).limit(10).all()
+    for item in relaxed_items:
+        if _mail_fewshot_admission_status(item, min_score)[0]:
+            return _mail_fewshot_to_dict(item, min_score)
+    return None
+
+def _first_mail_subject_hint(subject_hints: tuple[str, ...]) -> str:
+    for hint in subject_hints:
+        normalized = sanitize_text(hint)
+        if normalized:
+            return normalized
+    return "Following up with a quick note"
+
+def _mail_contact_name_from_email(contact_email: str) -> str:
+    local_part = str(contact_email or "").split("@", 1)[0].strip()
+    if not local_part:
+        return "there"
+    return sanitize_text(re.sub(r"[._-]+", " ", local_part)).title() or "there"
+
+def _mail_commercial_placeholder(key: str) -> MailDraftResolvedTerm:
+    placeholders = {
+        "price": "{{MAIL_PRICE_RESOLVED_BY_APPROVED_PRICING_RULE}}",
+        "delivery": "{{MAIL_DELIVERY_SLA_RESOLVED_BY_BACKEND_RULE}}",
+        "discount": "{{MAIL_DISCOUNT_REQUIRES_APPROVAL}}",
+        "payment_terms": "{{MAIL_PAYMENT_TERMS_REQUIRES_FINANCE_REVIEW}}",
+    }
+    return MailDraftResolvedTerm(
+        value=placeholders[key],
+        source="backend_physical_placeholder",
+        is_placeholder=True,
+    )
+
+def _mail_standard_delivery_sla_term() -> MailDraftResolvedTerm:
+    return MailDraftResolvedTerm(
+        value=MAIL_STANDARD_DELIVERY_SLA_LABEL,
+        source="backend_standard_delivery_sla",
+        is_placeholder=False,
+    )
+
+def _mail_decimal_label(value: Decimal | int | float | str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return sanitize_text(str(value)) or None
+    return format(decimal_value.normalize(), "f").rstrip("0").rstrip(".") or "0"
+
+def _mail_pricing_rule_label(rule: PricingRule) -> str:
+    currency = sanitize_text(rule.currency or "CNY")
+    unit = sanitize_text(rule.unit or "unit")
+    price_min = _mail_decimal_label(rule.price_min)
+    price_max = _mail_decimal_label(rule.price_max)
+    min_charge = _mail_decimal_label(rule.min_charge)
+    if price_min and price_max and price_min != price_max:
+        amount = f"{currency} {price_min}-{price_max}"
+    elif price_min:
+        amount = f"{currency} {price_min}"
+    elif price_max:
+        amount = f"{currency} {price_max}"
+    else:
+        amount = None
+    parts = []
+    if amount:
+        parts.append(f"{amount} / {unit}")
+    if min_charge:
+        parts.append(f"minimum charge {currency} {min_charge}")
+    return "; ".join(parts)
+
+def _active_mail_pricing_rules(db: Session, *, limit: int = 1000) -> list[PricingRule]:
+    now = datetime.utcnow()
+    return db.query(PricingRule).filter(
+        PricingRule.status == "active",
+        or_(PricingRule.effective_from.is_(None), PricingRule.effective_from <= now),
+        or_(PricingRule.effective_to.is_(None), PricingRule.effective_to >= now),
+    ).order_by(PricingRule.updated_at.desc(), PricingRule.created_at.desc()).limit(limit).all()
+
+def _resolve_mail_price_term(db: Session) -> MailDraftResolvedTerm:
+    active_rules = _active_mail_pricing_rules(db, limit=2)
+    if len(active_rules) == 1:
+        value = _mail_pricing_rule_label(active_rules[0])
+        if value:
+            return MailDraftResolvedTerm(
+                value=value,
+                source=f"pricing_rule:{active_rules[0].rule_id}",
+                is_placeholder=False,
+            )
+    return _mail_commercial_placeholder("price")
+
+def _mail_pricing_context_unit(context: str) -> str | None:
+    text_value = sanitize_text(context).lower()
+    if any(
+        item in text_value
+        for item in [
+            "1000",
+            "1,000",
+            "1k",
+            "千字",
+            "千字符",
+            "千中文字符",
+            "千英文单词",
+            "每千",
+            "per 1000",
+            "per 1,000",
+            "per 1k",
+        ]
+    ):
+        return "per_1000_chars"
+    if any(item in text_value for item in ["per word", "per words", "/word", "/words", "每词", "每字", "英文单词"]):
+        return "per_english_word"
+    if any(item in text_value for item in ["per hour", "/hour", "每小时"]):
+        return "per_hour"
+    if any(item in text_value for item in ["per day", "/day", "每天"]):
+        return "per_day"
+    if any(item in text_value for item in ["slide", "幻灯片"]):
+        return "per_slide"
+    return None
+
+def _mail_pricing_context_currency(context: str) -> str | None:
+    text_value = sanitize_text(context).lower()
+    if any(item in text_value for item in ["rmb", "cny", "人民币", "元", "￥"]):
+        return "CNY"
+    if any(item in text_value for item in ["usd", "us$", "$", "美元", "美金"]):
+        return "USD"
+    return None
+
+def _mail_explicit_price_mention_type(context: str) -> str:
+    text_value = sanitize_text(context).lower()
+    if any(item in text_value for item in ["discount", "off", "折扣", "优惠", "折"]):
+        return "discount"
+    return "unit_price"
+
+def _extract_mail_explicit_price_mentions(text_value: str | None) -> list[dict[str, Any]]:
+    normalized = html.unescape(re.sub(r"<[^>]+>", " ", str(text_value or "")))
+    patterns = [
+        (
+            r"(?P<context>(?:price|rate|cost|quote|quotation|fee|charge|discount|off|"
+            r"单价|价格|报价|费用|折扣|优惠|特价|折)"
+            r"[^.;。；\n]{0,80}?"
+            r"(?P<amount>\d+(?:[,.]\d+)*(?:\.\d+)?)\s*"
+            r"(?:RMB|CNY|人民币|元|USD|US\$|美元|美金|\$|￥|%|％|折|/|per|每))"
+        ),
+        (
+            r"(?P<context>(?:RMB|CNY|人民币|USD|US\$|美元|美金|\$|￥)\s*"
+            r"(?P<amount>\d+(?:[,.]\d+)*(?:\.\d+)?)"
+            r"[^.;。；\n]{0,80}?"
+            r"(?:/|per|每|千字|千字符|千中文字符|千英文单词|1000|1,000|1k|"
+            r"words?|chars?|characters?|hour|day|project|元|美元|美金)?)"
+        ),
+        (
+            r"(?P<context>(?P<amount>\d+(?:[,.]\d+)*(?:\.\d+)?)\s*"
+            r"(?:RMB|CNY|人民币|元|USD|US\$|美元|美金|\$|￥)\s*"
+            r"(?:/|per|每)?[^.;。；\n]{0,80})"
+        ),
+        (
+            r"(?P<context>(?P<amount>\d+(?:[,.]\d+)*(?:\.\d+)?)\s*"
+            r"(?:/|per)\s*(?:word|words|char|chars|character|characters|"
+            r"1000\s*(?:words?|chars?|characters?)|1,000\s*(?:words?|chars?|characters?)|"
+            r"1k\s*(?:words?|chars?|characters?)))"
+        ),
+        (
+            r"(?P<context>(?P<amount>\d+(?:[,.]\d+)*(?:\.\d+)?)\s*(?:元)?\s*/?\s*"
+            r"(?:每?\s*(?:千字|千字符|千中文字符|千英文单词)|每\s*(?:词|字|字符)))"
+        ),
+        (
+            r"(?P<context>(?:discount|off|折扣|优惠)[^.;。；\n]{0,40}?"
+            r"(?P<amount>\d+(?:[,.]\d+)*(?:\.\d+)?)\s*(?:%|％|折))"
+        ),
+        (
+            r"(?P<context>(?P<amount>\d+(?:[,.]\d+)*(?:\.\d+)?)\s*(?:%|％)\s*"
+            r"(?:discount|off|折扣|优惠))"
+        ),
+        r"(?P<context>(?P<amount>\d+(?:[,.]\d+)*(?:\.\d+)?)\s*折(?:扣|优惠)?)",
+    ]
+    mentions: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, normalized, flags=re.IGNORECASE):
+            raw_amount = match.group("amount").replace(",", "")
+            try:
+                amount = Decimal(raw_amount)
+            except (InvalidOperation, ValueError):
+                continue
+            context = sanitize_text(match.group("context")).strip()
+            mention_key = (str(amount), context.lower())
+            if mention_key in seen:
+                continue
+            seen.add(mention_key)
+            mentions.append(
+                {
+                    "amount": amount,
+                    "context": context[:160],
+                    "unit": _mail_pricing_context_unit(context),
+                    "currency": _mail_pricing_context_currency(context),
+                    "mention_type": _mail_explicit_price_mention_type(context),
+                }
+            )
+    return mentions
+
+def _mail_floor_rule_for_price_mention(
+    mention: dict[str, Any],
+    active_rules: list[PricingRule],
+) -> PricingRule | None:
+    priced_rules = [rule for rule in active_rules if rule.price_min is not None]
+    if not priced_rules:
+        return None
+    mention_currency = mention.get("currency")
+    if mention_currency:
+        currency_rules = [
+            rule for rule in priced_rules
+            if sanitize_text(rule.currency or "").upper() == mention_currency
+        ]
+        if currency_rules:
+            priced_rules = currency_rules
+    mention_unit = mention.get("unit")
+    if mention_unit:
+        unit_rules = [rule for rule in priced_rules if sanitize_text(rule.unit) == mention_unit]
+        if unit_rules:
+            return min(unit_rules, key=lambda rule: Decimal(str(rule.price_min)))
+    if len(priced_rules) == 1:
+        return priced_rules[0]
+    return None
+
+def _evaluate_mail_financial_price_floor_guardrail(
+    db: Session,
+    *,
+    body_html: str,
+    commercial_terms: MailDraftCommercialTerms,
+) -> dict[str, Any] | None:
+    active_rules = _active_mail_pricing_rules(db)
+    texts_to_scan = [
+        {"source": "generated_mail_body", "text": body_html},
+        {"source": "resolved_commercial_price", "text": commercial_terms.price.value},
+    ]
+    for item in texts_to_scan:
+        for mention in _extract_mail_explicit_price_mentions(item["text"]):
+            if mention.get("mention_type") == "discount":
+                continue
+            floor_rule = _mail_floor_rule_for_price_mention(mention, active_rules)
+            if not floor_rule:
+                continue
+            floor = Decimal(str(floor_rule.price_min))
+            if mention["amount"] < floor:
+                return {
+                    "source": item["source"],
+                    "status": "red_card_hard_block",
+                    "reason": "explicit_price_below_active_pricing_rule_floor",
+                    "extracted_price": float(mention["amount"]),
+                    "floor_price": float(floor),
+                    "pricing_rule_id": str(floor_rule.rule_id),
+                    "pricing_rule_unit": floor_rule.unit,
+                    "pricing_rule_currency": floor_rule.currency,
+                    "matched_context": mention["context"],
+                    "review_only": True,
+                    "real_sending_enabled": False,
+                }
+    return None
+
+MAIL_CONFIDENTIALITY_COMPETITOR_DOMAIN_BLACKLIST = {
+    "lionbridge.com",
+    "rws.com",
+    "sdl.com",
+    "transperfect.com",
+    "welocalize.com",
+}
+MAIL_CONFIDENTIALITY_COMPETITOR_DOMAINS = MAIL_CONFIDENTIALITY_COMPETITOR_DOMAIN_BLACKLIST
+MAIL_CONFIDENTIALITY_RISKY_DOMAINS = {
+    "10minutemail.com",
+    "example.com",
+    "guerrillamail.com",
+    "localhost",
+    "mailinator.com",
+    "tempmail.com",
+    "test.com",
+    "yopmail.com",
+}
+MAIL_CONFIDENTIALITY_CUSTOMER_DOMAIN_WHITELIST_BY_CUSTOMER_KEY = {
+    "CUST-DEMO-MULTI-DOMAIN": {
+        "customer-domain.com",
+        "customer-domain.cn",
+    },
+}
+
+def _normalize_mail_recipient_domain(value: str | None) -> str | None:
+    text_value = sanitize_text(value or "").strip().lower()
+    if not text_value:
+        return None
+    if "<" in text_value and ">" in text_value:
+        text_value = text_value.split("<", 1)[1].split(">", 1)[0].strip()
+    if "@" in text_value:
+        text_value = text_value.rsplit("@", 1)[1]
+    text_value = text_value.strip(" .;,")
+    if not text_value or "." not in text_value:
+        return None
+    return text_value
+
+def _mail_domain_matches_list(domain: str, domains: set[str]) -> str | None:
+    normalized = _normalize_mail_recipient_domain(domain)
+    if not normalized:
+        return None
+    for candidate in domains:
+        normalized_candidate = _normalize_mail_recipient_domain(candidate)
+        if not normalized_candidate:
+            continue
+        if normalized == normalized_candidate or normalized.endswith(f".{normalized_candidate}"):
+            return normalized_candidate
+    return None
+
+def _mail_domain_matches_blocked_list(domain: str, blocked_domains: set[str]) -> str | None:
+    return _mail_domain_matches_list(domain, blocked_domains)
+
+def _mail_customer_domain_whitelist(customer_key: str | None, contact_email: str) -> set[str]:
+    whitelist: set[str] = set()
+    primary_domain = _normalize_mail_recipient_domain(contact_email)
+    if primary_domain:
+        whitelist.add(primary_domain)
+    normalized_customer_key = sanitize_text(customer_key or "").strip().upper()
+    for domain in MAIL_CONFIDENTIALITY_CUSTOMER_DOMAIN_WHITELIST_BY_CUSTOMER_KEY.get(normalized_customer_key, set()):
+        normalized = _normalize_mail_recipient_domain(domain)
+        if normalized:
+            whitelist.add(normalized)
+    return whitelist
+
+def _evaluate_mail_recipient_domain_confidentiality_guardrail(
+    *,
+    customer_key: str | None,
+    contact_email: str,
+    cc_emails: list[str] | None = None,
+) -> dict[str, Any] | None:
+    recipients = [{"field": "recipient", "email": sanitize_text(contact_email).strip()}]
+    for cc_email in cc_emails or []:
+        recipients.append({"field": "cc", "email": sanitize_text(cc_email).strip()})
+
+    customer_domain_whitelist = _mail_customer_domain_whitelist(customer_key, contact_email)
+    blocked_recipients: list[dict[str, Any]] = []
+    checked_domains: list[dict[str, Any]] = []
+    for item in recipients:
+        email_value = item["email"]
+        if not email_value:
+            continue
+        domain = _normalize_mail_recipient_domain(email_value)
+        if not domain:
+            raise HTTPException(status_code=422, detail=f"valid {item['field']} email is required")
+        matched_customer_domain = _mail_domain_matches_list(domain, customer_domain_whitelist)
+        checked_domains.append(
+            {
+                "field": item["field"],
+                "email": email_value,
+                "domain": domain,
+                "whitelist_status": "allowed" if matched_customer_domain else "not_whitelisted",
+            }
+        )
+        matched_competitor = _mail_domain_matches_blocked_list(
+            domain,
+            MAIL_CONFIDENTIALITY_COMPETITOR_DOMAIN_BLACKLIST,
+        )
+        matched_risky = _mail_domain_matches_blocked_list(
+            domain,
+            MAIL_CONFIDENTIALITY_RISKY_DOMAINS,
+        )
+        if matched_competitor or matched_risky or not matched_customer_domain:
+            blocked_recipients.append(
+                {
+                    "field": item["field"],
+                    "email": email_value,
+                    "domain": domain,
+                    "matched_domain": matched_competitor or matched_risky or matched_customer_domain,
+                    "risk_type": (
+                        "competitor_domain"
+                        if matched_competitor
+                        else "risky_recipient_domain"
+                        if matched_risky
+                        else "non_whitelisted_customer_domain"
+                    ),
+                    "customer_domain_whitelist": sorted(customer_domain_whitelist),
+                }
+            )
+    if not blocked_recipients:
+        return None
+    return {
+        "source": "mail_generate_draft_recipient_domain_confidentiality_guardrail",
+        "status": "red_card_hard_block",
+        "reason": "recipient_or_cc_domain_confidentiality_risk",
+        "blocked_recipients": blocked_recipients,
+        "checked_domains": checked_domains,
+        "competitor_domain_blacklist": sorted(MAIL_CONFIDENTIALITY_COMPETITOR_DOMAIN_BLACKLIST),
+        "customer_domain_whitelist": sorted(customer_domain_whitelist),
+        "review_only": True,
+        "real_sending_enabled": False,
+        "will_send_email": False,
+    }
+
+def _resolve_mail_commercial_terms(db: Session, *, suite_step: int) -> MailDraftCommercialTerms:
+    price = _resolve_mail_price_term(db)
+    delivery = _mail_standard_delivery_sla_term()
+    discount = _mail_commercial_placeholder("discount")
+    payment_terms = _mail_commercial_placeholder("payment_terms")
+    warnings = [
+        "Price, delivery SLA, discount, and payment terms are backend-filled and locked for review.",
+    ]
+    if price.is_placeholder:
+        warnings.append("No single unambiguous active pricing rule was resolved; price placeholder remains for approval.")
+    if int(suite_step) >= 4:
+        warnings.append("Discount and payment terms require explicit backend or finance approval.")
+    return MailDraftCommercialTerms(
+        price=price,
+        delivery=delivery,
+        discount=discount,
+        payment_terms=payment_terms,
+        warnings=tuple(warnings),
+    )
+
+def _mail_sanitize_fewshot_reference_for_draft(content: str | None) -> str | None:
+    text_value = sanitize_text(content or "")
+    if not text_value:
+        return None
+    replacements = [
+        (r"(?:RMB|CNY|USD|US\$|\$|￥)\s*\d+(?:[,.]\d+)*(?:\.\d+)?", "{{MAIL_PRICE_RESOLVED_BY_APPROVED_PRICING_RULE}}"),
+        (r"\d+(?:\.\d+)?\s*(?:元|美元|美金|折|%|％)", "{{MAIL_COMMERCIAL_TERM_RESOLVED_BY_BACKEND}}"),
+        (r"\b\d+\s*(?:business\s+days?|working\s+days?|days?|hours?|hrs?)\b", "{{MAIL_DELIVERY_SLA_RESOLVED_BY_BACKEND_RULE}}"),
+        (r"\b(?:payment|prepay|prepaid|net\s*\d+|deposit|balance|discount|delivery|lead\s*time)\b[^.;。；\n]{0,80}", "{{MAIL_COMMERCIAL_TERM_RESOLVED_BY_BACKEND}}"),
+        (r"(?:付款|预付|账期|月结|欠款|折扣|优惠|交期|工期|交稿)[^。；;\n]{0,40}", "{{MAIL_COMMERCIAL_TERM_RESOLVED_BY_BACKEND}}"),
+    ]
+    for pattern, replacement in replacements:
+        text_value = re.sub(pattern, replacement, text_value, flags=re.IGNORECASE)
+    return text_value[:240]
+
+def _build_mail_draft_intent_profile(
+    *,
+    payload: MailGenerateDraftRequest,
+    step: Any,
+    interval: Any,
+    admitted_fewshot: dict | None,
+    commercial_terms: MailDraftCommercialTerms,
+) -> MailDraftIntentProfile:
+    customer_key = sanitize_text(payload.customer_key).strip()
+    contact_email = sanitize_text(payload.contact_email).strip()
+    seller_name = sanitize_text(payload.current_seller_name).strip()
+    seller_signature = sanitize_text(payload.current_seller_signature).strip()
+    if not customer_key:
+        raise HTTPException(status_code=422, detail="customer_key is required")
+    if not contact_email or "@" not in contact_email:
+        raise HTTPException(status_code=422, detail="valid contact_email is required")
+    if not seller_name:
+        raise HTTPException(status_code=422, detail="current_seller_name is required")
+    if not seller_signature:
+        raise HTTPException(status_code=422, detail="current_seller_signature is required")
+
+    return MailDraftIntentProfile(
+        customer_key=customer_key,
+        contact_email=contact_email,
+        recipient_name=_mail_contact_name_from_email(contact_email),
+        seller_name=seller_name,
+        seller_signature=seller_signature,
+        scenario=sanitize_text(step.scenario),
+        scenario_label=sanitize_text(step.scenario_label),
+        suite_step=int(step.suite_step),
+        step_key=sanitize_text(step.step_key),
+        objective=sanitize_text(step.objective),
+        cta_style=sanitize_text(step.cta_style),
+        subject_hint=_first_mail_subject_hint(tuple(step.subject_template_hints)),
+        recommended_snippet_types=tuple(sanitize_text(item) for item in step.recommended_snippet_types),
+        retrieval_filter_requirements=tuple(sanitize_text(item) for item in step.retrieval_filter_requirements),
+        forbidden_boundaries=tuple(sanitize_text(item) for item in step.forbidden_boundaries),
+        interval_delay_days=int(interval.delay_days),
+        admitted_fewshot_id=(admitted_fewshot or {}).get("fragment_id"),
+        admitted_fewshot_score=(admitted_fewshot or {}).get("useful_score"),
+        admitted_fewshot_content=_mail_sanitize_fewshot_reference_for_draft((admitted_fewshot or {}).get("content")),
+        commercial_terms=commercial_terms,
+    )
+
+def _mail_subject_from_intent_profile(profile: MailDraftIntentProfile) -> str:
+    return (
+        profile.subject_hint
+        .replace("[行业]", "your industry")
+        .replace("[翻译+排版+印刷]", "translation and production")
+    )
+
+def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) -> MailDraftAssembledContent:
+    paragraphs = [
+        f"Dear {html.escape(profile.recipient_name)},",
+        (
+            f"This is a draft-only scaffold for {html.escape(profile.scenario_label)} "
+            f"Step {profile.suite_step}: {html.escape(profile.objective)}"
+        ),
+    ]
+    if profile.admitted_fewshot_content:
+        paragraphs.append(f"Reference angle: {html.escape(profile.admitted_fewshot_content[:240])}")
+    terms = profile.commercial_terms
+    paragraphs.append(
+        "Backend-filled commercial terms for review: "
+        f"Price: {html.escape(terms.price.value)}; "
+        f"Delivery SLA: {html.escape(terms.delivery.value)}; "
+        f"Discount: {html.escape(terms.discount.value)}; "
+        f"Payment terms: {html.escape(terms.payment_terms.value)}."
+    )
+    paragraphs.extend([
+        f"Suggested next step: {html.escape(profile.cta_style)}",
+        "This draft is locked for human review and is not enabled for real sending.",
+        html.escape(profile.seller_signature).replace("\n", "<br>"),
+    ])
+    return MailDraftAssembledContent(
+        subject=_mail_subject_from_intent_profile(profile),
+        body_html="".join(f"<p>{paragraph}</p>" for paragraph in paragraphs),
+    )
+
+def _build_mail_generate_draft_response(
+    db: Session,
+    payload: MailGenerateDraftRequest,
+) -> MailGenerateDraftResponse:
+    try:
+        step = get_mail_sequence_step(payload.scenario, int(payload.suite_step))
+        interval = get_mail_sequence_step_interval(payload.scenario, int(payload.suite_step))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    min_score = _mail_fewshot_min_score()
+    fewshot = _mail_generate_draft_fewshot(
+        db,
+        scenario=payload.scenario,
+        function_fragments=tuple(step.recommended_snippet_types),
+        min_score=min_score,
+    )
+    commercial_terms = _resolve_mail_commercial_terms(db, suite_step=int(payload.suite_step))
+    intent_profile = _build_mail_draft_intent_profile(
+        payload=payload,
+        step=step,
+        interval=interval,
+        admitted_fewshot=fewshot,
+        commercial_terms=commercial_terms,
+    )
+    assembled = _assemble_mail_draft_from_intent_profile(intent_profile)
+    delivery_sla_guardrail = _evaluate_and_calibrate_mail_delivery_sla_guardrail(assembled.body_html)
+    if delivery_sla_guardrail:
+        assembled = MailDraftAssembledContent(
+            subject=assembled.subject,
+            body_html=delivery_sla_guardrail["calibrated_body_html"],
+        )
+    recipient_domain_confidentiality_block = _evaluate_mail_recipient_domain_confidentiality_guardrail(
+        customer_key=intent_profile.customer_key,
+        contact_email=intent_profile.contact_email,
+        cc_emails=payload.cc_emails,
+    )
+    financial_price_floor_block = _evaluate_mail_financial_price_floor_guardrail(
+        db,
+        body_html=assembled.body_html,
+        commercial_terms=intent_profile.commercial_terms,
+    )
+
+    warnings = [
+        "Review-only draft: no real email sending is enabled.",
+        *intent_profile.commercial_terms.warnings,
+    ]
+    if intent_profile.interval_delay_days > 0:
+        warnings.append(
+            f"Default sequence interval metadata says this step waits {intent_profile.interval_delay_days} days."
+        )
+    if delivery_sla_guardrail:
+        warnings.append(
+            "YELLOW CARD: delivery promise was faster than the standard SLA; "
+            f"draft was physically calibrated to {delivery_sla_guardrail['standard_sla_label']} and remains locked."
+        )
+    if recipient_domain_confidentiality_block:
+        warnings.append(
+            "RED CARD: recipient-domain confidentiality guardrail blocked a recipient or CC domain; "
+            "draft is hard-blocked and real sending remains disabled."
+        )
+        return MailGenerateDraftResponse(
+            status="blocked_by_recipient_domain_confidentiality_gate",
+            draft_status=MailSequenceStatus.BLOCKED.value,
+            review_required=True,
+            review_mode="red_card_recipient_domain_confidentiality_review",
+            real_sending_enabled=False,
+            mail_uid=f"mail_draft_{uuid.uuid4().hex[:12]}",
+            final_subject=assembled.subject,
+            final_body_html=assembled.body_html,
+            retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
+            fewshot_match_score=intent_profile.admitted_fewshot_score,
+            safety_guardrail=MailSafetyGuardrail(
+                status="red_card_hard_block",
+                triggered_warnings=warnings,
+                is_locked_for_approval=True,
+                lock_reason=(
+                    "Recipient-domain confidentiality guardrail blocked this draft because "
+                    "the recipient or CC domain is competitor or risky. Real sending remains disabled."
+                ),
+                real_sending_enabled=False,
+                draft_status=MailSequenceStatus.BLOCKED.value,
+                hard_block=True,
+                red_card_code="blocked_by_recipient_domain_confidentiality_gate",
+                blocked_by="recipient_domain_confidentiality_guardrail",
+                block_details=recipient_domain_confidentiality_block,
+            ),
+        )
+    if financial_price_floor_block:
+        warnings.append("RED CARD: explicit price is below the active pricing rule floor; draft is hard-blocked.")
+        return MailGenerateDraftResponse(
+            status="blocked_by_financial_safety_gate",
+            draft_status=MailSequenceStatus.BLOCKED.value,
+            review_required=True,
+            review_mode="red_card_financial_safety_review",
+            real_sending_enabled=False,
+            mail_uid=f"mail_draft_{uuid.uuid4().hex[:12]}",
+            final_subject=assembled.subject,
+            final_body_html=assembled.body_html,
+            retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
+            fewshot_match_score=intent_profile.admitted_fewshot_score,
+            safety_guardrail=MailSafetyGuardrail(
+                status="red_card_hard_block",
+                triggered_warnings=warnings,
+                is_locked_for_approval=True,
+                lock_reason=(
+                    "Financial price-floor guardrail blocked this draft because an explicit "
+                    "price is below the active pricing rule floor. Real sending remains disabled."
+                ),
+                real_sending_enabled=False,
+                draft_status=MailSequenceStatus.BLOCKED.value,
+                hard_block=True,
+                red_card_code="blocked_by_financial_safety_gate",
+                blocked_by="financial_price_floor_guardrail",
+                block_details=financial_price_floor_block,
+            ),
+        )
+    return MailGenerateDraftResponse(
+        status="drafted",
+        draft_status=MailSequenceStatus.DRAFTED.value,
+        review_required=True,
+        review_mode="human_review_required",
+        real_sending_enabled=False,
+        mail_uid=f"mail_draft_{uuid.uuid4().hex[:12]}",
+        final_subject=assembled.subject,
+        final_body_html=assembled.body_html,
+        retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
+        fewshot_match_score=intent_profile.admitted_fewshot_score,
+        safety_guardrail=MailSafetyGuardrail(
+            status="yellow_card_sla_calibrated_locked" if delivery_sla_guardrail else "locked_for_approval",
+            triggered_warnings=warnings,
+            is_locked_for_approval=True,
+            lock_reason=(
+                "Delivery SLA guardrail calibrated a too-fast promise to the standard SLA; "
+                "draft remains locked for human review and real sending remains disabled."
+                if delivery_sla_guardrail else
+                "Mail draft generation is review-only; real sending remains disabled."
+            ),
+            real_sending_enabled=False,
+            draft_status=MailSequenceStatus.DRAFTED.value,
+            block_details=delivery_sla_guardrail,
+        ),
+    )
+
+CRM_STATE_CHANGE_INTERRUPT_REASON_ALIASES: dict[str, str] = {
+    "crm_state_change": "",
+    "crm_stage_changed_to_won": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_WON.value,
+    "stage_changed_to_won": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_WON.value,
+    "deal_won": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_WON.value,
+    "won": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_WON.value,
+    "closed_won": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_WON.value,
+    "crm_stage_changed_to_lost": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_LOST.value,
+    "stage_changed_to_lost": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_LOST.value,
+    "deal_lost": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_LOST.value,
+    "lost": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_LOST.value,
+    "closed_lost": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_LOST.value,
+    "crm_stage_changed_to_active_opportunity": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_ACTIVE_OPPORTUNITY.value,
+    "stage_changed_to_active_opportunity": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_ACTIVE_OPPORTUNITY.value,
+    "active_opportunity": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_ACTIVE_OPPORTUNITY.value,
+    "opportunity": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_ACTIVE_OPPORTUNITY.value,
+    "crm_stage_changed_to_complaint": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_COMPLAINT.value,
+    "stage_changed_to_complaint": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_COMPLAINT.value,
+    "complaint": MailSequenceInterruptionReason.CRM_STAGE_CHANGED_TO_COMPLAINT.value,
+    "crm_marked_do_not_contact": MailSequenceInterruptionReason.CRM_MARKED_DO_NOT_CONTACT.value,
+    "do_not_contact": MailSequenceInterruptionReason.CRM_MARKED_DO_NOT_CONTACT.value,
+    "crm_assigned_manual_follow_up": MailSequenceInterruptionReason.CRM_ASSIGNED_MANUAL_FOLLOW_UP.value,
+    "manual_follow_up": MailSequenceInterruptionReason.CRM_ASSIGNED_MANUAL_FOLLOW_UP.value,
+    "crm_contact_invalid_or_left": MailSequenceInterruptionReason.CRM_CONTACT_INVALID_OR_LEFT.value,
+    "contact_invalid_or_left": MailSequenceInterruptionReason.CRM_CONTACT_INVALID_OR_LEFT.value,
+    "contact_left": MailSequenceInterruptionReason.CRM_CONTACT_INVALID_OR_LEFT.value,
+}
+
+MANUAL_SEAL_INTERRUPT_REASON_ALIASES: dict[str, str] = {
+    "manual_seal": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SALES.value,
+    "sales": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SALES.value,
+    "sales_manual_seal": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SALES.value,
+    "manual_sealed_by_sales": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SALES.value,
+    "sealed_by_sales": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SALES.value,
+    "sales_seal": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SALES.value,
+    "operations": MailSequenceInterruptionReason.MANUAL_SEALED_BY_OPERATIONS.value,
+    "ops": MailSequenceInterruptionReason.MANUAL_SEALED_BY_OPERATIONS.value,
+    "operations_manual_seal": MailSequenceInterruptionReason.MANUAL_SEALED_BY_OPERATIONS.value,
+    "manual_sealed_by_operations": MailSequenceInterruptionReason.MANUAL_SEALED_BY_OPERATIONS.value,
+    "sealed_by_operations": MailSequenceInterruptionReason.MANUAL_SEALED_BY_OPERATIONS.value,
+    "supervisor": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SUPERVISOR.value,
+    "supervisor_manual_seal": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SUPERVISOR.value,
+    "manual_sealed_by_supervisor": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SUPERVISOR.value,
+    "sealed_by_supervisor": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SUPERVISOR.value,
+}
+
+def _normalize_crm_state_change_interrupt_reason(value: str | None) -> str | None:
+    normalized = sanitize_text(value or "").strip().lower()
+    if not normalized:
+        return None
+    normalized = re.sub(r"[\s\-]+", "_", normalized)
+    mapped = CRM_STATE_CHANGE_INTERRUPT_REASON_ALIASES.get(normalized)
+    if mapped:
+        return mapped
+    try:
+        reason = MailSequenceInterruptionReason(normalized)
+    except ValueError:
+        return None
+    cutoff_rule = get_mail_sequence_cutoff_rule(reason)
+    if cutoff_rule.event_type == MailSequenceCutoffEventType.CRM_STATE_CHANGE.value:
+        return reason.value
+    return None
+
+def _normalize_manual_seal_interrupt_reason(
+    value: str | None,
+    *,
+    manual_seal_actor: str | None = None,
+) -> str | None:
+    normalized = sanitize_text(value or "").strip().lower()
+    normalized = re.sub(r"[\s\-]+", "_", normalized)
+    actor = sanitize_text(manual_seal_actor or "").strip().lower()
+    actor = re.sub(r"[\s\-]+", "_", actor)
+    if normalized == MailSequenceCutoffEventType.MANUAL_SEAL.value and actor:
+        normalized = actor
+    if not normalized:
+        return None
+    mapped = MANUAL_SEAL_INTERRUPT_REASON_ALIASES.get(normalized)
+    if mapped:
+        return mapped
+    try:
+        reason = MailSequenceInterruptionReason(normalized)
+    except ValueError:
+        return None
+    cutoff_rule = get_mail_sequence_cutoff_rule(reason)
+    if cutoff_rule.event_type == MailSequenceCutoffEventType.MANUAL_SEAL.value:
+        return reason.value
+    return None
+
+def _normalize_mail_interrupt_reason_for_api(
+    value: str,
+    *,
+    crm_event_type: str | None = None,
+    manual_seal_actor: str | None = None,
+) -> str:
+    crm_reason = _normalize_crm_state_change_interrupt_reason(crm_event_type)
+    manual_seal_reason = _normalize_manual_seal_interrupt_reason(
+        value,
+        manual_seal_actor=manual_seal_actor,
+    )
+    normalized = sanitize_text(value).strip().lower()
+    normalized = re.sub(r"[\s\-]+", "_", normalized)
+    if normalized == MailSequenceCutoffEventType.CRM_STATE_CHANGE.value:
+        if crm_reason:
+            return crm_reason
+        allowed_crm_events = ", ".join(
+            reason.value
+            for reason in MailSequenceInterruptionReason
+            if get_mail_sequence_cutoff_rule(reason).event_type == MailSequenceCutoffEventType.CRM_STATE_CHANGE.value
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "crm_event_type is required when interrupt_reason=crm_state_change. "
+                f"Allowed CRM events: {allowed_crm_events}"
+            ),
+        )
+    if normalized == MailSequenceCutoffEventType.MANUAL_SEAL.value:
+        return manual_seal_reason or MailSequenceInterruptionReason.MANUAL_SEALED_BY_SALES.value
+    reason_from_value = _normalize_crm_state_change_interrupt_reason(normalized)
+    try:
+        reason = MailSequenceInterruptionReason(
+            manual_seal_reason or reason_from_value or normalized
+        ).value
+    except ValueError as exc:
+        allowed = ", ".join(reason.value for reason in MailSequenceInterruptionReason)
+        raise HTTPException(
+            status_code=422,
+            detail=f"unsupported interrupt_reason: {value}. Allowed values: {allowed}",
+        ) from exc
+    if crm_reason and crm_reason != reason:
+        raise HTTPException(
+            status_code=422,
+            detail=f"crm_event_type={crm_reason} does not match interrupt_reason={reason}",
+        )
+    actor_reason = _normalize_manual_seal_interrupt_reason(manual_seal_actor)
+    if actor_reason and actor_reason != reason:
+        raise HTTPException(
+            status_code=422,
+            detail=f"manual_seal_actor={actor_reason} does not match interrupt_reason={reason}",
+        )
+    return reason
+
+def _normalize_mail_interrupt_event_type_for_api(
+    event_type: str | None,
+    cutoff_rule: Any,
+) -> str:
+    if event_type is None:
+        return cutoff_rule.event_type
+    normalized = sanitize_text(event_type).strip().lower()
+    normalized = re.sub(r"[\s\-]+", "_", normalized)
+    crm_reason_from_event_type = _normalize_crm_state_change_interrupt_reason(normalized)
+    if crm_reason_from_event_type:
+        if crm_reason_from_event_type != cutoff_rule.interruption_reason:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"event_type={crm_reason_from_event_type} does not match "
+                    f"interrupt_reason={cutoff_rule.interruption_reason}"
+                ),
+            )
+        return MailSequenceCutoffEventType.CRM_STATE_CHANGE.value
+    manual_reason_from_event_type = _normalize_manual_seal_interrupt_reason(normalized)
+    if manual_reason_from_event_type:
+        if manual_reason_from_event_type != cutoff_rule.interruption_reason:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"event_type={manual_reason_from_event_type} does not match "
+                    f"interrupt_reason={cutoff_rule.interruption_reason}"
+                ),
+            )
+        return MailSequenceCutoffEventType.MANUAL_SEAL.value
+    try:
+        event_type_value = MailSequenceCutoffEventType(normalized).value
+    except ValueError as exc:
+        allowed = ", ".join(item.value for item in MailSequenceCutoffEventType)
+        raise HTTPException(
+            status_code=422,
+            detail=f"unsupported event_type: {event_type}. Allowed values: {allowed}",
+        ) from exc
+    if event_type_value != cutoff_rule.event_type:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"event_type={event_type_value} does not match "
+                f"interrupt_reason={cutoff_rule.interruption_reason}"
+            ),
+        )
+    return event_type_value
+
+def _build_mail_crm_state_change_trigger_preview(
+    payload: MailSequenceInterruptRequest,
+    *,
+    interruption_reason: str,
+    cutoff_rule: Any,
+) -> dict[str, Any] | None:
+    if cutoff_rule.event_type != MailSequenceCutoffEventType.CRM_STATE_CHANGE.value:
+        return None
+    metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
+    crm_event_type = sanitize_text(payload.crm_event_type or "").strip()
+    return {
+        "source": "crm_state_change",
+        "crm_event_type": crm_event_type or interruption_reason,
+        "normalized_interrupt_reason": interruption_reason,
+        "crm_stage": sanitize_text(payload.crm_stage or metadata.get("crm_stage") or "").strip() or None,
+        "previous_crm_stage": (
+            sanitize_text(payload.previous_crm_stage or metadata.get("previous_crm_stage") or "").strip()
+            or None
+        ),
+        "changed_at": sanitize_text(payload.crm_changed_at or metadata.get("changed_at") or "").strip() or None,
+        "review_only": True,
+        "will_write_database": False,
+        "will_send_email": False,
+    }
+
+def _build_mail_manual_seal_trigger_preview(
+    payload: MailSequenceInterruptRequest,
+    *,
+    interruption_reason: str,
+    cutoff_rule: Any,
+    interrupted_at: str,
+) -> dict[str, Any] | None:
+    if cutoff_rule.event_type != MailSequenceCutoffEventType.MANUAL_SEAL.value:
+        return None
+    metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
+    actor = cutoff_rule.audit_metadata.get("manual_seal_actor") or "sales"
+    operator_id = sanitize_text(payload.operator_id or metadata.get("operator_id") or "").strip() or None
+    sealed_at = sanitize_text(payload.sealed_at or metadata.get("sealed_at") or "").strip() or interrupted_at
+    return {
+        "source": "mail_sequence_manual_seal",
+        "manual_seal_actor": actor,
+        "normalized_interrupt_reason": interruption_reason,
+        "operator_name": sanitize_text(payload.operator_name).strip(),
+        "operator_id": operator_id,
+        "sealed_at": sealed_at,
+        "manual_seal_reason": (
+            sanitize_text(payload.manual_seal_reason or metadata.get("manual_seal_reason") or "").strip()
+            or None
+        ),
+        "review_only": True,
+        "review_required": True,
+        "will_write_database": False,
+        "will_lock_pending_drafts": False,
+        "will_delete_pending_drafts": False,
+        "will_send_email": False,
+    }
+
+def _build_mail_sequence_interrupt_scope(
+    *,
+    customer_key: str | None,
+    contact_email: str | None,
+    recipient_domain: str | None,
+) -> tuple[str, str, dict[str, str]]:
+    scope_targets: dict[str, str] = {}
+    if customer_key:
+        scope_targets["customer"] = customer_key
+    if recipient_domain:
+        scope_targets["domain"] = recipient_domain
+    if contact_email:
+        scope_targets["contact"] = contact_email
+    if not scope_targets:
+        raise HTTPException(
+            status_code=422,
+            detail="at least one interruption target is required: customer_key, contact_email, or recipient_domain",
+        )
+    if len(scope_targets) == 1:
+        interruption_scope = next(iter(scope_targets))
+    else:
+        interruption_scope = "multi_scope"
+    for preferred_scope in ("contact", "domain", "customer"):
+        if preferred_scope in scope_targets:
+            return interruption_scope, scope_targets[preferred_scope], scope_targets
+    raise HTTPException(status_code=422, detail="unable to resolve interruption target")
+
+def _build_mail_sequence_interrupt_response(
+    payload: MailSequenceInterruptRequest,
+) -> MailSequenceInterruptResponse:
+    customer_key = sanitize_text(payload.customer_key or "").strip() or None
+    operator_name = sanitize_text(payload.operator_name).strip()
+    contact_email = sanitize_text(payload.contact_email or "").strip() or None
+    recipient_domain = sanitize_text(payload.recipient_domain or "").strip().lower() or None
+    if not operator_name:
+        raise HTTPException(status_code=422, detail="operator_name is required")
+    if contact_email and "@" not in contact_email:
+        raise HTTPException(status_code=422, detail="valid contact_email is required when provided")
+    if recipient_domain and ("@" in recipient_domain or "." not in recipient_domain):
+        raise HTTPException(status_code=422, detail="valid recipient_domain is required when provided")
+    interruption_scope, interruption_target, scope_targets = _build_mail_sequence_interrupt_scope(
+        customer_key=customer_key,
+        contact_email=contact_email,
+        recipient_domain=recipient_domain,
+    )
+
+    interruption_reason = _normalize_mail_interrupt_reason_for_api(
+        payload.interrupt_reason,
+        crm_event_type=payload.crm_event_type,
+        manual_seal_actor=payload.manual_seal_actor,
+    )
+    try:
+        cutoff_rule = get_mail_sequence_cutoff_rule(interruption_reason)
+        event_type = _normalize_mail_interrupt_event_type_for_api(payload.event_type, cutoff_rule)
+        terminal_status = get_mail_sequence_cutoff_terminal_status(interruption_reason)
+        physically_stops_sequence = should_cutoff_event_physically_stop_sequence(
+            event_type,
+            interruption_reason,
+            current_status=payload.current_sequence_status,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    draft_statuses = payload.pending_draft_statuses or list(MAIL_UNSENT_DRAFT_STATUSES)
+    disposition_plans: list[MailPendingDraftInterruptPlan] = []
+    for draft_status in draft_statuses:
+        try:
+            disposition = resolve_mail_pending_draft_disposition(
+                interruption_reason,
+                draft_status,
+                event_type=event_type,
+                scenario=payload.scenario,
+                suite_step=payload.suite_step,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        disposition_plans.append(
+            MailPendingDraftInterruptPlan(
+                draft_status=disposition["draft_status"],
+                disposition_action=disposition["disposition_action"],
+                blocks_real_sending=bool(disposition["blocks_real_sending"]),
+                removes_body_content=bool(disposition["removes_body_content"]),
+                preserve_audit_record=bool(disposition["preserve_audit_record"]),
+                reason=disposition.get("reason"),
+            )
+        )
+
+    planned_destroy_count = sum(
+        1 for item in disposition_plans if item.disposition_action == "destroy"
+    )
+    planned_lock_count = sum(
+        1 for item in disposition_plans if item.disposition_action == "lock"
+    )
+    interrupted_at = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
+    crm_state_change_trigger = _build_mail_crm_state_change_trigger_preview(
+        payload,
+        interruption_reason=interruption_reason,
+        cutoff_rule=cutoff_rule,
+    )
+    manual_seal_trigger = _build_mail_manual_seal_trigger_preview(
+        payload,
+        interruption_reason=interruption_reason,
+        cutoff_rule=cutoff_rule,
+        interrupted_at=interrupted_at,
+    )
+    operator_id = sanitize_text(payload.operator_id or metadata.get("operator_id") or "").strip() or None
+    operation_log_entry = MailSequenceInterruptOperationLogEntry(
+        interrupted_at=interrupted_at,
+        operator_name=operator_name,
+        operator_id=operator_id,
+        interruption_scope=interruption_scope,
+        interruption_target=interruption_target,
+        scope_targets=scope_targets,
+        customer_key=customer_key,
+        contact_email=contact_email,
+        recipient_domain=recipient_domain,
+        interrupt_reason=interruption_reason,
+        event_type=event_type,
+        terminal_status=terminal_status,
+        current_sequence_status=(
+            sanitize_text(payload.current_sequence_status or "").strip() or None
+        ),
+        scenario=sanitize_text(payload.scenario or "").strip() or None,
+        suite_step=payload.suite_step,
+        physically_stops_sequence=physically_stops_sequence,
+        planned_destroy_pending_drafts_count=planned_destroy_count,
+        planned_lock_pending_drafts_count=planned_lock_count,
+        deleted_pending_drafts_count=planned_destroy_count,
+        locked_pending_drafts_count=planned_lock_count,
+        pending_draft_dispositions=[item.dict() for item in disposition_plans],
+        crm_state_change_trigger=crm_state_change_trigger,
+        manual_seal_trigger=manual_seal_trigger,
+        metadata=metadata,
+    )
+    operation_log_payload = operation_log_entry.dict()
+    logger.info(
+        "MAIL_SEQUENCE_INTERRUPT_REVIEW_ONLY %s",
+        json.dumps(operation_log_payload, ensure_ascii=False, default=str),
+    )
+    return MailSequenceInterruptResponse(
+        status=terminal_status,
+        terminal_status=terminal_status,
+        customer_key=customer_key,
+        contact_email=contact_email,
+        recipient_domain=recipient_domain,
+        interruption_scope=interruption_scope,
+        interruption_target=interruption_target,
+        scope_targets=scope_targets,
+        interrupt_reason=interruption_reason,
+        event_type=event_type,
+        operator_name=operator_name,
+        physically_stops_sequence=physically_stops_sequence,
+        review_only=True,
+        review_required=True,
+        real_sending_enabled=False,
+        deleted_pending_drafts_count=planned_destroy_count,
+        locked_pending_drafts_count=planned_lock_count,
+        planned_destroy_pending_drafts_count=planned_destroy_count,
+        planned_lock_pending_drafts_count=planned_lock_count,
+        pending_draft_dispositions=disposition_plans,
+        cutoff_rule=cutoff_rule.to_dict(),
+        crm_state_change_trigger=crm_state_change_trigger,
+        manual_seal_trigger=manual_seal_trigger,
+        interrupted_at=interrupted_at,
+        operation_log_entry=operation_log_entry,
+        audit_preview={
+            "source": "mail_sequence_interrupt_api",
+            "review_only": True,
+            "interruption_scope": interruption_scope,
+            "interruption_target": interruption_target,
+            "scope_targets": scope_targets,
+            "operator_name": operator_name,
+            "deleted_pending_drafts_count": planned_destroy_count,
+            "locked_pending_drafts_count": planned_lock_count,
+            "count_basis": "planned_pending_draft_dispositions_only",
+            "will_write_database": False,
+            "will_delete_pending_drafts": False,
+            "will_lock_pending_drafts": False,
+            "will_send_email": False,
+            "crm_state_change_trigger": crm_state_change_trigger,
+            "manual_seal_trigger": manual_seal_trigger,
+            "operation_log_entry": operation_log_payload,
+            "metadata": metadata,
+            "note": (
+                "Counts reflect planned pending-draft dispositions only. No database write, "
+                "draft deletion, draft lock, or real sending is performed by this review-only API."
+            ),
+        },
+    )
+
 def _email_effect_feedback_to_dict(item: EmailEffectFeedback) -> dict:
     return {
         "feedback_id": str(item.feedback_id),
@@ -3455,6 +4782,36 @@ def _email_asset_source_ref_from_candidate_source_ref(source_ref: str | None) ->
         return head
     return value
 
+
+def _mail_fragment_requires_manual_review(source_type: str | None, source_snapshot: dict | None) -> bool:
+    snapshot = dict(source_snapshot or {})
+    normalized_source_type = str(source_type or "").strip()
+    if normalized_source_type in {"excellent_reply", "feedback"}:
+        return True
+    if snapshot.get("manual_review_required") is True:
+        return True
+    if snapshot.get("feedback_status") in POSITIVE_FEEDBACK_STATUSES:
+        return True
+    return False
+
+
+def _apply_mail_fragment_review_gate(source_snapshot: dict | None, *, approved: bool) -> dict:
+    snapshot = dict(source_snapshot or {})
+    if approved:
+        snapshot["review_status"] = "approved"
+        snapshot["retrieval_enabled"] = True
+        snapshot["is_safe_for_fewshot"] = True
+        snapshot["manual_review_required"] = False
+        if not snapshot.get("desensitized_status"):
+            snapshot["desensitized_status"] = "desensitized"
+        return snapshot
+    snapshot["review_status"] = "pending"
+    snapshot["retrieval_enabled"] = False
+    snapshot["is_safe_for_fewshot"] = False
+    snapshot["manual_review_required"] = True
+    return snapshot
+
+
 def _split_email_into_function_fragments(subject: str, content: str) -> list[dict]:
     text = sanitize_text(content or "")
     if not text:
@@ -4227,13 +5584,61 @@ def _upsert_email_fragment_asset(
     item.last_feedback_at = candidate.last_feedback_at if candidate and candidate.last_feedback_at else item.last_feedback_at
     item.quality_notes = candidate.quality_notes if candidate and candidate.quality_notes else governance["quality_notes"]
     merged_snapshot = dict(source_snapshot or {})
+    if candidate and isinstance(candidate.source_snapshot, dict):
+        merged_snapshot = {**candidate.source_snapshot, **merged_snapshot}
+        merged_snapshot["tags"] = merge_tags(candidate.source_snapshot.get("tags"), merged_snapshot.get("tags"))
     if candidate:
         merged_snapshot.setdefault("candidate_id", str(candidate.candidate_id))
     if email_asset:
         merged_snapshot.setdefault("email_id", str(email_asset.email_id))
+    requires_manual_review = _mail_fragment_requires_manual_review(source_type, merged_snapshot)
+    approved_for_fewshot = str(merged_snapshot.get("review_status") or "").strip() == "approved"
+    if requires_manual_review:
+        merged_snapshot = _apply_mail_fragment_review_gate(merged_snapshot, approved=approved_for_fewshot)
+        if not approved_for_fewshot:
+            item.allowed_for_generation = False
+            item.usable_for_reply = False
+            item.publishable = False
     item.source_snapshot = _json_safe(merged_snapshot)
-    item.status = "ready"
+    item.status = "ready" if not requires_manual_review or approved_for_fewshot else "review"
     return item
+
+
+def _sync_candidate_email_fragments(
+    db: Session,
+    candidate: KnowledgeCandidate,
+    *,
+    approve_for_fewshot: bool = False,
+) -> list[EmailFragmentAsset]:
+    fragments = db.query(EmailFragmentAsset).filter(EmailFragmentAsset.candidate_id == candidate.candidate_id).all()
+    if not fragments:
+        return []
+    if _mail_fragment_requires_manual_review(candidate.source_type, candidate.source_snapshot):
+        snapshot = _apply_mail_fragment_review_gate(candidate.source_snapshot, approved=approve_for_fewshot)
+        candidate.source_snapshot = snapshot
+        _apply_candidate_governance(candidate)
+    synced: list[EmailFragmentAsset] = []
+    for fragment in fragments:
+        fragment_snapshot = dict(fragment.source_snapshot or {})
+        candidate_snapshot = dict(candidate.source_snapshot or {})
+        fragment_snapshot.update(candidate_snapshot)
+        fragment_snapshot["tags"] = merge_tags(fragment_snapshot.get("tags"), candidate_snapshot.get("tags"))
+        synced.append(
+            _upsert_email_fragment_asset(
+                db,
+                source_type=fragment.source_type,
+                source_ref=fragment.source_ref,
+                title=candidate.title,
+                content=candidate.content,
+                session_id=fragment.session_id,
+                thread_id=fragment.thread_id,
+                candidate=candidate,
+                log_id=str(fragment.log_id) if fragment.log_id else None,
+                source_snapshot=fragment_snapshot,
+            )
+        )
+    return synced
+
 
 def _extract_email_assets_and_candidates(
     db: Session,
@@ -6397,6 +7802,7 @@ async def update_kb_candidate(candidate_id: str, payload: KnowledgeCandidateUpda
         if value is not None:
             setattr(candidate, field, value)
     _apply_candidate_governance(candidate)
+    _sync_candidate_email_fragments(db, candidate, approve_for_fewshot=False)
     db.commit()
     db.refresh(candidate)
     return {"status": "success", "candidate": _candidate_to_dict(candidate)}
@@ -6457,6 +7863,9 @@ def _promote_candidate_record(
     promoted_knowledge_type = knowledge_type or candidate.knowledge_type
     promoted_business_line = business_line or candidate.business_line
     promoted_chunk_type = chunk_type or candidate.chunk_type
+    if _mail_fragment_requires_manual_review(candidate.source_type, candidate.source_snapshot):
+        candidate.source_snapshot = _apply_mail_fragment_review_gate(candidate.source_snapshot, approved=True)
+        _apply_candidate_governance(candidate)
     doc, chunk, rule = _create_single_document_and_chunk(
         db,
         title=promoted_title,
@@ -6487,6 +7896,7 @@ def _promote_candidate_record(
         candidate.operator = operator
     if review_notes is not None:
         candidate.review_notes = review_notes
+    _sync_candidate_email_fragments(db, candidate, approve_for_fewshot=True)
     return {
         "status": "success",
         "candidate": candidate,
@@ -9433,6 +10843,14 @@ async def retrieve_mail_fewshots(payload: MailFewShotRetrieveRequest, db: Sessio
         "count": len(admitted_items),
         "items": admitted_items,
     }
+
+@app.post("/api/v1/mail/generate-draft", response_model=MailGenerateDraftResponse)
+async def generate_mail_draft(payload: MailGenerateDraftRequest, db: Session = Depends(get_db)):
+    return _build_mail_generate_draft_response(db, payload)
+
+@app.post("/api/v1/sequence/interrupt", response_model=MailSequenceInterruptResponse)
+async def interrupt_mail_sequence(payload: MailSequenceInterruptRequest):
+    return _build_mail_sequence_interrupt_response(payload)
 
 @app.get("/api/email_effect_feedback")
 async def list_email_effect_feedback(
@@ -19209,4 +20627,3 @@ async def caselib_regenerate_iteration_summary(run_id: str):
         }
     finally:
         db.close()
-

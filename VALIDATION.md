@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段一（邮件数据采矿与清洗）已交付：CRM 全量同步完成（`mail_raw_unified` 约 80 万、`mail_cleaned` 约 60 万），Task 11 已导出首批 25 条脱敏黄金候选。Task 17 已完成邮件 Few-Shot 检索准入阈值，默认 `useful_score >= 0.60`；当前进入 Task 18：实现人工纠偏后的高质量切片反哺逻辑，暂不自动污染黄金库（P0 知识库与 Few-Shot 结构）。
+阶段一（邮件数据采矿与清洗）已交付：CRM 全量同步完成（`mail_raw_unified` 约 80 万、`mail_cleaned` 约 60 万），Task 11 已导出首批 25 条脱敏黄金候选。Task 17 已完成邮件 Few-Shot 检索准入阈值，默认 `useful_score >= 0.60`；Task 22 已完成邮件 Sequence 状态枚举与状态元数据沉淀；Task 23 已完成默认 Step 触发间隔沉淀（Step1 当天、Step2 7 天、Step3 10 天、Step4 10 天）；Task 24 已完成客户回复、CRM 状态变化、人工封印时的状态机物理切断规则沉淀；Task 25 已完成待发草稿销毁或锁定规则沉淀；Task 26 已完成 `POST /api/v1/mail/generate-draft` 脚手架接口；Task 27 已完成请求参数覆盖与额外字段禁止；Task 28 已完成响应参数覆盖核对；Task 29 已完成二阶段生成链路重构；Task 30 已完成价格、工期、折扣、账期后端物理占位符填充；Task 31 已完成生成结果默认进入草稿和审核且不默认真实发送；Task 32 已完成 `POST /api/v1/sequence/interrupt` review-only 中断预审接口；Task 33 已完成 CRM 状态变更触发支持与 `crm_state_change_trigger` 预览；Task 34 已完成销售手动强封印 review-only 支持与 `manual_seal_trigger` 预览；Task 35 已完成客户/域名/联系人维度中断预览；Task 37 已完成中断事件 review-only 操作日志预览与 `logger.info` 输出；Task 38 已完成财务价格底线门，低于底价时返回红牌硬拦截与阻断诊断信息；Task 39 已完成价格正则提取扩展，现可识别 RMB、元、USD、美元、per word、每千字、折扣等表达，并避免把折扣表达误判为底价穿透；Task 40 已完成履约工期 SLA 校准门，低于标准 SLA 时会物理拉正并黄牌锁定；Task 41 已完成收件域名与抄送域名防泄密门，命中竞对或风险收件/抄送域名时红牌硬拦截且不真实发信；Task 42 已完成竞对域名黑名单与客户域名白名单双校验，当前进入 Task 43：实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本。
 
 运行方式：Hermes gateway + cron 循环（每个 cron tick 独立只做第一个未完成任务，中文写日志，失败由 cron 周期（间隔 2 分钟）自动重试，近似连续）。
 
@@ -13,16 +13,20 @@
 - 当前任务是否明确排除四期规划。
 - 每个 cron tick 是否用中文如实写入 `logs/codex-run.log`（成功与失败都写，不"假绿"）。
 
-## 当前必须执行
+## 当前必须执行（只查本任务改动的文件，不跑全仓）
+
+⚠️ **不要跑全仓 `git diff --check`**。仓库内有大量历史遗留的无关文件存在行尾空白（如 `_s03_section.txt` 等），全仓检查会一直失败——**这些无关历史文件的行尾空白不是本任务的失败项**，不得因此判定任务未完成、不得反复重试或反复去改无关文件。
+
+只对**本任务实际改动/新增的文件**做定向检查（把 `<本任务改动文件>` 换成本轮真实改的文件清单）：
 
 ```bash
-git diff --check
+git diff --check -- <本任务改动文件>
 ```
 
-当前只验证本轮新增状态文件时，可以执行：
+如本任务改了 Python，再做语法检查：
 
 ```bash
-git diff --check -- AGENTS.md TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log
+python3 -m py_compile <本任务改动的.py>
 ```
 
 ## 当前建议执行
@@ -33,7 +37,7 @@ git status --short
 
 ## 当前通过标准
 
-- `git diff --check` 返回 0。
+- 对**本任务改动文件**的定向 `git diff --check -- <改动文件>` 返回 0（全仓 `git diff --check` 因无关历史文件失败**不算**本任务失败，不得据此重试）。
 - `AGENTS.md` 存在，并包含邮件/企微隔离规则。
 - `TASKS.md` 存在，并包含可执行任务清单。
 - `PROGRESS.md` 存在，并记录当前状态、已完成、未完成、下一步。
@@ -112,6 +116,7 @@ node --check frontend/index.html
 - 客户维度中断有效。
 - 联系人维度中断有效。
 - 域名维度中断有效。
+- 销售手动强封印可通过 `manual_seal` 或 `manual_sealed_by_sales` 归一到邮件侧 manual-seal 规则，且保持 review-only。
 - 中断后待发草稿被锁定或删除。
 - 响应包含 `deleted_pending_drafts_count` 或等价字段。
 - 操作日志可追踪。
@@ -171,4 +176,3 @@ node --check frontend/index.html
 ```text
 ALL TASKS COMPLETED: 当前时间
 ```
-
