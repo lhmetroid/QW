@@ -2,15 +2,35 @@
 
 ## 当前状态
 
-- 当前任务：Task 43：实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本
-- 当前小点：Task 42 已完成；`backend/main.py` 已将收件域名防泄密门升级为“竞对域名黑名单 + 客户域名白名单”双校验，新增 `MAIL_CONFIDENTIALITY_COMPETITOR_DOMAIN_BLACKLIST`、`MAIL_CONFIDENTIALITY_CUSTOMER_DOMAIN_WHITELIST_BY_CUSTOMER_KEY`、`_mail_customer_domain_whitelist` 与通用域名匹配 helper；`POST /api/v1/mail/generate-draft` 现会在竞对/风险域名红牌拦截之外，额外要求 `contact_email` 与 `cc_emails` 落在当前客户域名白名单内，否则按 `non_whitelisted_customer_domain` 红牌阻断，继续保持 review-only、不真实发信。
-- 状态：Task 42 已完成，下一步进入 Task 43
-- 最近更新时间：2026-05-26 08:09:05 +0800
+- 当前任务：Task 62：实现高欠款风险客户发送前锁定审核
+- 当前小点：Task 61 已完成；`backend/main.py` 已接入邮件侧 CRM 画像联查与域名级 fallback，草稿意图画像会基于 `customer_key` / `contact_email` 合并 `company_industry`、`payment_risk_level` 与客户域名，且明确跳过企微 `external_userid` 作为邮件 key；收件域名白名单已支持静态客户域名、CRM 画像域名与 `contact_email` 域名 fallback，并新增 `backend/mail_crm_profile_lookup_checks.py` 定向校验。
+- 状态：Task 61 已完成，下一步进入 Task 62
+- 最近更新时间：2026-05-26 20:55:11 +0800
 
 ## 最近完成的小点
 
 | 时间 | 任务 | 小点 | 结果 | 验证 |
 |---|---|---|---|---|
+| 2026-05-26 20:55:11 +0800 | Task 61 | 实现 CRM 画像联查和域名级 fallback | 已完成 | `backend/main.py` 已新增邮件侧 CRM 画像解析 helper、`MailDraftIntentProfile` CRM 画像字段与域名集合、`customer_key/contact_email` 联查及域名白名单 fallback；`_mail_customer_domain_whitelist()` 与收件域名保密门已复用 CRM 画像域名；新增 `backend/mail_crm_profile_lookup_checks.py`，并补充 `backend/mail_recipient_domain_guardrail_checks.py` 的 CRM fallback 放行断言；`python3 -m py_compile backend/main.py backend/mail_recipient_domain_guardrail_checks.py backend/mail_crm_profile_lookup_checks.py`、`python3 -m unittest backend/mail_recipient_domain_guardrail_checks.py backend/mail_crm_profile_lookup_checks.py` 与 `git diff --check -- backend/main.py backend/mail_recipient_domain_guardrail_checks.py backend/mail_crm_profile_lookup_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log` 通过。 |
+| 2026-05-26 20:40:00 +0800 | Task 60 | 确认 CRM 邮件侧联调字段 | 已完成 | 已新增 `docs/mail_crm_field_contract.md`、`backend/mail_crm_field_contract.py` 与 `backend/mail_crm_field_contract_checks.py`，锁定邮件侧 `customer_key`、`contact_email`、`company_industry`、`payment_risk_level`、`current_seller_name`、`current_seller_signature` 六个字段、别名映射与企微隔离规则；文档已明确当前 `POST /api/v1/mail/generate-draft` 只接收已落地必填字段与 `cc_emails`，可选 CRM 画像字段留待 Task 61/62 接入；`python3 -m py_compile backend/mail_crm_field_contract.py backend/mail_crm_field_contract_checks.py`、`(cd backend && python3 mail_crm_field_contract_checks.py)` 与 `git diff --check -- docs/mail_crm_field_contract.md backend/mail_crm_field_contract.py backend/mail_crm_field_contract_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log` 通过。 |
+| 2026-05-26 20:19:39 +0800 | Task 59 | 热加载范围仅作用于邮件系统 | 已完成 | `frontend/index.html` 的 `Mail Config` 面板已把 `热加载范围预览` 区块升级为 review-only `邮件配置热加载范围` 面板，新增 `mailConfigHotReloadMockState`、邮件侧热加载计划/模式、邮件候选作用域、企微排除清单、隔离断言、dirty badge、恢复默认与 JSON 预览；明确 `wecom_config_state_impact=none`、`disabled_effects` 与 `mail_only_review_mock` 命名空间；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log` 通过。 |
+| 2026-05-26 19:56:31 +0800 | Task 58 | 支持配置变更审计日志 | 已完成 | `frontend/index.html` 的 `Mail Config` 面板已把 `配置审计日志` 区块升级为 review-only 可交互 Mock 审计面板，支持审计视角/分区/审批状态/备注筛选、显示当前邮件配置差异、恢复默认、dirty badge 与 JSON 审计预览；继续保持不调用后端、不写数据库、不热加载、不发信、不接企微；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log` 通过。 |
+| 2026-05-26 19:50:36 +0800 | Task 57 | 支持 RAG 准入阈值与 LLM 温度配置 | 已完成 | `frontend/index.html` 的 `Mail Config` 面板已新增 review-only `RAG / LLM 参数` 可编辑 Mock 配置，支持 `rag_admission_threshold` 与 `draft_llm_temperature` 两项参数编辑、dirty badge、恢复默认、参数说明与 JSON 预览；继续保持不调用后端、不写数据库、不热加载、不发信、不接企微；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log` 通过。 |
+| 2026-05-26 19:39:08 +0800 | Task 56 | 支持大客户加急工期最低阈值配置 | 已完成 | `frontend/index.html` 的 `Mail Config` 面板已新增 review-only `大客户加急 SLA` 分区与快捷入口，支持 3 档客户等级的最短提前通知、最短交付周期与人工复核开关可编辑 Mock 配置、邮件侧独立 `mailBigCustomerExpediteSlaMockState`、安全门策略说明、dirty badge、JSON 预览与恢复默认；继续保持不调用后端、不写数据库、不热加载、不影响企微配置或真实发信；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log` 通过。 |
+| 2026-05-26 19:22:13 +0800 | Task 55 | 支持翻译产品线、印刷产品线底价配置 | 已完成 | `frontend/index.html` 的 `Mail Config` 面板已新增 review-only `翻译/印刷底价` 分区与快捷入口，支持翻译/印刷 4 条产品线最低价可编辑 Mock 配置、邮件侧独立 `mailTranslationPrintFloorMockState`、安全门策略说明、dirty badge、JSON 预览与恢复默认；继续保持不调用后端、不写数据库、不热加载、不影响企微配置或真实发信；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html` 通过。 |
+| 2026-05-26 19:04:34 +0800 | Task 54 | 支持 Sequence 多轮触发间隔配置 | 已完成 | `frontend/index.html` 的 `Mail Config` 面板已把 Sequence 区块从静态占位升级为 review-only 可编辑 Mock 配置：支持 3 个邮件场景切换、4 个 Step 延迟天数输入、Task 23 默认值（0/7/10/10 天）回显、anchor/默认说明、dirty-state JSON 预览与恢复当前场景默认；继续保持不调用后端、不写数据库、不发信、不影响企微配置；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html` 通过。 |
+| 2026-05-26 18:51:30 +08:00 | Task 53 | 设计邮件全局配置管理入口 | 已完成 | `frontend/index.html` 的独立邮件 workspace 已新增 `质量诊断 / Mail Config` 子导航与 review-only Mock 配置面板骨架，覆盖 Sequence 间隔、安全门规则、RAG/LLM 参数、配置审计日志、热加载范围五个预留分区；保持不调用后端、不写数据库、不发信、不接企微；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html` 通过。 |
+| 2026-05-26 18:37:27 +0800 | Task 52 | 反哺进入黄金库前增加人工批准/成单证据门槛 | 已完成 | `frontend/index.html` 的邮件质量诊断面板已新增“人工批准 / 成单证据”黄金库准入门、blocked/ready 状态文案、Gate Evidence/Gold Library Action 预览字段，并在保存反馈时区分 `gold_library_gate_blocked` 与 `feedback_backfeed_ready_for_gold_library` 事件；继续保持 review-only Mock，不调用 API、不写数据库、不发信、不接企微；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html` 通过。 |
+| 2026-05-26 18:18:56 +0800 | Task 51 | 支持点赞、差评、拉黑 Few-Shot、保存并反哺 | 已完成 | `frontend/index.html` 的邮件质量诊断面板已新增 review-only Mock 反馈区，支持草稿点赞/差评、命中 Few-Shot 拉黑/取消拉黑、保存反馈并生成页面内反哺预览与事件日志；全程仅更新前端页面内状态，不调用 API、不写数据库、不发信、不接企微；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html` 通过。 |
+| 2026-05-26 18:09:54 +0800 | Task 50 | 支持专家编辑后保存为候选高质量切片 | 已完成 | `frontend/index.html` 的邮件质量诊断面板已新增 review-only 专家编辑区，支持编辑主题/正文、选择 `snippet_type`/`scenario`/`useful_score`，并通过页面内保存动作生成候选高质量切片预览；继续保持 Mock、仅页面内预览、不写库、不发信、不调用后端、不接企微；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html` 通过。 |
+| 2026-05-26 17:15:00 +0800 | 实时双向验证修复 | 修复会话背景、销售人名解析与轮数统计缺陷 | 已完成 | 修复了 wmS8sICwAASvXbkmC2kY5HN9fE-0gQOA 背景无数据、销售人名解析为中文、最近5个工作日API条数统计、日常验证 row 轮数与明细对齐的问题；`git diff --check` 通过；`py_compile` 通过。 |
+| 2026-05-26 13:54:20 +0800 | Task 49 | 展示 AI 生成版本与运营专家修正版双栏对比 | 已完成 | `frontend/index.html` 的邮件质量诊断面板已新增 review-only 双栏对比区，展示 AI 生成草稿、运营专家修正版与差异提示标签，并显式标注 `mock_revision_pair` 与“不保存、不发信、不接企微”；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html` 通过。 |
+| 2026-05-26 13:39:30 +0800 | Task 48 | 展示 SQL 粗筛、HTML 去噪、CRM 画像、RAG Few-Shot、安全门链路轨迹 | 已完成 | `frontend/index.html` 的邮件质量诊断面板已新增左侧“诊断轨迹”卡与详情区五列 review-only 链路摘要，显式展示 SQL 粗筛、HTML 去噪、CRM 画像、RAG Few-Shot、安全门轨迹，并追加“仅 Mock / 不接企微”隔离标识；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html` 通过。 |
+| 2026-05-26 13:23:48 +0800 | Task 47 | 展示草稿 ID、场景、Sequence Step、邮件主题 | 已完成 | `frontend/index.html` 的邮件质量诊断面板已从骨架升级为 review-only 草稿概览：样本列表与详情区补齐 `mail_review_draft_047` 的 Draft ID、Scenario、Sequence Step、Email Subject 展示，并明确“不接入企微会话数据”；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html` 通过。 |
+| 2026-05-26 13:06:55 +0800 | Task 46 | 设计邮件质量诊断面板独立入口 | 已完成 | `frontend/index.html` 已新增顶层“邮件质量诊断”主导航、独立 `app-mail-quality` 页面骨架、独立 mail workspace 标识与 `#mail-quality` hash 路由，和企微实时链路保持物理隔离，并为 Task 47-52 预留样本列表/质量评分/人工纠偏/诊断详情区域；`node --check /tmp/qw-index-inline-script.js` 通过；`git diff --check -- frontend/index.html` 通过。 |
+| 2026-05-26 12:36:06 +0800 | Task 45 | 实现 20 个黑盒对抗测试用例，覆盖价格穿透、交期逼迫、同业钓鱼、占位符绕过 | 已完成 | 新增 `backend/mail_draft_safety_adversarial_checks.py`，包含 20 条黑盒对抗样例：价格底线穿透 5 条、紧急 SLA 逼迫 5 条、竞对域名钓鱼 5 条、占位符绕过 5 条；`backend/main.py` 新增占位符绕过红牌门并接入统一安全门结果结构，默认仍为 review-only 且 `real_sending_enabled=false`；`python3 -m unittest backend/mail_draft_safety_adversarial_checks.py` 通过；`python3 -m py_compile backend/main.py backend/mail_draft_safety_adversarial_checks.py` 通过；`git diff --check -- backend/main.py backend/mail_draft_safety_adversarial_checks.py` 通过。 |
+| 2026-05-26 12:16:37 +0800 | Task 44 | 实现红牌、黄牌、通过三种安全门结果结构 | 已完成 | `backend/main.py` 已为 `MailSafetyGuardrail` 新增 `result_schema_version`、`overall_outcome`、`gate_results`，并新增 `_mail_safety_gate_result`、`_build_mail_safety_gate_results`、`_mail_safety_overall_outcome`；`POST /api/v1/mail/generate-draft` 现会对收件域名防泄密、工期 SLA、价格底线、敏感内容四类门禁统一返回同形结果项，分别表达 `red_card` / `yellow_card` / `passed`，且红牌优先级高于黄牌、黄牌高于通过；新增 `backend/mail_generate_draft_safety_result_checks.py` 定向校验统一结构、总体优先级与三种结果形态；`python3 -m unittest backend/mail_sensitive_content_guardrail_checks.py backend/mail_recipient_domain_guardrail_checks.py backend/mail_sla_guardrail_checks.py backend/mail_generate_draft_safety_result_checks.py` 通过；`python3 -m py_compile backend/main.py backend/mail_sensitive_content_guardrail_checks.py backend/mail_generate_draft_safety_result_checks.py` 通过；`git diff --check -- backend/main.py backend/mail_sensitive_content_guardrail_checks.py backend/mail_generate_draft_safety_result_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log` 通过。 |
+| 2026-05-26 12:04:04 +0800 | Task 43 | 实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本 | 已完成 | `backend/main.py` 已新增 `MAIL_SENSITIVE_CONTENT_RED_CARD_RULES`、`_mail_sensitive_content_mask`、`_mail_sensitive_content_context` 与 `_evaluate_mail_sensitive_content_red_card_guardrail`，并在 `POST /api/v1/mail/generate-draft` 接入敏感内容红牌拦截；命中内部底价/成本边界、财务个人账户、未公开返点或折扣时返回 `status=blocked_by_sensitive_content_red_card_gate`、`safety_guardrail.status=red_card_hard_block`、`red_card_code=blocked_by_sensitive_content_red_card_gate`、`draft_status=blocked`、`real_sending_enabled=false` 与脱敏后的 `block_details`；新增 `backend/mail_sensitive_content_guardrail_checks.py` 定向校验红牌拦截、数字脱敏与后端占位符放行；`python3 -m unittest backend/mail_sensitive_content_guardrail_checks.py backend/mail_recipient_domain_guardrail_checks.py backend/mail_sla_guardrail_checks.py` 通过；`python3 -m py_compile backend/main.py backend/mail_sensitive_content_guardrail_checks.py` 通过；`git diff --check -- backend/main.py backend/mail_sensitive_content_guardrail_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log` 通过。 |
 | 2026-05-26 08:09:05 +0800 | Task 42 | 实现竞对域名黑名单与客户域名白名单 | 已完成 | `backend/main.py` 已将收件域名防泄密门升级为“竞对域名黑名单 + 客户域名白名单”双校验：新增 `MAIL_CONFIDENTIALITY_COMPETITOR_DOMAIN_BLACKLIST`、`MAIL_CONFIDENTIALITY_CUSTOMER_DOMAIN_WHITELIST_BY_CUSTOMER_KEY`、`_mail_customer_domain_whitelist` 与通用域名匹配 helper；`POST /api/v1/mail/generate-draft` 现会在保留竞对/风险域名红牌拦截的同时，要求 `contact_email` 与 `cc_emails` 落在当前客户域名白名单内，否则按 `non_whitelisted_customer_domain` 红牌阻断；`backend/mail_recipient_domain_guardrail_checks.py` 已补充非白名单域名阻断、客户白名单别名放行与竞对黑名单断言；本轮 Codex CLI 因 usage limit 中断后已按规则记录并由当前 Agent 接手完成；`python3 -m unittest backend/mail_recipient_domain_guardrail_checks.py` 通过；`python3 -m py_compile backend/main.py backend/mail_recipient_domain_guardrail_checks.py` 通过；`git diff --check -- backend/main.py backend/mail_recipient_domain_guardrail_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log` 通过。 |
 | 2026-05-26 07:50:44 +0800 | Task 41 | 实现收件域名与抄送域名防泄密门 | 已完成 | `backend/main.py` 已新增 `_evaluate_mail_recipient_domain_confidentiality_guardrail`、域名归一化与竞对/风险域名拦截逻辑；`POST /api/v1/mail/generate-draft` 现会同时校验 `contact_email` 与可选 `cc_emails`，命中后返回 `status=blocked_by_recipient_domain_confidentiality_gate`、`safety_guardrail.status=red_card_hard_block`、`red_card_code=blocked_by_recipient_domain_confidentiality_gate`、`draft_status=blocked`、`real_sending_enabled=false` 与 `block_details`；新增 `backend/mail_recipient_domain_guardrail_checks.py` 定向校验竞对收件人、风险抄送和正常客户域名；`python3 -m unittest backend/mail_recipient_domain_guardrail_checks.py` 通过；`python3 -m py_compile backend/main.py backend/mail_recipient_domain_guardrail_checks.py` 通过；`git diff --check -- backend/main.py backend/mail_recipient_domain_guardrail_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 通过。 |
 | 2026-05-26 07:41:35 +0800 | Task 40 | 实现履约工期 SLA 校准门，低于标准 SLA 时物理拉正并黄牌锁定 | 已完成 | `backend/main.py` 已接入 `backend/mail_sla_guardrail.py` 的工期校准门，并把标准交期默认值收口为后端 `3 business days`；`POST /api/v1/mail/generate-draft` 现会把 `24 hours`、`1 day`、`next-day delivery` 等低于标准 SLA 的承诺物理替换为标准 SLA，并返回 `safety_guardrail.status=yellow_card_sla_calibrated_locked`、黄牌 warning、`block_details` 与锁定审核态；`python3 -m unittest backend/mail_sla_guardrail_checks.py` 通过；`python3 -m py_compile backend/main.py backend/mail_sla_guardrail.py backend/mail_sla_guardrail_checks.py` 通过；`git diff --check -- backend/main.py backend/mail_sla_guardrail.py backend/mail_sla_guardrail_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log` 通过。 |
@@ -70,10 +90,11 @@
 
 ## 当前未完成
 
-- Task 42 已完成；下一步进入 Task 43：实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本。
-- 邮件 API 已完成 Task 26 草稿脚手架、Task 27 请求参数契约、Task 28 响应参数契约、Task 29 二阶段生成、Task 30 商业条款后端占位符装配、Task 31 草稿/审核默认态收口、Task 32-35 中断 API review-only 预览能力。
-- 已完成邮件安全门中的财务价格底线门、价格正则扩展、履约工期 SLA 校准门、收件域名防泄密门，以及竞对域名黑名单/客户域名白名单双校验；尚未实现敏感词扫描与统一红黄牌结果结构。
-- 尚未实现邮件诊断面板。
+- Task 61 已完成：`backend/main.py` 已接入邮件侧 CRM 画像联查与域名级 fallback，草稿意图画像现可基于 `customer_key` / `contact_email` 合并 `company_industry`、`payment_risk_level` 与客户域名，并明确不把企微 `external_userid` 当作邮件 key；`backend/mail_crm_profile_lookup_checks.py` 已锁定 CRM fallback 行为。
+- 下一步进入 Task 62：实现高欠款风险客户发送前锁定审核。
+- 邮件 API 已完成 Task 26-45：草稿生成、Sequence 中断、安全门与黑盒对抗测试链路已具备 review-only 闭环。
+- 邮件质量诊断面板已完成独立入口、基础草稿字段、链路轨迹、双栏对比、候选切片预览、反馈反哺与黄金库准入门槛；邮件配置管理台已完成入口骨架、Sequence 多轮触发间隔、翻译/印刷底价、大客户加急 SLA、RAG 准入阈值 / LLM 温度、配置审计日志与热加载范围隔离的 review-only Mock 配置。
+- CRM 邮件侧联调仍待完成高欠款风险审核锁定、CRM 状态触发 Sequence 中断与 Mock 数据联调。
 
 ## 当前卡点
 
@@ -85,20 +106,18 @@
 
 需要下一步确认或执行：
 
-- 继续 Task 43：实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本。
-- Task 37 已为 Sequence 中断 API 补齐 review-only 操作日志预览与 `logger.info` 输出；后续 Task 38 可在此基础上实现财务价格底线门。
-- Task 25 已沉淀 `MailPendingDraftDispositionAction`、`MailPendingDraftDispositionRule`、`MAIL_PENDING_DRAFT_DISPOSITION_RULES`、`MAIL_UNSENT_DRAFT_STATUSES`、`MAIL_SENT_OR_TERMINAL_DRAFT_STATUSES`、`normalize_mail_pending_draft_disposition_action`、`get_mail_pending_draft_disposition_rule`、`resolve_mail_pending_draft_disposition`、`list_mail_pending_draft_disposition_rules`，后续草稿 API、Sequence 中断 API、调度器与执行层可直接复用客户回复销毁、CRM 销毁/锁定、勿扰严格销毁、人工封印锁定口径。
-- Task 24 已沉淀 `MailSequenceCutoffEventType`、`MailSequenceInterruptionReason`、`MailSequenceCutoffRule`、`MAIL_SEQUENCE_CUTOFF_RULES`、`MAIL_SEQUENCE_CUTOFF_EVENT_TERMINAL_STATUS` 及按事件/原因/场景步骤检索的切断辅助函数，后续 Task 26-37 可直接复用。
-- Task 23 已沉淀 `MailSequenceTriggerAnchor`、`MailSequenceStepInterval`、`DEFAULT_MAIL_SEQUENCE_STEP_DELAYS_DAYS`、`DEFAULT_MAIL_SEQUENCE_STEP_CUMULATIVE_MIN_DAYS`、`MAIL_SEQUENCE_STEP_INTERVALS` 及按场景/步骤读取的辅助函数，后续草稿 API、调度器与配置台可继续复用默认 Step 间隔元数据。
+- 继续 Task 62：实现高欠款风险客户发送前锁定审核，优先复用 Task 61 已落地的 `payment_risk_level` 画像结果，把高风险客户在邮件草稿出口收口到发送前强制审核链路。
+- Task 60 已把 CRM 邮件侧规范字段、别名映射、必填/可选边界与企微隔离约束锁定为文档 + Python 骨架，后续任务应直接复用，不要再引入新命名。
+- Task 61 已把 CRM 画像联查和域名级 fallback 接入草稿画像与收件域名保密门，Task 62 起应直接复用 `payment_risk_level` 结果，不要再新增第二套账期风险字段命名。
+- 邮件配置管理台必须继续保持邮件侧独立命名空间，不读取或写入企微会话状态，也不影响企微现有配置。
 
 ## 下一步
 
-继续 Task 43：实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本。
+继续 Task 62：实现高欠款风险客户发送前锁定审核。
 
 ```bash
-python3 -m unittest backend/mail_recipient_domain_guardrail_checks.py
-python3 -m py_compile backend/main.py backend/mail_recipient_domain_guardrail_checks.py
-git diff --check -- backend/main.py backend/mail_recipient_domain_guardrail_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log
+git status --short
+rg -n "payment_risk_level|high risk|risk review|locked_for_approval|blocked|review_required" backend/main.py backend
 ```
 
 Task 11 已产出：
@@ -112,11 +131,12 @@ Task 11 已产出：
 本轮已执行：
 
 ```bash
-python3 -m py_compile backend/main.py
-git diff --check -- backend/main.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log
+python3 -m py_compile backend/main.py backend/mail_recipient_domain_guardrail_checks.py backend/mail_crm_profile_lookup_checks.py
+python3 -m unittest backend/mail_recipient_domain_guardrail_checks.py backend/mail_crm_profile_lookup_checks.py
+git diff --check -- backend/main.py backend/mail_recipient_domain_guardrail_checks.py backend/mail_crm_profile_lookup_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log
 ```
 
-结果：`python3 -m unittest backend/mail_recipient_domain_guardrail_checks.py` 通过；`python3 -m py_compile backend/main.py backend/mail_recipient_domain_guardrail_checks.py` 通过；`git diff --check -- backend/main.py backend/mail_recipient_domain_guardrail_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md VALIDATION.md logs/codex-run.log logs/codex-retry.log` 通过；Task 42 已完成，下一步进入 Task 43。
+结果：`python3 -m py_compile backend/main.py backend/mail_recipient_domain_guardrail_checks.py backend/mail_crm_profile_lookup_checks.py` 通过；`python3 -m unittest backend/mail_recipient_domain_guardrail_checks.py backend/mail_crm_profile_lookup_checks.py` 通过（8 tests, OK）；`git diff --check -- backend/main.py backend/mail_recipient_domain_guardrail_checks.py backend/mail_crm_profile_lookup_checks.py TASKS.md PROGRESS.md TASK_HANDOFF.md logs/codex-run.log` 通过；Task 61 已完成，下一步进入 Task 62。
 
 ## 运行监控要求（gateway + cron 循环）
 

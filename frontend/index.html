@@ -154,7 +154,7 @@
                 <span class="text-slate-400 cursor-help text-sm" title="左侧为企业微信实时意图分析，右侧为知识库导入、审核、发布和检索治理。">ⓘ</span>
             </div>
             <div class="flex flex-wrap items-center justify-end gap-3">
-                <nav class="grid grid-cols-4 gap-2 min-w-[680px]">
+                <nav class="grid grid-cols-1 md:grid-cols-5 gap-2 min-w-[820px]">
                     <button id="main-tab-wecom" onclick="switchMainApp('wecom')" title="进入企业微信实时智能页面，用于查看真实会话、提取销售意图、生成建议话术。（会话同步、意图识别、客户画像、销售建议）" aria-label="企微实时智能：进入真实会话分析页面" class="rounded-xl border px-4 py-2 text-center transition bg-blue-600 text-white border-blue-600 shadow-sm">
                         <div class="text-sm font-bold">企微实时智能</div>
                     </button>
@@ -166,6 +166,9 @@
                     </button>
                     <button id="main-tab-caselib" onclick="switchMainApp('caselib')" title="进入经典案例迭代优化页面：12场景x5案例=60案例的批量7步链路评测、版本回滚、AI自检计划。（60典型案例批量跑7步、版本号、平均分、AI下一步）" aria-label="经典案例迭代优化：批量跑7步并迭代提升" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300">
                         <div class="text-sm font-bold">经典案例迭代优化</div>
+                    </button>
+                    <button id="main-tab-mail-quality" onclick="switchMainApp('mailQuality')" title="进入邮件质量诊断面板，用于后续承载邮件草稿质量、Few-Shot、Sequence、安全门与人工纠偏诊断，独立于企微工作流。" aria-label="邮件质量诊断：进入邮件独立诊断面板" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-indigo-200">
+                        <div class="text-sm font-bold">邮件质量诊断</div>
                     </button>
                 </nav>
                 <div class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -188,7 +191,7 @@
                     <button onclick="openSettings()" class="text-[10px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-slate-600 hover:bg-slate-200">⚙️ 引擎配置</button>
                 </div>
             </div>
-            
+
             <button id="sync-btn" onclick="syncRealData()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center justify-center space-x-2">
                 <svg id="sync-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                 <span>同步今日真实记录</span>
@@ -242,7 +245,7 @@
             </div>
             <div id="status-badge" class="px-3 py-1 rounded-full text-[10px] font-bold hidden"></div>
         </div>
-        
+
         <div id="msg-container" class="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50/30">
             <!-- 消息流 -->
         </div>
@@ -338,6 +341,711 @@
             <div id="analytics-table-wrap" class="h-full overflow-auto px-6 py-4">
                 <div class="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">加载统计中...</div>
             </div>
+        </div>
+    </main>
+
+    <main id="app-mail-quality" class="hidden flex-1 flex flex-col bg-slate-50 overflow-hidden">
+        <div class="shrink-0 border-b bg-white">
+            <div class="px-6 pt-5 pb-4 flex flex-wrap items-end justify-between gap-4">
+                <div>
+                    <div class="text-[11px] font-bold uppercase tracking-wide text-indigo-700">Mail Workspace</div>
+                    <h1 class="text-xl font-bold text-slate-900 mt-1">邮件质量诊断</h1>
+                    <p class="text-xs text-slate-500 mt-1">独立承载邮件草稿、Few-Shot、Sequence、安全门和人工纠偏诊断，不接入企微实时会话链路。</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button id="mail-subtab-quality" type="button" onclick="switchMailWorkspaceTab('quality')" class="px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold" title="查看邮件质量诊断 Review-only 面板，不接入企微工作流。">质量诊断</button>
+                    <button id="mail-subtab-config" type="button" onclick="switchMailWorkspaceTab('config')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="查看邮件全局配置 Review-only Mock 骨架，不调用后端、不写库、不热加载。">Mail Config</button>
+                    <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">返回企微实时智能</button>
+                </div>
+            </div>
+        </div>
+        <div class="flex-1 overflow-auto px-6 py-5">
+            <div id="mail-quality-panel" class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                <aside class="space-y-3">
+                    <div class="rounded-lg border border-indigo-200 bg-white p-4">
+                        <div class="text-xs font-bold text-indigo-700 mb-3">邮件诊断范围</div>
+                        <div class="space-y-2 text-xs text-slate-600">
+                            <div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+                                <span>草稿质量</span>
+                                <span class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">待接入</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+                                <span>Few-Shot 命中</span>
+                                <span class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">待接入</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+                                <span>Sequence 步骤</span>
+                                <span class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">待接入</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-3">
+                                <span>安全门结果</span>
+                                <span class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">待接入</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 bg-white p-4">
+                        <div class="text-xs font-bold text-slate-700 mb-3">诊断轨迹</div>
+                        <div class="grid grid-cols-1 gap-2 text-xs text-slate-600">
+                            <div class="flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 px-3 py-2">
+                                <span>SQL 粗筛</span>
+                                <span class="font-bold text-indigo-700">Mock</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 px-3 py-2">
+                                <span>HTML 去噪</span>
+                                <span class="font-bold text-indigo-700">Mock</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 px-3 py-2">
+                                <span>CRM 画像</span>
+                                <span class="font-bold text-indigo-700">Mock</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 px-3 py-2">
+                                <span>RAG Few-Shot</span>
+                                <span class="font-bold text-indigo-700">Mock</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 px-3 py-2">
+                                <span>安全门轨迹</span>
+                                <span class="font-bold text-indigo-700">Mock</span>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+                <section class="h-full rounded-lg border border-slate-200 bg-white p-5">
+                    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900">待质检草稿概览</h2>
+                            <p class="mt-1 text-xs text-slate-500">Review-only 样例内容，仅用于邮件质量面板字段展示，不接入企微会话数据。</p>
+                        </div>
+                        <span class="rounded-full border border-indigo-200 bg-indigo-100 px-3 py-1 text-[11px] font-bold text-indigo-700">Review-only</span>
+                    </div>
+                    <div class="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                            <div class="text-xs font-bold text-slate-700">邮件样本列表</div>
+                            <div class="mt-3 rounded border border-indigo-200 bg-white p-3 text-xs text-slate-700">
+                                <div class="flex items-center justify-between gap-3">
+                                    <span class="font-mono text-[11px] font-bold text-indigo-700">mail_review_draft_047</span>
+                                    <span class="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700">Review-only</span>
+                                </div>
+                                <div class="mt-3 grid grid-cols-1 gap-2">
+                                    <div class="flex justify-between gap-3">
+                                        <span class="text-slate-500">场景</span>
+                                        <span class="font-bold text-slate-800">new_contact_intro</span>
+                                    </div>
+                                    <div class="flex justify-between gap-3">
+                                        <span class="text-slate-500">Sequence Step</span>
+                                        <span class="font-bold text-slate-800">Step 1</span>
+                                    </div>
+                                    <div>
+                                        <div class="text-slate-500">邮件主题</div>
+                                        <div class="mt-1 font-bold text-slate-800">Introduction and next steps for localization support</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                            <div class="text-xs font-bold text-slate-700">质量评分概览</div>
+                            <div class="mt-3 h-28 rounded border border-dashed border-slate-300 bg-white"></div>
+                        </div>
+                        <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                            <div class="text-xs font-bold text-slate-700">人工纠偏入口</div>
+                            <div class="mt-3 h-28 rounded border border-dashed border-slate-300 bg-white"></div>
+                        </div>
+                    </div>
+                    <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div class="text-xs font-bold text-slate-700">邮件诊断详情</div>
+                            <span class="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-500">仅 Mock / 不接企微</span>
+                        </div>
+                        <div class="mt-3 rounded border border-slate-200 bg-white p-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
+                                <div class="rounded border border-slate-100 bg-slate-50 p-3">
+                                    <div class="text-[10px] font-bold uppercase text-slate-400">Draft ID</div>
+                                    <div class="mt-1 font-mono font-bold text-slate-900">mail_review_draft_047</div>
+                                </div>
+                                <div class="rounded border border-slate-100 bg-slate-50 p-3">
+                                    <div class="text-[10px] font-bold uppercase text-slate-400">Scenario</div>
+                                    <div class="mt-1 font-bold text-slate-900">新接手联系人介绍</div>
+                                    <div class="mt-1 font-mono text-[11px] text-slate-500">new_contact_intro</div>
+                                </div>
+                                <div class="rounded border border-slate-100 bg-slate-50 p-3">
+                                    <div class="text-[10px] font-bold uppercase text-slate-400">Sequence Step</div>
+                                    <div class="mt-1 font-bold text-slate-900">Step 1</div>
+                                    <div class="mt-1 text-[11px] text-slate-500">建立接手关系</div>
+                                </div>
+                                <div class="rounded border border-slate-100 bg-slate-50 p-3">
+                                    <div class="text-[10px] font-bold uppercase text-slate-400">Email Subject</div>
+                                    <div class="mt-1 font-bold text-slate-900">Introduction and next steps for localization support</div>
+                                </div>
+                            </div>
+                            <div class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 text-xs">
+                                <div class="rounded border border-indigo-100 bg-indigo-50 p-3">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="font-bold text-indigo-800">SQL 粗筛</div>
+                                        <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-indigo-700">通过</span>
+                                    </div>
+                                    <div class="mt-2 text-slate-600">近 180 天客户邮件；排除自动回复、退信、内部抄送。</div>
+                                    <div class="mt-2 font-mono text-[10px] text-slate-500">mail_cleaned / review_only</div>
+                                </div>
+                                <div class="rounded border border-sky-100 bg-sky-50 p-3">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="font-bold text-sky-800">HTML 去噪</div>
+                                        <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-sky-700">已清洗</span>
+                                    </div>
+                                    <div class="mt-2 text-slate-600">移除签名、引用历史、追踪像素和营销页脚。</div>
+                                    <div class="mt-2 font-mono text-[10px] text-slate-500">clean_status=mock_clean</div>
+                                </div>
+                                <div class="rounded border border-emerald-100 bg-emerald-50 p-3">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="font-bold text-emerald-800">CRM 画像</div>
+                                        <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-700">只读</span>
+                                    </div>
+                                    <div class="mt-2 text-slate-600">行业：游戏本地化；阶段：新联系人接手；偏好：短句。</div>
+                                    <div class="mt-2 font-mono text-[10px] text-slate-500">mail_profile_mock</div>
+                                </div>
+                                <div class="rounded border border-violet-100 bg-violet-50 p-3">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="font-bold text-violet-800">RAG Few-Shot</div>
+                                        <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-violet-700">3 条</span>
+                                    </div>
+                                    <div class="mt-2 text-slate-600">命中新接手介绍、项目续聊、轻 CTA 三类样例。</div>
+                                    <div class="mt-2 font-mono text-[10px] text-slate-500">gold_snippet_mock</div>
+                                </div>
+                                <div class="rounded border border-rose-100 bg-rose-50 p-3">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="font-bold text-rose-800">安全门轨迹</div>
+                                        <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-rose-700">放行</span>
+                                    </div>
+                                    <div class="mt-2 text-slate-600">价格、工期、收件域名均未触发红牌硬拦截。</div>
+                                    <div class="mt-2 font-mono text-[10px] text-slate-500">guardrail_trace_mock</div>
+                                </div>
+                            </div>
+                            <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div class="text-xs font-bold text-slate-800">AI 生成版本 / 运营专家修正版</div>
+                                        <div class="mt-1 text-[11px] text-slate-500">Review-only Mock 对比，仅展示邮件侧质检结果，不保存、不发信、不接企微。</div>
+                                    </div>
+                                    <span class="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-500">mock_revision_pair</span>
+                                </div>
+                                <div class="mt-3 grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                    <article class="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <div class="text-xs font-bold text-amber-800">AI 生成草稿</div>
+                                            <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-amber-700">待运营复核</span>
+                                        </div>
+                                        <div class="mt-3 rounded border border-amber-100 bg-white p-3 text-xs leading-6 text-slate-700">
+                                            <p>Hi Jordan,</p>
+                                            <p class="mt-2">I am taking over the localization support for your team. We can help with game localization and future updates.</p>
+                                            <p class="mt-2">Could you share the next file when available? We can review it and provide a plan soon.</p>
+                                            <p class="mt-2">Best regards,<br>Alex</p>
+                                        </div>
+                                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                                            <div class="rounded border border-amber-100 bg-white px-2 py-1 text-amber-700">关系接手不够具体</div>
+                                            <div class="rounded border border-amber-100 bg-white px-2 py-1 text-amber-700">价值点偏泛</div>
+                                            <div class="rounded border border-amber-100 bg-white px-2 py-1 text-amber-700">CTA 需要更轻</div>
+                                        </div>
+                                    </article>
+                                    <article class="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <div class="text-xs font-bold text-emerald-800">运营专家修正版</div>
+                                            <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-700">只读 Mock</span>
+                                        </div>
+                                        <div class="mt-3 rounded border border-emerald-100 bg-white p-3 text-xs leading-6 text-slate-700">
+                                            <p>Hi Jordan,</p>
+                                            <p class="mt-2">I am Alex, your new point of contact for localization coordination. I reviewed the recent handover notes and saw that your team usually prefers short milestone updates.</p>
+                                            <p class="mt-2">If there is a new build or string update this week, you can send it over and I will first confirm scope, schedule, and any questions before drafting the next plan.</p>
+                                            <p class="mt-2">Best regards,<br>Alex</p>
+                                        </div>
+                                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                                            <div class="rounded border border-emerald-100 bg-white px-2 py-1 text-emerald-700">补足接手背景</div>
+                                            <div class="rounded border border-emerald-100 bg-white px-2 py-1 text-emerald-700">加入客户偏好</div>
+                                            <div class="rounded border border-emerald-100 bg-white px-2 py-1 text-emerald-700">保留审核边界</div>
+                                        </div>
+                                    </article>
+                                </div>
+                            </div>
+                            <div class="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div class="text-xs font-bold text-indigo-900">专家编辑区 / 候选高质量切片预览</div>
+                                        <div class="mt-1 text-[11px] text-slate-600">Review-only Mock：可编辑主题和正文，保存后仅生成页面内候选切片预览，不写库、不发信、不调用后端、不接企微。</div>
+                                    </div>
+                                    <span id="mail-candidate-save-state" class="rounded-full border border-indigo-200 bg-white px-2 py-1 text-[10px] font-bold text-indigo-700">尚未保存候选预览</span>
+                                </div>
+                                <div class="mt-3 grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                    <section class="rounded-lg border border-indigo-100 bg-white p-4">
+                                        <div class="text-xs font-bold text-slate-800">运营专家可编辑版本</div>
+                                        <label for="mail-expert-subject" class="mt-3 block text-[11px] font-bold text-slate-500">编辑后的邮件主题</label>
+                                        <input id="mail-expert-subject" type="text" class="mt-1 w-full rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" value="Introduction and next steps for localization support">
+                                        <label for="mail-expert-body" class="mt-3 block text-[11px] font-bold text-slate-500">编辑后的邮件正文</label>
+                                        <textarea id="mail-expert-body" rows="9" class="mt-1 w-full resize-y rounded border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">Hi Jordan,
+
+I am Alex, your new point of contact for localization coordination. I reviewed the recent handover notes and saw that your team usually prefers short milestone updates.
+
+If there is a new build or string update this week, you can send it over and I will first confirm scope, schedule, and any questions before drafting the next plan.
+
+Best regards,
+Alex</textarea>
+                                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                                            <label class="block">
+                                                <span class="block font-bold text-slate-500">候选切片类型</span>
+                                                <select id="mail-candidate-snippet-type" class="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-2 text-xs">
+                                                    <option value="example">example</option>
+                                                    <option value="greetings">greetings</option>
+                                                    <option value="process">process</option>
+                                                    <option value="constraint">constraint</option>
+                                                    <option value="quotation">quotation</option>
+                                                </select>
+                                            </label>
+                                            <label class="block">
+                                                <span class="block font-bold text-slate-500">适用场景</span>
+                                                <select id="mail-candidate-scenario" class="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-2 text-xs">
+                                                    <option value="new_contact_intro">new_contact_intro</option>
+                                                    <option value="re_activation">re_activation</option>
+                                                    <option value="new_business_promotion">new_business_promotion</option>
+                                                </select>
+                                            </label>
+                                            <label class="block">
+                                                <span class="block font-bold text-slate-500">预览质量分</span>
+                                                <input id="mail-candidate-score" type="text" class="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-2 text-xs" value="0.95">
+                                            </label>
+                                        </div>
+                                        <button type="button" onclick="saveMailCandidateSnippetPreview()" class="mt-4 w-full rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700">保存为候选高质量切片预览</button>
+                                    </section>
+                                    <section class="rounded-lg border border-slate-200 bg-white p-4">
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <div class="text-xs font-bold text-slate-800">已保存候选切片字段</div>
+                                            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">candidate_preview_only</span>
+                                        </div>
+                                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                                            <div class="rounded border border-slate-100 bg-slate-50 p-2">
+                                                <div class="font-bold text-slate-500">Candidate ID</div>
+                                                <div id="mail-candidate-preview-id" class="mt-1 font-mono text-slate-800">未保存</div>
+                                            </div>
+                                            <div class="rounded border border-slate-100 bg-slate-50 p-2">
+                                                <div class="font-bold text-slate-500">Source Draft ID</div>
+                                                <div id="mail-candidate-preview-source" class="mt-1 font-mono text-slate-800">mail_review_draft_047</div>
+                                            </div>
+                                            <div class="rounded border border-slate-100 bg-slate-50 p-2">
+                                                <div class="font-bold text-slate-500">Scenario</div>
+                                                <div id="mail-candidate-preview-scenario" class="mt-1 font-mono text-slate-800">new_contact_intro</div>
+                                            </div>
+                                            <div class="rounded border border-slate-100 bg-slate-50 p-2">
+                                                <div class="font-bold text-slate-500">Snippet Type</div>
+                                                <div id="mail-candidate-preview-type" class="mt-1 font-mono text-slate-800">example</div>
+                                            </div>
+                                            <div class="rounded border border-slate-100 bg-slate-50 p-2">
+                                                <div class="font-bold text-slate-500">Useful Score</div>
+                                                <div id="mail-candidate-preview-score" class="mt-1 font-mono text-slate-800">0.95</div>
+                                            </div>
+                                            <div class="rounded border border-slate-100 bg-slate-50 p-2">
+                                                <div class="font-bold text-slate-500">Saved State</div>
+                                                <div id="mail-candidate-preview-state" class="mt-1 font-bold text-slate-800">等待保存</div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3">
+                                            <div class="text-[11px] font-bold text-slate-500">Candidate Subject</div>
+                                            <div id="mail-candidate-preview-subject" class="mt-1 rounded border border-slate-100 bg-slate-50 p-2 text-xs font-bold text-slate-800">保存后显示编辑后的主题</div>
+                                        </div>
+                                        <div class="mt-3">
+                                            <div class="text-[11px] font-bold text-slate-500">Candidate Body Preview</div>
+                                            <div id="mail-candidate-preview-body" class="mt-1 min-h-32 whitespace-pre-wrap rounded border border-slate-100 bg-slate-50 p-3 text-xs leading-6 text-slate-700">保存后显示编辑后的正文预览。</div>
+                                        </div>
+                                    </section>
+                                </div>
+                            </div>
+                            <div class="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-4">
+                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div class="text-xs font-bold text-violet-900">Few-Shot 反馈 / 反哺预览</div>
+                                        <div class="mt-1 text-[11px] text-slate-600">Review-only Mock：点赞、差评、拉黑 Few-Shot 与保存反哺只更新页面内预览，不调用 API、不写数据库、不发信、不接企微。</div>
+                                    </div>
+                                    <span id="mail-feedback-save-state" class="rounded-full border border-violet-200 bg-white px-2 py-1 text-[10px] font-bold text-violet-700">尚未保存反馈</span>
+                                </div>
+                                <div class="mt-3 grid grid-cols-1 xl:grid-cols-3 gap-3">
+                                    <section class="rounded-lg border border-violet-100 bg-white p-4">
+                                        <div class="text-xs font-bold text-slate-800">草稿质量反馈</div>
+                                        <div class="mt-3 grid grid-cols-2 gap-2">
+                                            <button id="mail-feedback-thumbs-up" type="button" onclick="recordMailQualityDraftFeedback('thumbs_up')" class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100">点赞</button>
+                                            <button id="mail-feedback-thumbs-down" type="button" onclick="recordMailQualityDraftFeedback('thumbs_down')" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100">差评</button>
+                                        </div>
+                                        <label for="mail-feedback-note" class="mt-3 block text-[11px] font-bold text-slate-500">人工反馈说明</label>
+                                        <textarea id="mail-feedback-note" rows="5" class="mt-1 w-full resize-y rounded border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-800 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100">修正版更适合进入候选 Few-Shot：补充了接手背景、客户偏好和轻量 CTA；原命中样例可保留但需要降低优先级。</textarea>
+                                    </section>
+                                    <section class="rounded-lg border border-violet-100 bg-white p-4">
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <div class="text-xs font-bold text-slate-800">命中 Few-Shot 处置</div>
+                                            <span id="mail-fewshot-blacklist-state" class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">未拉黑</span>
+                                        </div>
+                                        <div class="mt-3 rounded border border-slate-100 bg-slate-50 p-3 text-[11px]">
+                                            <div class="font-bold text-slate-500">Retrieved Few-Shot ID</div>
+                                            <div id="mail-feedback-fewshot-id" class="mt-1 font-mono text-violet-800">gold_snippet_mock_new_contact_014</div>
+                                            <div class="mt-2 font-bold text-slate-500">命中原因</div>
+                                            <div class="mt-1 text-slate-700">新接手联系人介绍 + 轻 CTA + 客户偏好短句。</div>
+                                        </div>
+                                        <button id="mail-fewshot-blacklist-btn" type="button" onclick="toggleMailQualityFewshotBlacklist()" class="mt-3 w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50">拉黑该 Few-Shot（页面内 Mock）</button>
+                                    </section>
+                                    <section class="rounded-lg border border-violet-100 bg-white p-4">
+                                        <div class="text-xs font-bold text-slate-800">保存反馈与反哺</div>
+                                        <div class="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
+                                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                                <div class="text-[11px] font-bold text-amber-900">黄金库准入门</div>
+                                                <span id="mail-gold-gate-status" class="rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[10px] font-bold text-amber-700">阻断：缺少人工批准或成单证据</span>
+                                            </div>
+                                            <div class="mt-2 grid grid-cols-1 gap-2 text-[11px] text-slate-700">
+                                                <label class="flex items-start gap-2 rounded border border-amber-100 bg-white px-2 py-2">
+                                                    <input id="mail-gold-gate-manual-approval" type="checkbox" onchange="toggleMailGoldLibraryGate('manual_approval')" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500">
+                                                    <span><b>人工批准</b><br><span class="text-slate-500">运营专家确认该修正版可进入黄金 Few-Shot 候选。</span></span>
+                                                </label>
+                                                <label class="flex items-start gap-2 rounded border border-amber-100 bg-white px-2 py-2">
+                                                    <input id="mail-gold-gate-closed-won" type="checkbox" onchange="toggleMailGoldLibraryGate('closed_won_evidence')" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500">
+                                                    <span><b>成单证据</b><br><span class="text-slate-500">存在 closed-won 或等价转化证据，可作为黄金库准入依据。</span></span>
+                                                </label>
+                                            </div>
+                                            <div id="mail-gold-gate-help" class="mt-2 text-[11px] font-bold text-amber-800">未满足准入门时，仅保存页面内反馈预览，不进入黄金库。</div>
+                                        </div>
+                                        <div class="mt-3 grid grid-cols-1 gap-2 text-[11px]">
+                                            <div class="rounded border border-slate-100 bg-slate-50 p-2">
+                                                <div class="font-bold text-slate-500">Draft Feedback</div>
+                                                <div id="mail-feedback-preview-draft" class="mt-1 font-mono text-slate-800">pending</div>
+                                            </div>
+                                            <div class="rounded border border-slate-100 bg-slate-50 p-2">
+                                                <div class="font-bold text-slate-500">Few-Shot Action</div>
+                                                <div id="mail-feedback-preview-fewshot" class="mt-1 font-mono text-slate-800">keep</div>
+                                            </div>
+                                            <div class="rounded border border-slate-100 bg-slate-50 p-2">
+                                                <div class="font-bold text-slate-500">Backfeed Target</div>
+                                                <div id="mail-feedback-preview-backfeed" class="mt-1 font-mono text-slate-800">等待保存反馈</div>
+                                            </div>
+                                            <div class="rounded border border-slate-100 bg-slate-50 p-2">
+                                                <div class="font-bold text-slate-500">Gate Evidence</div>
+                                                <div id="mail-feedback-preview-gate-evidence" class="mt-1 font-mono text-slate-800">manual_approval=false; closed_won_evidence=false</div>
+                                            </div>
+                                            <div class="rounded border border-slate-100 bg-slate-50 p-2">
+                                                <div class="font-bold text-slate-500">Gold Library Action</div>
+                                                <div id="mail-feedback-preview-gold-action" class="mt-1 font-mono text-amber-700">blocked_no_gold_library_entry</div>
+                                            </div>
+                                        </div>
+                                        <button type="button" onclick="saveMailQualityFeedbackBackfeed()" class="mt-3 w-full rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-700">保存反馈并生成反哺预览</button>
+                                    </section>
+                                </div>
+                                <div class="mt-3 rounded border border-violet-100 bg-white p-3">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <div class="text-xs font-bold text-slate-800">反馈事件预览</div>
+                                        <span class="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">mock_feedback_backfeed_only</span>
+                                    </div>
+                                    <div id="mail-feedback-event-log" class="mt-2 min-h-20 whitespace-pre-wrap rounded border border-slate-100 bg-slate-50 p-3 text-[11px] leading-5 text-slate-700">等待页面内反馈操作。</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <section id="mail-config-panel" class="hidden space-y-5">
+                <div class="rounded-lg border border-indigo-200 bg-white p-5">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <div class="text-[11px] font-bold uppercase tracking-wide text-indigo-700">Mail Config / Review-only Mock</div>
+                            <h2 class="mt-1 text-lg font-bold text-slate-900">邮件全局配置面板骨架</h2>
+                            <p class="mt-1 text-xs text-slate-500">仅预览邮件侧未来配置分区；不调用后端、不写数据库、不触发真实发信、不复用企微配置状态。</p>
+                        </div>
+                        <span class="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-bold text-indigo-700">mail_config_review_only</span>
+                    </div>
+                    <div class="mt-4 grid grid-cols-1 md:grid-cols-3 xl:grid-cols-7 gap-3 text-xs">
+                        <button type="button" onclick="document.getElementById('mail-config-sequence')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-indigo-200 hover:bg-indigo-50">Sequence 间隔</button>
+                        <button type="button" onclick="document.getElementById('mail-config-safety')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-rose-200 hover:bg-rose-50">安全门规则</button>
+                        <button type="button" onclick="document.getElementById('mail-config-expedite-sla')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-cyan-200 hover:bg-cyan-50">大客户加急 SLA</button>
+                        <button type="button" onclick="document.getElementById('mail-config-price-floors')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-amber-200 hover:bg-amber-50">翻译/印刷底价</button>
+                        <button type="button" onclick="document.getElementById('mail-config-rag')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-violet-200 hover:bg-violet-50">RAG / LLM 参数</button>
+                        <button type="button" onclick="document.getElementById('mail-config-audit')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-sky-200 hover:bg-sky-50">配置审计日志</button>
+                        <button type="button" onclick="document.getElementById('mail-config-hot-reload')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-emerald-200 hover:bg-emerald-50">热加载范围</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                    <section id="mail-config-sequence" class="rounded-lg border border-indigo-200 bg-white p-5">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">Sequence 间隔配置</h3>
+                                <p class="mt-1 text-xs text-slate-500">Review-only 页面内 Mock：可编辑预览 3 个邮件场景、4 个步骤的草稿生成等待天数；不调用后端、不写库、不发信、不读取或写入企微配置。</p>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span id="mail-sequence-config-dirty-badge" class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">未修改</span>
+                                <button type="button" onclick="resetMailSequenceMockToDefault()" class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">恢复当前场景默认</button>
+                            </div>
+                        </div>
+                        <div class="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-xs text-slate-700">
+                            <div class="font-bold text-indigo-800">邮件侧隔离边界</div>
+                            <div class="mt-1">本配置仅模拟 `backend/mail_sequence_strategy.py` 的 Task 23 时间默认值。真实保存、热加载、队列调度和 CRM 联调均未启用；不会影响企微侧边栏、企微会话状态机或企微 RAG 配置。</div>
+                        </div>
+                        <div id="mail-sequence-scenario-tabs" class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs"></div>
+                        <div class="mt-4 grid grid-cols-1 gap-3 text-xs" id="mail-sequence-step-editor"></div>
+                        <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-slate-800">Anchor / 默认说明</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">Task 23 Defaults</span>
+                                </div>
+                                <div id="mail-sequence-anchor-notes" class="mt-3 space-y-2"></div>
+                            </div>
+                            <div class="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-amber-900">Dirty-state 预览</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-amber-800">页面内状态</span>
+                                </div>
+                                <pre id="mail-sequence-dirty-preview" class="mt-3 min-h-32 whitespace-pre-wrap rounded border border-amber-100 bg-white p-3 font-mono text-[11px] leading-5 text-slate-700"></pre>
+                            </div>
+                        </div>
+                    </section>
+                    <section id="mail-config-safety" class="rounded-lg border border-rose-200 bg-white p-5">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">三重安全门规则</h3>
+                                <p class="mt-1 text-xs text-slate-500">未来承载价格底线、履约 SLA、收件域名与防泄密规则；当前仅做只读占位。</p>
+                            </div>
+                            <span class="rounded-full bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700">No Enforcement</span>
+                        </div>
+                        <div class="mt-4 space-y-2 text-xs text-slate-700">
+                            <div class="rounded border border-rose-100 bg-rose-50 p-3"><b>价格门：</b>底价、折扣、账期等高风险字段必须由结构化规则校验。</div>
+                            <div class="rounded border border-amber-100 bg-amber-50 p-3"><b>SLA 门：</b>交付周期、加急承诺和大客户优先级必须对齐邮件侧履约配置。</div>
+                            <div class="rounded border border-sky-100 bg-sky-50 p-3"><b>域名门：</b>外发域名、抄送范围和敏感附件走邮件侧独立校验。</div>
+                        </div>
+                    </section>
+                    <section id="mail-config-expedite-sla" class="xl:col-span-2 rounded-lg border border-cyan-200 bg-white p-5">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">大客户加急 SLA 最低阈值</h3>
+                                <p class="mt-1 text-xs text-slate-500">Review-only 页面内 Mock：仅预览邮件侧大客户加急承诺的最低安全阈值；不调用后端、不写库、不热加载、不发信、不影响企微履约配置。</p>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span id="mail-expedite-sla-dirty-badge" class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">未修改</span>
+                                <button type="button" onclick="resetMailExpediteSlaMockConfig()" class="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[11px] font-bold text-cyan-800 hover:bg-cyan-100">恢复默认</button>
+                            </div>
+                        </div>
+                        <div class="mt-4 rounded-lg border border-cyan-100 bg-cyan-50 p-3 text-xs text-slate-700">
+                            <div class="font-bold text-cyan-900">邮件侧隔离边界</div>
+                            <div class="mt-1">该 Mock 状态只存在于 `mailBigCustomerExpediteSlaMockState`，用于评审未来邮件安全门的加急 SLA 配置形态；不会读取或覆盖企微配置、CRM 客户等级、履约系统、数据库 SLA 表或真实发信策略。</div>
+                        </div>
+                        <div id="mail-expedite-sla-editor" class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs"></div>
+                        <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-slate-800">安全门预期行为</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">expedite_sla_preview</span>
+                                </div>
+                                <div id="mail-expedite-sla-policy-notes" class="mt-3 space-y-2"></div>
+                            </div>
+                            <div class="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-cyan-900">Dirty-state 预览</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-cyan-800">页面内状态</span>
+                                </div>
+                                <pre id="mail-expedite-sla-dirty-preview" class="mt-3 min-h-32 whitespace-pre-wrap rounded border border-cyan-100 bg-white p-3 font-mono text-[11px] leading-5 text-slate-700"></pre>
+                            </div>
+                        </div>
+                    </section>
+                    <section id="mail-config-price-floors" class="xl:col-span-2 rounded-lg border border-amber-200 bg-white p-5">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">翻译与印刷底价配置</h3>
+                                <p class="mt-1 text-xs text-slate-500">Review-only 页面内 Mock：仅编辑邮件侧草稿安全门的产品线最低价预览；不调用后端、不写库、不热加载、不影响企微报价或真实邮件发送。</p>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span id="mail-price-floor-dirty-badge" class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">未修改</span>
+                                <button type="button" onclick="resetMailPriceFloorMockConfig()" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-800 hover:bg-amber-100">恢复默认</button>
+                            </div>
+                        </div>
+                        <div class="mt-4 rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-slate-700">
+                            <div class="font-bold text-amber-900">邮件侧隔离边界</div>
+                            <div class="mt-1">该 Mock 状态只存在于 `mailTranslationPrintFloorMockState`，用于预览未来邮件安全门配置形态；不会读取或覆盖企微配置、CRM 数据、数据库底价表或真实报价策略。</div>
+                        </div>
+                        <div id="mail-price-floor-editor" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs"></div>
+                        <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-slate-800">安全门预期行为</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">draft_guard_preview</span>
+                                </div>
+                                <div id="mail-price-floor-policy-notes" class="mt-3 space-y-2"></div>
+                            </div>
+                            <div class="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-amber-900">Dirty-state 预览</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-amber-800">页面内状态</span>
+                                </div>
+                                <pre id="mail-price-floor-dirty-preview" class="mt-3 min-h-32 whitespace-pre-wrap rounded border border-amber-100 bg-white p-3 font-mono text-[11px] leading-5 text-slate-700"></pre>
+                            </div>
+                        </div>
+                    </section>
+                    <section id="mail-config-rag" class="rounded-lg border border-violet-200 bg-white p-5">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">RAG / LLM 参数</h3>
+                                <p class="mt-1 text-xs text-slate-500">Review-only 页面内 Mock：仅预览邮件 Few-Shot 准入阈值和草稿 LLM 温度，不调用 API、不写库、不热加载、不发信、不耦合企微。</p>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <span id="mail-rag-llm-dirty-badge" class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">未修改</span>
+                                <button type="button" onclick="resetMailRagLlmMockConfig()" class="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-[11px] font-bold text-violet-700 hover:bg-violet-100">恢复默认</button>
+                            </div>
+                        </div>
+                        <div id="mail-rag-llm-editor" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs"></div>
+                        <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-slate-800">参数隔离边界</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">mail_only</span>
+                                </div>
+                                <div id="mail-rag-llm-policy-notes" class="mt-3 space-y-2"></div>
+                            </div>
+                            <div class="rounded-lg border border-violet-200 bg-violet-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-violet-900">Dirty-state 预览</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-violet-800">页面内状态</span>
+                                </div>
+                                <pre id="mail-rag-llm-dirty-preview" class="mt-3 min-h-32 whitespace-pre-wrap rounded border border-violet-100 bg-white p-3 font-mono text-[11px] leading-5 text-slate-700"></pre>
+                            </div>
+                        </div>
+                    </section>
+                    <section id="mail-config-audit" class="xl:col-span-2 rounded-lg border border-sky-200 bg-white p-5">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">配置审计日志</h3>
+                                <p class="mt-1 text-xs text-slate-500">Review-only 页面内 Mock：交互预览邮件配置变更审计信息；不调用 API、不写库、不热加载、不发信、不读取或写入企微配置状态。</p>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <span id="mail-config-audit-dirty-badge" class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">未修改</span>
+                                <button type="button" onclick="resetMailConfigAuditMockPanel()" class="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] font-bold text-sky-700 hover:bg-sky-100">恢复默认</button>
+                            </div>
+                        </div>
+                        <div class="mt-4 rounded-lg border border-sky-100 bg-sky-50 p-3 text-xs text-slate-700">
+                            <div class="font-bold text-sky-900">邮件侧隔离边界</div>
+                            <div class="mt-1">审计数据只来自本页 `mailConfigAuditMockState` 和当前邮件 Mock 配置差异，不连接后端、不写 `mail_system_configs`、不生成审批单、不触发热加载、不发送邮件，也不会复用企微侧边栏、企微 RAG 或企微会话状态。</div>
+                        </div>
+                        <div class="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs">
+                            <label class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <span class="block font-bold text-slate-800">审计视角</span>
+                                <select id="mail-config-audit-reviewer" onchange="updateMailConfigAuditMockField('reviewer', this.value)" class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-2 text-xs font-bold text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100">
+                                    <option value="mail_config_reviewer">mail_config_reviewer</option>
+                                    <option value="sales_ops_reviewer">sales_ops_reviewer</option>
+                                    <option value="security_reviewer">security_reviewer</option>
+                                </select>
+                            </label>
+                            <label class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <span class="block font-bold text-slate-800">筛选分区</span>
+                                <select id="mail-config-audit-scope" onchange="updateMailConfigAuditMockField('scope_filter', this.value)" class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-2 text-xs font-bold text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100">
+                                    <option value="all_mail_config">all_mail_config</option>
+                                    <option value="sequence">sequence</option>
+                                    <option value="price_floor">price_floor</option>
+                                    <option value="expedite_sla">expedite_sla</option>
+                                    <option value="rag_llm">rag_llm</option>
+                                </select>
+                            </label>
+                            <label class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <span class="block font-bold text-slate-800">审批状态</span>
+                                <select id="mail-config-audit-review-status" onchange="updateMailConfigAuditMockField('review_status', this.value)" class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-2 text-xs font-bold text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100">
+                                    <option value="pending_review">pending_review</option>
+                                    <option value="reviewed_ok">reviewed_ok</option>
+                                    <option value="needs_followup">needs_followup</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs">
+                            <label class="lg:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <span class="block font-bold text-slate-800">审计备注</span>
+                                <input id="mail-config-audit-note" type="text" value="" oninput="updateMailConfigAuditMockField('review_note', this.value)" class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-2 text-xs text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100" placeholder="仅用于页面内 Mock 预览，不会保存">
+                            </label>
+                            <label class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">
+                                <input id="mail-config-audit-include-clean" type="checkbox" onchange="updateMailConfigAuditMockField('include_clean_sections', this.checked)" class="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-200">
+                                <span class="font-bold">同时显示未修改分区</span>
+                            </label>
+                        </div>
+                        <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-slate-800">审计事件预览</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">mail_config_audit_mock</span>
+                                </div>
+                                <div id="mail-config-audit-event-list" class="mt-3 space-y-2"></div>
+                            </div>
+                            <div class="rounded-lg border border-sky-200 bg-sky-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-sky-900">JSON 预览</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-sky-800">页面内状态</span>
+                                </div>
+                                <pre id="mail-config-audit-json-preview" class="mt-3 min-h-40 whitespace-pre-wrap rounded border border-sky-100 bg-white p-3 font-mono text-[11px] leading-5 text-slate-700"></pre>
+                            </div>
+                        </div>
+                    </section>
+                    <section id="mail-config-hot-reload" class="xl:col-span-2 rounded-lg border border-emerald-200 bg-white p-5">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">邮件配置热加载范围</h3>
+                                <p class="mt-1 text-xs text-slate-500">Review-only 页面内 Mock：只预览邮件配置命名空间的热加载计划；不调用 API、不写库、不触发真实热加载，绝不读取或修改企微配置与企微会话状态。</p>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <span id="mail-config-hot-reload-dirty-badge" class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">未修改</span>
+                                <button type="button" onclick="resetMailConfigHotReloadMockPanel()" class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100">恢复默认</button>
+                            </div>
+                        </div>
+                        <div class="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-xs text-slate-700">
+                            <div class="font-bold text-emerald-900">邮件侧隔离边界</div>
+                            <div class="mt-1">该 Mock 状态只存在于 `mailConfigHotReloadMockState`，候选作用域限定为 `mail_sequence`、`mail_rag_llm`、`mail_draft_style`、`mail_safety_review_policy`；排除 `wecom_sidebar_config`、`wecom_rag_config`、`wecom_session_state`、`wecom_ai_scripts`，不会刷新企微侧边栏、企微 RAG、企微会话缓存或企微 Prompt 配置。</div>
+                        </div>
+                        <div class="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs">
+                            <label class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <span class="block font-bold text-slate-800">热加载计划</span>
+                                <select id="mail-config-hot-reload-plan" onchange="updateMailConfigHotReloadMockField('reload_plan', this.value)" class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-2 text-xs font-bold text-slate-800 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100">
+                                    <option value="mail_config_review_only">mail_config_review_only</option>
+                                    <option value="mail_config_stage_then_reload">mail_config_stage_then_reload</option>
+                                    <option value="mail_config_reload_after_approval">mail_config_reload_after_approval</option>
+                                </select>
+                            </label>
+                            <label class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <span class="block font-bold text-slate-800">执行模式</span>
+                                <select id="mail-config-hot-reload-mode" onchange="updateMailConfigHotReloadMockField('reload_mode', this.value)" class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-2 text-xs font-bold text-slate-800 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100">
+                                    <option value="preview_only_no_runtime_effect">preview_only_no_runtime_effect</option>
+                                    <option value="mail_only_runtime_preview">mail_only_runtime_preview</option>
+                                    <option value="mail_only_guarded_reload_preview">mail_only_guarded_reload_preview</option>
+                                </select>
+                            </label>
+                            <label class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">
+                                <input id="mail-config-hot-reload-require-approval" type="checkbox" onchange="updateMailConfigHotReloadMockField('require_review_before_reload', this.checked)" class="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-200">
+                                <span class="font-bold">热加载前必须人工确认</span>
+                            </label>
+                        </div>
+                        <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-slate-800">邮件热加载候选</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">mail_only_scope</span>
+                                </div>
+                                <div id="mail-config-hot-reload-scope-list" class="mt-3 space-y-2"></div>
+                            </div>
+                            <div class="rounded-lg border border-rose-200 bg-rose-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-rose-900">明确排除企微范围</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-rose-700">never_reload_wecom</span>
+                                </div>
+                                <div id="mail-config-hot-reload-wecom-exclusions" class="mt-3 space-y-2"></div>
+                            </div>
+                        </div>
+                        <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+                            <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-emerald-900">热加载计划 JSON</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-800">页面内状态</span>
+                                </div>
+                                <pre id="mail-config-hot-reload-json-preview" class="mt-3 min-h-40 whitespace-pre-wrap rounded border border-emerald-100 bg-white p-3 font-mono text-[11px] leading-5 text-slate-700"></pre>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="font-bold text-slate-800">隔离断言</div>
+                                    <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">review_only_guard</span>
+                                </div>
+                                <div id="mail-config-hot-reload-assertions" class="mt-3 space-y-2"></div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </section>
         </div>
     </main>
 
@@ -579,7 +1287,251 @@
         const MAIN_APP_LABELS = {
             wecom: '企微实时智能',
             analytics: '企微智能回复统计分析',
-            kb: '知识库管理'
+            kb: '知识库管理',
+            mailQuality: '邮件质量诊断'
+        };
+        let mailCandidateSnippetPreview = null;
+        let mailQualityFeedbackMock = {
+            draft_feedback: 'pending',
+            fewshot_action: 'keep',
+            blacklisted_fewshot: false,
+            saved_feedback: false,
+            saved_backfeed: false,
+            manual_approval: false,
+            closed_won_evidence: false,
+            gold_library_ready: false,
+            gold_library_action: 'blocked_no_gold_library_entry',
+            events: []
+        };
+        const MAIL_SEQUENCE_CONFIG_SCENARIOS = [
+            {
+                key: 're_activation',
+                label: '老客户唤醒',
+                subtitle: 'old_customer_re_activation',
+                objective: '重启关系、补充相关证明、建立流程信心，再进入复核后的商业下一步。'
+            },
+            {
+                key: 'new_business_promotion',
+                label: '新业务推广',
+                subtitle: 'new_business_promotion',
+                objective: '轻量介绍价值、匹配行业证明、说明服务包流程，再进入复核后的试用或报价下一步。'
+            },
+            {
+                key: 'new_contact_intro',
+                label: '新接手联系人介绍',
+                subtitle: 'new_contact_intro',
+                objective: '透明交接介绍、补充既有合作背景、给出角色相关服务路径，再进入复核后的下一步。'
+            }
+        ];
+        const MAIL_SEQUENCE_TASK23_STEP_DEFAULTS = [
+            {
+                step: 1,
+                delay_days: 0,
+                cumulative_min_days: 0,
+                anchor: 'sequence_start',
+                note: 'Step 1 在 Sequence 打开当天生成草稿。'
+            },
+            {
+                step: 2,
+                delay_days: 7,
+                cumulative_min_days: 7,
+                anchor: 'previous_step_completed',
+                note: 'Step 2 waits 7 days after the previous step is completed.'
+            },
+            {
+                step: 3,
+                delay_days: 10,
+                cumulative_min_days: 17,
+                anchor: 'previous_step_completed',
+                note: 'Step 3 waits 10 days after the previous step is completed.'
+            },
+            {
+                step: 4,
+                delay_days: 10,
+                cumulative_min_days: 27,
+                anchor: 'previous_step_completed',
+                note: 'Step 4 waits 10 days after the previous step is completed.'
+            }
+        ];
+        let mailSequenceMockConfigState = {
+            activeScenario: 're_activation',
+            configs: {}
+        };
+        const MAIL_TRANSLATION_PRINT_FLOOR_DEFAULTS = [
+            {
+                key: 'translation_standard',
+                category: 'translation',
+                label: '标准笔译',
+                unit: 'CNY / 千中文字符',
+                minimum_price: 120,
+                policy_note: '邮件草稿中低于标准笔译最低价的金额应进入人工复核，不自动承诺折扣。'
+            },
+            {
+                key: 'translation_certified',
+                category: 'translation',
+                label: '认证翻译',
+                unit: 'CNY / 页',
+                minimum_price: 180,
+                policy_note: '涉及盖章、认证、涉外材料时必须保留结构化底价校验，不由模型自由生成。'
+            },
+            {
+                key: 'printing_manual',
+                category: 'printing',
+                label: '说明书印刷',
+                unit: 'CNY / 500 份',
+                minimum_price: 680,
+                policy_note: '批量印刷报价低于该阈值时，草稿应标记为价格门待复核。'
+            },
+            {
+                key: 'printing_packaging',
+                category: 'printing',
+                label: '包装彩印',
+                unit: 'CNY / 500 份',
+                minimum_price: 920,
+                policy_note: '包装、彩页、特殊材质等报价不得只依赖邮件生成模型，需要销售确认。'
+            }
+        ];
+        let mailTranslationPrintFloorMockState = {
+            scope: 'mail_only_review_mock',
+            floors: []
+        };
+        const MAIL_BIG_CUSTOMER_EXPEDITE_SLA_DEFAULTS = [
+            {
+                key: 'strategic_account',
+                label: '战略大客户',
+                customer_tier: 'tier_1',
+                minimum_notice_hours: 24,
+                minimum_delivery_hours: 48,
+                manual_review_required: true,
+                policy_note: '邮件草稿承诺 48 小时内交付前，必须确认产能、项目范围和销售负责人审批。'
+            },
+            {
+                key: 'annual_framework_account',
+                label: '年度框架客户',
+                customer_tier: 'tier_2',
+                minimum_notice_hours: 36,
+                minimum_delivery_hours: 72,
+                manual_review_required: true,
+                policy_note: '框架客户可优先排产，但加急邮件不得绕过 PM 对工作量和交付窗口的确认。'
+            },
+            {
+                key: 'key_opportunity_account',
+                label: '重点机会客户',
+                customer_tier: 'tier_3',
+                minimum_notice_hours: 48,
+                minimum_delivery_hours: 96,
+                manual_review_required: false,
+                policy_note: '重点机会客户可进入加急评审队列；低于最低交付小时数时需要改为人工复核。'
+            }
+        ];
+        let mailBigCustomerExpediteSlaMockState = {
+            scope: 'mail_only_review_mock',
+            thresholds: []
+        };
+        const MAIL_RAG_LLM_MOCK_DEFAULTS = {
+            rag_admission_threshold: {
+                key: 'rag_admission_threshold',
+                label: 'RAG 准入阈值',
+                value: 0.78,
+                min: 0,
+                max: 1,
+                step: 0.01,
+                unit: 'similarity score',
+                policy_note: '邮件 Few-Shot 候选低于该分数时，只允许作为待人工复核候选，不进入自动草稿引用上下文。'
+            },
+            draft_llm_temperature: {
+                key: 'draft_llm_temperature',
+                label: '草稿 LLM Temperature',
+                value: 0.35,
+                min: 0,
+                max: 1,
+                step: 0.05,
+                unit: 'temperature',
+                policy_note: '邮件草稿生成保持低温稳定表达；调整仅影响本页 Mock 预览，不改变任何真实模型运行参数。'
+            }
+        };
+        let mailRagLlmMockState = {
+            scope: 'mail_only_review_mock',
+            rag_admission_threshold: MAIL_RAG_LLM_MOCK_DEFAULTS.rag_admission_threshold.value,
+            draft_llm_temperature: MAIL_RAG_LLM_MOCK_DEFAULTS.draft_llm_temperature.value
+        };
+        const MAIL_CONFIG_AUDIT_MOCK_DEFAULTS = {
+            reviewer: 'mail_config_reviewer',
+            scope_filter: 'all_mail_config',
+            review_status: 'pending_review',
+            review_note: '',
+            include_clean_sections: false
+        };
+        let mailConfigAuditMockState = {
+            ...MAIL_CONFIG_AUDIT_MOCK_DEFAULTS,
+            scope: 'mail_only_review_mock'
+        };
+        const MAIL_CONFIG_HOT_RELOAD_SCOPE_DEFAULTS = [
+            {
+                key: 'mail_sequence',
+                label: '邮件 Sequence 间隔',
+                hot_reload_allowed: true,
+                approval_required: false,
+                source_panel: 'sequence',
+                runtime_effect: 'mail_sequence_scheduler_config_only'
+            },
+            {
+                key: 'mail_rag_llm',
+                label: '邮件 RAG / LLM 参数',
+                hot_reload_allowed: true,
+                approval_required: false,
+                source_panel: 'rag_llm',
+                runtime_effect: 'mail_draft_generation_config_only'
+            },
+            {
+                key: 'mail_draft_style',
+                label: '邮件草稿风格权重',
+                hot_reload_allowed: true,
+                approval_required: true,
+                source_panel: 'draft_style_reserved',
+                runtime_effect: 'mail_draft_style_preview_only'
+            },
+            {
+                key: 'mail_safety_review_policy',
+                label: '邮件安全门复核策略',
+                hot_reload_allowed: false,
+                approval_required: true,
+                source_panel: 'safety_review_policy',
+                runtime_effect: 'requires_mail_safety_review_before_enablement'
+            }
+        ];
+        const MAIL_CONFIG_HOT_RELOAD_WECOM_EXCLUSIONS = [
+            {
+                key: 'wecom_sidebar_config',
+                label: '企微侧边栏配置',
+                exclusion_reason: '邮件配置热加载不刷新企微侧边栏 UI 或会话上下文。'
+            },
+            {
+                key: 'wecom_rag_config',
+                label: '企微 RAG 配置',
+                exclusion_reason: '邮件 Few-Shot / RAG 参数不覆盖企微知识库检索参数。'
+            },
+            {
+                key: 'wecom_session_state',
+                label: '企微会话状态',
+                exclusion_reason: '邮件配置变更不写入企微会话状态机、摘要或缓存。'
+            },
+            {
+                key: 'wecom_ai_scripts',
+                label: '企微 Prompt / AI Scripts',
+                exclusion_reason: '邮件热加载计划不调用企微引擎配置保存或立即生效逻辑。'
+            }
+        ];
+        const MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS = {
+            reload_plan: 'mail_config_review_only',
+            reload_mode: 'preview_only_no_runtime_effect',
+            require_review_before_reload: true,
+            selected_mail_scopes: ['mail_sequence', 'mail_rag_llm']
+        };
+        let mailConfigHotReloadMockState = {
+            ...MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS,
+            selected_mail_scopes: [...MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS.selected_mail_scopes],
+            scope: 'mail_only_review_mock'
         };
         const AI_SCRIPT_LABELS = {
             FAST_TRACK_RULES: '强信号扫描规则脚本',
@@ -614,6 +1566,1189 @@
         const defaultStatusText = document.getElementById('status-text')?.innerText || '';
         const defaultAnalysisContent = document.getElementById('analysis-content')?.innerHTML || '';
         const defaultAssistContent = document.getElementById('assist-content')?.innerHTML || '';
+
+        function switchMailWorkspaceTab(tab) {
+            const activeTab = tab === 'config' ? 'config' : 'quality';
+            const qualityPanel = document.getElementById('mail-quality-panel');
+            const configPanel = document.getElementById('mail-config-panel');
+            const qualityBtn = document.getElementById('mail-subtab-quality');
+            const configBtn = document.getElementById('mail-subtab-config');
+            const activeClass = 'px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold';
+            const inactiveClass = 'px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50';
+            if (qualityPanel) qualityPanel.classList.toggle('hidden', activeTab !== 'quality');
+            if (configPanel) configPanel.classList.toggle('hidden', activeTab !== 'config');
+            if (qualityBtn) qualityBtn.className = activeTab === 'quality' ? activeClass : inactiveClass;
+            if (configBtn) configBtn.className = activeTab === 'config' ? activeClass : inactiveClass;
+            if (activeTab === 'config') renderMailConfigReviewOnlyMocks();
+        }
+
+        function cloneMailSequenceStepDefaults() {
+            return MAIL_SEQUENCE_TASK23_STEP_DEFAULTS.map(step => ({...step}));
+        }
+
+        function cloneMailPriceFloorDefaults() {
+            return MAIL_TRANSLATION_PRINT_FLOOR_DEFAULTS.map(item => ({...item}));
+        }
+
+        function cloneMailExpediteSlaDefaults() {
+            return MAIL_BIG_CUSTOMER_EXPEDITE_SLA_DEFAULTS.map(item => ({...item}));
+        }
+
+        function ensureMailRagLlmMockState() {
+            if (!mailRagLlmMockState || typeof mailRagLlmMockState !== 'object') {
+                mailRagLlmMockState = {scope: 'mail_only_review_mock'};
+            }
+            mailRagLlmMockState.scope = 'mail_only_review_mock';
+            Object.values(MAIL_RAG_LLM_MOCK_DEFAULTS).forEach(def => {
+                const current = Number(mailRagLlmMockState[def.key]);
+                if (!Number.isFinite(current)) {
+                    mailRagLlmMockState[def.key] = Number(def.value);
+                }
+            });
+        }
+
+        function isMailRagLlmParamDirty(paramKey) {
+            ensureMailRagLlmMockState();
+            const def = MAIL_RAG_LLM_MOCK_DEFAULTS[paramKey];
+            return Boolean(def && Number(mailRagLlmMockState[paramKey]) !== Number(def.value));
+        }
+
+        function ensureMailTranslationPrintFloorMockState() {
+            if (!Array.isArray(mailTranslationPrintFloorMockState.floors) || !mailTranslationPrintFloorMockState.floors.length) {
+                mailTranslationPrintFloorMockState.floors = cloneMailPriceFloorDefaults();
+            }
+            MAIL_TRANSLATION_PRINT_FLOOR_DEFAULTS.forEach(def => {
+                if (!mailTranslationPrintFloorMockState.floors.some(item => item.key === def.key)) {
+                    mailTranslationPrintFloorMockState.floors.push({...def});
+                }
+            });
+        }
+
+        function isMailPriceFloorDirty(itemKey) {
+            ensureMailTranslationPrintFloorMockState();
+            const current = mailTranslationPrintFloorMockState.floors.find(item => item.key === itemKey);
+            const def = MAIL_TRANSLATION_PRINT_FLOOR_DEFAULTS.find(item => item.key === itemKey);
+            return Boolean(current && def && Number(current.minimum_price) !== Number(def.minimum_price));
+        }
+
+        function ensureMailBigCustomerExpediteSlaMockState() {
+            if (!Array.isArray(mailBigCustomerExpediteSlaMockState.thresholds) || !mailBigCustomerExpediteSlaMockState.thresholds.length) {
+                mailBigCustomerExpediteSlaMockState.thresholds = cloneMailExpediteSlaDefaults();
+            }
+            MAIL_BIG_CUSTOMER_EXPEDITE_SLA_DEFAULTS.forEach(def => {
+                if (!mailBigCustomerExpediteSlaMockState.thresholds.some(item => item.key === def.key)) {
+                    mailBigCustomerExpediteSlaMockState.thresholds.push({...def});
+                }
+            });
+        }
+
+        function isMailExpediteSlaDirty(itemKey) {
+            ensureMailBigCustomerExpediteSlaMockState();
+            const current = mailBigCustomerExpediteSlaMockState.thresholds.find(item => item.key === itemKey);
+            const def = MAIL_BIG_CUSTOMER_EXPEDITE_SLA_DEFAULTS.find(item => item.key === itemKey);
+            return Boolean(current && def && (
+                Number(current.minimum_notice_hours) !== Number(def.minimum_notice_hours) ||
+                Number(current.minimum_delivery_hours) !== Number(def.minimum_delivery_hours) ||
+                Boolean(current.manual_review_required) !== Boolean(def.manual_review_required)
+            ));
+        }
+
+        function updateMailPriceFloorMockValue(itemKey, rawValue) {
+            ensureMailTranslationPrintFloorMockState();
+            const item = mailTranslationPrintFloorMockState.floors.find(entry => entry.key === itemKey);
+            if (!item) return;
+            const parsed = Number.parseFloat(rawValue);
+            item.minimum_price = Number.isFinite(parsed) ? Math.max(0, Math.min(999999, Math.round(parsed * 100) / 100)) : 0;
+            renderMailTranslationPrintFloorMockConfig();
+        }
+
+        function updateMailExpediteSlaMockValue(itemKey, field, rawValue) {
+            ensureMailBigCustomerExpediteSlaMockState();
+            const item = mailBigCustomerExpediteSlaMockState.thresholds.find(entry => entry.key === itemKey);
+            if (!item) return;
+            if (field === 'manual_review_required') {
+                item.manual_review_required = Boolean(rawValue);
+            } else if (field === 'minimum_notice_hours' || field === 'minimum_delivery_hours') {
+                const parsed = Number.parseInt(rawValue, 10);
+                item[field] = Number.isFinite(parsed) ? Math.max(0, Math.min(720, parsed)) : 0;
+            }
+            renderMailBigCustomerExpediteSlaMockConfig();
+        }
+
+        function updateMailRagLlmMockValue(paramKey, rawValue) {
+            ensureMailRagLlmMockState();
+            const def = MAIL_RAG_LLM_MOCK_DEFAULTS[paramKey];
+            if (!def) return;
+            const parsed = Number.parseFloat(rawValue);
+            const bounded = Number.isFinite(parsed) ? Math.max(Number(def.min), Math.min(Number(def.max), parsed)) : Number(def.value);
+            const precision = String(def.step).includes('.') ? String(def.step).split('.')[1].length : 0;
+            mailRagLlmMockState[paramKey] = Number(bounded.toFixed(precision));
+            renderMailRagLlmMockConfig();
+        }
+
+        function resetMailPriceFloorMockConfig() {
+            mailTranslationPrintFloorMockState = {
+                scope: 'mail_only_review_mock',
+                floors: cloneMailPriceFloorDefaults()
+            };
+            renderMailTranslationPrintFloorMockConfig();
+        }
+
+        function resetMailExpediteSlaMockConfig() {
+            mailBigCustomerExpediteSlaMockState = {
+                scope: 'mail_only_review_mock',
+                thresholds: cloneMailExpediteSlaDefaults()
+            };
+            renderMailBigCustomerExpediteSlaMockConfig();
+        }
+
+        function resetMailRagLlmMockConfig() {
+            mailRagLlmMockState = {
+                scope: 'mail_only_review_mock',
+                rag_admission_threshold: MAIL_RAG_LLM_MOCK_DEFAULTS.rag_admission_threshold.value,
+                draft_llm_temperature: MAIL_RAG_LLM_MOCK_DEFAULTS.draft_llm_temperature.value
+            };
+            renderMailRagLlmMockConfig();
+        }
+
+        function ensureMailConfigAuditMockState() {
+            if (!mailConfigAuditMockState || typeof mailConfigAuditMockState !== 'object') {
+                mailConfigAuditMockState = {...MAIL_CONFIG_AUDIT_MOCK_DEFAULTS};
+            }
+            mailConfigAuditMockState.scope = 'mail_only_review_mock';
+            Object.entries(MAIL_CONFIG_AUDIT_MOCK_DEFAULTS).forEach(([key, value]) => {
+                if (typeof mailConfigAuditMockState[key] === 'undefined') {
+                    mailConfigAuditMockState[key] = value;
+                }
+            });
+        }
+
+        function isMailConfigAuditPanelDirty() {
+            ensureMailConfigAuditMockState();
+            return Object.entries(MAIL_CONFIG_AUDIT_MOCK_DEFAULTS).some(([key, value]) => mailConfigAuditMockState[key] !== value);
+        }
+
+        function updateMailConfigAuditMockField(field, value) {
+            ensureMailConfigAuditMockState();
+            if (!Object.prototype.hasOwnProperty.call(MAIL_CONFIG_AUDIT_MOCK_DEFAULTS, field)) return;
+            mailConfigAuditMockState[field] = field === 'include_clean_sections' ? Boolean(value) : String(value || '');
+            renderMailConfigAuditMockPanel();
+        }
+
+        function resetMailConfigAuditMockPanel() {
+            mailConfigAuditMockState = {
+                ...MAIL_CONFIG_AUDIT_MOCK_DEFAULTS,
+                scope: 'mail_only_review_mock'
+            };
+            renderMailConfigAuditMockPanel();
+        }
+
+        function refreshMailConfigAuditMockIfMounted() {
+            if (document.getElementById('mail-config-audit-json-preview')) {
+                renderMailConfigAuditMockPanel();
+            }
+        }
+
+        function refreshMailConfigHotReloadMockIfMounted() {
+            if (document.getElementById('mail-config-hot-reload-json-preview')) {
+                renderMailConfigHotReloadMockPanel();
+            }
+        }
+
+        function ensureMailConfigHotReloadMockState() {
+            if (!mailConfigHotReloadMockState || typeof mailConfigHotReloadMockState !== 'object') {
+                mailConfigHotReloadMockState = {
+                    ...MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS,
+                    selected_mail_scopes: [...MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS.selected_mail_scopes]
+                };
+            }
+            mailConfigHotReloadMockState.scope = 'mail_only_review_mock';
+            if (!Array.isArray(mailConfigHotReloadMockState.selected_mail_scopes)) {
+                mailConfigHotReloadMockState.selected_mail_scopes = [...MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS.selected_mail_scopes];
+            }
+            mailConfigHotReloadMockState.selected_mail_scopes = mailConfigHotReloadMockState.selected_mail_scopes
+                .filter(scopeKey => MAIL_CONFIG_HOT_RELOAD_SCOPE_DEFAULTS.some(scope => scope.key === scopeKey));
+            if (!mailConfigHotReloadMockState.reload_plan) {
+                mailConfigHotReloadMockState.reload_plan = MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS.reload_plan;
+            }
+            if (!mailConfigHotReloadMockState.reload_mode) {
+                mailConfigHotReloadMockState.reload_mode = MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS.reload_mode;
+            }
+            if (typeof mailConfigHotReloadMockState.require_review_before_reload === 'undefined') {
+                mailConfigHotReloadMockState.require_review_before_reload = MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS.require_review_before_reload;
+            }
+        }
+
+        function isMailConfigHotReloadMockDirty() {
+            ensureMailConfigHotReloadMockState();
+            const selected = [...mailConfigHotReloadMockState.selected_mail_scopes].sort().join('|');
+            const defaults = [...MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS.selected_mail_scopes].sort().join('|');
+            return (
+                mailConfigHotReloadMockState.reload_plan !== MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS.reload_plan ||
+                mailConfigHotReloadMockState.reload_mode !== MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS.reload_mode ||
+                Boolean(mailConfigHotReloadMockState.require_review_before_reload) !== Boolean(MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS.require_review_before_reload) ||
+                selected !== defaults
+            );
+        }
+
+        function updateMailConfigHotReloadMockField(field, value) {
+            ensureMailConfigHotReloadMockState();
+            if (field === 'reload_plan' || field === 'reload_mode') {
+                mailConfigHotReloadMockState[field] = String(value || '');
+            } else if (field === 'require_review_before_reload') {
+                mailConfigHotReloadMockState.require_review_before_reload = Boolean(value);
+            }
+            renderMailConfigHotReloadMockPanel();
+        }
+
+        function toggleMailConfigHotReloadScope(scopeKey, checked) {
+            ensureMailConfigHotReloadMockState();
+            if (!MAIL_CONFIG_HOT_RELOAD_SCOPE_DEFAULTS.some(scope => scope.key === scopeKey)) return;
+            const selected = new Set(mailConfigHotReloadMockState.selected_mail_scopes);
+            if (checked) {
+                selected.add(scopeKey);
+            } else {
+                selected.delete(scopeKey);
+            }
+            mailConfigHotReloadMockState.selected_mail_scopes = [...selected];
+            renderMailConfigHotReloadMockPanel();
+        }
+
+        function resetMailConfigHotReloadMockPanel() {
+            mailConfigHotReloadMockState = {
+                ...MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS,
+                selected_mail_scopes: [...MAIL_CONFIG_HOT_RELOAD_MOCK_DEFAULTS.selected_mail_scopes],
+                scope: 'mail_only_review_mock'
+            };
+            renderMailConfigHotReloadMockPanel();
+        }
+
+        function renderMailConfigReviewOnlyMocks() {
+            renderMailSequenceMockConfig();
+            renderMailBigCustomerExpediteSlaMockConfig();
+            renderMailTranslationPrintFloorMockConfig();
+            renderMailRagLlmMockConfig();
+            renderMailConfigAuditMockPanel();
+            renderMailConfigHotReloadMockPanel();
+        }
+
+        function ensureMailSequenceMockConfigState() {
+            MAIL_SEQUENCE_CONFIG_SCENARIOS.forEach(scenario => {
+                if (!mailSequenceMockConfigState.configs[scenario.key]) {
+                    mailSequenceMockConfigState.configs[scenario.key] = cloneMailSequenceStepDefaults();
+                }
+            });
+        }
+
+        function getMailSequenceScenarioMeta(scenarioKey) {
+            return MAIL_SEQUENCE_CONFIG_SCENARIOS.find(scenario => scenario.key === scenarioKey) || MAIL_SEQUENCE_CONFIG_SCENARIOS[0];
+        }
+
+        function isMailSequenceScenarioDirty(scenarioKey) {
+            ensureMailSequenceMockConfigState();
+            const steps = mailSequenceMockConfigState.configs[scenarioKey] || [];
+            return steps.some(step => {
+                const def = MAIL_SEQUENCE_TASK23_STEP_DEFAULTS.find(item => item.step === step.step);
+                return def && Number(step.delay_days) !== Number(def.delay_days);
+            });
+        }
+
+        function switchMailSequenceMockScenario(scenarioKey) {
+            if (!MAIL_SEQUENCE_CONFIG_SCENARIOS.some(scenario => scenario.key === scenarioKey)) return;
+            ensureMailSequenceMockConfigState();
+            mailSequenceMockConfigState.activeScenario = scenarioKey;
+            renderMailSequenceMockConfig();
+        }
+
+        function updateMailSequenceMockDelay(stepNo, rawValue) {
+            ensureMailSequenceMockConfigState();
+            const scenarioKey = mailSequenceMockConfigState.activeScenario;
+            const steps = mailSequenceMockConfigState.configs[scenarioKey] || [];
+            const step = steps.find(item => item.step === Number(stepNo));
+            if (!step) return;
+            const parsed = Number.parseInt(rawValue, 10);
+            step.delay_days = Number.isFinite(parsed) ? Math.max(0, Math.min(90, parsed)) : 0;
+            renderMailSequenceMockConfig();
+        }
+
+        function resetMailSequenceMockToDefault() {
+            ensureMailSequenceMockConfigState();
+            mailSequenceMockConfigState.configs[mailSequenceMockConfigState.activeScenario] = cloneMailSequenceStepDefaults();
+            renderMailSequenceMockConfig();
+        }
+
+        function getMailSequenceMockCumulativeDays(steps, stepNo) {
+            return steps
+                .filter(step => step.step <= stepNo)
+                .reduce((sum, step) => sum + Number(step.delay_days || 0), 0);
+        }
+
+        function renderMailSequenceMockConfig() {
+            const tabsHost = document.getElementById('mail-sequence-scenario-tabs');
+            const editorHost = document.getElementById('mail-sequence-step-editor');
+            const notesHost = document.getElementById('mail-sequence-anchor-notes');
+            const previewHost = document.getElementById('mail-sequence-dirty-preview');
+            const dirtyBadge = document.getElementById('mail-sequence-config-dirty-badge');
+            if (!tabsHost || !editorHost || !notesHost || !previewHost) return;
+
+            ensureMailSequenceMockConfigState();
+            const activeScenario = mailSequenceMockConfigState.activeScenario;
+            const scenarioMeta = getMailSequenceScenarioMeta(activeScenario);
+            const steps = mailSequenceMockConfigState.configs[activeScenario] || cloneMailSequenceStepDefaults();
+            const dirtyScenarios = MAIL_SEQUENCE_CONFIG_SCENARIOS
+                .filter(scenario => isMailSequenceScenarioDirty(scenario.key))
+                .map(scenario => scenario.key);
+            const currentDirty = isMailSequenceScenarioDirty(activeScenario);
+
+            tabsHost.innerHTML = MAIL_SEQUENCE_CONFIG_SCENARIOS.map(scenario => {
+                const isActive = scenario.key === activeScenario;
+                const isDirty = isMailSequenceScenarioDirty(scenario.key);
+                return `
+                    <button type="button" onclick="switchMailSequenceMockScenario('${scenario.key}')" class="rounded-lg border px-3 py-3 text-left transition ${isActive ? 'border-indigo-300 bg-indigo-100 text-indigo-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="font-bold">${scenario.label}</span>
+                            <span class="rounded-full ${isDirty ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'} px-2 py-0.5 text-[10px] font-bold">${isDirty ? '已改' : '默认'}</span>
+                        </div>
+                        <div class="mt-1 font-mono text-[10px] opacity-80">${scenario.key}</div>
+                    </button>
+                `;
+            }).join('');
+
+            editorHost.innerHTML = steps.map(step => {
+                const def = MAIL_SEQUENCE_TASK23_STEP_DEFAULTS.find(item => item.step === step.step);
+                const changed = def && Number(step.delay_days) !== Number(def.delay_days);
+                const cumulativeDays = getMailSequenceMockCumulativeDays(steps, step.step);
+                return `
+                    <div class="rounded-lg border ${changed ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50'} p-3">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <div class="font-bold text-slate-900">Step ${step.step}</div>
+                                <div class="mt-1 font-mono text-[10px] text-slate-500">${step.anchor}</div>
+                            </div>
+                            <label class="flex items-center gap-2 text-slate-700">
+                                <span class="font-bold">Delay</span>
+                                <input type="number" min="0" max="90" value="${Number(step.delay_days)}" onchange="updateMailSequenceMockDelay(${step.step}, this.value)" class="w-20 rounded border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                                <span>days</span>
+                            </label>
+                        </div>
+                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div class="rounded border border-white bg-white p-2">
+                                <div class="text-[10px] font-bold uppercase text-slate-400">Default</div>
+                                <div class="mt-1 font-mono font-bold text-slate-800">${def.delay_days}d</div>
+                            </div>
+                            <div class="rounded border border-white bg-white p-2">
+                                <div class="text-[10px] font-bold uppercase text-slate-400">Current cumulative</div>
+                                <div class="mt-1 font-mono font-bold text-slate-800">${cumulativeDays}d</div>
+                            </div>
+                            <div class="rounded border border-white bg-white p-2">
+                                <div class="text-[10px] font-bold uppercase text-slate-400">Status to create</div>
+                                <div class="mt-1 font-mono font-bold text-slate-800">pending</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            notesHost.innerHTML = steps.map(step => {
+                const cumulativeDays = getMailSequenceMockCumulativeDays(steps, step.step);
+                return `
+                    <div class="rounded border border-slate-200 bg-white p-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="font-bold text-slate-800">Step ${step.step}</span>
+                            <span class="font-mono text-[10px] text-slate-500">${step.anchor}</span>
+                        </div>
+                        <div class="mt-1 text-slate-600">${step.note}</div>
+                        <div class="mt-1 text-[11px] text-slate-500">当前最早生成：Sequence start + ${cumulativeDays}d；生成前必须先检查中断/草稿锁定规则。</div>
+                    </div>
+                `;
+            }).join('');
+
+            const preview = {
+                review_only: true,
+                isolation: 'mail_only_no_api_no_db_no_send_no_wecom_state',
+                source_defaults: 'backend/mail_sequence_strategy.py Task 23',
+                scenario: activeScenario,
+                scenario_label: scenarioMeta.subtitle,
+                dirty: currentDirty,
+                dirty_scenarios: dirtyScenarios,
+                steps: steps.map(step => ({
+                    suite_step: step.step,
+                    trigger_anchor: step.anchor,
+                    delay_days: Number(step.delay_days),
+                    task23_default_delay_days: MAIL_SEQUENCE_TASK23_STEP_DEFAULTS.find(item => item.step === step.step)?.delay_days,
+                    cumulative_min_days_from_sequence_start: getMailSequenceMockCumulativeDays(steps, step.step),
+                    default_status_to_create: 'pending',
+                    changed: Number(step.delay_days) !== Number(MAIL_SEQUENCE_TASK23_STEP_DEFAULTS.find(item => item.step === step.step)?.delay_days)
+                }))
+            };
+            previewHost.textContent = JSON.stringify(preview, null, 2);
+            if (dirtyBadge) {
+                dirtyBadge.textContent = dirtyScenarios.length ? `有未保存预览修改：${dirtyScenarios.length} 个场景` : '未修改';
+                dirtyBadge.className = dirtyScenarios.length
+                    ? 'rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800'
+                    : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500';
+            }
+            refreshMailConfigAuditMockIfMounted();
+            refreshMailConfigHotReloadMockIfMounted();
+        }
+
+        function renderMailBigCustomerExpediteSlaMockConfig() {
+            const editorHost = document.getElementById('mail-expedite-sla-editor');
+            const notesHost = document.getElementById('mail-expedite-sla-policy-notes');
+            const previewHost = document.getElementById('mail-expedite-sla-dirty-preview');
+            const dirtyBadge = document.getElementById('mail-expedite-sla-dirty-badge');
+            if (!editorHost || !notesHost || !previewHost) return;
+
+            ensureMailBigCustomerExpediteSlaMockState();
+            const thresholds = mailBigCustomerExpediteSlaMockState.thresholds;
+            const dirtyKeys = thresholds
+                .filter(item => isMailExpediteSlaDirty(item.key))
+                .map(item => item.key);
+
+            editorHost.innerHTML = thresholds.map(item => {
+                const def = MAIL_BIG_CUSTOMER_EXPEDITE_SLA_DEFAULTS.find(entry => entry.key === item.key);
+                const changed = isMailExpediteSlaDirty(item.key);
+                const reviewClass = item.manual_review_required
+                    ? 'bg-rose-50 text-rose-700 border-rose-100'
+                    : 'bg-slate-100 text-slate-600 border-slate-200';
+                return `
+                    <div class="rounded-lg border ${changed ? 'border-cyan-300 bg-cyan-50' : 'border-slate-200 bg-slate-50'} p-3">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <div class="font-bold text-slate-900">${escapeHtml(item.label)}</div>
+                                <div class="mt-1 font-mono text-[10px] text-slate-500">${escapeHtml(item.customer_tier)} / ${escapeHtml(item.key)}</div>
+                            </div>
+                            <span class="rounded-full border px-2 py-0.5 text-[10px] font-bold ${reviewClass}">${item.manual_review_required ? '需人工复核' : '规则复核'}</span>
+                        </div>
+                        <div class="mt-3 grid grid-cols-1 gap-2">
+                            <label class="flex flex-wrap items-center justify-between gap-2 text-slate-700">
+                                <span class="font-bold">最短提前通知</span>
+                                <span class="flex items-center gap-2">
+                                    <input type="number" min="0" max="720" step="1" value="${Number(item.minimum_notice_hours)}" onchange="updateMailExpediteSlaMockValue('${item.key}', 'minimum_notice_hours', this.value)" class="w-20 rounded border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-slate-900 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-100">
+                                    <span class="font-mono text-[11px] text-slate-500">hours</span>
+                                </span>
+                            </label>
+                            <label class="flex flex-wrap items-center justify-between gap-2 text-slate-700">
+                                <span class="font-bold">最短交付周期</span>
+                                <span class="flex items-center gap-2">
+                                    <input type="number" min="0" max="720" step="1" value="${Number(item.minimum_delivery_hours)}" onchange="updateMailExpediteSlaMockValue('${item.key}', 'minimum_delivery_hours', this.value)" class="w-20 rounded border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-slate-900 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-100">
+                                    <span class="font-mono text-[11px] text-slate-500">hours</span>
+                                </span>
+                            </label>
+                            <label class="flex items-center gap-2 rounded border border-white bg-white p-2 text-slate-700">
+                                <input type="checkbox" ${item.manual_review_required ? 'checked' : ''} onchange="updateMailExpediteSlaMockValue('${item.key}', 'manual_review_required', this.checked)" class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-200">
+                                <span class="font-bold">低于阈值时强制人工复核</span>
+                            </label>
+                        </div>
+                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div class="rounded border border-white bg-white p-2">
+                                <div class="text-[10px] font-bold uppercase text-slate-400">Default</div>
+                                <div class="mt-1 font-mono font-bold text-slate-800">${Number(def.minimum_notice_hours)}h notice / ${Number(def.minimum_delivery_hours)}h delivery</div>
+                            </div>
+                            <div class="rounded border border-white bg-white p-2">
+                                <div class="text-[10px] font-bold uppercase text-slate-400">Draft gate</div>
+                                <div class="mt-1 font-mono font-bold ${changed ? 'text-cyan-800' : 'text-slate-800'}">${changed ? 'review_changed_sla' : 'use_default_sla'}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            notesHost.innerHTML = thresholds.map(item => `
+                <div class="rounded border border-slate-200 bg-white p-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="font-bold text-slate-800">${escapeHtml(item.label)}</span>
+                        <span class="font-mono text-[10px] text-slate-500">${Number(item.minimum_notice_hours)}h notice / ${Number(item.minimum_delivery_hours)}h delivery</span>
+                    </div>
+                    <div class="mt-1 text-slate-600">${escapeHtml(item.policy_note)}</div>
+                </div>
+            `).join('');
+
+            const preview = {
+                review_only: true,
+                isolation: 'mail_only_no_api_no_db_no_send_no_wecom_state',
+                config_namespace: mailBigCustomerExpediteSlaMockState.scope,
+                dirty: dirtyKeys.length > 0,
+                dirty_customer_tiers: dirtyKeys,
+                big_customer_expedite_sla_minimum_thresholds: thresholds.map(item => {
+                    const def = MAIL_BIG_CUSTOMER_EXPEDITE_SLA_DEFAULTS.find(entry => entry.key === item.key);
+                    return {
+                        threshold_key: item.key,
+                        customer_tier: item.customer_tier,
+                        label: item.label,
+                        minimum_notice_hours: Number(item.minimum_notice_hours),
+                        default_minimum_notice_hours: Number(def?.minimum_notice_hours),
+                        minimum_delivery_hours: Number(item.minimum_delivery_hours),
+                        default_minimum_delivery_hours: Number(def?.minimum_delivery_hours),
+                        manual_review_required: Boolean(item.manual_review_required),
+                        default_manual_review_required: Boolean(def?.manual_review_required),
+                        changed: isMailExpediteSlaDirty(item.key),
+                        guardrail_action: isMailExpediteSlaDirty(item.key) ? 'review_changed_expedite_sla_before_enablement' : 'use_default_review_expedite_sla'
+                    };
+                })
+            };
+            previewHost.textContent = JSON.stringify(preview, null, 2);
+            if (dirtyBadge) {
+                dirtyBadge.textContent = dirtyKeys.length ? `有未保存预览修改：${dirtyKeys.length} 条 SLA` : '未修改';
+                dirtyBadge.className = dirtyKeys.length
+                    ? 'rounded-full bg-cyan-100 px-2 py-1 text-[10px] font-bold text-cyan-800'
+                    : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500';
+            }
+            refreshMailConfigAuditMockIfMounted();
+            refreshMailConfigHotReloadMockIfMounted();
+        }
+
+        function renderMailTranslationPrintFloorMockConfig() {
+            const editorHost = document.getElementById('mail-price-floor-editor');
+            const notesHost = document.getElementById('mail-price-floor-policy-notes');
+            const previewHost = document.getElementById('mail-price-floor-dirty-preview');
+            const dirtyBadge = document.getElementById('mail-price-floor-dirty-badge');
+            if (!editorHost || !notesHost || !previewHost) return;
+
+            ensureMailTranslationPrintFloorMockState();
+            const floors = mailTranslationPrintFloorMockState.floors;
+            const dirtyKeys = floors
+                .filter(item => isMailPriceFloorDirty(item.key))
+                .map(item => item.key);
+
+            editorHost.innerHTML = floors.map(item => {
+                const def = MAIL_TRANSLATION_PRINT_FLOOR_DEFAULTS.find(entry => entry.key === item.key);
+                const changed = isMailPriceFloorDirty(item.key);
+                const categoryClass = item.category === 'translation'
+                    ? 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-100';
+                return `
+                    <div class="rounded-lg border ${changed ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50'} p-3">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <div class="font-bold text-slate-900">${escapeHtml(item.label)}</div>
+                                <div class="mt-1 font-mono text-[10px] text-slate-500">${escapeHtml(item.key)}</div>
+                            </div>
+                            <span class="rounded-full border px-2 py-0.5 text-[10px] font-bold ${categoryClass}">${item.category === 'translation' ? '翻译' : '印刷'}</span>
+                        </div>
+                        <label class="mt-3 flex flex-wrap items-center gap-2 text-slate-700">
+                            <span class="font-bold">最低价</span>
+                            <input type="number" min="0" max="999999" step="0.01" value="${Number(item.minimum_price)}" onchange="updateMailPriceFloorMockValue('${item.key}', this.value)" class="w-28 rounded border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-slate-900 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100">
+                            <span class="font-mono text-[11px] text-slate-500">${escapeHtml(item.unit)}</span>
+                        </label>
+                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div class="rounded border border-white bg-white p-2">
+                                <div class="text-[10px] font-bold uppercase text-slate-400">Default</div>
+                                <div class="mt-1 font-mono font-bold text-slate-800">${Number(def.minimum_price)} ${escapeHtml(def.unit)}</div>
+                            </div>
+                            <div class="rounded border border-white bg-white p-2">
+                                <div class="text-[10px] font-bold uppercase text-slate-400">Draft gate</div>
+                                <div class="mt-1 font-mono font-bold ${changed ? 'text-amber-800' : 'text-slate-800'}">${changed ? 'review_changed_floor' : 'use_default_floor'}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            notesHost.innerHTML = floors.map(item => `
+                <div class="rounded border border-slate-200 bg-white p-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="font-bold text-slate-800">${escapeHtml(item.label)}</span>
+                        <span class="font-mono text-[10px] text-slate-500">${Number(item.minimum_price)} / ${escapeHtml(item.unit)}</span>
+                    </div>
+                    <div class="mt-1 text-slate-600">${escapeHtml(item.policy_note)}</div>
+                </div>
+            `).join('');
+
+            const preview = {
+                review_only: true,
+                isolation: 'mail_only_no_api_no_db_no_send_no_wecom_state',
+                config_namespace: mailTranslationPrintFloorMockState.scope,
+                dirty: dirtyKeys.length > 0,
+                dirty_product_lines: dirtyKeys,
+                product_line_minimum_price_floors: floors.map(item => {
+                    const def = MAIL_TRANSLATION_PRINT_FLOOR_DEFAULTS.find(entry => entry.key === item.key);
+                    return {
+                        product_line: item.key,
+                        category: item.category,
+                        label: item.label,
+                        unit: item.unit,
+                        minimum_price: Number(item.minimum_price),
+                        default_minimum_price: Number(def?.minimum_price),
+                        changed: isMailPriceFloorDirty(item.key),
+                        guardrail_action: isMailPriceFloorDirty(item.key) ? 'review_changed_floor_before_enablement' : 'use_default_review_floor'
+                    };
+                })
+            };
+            previewHost.textContent = JSON.stringify(preview, null, 2);
+            if (dirtyBadge) {
+                dirtyBadge.textContent = dirtyKeys.length ? `有未保存预览修改：${dirtyKeys.length} 条底价` : '未修改';
+                dirtyBadge.className = dirtyKeys.length
+                    ? 'rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800'
+                    : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500';
+            }
+            refreshMailConfigAuditMockIfMounted();
+            refreshMailConfigHotReloadMockIfMounted();
+        }
+
+        function renderMailRagLlmMockConfig() {
+            const editorHost = document.getElementById('mail-rag-llm-editor');
+            const notesHost = document.getElementById('mail-rag-llm-policy-notes');
+            const previewHost = document.getElementById('mail-rag-llm-dirty-preview');
+            const dirtyBadge = document.getElementById('mail-rag-llm-dirty-badge');
+            if (!editorHost || !notesHost || !previewHost) return;
+
+            ensureMailRagLlmMockState();
+            const params = Object.values(MAIL_RAG_LLM_MOCK_DEFAULTS);
+            const dirtyKeys = params
+                .filter(def => isMailRagLlmParamDirty(def.key))
+                .map(def => def.key);
+
+            editorHost.innerHTML = params.map(def => {
+                const value = Number(mailRagLlmMockState[def.key]);
+                const changed = isMailRagLlmParamDirty(def.key);
+                const valueClass = changed ? 'text-violet-800' : 'text-slate-800';
+                return `
+                    <div class="rounded-lg border ${changed ? 'border-violet-300 bg-violet-50' : 'border-slate-200 bg-slate-50'} p-3">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <div class="font-bold text-slate-900">${escapeHtml(def.label)}</div>
+                                <div class="mt-1 font-mono text-[10px] text-slate-500">${escapeHtml(def.key)}</div>
+                            </div>
+                            <span class="rounded-full border ${changed ? 'border-violet-100 bg-white text-violet-800' : 'border-slate-200 bg-white text-slate-500'} px-2 py-0.5 text-[10px] font-bold">${changed ? '已改' : '默认'}</span>
+                        </div>
+                        <label class="mt-3 flex flex-wrap items-center gap-2 text-slate-700">
+                            <span class="font-bold">当前值</span>
+                            <input type="number" min="${Number(def.min)}" max="${Number(def.max)}" step="${Number(def.step)}" value="${value}" onchange="updateMailRagLlmMockValue('${def.key}', this.value)" class="w-24 rounded border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-slate-900 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100">
+                            <span class="font-mono text-[11px] text-slate-500">${escapeHtml(def.unit)}</span>
+                        </label>
+                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div class="rounded border border-white bg-white p-2">
+                                <div class="text-[10px] font-bold uppercase text-slate-400">Default</div>
+                                <div class="mt-1 font-mono font-bold text-slate-800">${Number(def.value)} ${escapeHtml(def.unit)}</div>
+                            </div>
+                            <div class="rounded border border-white bg-white p-2">
+                                <div class="text-[10px] font-bold uppercase text-slate-400">Mail gate</div>
+                                <div class="mt-1 font-mono font-bold ${valueClass}">${changed ? 'review_changed_mail_param' : 'use_default_mail_param'}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            notesHost.innerHTML = params.map(def => `
+                <div class="rounded border border-slate-200 bg-white p-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="font-bold text-slate-800">${escapeHtml(def.label)}</span>
+                        <span class="font-mono text-[10px] text-slate-500">${Number(mailRagLlmMockState[def.key])} / ${escapeHtml(def.unit)}</span>
+                    </div>
+                    <div class="mt-1 text-slate-600">${escapeHtml(def.policy_note)}</div>
+                </div>
+            `).join('');
+
+            const preview = {
+                review_only: true,
+                isolation: 'mail_only_no_api_no_db_no_hot_reload_no_send_no_wecom_state',
+                config_namespace: mailRagLlmMockState.scope,
+                dirty: dirtyKeys.length > 0,
+                dirty_params: dirtyKeys,
+                rag_admission_threshold: {
+                    value: Number(mailRagLlmMockState.rag_admission_threshold),
+                    default_value: Number(MAIL_RAG_LLM_MOCK_DEFAULTS.rag_admission_threshold.value),
+                    changed: isMailRagLlmParamDirty('rag_admission_threshold'),
+                    below_threshold_action: 'manual_review_candidate_only_no_auto_context'
+                },
+                draft_llm_temperature: {
+                    value: Number(mailRagLlmMockState.draft_llm_temperature),
+                    default_value: Number(MAIL_RAG_LLM_MOCK_DEFAULTS.draft_llm_temperature.value),
+                    changed: isMailRagLlmParamDirty('draft_llm_temperature'),
+                    runtime_action: 'preview_only_no_model_runtime_change'
+                },
+                disabled_effects: ['api_call', 'db_write', 'hot_reload', 'real_send', 'wecom_coupling']
+            };
+            previewHost.textContent = JSON.stringify(preview, null, 2);
+            if (dirtyBadge) {
+                dirtyBadge.textContent = dirtyKeys.length ? `有未保存预览修改：${dirtyKeys.length} 个参数` : '未修改';
+                dirtyBadge.className = dirtyKeys.length
+                    ? 'rounded-full bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-800'
+                    : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500';
+            }
+            refreshMailConfigAuditMockIfMounted();
+            refreshMailConfigHotReloadMockIfMounted();
+        }
+
+        function getMailConfigAuditMockDiffSections() {
+            ensureMailSequenceMockConfigState();
+            ensureMailTranslationPrintFloorMockState();
+            ensureMailBigCustomerExpediteSlaMockState();
+            ensureMailRagLlmMockState();
+
+            const dirtySequenceScenarios = MAIL_SEQUENCE_CONFIG_SCENARIOS
+                .filter(scenario => isMailSequenceScenarioDirty(scenario.key))
+                .map(scenario => {
+                    const steps = mailSequenceMockConfigState.configs[scenario.key] || [];
+                    return {
+                        scenario: scenario.key,
+                        label: scenario.label,
+                        changed_steps: steps
+                            .filter(step => Number(step.delay_days) !== Number(MAIL_SEQUENCE_TASK23_STEP_DEFAULTS.find(def => def.step === step.step)?.delay_days))
+                            .map(step => ({
+                                step: Number(step.step),
+                                current_delay_days: Number(step.delay_days),
+                                default_delay_days: Number(MAIL_SEQUENCE_TASK23_STEP_DEFAULTS.find(def => def.step === step.step)?.delay_days)
+                            }))
+                    };
+                });
+            const dirtyPriceFloors = mailTranslationPrintFloorMockState.floors
+                .filter(item => isMailPriceFloorDirty(item.key))
+                .map(item => {
+                    const def = MAIL_TRANSLATION_PRINT_FLOOR_DEFAULTS.find(entry => entry.key === item.key);
+                    return {
+                        product_line: item.key,
+                        label: item.label,
+                        current_minimum_price: Number(item.minimum_price),
+                        default_minimum_price: Number(def?.minimum_price),
+                        unit: item.unit
+                    };
+                });
+            const dirtySlaThresholds = mailBigCustomerExpediteSlaMockState.thresholds
+                .filter(item => isMailExpediteSlaDirty(item.key))
+                .map(item => {
+                    const def = MAIL_BIG_CUSTOMER_EXPEDITE_SLA_DEFAULTS.find(entry => entry.key === item.key);
+                    return {
+                        threshold_key: item.key,
+                        label: item.label,
+                        current_notice_hours: Number(item.minimum_notice_hours),
+                        default_notice_hours: Number(def?.minimum_notice_hours),
+                        current_delivery_hours: Number(item.minimum_delivery_hours),
+                        default_delivery_hours: Number(def?.minimum_delivery_hours),
+                        current_manual_review_required: Boolean(item.manual_review_required),
+                        default_manual_review_required: Boolean(def?.manual_review_required)
+                    };
+                });
+            const dirtyRagLlmParams = Object.values(MAIL_RAG_LLM_MOCK_DEFAULTS)
+                .filter(def => isMailRagLlmParamDirty(def.key))
+                .map(def => ({
+                    param: def.key,
+                    label: def.label,
+                    current_value: Number(mailRagLlmMockState[def.key]),
+                    default_value: Number(def.value),
+                    unit: def.unit
+                }));
+
+            return [
+                {
+                    scope: 'sequence',
+                    label: 'Sequence 间隔配置',
+                    changed: dirtySequenceScenarios.length > 0,
+                    changed_count: dirtySequenceScenarios.reduce((sum, item) => sum + item.changed_steps.length, 0),
+                    diff_summary: dirtySequenceScenarios,
+                    audit_action: dirtySequenceScenarios.length ? 'review_sequence_delay_changes' : 'review_sequence_defaults'
+                },
+                {
+                    scope: 'price_floor',
+                    label: '翻译与印刷底价配置',
+                    changed: dirtyPriceFloors.length > 0,
+                    changed_count: dirtyPriceFloors.length,
+                    diff_summary: dirtyPriceFloors,
+                    audit_action: dirtyPriceFloors.length ? 'review_price_floor_changes' : 'review_price_floor_defaults'
+                },
+                {
+                    scope: 'expedite_sla',
+                    label: '大客户加急 SLA 阈值',
+                    changed: dirtySlaThresholds.length > 0,
+                    changed_count: dirtySlaThresholds.length,
+                    diff_summary: dirtySlaThresholds,
+                    audit_action: dirtySlaThresholds.length ? 'review_expedite_sla_changes' : 'review_expedite_sla_defaults'
+                },
+                {
+                    scope: 'rag_llm',
+                    label: 'RAG / LLM 参数',
+                    changed: dirtyRagLlmParams.length > 0,
+                    changed_count: dirtyRagLlmParams.length,
+                    diff_summary: dirtyRagLlmParams,
+                    audit_action: dirtyRagLlmParams.length ? 'review_rag_llm_param_changes' : 'review_rag_llm_defaults'
+                }
+            ];
+        }
+
+        function renderMailConfigAuditMockPanel() {
+            const eventHost = document.getElementById('mail-config-audit-event-list');
+            const previewHost = document.getElementById('mail-config-audit-json-preview');
+            const dirtyBadge = document.getElementById('mail-config-audit-dirty-badge');
+            if (!eventHost || !previewHost) return;
+
+            ensureMailConfigAuditMockState();
+            const reviewerSelect = document.getElementById('mail-config-audit-reviewer');
+            const scopeSelect = document.getElementById('mail-config-audit-scope');
+            const statusSelect = document.getElementById('mail-config-audit-review-status');
+            const noteInput = document.getElementById('mail-config-audit-note');
+            const includeCleanInput = document.getElementById('mail-config-audit-include-clean');
+            if (reviewerSelect) reviewerSelect.value = mailConfigAuditMockState.reviewer;
+            if (scopeSelect) scopeSelect.value = mailConfigAuditMockState.scope_filter;
+            if (statusSelect) statusSelect.value = mailConfigAuditMockState.review_status;
+            if (noteInput) noteInput.value = mailConfigAuditMockState.review_note;
+            if (includeCleanInput) includeCleanInput.checked = Boolean(mailConfigAuditMockState.include_clean_sections);
+
+            const allSections = getMailConfigAuditMockDiffSections();
+            const visibleSections = allSections.filter(section => {
+                const scopeMatched = mailConfigAuditMockState.scope_filter === 'all_mail_config' || mailConfigAuditMockState.scope_filter === section.scope;
+                const changedMatched = section.changed || mailConfigAuditMockState.include_clean_sections;
+                return scopeMatched && changedMatched;
+            });
+            const changedSections = allSections.filter(section => section.changed);
+            const eventRows = visibleSections.map((section, index) => ({
+                event_id: `mail_cfg_audit_mock_${String(index + 1).padStart(2, '0')}`,
+                at: `2026-05-26 09:${String(10 + index * 5).padStart(2, '0')}:00`,
+                reviewer: mailConfigAuditMockState.reviewer,
+                config_scope: section.scope,
+                action: section.audit_action,
+                review_status: mailConfigAuditMockState.review_status,
+                changed: section.changed,
+                changed_count: section.changed_count,
+                isolation: 'mail_only_no_api_no_db_no_hot_reload_no_send_no_wecom_state',
+                diff_summary: section.diff_summary
+            }));
+
+            eventHost.innerHTML = eventRows.length ? eventRows.map(row => `
+                <div class="rounded border ${row.changed ? 'border-sky-200 bg-white' : 'border-slate-200 bg-white'} p-3">
+                    <div class="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                            <div class="font-bold text-slate-900">${escapeHtml(row.action)}</div>
+                            <div class="mt-1 font-mono text-[10px] text-slate-500">${escapeHtml(row.at)} | ${escapeHtml(row.reviewer)} | ${escapeHtml(row.config_scope)}</div>
+                        </div>
+                        <span class="rounded-full px-2 py-0.5 text-[10px] font-bold ${row.changed ? 'bg-sky-100 text-sky-800' : 'bg-slate-100 text-slate-500'}">${row.changed ? `${row.changed_count} 项差异` : '无差异'}</span>
+                    </div>
+                    <div class="mt-2 text-slate-600">${row.changed ? '需要评审当前页面内邮件 Mock 配置差异；仅生成审计预览，不保存。' : '默认配置快照，仅用于完整审计视图。'}</div>
+                </div>
+            `).join('') : '<div class="rounded border border-slate-200 bg-white p-3 text-slate-500">当前筛选下没有可展示的邮件配置差异。打开“同时显示未修改分区”可查看默认审计快照。</div>';
+
+            const preview = {
+                review_only: true,
+                config_namespace: mailConfigAuditMockState.scope,
+                isolation: 'mail_only_no_api_no_db_no_hot_reload_no_send_no_wecom_coupling',
+                disabled_effects: ['api_call', 'db_write', 'hot_reload', 'real_send', 'wecom_sidebar_state', 'wecom_rag_config'],
+                audit_panel_dirty: isMailConfigAuditPanelDirty(),
+                current_mail_config_dirty: changedSections.length > 0,
+                changed_scopes: changedSections.map(section => section.scope),
+                reviewer: mailConfigAuditMockState.reviewer,
+                scope_filter: mailConfigAuditMockState.scope_filter,
+                review_status: mailConfigAuditMockState.review_status,
+                review_note: mailConfigAuditMockState.review_note || null,
+                include_clean_sections: Boolean(mailConfigAuditMockState.include_clean_sections),
+                events: eventRows
+            };
+            previewHost.textContent = JSON.stringify(preview, null, 2);
+
+            if (dirtyBadge) {
+                const panelDirty = isMailConfigAuditPanelDirty();
+                const configDirtyCount = changedSections.length;
+                dirtyBadge.textContent = panelDirty
+                    ? '审计筛选已修改'
+                    : (configDirtyCount ? `发现配置差异：${configDirtyCount} 个分区` : '未修改');
+                dirtyBadge.className = panelDirty || configDirtyCount
+                    ? 'rounded-full bg-sky-100 px-2 py-1 text-[10px] font-bold text-sky-800'
+                    : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500';
+            }
+        }
+
+        function renderMailConfigHotReloadMockPanel() {
+            const scopeHost = document.getElementById('mail-config-hot-reload-scope-list');
+            const exclusionHost = document.getElementById('mail-config-hot-reload-wecom-exclusions');
+            const assertionHost = document.getElementById('mail-config-hot-reload-assertions');
+            const previewHost = document.getElementById('mail-config-hot-reload-json-preview');
+            const dirtyBadge = document.getElementById('mail-config-hot-reload-dirty-badge');
+            if (!scopeHost || !exclusionHost || !assertionHost || !previewHost) return;
+
+            ensureMailConfigHotReloadMockState();
+            const planSelect = document.getElementById('mail-config-hot-reload-plan');
+            const modeSelect = document.getElementById('mail-config-hot-reload-mode');
+            const approvalInput = document.getElementById('mail-config-hot-reload-require-approval');
+            if (planSelect) planSelect.value = mailConfigHotReloadMockState.reload_plan;
+            if (modeSelect) modeSelect.value = mailConfigHotReloadMockState.reload_mode;
+            if (approvalInput) approvalInput.checked = Boolean(mailConfigHotReloadMockState.require_review_before_reload);
+
+            const changedSections = getMailConfigAuditMockDiffSections().filter(section => section.changed);
+            const selectedSet = new Set(mailConfigHotReloadMockState.selected_mail_scopes);
+            const selectedMailScopes = MAIL_CONFIG_HOT_RELOAD_SCOPE_DEFAULTS.filter(scope => selectedSet.has(scope.key));
+            const blockedSelectedScopes = selectedMailScopes.filter(scope => !scope.hot_reload_allowed || scope.approval_required);
+            const reloadableSelectedScopes = selectedMailScopes.filter(scope => scope.hot_reload_allowed && !scope.approval_required);
+
+            scopeHost.innerHTML = MAIL_CONFIG_HOT_RELOAD_SCOPE_DEFAULTS.map(scope => {
+                const checked = selectedSet.has(scope.key);
+                const statusClass = scope.hot_reload_allowed
+                    ? (scope.approval_required ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800')
+                    : 'bg-slate-100 text-slate-500';
+                const statusText = scope.hot_reload_allowed
+                    ? (scope.approval_required ? '邮件侧审批后预览' : '邮件侧可热加载预览')
+                    : '邮件侧需重启或人工审核';
+                return `
+                    <label class="flex items-start gap-2 rounded border ${checked ? 'border-emerald-200 bg-white' : 'border-slate-200 bg-white'} p-3">
+                        <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleMailConfigHotReloadScope('${scope.key}', this.checked)" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-200">
+                        <span class="min-w-0 flex-1">
+                            <span class="flex flex-wrap items-center justify-between gap-2">
+                                <span class="font-bold text-slate-900">${escapeHtml(scope.label)}</span>
+                                <span class="rounded-full px-2 py-0.5 text-[10px] font-bold ${statusClass}">${statusText}</span>
+                            </span>
+                            <span class="mt-1 block font-mono text-[10px] text-slate-500">${escapeHtml(scope.key)} / ${escapeHtml(scope.runtime_effect)}</span>
+                        </span>
+                    </label>
+                `;
+            }).join('');
+
+            exclusionHost.innerHTML = MAIL_CONFIG_HOT_RELOAD_WECOM_EXCLUSIONS.map(item => `
+                <div class="rounded border border-white bg-white p-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <span class="font-bold text-slate-900">${escapeHtml(item.label)}</span>
+                        <span class="font-mono text-[10px] font-bold text-rose-700">${escapeHtml(item.key)}</span>
+                    </div>
+                    <div class="mt-1 text-slate-600">${escapeHtml(item.exclusion_reason)}</div>
+                </div>
+            `).join('');
+
+            const assertions = [
+                'review_only=true：本页只生成热加载计划预览，不调用后端 API。',
+                'config_namespace=mail_only_review_mock：候选作用域必须以 mail_* 开头。',
+                'wecom_excluded=true：企微侧边栏、企微 RAG、企微会话状态和企微 Prompt 均不可被选择。',
+                'runtime_effect=none：不会刷新真实邮件配置缓存，也不会触发真实发信。'
+            ];
+            assertionHost.innerHTML = assertions.map(text => `
+                <div class="rounded border border-white bg-white p-2 text-slate-700">${escapeHtml(text)}</div>
+            `).join('');
+
+            const preview = {
+                review_only: true,
+                config_namespace: mailConfigHotReloadMockState.scope,
+                hot_reload_scope: 'mail_config_only',
+                isolation: 'mail_only_no_api_no_db_no_real_hot_reload_no_send_no_wecom_config_no_wecom_state',
+                reload_plan: mailConfigHotReloadMockState.reload_plan,
+                reload_mode: mailConfigHotReloadMockState.reload_mode,
+                require_review_before_reload: Boolean(mailConfigHotReloadMockState.require_review_before_reload),
+                selected_mail_scopes: selectedMailScopes.map(scope => ({
+                    scope: scope.key,
+                    label: scope.label,
+                    hot_reload_allowed: Boolean(scope.hot_reload_allowed),
+                    approval_required: Boolean(scope.approval_required),
+                    source_panel: scope.source_panel,
+                    runtime_effect: scope.runtime_effect,
+                    action: scope.hot_reload_allowed && !scope.approval_required
+                        ? 'mail_only_hot_reload_preview'
+                        : 'mail_only_review_or_restart_required'
+                })),
+                reloadable_mail_scopes: reloadableSelectedScopes.map(scope => scope.key),
+                blocked_mail_scopes: blockedSelectedScopes.map(scope => scope.key),
+                changed_mail_config_scopes_detected: changedSections.map(section => section.scope),
+                wecom_exclusions: MAIL_CONFIG_HOT_RELOAD_WECOM_EXCLUSIONS.map(item => item.key),
+                disabled_effects: [
+                    'api_call',
+                    'db_write',
+                    'real_hot_reload',
+                    'real_send',
+                    'wecom_sidebar_config_reload',
+                    'wecom_rag_config_reload',
+                    'wecom_session_state_update',
+                    'wecom_ai_scripts_update'
+                ],
+                wecom_config_state_impact: 'none'
+            };
+            previewHost.textContent = JSON.stringify(preview, null, 2);
+
+            if (dirtyBadge) {
+                const dirty = isMailConfigHotReloadMockDirty();
+                dirtyBadge.textContent = dirty
+                    ? `热加载预览已修改：${selectedMailScopes.length} 个邮件作用域`
+                    : '未修改';
+                dirtyBadge.className = dirty
+                    ? 'rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-800'
+                    : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500';
+            }
+        }
+
+        function setMailCandidatePreviewText(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        }
+
+        function pushMailQualityFeedbackEvent(action, detail = '') {
+            mailQualityFeedbackMock.events.unshift({
+                action,
+                detail,
+                at: new Date().toLocaleString('zh-CN', {hour12: false})
+            });
+            mailQualityFeedbackMock.events = mailQualityFeedbackMock.events.slice(0, 6);
+        }
+
+        function getMailGoldLibraryGateEvidence() {
+            const evidence = [];
+            if (mailQualityFeedbackMock.manual_approval) evidence.push('manual_approval');
+            if (mailQualityFeedbackMock.closed_won_evidence) evidence.push('closed_won_evidence');
+            return evidence;
+        }
+
+        function updateMailGoldLibraryGateState() {
+            const evidence = getMailGoldLibraryGateEvidence();
+            const ready = evidence.length > 0;
+            mailQualityFeedbackMock.gold_library_ready = ready;
+            mailQualityFeedbackMock.gold_library_action = ready
+                ? 'ready_for_gold_library_review'
+                : 'blocked_no_gold_library_entry';
+
+            const statusEl = document.getElementById('mail-gold-gate-status');
+            if (statusEl) {
+                statusEl.textContent = ready
+                    ? `就绪：${evidence.join(' + ')}`
+                    : '阻断：缺少人工批准或成单证据';
+                statusEl.className = ready
+                    ? 'rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-700'
+                    : 'rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[10px] font-bold text-amber-700';
+            }
+            const helpEl = document.getElementById('mail-gold-gate-help');
+            if (helpEl) {
+                helpEl.textContent = ready
+                    ? '准入门已满足：本页仅生成可进入黄金库审核的 Mock 预览，不调用 API、不写库。'
+                    : '未满足准入门时，仅保存页面内反馈预览，不进入黄金库。';
+                helpEl.className = ready
+                    ? 'mt-2 text-[11px] font-bold text-emerald-700'
+                    : 'mt-2 text-[11px] font-bold text-amber-800';
+            }
+            setMailCandidatePreviewText(
+                'mail-feedback-preview-gate-evidence',
+                `manual_approval=${mailQualityFeedbackMock.manual_approval}; closed_won_evidence=${mailQualityFeedbackMock.closed_won_evidence}`
+            );
+            setMailCandidatePreviewText('mail-feedback-preview-gold-action', mailQualityFeedbackMock.gold_library_action);
+        }
+
+        function updateMailQualityFeedbackPreview() {
+            updateMailGoldLibraryGateState();
+            setMailCandidatePreviewText('mail-feedback-preview-draft', mailQualityFeedbackMock.draft_feedback);
+            setMailCandidatePreviewText('mail-feedback-preview-fewshot', mailQualityFeedbackMock.fewshot_action);
+            setMailCandidatePreviewText(
+                'mail-feedback-preview-backfeed',
+                mailQualityFeedbackMock.saved_backfeed
+                    ? (mailCandidateSnippetPreview?.candidate_id || 'mock_feedback_only_backfeed')
+                    : (mailQualityFeedbackMock.saved_feedback ? '阻断：未进入黄金库' : '等待保存反馈')
+            );
+            setMailCandidatePreviewText(
+                'mail-feedback-save-state',
+                mailQualityFeedbackMock.saved_feedback
+                    ? (mailQualityFeedbackMock.saved_backfeed ? '已保存反馈，黄金库反哺就绪（Mock）' : '已保存反馈，黄金库反哺被阻断（Mock）')
+                    : '尚未保存反馈'
+            );
+            setMailCandidatePreviewText(
+                'mail-fewshot-blacklist-state',
+                mailQualityFeedbackMock.blacklisted_fewshot ? '已拉黑（Mock）' : '未拉黑'
+            );
+            const upBtn = document.getElementById('mail-feedback-thumbs-up');
+            const downBtn = document.getElementById('mail-feedback-thumbs-down');
+            const blacklistBtn = document.getElementById('mail-fewshot-blacklist-btn');
+            if (upBtn) upBtn.className = mailQualityFeedbackMock.draft_feedback === 'thumbs_up'
+                ? 'rounded-lg border border-emerald-500 bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700'
+                : 'rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100';
+            if (downBtn) downBtn.className = mailQualityFeedbackMock.draft_feedback === 'thumbs_down'
+                ? 'rounded-lg border border-rose-500 bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700'
+                : 'rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100';
+            if (blacklistBtn) blacklistBtn.textContent = mailQualityFeedbackMock.blacklisted_fewshot
+                ? '取消拉黑该 Few-Shot（页面内 Mock）'
+                : '拉黑该 Few-Shot（页面内 Mock）';
+            const logEl = document.getElementById('mail-feedback-event-log');
+            if (logEl) {
+                logEl.textContent = mailQualityFeedbackMock.events.length
+                    ? mailQualityFeedbackMock.events.map(event => `${event.at} | ${event.action} | ${event.detail}`).join('\n')
+                    : '等待页面内反馈操作。';
+            }
+        }
+
+        function toggleMailGoldLibraryGate(gate) {
+            if (gate === 'manual_approval') {
+                mailQualityFeedbackMock.manual_approval = Boolean(document.getElementById('mail-gold-gate-manual-approval')?.checked);
+            } else if (gate === 'closed_won_evidence') {
+                mailQualityFeedbackMock.closed_won_evidence = Boolean(document.getElementById('mail-gold-gate-closed-won')?.checked);
+            }
+            mailQualityFeedbackMock.saved_feedback = false;
+            mailQualityFeedbackMock.saved_backfeed = false;
+            updateMailGoldLibraryGateState();
+            pushMailQualityFeedbackEvent(
+                'gold_library_gate_changed',
+                `${gate}=${gate === 'manual_approval' ? mailQualityFeedbackMock.manual_approval : mailQualityFeedbackMock.closed_won_evidence}; ${mailQualityFeedbackMock.gold_library_action}`
+            );
+            updateMailQualityFeedbackPreview();
+        }
+
+        function recordMailQualityDraftFeedback(feedback) {
+            mailQualityFeedbackMock.draft_feedback = feedback === 'thumbs_down' ? 'thumbs_down' : 'thumbs_up';
+            mailQualityFeedbackMock.saved_feedback = false;
+            mailQualityFeedbackMock.saved_backfeed = false;
+            pushMailQualityFeedbackEvent('draft_feedback_selected', mailQualityFeedbackMock.draft_feedback);
+            updateMailQualityFeedbackPreview();
+        }
+
+        function toggleMailQualityFewshotBlacklist() {
+            mailQualityFeedbackMock.blacklisted_fewshot = !mailQualityFeedbackMock.blacklisted_fewshot;
+            mailQualityFeedbackMock.fewshot_action = mailQualityFeedbackMock.blacklisted_fewshot ? 'blacklist_fewshot' : 'keep';
+            mailQualityFeedbackMock.saved_feedback = false;
+            mailQualityFeedbackMock.saved_backfeed = false;
+            pushMailQualityFeedbackEvent('fewshot_action_changed', mailQualityFeedbackMock.fewshot_action);
+            updateMailQualityFeedbackPreview();
+        }
+
+        function saveMailQualityFeedbackBackfeed() {
+            const note = String(document.getElementById('mail-feedback-note')?.value || '').trim();
+            const fewshotId = String(document.getElementById('mail-feedback-fewshot-id')?.textContent || '').trim();
+            updateMailGoldLibraryGateState();
+            const evidence = getMailGoldLibraryGateEvidence();
+            const readyForGoldLibrary = evidence.length > 0;
+            mailQualityFeedbackMock.saved_feedback = true;
+            mailQualityFeedbackMock.saved_backfeed = readyForGoldLibrary;
+            mailQualityFeedbackMock.note = note;
+            mailQualityFeedbackMock.backfeed_preview = {
+                source_draft_id: 'mail_review_draft_047',
+                source_candidate_id: mailCandidateSnippetPreview?.candidate_id || '',
+                retrieved_fewshot_id: fewshotId,
+                draft_feedback: mailQualityFeedbackMock.draft_feedback,
+                fewshot_action: mailQualityFeedbackMock.fewshot_action,
+                gold_library_gate: readyForGoldLibrary ? 'ready' : 'blocked',
+                gate_evidence: evidence,
+                gold_library_action: mailQualityFeedbackMock.gold_library_action,
+                review_mode: 'mock_review_only_no_api_no_db_no_send_no_wecom'
+            };
+            const target = mailCandidateSnippetPreview?.candidate_id
+                ? `反哺候选 ${mailCandidateSnippetPreview.candidate_id}`
+                : '仅保存反馈，候选切片尚未生成';
+            if (readyForGoldLibrary) {
+                pushMailQualityFeedbackEvent('feedback_backfeed_ready_for_gold_library', `${target}；evidence=${evidence.join('+')}；不调用后端不写库`);
+            } else {
+                pushMailQualityFeedbackEvent('gold_library_gate_blocked', `${target}；缺少人工批准或成单证据；仅保存反馈预览`);
+            }
+            updateMailQualityFeedbackPreview();
+        }
+
+        function saveMailCandidateSnippetPreview() {
+            const subject = String(document.getElementById('mail-expert-subject')?.value || '').trim();
+            const body = String(document.getElementById('mail-expert-body')?.value || '').trim();
+            const snippetType = String(document.getElementById('mail-candidate-snippet-type')?.value || 'example');
+            const scenario = String(document.getElementById('mail-candidate-scenario')?.value || 'new_contact_intro');
+            const usefulScore = String(document.getElementById('mail-candidate-score')?.value || '0.95').trim() || '0.95';
+            if (!subject || !body) {
+                setMailCandidatePreviewText('mail-candidate-save-state', '主题和正文不能为空');
+                return;
+            }
+            mailCandidateSnippetPreview = {
+                candidate_id: `mail_candidate_preview_${Date.now()}`,
+                source_draft_id: 'mail_review_draft_047',
+                scenario,
+                snippet_type: snippetType,
+                useful_score: usefulScore,
+                subject,
+                body,
+                saved_state: '已保存为页面内候选预览',
+                review_mode: 'mock_review_only_no_backend'
+            };
+            setMailCandidatePreviewText('mail-candidate-save-state', '已保存候选预览（Mock）');
+            setMailCandidatePreviewText('mail-candidate-preview-id', mailCandidateSnippetPreview.candidate_id);
+            setMailCandidatePreviewText('mail-candidate-preview-source', mailCandidateSnippetPreview.source_draft_id);
+            setMailCandidatePreviewText('mail-candidate-preview-scenario', mailCandidateSnippetPreview.scenario);
+            setMailCandidatePreviewText('mail-candidate-preview-type', mailCandidateSnippetPreview.snippet_type);
+            setMailCandidatePreviewText('mail-candidate-preview-score', mailCandidateSnippetPreview.useful_score);
+            setMailCandidatePreviewText('mail-candidate-preview-state', mailCandidateSnippetPreview.saved_state);
+            setMailCandidatePreviewText('mail-candidate-preview-subject', mailCandidateSnippetPreview.subject);
+            setMailCandidatePreviewText('mail-candidate-preview-body', mailCandidateSnippetPreview.body);
+            updateMailQualityFeedbackPreview();
+        }
 
         function analysisCacheKey(userId, versionId = 'current_tail') {
             return `${String(userId || '')}::${String(versionId || 'current_tail')}`;
@@ -1148,16 +3283,18 @@
         }
 
         function switchMainApp(app) {
-            const validApps = ['wecom', 'analytics', 'kb', 'caselib'];
+            const validApps = ['wecom', 'analytics', 'kb', 'caselib', 'mailQuality'];
             const normalized = validApps.includes(app) ? app : 'wecom';
             document.getElementById('app-wecom')?.classList.toggle('hidden', normalized !== 'wecom');
             document.getElementById('app-analytics')?.classList.toggle('hidden', normalized !== 'analytics');
             document.getElementById('app-kb')?.classList.toggle('hidden', normalized !== 'kb');
             document.getElementById('app-caselib')?.classList.toggle('hidden', normalized !== 'caselib');
+            document.getElementById('app-mail-quality')?.classList.toggle('hidden', normalized !== 'mailQuality');
             const wecomTab = document.getElementById('main-tab-wecom');
             const analyticsTab = document.getElementById('main-tab-analytics');
             const kbTab = document.getElementById('main-tab-kb');
             const caselibTab = document.getElementById('main-tab-caselib');
+            const mailQualityTab = document.getElementById('main-tab-mail-quality');
             if (wecomTab && analyticsTab && kbTab) {
                 wecomTab.className = normalized === 'wecom'
                     ? 'rounded-2xl border px-5 py-3 text-left transition bg-blue-600 text-white border-blue-600 shadow-sm'
@@ -1174,6 +3311,11 @@
                     ? 'rounded-2xl border px-5 py-3 text-left transition bg-purple-600 text-white border-purple-600 shadow-sm'
                     : 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
             }
+            if (mailQualityTab) {
+                mailQualityTab.className = normalized === 'mailQuality'
+                    ? 'rounded-2xl border px-5 py-3 text-left transition bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                    : 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-indigo-200';
+            }
             if (normalized === 'kb') {
                 openKnowledgeAdmin(kbState.tab || 'documents');
             } else if (normalized === 'analytics') {
@@ -1182,6 +3324,8 @@
             } else if (normalized === 'caselib') {
                 history.replaceState(null, '', `${window.location.pathname}#caselib`);
                 caselibSwitchSubTab(caselibState.subTab || 'list');
+            } else if (normalized === 'mailQuality') {
+                history.replaceState(null, '', `${window.location.pathname}#mail-quality`);
             } else {
                 history.replaceState(null, '', window.location.pathname);
             }
@@ -1423,10 +3567,15 @@
                                  (r.backup_status || '未备份');
                 const selectedCls = caselibState.selectedRunId === r.run_id
                     ? 'bg-purple-50 ring-2 ring-purple-300 ring-inset' : 'hover:bg-purple-50';
-                return `<tr class="border-t ${selectedCls} cursor-pointer transition" onclick="caselibSelectRun('${r.run_id}')" ondblclick="caselibOpenDetail('${r.run_id}')" title="单击在下方显示这一轮的分析；双击进入 60 案例详情">
-                    <td class="px-3 py-2 font-bold text-purple-700" title="第 ${r.version_no} 轮迭代">v${r.version_no}</td>
+                const isDaily = r.run_id && r.run_id.startsWith('daily_');
+                const verStr = isDaily ? r.version_no : `v${r.version_no}`;
+                const verTitle = isDaily ? '日常实时验证' : `第 ${r.version_no} 轮迭代`;
+                const codeVerSha = isDaily ? '-' : shortSha;
+                const dirtyIndicator = (isDaily || !r.git_dirty) ? '' : ' <span class="text-amber-600" title="启动时工作区有未提交的改动">·待提交</span>';
+                return `<tr class="border-t ${selectedCls} cursor-pointer transition" onclick="caselibSelectRun('${r.run_id}')" ondblclick="caselibOpenDetail('${r.run_id}')" title="单击在下方显示这一轮的分析；双击进入详情">
+                    <td class="px-3 py-2 font-bold text-purple-700" title="${verTitle}">${verStr}</td>
                     <td class="px-3 py-2 text-slate-600" title="本轮触发时间：${tt}">${tt}</td>
-                    <td class="px-3 py-2 font-mono text-[11px] text-slate-700" title="完整 git commit SHA：${r.git_commit_sha || '-'}\n分支：${r.git_branch || '-'}">${shortSha}${r.git_dirty ? ' <span class="text-amber-600" title="启动时工作区有未提交的改动">·待提交</span>' : ''}</td>
+                    <td class="px-3 py-2 font-mono text-[11px] text-slate-700" title="完整 git commit SHA：${r.git_commit_sha || '-'}\n分支：${r.git_branch || '-'}">${codeVerSha}${dirtyIndicator}</td>
                     <td class="px-3 py-2 text-slate-700 max-w-[280px] truncate" title="${escapeHtml(r.change_summary || '（未填写）')}">${escapeHtml(sumTxt) || '<span class="text-slate-400">（未填写）</span>'}</td>
                     <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${stCls}" title="迭代整体运行状态：${stLabel}">${stLabel}</span></td>
                     <td class="px-3 py-2 text-right" title="已完成 ${r.completed_cases} 个 / 共 ${r.total_cases} 个案例">${r.completed_cases}/${r.total_cases}</td>
@@ -1437,7 +3586,7 @@
                     <td class="px-3 py-2 text-center">${r.improvement_analysis ? `<button onclick="event.stopPropagation();caselibShowAnalysisPopup('${r.run_id}','improvement')" class="text-purple-600 hover:text-purple-900 hover:underline text-[11px] font-bold px-1" title="点击查看得分分析">📊 查看</button>` : '<span class="text-slate-300 text-[11px]">—</span>'}</td>
                     <td class="px-3 py-2 text-center">${r.ai_next_step_plan ? `<button onclick="event.stopPropagation();caselibShowAnalysisPopup('${r.run_id}','ai_plan')" class="text-amber-600 hover:text-amber-900 hover:underline text-[11px] font-bold px-1" title="点击查看 AI 自检步骤">🤖 查看</button>` : '<span class="text-slate-300 text-[11px]">—</span>'}</td>
                     <td class="px-3 py-2 text-center">${r.analysis_summary ? `<button onclick="event.stopPropagation();caselibShowAnalysisPopup('${r.run_id}','summary')" class="text-indigo-600 hover:text-indigo-900 hover:underline text-[11px] font-bold px-1" title="点击查看三AI汇总">🎯 查看</button>` : '<span class="text-slate-300 text-[11px]">—</span>'}</td>
-                    <td class="px-3 py-2 text-center"><button onclick="event.stopPropagation();caselibOpenDetail('${r.run_id}')" class="text-purple-600 hover:underline text-[11px] font-bold" title="点击查看本轮 60 个案例的逐条 7 步结果">详情 →</button></td>
+                    <td class="px-3 py-2 text-center"><button onclick="event.stopPropagation();caselibOpenDetail('${r.run_id}')" class="text-purple-600 hover:underline text-[11px] font-bold" title="点击查看详情">详情 →</button></td>
                 </tr>`;
             }).join('');
             wrap.innerHTML = head + body + '</tbody></table>';
@@ -1783,13 +3932,24 @@
 
         async function caselibOpenDetail(runId) {
             caselibState.currentRunId = runId;
-            caselibState.detailFilter = {scenario: '', sort: 'scenario_turn'};
+            const isDaily = runId.startsWith('daily_');
+            caselibState.detailFilter = {scenario: '', sort: isDaily ? 'api_first' : 'scenario_turn'};
             caselibSwitchSubTab('detail');
             document.getElementById('caselib-detail-table').innerHTML =
                 '<div class="p-8 text-center text-sm text-slate-400">正在加载详情…</div>';
             try {
-                const res = await caselibFetch(`/api/case_lib/iterations/${runId}`);
+                let url = `/api/case_lib/iterations/${runId}`;
+                if (isDaily) {
+                    const y = runId.slice(6, 10);
+                    const m = runId.slice(10, 12);
+                    const d = runId.slice(12, 14);
+                    url = `/api/case_lib/daily_validation/${y}-${m}-${d}`;
+                }
+                const res = await caselibFetch(url);
                 const data = await res.json();
+                if (isDaily && data.results) {
+                    data.results.forEach(r => { r.__full = true; });
+                }
                 caselibState.currentDetail = data;
                 renderCaselibDetail(data);
             } catch (e) {
@@ -1813,14 +3973,17 @@
             const it = data.iteration;
             const allRows = data.results || [];
             caselibState.detailAllRows = allRows;          // 保存原始全集供筛选
-            caselibState.detailFilter = caselibState.detailFilter || {scenario: '', sort: 'scenario_turn'};
+            const isDaily = it.run_id && it.run_id.startsWith('daily_');
+            caselibState.detailFilter = caselibState.detailFilter || {scenario: '', sort: isDaily ? 'api_first' : 'scenario_turn'};
             const tt = caselibFormatTime(it.triggered_at);
+            const titlePrefix = isDaily ? it.version_no : `v${it.version_no}`;
             document.getElementById('caselib-detail-title').textContent =
-                `v${it.version_no} 迭代详情（共 ${allRows.length} 个对话轮次）`;
+                `${titlePrefix} 迭代详情（共 ${allRows.length} 个对话轮次）`;
             const detailSubtitleEl = document.getElementById('caselib-detail-subtitle');
             detailSubtitleEl.textContent = 'ⓘ';
-            detailSubtitleEl.title =
-                `代码版本 = ${it.git_short_sha || '-'}${it.git_dirty ? ' (含未提交改动)' : ''}  ｜  触发于 ${tt}  ｜  运行状态 = ${caselibRunStatusLabel(it.status)}`;
+            detailSubtitleEl.title = isDaily
+                ? `日常实时验证 ｜ 触发于 ${tt} ｜ 运行状态 = ${caselibRunStatusLabel(it.status)}`
+                : `代码版本 = ${it.git_short_sha || '-'}${it.git_dirty ? ' (含未提交改动)' : ''}  ｜  触发于 ${tt}  ｜  运行状态 = ${caselibRunStatusLabel(it.status)}`;
 
             // === 顶部速览卡片：本次平均 / 原始平均 / Δ ===
             const aiScores = allRows.map(r => r.quality_score).filter(v => v != null);
@@ -1877,36 +4040,56 @@
                 `<span title="完成后自动 git 备份的 commit SHA">备份 ${backupTxt}</span>`;
 
             // 工具栏（场景筛选 + 排序）
-            const scenarioOptions = ['<option value="">全部场景</option>'].concat(
-                Object.keys(CASELIB_SCENARIO_DEFS).map(k =>
-                    `<option value="${k}" ${caselibState.detailFilter.scenario===k?'selected':''}>${k} · ${CASELIB_SCENARIO_DEFS[k].name}</option>`)
-            ).join('');
-            const sortOptions = [
-                ['score_asc','AI 质量分 升序（最低先）'],
-                ['score_desc','AI 质量分 降序（最高先）'],
-                ['delta_desc','AI − 人工 差值 降序（AI高估在前）'],
-                ['delta_asc','AI − 人工 差值 升序（AI偏低在前）'],
-                ['scenario_turn','按场景-案例-轮次排序（默认）'],
-                ['latency_desc','耗时降序'],
-            ].map(([k,l])=>`<option value="${k}" ${caselibState.detailFilter.sort===k?'selected':''}>${l}</option>`).join('');
-            const rescoreTip = (
-                '重打两个评分（仅本轮，不重跑 7 步链路）：\n' +
-                '  1) AI 质量分：基于已存的 step7_reply_styles + step1_summary + step4_knowledge ' +
-                '重新调用 IntentEngine.score_reply_candidates，把 7 维评分（含 reason）写回 step7_reply_scores，' +
-                '并刷新 quality_score / 私域库分 / 外部库分（私域、外部已隐藏，但仍会更新）。\n' +
-                '  2) 人工原始分：执行 backend/_case_lib_import.py 从 sales_scenario_cases_v2.md 重新装载 quality_score_md。\n' +
-                '完成后自动刷新 run 的 avg/min/max。'
-            );
-            const toolbar = `
-                <div class="shrink-0 flex flex-wrap items-center gap-3 mb-3 px-1">
-                    <label class="text-[11px] text-slate-600 font-bold" title="只展示指定场景的案例（5个）">筛选场景：</label>
-                    <select id="caselib-detail-scenario-filter" onchange="caselibApplyDetailFilter()" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs">${scenarioOptions}</select>
-                    <label class="text-[11px] text-slate-600 font-bold ml-3" title="表格行的排序方式">排序方式：</label>
-                    <select id="caselib-detail-sort" onchange="caselibApplyDetailFilter()" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs">${sortOptions}</select>
-                    <button id="caselib-rescore-btn" onclick="caselibRescoreCurrent()" class="ml-3 rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-1 text-xs font-bold" title="${escapeHtml(rescoreTip)}">重新打分（AI + 人工）</button>
-                    <span id="caselib-rescore-status" class="text-[11px] text-slate-500"></span>
-                    <span id="caselib-detail-count" class="text-[11px] text-slate-500 ml-auto"></span>
-                </div>`;
+            let sortOptions = '';
+            if (isDaily) {
+                sortOptions = [
+                    ['api_first', '默认模式（分栏排序）'],
+                    ['customer_time', '按客户显示（按客户聚合）'],
+                    ['api_only', '仅显示 API 触发']
+                ].map(([k,l])=>`<option value="${k}" ${caselibState.detailFilter.sort===k?'selected':''}>${l}</option>`).join('');
+            } else {
+                sortOptions = [
+                    ['score_asc','AI 质量分 升序（最低先）'],
+                    ['score_desc','AI 质量分 降序（最高先）'],
+                    ['delta_desc','AI − 人工 差值 降序（AI高估在前）'],
+                    ['delta_asc','AI − 人工 差值 升序（AI偏低在前）'],
+                    ['scenario_turn','按场景-案例-轮次排序（默认）'],
+                    ['latency_desc','耗时降序'],
+                ].map(([k,l])=>`<option value="${k}" ${caselibState.detailFilter.sort===k?'selected':''}>${l}</option>`).join('');
+            }
+
+            let toolbar = '';
+            if (isDaily) {
+                toolbar = `
+                    <div class="shrink-0 flex flex-wrap items-center gap-3 mb-3 px-1">
+                        <label class="text-[11px] text-slate-600 font-bold" title="表格行的排序方式">显示模式：</label>
+                        <select id="caselib-detail-sort" onchange="caselibApplyDetailFilter()" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs">${sortOptions}</select>
+                        <span id="caselib-detail-count" class="text-[11px] text-slate-500 ml-auto"></span>
+                    </div>`;
+            } else {
+                const scenarioOptions = ['<option value="">全部场景</option>'].concat(
+                    Object.keys(CASELIB_SCENARIO_DEFS).map(k =>
+                        `<option value="${k}" ${caselibState.detailFilter.scenario===k?'selected':''}>${k} · ${CASELIB_SCENARIO_DEFS[k].name}</option>`)
+                ).join('');
+                const rescoreTip = (
+                    '重打两个评分（仅本轮，不重跑 7 步链路）：\n' +
+                    '  1) AI 质量分：基于已存的 step7_reply_styles + step1_summary + step4_knowledge ' +
+                    '重新调用 IntentEngine.score_reply_candidates，把 7 维评分（含 reason）写回 step7_reply_scores，' +
+                    '并刷新 quality_score / 私域库分 / 外部库分（私域、外部已隐藏，但仍会更新）。\n' +
+                    '  2) 人工原始分：执行 backend/_case_lib_import.py 从 sales_scenario_cases_v2.md 重新装载 quality_score_md。\n' +
+                    '完成后自动刷新 run 的 avg/min/max。'
+                );
+                toolbar = `
+                    <div class="shrink-0 flex flex-wrap items-center gap-3 mb-3 px-1">
+                        <label class="text-[11px] text-slate-600 font-bold" title="只展示指定场景的案例（5个）">筛选场景：</label>
+                        <select id="caselib-detail-scenario-filter" onchange="caselibApplyDetailFilter()" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs">${scenarioOptions}</select>
+                        <label class="text-[11px] text-slate-600 font-bold ml-3" title="表格行的排序方式">排序方式：</label>
+                        <select id="caselib-detail-sort" onchange="caselibApplyDetailFilter()" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs">${sortOptions}</select>
+                        <button id="caselib-rescore-btn" onclick="caselibRescoreCurrent()" class="ml-3 rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-1 text-xs font-bold" title="${escapeHtml(rescoreTip)}">重新打分（AI + 人工）</button>
+                        <span id="caselib-rescore-status" class="text-[11px] text-slate-500"></span>
+                        <span id="caselib-detail-count" class="text-[11px] text-slate-500 ml-auto"></span>
+                    </div>`;
+            }
 
             // 先渲染顶部 + 工具栏，再渲染主表格（receive filter 状态）
             const tableHost = document.getElementById('caselib-detail-table');
@@ -1915,37 +4098,119 @@
         }
 
         function caselibApplyDetailFilter() {
-            const sc = document.getElementById('caselib-detail-scenario-filter').value;
+            const scEl = document.getElementById('caselib-detail-scenario-filter');
+            const sc = scEl ? scEl.value : '';
             const sort = document.getElementById('caselib-detail-sort').value;
             caselibState.detailFilter = {scenario: sc, sort};
             caselibRenderDetailRows();
         }
+
+        function getReproductionCurl(r) {
+            let externalUserid = 'EXTERNAL_USER_ID';
+            let userid = 'SALES_ID';
+            if (r.case_id && r.case_id.startsWith('single_')) {
+                const parts = r.case_id.substring(7).split('_');
+                if (parts.length === 2) {
+                    const sales_ids = ["alicehe", "davidXiaoMeiPeng", "HanHan", "joycesheng", "WangHuiYing"];
+                    if (sales_ids.includes(parts[0])) {
+                        userid = parts[0];
+                        externalUserid = parts[1];
+                    } else if (sales_ids.includes(parts[1])) {
+                        userid = parts[1];
+                        externalUserid = parts[0];
+                    } else {
+                        userid = parts[0];
+                        externalUserid = parts[1];
+                    }
+                }
+            } else {
+                const s2 = r.step2_crm_info ? (typeof r.step2_crm_info === 'string' ? JSON.parse(r.step2_crm_info) : r.step2_crm_info) : null;
+                if (s2 && s2.external_userid) {
+                    externalUserid = s2.external_userid;
+                }
+            }
+            return `curl -X POST "http://localhost:8071/api/wecom/sidebar_assist" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "external_userid": "${externalUserid}",
+    "userid": "${userid}",
+    "force_refresh": true,
+    "sync_archive_before_read": false,
+    "trigger_source": "web_manual"
+  }'`;
+        }
+
+        window.caselibCopyCurl = function(resultId, btn) {
+            const detail = caselibState.currentDetail;
+            if (!detail || !detail.results) return;
+            const r = detail.results.find(x => x.result_id === resultId);
+            if (!r) return;
+            const cmd = getReproductionCurl(r);
+            navigator.clipboard.writeText(cmd).then(() => {
+                const orig = btn.innerHTML;
+                btn.innerHTML = '✅ 已复制';
+                btn.classList.remove('bg-purple-100', 'text-purple-700');
+                btn.classList.add('bg-emerald-100', 'text-emerald-700');
+                setTimeout(() => {
+                    btn.innerHTML = orig;
+                    btn.classList.remove('bg-emerald-100', 'text-emerald-700');
+                    btn.classList.add('bg-purple-100', 'text-purple-700');
+                }, 1500);
+            }).catch(err => {
+                alert('复制失败: ' + err);
+            });
+        };
 
         function caselibRenderDetailRows() {
             const host = document.getElementById('caselib-detail-rows');
             if (!host) return;
             const f = caselibState.detailFilter || {scenario:'', sort:'scenario_turn'};
             let rows = (caselibState.detailAllRows || []).slice();
-            if (f.scenario) rows = rows.filter(r => r.scenario_code === f.scenario);
-            const deltaOf = r => {
-                const ai = r.quality_score;
-                const md = getSalesScore(r);
-                return (ai != null && md != null) ? (ai - md) : null;
-            };
-            const cmpNullLast = (a, b) => (a == null) - (b == null) || (a == null ? 0 : a - b);
-            const cmpNullLastDesc = (a, b) => (a == null) - (b == null) || (a == null ? 0 : b - a);
-            switch (f.sort) {
-                case 'score_desc':  rows.sort((a,b)=>cmpNullLastDesc(a.quality_score, b.quality_score)); break;
-                case 'delta_desc':  rows.sort((a,b)=>cmpNullLastDesc(deltaOf(a), deltaOf(b))); break;
-                case 'delta_asc':   rows.sort((a,b)=>cmpNullLast(deltaOf(a), deltaOf(b))); break;
-                case 'scenario_turn': rows.sort((a,b)=>
-                    (a.scenario_code || '').localeCompare(b.scenario_code || '')
-                    || ((a.scenario_rank || 0) - (b.scenario_rank || 0))
-                    || ((a.turn_no || 0) - (b.turn_no || 0))
-                ); break;
-                case 'latency_desc':rows.sort((a,b)=>cmpNullLastDesc(a.latency_ms, b.latency_ms)); break;
-                default:            rows.sort((a,b)=>cmpNullLast(a.quality_score, b.quality_score));
+
+            const isDaily = caselibState.currentRunId && caselibState.currentRunId.startsWith('daily_');
+            if (isDaily) {
+                if (f.sort === 'api_only') {
+                    rows = rows.filter(r => r.quality_score != null);
+                }
+                const sortByCustomerTime = (a, b) => {
+                    const cmpCase = (a.case_id || '').localeCompare(b.case_id || '');
+                    if (cmpCase !== 0) return cmpCase;
+                    const tA = a.turn && a.turn.timestamp ? a.turn.timestamp : '';
+                    const tB = b.turn && b.turn.timestamp ? b.turn.timestamp : '';
+                    return tA.localeCompare(tB);
+                };
+                if (f.sort === 'api_first') {
+                    const apiRows = rows.filter(r => r.quality_score != null);
+                    const manualRows = rows.filter(r => r.quality_score == null);
+                    apiRows.sort(sortByCustomerTime);
+                    manualRows.sort(sortByCustomerTime);
+                    rows = apiRows.concat(manualRows);
+                } else {
+                    rows.sort(sortByCustomerTime);
+                }
+            } else {
+                if (f.scenario) rows = rows.filter(r => r.scenario_code === f.scenario);
+                const deltaOf = r => {
+                    const ai = r.quality_score;
+                    const md = getSalesScore(r);
+                    return (ai != null && md != null) ? (ai - md) : null;
+                };
+                const cmpNullLast = (a, b) => (a == null) - (b == null) || (a == null ? 0 : a - b);
+                const cmpNullLastDesc = (a, b) => (a == null) - (b == null) || (a == null ? 0 : b - a);
+                switch (f.sort) {
+                    case 'score_desc':  rows.sort((a,b)=>cmpNullLastDesc(a.quality_score, b.quality_score)); break;
+                    case 'delta_desc':  rows.sort((a,b)=>cmpNullLastDesc(deltaOf(a), deltaOf(b))); break;
+                    case 'delta_asc':   rows.sort((a,b)=>cmpNullLast(deltaOf(a), deltaOf(b))); break;
+                    case 'scenario_turn': rows.sort((a,b)=>
+                        (a.scenario_code || '').localeCompare(b.scenario_code || '')
+                        || ((a.scenario_rank || 0) - (b.scenario_rank || 0))
+                        || ((a.turn_no || 0) - (b.turn_no || 0))
+                    ); break;
+                    case 'latency_desc':rows.sort((a,b)=>cmpNullLastDesc(a.latency_ms, b.latency_ms)); break;
+                    default:            rows.sort((a,b)=>cmpNullLast(a.quality_score, b.quality_score));
+                }
             }
+
             document.getElementById('caselib-detail-count').textContent =
                 `共 ${rows.length} 行 / 全集 ${(caselibState.detailAllRows||[]).length} 行`;
 
@@ -1970,13 +4235,15 @@
                 '触发点 = step3 强信号扫描识别到的最近客户消息；取触发点之后第一条销售消息。\n' +
                 '同样用 7 维规则打分，可与 AI 候选分对比。悬停单元格可看全文及 7 维分明细。'
             );
+            const turnColHeader = isDaily ? '轮次(时间)' : '轮次';
+            const caseColHeader = isDaily ? '案例(会话ID)' : '案例（排名+标题）';
             const head = `
                 <table class="text-xs" style="table-layout: fixed; min-width: 2435px; width: 2435px;">
                     <thead class="bg-slate-50 text-slate-600 sticky top-0 z-10">
                         <tr>
                             <th class="px-2 py-2 text-left" style="width:50px; min-width:50px; max-width:50px; overflow:hidden;" title="销售场景代码 S01~S12。鼠标悬停每个单元格可看场景的完整业务定义">场景</th>
-                            <th class="px-2 py-2 text-left" style="width:210px; min-width:210px; max-width:210px; overflow:hidden;" title="该案例在场景内的排名（1=场景内人工质量分最高，5=该场景最低）+ 案例标题">案例（排名+标题）</th>
-                            <th class="px-2 py-2 text-center" style="width:45px; min-width:45px; max-width:45px; overflow:hidden;" title="该案例内按时间顺序切出的对话轮次">轮次</th>
+                            <th class="px-2 py-2 text-left" style="width:210px; min-width:210px; max-width:210px; overflow:hidden;" title="该案例在场景内的排名（1=场景内人工质量分最高，5=该场景最低）+ 案例标题">${caseColHeader}</th>
+                            <th class="px-2 py-2 text-center" style="width:45px; min-width:45px; max-width:45px; overflow:hidden;" title="该案例内按时间顺序切出的对话轮次">${turnColHeader}</th>
                             <th class="px-0.5 py-2 text-left" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="本轮对话的链路最终状态：真实成功 / 真实部分 / 干跑成功 / 异常回退 / HTTP错误 等">链路状态</th>
                             <th class="px-0.5 py-2 text-left" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="本轮对话端到端 7 步链路总耗时（毫秒）">耗时</th>
                             <th class="px-2 py-2 text-left" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" title="步骤1：大模型1 抽取的当前主线话题。悬停看全文">第1步·主线话题</th>
@@ -2043,7 +4310,7 @@
                     if (v != null) lines.push(`  • ${l}（${k}）= ${Number(v).toFixed(1)}`);
                 });
                 const reason = top.score_reason || '';
-                if (reason && reason !== 'llm1_scored' && reason !== 'manual') {
+                if (reason && reason !== 'llm1_scored' && reason !== 'manual' && reason !== 'llm1_failed') {
                     lines.push('评分点评：' + reason.slice(0, 240));
                 }
                 if (top.knowledge_source_label || top.style_title) {
@@ -2216,11 +4483,26 @@
                     return null;
                 })();
                 const kbCellText = (escapeHtml(kbLabel) || '—') + (kbHitCount != null ? ` <span class="text-slate-400">·命中${kbHitCount}</span>` : '');
-                return `<tr class="border-t hover:bg-purple-50 cursor-pointer transition" ${r.case_id && r.result_id ? `onclick="caselibOpenCaseModal('${r.case_id}', '${r.result_id}')"` : ''} title="点击查看 ${sc}-${r.scenario_rank} 的完整 7 步链路详情">
+
+                let trCls = 'hover:bg-purple-50';
+                if (isDaily && f.sort === 'customer_time' && r.quality_score != null) {
+                    trCls = 'bg-amber-50 hover:bg-amber-100 font-semibold';
+                }
+
+                const turnTime = (isDaily && turn.timestamp) ? turn.timestamp.substring(11, 16) : '';
+                const turnNoDisplay = isDaily
+                    ? `${r.turn_no || turn.turn_no || '-'}<br/><span class="text-[9px] text-slate-400 font-normal">${turnTime}</span>`
+                    : (r.turn_no || turn.turn_no || '-');
+
+                const curlCmd = getReproductionCurl(r);
+                const escapedCurl = escapeHtml(curlCmd);
+                const copyBtnHtml = `<button onclick="event.stopPropagation(); caselibCopyCurl('${r.result_id}', this)" class="mt-1 block w-full text-center px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 hover:bg-purple-200 text-[10px] font-mono whitespace-nowrap select-none" title="点击复制复现 curl 脚本&#10;&#10;${escapedCurl}">💻 复现</button>`;
+
+                return `<tr class="border-t ${trCls} cursor-pointer transition" ${r.case_id && r.result_id ? `onclick="caselibOpenCaseModal('${r.case_id}', '${r.result_id}')"` : ''} title="点击查看 ${sc}-${r.scenario_rank} 的完整 7 步链路详情">
                     <td class="px-2 py-2 font-bold text-purple-700" style="width:50px; min-width:50px; max-width:50px; overflow:hidden;" title="${sameCaseAsPrev ? '' : escapeHtml(scTip)}">${sameCaseAsPrev ? '' : sc}</td>
                     <td class="px-2 py-2 truncate text-slate-700" style="width:210px; min-width:210px; max-width:210px; overflow:hidden;" title="${sameCaseAsPrev ? '' : escapeHtml(c.case_title || '')}">${sameCaseAsPrev ? '' : escapeHtml(title)}</td>
-                    <td class="px-2 py-2 text-center font-mono text-[11px] text-purple-700" style="width:45px; min-width:45px; max-width:45px; overflow:hidden;" title="第 ${r.turn_no || turn.turn_no || '-'} 轮">${r.turn_no || turn.turn_no || '-'}</td>
-                    <td class="px-0.5 py-2" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="原始状态码：${r.quality_status || ''}">${escapeHtml(qstatus)}</span></td>
+                    <td class="px-2 py-2 text-center font-mono text-[11px] text-purple-700" style="width:45px; min-width:45px; max-width:45px; overflow:hidden;" title="第 ${r.turn_no || turn.turn_no || '-'} 轮">${turnNoDisplay}</td>
+                    <td class="px-0.5 py-2 text-center" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="原始状态码：${r.quality_status || ''}">${escapeHtml(qstatus)}</span>${copyBtnHtml}</td>
                     <td class="px-0.5 py-2 text-slate-500 whitespace-nowrap" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="AI生成回复耗时（已排除评分环节）">${r.latency_ms ? r.latency_ms + ' ms' : '-'}</td>
                     <td class="px-2 py-2 truncate text-slate-700 cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" ${stepClick('第1步·主线话题')} onmouseenter="caselibCellTip(event,'${r.result_id}','topic')" onmouseleave="caselibCellTipHide()">${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 text-slate-500 truncate cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:130px; min-width:130px; max-width:130px; overflow:hidden;" ${stepClick('第4步·知识检索')} onmouseenter="caselibCellTip(event,'${r.result_id}','kb')" onmouseleave="caselibCellTipHide()">${kbCellText}</td>
@@ -3743,6 +6025,8 @@
                 openKnowledgeAdmin(tab);
             } else if (window.location.hash === '#analytics') {
                 switchMainApp('analytics');
+            } else if (window.location.hash === '#mail-quality') {
+                switchMainApp('mailQuality');
             } else {
                 switchMainApp('wecom');
             }
@@ -3772,7 +6056,7 @@
                 "System_Archive_Status": "⚡ 存档同步激活桩"
             };
             if(maps[userId]) return maps[userId];
-            
+
             if(userId.startsWith('group_')) {
                 return `👥 企微群聊 (群号 ${userId.substring(6, 12).toUpperCase()})`;
             }
@@ -5253,7 +7537,7 @@
             if (!area || !badge) return;
             badge.innerText = data.has_v1 ? (data.status || "特征就绪") : "等待指令";
             badge.className = data.has_v1 ? "px-3 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 block" : "px-3 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 block";
-            
+
             // 为了保持右下角不出戏，原先那个单独的小辅助面板干脆隐藏掉
             const assistSection = document.getElementById('assist-content');
             if(assistSection) assistSection.parentElement.style.display = 'none';
@@ -5830,7 +8114,7 @@
             btn.disabled = true;
             icon.classList.add('animate-spin');
             statusBox.classList.remove('hidden');
-            
+
             async function updateProgress(text, pct) {
                 phaseText.innerText = text;
                 progressBar.style.width = pct + '%';
@@ -5841,7 +8125,7 @@
             try {
                 await updateProgress('正在建立会话存档安全通道...', 20);
                 await updateProgress('正在握手企微存档中心...', 55);
-                
+
                 const url = `${API_BASE}/api/sync/today`;
                 const chatDate = getCurrentSessionFilterDate();
                 renderOperationStatus({
@@ -5852,7 +8136,7 @@
                 });
                 const res = await apiFetch(url, {method: 'POST'});
                 const data = await res.json().catch(() => ({}));
-                
+
                 if(res.ok && data.status === 'success') {
                     await updateProgress('正在解析加密报文流...', 90);
                     await updateProgress('同步完成', 100);
@@ -5901,12 +8185,12 @@
         async function openSettings() {
             let overlay = document.getElementById('settings-modal');
             if (overlay) return overlay.style.display = 'flex';
-            
+
             overlay = document.createElement('div');
             overlay.id = 'settings-modal';
             overlay.className = 'fixed inset-0 bg-slate-900/50 z-50 flex justify-center items-center';
             document.body.appendChild(overlay);
-            
+
             overlay.innerHTML = `
             <div class="bg-white rounded-xl shadow-2xl w-[80%] max-h-[90vh] flex flex-col">
                 <div class="flex justify-between items-center p-4 border-b border-slate-200">
@@ -5921,7 +8205,7 @@
                     <button onclick="saveSettings()" class="px-5 py-2 rounded text-white bg-indigo-600 hover:bg-indigo-700 font-bold shadow-sm transition">💾 强行保存并立即生效</button>
                 </div>
             </div>`;
-            
+
             overlay.style.display = 'flex';
             try {
                 const res = await apiFetch(`${API_BASE}/api/system/ai_scripts`);
@@ -6689,11 +8973,13 @@
             document.getElementById('app-wecom')?.classList.add('hidden');
             document.getElementById('app-analytics')?.classList.add('hidden');
             document.getElementById('app-caselib')?.classList.add('hidden');
+            document.getElementById('app-mail-quality')?.classList.add('hidden');
             document.getElementById('app-kb')?.classList.remove('hidden');
             const wecomTab = document.getElementById('main-tab-wecom');
             const analyticsTab = document.getElementById('main-tab-analytics');
             const kbTab = document.getElementById('main-tab-kb');
             const caselibTab = document.getElementById('main-tab-caselib');
+            const mailQualityTab = document.getElementById('main-tab-mail-quality');
             if (wecomTab && analyticsTab && kbTab) {
                 wecomTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-blue-50 hover:border-blue-300';
                 analyticsTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300';
@@ -6701,6 +8987,9 @@
             }
             if (caselibTab) {
                 caselibTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+            }
+            if (mailQualityTab) {
+                mailQualityTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-indigo-200';
             }
             await loadKbDictionaries();
             renderKbTabs();

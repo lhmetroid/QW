@@ -95,35 +95,35 @@
 - [x] Task 39：实现价格正则提取，识别 RMB、元、USD、美元、per word、每千字、折扣等表达 (已在 `backend/main.py` 扩展 `_extract_mail_explicit_price_mentions`、`_mail_pricing_context_unit`、`_mail_pricing_context_currency`、`_mail_explicit_price_mention_type` 与 `_mail_floor_rule_for_price_mention`，补齐 RMB/CNY/人民币/元/USD/美元/美金/$/￥、per word、每词、每千字/千字符/1k、discount/10% off/8折 等识别，并避免把折扣表达误当作底价穿透进行红牌拦截)
 - [x] Task 40：实现履约工期 SLA 校准门，低于标准 SLA 时物理拉正并黄牌锁定 (已在 `backend/main.py` 接入 `backend/mail_sla_guardrail.py` 的工期校准门；`POST /api/v1/mail/generate-draft` 现会把 `24 hours`、`1 day`、`next-day delivery` 等低于标准 SLA 的承诺物理替换为 `3 business days`，并返回 `safety_guardrail.status=yellow_card_sla_calibrated_locked`、`block_details`、黄牌 warning 与锁定审核态，继续保持 review-only、不真实发信；新增 `backend/mail_sla_guardrail_checks.py` 定向校验快速工期承诺被物理拉正且真实发信仍关闭)
 - [x] Task 41：实现收件域名与抄送域名防泄密门 (已在 `backend/main.py` 为 `POST /api/v1/mail/generate-draft` 新增收件人与抄送域名防泄密门；请求新增可选 `cc_emails`，会同时校验 `contact_email` 与 `cc_emails` 域名，命中竞对或风险域名时返回 `status=blocked_by_recipient_domain_confidentiality_gate`、`safety_guardrail.status=red_card_hard_block`、`draft_status=blocked`、`real_sending_enabled=false` 与阻断诊断；新增 `backend/mail_recipient_domain_guardrail_checks.py` 定向校验 recipient/cc 阻断与正常客户域名放行)
-- [x] Task 43：实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本 (已在 `backend/main.py` 将收件域名防泄密门升级为“竞对域名黑名单 + 客户域名白名单”双校验：新增 `MAIL_CONFIDENTIALITY_COMPETITOR_DOMAIN_BLACKLIST`、`MAIL_CONFIDENTIALITY_CUSTOMER_DOMAIN_WHITELIST_BY_CUSTOMER_KEY`、`_mail_customer_domain_whitelist` 与通用域名匹配 helper；`POST /api/v1/mail/generate-draft` 现会在保留竞对/风险域名红牌拦截的同时，要求 `contact_email` 与 `cc_emails` 落在当前客户域名白名单内，否则按 `non_whitelisted_customer_domain` 红牌阻断；`backend/mail_recipient_domain_guardrail_checks.py` 已补充白名单别名放行、非白名单域名阻断与竞对黑名单断言)
-- [ ] Task 43：实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本
-- [ ] Task 44：实现红牌、黄牌、通过三种安全门结果结构
-- [ ] Task 45：实现 20 个黑盒对抗测试用例，覆盖价格穿透、交期逼迫、同业钓鱼、占位符绕过
+- [x] Task 42：实现竞对域名黑名单与客户域名白名单 (已在 `backend/main.py` 将收件域名防泄密门升级为“竞对域名黑名单 + 客户域名白名单”双校验：新增 `MAIL_CONFIDENTIALITY_COMPETITOR_DOMAIN_BLACKLIST`、`MAIL_CONFIDENTIALITY_CUSTOMER_DOMAIN_WHITELIST_BY_CUSTOMER_KEY`、`_mail_customer_domain_whitelist` 与通用域名匹配 helper；`POST /api/v1/mail/generate-draft` 现会在保留竞对/风险域名红牌拦截的同时，要求 `contact_email` 与 `cc_emails` 落在当前客户域名白名单内，否则按 `non_whitelisted_customer_domain` 红牌阻断；`backend/mail_recipient_domain_guardrail_checks.py` 已补充白名单别名放行、非白名单域名阻断与竞对黑名单断言)
+- [x] Task 43：实现敏感词扫描，拦截内部底价、财务个人账户、非公开返点等高风险文本 (已在 `backend/main.py` 新增 `MAIL_SENSITIVE_CONTENT_RED_CARD_RULES`、`_mail_sensitive_content_mask`、`_mail_sensitive_content_context` 与 `_evaluate_mail_sensitive_content_red_card_guardrail`，对邮件主题、正文和已解析商业条款执行敏感内容扫描；命中内部底价/成本边界、财务个人账户、未公开返点或折扣时，`POST /api/v1/mail/generate-draft` 现会返回 `status=blocked_by_sensitive_content_red_card_gate`、`safety_guardrail.status=red_card_hard_block`、`red_card_code=blocked_by_sensitive_content_red_card_gate`、`draft_status=blocked`、`real_sending_enabled=false` 与脱敏后的 `block_details`；新增 `backend/mail_sensitive_content_guardrail_checks.py` 定向校验红牌拦截、数字脱敏与后端占位符放行)
+- [x] Task 44：实现红牌、黄牌、通过三种安全门结果结构 (已在 `backend/main.py` 为 `MailSafetyGuardrail` 新增统一结果结构字段 `result_schema_version`、`overall_outcome`、`gate_results`，并新增 `_mail_safety_gate_result`、`_build_mail_safety_gate_results`、`_mail_safety_overall_outcome`；`POST /api/v1/mail/generate-draft` 现会对收件域名防泄密、工期 SLA、价格底线、敏感内容四类门禁统一返回同形结果项，分别表达 `red_card` / `yellow_card` / `passed`，并在所有红牌/黄牌/通过分支回传一致 schema；新增 `backend/mail_generate_draft_safety_result_checks.py` 定向校验统一结构、总体优先级与三种结果形态；继续保持 review-only、不真实发信)
+- [x] Task 45：实现 20 个黑盒对抗测试用例，覆盖价格穿透、交期逼迫、同业钓鱼、占位符绕过 (已新增 `backend/mail_draft_safety_adversarial_checks.py`，20 条黑盒对抗用例覆盖价格底线穿透、紧急 SLA 逼迫、竞对域名钓鱼、占位符绕过；补齐邮件占位符绕过红牌门，真实发信保持关闭)
 
 ### P1：邮件质量诊断与人工纠偏面板
 
-- [ ] Task 46：设计邮件质量诊断面板独立入口
-- [ ] Task 47：展示草稿 ID、场景、Sequence Step、邮件主题
-- [ ] Task 48：展示 SQL 粗筛、HTML 去噪、CRM 画像、RAG Few-Shot、安全门链路轨迹
-- [ ] Task 49：展示 AI 生成版本与运营专家修正版双栏对比
-- [ ] Task 50：支持专家编辑后保存为候选高质量切片
-- [ ] Task 51：支持点赞、差评、拉黑 Few-Shot、保存并反哺
-- [ ] Task 52：反哺进入黄金库前必须保留人工审核或赢单状态门槛，避免劣质销售习惯污染知识库
+- [x] Task 46：设计邮件质量诊断面板独立入口 (已在 `frontend/index.html` 新增顶层“邮件质量诊断”主导航、独立 `app-mail-quality` 页面骨架、`#mail-quality` hash 路由与独立 mail workspace 容器，明确与企微实时链路物理隔离，并为 Task 47-52 预留样本列表/质量评分/人工纠偏/诊断详情区域)
+- [x] Task 47：展示草稿 ID、场景、Sequence Step、邮件主题 (已在 `frontend/index.html` 的邮件质量诊断面板补齐 review-only 草稿样本卡片与详情字段，展示 Draft ID、Scenario、Sequence Step、Email Subject，并保持与企微链路物理隔离)
+- [x] Task 48：展示 SQL 粗筛、HTML 去噪、CRM 画像、RAG Few-Shot、安全门链路轨迹 (已在 `frontend/index.html` 的邮件质量诊断面板新增 review-only 诊断轨迹卡与详情区五列链路摘要，显式展示 SQL 粗筛、HTML 去噪、CRM 画像、RAG Few-Shot、安全门轨迹，并追加“仅 Mock / 不接企微”隔离标识)
+- [x] Task 49：展示 AI 生成版本与运营专家修正版双栏对比 (已在 `frontend/index.html` 的邮件质量诊断面板新增 review-only 双栏对比区，左右分别展示 AI 生成草稿与运营专家修正版，补充差异提示标签，并显式标注 `mock_revision_pair` 与“不保存、不发信、不接企微”的隔离说明)
+- [x] Task 50：支持专家编辑后保存为候选高质量切片 (已在 `frontend/index.html` 的邮件质量诊断面板新增 review-only 专家编辑区，支持编辑主题/正文、选择 `snippet_type`/`scenario`/`useful_score`，并通过页面内保存动作生成候选高质量切片预览；明确保持 Mock、仅页面内预览、不写库、不发信、不调用后端、不接企微)
+- [x] Task 51：支持点赞、差评、拉黑 Few-Shot、保存并反哺 (已在 `frontend/index.html` 的“邮件质量诊断”面板新增 review-only Mock 反馈区，支持草稿点赞/差评、命中 Few-Shot 拉黑/取消拉黑、保存反馈并生成页面内反哺预览与事件日志；全程仅更新前端页面内状态，不调用 API、不写数据库、不发信、不接企微)
+- [x] Task 52：反哺进入黄金库前必须保留人工审核或赢单状态门槛，避免劣质销售习惯污染知识库 (已在 `frontend/index.html` 的邮件质量诊断面板新增“人工批准 / 成单证据”黄金库准入门、blocked/ready 状态文案、Gate Evidence/Gold Library Action 预览字段，以及 `gold_library_gate_blocked` / `feedback_backfeed_ready_for_gold_library` 事件；继续保持 review-only Mock，不调用 API、不写数据库、不发信、不接企微)
 
 ### P1：邮件配置管理台
 
-- [ ] Task 53：设计邮件全局配置管理入口
-- [ ] Task 54：支持 Sequence 多轮触发间隔配置
-- [ ] Task 55：支持翻译产品线、印刷产品线底价配置
-- [ ] Task 56：支持大客户加急工期最低阈值配置
-- [ ] Task 57：支持 RAG 准入阈值与 LLM 温度配置
-- [ ] Task 58：支持配置变更审计日志
-- [ ] Task 59：配置热加载必须只影响邮件系统，不影响企微配置
+- [x] Task 53：设计邮件全局配置管理入口 (已在 `frontend/index.html` 的独立邮件 workspace 中新增 `质量诊断 / Mail Config` 子导航与 review-only Mock 配置面板骨架，预留 Sequence 间隔、安全门规则、RAG/LLM 参数、配置审计日志、热加载范围五个分区；保持不调用后端、不写数据库、不发信、不接企微)
+- [x] Task 54：支持 Sequence 多轮触发间隔配置 (已在 `frontend/index.html` 的 `Mail Config` 面板把 Sequence 区块从静态占位升级为 review-only 可编辑 Mock 配置：支持 3 个邮件场景切换、4 个 Step 延迟天数输入、Task 23 默认值（0/7/10/10 天）回显、anchor/默认说明、dirty-state JSON 预览、恢复当前场景默认，以及明确邮件侧隔离文案；不调用后端、不写数据库、不发信、不影响企微配置)
+- [x] Task 55：支持翻译产品线、印刷产品线底价配置 (已在 `frontend/index.html` 的 `Mail Config` 面板新增 review-only `翻译/印刷底价` 分区与快捷入口，提供翻译/印刷 4 条产品线最低价可编辑 Mock 配置、邮件侧独立 `mailTranslationPrintFloorMockState`、安全门策略说明、dirty badge、JSON 预览与恢复默认；不调用后端、不写数据库、不热加载、不影响企微配置或真实发信)
+- [x] Task 56：支持大客户加急工期最低阈值配置 (已在 `frontend/index.html` 的 `Mail Config` 面板新增 review-only `大客户加急 SLA` 分区与快捷入口，提供 3 档客户等级的最短提前通知/最短交付周期/人工复核开关可编辑 Mock 配置、邮件侧独立 `mailBigCustomerExpediteSlaMockState`、安全门策略说明、dirty badge、JSON 预览与恢复默认；不调用后端、不写数据库、不热加载、不影响企微配置或真实发信)
+- [x] Task 57：支持 RAG 准入阈值与 LLM 温度配置 (已在 `frontend/index.html` 的 `Mail Config` 面板新增 review-only `RAG / LLM 参数` 可编辑 Mock 配置，支持 `rag_admission_threshold` 与 `draft_llm_temperature` 两项参数编辑、dirty badge、恢复默认、参数说明与 JSON 预览，并继续保持不调用后端、不写数据库、不热加载、不发信、不接企微)
+- [x] Task 58：支持配置变更审计日志 (已在 `frontend/index.html` 的 `Mail Config` 面板把 `配置审计日志` 区块升级为 review-only 可交互 Mock 审计面板，支持审计视角/分区/审批状态/备注筛选、显示当前邮件配置差异、恢复默认、dirty badge 与 JSON 审计预览，并继续保持不调用后端、不写数据库、不热加载、不发信、不接企微)
+- [x] Task 59：配置热加载必须只影响邮件系统，不影响企微配置 (已在 `frontend/index.html` 的 `Mail Config` 面板把 `热加载范围预览` 区块升级为 review-only `邮件配置热加载范围` 面板，新增 `mailConfigHotReloadMockState`、邮件侧候选热加载作用域、企微排除清单、隔离断言、dirty badge、恢复默认与 JSON 预览，明确 `wecom_config_state_impact=none`、`disabled_effects` 与 `mail_only_review_mock` 命名空间；继续保持不调用后端、不写数据库、不触发真实热加载、不发信、不影响企微配置或企微会话状态)
 
 ### P1：CRM 邮件侧联调
 
-- [ ] Task 60：确认 CRM 客户 Key、联系人邮箱、行业、账期、销售负责人、签名字段
-- [ ] Task 61：实现 CRM 画像联查和域名级 fallback
+- [x] Task 60：确认 CRM 客户 Key、联系人邮箱、行业、账期、销售负责人、签名字段 (已新增 `docs/mail_crm_field_contract.md`、`backend/mail_crm_field_contract.py` 与 `backend/mail_crm_field_contract_checks.py`，锁定邮件侧 CRM 字段契约、必填/可选边界、字段别名与企微隔离约束；当前 API 只接收已落地必填字段与 `cc_emails`，`company_industry` / `payment_risk_level` 留待 Task 61/62 接入 CRM 联查与风险审核链路)
+- [x] Task 61：实现 CRM 画像联查和域名级 fallback (已在 `backend/main.py` 接入邮件侧 CRM 画像联查，查找键仅限 `customer_key` 与 `contact_email`，明确不把企微 `external_userid` 当作邮件 key；草稿意图画像已合并 `company_industry`、`payment_risk_level` 与客户域名；收件域名白名单支持静态客户域名、CRM 画像域名和 `contact_email` 域名 fallback；新增 `backend/mail_crm_profile_lookup_checks.py` 定向校验)
 - [ ] Task 62：实现高欠款风险客户发送前锁定审核
 - [ ] Task 63：实现客户回复、微信/电话签单、CRM 阶段变化触发 Sequence 中断
 - [ ] Task 64：建立 CRM 联调 Mock 数据，避免一开始依赖生产系统
@@ -146,7 +146,7 @@
 
 ## 当前第一个未完成任务
 
-Task 42：实现竞对域名黑名单与客户域名白名单
+Task 62：实现高欠款风险客户发送前锁定审核
 
 ## 任务执行规则
 

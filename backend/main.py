@@ -681,7 +681,7 @@ async def startup_event():
             except Exception as e:
                 logger.error(f"企微会话存档自动轮询异常: {e}")
             await asyncio.sleep(900)
-    
+
     asyncio.create_task(background_poll_worker())
 
 @app.get("/cb/qywx")
@@ -709,7 +709,7 @@ async def qywx_receive_message(
     xml_content = QYWXUtils.decrypt_message(msg_signature, timestamp, nonce, body, is_verify=False)
     if not xml_content:
         raise HTTPException(status_code=400, detail="Decrypt failed")
-    
+
     try:
         root = ET.fromstring(xml_content)
         from_user = (root.findtext("FromUserName") or "").strip()
@@ -724,13 +724,13 @@ async def qywx_receive_message(
 
     if not from_user or not content:
         raise HTTPException(status_code=400, detail="企微回调缺少 FromUserName 或文本内容")
-    
+
     # 1. 实时旁路扫描 (主线程)
     IntentEngine.fast_track_scan(from_user, content)
-    
+
     # 2. 异步深度分析 (改用原生 BackgroundTasks 以适配 Windows)
     background_tasks.add_task(process_deep_analyze_task, from_user, content, "customer")
-    
+
     return "success"
 
 def process_deep_analyze_task(user_id, content, sender_type):
@@ -741,11 +741,11 @@ def process_deep_analyze_task(user_id, content, sender_type):
         log = MessageLog(user_id=user_id, content=content, sender_type=sender_type)
         db.add(log)
         db.commit()
-        
+
         # 获取上下文
         context_logs = db.query(MessageLog).filter(MessageLog.user_id == user_id).order_by(MessageLog.id.desc()).limit(10).all()
         context = [{"content": l.content, "sender_type": l.sender_type} for l in reversed(context_logs)]
-        
+
         # 执行 AI 分析链路
         IntentEngine.slow_track_analyze(user_id, context)
     finally:
@@ -830,6 +830,8 @@ class MailGenerateDraftRequest(BaseModel):
         extra = "forbid"
 
 class MailSafetyGuardrail(BaseModel):
+    result_schema_version: str = "mail_safety_gate_result.v1"
+    overall_outcome: str = "passed"
     status: str
     triggered_warnings: list[str] = []
     is_locked_for_approval: bool = True
@@ -840,6 +842,7 @@ class MailSafetyGuardrail(BaseModel):
     red_card_code: str | None = None
     blocked_by: str | None = None
     block_details: dict[str, Any] | None = None
+    gate_results: list[dict[str, Any]] = []
 
 class MailGenerateDraftResponse(BaseModel):
     status: str
@@ -972,6 +975,11 @@ class MailDraftIntentProfile(BaseModel):
     recipient_name: str
     seller_name: str
     seller_signature: str
+    company_industry: str = "unknown"
+    payment_risk_level: str = "unknown"
+    customer_domains: tuple[str, ...] = ()
+    crm_profile_lookup_status: str = "not_looked_up"
+    crm_profile_source: str = "none"
     scenario: str
     scenario_label: str
     suite_step: int
@@ -3119,6 +3127,109 @@ def _evaluate_mail_financial_price_floor_guardrail(
                 }
     return None
 
+MAIL_SENSITIVE_CONTENT_REDACTION = "{{REDACTED_SENSITIVE_CONTENT}}"
+MAIL_SENSITIVE_CONTENT_RED_CARD_RULES: tuple[dict[str, Any], ...] = (
+    {
+        "category": "internal_floor_price",
+        "reason": "internal_floor_price_or_cost_boundary_leak",
+        "patterns": (
+            r"(?:internal|private|confidential|not\s+for\s+customer|do\s+not\s+share)[^.;。；\n]{0,60}(?:floor\s+price|price\s+floor|cost\s+price|minimum\s+price|bottom\s+price)",
+            r"(?:floor\s+price|price\s+floor|cost\s+price|minimum\s+price|bottom\s+price)[^.;。；\n]{0,60}(?:internal|private|confidential|not\s+for\s+customer|do\s+not\s+share)",
+            r"(?:内部|保密|不要给客户|不可外发|不对外)[^。；;\n]{0,40}(?:底价|成本价|最低价|价格底线)",
+            r"(?:底价|成本价|最低价|价格底线)[^。；;\n]{0,40}(?:内部|保密|不要给客户|不可外发|不对外)",
+        ),
+    },
+    {
+        "category": "personal_finance_account",
+        "reason": "personal_finance_account_leak",
+        "patterns": (
+            r"(?:personal|private|individual)[^.;。；\n]{0,50}(?:bank\s+account|paypal|wise|venmo|zelle|account\s+number|iban|swift)",
+            r"(?:bank\s+account|paypal|wise|venmo|zelle|account\s+number|iban|swift)[^.;。；\n]{0,50}(?:personal|private|individual)",
+            r"(?:个人|私人)[^。；;\n]{0,30}(?:银行卡|银行账号|收款账号|支付宝|微信收款|账户|账号)",
+            r"(?:银行卡|银行账号|收款账号|支付宝|微信收款|账户|账号)[^。；;\n]{0,30}(?:个人|私人)",
+            r"(?:个人|私人)[^.;。；\n]{0,50}\b\d[\d\s-]{10,}\d\b",
+        ),
+    },
+    {
+        "category": "unpublished_rebate_discount",
+        "reason": "unpublished_rebate_or_discount_leak",
+        "patterns": (
+            r"(?:unpublished|unannounced|secret|private|internal|not\s+published|not\s+public)[^.;。；\n]{0,60}(?:rebate|discount|kickback|commission|cashback|coupon)",
+            r"(?:rebate|discount|kickback|commission|cashback|coupon)[^.;。；\n]{0,60}(?:unpublished|unannounced|secret|private|internal|not\s+published|not\s+public)",
+            r"(?:未发布|未公布|未公开|内部|私下|暗返|返点)[^。；;\n]{0,40}(?:返利|返点|折扣|优惠|回扣)",
+            r"(?:返利|返点|折扣|优惠|回扣)[^。；;\n]{0,40}(?:未发布|未公布|未公开|内部|私下|暗返)",
+        ),
+    },
+)
+
+def _mail_sensitive_content_mask(value: str) -> str:
+    text_value = re.sub(r"\s+", " ", sanitize_text(value or "")).strip()
+    text_value = re.sub(r"\d", "*", text_value)
+    if len(text_value) > 120:
+        return f"{text_value[:117]}..."
+    return text_value
+
+def _mail_sensitive_content_context(text_value: str, start: int, end: int) -> str:
+    left = max(0, start - 36)
+    right = min(len(text_value), end + 36)
+    return _mail_sensitive_content_mask(text_value[left:right])
+
+def _evaluate_mail_sensitive_content_red_card_guardrail(
+    *,
+    subject: str | None = None,
+    body_html: str | None = None,
+    commercial_terms: MailDraftCommercialTerms | None = None,
+) -> dict[str, Any] | None:
+    texts_to_scan: list[dict[str, str]] = [
+        {"source": "generated_mail_subject", "text": sanitize_text(subject or "")},
+        {"source": "generated_mail_body", "text": sanitize_text(body_html or "")},
+    ]
+    if commercial_terms:
+        texts_to_scan.extend(
+            [
+                {"source": "resolved_commercial_price", "text": commercial_terms.price.value},
+                {"source": "resolved_commercial_discount", "text": commercial_terms.discount.value},
+                {"source": "resolved_commercial_payment_terms", "text": commercial_terms.payment_terms.value},
+            ]
+        )
+
+    matches: list[dict[str, Any]] = []
+    for item in texts_to_scan:
+        text_value = item["text"]
+        if not text_value:
+            continue
+        for rule in MAIL_SENSITIVE_CONTENT_RED_CARD_RULES:
+            for pattern in rule["patterns"]:
+                for match in re.finditer(pattern, text_value, flags=re.IGNORECASE):
+                    matches.append(
+                        {
+                            "source": item["source"],
+                            "category": rule["category"],
+                            "reason": rule["reason"],
+                            "matched_context": _mail_sensitive_content_context(
+                                text_value,
+                                match.start(),
+                                match.end(),
+                            ),
+                        }
+                    )
+
+    if not matches:
+        return None
+
+    categories = sorted({item["category"] for item in matches})
+    return {
+        "source": "mail_generate_draft_sensitive_content_red_card_guardrail",
+        "status": "red_card_hard_block",
+        "reason": "sensitive_internal_or_financial_content_detected",
+        "blocked_categories": categories,
+        "matches": matches,
+        "review_only": True,
+        "real_sending_enabled": False,
+        "will_send_email": False,
+        "replacement": MAIL_SENSITIVE_CONTENT_REDACTION,
+    }
+
 MAIL_CONFIDENTIALITY_COMPETITOR_DOMAIN_BLACKLIST = {
     "lionbridge.com",
     "rws.com",
@@ -3142,6 +3253,31 @@ MAIL_CONFIDENTIALITY_CUSTOMER_DOMAIN_WHITELIST_BY_CUSTOMER_KEY = {
         "customer-domain.com",
         "customer-domain.cn",
     },
+}
+MAIL_CRM_STATIC_PROFILE_BY_CUSTOMER_KEY = {
+    "CUST-DEMO-MULTI-DOMAIN": {
+        "company_industry": "manufacturing",
+        "payment_risk_level": "low",
+        "customer_domains": {
+            "customer-domain.com",
+            "customer-domain.cn",
+        },
+    },
+    "CUST-HIGH-RISK-DEMO": {
+        "company_industry": "legal",
+        "payment_risk_level": "high",
+        "customer_domains": {
+            "risk-customer.com",
+        },
+    },
+}
+MAIL_CRM_PAYMENT_RISK_LEVELS = {
+    "blocked",
+    "high",
+    "low",
+    "medium",
+    "prepaid_required",
+    "unknown",
 }
 
 def _normalize_mail_recipient_domain(value: str | None) -> str | None:
@@ -3172,13 +3308,225 @@ def _mail_domain_matches_list(domain: str, domains: set[str]) -> str | None:
 def _mail_domain_matches_blocked_list(domain: str, blocked_domains: set[str]) -> str | None:
     return _mail_domain_matches_list(domain, blocked_domains)
 
-def _mail_customer_domain_whitelist(customer_key: str | None, contact_email: str) -> set[str]:
+def _looks_like_wecom_mail_key(value: str | None) -> bool:
+    normalized = sanitize_text(value or "").strip()
+    lowered = normalized.lower()
+    if lowered.startswith(("group_", "single_")):
+        return True
+    return bool(re.match(r"^(?:wm|wo|wb)[a-z0-9_-]{8,}$", lowered))
+
+def _normalize_mail_payment_risk_level(value: str | None) -> str:
+    normalized = sanitize_text(value or "").strip().lower()
+    aliases = {
+        "": "unknown",
+        "normal": "low",
+        "ok": "low",
+        "none": "low",
+        "middle": "medium",
+        "med": "medium",
+        "risk": "high",
+        "overdue": "high",
+        "prepaid": "prepaid_required",
+        "prepay_required": "prepaid_required",
+        "stop": "blocked",
+        "blacklist": "blocked",
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in MAIL_CRM_PAYMENT_RISK_LEVELS:
+        return "unknown"
+    return normalized
+
+MAIL_PAYMENT_RISK_FINANCE_REVIEW_LEVELS = {
+    "blocked",
+    "high",
+    "prepaid_required",
+}
+
+def _evaluate_mail_payment_risk_finance_review_guardrail(
+    *,
+    payment_risk_level: str | None,
+    crm_profile_lookup_status: str | None = None,
+    crm_profile_source: str | None = None,
+) -> dict[str, Any] | None:
+    normalized_risk_level = _normalize_mail_payment_risk_level(payment_risk_level)
+    if normalized_risk_level not in MAIL_PAYMENT_RISK_FINANCE_REVIEW_LEVELS:
+        return None
+    return {
+        "source": "mail_generate_draft_payment_risk_finance_review_guardrail",
+        "status": "yellow_card_manual_finance_review_locked",
+        "reason": "crm_payment_risk_level_requires_manual_finance_review_before_send",
+        "payment_risk_level": normalized_risk_level,
+        "crm_profile_lookup_status": sanitize_text(crm_profile_lookup_status) or "unknown",
+        "crm_profile_source": sanitize_text(crm_profile_source) or "unknown",
+        "review_mode": "manual_finance_review_required",
+        "review_only": True,
+        "real_sending_enabled": False,
+        "will_send_email": False,
+    }
+
+def _mail_crm_profile_from_static(customer_key: str | None) -> dict[str, Any] | None:
+    if _looks_like_wecom_mail_key(customer_key):
+        return None
+    normalized_customer_key = sanitize_text(customer_key or "").strip().upper()
+    profile = MAIL_CRM_STATIC_PROFILE_BY_CUSTOMER_KEY.get(normalized_customer_key)
+    if not profile:
+        return None
+    return {
+        "company_industry": sanitize_text(profile.get("company_industry")) or "unknown",
+        "payment_risk_level": _normalize_mail_payment_risk_level(profile.get("payment_risk_level")),
+        "customer_domains": {
+            normalized
+            for domain in profile.get("customer_domains", set())
+            if (normalized := _normalize_mail_recipient_domain(domain))
+        },
+        "crm_profile_lookup_status": "matched_static_customer_key",
+        "crm_profile_source": "mail_static_customer_key_profile",
+    }
+
+def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> dict[str, Any] | None:
+    if _looks_like_wecom_mail_key(customer_key):
+        customer_key = None
+    contact_domain = _normalize_mail_recipient_domain(contact_email)
+    normalized_contact_email = sanitize_text(contact_email).strip().lower()
+    normalized_customer_key = sanitize_text(customer_key or "").strip()
+    if not normalized_contact_email and not normalized_customer_key:
+        return None
+    try:
+        from crm_database import CRMSessionLocal
+        try:
+            from crm_profile import _infer_company_industry, _infer_payment_risk
+        except Exception:
+            _infer_company_industry = None
+            _infer_payment_risk = None
+
+        crm_db = CRMSessionLocal()
+        try:
+            row = crm_db.execute(
+                text(
+                    """
+                    SELECT TOP 1
+                        c.ContactId,
+                        c.ContactName,
+                        c.Email,
+                        c.CustomerId,
+                        d.CompanyName
+                    FROM usrCustomerContact AS c
+                    LEFT JOIN usrCustomer AS d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL
+                    WHERE c.Deleter IS NULL
+                      AND (
+                        LOWER(ISNULL(c.Email, '')) = :contact_email
+                        OR CAST(c.CustomerId AS NVARCHAR(120)) = :customer_key
+                        OR LOWER(ISNULL(d.CompanyName, '')) = :customer_key_lower
+                      )
+                    ORDER BY c.ContactId DESC
+                    """
+                ),
+                {
+                    "contact_email": normalized_contact_email,
+                    "customer_key": normalized_customer_key,
+                    "customer_key_lower": normalized_customer_key.lower(),
+                },
+            ).fetchone()
+            recent_followup = None
+            if row and row[0]:
+                followup_row = crm_db.execute(
+                    text(
+                        """
+                        SELECT TOP 1
+                            ISNULL(CAST(ai_summary AS NVARCHAR(MAX)), ISNULL(CAST(CustomerRemark AS NVARCHAR(MAX)), ''))
+                            + ' '
+                            + ISNULL(CAST(Note AS NVARCHAR(MAX)), '')
+                        FROM usrCustomerFollowUpRecord
+                        WHERE ContactId = :contact_id
+                          AND FollowUpTime <= CURRENT_TIMESTAMP
+                          AND ISNULL(IfSuccess, 0) = 1
+                        ORDER BY FollowUpTime DESC
+                        """
+                    ),
+                    {"contact_id": row[0]},
+                ).fetchone()
+                if followup_row and followup_row[0]:
+                    recent_followup = sanitize_text(followup_row[0])
+        finally:
+            crm_db.close()
+    except Exception as exc:
+        logger.info("MAIL_CRM_PROFILE_LOOKUP_SKIPPED customer_key/contact_email only: %s", str(exc)[:200])
+        return None
+    if not row:
+        return None
+
+    company_name = sanitize_text(row[4] if len(row) > 4 else "")
+    company_industry = "unknown"
+    if _infer_company_industry:
+        try:
+            company_industry = sanitize_text(_infer_company_industry(company_name, None, None)) or "unknown"
+        except Exception:
+            company_industry = "unknown"
+    payment_risk_level = "unknown"
+    if _infer_payment_risk:
+        try:
+            payment_risk_level = _normalize_mail_payment_risk_level(_infer_payment_risk(recent_followup))
+        except Exception:
+            payment_risk_level = "unknown"
+    domains = set()
+    row_email_domain = _normalize_mail_recipient_domain(row[2] if len(row) > 2 else None)
+    if row_email_domain:
+        domains.add(row_email_domain)
+    if contact_domain:
+        domains.add(contact_domain)
+    return {
+        "company_industry": company_industry,
+        "payment_risk_level": payment_risk_level,
+        "customer_domains": domains,
+        "crm_profile_lookup_status": "matched_crm_contact_email_or_customer_key",
+        "crm_profile_source": "crm_sql_customer_key_contact_email",
+    }
+
+def _lookup_mail_crm_profile(customer_key: str | None, contact_email: str) -> dict[str, Any]:
+    contact_domain = _normalize_mail_recipient_domain(contact_email)
+    profile = _mail_crm_profile_from_static(customer_key) or _mail_crm_profile_from_sql(customer_key, contact_email)
+    if profile is None:
+        profile = {
+            "company_industry": "unknown",
+            "payment_risk_level": "unknown",
+            "customer_domains": set(),
+            "crm_profile_lookup_status": (
+                "skipped_wecom_identifier"
+                if _looks_like_wecom_mail_key(customer_key)
+                else "fallback_contact_email_domain"
+            ),
+            "crm_profile_source": "contact_email_domain_fallback",
+        }
+    domains = set()
+    for domain in profile.get("customer_domains") or set():
+        normalized = _normalize_mail_recipient_domain(domain)
+        if normalized:
+            domains.add(normalized)
+    if contact_domain:
+        domains.add(contact_domain)
+    return {
+        "company_industry": sanitize_text(profile.get("company_industry")) or "unknown",
+        "payment_risk_level": _normalize_mail_payment_risk_level(profile.get("payment_risk_level")),
+        "customer_domains": tuple(sorted(domains)),
+        "crm_profile_lookup_status": sanitize_text(profile.get("crm_profile_lookup_status")) or "unknown",
+        "crm_profile_source": sanitize_text(profile.get("crm_profile_source")) or "unknown",
+    }
+
+def _mail_customer_domain_whitelist(
+    customer_key: str | None,
+    contact_email: str,
+    crm_profile: dict[str, Any] | None = None,
+) -> set[str]:
     whitelist: set[str] = set()
     primary_domain = _normalize_mail_recipient_domain(contact_email)
     if primary_domain:
         whitelist.add(primary_domain)
     normalized_customer_key = sanitize_text(customer_key or "").strip().upper()
     for domain in MAIL_CONFIDENTIALITY_CUSTOMER_DOMAIN_WHITELIST_BY_CUSTOMER_KEY.get(normalized_customer_key, set()):
+        normalized = _normalize_mail_recipient_domain(domain)
+        if normalized:
+            whitelist.add(normalized)
+    for domain in (crm_profile or {}).get("customer_domains") or ():
         normalized = _normalize_mail_recipient_domain(domain)
         if normalized:
             whitelist.add(normalized)
@@ -3189,12 +3537,13 @@ def _evaluate_mail_recipient_domain_confidentiality_guardrail(
     customer_key: str | None,
     contact_email: str,
     cc_emails: list[str] | None = None,
+    crm_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     recipients = [{"field": "recipient", "email": sanitize_text(contact_email).strip()}]
     for cc_email in cc_emails or []:
         recipients.append({"field": "cc", "email": sanitize_text(cc_email).strip()})
 
-    customer_domain_whitelist = _mail_customer_domain_whitelist(customer_key, contact_email)
+    customer_domain_whitelist = _mail_customer_domain_whitelist(customer_key, contact_email, crm_profile)
     blocked_recipients: list[dict[str, Any]] = []
     checked_domains: list[dict[str, Any]] = []
     for item in recipients:
@@ -3253,6 +3602,255 @@ def _evaluate_mail_recipient_domain_confidentiality_guardrail(
         "will_send_email": False,
     }
 
+MAIL_PLACEHOLDER_BYPASS_ALLOWED_TOKENS = {
+    "{{MAIL_PRICE_RESOLVED_BY_APPROVED_PRICING_RULE}}",
+    "{{MAIL_DELIVERY_SLA_RESOLVED_BY_BACKEND_RULE}}",
+    "{{MAIL_DISCOUNT_REQUIRES_APPROVAL}}",
+    "{{MAIL_PAYMENT_TERMS_REQUIRES_FINANCE_REVIEW}}",
+    "{{MAIL_COMMERCIAL_TERM_RESOLVED_BY_BACKEND}}",
+}
+MAIL_PLACEHOLDER_BYPASS_RED_CARD_RULES: tuple[dict[str, Any], ...] = (
+    {
+        "category": "generic_x_placeholder",
+        "reason": "generic_x_placeholder_left_in_customer_draft",
+        "patterns": (
+            r"\bX{2,}\b",
+            r"\bTBD\b",
+            r"\bTODO\b",
+        ),
+    },
+    {
+        "category": "placeholder_email",
+        "reason": "placeholder_email_left_in_customer_draft",
+        "patterns": (
+            r"\b[a-z0-9._%+-]*x{2,}[a-z0-9._%+-]*@x{2,}(?:\.[a-z]{2,})+\b",
+        ),
+    },
+    {
+        "category": "placeholder_po_or_order",
+        "reason": "placeholder_po_or_order_left_in_customer_draft",
+        "patterns": (
+            r"\bPOX{2,}[A-Z0-9-]*\b",
+            r"\bORDERX{2,}[A-Z0-9-]*\b",
+        ),
+    },
+    {
+        "category": "bracket_placeholder",
+        "reason": "bracket_placeholder_left_in_customer_draft",
+        "patterns": (
+            r"\[(?:客户名称|联系人|联系人邮箱|邮箱|公司名|报价|价格|工期|PO编号|订单号)\]",
+            r"\[(?:customer|contact|email|company|price|delivery|po|order)[^\]]{0,20}\]",
+        ),
+    },
+)
+
+def _mail_placeholder_bypass_scan_text(text_value: str | None) -> str:
+    text = sanitize_text(text_value or "")
+    for allowed_token in MAIL_PLACEHOLDER_BYPASS_ALLOWED_TOKENS:
+        text = text.replace(allowed_token, " ")
+    return text
+
+def _evaluate_mail_placeholder_bypass_guardrail(
+    *,
+    subject: str | None = None,
+    body_html: str | None = None,
+) -> dict[str, Any] | None:
+    texts_to_scan = [
+        {"source": "generated_mail_subject", "text": _mail_placeholder_bypass_scan_text(subject)},
+        {"source": "generated_mail_body", "text": _mail_placeholder_bypass_scan_text(body_html)},
+    ]
+    matches: list[dict[str, Any]] = []
+    for item in texts_to_scan:
+        text_value = item["text"]
+        if not text_value:
+            continue
+        for rule in MAIL_PLACEHOLDER_BYPASS_RED_CARD_RULES:
+            for pattern in rule["patterns"]:
+                for match in re.finditer(pattern, text_value, flags=re.IGNORECASE):
+                    matches.append(
+                        {
+                            "source": item["source"],
+                            "category": rule["category"],
+                            "reason": rule["reason"],
+                            "matched_context": _mail_sensitive_content_context(
+                                text_value,
+                                match.start(),
+                                match.end(),
+                            ),
+                        }
+                    )
+    if not matches:
+        return None
+    return {
+        "source": "mail_generate_draft_placeholder_bypass_guardrail",
+        "status": "red_card_hard_block",
+        "reason": "unsafe_placeholder_left_in_customer_visible_draft",
+        "blocked_categories": sorted({item["category"] for item in matches}),
+        "matches": matches,
+        "allowed_backend_placeholders": sorted(MAIL_PLACEHOLDER_BYPASS_ALLOWED_TOKENS),
+        "review_only": True,
+        "real_sending_enabled": False,
+        "will_send_email": False,
+    }
+
+MAIL_SAFETY_GATE_RESULT_SCHEMA_VERSION = "mail_safety_gate_result.v1"
+
+def _mail_safety_gate_result(
+    *,
+    gate_key: str,
+    gate_name: str,
+    outcome: str,
+    status: str,
+    action: str,
+    message: str,
+    hard_block: bool = False,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "schema_version": MAIL_SAFETY_GATE_RESULT_SCHEMA_VERSION,
+        "gate_key": gate_key,
+        "gate_name": gate_name,
+        "outcome": outcome,
+        "status": status,
+        "passed": outcome == "passed",
+        "hard_block": hard_block,
+        "review_required": True,
+        "real_sending_enabled": False,
+        "action": action,
+        "message": message,
+        "details": details,
+    }
+
+def _build_mail_safety_gate_results(
+    *,
+    recipient_domain_confidentiality_block: dict[str, Any] | None = None,
+    delivery_sla_guardrail: dict[str, Any] | None = None,
+    financial_price_floor_block: dict[str, Any] | None = None,
+    payment_risk_finance_review_guardrail: dict[str, Any] | None = None,
+    sensitive_content_red_card_block: dict[str, Any] | None = None,
+    placeholder_bypass_red_card_block: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    return [
+        _mail_safety_gate_result(
+            gate_key="recipient_domain_confidentiality",
+            gate_name="recipient_domain_confidentiality_gate",
+            outcome="red_card" if recipient_domain_confidentiality_block else "passed",
+            status=(
+                "red_card_hard_block"
+                if recipient_domain_confidentiality_block
+                else "passed"
+            ),
+            action="block_send" if recipient_domain_confidentiality_block else "allow_review_only_draft",
+            message=(
+                "Recipient or CC domain is competitor, risky, or outside the customer domain whitelist."
+                if recipient_domain_confidentiality_block
+                else "Recipient and CC domains passed confidentiality checks."
+            ),
+            hard_block=bool(recipient_domain_confidentiality_block),
+            details=recipient_domain_confidentiality_block,
+        ),
+        _mail_safety_gate_result(
+            gate_key="delivery_sla",
+            gate_name="delivery_sla_calibration_gate",
+            outcome="yellow_card" if delivery_sla_guardrail else "passed",
+            status=(
+                "yellow_card_calibrated_locked"
+                if delivery_sla_guardrail
+                else "passed"
+            ),
+            action="calibrate_and_lock_for_review" if delivery_sla_guardrail else "allow_review_only_draft",
+            message=(
+                "Delivery promise was faster than the standard SLA and was calibrated before review."
+                if delivery_sla_guardrail
+                else "Delivery SLA passed without calibration."
+            ),
+            details=delivery_sla_guardrail,
+        ),
+        _mail_safety_gate_result(
+            gate_key="financial_price_floor",
+            gate_name="financial_price_floor_gate",
+            outcome="red_card" if financial_price_floor_block else "passed",
+            status=(
+                "red_card_hard_block"
+                if financial_price_floor_block
+                else "passed"
+            ),
+            action="block_send" if financial_price_floor_block else "allow_review_only_draft",
+            message=(
+                "Explicit price is below an active pricing floor rule."
+                if financial_price_floor_block
+                else "No explicit price below active floor rules was detected."
+            ),
+            hard_block=bool(financial_price_floor_block),
+            details=financial_price_floor_block,
+        ),
+        _mail_safety_gate_result(
+            gate_key="payment_risk_finance_review",
+            gate_name="payment_risk_finance_review_gate",
+            outcome="yellow_card" if payment_risk_finance_review_guardrail else "passed",
+            status=(
+                "yellow_card_manual_finance_review_locked"
+                if payment_risk_finance_review_guardrail
+                else "passed"
+            ),
+            action=(
+                "lock_for_manual_finance_review"
+                if payment_risk_finance_review_guardrail
+                else "allow_review_only_draft"
+            ),
+            message=(
+                "CRM payment risk level requires manual finance review before sending."
+                if payment_risk_finance_review_guardrail
+                else "CRM payment risk level does not require finance-specific locking."
+            ),
+            details=payment_risk_finance_review_guardrail,
+        ),
+        _mail_safety_gate_result(
+            gate_key="sensitive_content",
+            gate_name="sensitive_content_red_card_gate",
+            outcome="red_card" if sensitive_content_red_card_block else "passed",
+            status=(
+                "red_card_hard_block"
+                if sensitive_content_red_card_block
+                else "passed"
+            ),
+            action="block_send" if sensitive_content_red_card_block else "allow_review_only_draft",
+            message=(
+                "Sensitive internal, finance-only, or unpublished commercial content was detected."
+                if sensitive_content_red_card_block
+                else "No sensitive internal or finance-only content was detected."
+            ),
+            hard_block=bool(sensitive_content_red_card_block),
+            details=sensitive_content_red_card_block,
+        ),
+        _mail_safety_gate_result(
+            gate_key="placeholder_bypass",
+            gate_name="placeholder_bypass_red_card_gate",
+            outcome="red_card" if placeholder_bypass_red_card_block else "passed",
+            status=(
+                "red_card_hard_block"
+                if placeholder_bypass_red_card_block
+                else "passed"
+            ),
+            action="block_send" if placeholder_bypass_red_card_block else "allow_review_only_draft",
+            message=(
+                "Unsafe customer-visible placeholders were detected in the generated draft."
+                if placeholder_bypass_red_card_block
+                else "No unsafe customer-visible placeholders were detected."
+            ),
+            hard_block=bool(placeholder_bypass_red_card_block),
+            details=placeholder_bypass_red_card_block,
+        ),
+    ]
+
+def _mail_safety_overall_outcome(gate_results: list[dict[str, Any]]) -> str:
+    outcomes = {sanitize_text(item.get("outcome")).strip() for item in gate_results}
+    if "red_card" in outcomes:
+        return "red_card"
+    if "yellow_card" in outcomes:
+        return "yellow_card"
+    return "passed"
+
 def _resolve_mail_commercial_terms(db: Session, *, suite_step: int) -> MailDraftCommercialTerms:
     price = _resolve_mail_price_term(db)
     delivery = _mail_standard_delivery_sla_term()
@@ -3308,6 +3906,7 @@ def _build_mail_draft_intent_profile(
         raise HTTPException(status_code=422, detail="current_seller_name is required")
     if not seller_signature:
         raise HTTPException(status_code=422, detail="current_seller_signature is required")
+    crm_profile = _lookup_mail_crm_profile(customer_key, contact_email)
 
     return MailDraftIntentProfile(
         customer_key=customer_key,
@@ -3315,6 +3914,11 @@ def _build_mail_draft_intent_profile(
         recipient_name=_mail_contact_name_from_email(contact_email),
         seller_name=seller_name,
         seller_signature=seller_signature,
+        company_industry=crm_profile["company_industry"],
+        payment_risk_level=crm_profile["payment_risk_level"],
+        customer_domains=crm_profile["customer_domains"],
+        crm_profile_lookup_status=crm_profile["crm_profile_lookup_status"],
+        crm_profile_source=crm_profile["crm_profile_source"],
         scenario=sanitize_text(step.scenario),
         scenario_label=sanitize_text(step.scenario_label),
         suite_step=int(step.suite_step),
@@ -3349,6 +3953,12 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
     ]
     if profile.admitted_fewshot_content:
         paragraphs.append(f"Reference angle: {html.escape(profile.admitted_fewshot_content[:240])}")
+    paragraphs.append(
+        "CRM profile signals for review: "
+        f"Industry: {html.escape(profile.company_industry)}; "
+        f"Payment risk: {html.escape(profile.payment_risk_level)}; "
+        f"Customer domains: {html.escape(', '.join(profile.customer_domains) or 'unknown')}."
+    )
     terms = profile.commercial_terms
     paragraphs.append(
         "Backend-filled commercial terms for review: "
@@ -3403,12 +4013,42 @@ def _build_mail_generate_draft_response(
         customer_key=intent_profile.customer_key,
         contact_email=intent_profile.contact_email,
         cc_emails=payload.cc_emails,
+        crm_profile={
+            "customer_domains": intent_profile.customer_domains,
+            "company_industry": intent_profile.company_industry,
+            "payment_risk_level": intent_profile.payment_risk_level,
+            "crm_profile_lookup_status": intent_profile.crm_profile_lookup_status,
+            "crm_profile_source": intent_profile.crm_profile_source,
+        },
     )
     financial_price_floor_block = _evaluate_mail_financial_price_floor_guardrail(
         db,
         body_html=assembled.body_html,
         commercial_terms=intent_profile.commercial_terms,
     )
+    payment_risk_finance_review_guardrail = _evaluate_mail_payment_risk_finance_review_guardrail(
+        payment_risk_level=intent_profile.payment_risk_level,
+        crm_profile_lookup_status=intent_profile.crm_profile_lookup_status,
+        crm_profile_source=intent_profile.crm_profile_source,
+    )
+    sensitive_content_red_card_block = _evaluate_mail_sensitive_content_red_card_guardrail(
+        subject=assembled.subject,
+        body_html=assembled.body_html,
+        commercial_terms=intent_profile.commercial_terms,
+    )
+    placeholder_bypass_red_card_block = _evaluate_mail_placeholder_bypass_guardrail(
+        subject=assembled.subject,
+        body_html=assembled.body_html,
+    )
+    gate_results = _build_mail_safety_gate_results(
+        recipient_domain_confidentiality_block=recipient_domain_confidentiality_block,
+        delivery_sla_guardrail=delivery_sla_guardrail,
+        financial_price_floor_block=financial_price_floor_block,
+        payment_risk_finance_review_guardrail=payment_risk_finance_review_guardrail,
+        sensitive_content_red_card_block=sensitive_content_red_card_block,
+        placeholder_bypass_red_card_block=placeholder_bypass_red_card_block,
+    )
+    overall_outcome = _mail_safety_overall_outcome(gate_results)
 
     warnings = [
         "Review-only draft: no real email sending is enabled.",
@@ -3422,6 +4062,10 @@ def _build_mail_generate_draft_response(
         warnings.append(
             "YELLOW CARD: delivery promise was faster than the standard SLA; "
             f"draft was physically calibrated to {delivery_sla_guardrail['standard_sla_label']} and remains locked."
+        )
+    if payment_risk_finance_review_guardrail:
+        warnings.append(
+            "YELLOW CARD: CRM payment risk level requires manual finance review before any sending."
         )
     if recipient_domain_confidentiality_block:
         warnings.append(
@@ -3440,6 +4084,7 @@ def _build_mail_generate_draft_response(
             retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
             fewshot_match_score=intent_profile.admitted_fewshot_score,
             safety_guardrail=MailSafetyGuardrail(
+                overall_outcome=overall_outcome,
                 status="red_card_hard_block",
                 triggered_warnings=warnings,
                 is_locked_for_approval=True,
@@ -3453,6 +4098,42 @@ def _build_mail_generate_draft_response(
                 red_card_code="blocked_by_recipient_domain_confidentiality_gate",
                 blocked_by="recipient_domain_confidentiality_guardrail",
                 block_details=recipient_domain_confidentiality_block,
+                gate_results=gate_results,
+            ),
+        )
+    if sensitive_content_red_card_block:
+        warnings.append(
+            "RED CARD: sensitive internal or finance-only content was detected; "
+            "draft is hard-blocked and real sending remains disabled."
+        )
+        return MailGenerateDraftResponse(
+            status="blocked_by_sensitive_content_red_card_gate",
+            draft_status=MailSequenceStatus.BLOCKED.value,
+            review_required=True,
+            review_mode="red_card_sensitive_content_review",
+            real_sending_enabled=False,
+            mail_uid=f"mail_draft_{uuid.uuid4().hex[:12]}",
+            final_subject=assembled.subject,
+            final_body_html=assembled.body_html,
+            retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
+            fewshot_match_score=intent_profile.admitted_fewshot_score,
+            safety_guardrail=MailSafetyGuardrail(
+                overall_outcome=overall_outcome,
+                status="red_card_hard_block",
+                triggered_warnings=warnings,
+                is_locked_for_approval=True,
+                lock_reason=(
+                    "Sensitive-content red-card guardrail blocked this draft because it "
+                    "contains internal floor prices, personal finance account details, "
+                    "or unpublished rebates/discounts. Real sending remains disabled."
+                ),
+                real_sending_enabled=False,
+                draft_status=MailSequenceStatus.BLOCKED.value,
+                hard_block=True,
+                red_card_code="blocked_by_sensitive_content_red_card_gate",
+                blocked_by="sensitive_content_red_card_guardrail",
+                block_details=sensitive_content_red_card_block,
+                gate_results=gate_results,
             ),
         )
     if financial_price_floor_block:
@@ -3469,6 +4150,7 @@ def _build_mail_generate_draft_response(
             retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
             fewshot_match_score=intent_profile.admitted_fewshot_score,
             safety_guardrail=MailSafetyGuardrail(
+                overall_outcome=overall_outcome,
                 status="red_card_hard_block",
                 triggered_warnings=warnings,
                 is_locked_for_approval=True,
@@ -3482,13 +4164,53 @@ def _build_mail_generate_draft_response(
                 red_card_code="blocked_by_financial_safety_gate",
                 blocked_by="financial_price_floor_guardrail",
                 block_details=financial_price_floor_block,
+                gate_results=gate_results,
+            ),
+        )
+    if placeholder_bypass_red_card_block:
+        warnings.append(
+            "RED CARD: unsafe customer-visible placeholders were detected; "
+            "draft is hard-blocked and real sending remains disabled."
+        )
+        return MailGenerateDraftResponse(
+            status="blocked_by_placeholder_bypass_gate",
+            draft_status=MailSequenceStatus.BLOCKED.value,
+            review_required=True,
+            review_mode="red_card_placeholder_bypass_review",
+            real_sending_enabled=False,
+            mail_uid=f"mail_draft_{uuid.uuid4().hex[:12]}",
+            final_subject=assembled.subject,
+            final_body_html=assembled.body_html,
+            retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
+            fewshot_match_score=intent_profile.admitted_fewshot_score,
+            safety_guardrail=MailSafetyGuardrail(
+                overall_outcome=overall_outcome,
+                status="red_card_hard_block",
+                triggered_warnings=warnings,
+                is_locked_for_approval=True,
+                lock_reason=(
+                    "Placeholder-bypass guardrail blocked this draft because unresolved "
+                    "customer-visible placeholders remain in the subject or body. "
+                    "Real sending remains disabled."
+                ),
+                real_sending_enabled=False,
+                draft_status=MailSequenceStatus.BLOCKED.value,
+                hard_block=True,
+                red_card_code="blocked_by_placeholder_bypass_gate",
+                blocked_by="placeholder_bypass_guardrail",
+                block_details=placeholder_bypass_red_card_block,
+                gate_results=gate_results,
             ),
         )
     return MailGenerateDraftResponse(
         status="drafted",
         draft_status=MailSequenceStatus.DRAFTED.value,
         review_required=True,
-        review_mode="human_review_required",
+        review_mode=(
+            "manual_finance_review_required"
+            if payment_risk_finance_review_guardrail
+            else "human_review_required"
+        ),
         real_sending_enabled=False,
         mail_uid=f"mail_draft_{uuid.uuid4().hex[:12]}",
         final_subject=assembled.subject,
@@ -3496,18 +4218,31 @@ def _build_mail_generate_draft_response(
         retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
         fewshot_match_score=intent_profile.admitted_fewshot_score,
         safety_guardrail=MailSafetyGuardrail(
-            status="yellow_card_sla_calibrated_locked" if delivery_sla_guardrail else "locked_for_approval",
+            overall_outcome=overall_outcome,
+            status=(
+                "yellow_card_sla_calibrated_locked"
+                if delivery_sla_guardrail
+                else "yellow_card_manual_finance_review_locked"
+                if payment_risk_finance_review_guardrail
+                else "locked_for_approval"
+            ),
             triggered_warnings=warnings,
             is_locked_for_approval=True,
             lock_reason=(
                 "Delivery SLA guardrail calibrated a too-fast promise to the standard SLA; "
                 "draft remains locked for human review and real sending remains disabled."
                 if delivery_sla_guardrail else
+                (
+                    "CRM payment risk level requires manual finance review before any sending; "
+                    "draft remains review-only and real sending remains disabled."
+                )
+                if payment_risk_finance_review_guardrail else
                 "Mail draft generation is review-only; real sending remains disabled."
             ),
             real_sending_enabled=False,
             draft_status=MailSequenceStatus.DRAFTED.value,
-            block_details=delivery_sla_guardrail,
+            block_details=delivery_sla_guardrail or payment_risk_finance_review_guardrail,
+            gate_results=gate_results,
         ),
     )
 
@@ -14899,7 +15634,7 @@ def reanalyze_session_task(user_id: str, step: int = 1, analytics_record_id: str
                     "result": "skipped_no_messages",
                 })
                 final_status = "skipped_no_messages"
-        
+
         elif step == 2:
             log_reply_chain_event("STEP_START", {
                 "source": "frontend",
@@ -15051,7 +15786,7 @@ def reanalyze_session_task(user_id: str, step: int = 1, analytics_record_id: str
                     "result": "skipped_no_summary",
                 })
                 final_status = "skipped_no_summary"
-            
+
     except Exception as e:
         logger.error(f"AI 推理过程崩坏: {e}")
         final_status = "error"
@@ -16307,7 +17042,7 @@ async def sidebar_assist(
             total_ms=timings_ms.get("fast_track_scan_ms"),
             status="done",
         )
-        
+
         # 1. 触发同步测算 (阶段1 和 阶段2)
         stage_started = perf_counter()
         summary = db.query(IntentSummary).filter(IntentSummary.user_id == session_id).order_by(IntentSummary.id.desc()).first()
@@ -16319,7 +17054,7 @@ async def sidebar_assist(
                 **stored_timings,
                 **current_timings,
             }
-        
+
         need_v1 = request.force_refresh or summary is None
         if need_v1:
             stage_status["analysis_mode"] = "force_refresh" if request.force_refresh else "first_analyze"
@@ -16365,7 +17100,7 @@ async def sidebar_assist(
             else:
                 stage_status["llm1"] = "skipped_no_recent_logs"
                 _set_node_timing(stage_status, "llm1", total_ms=0, status="skipped_no_recent_logs")
-                
+
             stage_started = perf_counter()
             summary = db.query(IntentSummary).filter(IntentSummary.user_id == session_id).order_by(IntentSummary.id.desc()).first()
             mark_timing("reload_summary_ms", stage_started)
@@ -16755,7 +17490,7 @@ async def sidebar_assist(
             # 案例库评测路径专用标记，sanitize 函数会跳过对对比模型字段的剥离
             "evaluation_full_pipeline": bool(request.evaluation_full_pipeline),
         }
-        
+
         if summary:
             result.update({
                 "has_v1": True,
@@ -16838,7 +17573,7 @@ async def sidebar_assist(
                 result["reply_scores_v2"] = summary.reply_scores_v2
             if summary.sales_advice_compare_prompt_trace_v2:
                 result["sales_advice_compare_prompt_trace_v2"] = summary.sales_advice_compare_prompt_trace_v2
-            
+
             # 始终回传 CRM 画像供前端显示
             if crm_context is None:
                 stage_started = perf_counter()
@@ -19359,6 +20094,130 @@ async def caselib_get_case(case_id: str):
         db.close()
 
 
+def parse_session_id(uid: str, sales_ids: list) -> tuple | None:
+    if not uid.startswith("single_"):
+        return None
+    core = uid[7:]
+    for s_id in sales_ids:
+        if core.startswith(s_id + "_"):
+            return s_id, core[len(s_id) + 1:]
+        elif core.endswith("_" + s_id):
+            return s_id, core[:-len(s_id) - 1]
+    return None
+
+
+def _get_daily_validation_stats(db: Session, day_start: datetime, day_end: datetime):
+    sales_ids = ["alicehe", "davidXiaoMeiPeng", "HanHan", "joycesheng", "WangHuiYing"]
+
+    logs = db.query(MessageLog).filter(
+        MessageLog.timestamp >= day_start,
+        MessageLog.timestamp < day_end,
+        MessageLog.is_mock.is_(False)
+    ).order_by(MessageLog.timestamp.asc()).all()
+
+    session_logs = {}
+    for l in logs:
+        session_logs.setdefault(l.user_id, []).append(l)
+
+    target_sessions = {}
+    for uid, msgs in session_logs.items():
+        parsed = parse_session_id(uid, sales_ids)
+        if parsed:
+            sales_userid, external_userid = parsed
+            if external_userid.startswith("wm") or external_userid.startswith("wo"):
+                target_sessions[uid] = msgs
+
+    if not target_sessions:
+        return 0, None, None
+
+    invs = db.query(ApiAssistInvocation).filter(
+        ApiAssistInvocation.session_id.in_(list(target_sessions.keys())),
+        ApiAssistInvocation.triggered_at >= day_start - timedelta(hours=1),
+        ApiAssistInvocation.triggered_at < day_end + timedelta(hours=1)
+    ).all()
+
+    inv_map = {}
+    for inv in invs:
+        if inv.anchor_message_id is not None:
+            inv_map[(inv.session_id, inv.anchor_message_id)] = inv
+
+    results_count = 0
+    valid_scores = []
+    total_latency = 0
+    latency_count = 0
+
+    for uid, msgs in target_sessions.items():
+        consolidated = []
+        for m in msgs:
+            if not consolidated:
+                consolidated.append({
+                    "sender_type": m.sender_type,
+                    "content": m.content,
+                    "timestamp": m.timestamp,
+                    "ids": [m.id]
+                })
+            else:
+                last = consolidated[-1]
+                if last["sender_type"] == m.sender_type:
+                    last["content"] += "\n" + m.content
+                    last["ids"].append(m.id)
+                    last["timestamp"] = m.timestamp
+                else:
+                    consolidated.append({
+                        "sender_type": m.sender_type,
+                        "content": m.content,
+                        "timestamp": m.timestamp,
+                        "ids": [m.id]
+                    })
+
+        groups = []
+        current_customer = None
+        for turn in consolidated:
+            if turn["sender_type"] == "customer":
+                if current_customer:
+                    groups.append({"type": "unreplied", "customer": current_customer, "sales": None, "timestamp": current_customer["timestamp"]})
+                current_customer = turn
+            elif turn["sender_type"] == "sales":
+                if current_customer:
+                    groups.append({"type": "qa", "customer": current_customer, "sales": turn, "timestamp": turn["timestamp"]})
+                    current_customer = None
+                else:
+                    groups.append({"type": "sales_initiated", "customer": None, "sales": turn, "timestamp": turn["timestamp"]})
+        if current_customer:
+            groups.append({"type": "unreplied", "customer": current_customer, "sales": None, "timestamp": current_customer["timestamp"]})
+
+        results_count += len(groups)
+
+        for idx, g in enumerate(groups):
+            matched_inv = None
+            cust = g["customer"]
+            if cust:
+                for rid in cust["ids"]:
+                    if (uid, rid) in inv_map:
+                        matched_inv = inv_map[(uid, rid)]
+                        break
+                if not matched_inv:
+                    for inv in invs:
+                        if inv.session_id == uid:
+                            time_diff = abs((inv.triggered_at - cust["timestamp"]).total_seconds())
+                            if time_diff < 180:
+                                matched_inv = inv
+                                break
+            if matched_inv:
+                if matched_inv.quality_score is not None:
+                    valid_scores.append(float(matched_inv.quality_score))
+                if matched_inv.result_payload:
+                    latency = int(matched_inv.result_payload.get("timings_ms", {}).get("total_ms", 0))
+                    if latency > 0:
+                        total_latency += latency
+                        latency_count += 1
+
+    avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else None
+    avg_latency = int(total_latency / latency_count) if latency_count > 0 else None
+
+    return results_count, avg_score, avg_latency
+
+
 @app.get("/api/case_lib/iterations")
 async def caselib_list_iterations(limit: int = Query(default=50, ge=1, le=500)):
     db = SessionLocal()
@@ -19366,13 +20225,395 @@ async def caselib_list_iterations(limit: int = Query(default=50, ge=1, le=500)):
         rows = db.query(CaseIterationRun).order_by(
             CaseIterationRun.triggered_at.desc()
         ).limit(limit).all()
+
+        # 增加从 2026/05/26 开始的每天一行日常日常验证记录
+        from datetime import date as pydate
+        today = (datetime.utcnow() + timedelta(hours=8)).date()
+        start_date = datetime(2026, 5, 26).date()
+        daily_rows = []
+        curr = start_date
+        while curr <= today:
+            date_str = curr.isoformat()
+            day_start = datetime(curr.year, curr.month, curr.day)
+            day_end = day_start + timedelta(days=1)
+
+            count, avg_score, avg_latency = _get_daily_validation_stats(db, day_start, day_end)
+
+            daily_rows.append({
+                "run_id": f"daily_{date_str.replace('-', '')}",
+                "version_no": "实时验证",
+                "git_commit_sha": "",
+                "git_short_sha": "",
+                "git_branch": "",
+                "git_dirty": False,
+                "changed_paths": [],
+                "change_summary": f"{date_str} 企微日常会话双向验证",
+                "pipeline_config": {},
+                "status": "success",
+                "total_cases": count,
+                "completed_cases": count,
+                "success_cases": count,
+                "failed_cases": 0,
+                "avg_quality_score": avg_score,
+                "min_quality_score": None,
+                "max_quality_score": None,
+                "avg_latency_ms": avg_latency,
+                "improvement_analysis": "日常真实会话统计",
+                "ai_next_step_plan": "",
+                "analysis_codex": "",
+                "analysis_antigravity": "",
+                "analysis_claude_code": "",
+                "analysis_summary": "",
+                "backup_commit_sha": "",
+                "backup_status": "",
+                "triggered_by": "api_assist",
+                "triggered_at": day_start.isoformat() + "Z",
+                "started_at": day_start.isoformat() + "Z",
+                "finished_at": day_end.isoformat() + "Z",
+                "error_message": "",
+            })
+            curr += timedelta(days=1)
+
+        serialized_runs = [_caselib_serialize_run(r) for r in rows]
+        combined = daily_rows + serialized_runs
+        combined.sort(key=lambda x: x.get("triggered_at") or "", reverse=True)
+
         return {
             "status": "success",
-            "total": len(rows),
-            "iterations": [_caselib_serialize_run(r) for r in rows],
+            "total": len(combined),
+            "iterations": combined[:limit],
         }
     finally:
         db.close()
+
+
+@app.get("/api/case_lib/daily_validation/{date}")
+async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
+    """获取指定日期的日常实时验证明细列表，格式与 iterations/{run_id} 结果对齐"""
+    try:
+        parsed_date = datetime.fromisoformat(date[:10])
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid date format, use YYYY-MM-DD")
+
+    day_start = datetime(parsed_date.year, parsed_date.month, parsed_date.day)
+    day_end = day_start + timedelta(days=1)
+
+    sales_ids = ["alicehe", "davidXiaoMeiPeng", "HanHan", "joycesheng", "WangHuiYing"]
+    SALES_NAME_MAP = {
+        "alicehe": "何珺",
+        "davidXiaoMeiPeng": "肖美鹏",
+        "HanHan": "韩瑾",
+        "joycesheng": "盛晔",
+        "WangHuiYing": "王慧莹"
+    }
+
+    logs = db.query(MessageLog).filter(
+        MessageLog.timestamp >= day_start,
+        MessageLog.timestamp < day_end,
+        MessageLog.is_mock.is_(False)
+    ).order_by(MessageLog.timestamp.asc()).all()
+
+    session_logs = {}
+    for l in logs:
+        session_logs.setdefault(l.user_id, []).append(l)
+
+    target_sessions = {}
+    for uid, msgs in session_logs.items():
+        parsed = parse_session_id(uid, sales_ids)
+        if parsed:
+            sales_userid, external_userid = parsed
+            if external_userid.startswith("wm") or external_userid.startswith("wo"):
+                target_sessions[uid] = msgs
+
+    invs = db.query(ApiAssistInvocation).filter(
+        ApiAssistInvocation.session_id.in_(list(target_sessions.keys())) if target_sessions else False,
+        ApiAssistInvocation.triggered_at >= day_start - timedelta(hours=1),
+        ApiAssistInvocation.triggered_at < day_end + timedelta(hours=1)
+    ).all()
+
+    inv_map = {}
+    for inv in invs:
+        if inv.anchor_message_id is not None:
+            inv_map[(inv.session_id, inv.anchor_message_id)] = inv
+
+    results = []
+    run_id = f"daily_{date.replace('-', '')}"
+
+    for uid, msgs in target_sessions.items():
+        parsed = parse_session_id(uid, sales_ids)
+        if not parsed:
+            continue
+        sales_userid, external_userid = parsed
+        sales_chinese = SALES_NAME_MAP.get(sales_userid, sales_userid)
+
+        consolidated = []
+        for m in msgs:
+            if not consolidated:
+                consolidated.append({
+                    "sender_type": m.sender_type,
+                    "content": m.content,
+                    "timestamp": m.timestamp,
+                    "ids": [m.id]
+                })
+            else:
+                last = consolidated[-1]
+                if last["sender_type"] == m.sender_type:
+                    last["content"] += "\n" + m.content
+                    last["ids"].append(m.id)
+                    last["timestamp"] = m.timestamp
+                else:
+                    consolidated.append({
+                        "sender_type": m.sender_type,
+                        "content": m.content,
+                        "timestamp": m.timestamp,
+                        "ids": [m.id]
+                    })
+
+        groups = []
+        current_customer = None
+        for turn in consolidated:
+            if turn["sender_type"] == "customer":
+                if current_customer:
+                    groups.append({
+                        "type": "unreplied",
+                        "customer": current_customer,
+                        "sales": None,
+                        "timestamp": current_customer["timestamp"]
+                    })
+                current_customer = turn
+            elif turn["sender_type"] == "sales":
+                if current_customer:
+                    groups.append({
+                        "type": "qa",
+                        "customer": current_customer,
+                        "sales": turn,
+                        "timestamp": turn["timestamp"]
+                    })
+                    current_customer = None
+                else:
+                    groups.append({
+                        "type": "sales_initiated",
+                        "customer": None,
+                        "sales": turn,
+                        "timestamp": turn["timestamp"]
+                    })
+        if current_customer:
+            groups.append({
+                "type": "unreplied",
+                "customer": current_customer,
+                "sales": None,
+                "timestamp": current_customer["timestamp"]
+            })
+
+        for idx, g in enumerate(groups):
+            matched_inv = None
+            cust = g["customer"]
+
+            if cust:
+                for rid in cust["ids"]:
+                    if (uid, rid) in inv_map:
+                        matched_inv = inv_map[(uid, rid)]
+                        break
+                if not matched_inv:
+                    for inv in invs:
+                        if inv.session_id == uid:
+                            time_diff = abs((inv.triggered_at - cust["timestamp"]).total_seconds())
+                            if time_diff < 180:
+                                matched_inv = inv
+                                break
+
+            ref_time = cust["timestamp"] if cust else (g["sales"]["timestamp"] if g["sales"] else None)
+            history_msgs = []
+            if ref_time:
+                history_msgs = db.query(MessageLog).filter(
+                    MessageLog.user_id == uid,
+                    MessageLog.timestamp < ref_time,
+                    MessageLog.is_mock.is_(False)
+                ).order_by(MessageLog.timestamp.asc()).all()
+
+            bg_count = len(history_msgs)
+            context_messages = []
+            for m in history_msgs:
+                context_messages.append({
+                    "role": "customer" if m.sender_type == "customer" else "sales",
+                    "msg_time": m.timestamp.isoformat(),
+                    "content": m.content
+                })
+
+            core_dialog = []
+            if cust:
+                core_dialog.append({
+                    "role": "customer",
+                    "msg_time": cust["timestamp"].isoformat(),
+                    "content": cust["content"]
+                })
+            if g["sales"]:
+                core_dialog.append({
+                    "role": "sales",
+                    "msg_time": g["sales"]["timestamp"].isoformat(),
+                    "content": g["sales"]["content"]
+                })
+
+            result_id = str(matched_inv.invocation_id) if matched_inv else f"daily_turn_{uid}_{idx}"
+
+            scores_payload = None
+            ai_score = None
+            sales_score = None
+            kb1_eval = None
+            kb2_eval = None
+
+            if matched_inv:
+                ai_score = float(matched_inv.quality_score) if matched_inv.quality_score is not None else None
+                kb1_eval = float(matched_inv.kb1_eval_score) if matched_inv.kb1_eval_score is not None else None
+                kb2_eval = float(matched_inv.kb2_eval_score) if matched_inv.kb2_eval_score is not None else None
+
+                scores_payload = _caselib_load_json(matched_inv.quality_similarity) or {}
+                if not scores_payload and ai_score is not None:
+                    scores_payload = {
+                        "ai_candidates": [
+                            {
+                                "candidate_id": "api_assist",
+                                "overall_score": ai_score,
+                                "scores": {"overall": ai_score},
+                                "score_reason": "llm1_scored"
+                            }
+                        ]
+                    }
+                if matched_inv.actual_sales_replies:
+                    if not isinstance(scores_payload, dict):
+                        scores_payload = {}
+                    scores_payload["actual_sales_replies"] = _caselib_load_json(matched_inv.actual_sales_replies)
+                    sales_score = _caselib_sales_score_from_step7(scores_payload)
+
+            cust_text = cust["content"] if cust else "【当天销售发起】"
+            sales_text = g["sales"]["content"] if g["sales"] else ""
+
+            case_meta = {
+                "case_id": uid,
+                "scenario_code": "实时",
+                "scenario_name": "日常真实会话",
+                "scenario_rank": 0,
+                "case_title": f"{sales_chinese}与{external_userid}",
+                "quality_score_md": None,
+                "manual_quality_score_avg": None,
+                "md_section_anchor": "",
+                "context_count": bg_count,
+                "context_messages": context_messages,
+                "core_dialog": core_dialog,
+            }
+
+            turn_meta = {
+                "turn_id": "",
+                "turn_no": idx + 1,
+                "customer_text": cust_text,
+                "sales_text": sales_text,
+                "actual_sales_score": sales_score,
+                "actual_sales_scores": {},
+                "timestamp": g["timestamp"].isoformat() if g.get("timestamp") else "",
+            }
+
+            step1 = None
+            if matched_inv and matched_inv.result_payload:
+                step1 = {
+                    "topic": matched_inv.result_payload.get("topic") or "日常会话",
+                    "core_demand": matched_inv.result_payload.get("core_demand") or "",
+                    "status": matched_inv.result_payload.get("status") or "done"
+                }
+            elif cust:
+                step1 = {
+                    "topic": "常规沟通",
+                    "core_demand": cust_text[:30],
+                    "status": "manual"
+                }
+            else:
+                step1 = {
+                    "topic": "销售发起",
+                    "core_demand": "",
+                    "status": "manual"
+                }
+
+            kb_status = ""
+            kb_hit_count = 0
+            if matched_inv and matched_inv.result_payload:
+                kb_status = matched_inv.result_payload.get("knowledge_status") or "done"
+                kv2 = matched_inv.result_payload.get("knowledge_v2")
+                if isinstance(kv2, dict):
+                    kb_hit_count = len(kv2.get("hits") or [])
+
+            item = {
+                "result_id": result_id,
+                "run_id": run_id,
+                "case_id": uid,
+                "turn_id": None,
+                "scenario_code": "实时",
+                "scenario_rank": 0,
+                "turn_no": idx + 1,
+                "step1_summary": step1,
+                "step2_crm_info": (matched_inv.result_payload.get("crm_info") if matched_inv else None) or IntentEngine.get_crm_context(external_userid),
+                "step6_sales_advice": matched_inv.result_payload.get("reply_reference") if matched_inv else "",
+                "step7_reply_scores": scores_payload,
+                "stage_status": matched_inv.result_payload.get("stage_status") if matched_inv else {},
+                "kb_status": kb_status,
+                "kb_hit_count": kb_hit_count,
+                "bg_count": bg_count,
+                "quality_score": ai_score,
+                "kb1_eval_score": kb1_eval,
+                "kb2_eval_score": kb2_eval,
+                "quality_status": matched_inv.quality_status if matched_inv else "manual_success",
+                "latency_ms": int(matched_inv.result_payload.get("timings_ms", {}).get("total_ms", 0)) if matched_inv and matched_inv.result_payload else None,
+                "status": "success" if matched_inv else "manual",
+                "case": case_meta,
+                "turn": turn_meta,
+            }
+            results.append(item)
+
+    results.sort(key=lambda x: str(x.get("turn", {}).get("timestamp") or ""), reverse=False)
+
+    total_cases = len(results)
+    avg_score = None
+    valid_scores = [r["quality_score"] for r in results if r["quality_score"] is not None]
+    if valid_scores:
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2)
+
+    iteration_summary = {
+        "run_id": run_id,
+        "version_no": "实时验证",
+        "git_commit_sha": "",
+        "git_short_sha": "",
+        "git_branch": "",
+        "git_dirty": False,
+        "changed_paths": [],
+        "change_summary": f"{date} 企微日常会话双向验证明细",
+        "pipeline_config": {},
+        "status": "success",
+        "total_cases": total_cases,
+        "completed_cases": total_cases,
+        "success_cases": total_cases,
+        "failed_cases": 0,
+        "avg_quality_score": avg_score,
+        "min_quality_score": round(min(valid_scores), 2) if valid_scores else None,
+        "max_quality_score": round(max(valid_scores), 2) if valid_scores else None,
+        "avg_latency_ms": int(sum(r["latency_ms"] for r in results if r["latency_ms"] is not None) / len([r for r in results if r["latency_ms"] is not None])) if [r for r in results if r["latency_ms"] is not None] else 0,
+        "improvement_analysis": "",
+        "ai_next_step_plan": "",
+        "analysis_codex": "",
+        "analysis_antigravity": "",
+        "analysis_claude_code": "",
+        "analysis_summary": "",
+        "backup_commit_sha": "",
+        "backup_status": "",
+        "triggered_by": "api_assist",
+        "triggered_at": day_start.isoformat() + "Z",
+        "started_at": day_start.isoformat() + "Z",
+        "finished_at": day_end.isoformat() + "Z",
+        "error_message": "",
+    }
+
+    return {
+        "status": "success",
+        "iteration": iteration_summary,
+        "results": results
+    }
 
 
 @app.get("/api/case_lib/iterations/{run_id}")

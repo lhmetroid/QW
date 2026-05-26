@@ -1,4 +1,5 @@
 import unittest
+import re
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ def _load_guardrail_helpers() -> dict[str, Any]:
     namespace: dict[str, Any] = {
         "Any": Any,
         "HTTPException": HTTPException,
+        "re": re,
         "sanitize_text": sanitize_text,
     }
     exec(source[start:end], namespace)
