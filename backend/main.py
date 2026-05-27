@@ -13,6 +13,7 @@ import re
 import html
 import hashlib
 import hmac
+import random
 import subprocess
 import threading
 import requests
@@ -13761,6 +13762,10 @@ def _store_api_assist_invocation(
     if not anchor_message:
         return None
     visible_messages = _visible_messages_until_anchor(messages, anchor_message.id)
+    # 盲评槽位映射存库一次(原始字段仍一一对应,这里只额外记录随机分配,供响应映射与事后揭盲)
+    result_payload = dict(result_payload or {})
+    if not isinstance(result_payload.get("blind_eval_map"), dict):
+        result_payload["blind_eval_map"] = _build_blind_eval_map()
     item = ApiAssistInvocation(
         session_id=session_id,
         requested_session_id=requested_session_id,
@@ -14832,6 +14837,47 @@ def _reply_snapshot_meta(snapshot: ReplyChainSnapshot) -> dict:
         "updated_at": snapshot.updated_at,
     }
 
+def _build_blind_eval_map() -> dict:
+    """随机把 流程A(ai/LLM-2) 与 流程B(train_ai) 分配到 reference1/reference2 两个槽位。
+    存库一次,保证同一次调用稳定可复现、可事后揭盲。"""
+    slots = ["ai", "train_ai"]
+    random.shuffle(slots)
+    return {"reference1": slots[0], "reference2": slots[1]}
+
+
+def _apply_blind_eval_pair(payload: dict) -> dict:
+    """盲评输出:把两条流程的回复随机映射到 reply_reference1 / reply_reference2 给调用端(微信侧边栏)。
+    - 映射来自已存库的 blind_eval_map(稳定,不每次重随机);缺失才临时随机兜底。
+    - 一条流程无结果时,其槽位为空字符串,另一槽位可能落在 1 或 2(随调用而定)。
+    - 盲评:响应里去掉可识别来源(reply_reference/training_ai/候选明细)与事后补算分,只留盲评对 + 各路状态。
+    - DB 原始字段一一对应不变,经典案例迭代优化的查询/分析仍用原始字段,不随机。"""
+    p = dict(payload)
+    ta = p.get("training_ai") if isinstance(p.get("training_ai"), dict) else {}
+    texts = {
+        "ai": str(p.get("reply_reference") or "").strip(),
+        "train_ai": str((ta or {}).get("reply") or "").strip(),
+    }
+    statuses = {
+        "ai": ("success" if texts["ai"] else (str((p.get("stage_status") or {}).get("llm2") or "") or "failed")),
+        "train_ai": ((ta or {}).get("status") or ("success" if texts["train_ai"] else "failed")),
+    }
+    m = p.get("blind_eval_map")
+    if not (isinstance(m, dict) and m.get("reference1") in ("ai", "train_ai") and m.get("reference2") in ("ai", "train_ai")):
+        m = _build_blind_eval_map()
+    p["reply_reference1"] = texts.get(m["reference1"], "")
+    p["reply_reference2"] = texts.get(m["reference2"], "")
+    p["reply_reference1_status"] = statuses.get(m["reference1"])
+    p["reply_reference2_status"] = statuses.get(m["reference2"])
+    for k in (
+        "reply_reference", "reply_reference_compare", "training_ai",
+        "reply_style_results_v2", "reply_scores_v2",
+        "api_quality_similarity", "api_quality_score", "api_quality_status",
+        "blind_eval_map",
+    ):
+        p.pop(k, None)
+    return p
+
+
 def _api_invocation_result_payload(item: ApiAssistInvocation) -> dict:
     payload = dict(item.result_payload or {})
     payload["analysis_mode"] = "api_sidebar_assist_snapshot"
@@ -14854,6 +14900,7 @@ def _api_invocation_result_payload(item: ApiAssistInvocation) -> dict:
             merged_runtime.update(llm_runtime.get(key) or {})
             llm_runtime[key] = merged_runtime
     payload["llm_runtime"] = llm_runtime
+    # 注意:本函数同时被"会话分析视图"复用,这里不做盲评;盲评只在 sidebar_assist 返回点对响应应用。
     return _sanitize_api_sidebar_result_payload(payload)
 
 
@@ -18193,6 +18240,8 @@ async def sidebar_assist(
             "timings_ms": timings_ms,
         })
         final_result = _api_invocation_result_payload(api_invocation) if api_invocation else result
+        # 盲评:仅对返回给微信侧边栏的响应做随机映射(reply_reference1/2),DB 原始字段不变、分析台不受影响
+        final_result = _apply_blind_eval_pair(final_result)
         final_result = _decorate_sidebar_assist_result(
             final_result,
             status="fresh",

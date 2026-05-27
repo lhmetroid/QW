@@ -2,7 +2,11 @@
 
 ## 当前状态
 
-- 当前任务：v1.7.169 修正训练AI质量分放错位置——生产API enable_scoring=False(回复早出),评分本就后移到事后线;训练AI评分同样移到事后 _refresh_api_invocation_quality 补算。
+- 当前任务：v1.7.170 微信侧边栏盲评对(reply_reference1/2)——把 流程A(ai/LLM-2) 与 流程B(train_ai) 回复随机映射输出给调用端,DB与分析台保持原始一一对应不随机。
+- 当前小点：sidebar_assist 返回点对响应应用 _apply_blind_eval_pair:reply_reference1/2 随机来自两条流程(+各路状态 reply_referenceN_status),一条无结果则该槽空、随机落1或2;响应去掉可识别来源(reply_reference/training_ai/候选/事后分),只留盲评对+状态+上下文。映射 blind_eval_map 在 _store 存库一次(稳定可揭盲)。关键避坑:_api_invocation_result_payload 被会话分析视图复用,故盲评只在 sidebar 返回点做,不在共用函数里做,分析台/index.html 仍读原始字段不随机。
+- 状态：`py_compile` 通过+独立逻辑自测(稳定映射/单边空随机槽/无身份泄漏)通过;后端需重启。微信侧边栏外部程序需改读 reply_reference1/2。
+- 最近更新时间：2026-05-27 17:40:00 +0800
+- 历史小点（v1.7.169）：训练AI质量分放错位置修正(移到事后评分线)。
 - 当前小点：用户指出生产API评分是事后独立线程算(为让AI回复文本早显示),而我把训练AI评分放在生成函数 if enable_scoring 下(生产为False不执行)。已修:新增 _score_training_ai_reply,在事后 _refresh_api_invocation_quality 用第3个并发future给训练AI回复打7维分(同qwen14b),回写 result_payload.training_ai.quality_score;sidebar非流式路径补 summary.training_ai 与 result.training_ai 落库。生成函数内的inline评分保留(仅案例库评测enable_scoring=True用,事后有quality_score则跳过)。核实生产走非流式(近10天2423条全有reply_style_results_v2)。
 - 状态：`py_compile` 通过;后端需重启。
 - 最近更新时间：2026-05-27 16:30:00 +0800
@@ -23,6 +27,7 @@
 
 | 时间 | 任务 | 小点 | 结果 | 验证 |
 |---|---|---|---|---|
+| 2026-05-27 17:40:00 +0800 | v1.7.170 侧边栏盲评对reply_reference1/2 | 响应随机映射两流程回复(+各路状态),DB/分析台原始不随机;blind_eval_map存库稳定;盲评只在sidebar返回点做(避开被分析视图复用的共用函数) | 已完成 | `py_compile`+逻辑自测(稳定/单边空/无泄漏)通过 |
 | 2026-05-27 16:30:00 +0800 | v1.7.169 训练AI评分移到事后线 | 生产API评分本就后移(回复早出),训练AI评分同移到事后_refresh_api_invocation_quality(第3并发future);sidebar非流式补summary.training_ai+result.training_ai落库 | 已完成 | `py_compile`通过;DB核实生产非流式(2423条全有reply_style_results_v2) |
 | 2026-05-27 15:00:00 +0800 | v1.7.168 训练AI质量分补完 | 训练AI回复与AI候选同一次qwen14b评分打7维分,分离写入training_ai.quality_score不污染AI质量分,第二行展示+7维悬停 | 已完成 | `py_compile`+`node --check`通过 |
 | 2026-05-27 14:00:00 +0800 | v1.7.167 训练AI第二途径接入 | model-chat 途径并行触发(10s超时/记费时/无值显调用失败)+模型下拉(默认task-45)+result_payload.training_ai字段+第6步与质量分共用列双行显示+知识使用标记来源说明(纯规则代码) | 已完成 | `py_compile`+`node --check`通过;model-chat 实测34模型/task-45在列/chat约8.26s;训练AI独立打分按要求后续完成 |
