@@ -4224,6 +4224,7 @@ Alex</textarea>
                 '  • 微信感（conciseness）：长度与口吻是否像微信短消息\n' +
                 '  • 风格匹配（style_match）：是否贴合所选回复风格\n' +
                 '  • 上下文贴合（context_alignment）：是否扣紧线程事实与 CRM\n' +
+                '打分模型：LLM-1（qwen14b）。这是 AI 回复自身的"绝对质量分"，与右侧"相似分"(像不像原始回复)是两件事。\n' +
                 '悬停每行单元格可看该案例的 7 维分明细。'
             );
             const mdHeaderTip = (
@@ -4238,7 +4239,7 @@ Alex</textarea>
             const turnColHeader = isDaily ? '轮次(时间)' : '轮次';
             const caseColHeader = isDaily ? '案例(会话ID)' : '案例（排名+标题）';
             const head = `
-                <table class="text-xs" style="table-layout: fixed; min-width: 2435px; width: 2435px;">
+                <table class="text-xs" style="table-layout: fixed; min-width: 2527px; width: 2527px;">
                     <thead class="bg-slate-50 text-slate-600 sticky top-0 z-10">
                         <tr>
                             <th class="px-2 py-2 text-left" style="width:50px; min-width:50px; max-width:50px; overflow:hidden;" title="销售场景代码 S01~S12。鼠标悬停每个单元格可看场景的完整业务定义">场景</th>
@@ -4256,6 +4257,7 @@ Alex</textarea>
                             <th class="px-2 py-2 text-right" style="width:92px; min-width:92px; max-width:92px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" style="width:92px; min-width:92px; max-width:92px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(mdHeaderTip)}">原始回复分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" style="width:100px; min-width:100px; max-width:100px; overflow:hidden; white-space:nowrap;" title="AI 质量分 − 销售原始回复分（均为 LLM-1 打分）。正值=AI 回复比销售原始回复评分高；负值=AI 回复比销售原始回复评分低">Δ（AI−原始）</th>
+                            <th class="px-2 py-2 text-right" style="width:92px; min-width:92px; max-width:92px; overflow:hidden; white-space:nowrap;" title="相似分：以销售原始回复为基准，由 LLM-1（与 AI 质量分同一模型）判断 AI 回复与原始回复在意图/推进方向/信息重点/语气/下一步动作上的相似度（0-100，越像越高）。与质量分同一次评分并发计算，不影响回复生成速度。模型失败显示&quot;调用模型失败&quot;。悬停看两路明细">相似分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -4374,6 +4376,36 @@ Alex</textarea>
                 if (c && c.md_section_anchor) lines.push('章节锚点：' + c.md_section_anchor);
                 return lines.join('\n');
             };
+            const buildSimilarityCellTip = (r) => {
+                const sp = r.step7_reply_scores;
+                const sim = (sp && typeof sp === 'object') ? sp.reply_similarity : null;
+                const lines = ['相似分（贴合代理分，以原始回复为基准）'];
+                lines.push('打分模型：LLM-1（' + ((sim && sim.scored_by && sim.scored_by.model) || 'qwen14b') + '），与 AI 质量分同一模型同一次并发计算');
+                if (!sim || typeof sim !== 'object') {
+                    lines.push('（暂无相似分数据：触发后尚无我方连续回复块，或该轮未匹配到 API 调用）');
+                    return lines.join('\n');
+                }
+                if (sim.status === 'pending_no_sales_reply') {
+                    lines.push('状态：等待我方连续回复块后才能计算');
+                    return lines.join('\n');
+                }
+                if (sim.status === 'ignored_cross_day') {
+                    lines.push('状态：我方首条回复发生在次日，按误触发不计入');
+                    return lines.join('\n');
+                }
+                const rows = Array.isArray(sim.scores) ? sim.scores : [];
+                rows.forEach(s => {
+                    if (!s) return;
+                    let val;
+                    if (s.score_mode === 'llm1_failed') val = '调用模型失败';
+                    else if (s.score_mode === 'missing_reply_text') val = '该路无可发回复文本';
+                    else val = (s.score != null ? Number(s.score).toFixed(1) : '-');
+                    lines.push(`  • ${s.label || s.key}：${val}` + (s.reason ? `（${s.reason}）` : ''));
+                });
+                if (sim.best_score != null) lines.push('取两路较高者作为相似分：' + Number(sim.best_score).toFixed(1));
+                if (sim.actual_sales_reply_text) lines.push('原始回复：' + String(sim.actual_sales_reply_text).slice(0, 120));
+                return lines.join('\n');
+            };
             const lineClamp2Style = 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35;max-height:2.7em;';
             const twoLineCell = (text, clickStepHtml = '', cls = 'text-slate-700') => {
                 const content = String(text || '').trim();
@@ -4434,6 +4466,14 @@ Alex</textarea>
                                 (dlt > 0 ? 'text-emerald-700 font-bold' : 'text-red-700 font-bold'));
                 const aiTip = buildAiCellTip(r);
                 const mdTip = buildSalesReplyCellTip(r);
+                // 相似分（贴合代理分）：r.similarity_score；为空时区分"模型失败"与"暂无/不适用"
+                const sim = (r.similarity_score != null) ? Number(r.similarity_score) : null;
+                const simInfo = (r.step7_reply_scores && r.step7_reply_scores.reply_similarity) || null;
+                const simFailed = !!(simInfo && Array.isArray(simInfo.scores)
+                    && simInfo.scores.some(s => s && s.score_mode === 'llm1_failed'));
+                const simTxt = (sim != null) ? sim.toFixed(2) : (simFailed ? '调用模型失败' : '-');
+                const simCls = (sim != null) ? 'text-indigo-700 font-bold' : (simFailed ? 'text-red-600 text-[10px]' : 'text-slate-400');
+                const simTip = buildSimilarityCellTip(r);
                 const qstatus = caselibQualityStatusLabel(r.quality_status);
                 const qstatusCls = caselibQualityStatusColor(r.quality_status);
                 const topic = (r.step1_summary && (r.step1_summary.topic || r.step1_summary.core_demand)) || '';
@@ -4528,6 +4568,7 @@ Alex</textarea>
                     <td class="px-2 py-2 text-right font-bold text-purple-700" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(aiTip)}">${aiTxt}</td>
                     <td class="px-2 py-2 text-right text-sky-700 font-bold" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(mdTip)}">${mdTxt}</td>
                     <td class="px-2 py-2 text-right ${dltCls}" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="AI − 人工。差值绝对值 ≥1 时高亮：正值AI偏高，负值AI偏低">${dltTxt}</td>
+                    <td class="px-2 py-2 text-right ${simCls}" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(simTip)}">${simTxt}</td>
                 </tr>`;
             }).join('');
             host.innerHTML = '<div class="rounded-xl border border-slate-200 bg-white" style="overflow:auto;height:100%;width:100%;">'
@@ -4599,10 +4640,15 @@ Alex</textarea>
                 lines.push('  ' + (i+1) + '. ' + (used ? '[已用] ' : '[未用] ') + (h.title || '') + sc);
                 if (h.snippet) lines.push('       ' + h.snippet);
             });
+            // "使用"判定说明（用大白话，不出现字段名）
+            lines.push('');
+            lines.push('什么算"使用"：命中里那些既被标注为"可直接用于回复客户"、又"允许 AI 生成时引用"的知识，会真正喂给模型生成，计入"使用"。');
+            lines.push('即使整段检索相似度低于 0.70（系统标了"待人工复核"），只要单条知识本身可回复，它仍会被使用，所以可能出现"待复核但已全部使用"。');
+            lines.push('不计入"使用"的：被标注为"仅供人工参考/不能直接回复客户"或"不允许自动生成引用"的命中。');
             // (部分/全部)未使用原因：全部使用则不显示该段
             if (hitCount > 0 && usedCount < hitCount) {
-                const scope = (usedCount === 0) ? '全部未使用' : `部分未使用（${hitCount - usedCount} 条）`;
-                let reason = kv2.no_hit_reason || '命中知识仅适合人工参考，未达自动回复可用标准（usable_for_reply/allowed_for_generation 未满足）';
+                const scope = (usedCount === 0) ? '全部未使用' : `部分未使用（共 ${hitCount - usedCount} 条）`;
+                let reason = kv2.no_hit_reason || '这些命中只适合人工参考、不能直接发给客户，所以没有进入 AI 生成。';
                 lines.push(`未使用原因（${scope}）：${reason}`);
             }
             return lines.join('\n');

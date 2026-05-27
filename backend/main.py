@@ -13540,11 +13540,38 @@ def _refresh_api_invocation_quality(
     ):
         return
 
-    similarity_payload, best_score, quality_status = _build_api_similarity_payload(
-        result_payload=dict(item.result_payload or {}),
-        actual_sales_replies=actual_sales_replies,
-        triggered_at=item.triggered_at,
-    )
+    payload = dict(item.result_payload or {})
+    summary_json = {
+        "topic": payload.get("topic"),
+        "core_demand": payload.get("core_demand"),
+        "status": payload.get("status"),
+    }
+    # 收到我方连续回复后才触发，属于事后评分，不在生成链路上 -> 不影响回复输出速度。
+    # 相似分(贴合代理分) 与 原始回复维度分(与 AI 质量分同一模型 qwen14b/LLM-1) 并发执行，缩短事后评分总耗时。
+    with ThreadPoolExecutor(max_workers=2) as _ex:
+        fut_similarity = _ex.submit(
+            _build_api_similarity_payload,
+            result_payload=payload,
+            actual_sales_replies=actual_sales_replies,
+            triggered_at=item.triggered_at,
+        )
+        fut_scores = _ex.submit(
+            _load_or_refresh_reply_scores,
+            stored_scores=payload.get("reply_scores_v2") if isinstance(payload.get("reply_scores_v2"), dict) else None,
+            summary_json=summary_json,
+            knowledge_payload=payload.get("knowledge_v2") if isinstance(payload.get("knowledge_v2"), dict) else {},
+            crm_context=payload.get("crm_info") if isinstance(payload.get("crm_info"), dict) else None,
+            candidates=payload.get("reply_style_results_v2") if isinstance(payload.get("reply_style_results_v2"), list) else [],
+            actual_sales_replies=actual_sales_replies,
+        )
+        similarity_payload, best_score, quality_status = fut_similarity.result()
+        refreshed_scores = fut_scores.result()
+
+    # 回写 reply_scores_v2：此时 actual_sales_replies 已可逐维打分 -> 原始回复分可用
+    if isinstance(refreshed_scores, dict):
+        payload["reply_scores_v2"] = _jsonable(refreshed_scores)
+        item.result_payload = _jsonable(payload)
+
     item.actual_sales_replies = _jsonable(actual_sales_replies)
     item.actual_sales_reply_text = _reply_block_text(actual_sales_replies, strip_noise=True)
     item.actual_sales_reply_hash = reply_hash
@@ -20005,6 +20032,27 @@ def _caselib_load_json(v):
         return v
 
 
+def _caselib_ai_score_from_step7(step7) -> float | None:
+    """AI 质量分：reply_scores_v2.ai_candidates 中 overall 最高者(7 维绝对质量, qwen14b)。"""
+    data = _caselib_load_json(step7) or {}
+    if not isinstance(data, dict):
+        return None
+    cands = data.get("ai_candidates") or []
+    scores = []
+    for item in cands:
+        if not isinstance(item, dict) or item.get("score_reason") == "llm1_failed":
+            continue
+        val = item.get("overall_score")
+        if val is None and isinstance(item.get("scores"), dict):
+            val = item["scores"].get("overall")
+        try:
+            if val is not None:
+                scores.append(float(val))
+        except Exception:
+            continue
+    return round(max(scores), 2) if scores else None
+
+
 def _caselib_sales_score_from_step7(step7) -> float | None:
     data = _caselib_load_json(step7) or {}
     if not isinstance(data, dict):
@@ -20490,8 +20538,14 @@ def _get_daily_validation_stats(db: Session, day_start: datetime, day_end: datet
                                 matched_inv = inv
                                 break
             if matched_inv:
-                if matched_inv.quality_score is not None:
-                    valid_scores.append(float(matched_inv.quality_score))
+                # 平均分与列表 AI 质量分口径对齐：优先取 reply_scores_v2 的 AI 候选 7 维总分(绝对质量)，
+                # 回退 quality_score(贴合代理分)。
+                rs2 = (matched_inv.result_payload or {}).get("reply_scores_v2") if isinstance(matched_inv.result_payload, dict) else None
+                ai_overall = _caselib_ai_score_from_step7(rs2)
+                if ai_overall is None and matched_inv.quality_score is not None:
+                    ai_overall = float(matched_inv.quality_score)
+                if ai_overall is not None:
+                    valid_scores.append(ai_overall)
                 if matched_inv.result_payload:
                     latency = int(matched_inv.result_payload.get("timings_ms", {}).get("total_ms", 0))
                     if latency > 0:
@@ -20761,33 +20815,32 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
             result_id = str(matched_inv.invocation_id) if matched_inv else f"daily_turn_{uid}_{idx}"
 
             scores_payload = None
-            ai_score = None
-            sales_score = None
+            ai_score = None          # AI 质量分：AI 候选回复的 7 维总分(绝对质量,qwen14b)
+            sales_score = None       # 原始回复分：人工原始回复的 7 维总分(同模型 qwen14b)
+            similarity_score = None  # 相似分：AI 回复 vs 原始回复的贴合代理分(同模型 qwen14b)
             kb1_eval = None
             kb2_eval = None
 
             if matched_inv:
-                ai_score = float(matched_inv.quality_score) if matched_inv.quality_score is not None else None
                 kb1_eval = float(matched_inv.kb1_eval_score) if matched_inv.kb1_eval_score is not None else None
                 kb2_eval = float(matched_inv.kb2_eval_score) if matched_inv.kb2_eval_score is not None else None
 
-                scores_payload = _caselib_load_json(matched_inv.quality_similarity) or {}
-                if not scores_payload and ai_score is not None:
-                    scores_payload = {
-                        "ai_candidates": [
-                            {
-                                "candidate_id": "api_assist",
-                                "overall_score": ai_score,
-                                "scores": {"overall": ai_score},
-                                "score_reason": "llm1_scored"
-                            }
-                        ]
-                    }
-                if matched_inv.actual_sales_replies:
-                    if not isinstance(scores_payload, dict):
-                        scores_payload = {}
-                    scores_payload["actual_sales_replies"] = _caselib_load_json(matched_inv.actual_sales_replies)
-                    sales_score = _caselib_sales_score_from_step7(scores_payload)
+                # AI 质量分 + 原始回复分：取自 reply_scores_v2(7 维绝对质量)，AI 与原始同模型同维度
+                rs2 = _caselib_load_json((matched_inv.result_payload or {}).get("reply_scores_v2")) \
+                    if isinstance(matched_inv.result_payload, dict) else None
+                scores_payload = rs2 if isinstance(rs2, dict) else {}
+                ai_score = _caselib_ai_score_from_step7(scores_payload)
+                sales_score = _caselib_sales_score_from_step7(scores_payload)
+
+                # 相似分：贴合代理分(quality_similarity.best_score，即原 quality_score)
+                sim_payload = _caselib_load_json(matched_inv.quality_similarity) or {}
+                best_sim = sim_payload.get("best_score") if isinstance(sim_payload, dict) else None
+                if best_sim is None and matched_inv.quality_score is not None:
+                    best_sim = float(matched_inv.quality_score)
+                similarity_score = float(best_sim) if best_sim is not None else None
+                # 把相似分明细并入 scores_payload，供前端浮层查看
+                if isinstance(scores_payload, dict) and isinstance(sim_payload, dict):
+                    scores_payload["reply_similarity"] = sim_payload
 
             cust_text = cust["content"] if cust else "【当天销售发起】"
             sales_text = g["sales"]["content"] if g["sales"] else ""
@@ -20871,6 +20924,7 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 "kb_used_count": kb_used_count,
                 "bg_count": bg_count,
                 "quality_score": ai_score,
+                "similarity_score": similarity_score,
                 "kb1_eval_score": kb1_eval,
                 "kb2_eval_score": kb2_eval,
                 "quality_status": matched_inv.quality_status if matched_inv else "manual_success",

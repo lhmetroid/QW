@@ -2527,8 +2527,9 @@ class IntentEngine:
             },
         ]
 
+        # 相似分必须由 LLM-1 给出，不再做启发式文本重合度兜底；模型失败则明确标记 llm1_failed。
         scored_items: list[dict] = []
-        heuristic_by_key: dict[str, dict] = {}
+        scorable_by_key: dict[str, dict] = {}
         for item in candidates:
             reply_text = item["reply_text"]
             if not reply_text:
@@ -2540,19 +2541,17 @@ class IntentEngine:
                     "score_mode": "missing_reply_text",
                 }
             else:
-                overlap_ratio = cls._text_overlap_ratio(reply_text, actual_text)
-                heuristic_score = cls._clamp_score(10 + overlap_ratio * 60)
                 entry = {
                     "key": item["key"],
                     "label": item["label"],
-                    "score": heuristic_score,
-                    "reason": f"启发式重合度 {round(overlap_ratio * 100, 1)}%",
-                    "score_mode": "heuristic_fallback",
+                    "score": None,
+                    "reason": "",
+                    "score_mode": "pending",
                 }
-                heuristic_by_key[item["key"]] = entry
+                scorable_by_key[item["key"]] = entry
             scored_items.append(entry)
 
-        if actual_text and heuristic_by_key:
+        if actual_text and scorable_by_key:
             similarity_prompt = (
                 "你是销售跟进质量评分器。请比较 AI 候选回复与销售实际发出的连续回复块，"
                 "判断两者在意图、推进方向、信息重点、语气和下一步动作上的相似度。"
@@ -2574,14 +2573,27 @@ class IntentEngine:
                 llm_scores = cls.run_llm1_json_prompt(similarity_prompt, user_id="reply_similarity")
                 for item in llm_scores.get("scores") or []:
                     key = str(item.get("key") or "").strip()
-                    target = heuristic_by_key.get(key)
+                    target = scorable_by_key.get(key)
                     if not target:
                         continue
-                    target["score"] = cls._clamp_score(float(item.get("score", target["score"])))
+                    raw_score = item.get("score")
+                    if raw_score is None:
+                        continue
+                    target["score"] = cls._clamp_score(float(raw_score))
                     target["reason"] = str(item.get("reason") or "llm1_similarity_scored").strip()
                     target["score_mode"] = "llm1_scored"
+                # 模型未对某可打分项返回分数时，标记调用失败而不是回退兜底
+                for target in scorable_by_key.values():
+                    if target["score_mode"] == "pending":
+                        target["score"] = None
+                        target["reason"] = "调用模型失败"
+                        target["score_mode"] = "llm1_failed"
             except Exception as exc:
-                logger.error("LLM-1 相似度评分失败，回退启发式评分: %s", exc)
+                logger.error("LLM-1 相似度评分失败: %s", exc)
+                for target in scorable_by_key.values():
+                    target["score"] = None
+                    target["reason"] = "调用模型失败"
+                    target["score_mode"] = "llm1_failed"
 
         valid_scores = [item for item in scored_items if isinstance(item.get("score"), int)]
         best_item = max(valid_scores, key=lambda item: item.get("score") or 0) if valid_scores else None
@@ -2596,7 +2608,7 @@ class IntentEngine:
             "scored_by": {
                 "model": settings.LLM1_MODEL,
                 "provider": cls._llm_provider_label(settings.LLM1_API_KEY),
-                "score_mode": "llm1_with_heuristic_fallback",
+                "score_mode": "llm1",
             },
         }
 
