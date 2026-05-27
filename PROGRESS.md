@@ -2,7 +2,9 @@
 
 ## 当前状态
 
-- 当前任务：v1.7.173 流式停用 + 修请求线程内同步评分回归(评分移回异步)。
+- 当前任务：v1.7.174 禁用 KB2(API_KB2_ENABLED=false),收敛为 KB1 单路 + 训练AI 单路两条流程。
+- 当前小点：API_KB2_ENABLED 读自 backend/ai_settings.json(被 ai_settings.local.json 覆盖,与 .env 无关)。本机 local 早已 false,但入库 base 仍 true(生产可能仍启用);已把 base ai_settings.json 改 false 确保生产禁用。禁用后 ai 流程省 1 次外部KB调用+1次LLM2生成。
+- 历史小点（v1.7.173）：流式停用 + 修请求线程内同步评分回归。
 - 当前小点：(1)sidebar_assist 强制 stream=False,流式SSE分支恒不触发(代码保留),不影响整体流程;API说明文档同步标停用。(2)修回归:上轮把评分加进 _store 同步调的 _refresh_api_invocation_quality,导致首次触发(无我方回复)也在请求线程跑LLM-1评分拖慢响应;改为同步_refresh仅做轻量相似分(无回复直接pending不调模型),AI候选分/训练AI分移到响应返回后的异步 _complete_api_reply_scoring_async。(3)核实:生产ai流程内部有KB1/KB2两路分叉(默认API_KB2_ENABLED=true,展示KB1,KB2为第二来源/对比,多1次外部KB调用+1次LLM2生成);llm2_compare对比模型生产未启用(_complete_sidebar_assist_compare_async无调用=死代码)。
 - 状态：`py_compile` 通过;后端需重启。
 - 历史小点（v1.7.172）：流式 done 帧也输出盲评对。
