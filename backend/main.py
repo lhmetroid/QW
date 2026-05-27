@@ -21415,6 +21415,13 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 if isinstance(ta, dict):
                     train_ai_payload = ta
 
+            # 详情页只读：CRM 画像只取调用时已存的 result_payload.crm_info，
+            # 不在详情加载时实时查 CRM(SQL Server)，避免外连阻塞/拖慢甚至卡死整个加载。
+            # 未匹配到 API 调用的轮次，画像列留空。
+            crm_info = None
+            if matched_inv and matched_inv.result_payload:
+                crm_info = matched_inv.result_payload.get("crm_info")
+
             item = {
                 "result_id": result_id,
                 "run_id": run_id,
@@ -21424,7 +21431,7 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 "scenario_rank": 0,
                 "turn_no": idx + 1,
                 "step1_summary": step1,
-                "step2_crm_info": (matched_inv.result_payload.get("crm_info") if matched_inv else None) or IntentEngine.get_crm_context(external_userid),
+                "step2_crm_info": crm_info,
                 "step6_sales_advice": matched_inv.result_payload.get("reply_reference") if matched_inv else "",
                 # 训练AI(另一条途径)与当前流程并行,与第6步/分数列共用一列(分两行展示)。
                 # training_ai_score 暂为 None(独立打分后续完成)。
