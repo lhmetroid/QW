@@ -55,6 +55,7 @@ class IntentSummary(Base):
     sales_advice_compare_prompt_trace_v2 = Column(JSON)  # LLM2 对比模型最终 prompt 存证
     reply_style_results_v2 = Column(JSON, nullable=True)  # 多风格 x 多模型候选结果
     reply_scores_v2 = Column(JSON, nullable=True)  # 候选与实际销售回复评分结果
+    training_ai = Column(JSON, nullable=True)  # 训练AI(另一条 model-chat 途径)并行回复结果
     assist_validation = Column(JSON, nullable=True)
     assist_compare_validation = Column(JSON, nullable=True)
     stage_status = Column(JSON, nullable=True)

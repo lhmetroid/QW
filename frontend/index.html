@@ -1060,7 +1060,13 @@ Alex</textarea>
                     <button id="caselib-sub-tab-cases" onclick="caselibSwitchSubTab('cases')" class="px-3 py-1.5 rounded-lg border bg-white text-slate-700 text-xs hover:bg-slate-50" title="只读浏览案例库 60 个核心案例的元信息、核心对话和背景上文">② 案例库（60案例）</button>
                     <span class="text-[11px] text-slate-400 self-center cursor-help" title='提示：在「迭代记录」表里双击任一行或点"详细"，可进入该轮 60 案例的逐条结果详情页查看 7 步链路输出。'>ⓘ 使用提示</span>
                 </div>
-                <div class="flex flex-wrap gap-2">
+                <div class="flex flex-wrap gap-2 items-center">
+                    <div class="flex items-center gap-1 px-2 py-1 rounded-lg border border-indigo-200 bg-indigo-50" title="训练AI(另一条 model-chat 回复途径)使用的模型。与当前流程并行触发,10秒超时。切换即时生效;永久默认在 .env 的 TRAIN_AI_MODEL。">
+                        <span class="text-[11px] font-bold text-indigo-700">训练AI模型</span>
+                        <select id="train-ai-model-select" onchange="setTrainAiModel(this.value)" class="text-[11px] rounded border border-indigo-200 bg-white px-1 py-0.5 text-slate-700 max-w-[220px]">
+                            <option value="">加载中…</option>
+                        </select>
+                    </div>
                     <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="返回主页面：企微实时会话工作区">返回企微实时智能</button>
                     <button id="caselib-reimport-btn" onclick="caselibReimport()" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="从 sales_scenario_cases_v2.md 重新抽取每场景前5案例 + 各案例前15条背景对话，覆盖式写入 case_library_case 表">重新导入案例库</button>
                     <button id="caselib-refresh-btn" onclick="loadCaselibList(true)" class="px-4 py-2 rounded-lg bg-purple-500 text-white text-xs font-bold hover:bg-purple-600" title="重新加载迭代历史列表">刷新列表</button>
@@ -3466,6 +3472,7 @@ Alex</textarea>
         }
 
         async function loadCaselibList(force) {
+            loadTrainAiModels();
             try {
                 const res = await caselibFetch(`/api/case_lib/iterations?limit=100`);
                 const data = await res.json();
@@ -3862,6 +3869,42 @@ Alex</textarea>
             }
         }
 
+        // 训练AI 模型下拉：读取全部可选模型并标出当前选中
+        async function loadTrainAiModels() {
+            const sel = document.getElementById('train-ai-model-select');
+            if (!sel) return;
+            try {
+                const res = await caselibFetch('/api/train_ai/models');
+                const data = await res.json();
+                const items = (data && data.items) || [];
+                const current = (data && data.current_model) || '';
+                if (!items.length) {
+                    sel.innerHTML = `<option value="${current}">${current || '（无法读取模型列表）'}</option>`;
+                    return;
+                }
+                sel.innerHTML = items.map(it => {
+                    const name = it.model_name || '';
+                    const sels = (name === current) ? ' selected' : '';
+                    return `<option value="${name}"${sels}>${name}</option>`;
+                }).join('');
+                sel.title = `共 ${data.total} 个可选模型；当前：${current}；超时 ${data.timeout_seconds}s`;
+            } catch (e) {
+                sel.innerHTML = '<option value="">模型列表读取失败</option>';
+            }
+        }
+        async function setTrainAiModel(model) {
+            if (!model) return;
+            try {
+                await caselibFetch('/api/train_ai/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({model})
+                });
+            } catch (e) {
+                alert('切换训练AI模型失败：' + ((e && e.message) || e));
+            }
+        }
+
         async function caselibReimport() {
             const btn = document.getElementById('caselib-reimport-btn');
             if (btn) { btn.disabled = true; btn.textContent = '重新导入中…'; }
@@ -4225,6 +4268,7 @@ Alex</textarea>
                 '  • 风格匹配（style_match）：是否贴合所选回复风格\n' +
                 '  • 上下文贴合（context_alignment）：是否扣紧线程事实与 CRM\n' +
                 '打分模型：LLM-1（qwen14b）。这是 AI 回复自身的"绝对质量分"，与右侧"相似分"(像不像原始回复)是两件事。\n' +
+                '本列分两行：ai＝当前流程回复质量分；训练ai＝另一条 model-chat 途径回复质量分(独立打分后续完成,暂显示-)。\n' +
                 '悬停每行单元格可看该案例的 7 维分明细。'
             );
             const mdHeaderTip = (
@@ -4252,7 +4296,7 @@ Alex</textarea>
                             <th class="px-2 py-2 text-left" style="width:90px; min-width:90px; max-width:90px; overflow:hidden;" title="本轮触发点之前的背景对话（最多15行）。悬停单元格看全部背景对话">背景</th>
                             <th class="px-2 py-2 text-left" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="步骤4：CRM 客户画像（联系人/公司/行业/等级/支付风险/生命周期）。悬停单元格看明细">客户画像</th>
                             <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="本轮真实输入给AI的原客户问；背景只包含客户问之前的15行，不包含本轮销售参考答案">原客户问</th>
-                            <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="步骤6：大模型2 基于前 5 步生成的 AI 回复建议（截断显示前 80 字，悬停看全文）">第6步·AI生成回复</th>
+                            <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="步骤6：AI 回复建议(两行)。第1行 ai＝当前流程(大模型2)生成；第2行 训练ai＝另一条 model-chat 途径(与当前流程并行,10秒超时,无回值显示调用失败/超时)。各占一行,悬停看全文">第6步·AI生成回复（ai/训练ai）</th>
                             <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" style="width:92px; min-width:92px; max-width:92px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" style="width:92px; min-width:92px; max-width:92px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(mdHeaderTip)}">原始回复分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
@@ -4414,6 +4458,22 @@ Alex</textarea>
                     <div style="${lineClamp2Style}" title="${escapeHtml(content)}">${escapeHtml(content) || '<span class="text-slate-400">（无）</span>'}</div>
                 </td>`;
             };
+            // 与第6步共用一列：ai / 训练ai 各占一行(单行截断,悬停看全文)
+            const oneLineStyle = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35;';
+            const aiTrainTextCell = (aiText, trainText, aiTitle, trainTitle, clickStepHtml = '', cls = 'text-slate-700') => {
+                const a = String(aiText || '').trim();
+                const t = String(trainText || '').trim();
+                return `<td class="px-2 py-2 ${cls}" style="width:400px; max-width:400px; min-width:400px; overflow:hidden;" ${clickStepHtml || ''}>
+                    <div style="${oneLineStyle}" title="${escapeHtml(aiTitle != null ? aiTitle : a)}"><span class="text-slate-400">ai：</span>${escapeHtml(a) || '<span class="text-slate-400">（无）</span>'}</div>
+                    <div style="${oneLineStyle}" title="${escapeHtml(trainTitle != null ? trainTitle : t)}"><span class="text-indigo-500">训练ai：</span>${escapeHtml(t) || '<span class="text-slate-400">-</span>'}</div>
+                </td>`;
+            };
+            // 与AI质量分共用一列：ai分 / 训练ai分 各占一行
+            const aiTrainScoreCell = (aiTxt, trainTxt, cls, title) =>
+                `<td class="px-2 py-2 text-right ${cls}" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(title || '')}">
+                    <div><span class="text-slate-400 text-[10px]">ai：</span>${aiTxt}</div>
+                    <div><span class="text-indigo-500 text-[10px]">训练ai：</span>${trainTxt}</div>
+                </td>`;
             const tipParse = (v) => {
                 if (v == null) return null;
                 if (typeof v === 'string') { try { return JSON.parse(v); } catch { return null; } }
@@ -4474,6 +4534,20 @@ Alex</textarea>
                 const simTxt = (sim != null) ? sim.toFixed(2) : (simFailed ? '调用模型失败' : '-');
                 const simCls = (sim != null) ? 'text-indigo-700 font-bold' : (simFailed ? 'text-red-600 text-[10px]' : 'text-slate-400');
                 const simTip = buildSimilarityCellTip(r);
+                // 训练AI(另一条途径)：与第6步/AI质量分共用一列,各占一行。无回值则显示调用失败/超时。
+                const trainStatus = r.training_ai_status || null;
+                const trainReplyRaw = r.training_ai_reply || '';
+                const trainLatency = (r.training_ai_latency_ms != null) ? Math.round(Number(r.training_ai_latency_ms)) : null;
+                let trainReplyText = trainReplyRaw;
+                if (!trainReplyRaw) {
+                    trainReplyText = (trainStatus === 'timeout') ? '调用超时（>10秒）'
+                        : ((trainStatus == null) ? '' : '调用失败');
+                }
+                const trainReplyTitle = trainReplyRaw
+                    ? (trainReplyRaw + (trainLatency != null ? `\n（训练AI 实际费时 ${trainLatency}ms，模型 ${r.training_ai_model||''}）` : ''))
+                    : (r.training_ai_error || trainReplyText);
+                const trainScoreTxt = (r.training_ai_score != null) ? Number(r.training_ai_score).toFixed(2)
+                    : ((trainStatus && trainStatus !== 'success') ? '失败' : '-');
                 const qstatus = caselibQualityStatusLabel(r.quality_status);
                 const qstatusCls = caselibQualityStatusColor(r.quality_status);
                 const topic = (r.step1_summary && (r.step1_summary.topic || r.step1_summary.core_demand)) || '';
@@ -4563,9 +4637,9 @@ Alex</textarea>
                     <td class="px-2 py-2 text-slate-500 truncate cursor-help" style="width:90px; min-width:90px; max-width:90px; overflow:hidden;" onmouseenter="caselibCellTip(event,'${r.result_id}','bg')" onmouseleave="caselibCellTipHide()">${bgCount ? bgCount + ' 条' : '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 text-slate-500 truncate cursor-help" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="${escapeHtml(tipCrm(r))}">${escapeHtml(crmLabel) || '<span class="text-slate-400">（无）</span>'}</td>
                     ${twoLineCell(customerQuestion, clickStep('原客户问'), 'text-slate-700')}
-                    ${twoLineCell(advice, clickStep('第6步·AI生成回复'), 'text-slate-700')}
+                    ${aiTrainTextCell(advice, trainReplyText, advice, trainReplyTitle, clickStep('第6步·AI生成回复'), 'text-slate-700')}
                     ${twoLineCell(lastSalesReply, clickStep('销售原始回复'), 'text-slate-600')}
-                    <td class="px-2 py-2 text-right font-bold text-purple-700" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(aiTip)}">${aiTxt}</td>
+                    ${aiTrainScoreCell(aiTxt, trainScoreTxt, 'font-bold text-purple-700', aiTip)}
                     <td class="px-2 py-2 text-right text-sky-700 font-bold" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(mdTip)}">${mdTxt}</td>
                     <td class="px-2 py-2 text-right ${dltCls}" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="AI − 人工。差值绝对值 ≥1 时高亮：正值AI偏高，负值AI偏低">${dltTxt}</td>
                     <td class="px-2 py-2 text-right ${simCls}" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(simTip)}">${simTxt}</td>

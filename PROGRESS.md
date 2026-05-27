@@ -2,7 +2,11 @@
 
 ## 当前状态
 
-- 当前任务：v1.7.166 评分体系拆分(AI质量分/原始回复分/Δ/相似分独立)+相似分去启发式兜底+知识使用大白话说明。
+- 当前任务：v1.7.167 训练AI(train_ai)第二回复途径接入(并行触发/10s超时/共用列双行显示)+知识"使用"标记来源说明。
+- 当前小点：(1)新增训练AI途径=平台 model-chat 接口(https://llm.cycleforce.cc),与当前流程并行触发不串行不影响输出速度,10s超时则空值下一步、记录实际费时、无回值显示调用失败;模型默认 unsloth-qwen2.5-task-45,新增 /api/train_ai/models(读全34个,下拉选择)+/api/train_ai/config(切换)。result_payload 新增 training_ai{reply/status/latency_ms/model/error}(英文+中文注释)。(2)实时验证明细:第6步与AI质量分各与训练AI共用一列分两行(ai:.../训练ai:...);训练AI独立打分后续完成,暂显-。(3)知识"使用"标记来源=知识入库时 knowledge_governance.score_content_governance 纯代码/规则算出(无AI),检索时读 knowledge_chunk.usable_for_reply 字段。
+- 状态：后端 `py_compile`(main/intent_engine/config/database)、前端 `node --check` 均通过;model-chat 接口实测可用(34模型,task-45在列,chat约8s)。后端需重启加载。
+- 最近更新时间：2026-05-27 14:00:00 +0800
+- 历史小点（v1.7.166）：评分体系拆分(AI质量分/原始回复分/Δ/相似分独立)+相似分去启发式兜底+知识使用大白话说明。
 - 当前小点：(1)知识"使用"判定用大白话解释(可直接回复客户+允许AI生成才计入;<0.70只是待人工复核但仍可使用),去掉 usable_for_reply 字段名表述。(2)原始回复分改用与AI质量分同一模型(qwen14b)逐维打分:事后评分中并发跑 reply_scores_v2(填 actual_sales_replies 7维) + 相似分,不在生成链路、不影响输出速度;Δ前端代码直接 AI-原始。(3)相似分独立成列,取自 quality_similarity.best_score(贴合代理分),浮层列两路明细。(4)相似分去掉启发式重合度回退,LLM-1 失败显示"调用模型失败"。AI质量分改取 reply_scores_v2 AI候选7维绝对分(原误显示的是相似分)。
 - 状态：后端 `py_compile`、前端 `node --check` 均通过；后端需重启加载。历史已打分调用的原始回复分需再次触发评分才回填。
 - 最近更新时间：2026-05-27 12:30:00 +0800
@@ -11,6 +15,7 @@
 
 | 时间 | 任务 | 小点 | 结果 | 验证 |
 |---|---|---|---|---|
+| 2026-05-27 14:00:00 +0800 | v1.7.167 训练AI第二途径接入 | model-chat 途径并行触发(10s超时/记费时/无值显调用失败)+模型下拉(默认task-45)+result_payload.training_ai字段+第6步与质量分共用列双行显示+知识使用标记来源说明(纯规则代码) | 已完成 | `py_compile`+`node --check`通过;model-chat 实测34模型/task-45在列/chat约8.26s;训练AI独立打分按要求后续完成 |
 | 2026-05-27 12:30:00 +0800 | v1.7.166 评分拆分+相似分独立列 | AI质量分(7维绝对)/原始回复分(同模型7维)/Δ(代码)/相似分(贴合代理分独立列)四者拆清;事后并发算原始回复分+相似分不影响生成速度;相似分去启发式兜底,失败显"调用模型失败";知识"使用"大白话说明 | 已完成 | `py_compile`+`node --check` 通过;reply_scores_v2 已有 ai_candidates overall=90(AI质量分),相似分=85 分离正确 |
 | 2026-05-27 11:30:00 +0800 | v1.7.165 实时验证四项修复/排查 | 时区配对漏洞修复(窗口=本地零点-8h)+同锚点取已打分最新+知识"命中X·使用N"展示+浮层未使用原因+评分/相似分诊断(均 qwen14b,相似分=贴合代理分已存在未开发) | 已完成 | `py_compile` 通过、`node --check` 提取JS通过；DB 核验:会话 wmS8...BwVg 锚点117622(本地03:51=UTC前一日19:51)对应 scored=85 调用因UTC边界被漏,修复后可配对 |
 | 2026-05-27 10:43:52 +0800 | v1.7.164 实时验证背景对齐+耗时分析 | 实时验证背景从加载全量历史改为只取触发点前最近15条(对齐上线 limit=15)；分析当天12次API调用逐节点耗时,瓶颈=knowledge_v2(私域向量检索)avg 4379ms/max 11148ms | 已完成 | `python -m py_compile backend/main.py` 通过；DB 聚合12次调用逐节点:knowledge avg4449/llm1 avg2307/llm2 avg1547/crm 535/conv_input 262/fast_track 7 ms,端到端 avg9783/max21055ms |

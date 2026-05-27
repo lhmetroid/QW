@@ -66,6 +66,15 @@ class Settings(BaseSettings):
     LLM2_MODEL: str = ""
     LLM2_TIMEOUT_SECONDS: int = 100
 
+    # 训练AI (train_ai) 配置：另一条 AI 回复途径，调用平台 model-chat 接口，与当前流程并行触发。
+    TRAIN_AI_ENABLED: bool = True
+    TRAIN_AI_BASE_URL: str = "https://llm.cycleforce.cc"
+    TRAIN_AI_API_KEY: str = ""
+    TRAIN_AI_MODEL: str = "unsloth-qwen2.5-task-45"
+    TRAIN_AI_TIMEOUT_SECONDS: int = 10
+    TRAIN_AI_MAX_TOKENS: int = 300
+    TRAIN_AI_TEMPERATURE: float = 0.2
+
     # LLM-2 comparison configuration: optional second sales-assist output.
     LLM2_COMPARE_API_URL: str = ""
     LLM2_COMPARE_API_KEY: str = ""

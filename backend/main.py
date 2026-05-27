@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File, Form
+from fastapi import FastAPI, Request, Response, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File, Form, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, RedirectResponse
@@ -359,6 +359,7 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS sales_advice_compare_prompt_trace_v2 JSON;"))
         db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS reply_style_results_v2 JSON;"))
         db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS reply_scores_v2 JSON;"))
+        db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS training_ai JSON;"))
         db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS assist_validation JSON;"))
         db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS assist_compare_validation JSON;"))
         db.execute(text("ALTER TABLE intent_summaries ADD COLUMN IF NOT EXISTS stage_status JSON;"))
@@ -10277,6 +10278,82 @@ def _runtime_stage1_llm_values() -> dict:
         return _runtime_llm_values("LLM2")
     return _runtime_llm_values("LLM1")
 
+
+# ===== 训练AI(train_ai)：另一条 AI 回复途径(平台 model-chat 接口)，与当前流程并行触发 =====
+# 进程内的模型选择覆盖(下拉切换时即时生效)；永久默认仍以 .env/TRAIN_AI_MODEL 为准。
+_TRAIN_AI_RUNTIME: dict[str, Any] = {"model": None}
+
+
+def _train_ai_config() -> dict:
+    model = _TRAIN_AI_RUNTIME.get("model") or _runtime_setting("TRAIN_AI_MODEL", settings.TRAIN_AI_MODEL)
+    return {
+        "enabled": _runtime_bool_setting("TRAIN_AI_ENABLED", settings.TRAIN_AI_ENABLED),
+        "base_url": (_runtime_setting("TRAIN_AI_BASE_URL", settings.TRAIN_AI_BASE_URL) or "").rstrip("/"),
+        "api_key": _runtime_setting("TRAIN_AI_API_KEY", settings.TRAIN_AI_API_KEY),
+        "model": model,
+        "timeout_seconds": _runtime_int_setting("TRAIN_AI_TIMEOUT_SECONDS", settings.TRAIN_AI_TIMEOUT_SECONDS, 10),
+        "max_tokens": _runtime_int_setting("TRAIN_AI_MAX_TOKENS", settings.TRAIN_AI_MAX_TOKENS, 300),
+    }
+
+
+def _train_ai_list_models() -> list[dict]:
+    cfg = _train_ai_config()
+    if not cfg["base_url"] or not cfg["api_key"]:
+        return []
+    resp = requests.get(
+        f"{cfg['base_url']}/api/model-chat/models",
+        headers={"Authorization": f"Bearer {cfg['api_key']}"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    items = data.get("items") if isinstance(data, dict) else data
+    return items if isinstance(items, list) else []
+
+
+def _train_ai_chat(messages: list[dict], *, temperature: float | None = None, max_tokens: int | None = None) -> dict:
+    """调用训练AI model-chat 接口。返回统一结构：
+    reply(回复文本)/status(success|timeout|failed|disabled)/latency_ms(实际费时)/model/error。
+    超时按 TRAIN_AI_TIMEOUT_SECONDS(默认10s)，超时即返回 status=timeout 且 reply 为空，由上层走空值下一步。"""
+    cfg = _train_ai_config()
+    out = {"reply": "", "status": "disabled", "latency_ms": None, "model": cfg["model"], "error": ""}
+    if not cfg["enabled"] or not cfg["base_url"] or not cfg["api_key"] or not cfg["model"]:
+        out["error"] = "训练AI未启用或未配置"
+        return out
+    body = {
+        "model_name": cfg["model"],
+        "messages": messages,
+        "temperature": settings.TRAIN_AI_TEMPERATURE if temperature is None else temperature,
+        "max_tokens": cfg["max_tokens"] if max_tokens is None else max_tokens,
+    }
+    started = perf_counter()
+    try:
+        resp = requests.post(
+            f"{cfg['base_url']}/api/model-chat/chat",
+            headers={"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"},
+            json=body,
+            timeout=cfg["timeout_seconds"],
+        )
+        out["latency_ms"] = round((perf_counter() - started) * 1000, 2)
+        resp.raise_for_status()
+        data = resp.json() if resp.content else {}
+        reply = str((data or {}).get("reply") or "").strip()
+        if reply:
+            out["reply"] = reply
+            out["status"] = "success"
+        else:
+            out["status"] = "failed"
+            out["error"] = "训练AI返回空内容"
+    except requests.Timeout:
+        out["latency_ms"] = round((perf_counter() - started) * 1000, 2)
+        out["status"] = "timeout"
+        out["error"] = f"训练AI调用超过 {cfg['timeout_seconds']} 秒超时"
+    except Exception as exc:
+        out["latency_ms"] = round((perf_counter() - started) * 1000, 2)
+        out["status"] = "failed"
+        out["error"] = sanitize_text(str(exc))[:200]
+    return out
+
 def _runtime_llm_configured(config: dict) -> bool:
     return not any(
         _is_placeholder_value(config.get(field))
@@ -10697,6 +10774,42 @@ async def get_api_version():
 @app.get("/api/system/config_check")
 async def get_system_config_check():
     return _system_config_check()
+
+
+@app.get("/api/train_ai/models")
+async def get_train_ai_models():
+    """训练AI 可选模型列表(供下拉选择)，并标出当前选中的模型。"""
+    cfg = _train_ai_config()
+    try:
+        items = _train_ai_list_models()
+        return {
+            "status": "success",
+            "enabled": cfg["enabled"],
+            "current_model": cfg["model"],
+            "timeout_seconds": cfg["timeout_seconds"],
+            "total": len(items),
+            "items": items,
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "enabled": cfg["enabled"],
+            "current_model": cfg["model"],
+            "timeout_seconds": cfg["timeout_seconds"],
+            "total": 0,
+            "items": [],
+            "error": sanitize_text(str(exc))[:200],
+        }
+
+
+@app.post("/api/train_ai/config")
+async def set_train_ai_config(payload: dict = Body(...)):
+    """切换训练AI 当前使用的模型(进程内即时生效)。永久默认请改 .env 的 TRAIN_AI_MODEL。"""
+    model = str((payload or {}).get("model") or "").strip()
+    if not model:
+        raise HTTPException(status_code=400, detail="model 不能为空")
+    _TRAIN_AI_RUNTIME["model"] = model
+    return {"status": "success", "current_model": _train_ai_config()["model"]}
 
 @app.get("/api/system/public_endpoints")
 async def get_public_endpoints():
@@ -13896,6 +14009,26 @@ def _generate_reply_style_candidates(
     primary_config = _runtime_llm_values("LLM2")
     compare_config = _runtime_llm_values("LLM2_COMPARE")
     compare_model_configured = _runtime_llm_configured(compare_config)
+
+    # 训练AI(train_ai)：与当前流程并行触发(不串行,不影响主回复输出速度)。
+    # 复用主模型(知识库1+首个风格)的同一份生成 prompt，单独调用 model-chat 接口，自带 10s 超时。
+    train_ai_future = None
+    train_ai_cfg = _train_ai_config()
+    if train_ai_cfg["enabled"] and styles:
+        try:
+            _train_prompt_spec = IntentEngine.build_sales_assist_request(
+                summary_json,
+                knowledge if isinstance(knowledge, dict) else {},
+                crm_context,
+                reply_style=styles[0],
+                label="TRAIN_AI",
+            )
+            _train_messages = [{"role": "user", "content": _train_prompt_spec.get("final_prompt") or ""}]
+            train_ai_future = REPLY_CHAIN_EXECUTOR.submit(_train_ai_chat, _train_messages)
+        except Exception as exc:
+            logger.warning("训练AI prompt 构建失败，跳过本次训练AI生成: %s", exc)
+            train_ai_future = None
+
     candidates: list[dict] = []
     llm_runtime = _llm_runtime_config()
     model_specs = [
@@ -14116,9 +14249,22 @@ def _generate_reply_style_candidates(
     compare_candidate = _select_candidate(candidates, "llm2", "knowledge_external_api")
     if primary_candidate and knowledge.get("log_id"):
         IntentEngine.update_knowledge_hit_log_outcome(knowledge.get("log_id"), final_response=primary_candidate.get("content"))
+
+    # 收集训练AI并行结果(主流程已耗时,此处通常已就绪;最多再等满 10s 超时预算)
+    training_ai = None
+    if train_ai_future is not None:
+        try:
+            training_ai = train_ai_future.result(timeout=train_ai_cfg["timeout_seconds"] + 1)
+        except Exception as exc:
+            training_ai = {"reply": "", "status": "timeout", "latency_ms": None,
+                           "model": train_ai_cfg["model"], "error": sanitize_text(str(exc))[:200]}
+        if isinstance(training_ai, dict):
+            stage_parts_ms["train_ai_ms"] = training_ai.get("latency_ms")
+
     return {
         "candidates": candidates,
         "reply_scores": reply_scores,
+        "training_ai": training_ai,
         "primary_candidate": primary_candidate,
         "compare_candidate": compare_candidate,
         "llm2_status": "done" if primary_stats["done"] else ("error" if primary_stats["failures"] else "failed_no_content"),
@@ -14900,6 +15046,12 @@ def _read_only_current_tail_result(
         "status": summary.status,
         "at": summary.summarized_at,
     })
+
+    if summary.training_ai:
+        # 训练AI(另一条 model-chat 途径)并行回复结果。字段(英文/中文)：
+        # reply=训练AI回复文本; status=状态(success成功/timeout超时/failed失败/disabled未启用);
+        # latency_ms=实际费时(毫秒); model=所用模型; error=失败原因。
+        result["training_ai"] = summary.training_ai
 
     if summary.thread_business_fact:
         result["thread_business_fact"] = summary.thread_business_fact
@@ -16017,6 +16169,7 @@ def reanalyze_session_task(user_id: str, step: int = 1, analytics_record_id: str
                 )
                 summary.reply_style_results_v2 = generation_bundle.get("candidates")
                 summary.reply_scores_v2 = generation_bundle.get("reply_scores")
+                summary.training_ai = generation_bundle.get("training_ai")
                 summary.sales_advice_v2 = primary_candidate.get("content") if primary_candidate else None
                 summary.sales_advice_compare_v2 = compare_candidate.get("content") if compare_candidate else None
                 summary.sales_advice_compare_prompt_trace_v2 = (compare_candidate or first_compare_entry or {}).get("prompt_trace")
@@ -20893,6 +21046,7 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
             kb_hit_count = 0
             kb_used_count = None
             step4_knowledge = None
+            train_ai_payload = None
             if matched_inv and matched_inv.result_payload:
                 kb_status = matched_inv.result_payload.get("knowledge_status") or "done"
                 kv2 = matched_inv.result_payload.get("knowledge_v2")
@@ -20904,6 +21058,9 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                         "knowledge_status": kb_status,
                         "knowledge_v2": kv2,
                     }
+                ta = matched_inv.result_payload.get("training_ai")
+                if isinstance(ta, dict):
+                    train_ai_payload = ta
 
             item = {
                 "result_id": result_id,
@@ -20916,6 +21073,14 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 "step1_summary": step1,
                 "step2_crm_info": (matched_inv.result_payload.get("crm_info") if matched_inv else None) or IntentEngine.get_crm_context(external_userid),
                 "step6_sales_advice": matched_inv.result_payload.get("reply_reference") if matched_inv else "",
+                # 训练AI(另一条途径)与当前流程并行,与第6步/分数列共用一列(分两行展示)。
+                # training_ai_score 暂为 None(独立打分后续完成)。
+                "training_ai_reply": (train_ai_payload.get("reply") if train_ai_payload else ""),
+                "training_ai_status": (train_ai_payload.get("status") if train_ai_payload else None),
+                "training_ai_latency_ms": (train_ai_payload.get("latency_ms") if train_ai_payload else None),
+                "training_ai_model": (train_ai_payload.get("model") if train_ai_payload else None),
+                "training_ai_error": (train_ai_payload.get("error") if train_ai_payload else ""),
+                "training_ai_score": None,
                 "step7_reply_scores": scores_payload,
                 "stage_status": matched_inv.result_payload.get("stage_status") if matched_inv else {},
                 "step4_knowledge": step4_knowledge,
