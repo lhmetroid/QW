@@ -14234,23 +14234,8 @@ def _generate_reply_style_candidates(
             compare_config if compare_model_configured else None,
         )
 
-    reply_scores = None
-    if enable_scoring:
-        score_started = perf_counter()
-        reply_scores = IntentEngine.score_reply_candidates(
-            summary_json=summary_json,
-            knowledge_payload=knowledge,
-            crm_context=crm_context,
-            candidates=candidates,
-            actual_sales_replies=actual_sales_replies,
-        )
-        stage_parts_ms["reply_scoring_ms"] = round((perf_counter() - score_started) * 1000, 2)
-    primary_candidate = _select_candidate(candidates, "llm2", "knowledge_v2")
-    compare_candidate = _select_candidate(candidates, "llm2", "knowledge_external_api")
-    if primary_candidate and knowledge.get("log_id"):
-        IntentEngine.update_knowledge_hit_log_outcome(knowledge.get("log_id"), final_response=primary_candidate.get("content"))
-
-    # 收集训练AI并行结果(主流程已耗时,此处通常已就绪;最多再等满 10s 超时预算)
+    # 先收集训练AI并行结果(主流程已耗时,此处通常已就绪;最多再等满 10s 超时预算)，
+    # 以便与 AI 候选在同一次 LLM-1 评分中，给训练AI回复也打同样的 7 维质量分(同模型 qwen14b)。
     training_ai = None
     if train_ai_future is not None:
         try:
@@ -14260,6 +14245,61 @@ def _generate_reply_style_candidates(
                            "model": train_ai_cfg["model"], "error": sanitize_text(str(exc))[:200]}
         if isinstance(training_ai, dict):
             stage_parts_ms["train_ai_ms"] = training_ai.get("latency_ms")
+
+    train_ai_reply_text = (training_ai or {}).get("reply") if isinstance(training_ai, dict) else ""
+    _TRAIN_AI_CID = "train_ai__knowledge_v2"
+
+    reply_scores = None
+    if enable_scoring:
+        score_started = perf_counter()
+        scoring_candidates = list(candidates)
+        if train_ai_reply_text:
+            # 训练AI回复是纯文本，包成【企微回复参考】结构，避免被 extract 截成首行
+            scoring_candidates.append({
+                "candidate_id": _TRAIN_AI_CID,
+                "model_slot": "train_ai",
+                "model_label": "训练AI",
+                "model_display_name": (training_ai or {}).get("model") or "训练AI",
+                "knowledge_source": "knowledge_v2",
+                "knowledge_source_label": "知识库1",
+                "style_id": (styles[0]["id"] if styles else ""),
+                "style_title": (styles[0].get("title") if styles else ""),
+                "status": "done",
+                "content": "【企微回复参考】\n" + str(train_ai_reply_text),
+            })
+        reply_scores = IntentEngine.score_reply_candidates(
+            summary_json=summary_json,
+            knowledge_payload=knowledge,
+            crm_context=crm_context,
+            candidates=scoring_candidates,
+            actual_sales_replies=actual_sales_replies,
+        )
+        stage_parts_ms["reply_scoring_ms"] = round((perf_counter() - score_started) * 1000, 2)
+        # 把训练AI候选从 ai_candidates 中分离，避免污染 AI 质量分(取 ai_candidates 最高分)。
+        if isinstance(reply_scores, dict) and train_ai_reply_text:
+            ai_list = reply_scores.get("ai_candidates") or []
+            train_entry, kept = None, []
+            for entry in ai_list:
+                if str((entry or {}).get("candidate_id") or "") == _TRAIN_AI_CID or (entry or {}).get("model_slot") == "train_ai":
+                    train_entry = entry
+                else:
+                    kept.append(entry)
+            reply_scores["ai_candidates"] = kept
+            reply_scores["best_ai_candidate_id"] = kept[0]["candidate_id"] if kept else None
+            if train_entry is not None:
+                reply_scores["training_ai_candidate"] = train_entry
+                if isinstance(training_ai, dict):
+                    ov = train_entry.get("overall_score")
+                    if ov is None and isinstance(train_entry.get("scores"), dict):
+                        ov = train_entry["scores"].get("overall")
+                    training_ai["quality_score"] = ov
+                    training_ai["scores"] = train_entry.get("scores")
+                    training_ai["score_reason"] = train_entry.get("score_reason")
+
+    primary_candidate = _select_candidate(candidates, "llm2", "knowledge_v2")
+    compare_candidate = _select_candidate(candidates, "llm2", "knowledge_external_api")
+    if primary_candidate and knowledge.get("log_id"):
+        IntentEngine.update_knowledge_hit_log_outcome(knowledge.get("log_id"), final_response=primary_candidate.get("content"))
 
     return {
         "candidates": candidates,
@@ -21080,7 +21120,8 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 "training_ai_latency_ms": (train_ai_payload.get("latency_ms") if train_ai_payload else None),
                 "training_ai_model": (train_ai_payload.get("model") if train_ai_payload else None),
                 "training_ai_error": (train_ai_payload.get("error") if train_ai_payload else ""),
-                "training_ai_score": None,
+                "training_ai_score": (float(train_ai_payload["quality_score"]) if train_ai_payload and train_ai_payload.get("quality_score") is not None else None),
+                "training_ai_scores": (train_ai_payload.get("scores") if train_ai_payload else None),
                 "step7_reply_scores": scores_payload,
                 "stage_status": matched_inv.result_payload.get("stage_status") if matched_inv else {},
                 "step4_knowledge": step4_knowledge,

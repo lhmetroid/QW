@@ -4268,7 +4268,7 @@ Alex</textarea>
                 '  • 风格匹配（style_match）：是否贴合所选回复风格\n' +
                 '  • 上下文贴合（context_alignment）：是否扣紧线程事实与 CRM\n' +
                 '打分模型：LLM-1（qwen14b）。这是 AI 回复自身的"绝对质量分"，与右侧"相似分"(像不像原始回复)是两件事。\n' +
-                '本列分两行：ai＝当前流程回复质量分；训练ai＝另一条 model-chat 途径回复质量分(独立打分后续完成,暂显示-)。\n' +
+                '本列分两行：ai＝当前流程回复质量分；训练ai＝另一条 model-chat 途径回复质量分(同模型 qwen14b、同 7 维度独立打分)。训练AI超时/失败时显示失败。\n' +
                 '悬停每行单元格可看该案例的 7 维分明细。'
             );
             const mdHeaderTip = (
@@ -4468,11 +4468,11 @@ Alex</textarea>
                     <div style="${oneLineStyle}" title="${escapeHtml(trainTitle != null ? trainTitle : t)}"><span class="text-indigo-500">训练ai：</span>${escapeHtml(t) || '<span class="text-slate-400">-</span>'}</div>
                 </td>`;
             };
-            // 与AI质量分共用一列：ai分 / 训练ai分 各占一行
-            const aiTrainScoreCell = (aiTxt, trainTxt, cls, title) =>
-                `<td class="px-2 py-2 text-right ${cls}" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(title || '')}">
-                    <div><span class="text-slate-400 text-[10px]">ai：</span>${aiTxt}</div>
-                    <div><span class="text-indigo-500 text-[10px]">训练ai：</span>${trainTxt}</div>
+            // 与AI质量分共用一列：ai分 / 训练ai分 各占一行(各自悬停看明细)
+            const aiTrainScoreCell = (aiTxt, trainTxt, cls, aiTitle, trainTitle) =>
+                `<td class="px-2 py-2 text-right ${cls}" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;">
+                    <div title="${escapeHtml(aiTitle || '')}"><span class="text-slate-400 text-[10px]">ai：</span>${aiTxt}</div>
+                    <div title="${escapeHtml(trainTitle || '')}"><span class="text-indigo-500 text-[10px]">训练ai：</span>${trainTxt}</div>
                 </td>`;
             const tipParse = (v) => {
                 if (v == null) return null;
@@ -4548,6 +4548,20 @@ Alex</textarea>
                     : (r.training_ai_error || trainReplyText);
                 const trainScoreTxt = (r.training_ai_score != null) ? Number(r.training_ai_score).toFixed(2)
                     : ((trainStatus && trainStatus !== 'success') ? '失败' : '-');
+                const trainScoreTip = (() => {
+                    const lines = ['训练AI质量分（与 AI 质量分同模型 qwen14b、同 7 维度）'];
+                    if (r.training_ai_score == null) {
+                        lines.push(trainStatus === 'timeout' ? '训练AI调用超时（>10秒），无回复可打分'
+                            : (trainStatus && trainStatus !== 'success') ? ('训练AI调用失败：' + (r.training_ai_error || ''))
+                            : '暂无训练AI回复或尚未打分');
+                        return lines.join('\n');
+                    }
+                    const dimMap = [['overall','总分'],['low_barrier','易回复'],['non_repetition','差异化'],['safety','稳妥度'],['conciseness','微信感'],['style_match','风格匹配'],['context_alignment','上下文贴合']];
+                    const sc = r.training_ai_scores || {};
+                    dimMap.forEach(([k,l]) => { if (sc[k] != null) lines.push(`  • ${l}（${k}）= ${Number(sc[k]).toFixed(1)}`); });
+                    if (r.training_ai_latency_ms != null) lines.push(`训练AI 实际费时 ${Math.round(Number(r.training_ai_latency_ms))}ms，模型 ${r.training_ai_model||''}`);
+                    return lines.join('\n');
+                })();
                 const qstatus = caselibQualityStatusLabel(r.quality_status);
                 const qstatusCls = caselibQualityStatusColor(r.quality_status);
                 const topic = (r.step1_summary && (r.step1_summary.topic || r.step1_summary.core_demand)) || '';
@@ -4639,7 +4653,7 @@ Alex</textarea>
                     ${twoLineCell(customerQuestion, clickStep('原客户问'), 'text-slate-700')}
                     ${aiTrainTextCell(advice, trainReplyText, advice, trainReplyTitle, clickStep('第6步·AI生成回复'), 'text-slate-700')}
                     ${twoLineCell(lastSalesReply, clickStep('销售原始回复'), 'text-slate-600')}
-                    ${aiTrainScoreCell(aiTxt, trainScoreTxt, 'font-bold text-purple-700', aiTip)}
+                    ${aiTrainScoreCell(aiTxt, trainScoreTxt, 'font-bold text-purple-700', aiTip, trainScoreTip)}
                     <td class="px-2 py-2 text-right text-sky-700 font-bold" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(mdTip)}">${mdTxt}</td>
                     <td class="px-2 py-2 text-right ${dltCls}" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="AI − 人工。差值绝对值 ≥1 时高亮：正值AI偏高，负值AI偏低">${dltTxt}</td>
                     <td class="px-2 py-2 text-right ${simCls}" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(simTip)}">${simTxt}</td>

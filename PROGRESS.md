@@ -2,7 +2,11 @@
 
 ## 当前状态
 
-- 当前任务：v1.7.167 训练AI(train_ai)第二回复途径接入(并行触发/10s超时/共用列双行显示)+知识"使用"标记来源说明。
+- 当前任务：v1.7.168 训练AI质量分(独立7维打分)补完——与AI质量分同模型同维度,同一次评分并出,分离不污染AI质量分。
+- 当前小点：训练AI回复在生成阶段与AI候选同一次 LLM-1(qwen14b) 评分中打 7 维分(纯文本包成【企微回复参考】避免被截首行),打完从 ai_candidates 分离写入 training_ai.quality_score/scores,best_ai_candidate_id 重算,确保不污染 AI 质量分取值。实时验证明细 training_ai_score 落到第二行"训练ai：分",带 7 维悬停明细;超时/失败显"失败"。
+- 状态：后端 `py_compile`、前端 `node --check` 通过;后端需重启加载。历史调用需重新生成才有训练AI分。
+- 最近更新时间：2026-05-27 15:00:00 +0800
+- 历史小点（v1.7.167）：训练AI第二回复途径接入(并行/10s超时/共用列双行)+知识使用标记来源说明。
 - 当前小点：(1)新增训练AI途径=平台 model-chat 接口(https://llm.cycleforce.cc),与当前流程并行触发不串行不影响输出速度,10s超时则空值下一步、记录实际费时、无回值显示调用失败;模型默认 unsloth-qwen2.5-task-45,新增 /api/train_ai/models(读全34个,下拉选择)+/api/train_ai/config(切换)。result_payload 新增 training_ai{reply/status/latency_ms/model/error}(英文+中文注释)。(2)实时验证明细:第6步与AI质量分各与训练AI共用一列分两行(ai:.../训练ai:...);训练AI独立打分后续完成,暂显-。(3)知识"使用"标记来源=知识入库时 knowledge_governance.score_content_governance 纯代码/规则算出(无AI),检索时读 knowledge_chunk.usable_for_reply 字段。
 - 状态：后端 `py_compile`(main/intent_engine/config/database)、前端 `node --check` 均通过;model-chat 接口实测可用(34模型,task-45在列,chat约8s)。后端需重启加载。
 - 最近更新时间：2026-05-27 14:00:00 +0800
@@ -15,6 +19,7 @@
 
 | 时间 | 任务 | 小点 | 结果 | 验证 |
 |---|---|---|---|---|
+| 2026-05-27 15:00:00 +0800 | v1.7.168 训练AI质量分补完 | 训练AI回复与AI候选同一次qwen14b评分打7维分,分离写入training_ai.quality_score不污染AI质量分,第二行展示+7维悬停 | 已完成 | `py_compile`+`node --check`通过 |
 | 2026-05-27 14:00:00 +0800 | v1.7.167 训练AI第二途径接入 | model-chat 途径并行触发(10s超时/记费时/无值显调用失败)+模型下拉(默认task-45)+result_payload.training_ai字段+第6步与质量分共用列双行显示+知识使用标记来源说明(纯规则代码) | 已完成 | `py_compile`+`node --check`通过;model-chat 实测34模型/task-45在列/chat约8.26s;训练AI独立打分按要求后续完成 |
 | 2026-05-27 12:30:00 +0800 | v1.7.166 评分拆分+相似分独立列 | AI质量分(7维绝对)/原始回复分(同模型7维)/Δ(代码)/相似分(贴合代理分独立列)四者拆清;事后并发算原始回复分+相似分不影响生成速度;相似分去启发式兜底,失败显"调用模型失败";知识"使用"大白话说明 | 已完成 | `py_compile`+`node --check` 通过;reply_scores_v2 已有 ai_candidates overall=90(AI质量分),相似分=85 分离正确 |
 | 2026-05-27 11:30:00 +0800 | v1.7.165 实时验证四项修复/排查 | 时区配对漏洞修复(窗口=本地零点-8h)+同锚点取已打分最新+知识"命中X·使用N"展示+浮层未使用原因+评分/相似分诊断(均 qwen14b,相似分=贴合代理分已存在未开发) | 已完成 | `py_compile` 通过、`node --check` 提取JS通过；DB 核验:会话 wmS8...BwVg 锚点117622(本地03:51=UTC前一日19:51)对应 scored=85 调用因UTC边界被漏,修复后可配对 |
