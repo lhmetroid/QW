@@ -1,8 +1,26 @@
 # PROGRESS
 
+## 服务端更新清单（本会话 v1.7.164~174）
+
+**已入库代码（服务器 git pull 即可）：**
+- `backend/main.py`（时区配对修复、盲评对、训练AI接入、评分异步、流式停用、新增 /api/train_ai/models|config 端点）
+- `backend/intent_engine.py`（相似分去启发式兜底，失败显调用失败）
+- `backend/config.py`（TRAIN_AI_* 默认配置项）
+- `backend/database.py`（IntentSummary 新增 training_ai 列）
+- `backend/ai_settings.json`（API_KB2_ENABLED=false）
+- `frontend/index.html`（背景15条、知识命中/使用、相似分独立列、训练AI双行、训练AI模型下拉）
+
+**需在服务器手工处理（gitignore，不入库）：**
+- `.env`：新增 `TRAIN_AI_ENABLED/TRAIN_AI_BASE_URL/TRAIN_AI_API_KEY/TRAIN_AI_MODEL/TRAIN_AI_TIMEOUT_SECONDS/TRAIN_AI_MAX_TOKENS`（含密钥 sk-3e51...）
+- `backend/ai_settings.local.json`：确认 `API_KB2_ENABLED` 不为 true（local 覆盖 base；为 false 或删掉该键才会禁用）
+
+**部署动作：**
+- 重启后端（代码改动生效；IntentSummary.training_ai 列由启动时幂等 ALTER 自动加，无需手工迁移）
+- ai_settings.json/.local.json 改动**无需重启**（每次请求实时读文件）
+
 ## 当前状态
 
-- 当前任务：v1.7.174 禁用 KB2(API_KB2_ENABLED=false),收敛为 KB1 单路 + 训练AI 单路两条流程。
+- 当前任务：v1.7.174 已完成。本会话(v1.7.164~174)交付:实时验证时区配对修复+评分体系拆分(AI质量分/原始回复分/Δ/相似分)+训练AI第二途径接入+微信侧边栏盲评对+流式停用+KB2禁用。提速方案用户已自测,暂忽略。服务端更新清单见文首。
 - 当前小点：API_KB2_ENABLED 读自 backend/ai_settings.json(被 ai_settings.local.json 覆盖,与 .env 无关)。本机 local 早已 false,但入库 base 仍 true(生产可能仍启用);已把 base ai_settings.json 改 false 确保生产禁用。禁用后 ai 流程省 1 次外部KB调用+1次LLM2生成。
 - 历史小点（v1.7.173）：流式停用 + 修请求线程内同步评分回归。
 - 当前小点：(1)sidebar_assist 强制 stream=False,流式SSE分支恒不触发(代码保留),不影响整体流程;API说明文档同步标停用。(2)修回归:上轮把评分加进 _store 同步调的 _refresh_api_invocation_quality,导致首次触发(无我方回复)也在请求线程跑LLM-1评分拖慢响应;改为同步_refresh仅做轻量相似分(无回复直接pending不调模型),AI候选分/训练AI分移到响应返回后的异步 _complete_api_reply_scoring_async。(3)核实:生产ai流程内部有KB1/KB2两路分叉(默认API_KB2_ENABLED=true,展示KB1,KB2为第二来源/对比,多1次外部KB调用+1次LLM2生成);llm2_compare对比模型生产未启用(_complete_sidebar_assist_compare_async无调用=死代码)。
