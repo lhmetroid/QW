@@ -2,7 +2,8 @@
 
 ## 当前状态
 
-- 当前任务：v1.7.170 微信侧边栏盲评对(reply_reference1/2)——把 流程A(ai/LLM-2) 与 流程B(train_ai) 回复随机映射输出给调用端,DB与分析台保持原始一一对应不随机。
+- 当前任务：v1.7.171 输出 sidebar_assist API 调用说明(供其他项目接入)。文档存 docs/API_sidebar_assist调用说明.md(docs 被 gitignore 不入库)。覆盖请求/非流式响应(盲评对+标识+上下文+不返回字段)/流式SSE/训练AI模型端点/鉴权(无前台cookie鉴权,网关控制)/接入要点。盲评回写按用户要求暂不做。
+- 历史小点（v1.7.170）：微信侧边栏盲评对 reply_reference1/2,响应随机映射两流程、DB与分析台原始不随机。
 - 当前小点：sidebar_assist 返回点对响应应用 _apply_blind_eval_pair:reply_reference1/2 随机来自两条流程(+各路状态 reply_referenceN_status),一条无结果则该槽空、随机落1或2;响应去掉可识别来源(reply_reference/training_ai/候选/事后分),只留盲评对+状态+上下文。映射 blind_eval_map 在 _store 存库一次(稳定可揭盲)。关键避坑:_api_invocation_result_payload 被会话分析视图复用,故盲评只在 sidebar 返回点做,不在共用函数里做,分析台/index.html 仍读原始字段不随机。
 - 状态：`py_compile` 通过+独立逻辑自测(稳定映射/单边空随机槽/无身份泄漏)通过;后端需重启。微信侧边栏外部程序需改读 reply_reference1/2。
 - 最近更新时间：2026-05-27 17:40:00 +0800
