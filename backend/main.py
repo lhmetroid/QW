@@ -20158,27 +20158,47 @@ def _caselib_serialize_result(rr: CaseIterationResult, case_meta: dict | None = 
     return payload
 
 
-def _caselib_kb_summary(step4) -> tuple[str, int | None]:
-    """从 step4_knowledge 只抽取列表需要的状态 + 命中条数(不下发庞大的证据明细)。"""
-    s4 = _caselib_load_json(step4)
-    if not isinstance(s4, dict):
-        return "", None
-    status = s4.get("knowledge_status") or ""
-    kv2 = s4.get("knowledge_v2")
+def _caselib_kb_counts(kv2) -> tuple[int | None, int | None]:
+    """从 knowledge_v2 计算 (命中条数, 使用条数)。
+    使用条数 = 真正可进入回复生成的命中(replyable_hits: usable_for_reply 且 allowed_for_generation)，
+    与上线链路 generate 时实际注入提示词的集合一致；其余仅人工参考(human_only_hits)不计入使用。"""
     if isinstance(kv2, str):
         try:
             kv2 = json.loads(kv2)
         except Exception:
             kv2 = None
-    hit_count = None
-    if isinstance(kv2, dict):
-        hits = kv2.get("hits")
-        refs = kv2.get("evidence_refs")
-        if isinstance(hits, list):
-            hit_count = len(hits)
-        elif isinstance(refs, list):
-            hit_count = len(refs)
-    return status, hit_count
+    if not isinstance(kv2, dict):
+        return None, None
+    hits = kv2.get("hits")
+    refs = kv2.get("evidence_refs")
+    if isinstance(hits, list):
+        hit_count = len(hits)
+    elif isinstance(refs, list):
+        hit_count = len(refs)
+    else:
+        hit_count = None
+    replyable = kv2.get("replyable_hits")
+    if isinstance(replyable, list):
+        used_count = len(replyable)
+    elif isinstance(hits, list):
+        # 老快照无 replyable_hits 字段时，按 usable_for_reply+allowed_for_generation 现算
+        used_count = sum(
+            1 for h in hits
+            if isinstance(h, dict) and h.get("usable_for_reply") and h.get("allowed_for_generation")
+        )
+    else:
+        used_count = None
+    return hit_count, used_count
+
+
+def _caselib_kb_summary(step4) -> tuple[str, int | None, int | None]:
+    """从 step4_knowledge 只抽取列表需要的状态 + 命中条数 + 使用条数(不下发庞大的证据明细)。"""
+    s4 = _caselib_load_json(step4)
+    if not isinstance(s4, dict):
+        return "", None, None
+    status = s4.get("knowledge_status") or ""
+    hit_count, used_count = _caselib_kb_counts(s4.get("knowledge_v2"))
+    return status, hit_count, used_count
 
 
 def _caselib_serialize_turn_thin(t: CaseLibraryDialogueTurn) -> dict:
@@ -20219,7 +20239,7 @@ def _caselib_serialize_result_thin(
 ) -> dict:
     """列表行轻量版：去掉 step3/step4明细/step5/step7候选全文等大字段，详情按需经
     /api/case_lib/results/{id} 懒加载。"""
-    kb_status, kb_hit_count = _caselib_kb_summary(rr.step4_knowledge)
+    kb_status, kb_hit_count, kb_used_count = _caselib_kb_summary(rr.step4_knowledge)
     payload = {
         "result_id": str(rr.result_id),
         "run_id": str(rr.run_id),
@@ -20235,6 +20255,7 @@ def _caselib_serialize_result_thin(
         "stage_status": _caselib_load_json(rr.stage_status),
         "kb_status": kb_status,
         "kb_hit_count": kb_hit_count,
+        "kb_used_count": kb_used_count,
         "bg_count": bg_count,
         "quality_score": float(rr.quality_score) if rr.quality_score is not None else None,
         "kb1_eval_score": float(rr.kb1_eval_score) if rr.kb1_eval_score is not None else None,
@@ -20391,10 +20412,20 @@ def _get_daily_validation_stats(db: Session, day_start: datetime, day_end: datet
         ApiAssistInvocation.triggered_at < day_end + timedelta(hours=1)
     ).all()
 
+    # 同一锚点消息可能被多次触发(先 pending 占位、后补打分)，匹配时优先取"已打分"且最新的那次，
+    # 避免命中早先的 pending_no_sales_reply 占位导致 AI 回复/质量分显示为空。
+    def _inv_rank(inv: ApiAssistInvocation) -> tuple:
+        scored = 1 if (inv.quality_status == "scored" or inv.quality_score is not None) else 0
+        return (scored, inv.triggered_at or datetime.min)
+
     inv_map = {}
     for inv in invs:
-        if inv.anchor_message_id is not None:
-            inv_map[(inv.session_id, inv.anchor_message_id)] = inv
+        if inv.anchor_message_id is None:
+            continue
+        key = (inv.session_id, inv.anchor_message_id)
+        existing = inv_map.get(key)
+        if existing is None or _inv_rank(inv) >= _inv_rank(existing):
+            inv_map[key] = inv
 
     results_count = 0
     valid_scores = []
@@ -20489,7 +20520,8 @@ async def caselib_list_iterations(limit: int = Query(default=50, ge=1, le=500)):
         curr = start_date
         while curr <= today:
             date_str = curr.isoformat()
-            day_start = datetime(curr.year, curr.month, curr.day)
+            # 与明细页一致：按中国本地自然日取数，UTC 区间 = 本地零点减 8 小时(详见 get_daily_validation_detail)
+            day_start = datetime(curr.year, curr.month, curr.day) - timedelta(hours=8)
             day_end = day_start + timedelta(days=1)
 
             count, avg_score, avg_latency = _get_daily_validation_stats(db, day_start, day_end)
@@ -20550,7 +20582,11 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
     except Exception:
         raise HTTPException(status_code=400, detail="invalid date format, use YYYY-MM-DD")
 
-    day_start = datetime(parsed_date.year, parsed_date.month, parsed_date.day)
+    # 企微消息 timestamp 以 UTC 存储、前端按 +8 展示。按"中国本地自然日(00:00-24:00 +08)"取数，
+    # 对应的 UTC 区间是本地零点减 8 小时。若直接用 UTC 自然日做边界，本地 00:00-08:00 的消息会落到
+    # 前一个 UTC 日被漏掉，导致当天首轮客户问被丢、问答无法配对、已触发并打分的 API 结果也匹配不上
+    # (表现为"销售发起 / 当天销售发起 / AI 回复为空")。
+    day_start = datetime(parsed_date.year, parsed_date.month, parsed_date.day) - timedelta(hours=8)
     day_end = day_start + timedelta(days=1)
 
     sales_ids = ["alicehe", "davidXiaoMeiPeng", "HanHan", "joycesheng", "WangHuiYing"]
@@ -20586,10 +20622,20 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
         ApiAssistInvocation.triggered_at < day_end + timedelta(hours=1)
     ).all()
 
+    # 同一锚点消息可能被多次触发(先 pending 占位、后补打分)，匹配时优先取"已打分"且最新的那次，
+    # 避免命中早先的 pending_no_sales_reply 占位导致 AI 回复/质量分显示为空。
+    def _inv_rank(inv: ApiAssistInvocation) -> tuple:
+        scored = 1 if (inv.quality_status == "scored" or inv.quality_score is not None) else 0
+        return (scored, inv.triggered_at or datetime.min)
+
     inv_map = {}
     for inv in invs:
-        if inv.anchor_message_id is not None:
-            inv_map[(inv.session_id, inv.anchor_message_id)] = inv
+        if inv.anchor_message_id is None:
+            continue
+        key = (inv.session_id, inv.anchor_message_id)
+        existing = inv_map.get(key)
+        if existing is None or _inv_rank(inv) >= _inv_rank(existing):
+            inv_map[key] = inv
 
     results = []
     run_id = f"daily_{date.replace('-', '')}"
@@ -20792,11 +20838,19 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
 
             kb_status = ""
             kb_hit_count = 0
+            kb_used_count = None
+            step4_knowledge = None
             if matched_inv and matched_inv.result_payload:
                 kb_status = matched_inv.result_payload.get("knowledge_status") or "done"
                 kv2 = matched_inv.result_payload.get("knowledge_v2")
                 if isinstance(kv2, dict):
-                    kb_hit_count = len(kv2.get("hits") or [])
+                    kb_hit_count, kb_used_count = _caselib_kb_counts(kv2)
+                    kb_hit_count = kb_hit_count or 0
+                    # 下发知识明细给前端 hover 浮层(命中条目 + 未使用原因)
+                    step4_knowledge = {
+                        "knowledge_status": kb_status,
+                        "knowledge_v2": kv2,
+                    }
 
             item = {
                 "result_id": result_id,
@@ -20811,8 +20865,10 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 "step6_sales_advice": matched_inv.result_payload.get("reply_reference") if matched_inv else "",
                 "step7_reply_scores": scores_payload,
                 "stage_status": matched_inv.result_payload.get("stage_status") if matched_inv else {},
+                "step4_knowledge": step4_knowledge,
                 "kb_status": kb_status,
                 "kb_hit_count": kb_hit_count,
+                "kb_used_count": kb_used_count,
                 "bg_count": bg_count,
                 "quality_score": ai_score,
                 "kb1_eval_score": kb1_eval,

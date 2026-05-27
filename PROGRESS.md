@@ -2,15 +2,16 @@
 
 ## 当前状态
 
-- 当前任务：v1.7.164 实时验证背景对齐上线链路(15条) + 当天 API 调用逐节点耗时分析。
-- 当前小点：实时验证(经典案例迭代优化)背景列原本加载触发点之前的全部历史(341/256/267 条不等)，已改为与上线链路 `find_existing_single_session_id(limit=15)` 对齐——只取触发点之前最近 15 条真实消息，bg_count 与浮动浮层同步显示 15；同时完成当天 12 次 API 调用的逐节点耗时拆解，定位瓶颈在私域向量检索(knowledge_v2)。
-- 状态：代码改动已 `py_compile` 通过；后端需重启加载新逻辑。耗时分析见下方表格。
-- 最近更新时间：2026-05-27 10:43:52 +0800
+- 当前任务：v1.7.165 实时验证四项修复/排查(时区配对漏洞 + 知识命中/使用展示 + 评分诊断 + 相似分排查)。
+- 当前小点：(1)修复 daily_validation 用 UTC 自然日做边界导致本地 00:00-08:00 消息被漏、首轮客户问未配对、已打分 API 结果匹配不上的漏洞——窗口改为本地零点减8h；同锚点多次触发时优先取已打分最新一次。(2)知识列改为"命中X条·使用N条"(使用=replyable_hits),浮层列出命中条目+已用/未用标记+(部分/全部)未使用原因。(3)评分诊断:AI质量分(贴合代理分)由 qwen14b 正常算出(=85),原显示"-"是时区配对漏洞所致;原始回复分/Δ在API实时路径未单独算(actual_sales_replies 无逐维分)。(4)相似分已存在=贴合代理分(intent_engine 相似度评分,qwen14b+启发式重合度回退),按要求未开发。
+- 状态：后端 `py_compile`、前端 `node --check` 均通过；后端需重启加载。
+- 最近更新时间：2026-05-27 11:30:00 +0800
 
 ## 最近完成的小点
 
 | 时间 | 任务 | 小点 | 结果 | 验证 |
 |---|---|---|---|---|
+| 2026-05-27 11:30:00 +0800 | v1.7.165 实时验证四项修复/排查 | 时区配对漏洞修复(窗口=本地零点-8h)+同锚点取已打分最新+知识"命中X·使用N"展示+浮层未使用原因+评分/相似分诊断(均 qwen14b,相似分=贴合代理分已存在未开发) | 已完成 | `py_compile` 通过、`node --check` 提取JS通过；DB 核验:会话 wmS8...BwVg 锚点117622(本地03:51=UTC前一日19:51)对应 scored=85 调用因UTC边界被漏,修复后可配对 |
 | 2026-05-27 10:43:52 +0800 | v1.7.164 实时验证背景对齐+耗时分析 | 实时验证背景从加载全量历史改为只取触发点前最近15条(对齐上线 limit=15)；分析当天12次API调用逐节点耗时,瓶颈=knowledge_v2(私域向量检索)avg 4379ms/max 11148ms | 已完成 | `python -m py_compile backend/main.py` 通过；DB 聚合12次调用逐节点:knowledge avg4449/llm1 avg2307/llm2 avg1547/crm 535/conv_input 262/fast_track 7 ms,端到端 avg9783/max21055ms |
 | 2026-05-27 07:29:14 +0800 | 全部任务完成态复核 | 再次确认无未完成任务、`FINAL_REPORT.md` 已存在且本轮将在 DONE 日志后刷新最新 `ALL TASKS COMPLETED` 标记 | 已完成 | 已执行 `git diff --check -- TASKS.md PROGRESS.md TASK_HANDOFF.md FINAL_REPORT.md logs/codex-run.log`、`rg -n "ALL TASKS COMPLETED" logs/codex-run.log` 与首行无 `数字+竖线` 自检；验证通过。 |
 | 2026-05-27 07:24:13 +0800 | 全部任务完成态复核 | 再次确认无未完成任务、`FINAL_REPORT.md` 已存在且本轮将在 DONE 日志后刷新最新 `ALL TASKS COMPLETED` 标记 | 已完成 | 已执行 `git diff --check -- TASKS.md PROGRESS.md TASK_HANDOFF.md FINAL_REPORT.md logs/codex-run.log`、`rg -n "ALL TASKS COMPLETED" logs/codex-run.log` 与首行无 `数字+竖线` 自检；验证通过。 |

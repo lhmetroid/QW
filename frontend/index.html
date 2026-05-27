@@ -4474,15 +4474,29 @@ Alex</textarea>
                     ? `onclick="event.stopPropagation();caselibOpenStepModal('${r.result_id}','${step}')"` : '';
                 const bgCount = (r.bg_count != null) ? r.bg_count : ((c.context_messages || []).length);
                 const crmLabel = crmShortLabel(r);
-                const kbHitCount = (r.kb_hit_count != null) ? r.kb_hit_count : (() => {
+                const _kv2ForCount = (() => {
                     const s4 = tipParse(r.step4_knowledge);
-                    const kv2 = s4 ? tipParse(s4.knowledge_v2) : null;
+                    return s4 ? tipParse(s4.knowledge_v2) : null;
+                })();
+                const kbHitCount = (r.kb_hit_count != null) ? r.kb_hit_count : (() => {
+                    const kv2 = _kv2ForCount;
                     if (!kv2) return null;
                     if (Array.isArray(kv2.hits)) return kv2.hits.length;
                     if (Array.isArray(kv2.evidence_refs)) return kv2.evidence_refs.length;
                     return null;
                 })();
-                const kbCellText = (escapeHtml(kbLabel) || '—') + (kbHitCount != null ? ` <span class="text-slate-400">·命中${kbHitCount}</span>` : '');
+                // 使用条数 = 真正进入回复生成的命中(replyable_hits)；其余仅人工参考不计入
+                const kbUsedCount = (r.kb_used_count != null) ? r.kb_used_count : (() => {
+                    const kv2 = _kv2ForCount;
+                    if (!kv2) return null;
+                    if (Array.isArray(kv2.replyable_hits)) return kv2.replyable_hits.length;
+                    if (Array.isArray(kv2.hits)) return kv2.hits.filter(h => h && h.usable_for_reply && h.allowed_for_generation).length;
+                    return null;
+                })();
+                // 命中即用"命中X条·使用N条"展示；命中0/无数据时回退状态标签
+                const kbCellText = (kbHitCount != null && kbHitCount > 0)
+                    ? `命中${kbHitCount}条<span class="text-slate-400">·使用${kbUsedCount != null ? kbUsedCount : 0}条</span>`
+                    : ((escapeHtml(kbLabel) || '—') + (kbHitCount != null ? ` <span class="text-slate-400">·命中${kbHitCount}</span>` : ''));
 
                 let trCls = 'hover:bg-purple-50';
                 if (isDaily && f.sort === 'customer_time' && r.quality_score != null) {
@@ -4564,7 +4578,7 @@ Alex</textarea>
             } else { lines.push('（无特征提取数据）'); }
             return lines.join('\n');
         }
-        // 第4步列 tooltip：知识库（当前）
+        // 第4步列 tooltip：知识库（当前）—— 命中X条详情 + (部分/全部)未使用原因
         function caselibTipKnowledge(r) {
             const lines = ['【知识库（当前）】'];
             const s4 = caselibTipParse(r.step4_knowledge);
@@ -4572,16 +4586,25 @@ Alex</textarea>
             if (!kv2) { lines.push('（无知识库数据）'); return lines.join('\n'); }
             if (kv2.query_text) lines.push('检索问题：' + kv2.query_text);
             if (kv2.retrieval_quality != null) lines.push('检索质量：' + kv2.retrieval_quality);
-            const refs = kv2.evidence_refs || [];
-            if (refs.length) {
-                lines.push('知识证据（' + refs.length + ' 条）：');
-                refs.forEach((ref, i) => {
-                    lines.push('  ' + (i+1) + '. ' + (ref.title || ''));
-                    if (ref.snippet) lines.push('     ' + ref.snippet);
-                });
+            // 命中条目(用 hits 带 usable_for_reply 标记，回退 evidence_refs)
+            const hits = Array.isArray(kv2.hits) && kv2.hits.length ? kv2.hits : (kv2.evidence_refs || []);
+            const replyable = Array.isArray(kv2.replyable_hits) ? kv2.replyable_hits.length : null;
+            const isUsed = (h) => (h && h.usable_for_reply && h.allowed_for_generation);
+            const usedCount = (replyable != null) ? replyable : hits.filter(isUsed).length;
+            const hitCount = hits.length;
+            lines.push(`命中 ${hitCount} 条，使用 ${usedCount} 条：`);
+            hits.forEach((h, i) => {
+                const used = (h.usable_for_reply !== undefined) ? isUsed(h) : (i < usedCount);
+                const sc = (h.score != null) ? `（相似度${(Number(h.score) <= 1 ? Number(h.score) * 100 : Number(h.score)).toFixed(1)}）` : '';
+                lines.push('  ' + (i+1) + '. ' + (used ? '[已用] ' : '[未用] ') + (h.title || '') + sc);
+                if (h.snippet) lines.push('       ' + h.snippet);
+            });
+            // (部分/全部)未使用原因：全部使用则不显示该段
+            if (hitCount > 0 && usedCount < hitCount) {
+                const scope = (usedCount === 0) ? '全部未使用' : `部分未使用（${hitCount - usedCount} 条）`;
+                let reason = kv2.no_hit_reason || '命中知识仅适合人工参考，未达自动回复可用标准（usable_for_reply/allowed_for_generation 未满足）';
+                lines.push(`未使用原因（${scope}）：${reason}`);
             }
-            if (kv2.no_hit_reason) lines.push('无命中：' + kv2.no_hit_reason);
-            if (kv2.manual_review_required) lines.push('⚠ 知识命中需人工复核，话术需保守使用');
             return lines.join('\n');
         }
         // 背景列 tooltip：触发点之前的背景对话
