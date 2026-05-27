@@ -2,7 +2,11 @@
 
 ## 当前状态
 
-- 当前任务：v1.7.168 训练AI质量分(独立7维打分)补完——与AI质量分同模型同维度,同一次评分并出,分离不污染AI质量分。
+- 当前任务：v1.7.169 修正训练AI质量分放错位置——生产API enable_scoring=False(回复早出),评分本就后移到事后线;训练AI评分同样移到事后 _refresh_api_invocation_quality 补算。
+- 当前小点：用户指出生产API评分是事后独立线程算(为让AI回复文本早显示),而我把训练AI评分放在生成函数 if enable_scoring 下(生产为False不执行)。已修:新增 _score_training_ai_reply,在事后 _refresh_api_invocation_quality 用第3个并发future给训练AI回复打7维分(同qwen14b),回写 result_payload.training_ai.quality_score;sidebar非流式路径补 summary.training_ai 与 result.training_ai 落库。生成函数内的inline评分保留(仅案例库评测enable_scoring=True用,事后有quality_score则跳过)。核实生产走非流式(近10天2423条全有reply_style_results_v2)。
+- 状态：`py_compile` 通过;后端需重启。
+- 最近更新时间：2026-05-27 16:30:00 +0800
+- 历史小点（v1.7.168）：训练AI质量分(独立7维打分)补完。
 - 当前小点：训练AI回复在生成阶段与AI候选同一次 LLM-1(qwen14b) 评分中打 7 维分(纯文本包成【企微回复参考】避免被截首行),打完从 ai_candidates 分离写入 training_ai.quality_score/scores,best_ai_candidate_id 重算,确保不污染 AI 质量分取值。实时验证明细 training_ai_score 落到第二行"训练ai：分",带 7 维悬停明细;超时/失败显"失败"。
 - 状态：后端 `py_compile`、前端 `node --check` 通过;后端需重启加载。历史调用需重新生成才有训练AI分。
 - 最近更新时间：2026-05-27 15:00:00 +0800
@@ -19,6 +23,7 @@
 
 | 时间 | 任务 | 小点 | 结果 | 验证 |
 |---|---|---|---|---|
+| 2026-05-27 16:30:00 +0800 | v1.7.169 训练AI评分移到事后线 | 生产API评分本就后移(回复早出),训练AI评分同移到事后_refresh_api_invocation_quality(第3并发future);sidebar非流式补summary.training_ai+result.training_ai落库 | 已完成 | `py_compile`通过;DB核实生产非流式(2423条全有reply_style_results_v2) |
 | 2026-05-27 15:00:00 +0800 | v1.7.168 训练AI质量分补完 | 训练AI回复与AI候选同一次qwen14b评分打7维分,分离写入training_ai.quality_score不污染AI质量分,第二行展示+7维悬停 | 已完成 | `py_compile`+`node --check`通过 |
 | 2026-05-27 14:00:00 +0800 | v1.7.167 训练AI第二途径接入 | model-chat 途径并行触发(10s超时/记费时/无值显调用失败)+模型下拉(默认task-45)+result_payload.training_ai字段+第6步与质量分共用列双行显示+知识使用标记来源说明(纯规则代码) | 已完成 | `py_compile`+`node --check`通过;model-chat 实测34模型/task-45在列/chat约8.26s;训练AI独立打分按要求后续完成 |
 | 2026-05-27 12:30:00 +0800 | v1.7.166 评分拆分+相似分独立列 | AI质量分(7维绝对)/原始回复分(同模型7维)/Δ(代码)/相似分(贴合代理分独立列)四者拆清;事后并发算原始回复分+相似分不影响生成速度;相似分去启发式兜底,失败显"调用模型失败";知识"使用"大白话说明 | 已完成 | `py_compile`+`node --check` 通过;reply_scores_v2 已有 ai_candidates overall=90(AI质量分),相似分=85 分离正确 |

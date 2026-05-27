@@ -13637,6 +13637,44 @@ def _build_api_similarity_payload(
     best_score = similarity.get("best_score")
     return similarity, _decimal_score(best_score) if best_score is not None else None, similarity.get("status") or "scored"
 
+def _score_training_ai_reply(payload: dict, summary_json: dict) -> dict | None:
+    """事后给训练AI回复打 7 维质量分(与 AI 质量分同模型 qwen14b/LLM-1)。
+    生产 API 路径生成时 enable_scoring=False(为了让 AI 回复尽早返回)，故训练AI分也在事后这条线补算。"""
+    ta = payload.get("training_ai")
+    if not isinstance(ta, dict):
+        return None
+    reply = str(ta.get("reply") or "").strip()
+    if not reply:
+        return None
+    scored = IntentEngine.score_reply_candidates(
+        summary_json=summary_json,
+        knowledge_payload=payload.get("knowledge_v2") if isinstance(payload.get("knowledge_v2"), dict) else {},
+        crm_context=payload.get("crm_info") if isinstance(payload.get("crm_info"), dict) else None,
+        candidates=[{
+            "candidate_id": "train_ai__knowledge_v2",
+            "model_slot": "train_ai",
+            "model_label": "训练AI",
+            "model_display_name": ta.get("model") or "训练AI",
+            "knowledge_source": "knowledge_v2",
+            "knowledge_source_label": "知识库1",
+            "style_id": "",
+            "style_title": "",
+            "status": "done",
+            # 纯文本包成【企微回复参考】，避免被 extract 截成首行
+            "content": "【企微回复参考】\n" + reply,
+        }],
+        actual_sales_replies=[],
+    )
+    cands = (scored or {}).get("ai_candidates") or []
+    if not cands:
+        return None
+    entry = cands[0]
+    ov = entry.get("overall_score")
+    if ov is None and isinstance(entry.get("scores"), dict):
+        ov = entry["scores"].get("overall")
+    return {"quality_score": ov, "scores": entry.get("scores"), "score_reason": entry.get("score_reason")}
+
+
 def _refresh_api_invocation_quality(
     db: Session,
     item: ApiAssistInvocation,
@@ -13661,7 +13699,14 @@ def _refresh_api_invocation_quality(
     }
     # 收到我方连续回复后才触发，属于事后评分，不在生成链路上 -> 不影响回复输出速度。
     # 相似分(贴合代理分) 与 原始回复维度分(与 AI 质量分同一模型 qwen14b/LLM-1) 并发执行，缩短事后评分总耗时。
-    with ThreadPoolExecutor(max_workers=2) as _ex:
+    # 是否需要事后补训练AI质量分(生成时未打、且确有训练AI回复)
+    _ta = payload.get("training_ai")
+    need_train_ai_score = (
+        isinstance(_ta, dict)
+        and str(_ta.get("reply") or "").strip()
+        and _ta.get("quality_score") is None
+    )
+    with ThreadPoolExecutor(max_workers=3) as _ex:
         fut_similarity = _ex.submit(
             _build_api_similarity_payload,
             result_payload=payload,
@@ -13677,12 +13722,20 @@ def _refresh_api_invocation_quality(
             candidates=payload.get("reply_style_results_v2") if isinstance(payload.get("reply_style_results_v2"), list) else [],
             actual_sales_replies=actual_sales_replies,
         )
+        fut_train_ai = _ex.submit(_score_training_ai_reply, payload, summary_json) if need_train_ai_score else None
         similarity_payload, best_score, quality_status = fut_similarity.result()
         refreshed_scores = fut_scores.result()
+        train_ai_score = fut_train_ai.result() if fut_train_ai is not None else None
 
     # 回写 reply_scores_v2：此时 actual_sales_replies 已可逐维打分 -> 原始回复分可用
     if isinstance(refreshed_scores, dict):
         payload["reply_scores_v2"] = _jsonable(refreshed_scores)
+        item.result_payload = _jsonable(payload)
+    # 回写训练AI质量分(与 AI 质量分同模型同维度，事后补算)
+    if isinstance(train_ai_score, dict) and isinstance(payload.get("training_ai"), dict):
+        payload["training_ai"]["quality_score"] = train_ai_score.get("quality_score")
+        payload["training_ai"]["scores"] = train_ai_score.get("scores")
+        payload["training_ai"]["score_reason"] = train_ai_score.get("score_reason")
         item.result_payload = _jsonable(payload)
 
     item.actual_sales_replies = _jsonable(actual_sales_replies)
@@ -17892,6 +17945,7 @@ async def sidebar_assist(
             )
             summary.reply_style_results_v2 = generation_bundle.get("candidates")
             summary.reply_scores_v2 = generation_bundle.get("reply_scores")
+            summary.training_ai = generation_bundle.get("training_ai")
             summary.sales_advice_v2 = primary_candidate.get("content") if primary_candidate else None
             summary.sales_advice_compare_v2 = compare_candidate.get("content") if compare_candidate else None
             summary.sales_advice_compare_prompt_trace_v2 = (compare_candidate or first_compare_entry or {}).get("prompt_trace")
@@ -17981,6 +18035,11 @@ async def sidebar_assist(
                 result["llm1_compare_summary"] = summary.llm1_compare_summary
             if summary.llm1_compare_prompt_trace is not None:
                 result["llm1_compare_prompt_trace"] = summary.llm1_compare_prompt_trace
+            # 训练AI(另一条 model-chat 途径)并行结果。字段(英文/中文)：
+            # reply=训练AI回复; status=状态(success/timeout/failed/disabled); latency_ms=实际费时(ms);
+            # model=模型; error=失败原因; quality_score/scores/score_reason=事后7维质量分(同AI质量分模型)。
+            if summary.training_ai:
+                result["training_ai"] = summary.training_ai
             if summary.sales_advice_v2:
                 result["has_v2"] = True
                 _apply_sales_advice_output_fields(result, summary.sales_advice_v2)
