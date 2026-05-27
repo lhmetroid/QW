@@ -120,6 +120,54 @@ SIDEBAR_ASSIST_ACTIVE_FUTURES: dict[str, Future] = {}
 SIDEBAR_ASSIST_ACTIVE_LOCK = threading.Lock()
 SIDEBAR_ASSIST_RESULT_CACHE: dict[str, dict[str, Any]] = {}
 SIDEBAR_ASSIST_CACHE_LOCK = threading.Lock()
+
+# 内容级强缓存：按 session_id 和最近消息的文本内容指纹缓存，避免无文字变化时的重跑
+SIDEBAR_CONTENT_RESULT_CACHE: dict[str, dict[str, Any]] = {}
+SIDEBAR_CONTENT_CACHE_LOCK = threading.Lock()
+
+def _get_cached_sidebar_content_result(session_id: str, recent_logs: list[MessageLog], force_refresh: bool) -> dict | None:
+    now_epoch = datetime.utcnow().timestamp()
+    parts = []
+    for m in recent_logs:
+        parts.append(f"{m.sender_type or ''}:{m.content or ''}")
+    content_str = "||".join(parts)
+    content_hash = hashlib.md5(content_str.encode("utf-8")).hexdigest()
+    content_key = f"content_key::{session_id}::{content_hash}"
+    
+    with SIDEBAR_CONTENT_CACHE_LOCK:
+        cached = SIDEBAR_CONTENT_RESULT_CACHE.get(content_key)
+        if not cached:
+            return None
+        cached_at_epoch = float(cached.get("cached_at_epoch") or 0)
+        # force_refresh=True 时仅在 60 秒内复用（用于拦截网络重试与手速狂点）
+        # force_refresh=False 时可在 600 秒（10分钟）内复用
+        max_ttl = 60 if force_refresh else 600
+        if now_epoch - cached_at_epoch > max_ttl:
+            SIDEBAR_CONTENT_RESULT_CACHE.pop(content_key, None)
+            return None
+        return dict(cached.get("payload") or {})
+
+def _remember_sidebar_content_result(session_id: str, recent_logs: list[MessageLog], payload: dict) -> None:
+    now_epoch = datetime.utcnow().timestamp()
+    parts = []
+    for m in recent_logs:
+        parts.append(f"{m.sender_type or ''}:{m.content or ''}")
+    content_str = "||".join(parts)
+    content_hash = hashlib.md5(content_str.encode("utf-8")).hexdigest()
+    content_key = f"content_key::{session_id}::{content_hash}"
+    
+    with SIDEBAR_CONTENT_CACHE_LOCK:
+        expired_keys = [
+            k
+            for k, v in SIDEBAR_CONTENT_RESULT_CACHE.items()
+            if now_epoch - float(v.get("cached_at_epoch") or 0) > 600
+        ]
+        for ek in expired_keys:
+            SIDEBAR_CONTENT_RESULT_CACHE.pop(ek, None)
+        SIDEBAR_CONTENT_RESULT_CACHE[content_key] = {
+            "cached_at_epoch": now_epoch,
+            "payload": payload
+        }
 POSITIVE_FEEDBACK_STATUSES = {"useful", "adopted", "won", "advanced"}
 NEGATIVE_FEEDBACK_STATUSES = {"needs_fix", "rejected"}
 TRAINING_SAMPLE_TYPES = {"embedding_corpus", "reply_fragment_sft", "thread_reply_sft", "retrieval_pair"}
@@ -674,8 +722,11 @@ async def startup_event():
         logger.warning("企微会话存档自动轮询已请求但配置不完整，跳过启动: %s", archive_status["missing"])
         return
 
-    from kb_evaluation_worker import start_kb_evaluation_thread
-    start_kb_evaluation_thread()
+    # 2026-05-27：暂停知识库评分后台守护线程(kb_evaluation_worker)。
+    # 它每 60 秒扫未打分记录并调 LLM-1(qwen14b) 打分，会与线上 API 的评分抢同一端点占资源。
+    # 恢复请取消下面两行注释。
+    # from kb_evaluation_worker import start_kb_evaluation_thread
+    # start_kb_evaluation_thread()
 
     logger.info("启动企微会话存档 15 分钟异步轮询任务")
     async def background_poll_worker():
@@ -10803,14 +10854,56 @@ async def get_train_ai_models():
         }
 
 
+def _update_env_file_variable(key: str, value: str) -> bool:
+    import os
+    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    if not os.path.exists(env_path):
+        env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".env"))
+    if not os.path.exists(env_path):
+        return False
+    try:
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        
+        found = False
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith(f"{key}=") or stripped.replace(" ", "").startswith(f"{key}="):
+                ending = "\r\n" if line.endswith("\r\n") else "\n"
+                new_lines.append(f"{key}={value}{ending}")
+                found = True
+            else:
+                new_lines.append(line)
+        
+        if not found:
+            ending = "\r\n" if (new_lines and new_lines[-1].endswith("\r\n")) else "\n"
+            if new_lines and not new_lines[-1].endswith(ending):
+                new_lines.append(ending)
+            new_lines.append(f"{key}={value}{ending}")
+            
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+        return True
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to update {key} in env: {e}")
+        return False
+
+
 @app.post("/api/train_ai/config")
 async def set_train_ai_config(payload: dict = Body(...)):
-    """切换训练AI 当前使用的模型(进程内即时生效)。永久默认请改 .env 的 TRAIN_AI_MODEL。"""
+    """切换训练AI 当前使用的模型(进程内与永久即时生效)。"""
     model = str((payload or {}).get("model") or "").strip()
     if not model:
         raise HTTPException(status_code=400, detail="model 不能为空")
     _TRAIN_AI_RUNTIME["model"] = model
-    return {"status": "success", "current_model": _train_ai_config()["model"]}
+    persisted = _update_env_file_variable("TRAIN_AI_MODEL", model)
+    return {
+        "status": "success",
+        "current_model": _train_ai_config()["model"],
+        "persisted": persisted
+    }
 
 @app.get("/api/system/public_endpoints")
 async def get_public_endpoints():
@@ -17554,6 +17647,14 @@ async def sidebar_assist(
         stage_started = perf_counter()
         all_messages = _load_session_messages(db, session_id) if session_id else []
         mark_timing("load_all_messages_ms", stage_started)
+
+        # 严格截断未来销售回复，防止泄露
+        anchor_message = _find_latest_customer_anchor(all_messages)
+        if anchor_message:
+            visible_messages = _visible_messages_until_anchor(all_messages, anchor_message.id)
+            recent_logs = list(reversed(visible_messages[-10:]))
+        else:
+            recent_logs = []
         _set_node_timing(
             stage_status,
             "conversation_input",
@@ -17570,6 +17671,35 @@ async def sidebar_assist(
             messages=all_messages,
             force_refresh=bool(request.force_refresh),
         )
+
+        # 只要没有内容变化就不应该重跑，而是直接回复原答案 (内容级指纹强缓存)
+        if not stream and session_id and recent_logs:
+            content_cached = _get_cached_sidebar_content_result(
+                session_id=session_id,
+                recent_logs=recent_logs,
+                force_refresh=bool(request.force_refresh)
+            )
+            if content_cached:
+                content_cached = _decorate_sidebar_assist_result(
+                    content_cached,
+                    status="reused_content_fingerprint_cache",
+                    reason="上下文文字内容无变化，强制复用最近一次生成结果（防并发与重复触发）",
+                    request_key=dedupe_request_key,
+                )
+                timings_ms["total_ms"] = round((perf_counter() - total_started) * 1000, 2)
+                log_sidebar_result("REUSED_CONTENT", {
+                    "external_userid": external_userid,
+                    "sales_userid": sales_userid,
+                    "session_id": session_id,
+                    "requested_session_id": requested_session_id,
+                    "dedupe_status": "reused_content_fingerprint_cache",
+                    "dedupe_reason": "same_content_text_cache",
+                    "latest_dialog_count": len(recent_logs),
+                    "request_key": dedupe_request_key,
+                    "timings_ms": timings_ms,
+                })
+                db.close()
+                return content_cached
         if not stream and not request.force_refresh:
             cached_result = _get_cached_sidebar_assist_result(dedupe_request_key)
             if cached_result:
@@ -17653,7 +17783,8 @@ async def sidebar_assist(
             if recent_logs:
                 context = [{"content": l.content, "sender_type": l.sender_type} for l in reversed(recent_logs)]
                 stage_started = perf_counter()
-                summary_payload = IntentEngine._run_llm1(session_id, context)
+                # 重活挪出事件循环(线程池),避免阻塞其它销售/同客户的并发请求
+                summary_payload = await asyncio.to_thread(IntentEngine._run_llm1, session_id, context)
                 mark_timing("llm1_analyze_ms", stage_started)
                 _set_node_timing(
                     stage_status,
@@ -17714,7 +17845,7 @@ async def sidebar_assist(
             }
             # CRM 画像按外部联系人 ID 查询，不使用组合会话 ID
             stage_started = perf_counter()
-            crm_context = IntentEngine.get_crm_context(external_userid)
+            crm_context = await asyncio.to_thread(IntentEngine.get_crm_context, external_userid)
             mark_timing("crm_profile_ms", stage_started)
             _set_node_timing(
                 stage_status,
@@ -17752,19 +17883,21 @@ async def sidebar_assist(
                 thread_fact_payload = _thread_fact_to_dict(thread_fact)
                 query_features = IntentEngine.infer_query_features(summary_json, crm_context, thread_fact_payload)
                 retrieval_query = IntentEngine.build_retrieval_query(summary_json, thread_fact_payload)
-                knowledge_v2 = IntentEngine.retrieve_knowledge_v2(
-                    retrieval_query,
-                    query_features=query_features,
-                    top_k=5,
-                    request_id=f"sidebar_{uuid.uuid4().hex[:12]}",
-                    session_id=session_id,
+                knowledge_v2 = await asyncio.to_thread(
+                    lambda: IntentEngine.retrieve_knowledge_v2(
+                        retrieval_query,
+                        query_features=query_features,
+                        top_k=5,
+                        request_id=f"sidebar_{uuid.uuid4().hex[:12]}",
+                        session_id=session_id,
+                    )
                 )
                 knowledge_v2["thread_business_fact"] = thread_fact_payload
                 knowledge_base = knowledge_v2
                 knowledge_parts_ms["knowledge_v2_ms"] = round((perf_counter() - stage_started) * 1000, 2)
                 if api_kb2_enabled:
                     stage_started = perf_counter()
-                    external_knowledge = _search_sales_kb_api(retrieval_query, top_k=5)
+                    external_knowledge = await asyncio.to_thread(_search_sales_kb_api, retrieval_query, top_k=5)
                     knowledge_parts_ms["knowledge_external_api_ms"] = round((perf_counter() - stage_started) * 1000, 2)
                 else:
                     external_knowledge = {"status": "skipped_kb2_disabled", "hits": []}
@@ -17777,7 +17910,7 @@ async def sidebar_assist(
                 knowledge_status = "skipped_no_core_demand"
                 if api_kb2_enabled:
                     stage_started = perf_counter()
-                    external_knowledge = _search_sales_kb_api(None, top_k=5)
+                    external_knowledge = await asyncio.to_thread(_search_sales_kb_api, None, top_k=5)
                     knowledge_parts_ms["knowledge_external_api_ms"] = round((perf_counter() - stage_started) * 1000, 2)
                 else:
                     external_knowledge = {"status": "skipped_kb2_disabled", "hits": []}
@@ -18036,16 +18169,18 @@ async def sidebar_assist(
             _eval_full = bool(request.evaluation_full_pipeline)
             _eval_single = bool(request.eval_single_version)
             _eval_skip_scoring = bool(request.eval_skip_scoring)
-            generation_bundle = _generate_reply_style_candidates(
-                summary_json=summary_json,
-                knowledge=knowledge_v2,
-                knowledge_compare=external_knowledge,
-                crm_context=crm_context,
-                actual_sales_replies=[],
-                runtime_key=session_id,
-                single_model_single_style=True if (not _eval_full or _eval_single) else False,
-                enable_scoring=(_eval_full and not _eval_skip_scoring),
-                kb2_enabled=api_kb2_enabled,
+            generation_bundle = await asyncio.to_thread(
+                lambda: _generate_reply_style_candidates(
+                    summary_json=summary_json,
+                    knowledge=knowledge_v2,
+                    knowledge_compare=external_knowledge,
+                    crm_context=crm_context,
+                    actual_sales_replies=[],
+                    runtime_key=session_id,
+                    single_model_single_style=True if (not _eval_full or _eval_single) else False,
+                    enable_scoring=(_eval_full and not _eval_skip_scoring),
+                    kb2_enabled=api_kb2_enabled,
+                )
             )
             mark_timing("llm2_generate_ms", stage_started)
             primary_candidate = generation_bundle.get("primary_candidate")
@@ -18180,12 +18315,14 @@ async def sidebar_assist(
                     }
                     query_features = IntentEngine.infer_query_features(summary_payload, crm_context, thread_fact_payload)
                     retrieval_query = IntentEngine.build_retrieval_query(summary_payload, thread_fact_payload)
-                    knowledge_v2 = IntentEngine.retrieve_knowledge_v2(
-                        retrieval_query,
-                        query_features=query_features,
-                        top_k=5,
-                        request_id=f"sidebar_cache_{uuid.uuid4().hex[:12]}",
-                        session_id=session_id,
+                    knowledge_v2 = await asyncio.to_thread(
+                        lambda: IntentEngine.retrieve_knowledge_v2(
+                            retrieval_query,
+                            query_features=query_features,
+                            top_k=5,
+                            request_id=f"sidebar_cache_{uuid.uuid4().hex[:12]}",
+                            session_id=session_id,
+                        )
                     )
                     knowledge_v2["thread_business_fact"] = thread_fact_payload
                     result["knowledge_v2"] = knowledge_v2
@@ -18223,7 +18360,7 @@ async def sidebar_assist(
             # 始终回传 CRM 画像供前端显示
             if crm_context is None:
                 stage_started = perf_counter()
-                crm_context = IntentEngine.get_crm_context(external_userid)
+                crm_context = await asyncio.to_thread(IntentEngine.get_crm_context, external_userid)
                 mark_timing("crm_profile_ms", stage_started)
                 _set_node_timing(
                     stage_status,
@@ -18256,7 +18393,7 @@ async def sidebar_assist(
         else:
             if crm_context is None:
                 stage_started = perf_counter()
-                crm_context = IntentEngine.get_crm_context(external_userid)
+                crm_context = await asyncio.to_thread(IntentEngine.get_crm_context, external_userid)
                 mark_timing("crm_profile_ms", stage_started)
                 _set_node_timing(
                     stage_status,
@@ -18275,7 +18412,8 @@ async def sidebar_assist(
         result["timings_ms"] = timings_ms
         result["node_timings_ms"] = _extract_node_timings(stage_status)
         result = _sanitize_api_sidebar_result_payload(_jsonable(result))
-        api_invocation = _store_api_assist_invocation(
+        api_invocation = await asyncio.to_thread(
+            _store_api_assist_invocation,
             db,
             result_payload=result,
             session_id=session_id,
@@ -18322,6 +18460,8 @@ async def sidebar_assist(
             )
         if dedupe_request_key:
             _remember_sidebar_assist_result(dedupe_request_key, final_result)
+        if session_id and recent_logs:
+            _remember_sidebar_content_result(session_id, recent_logs, final_result)
         if dedupe_request_key and dedupe_future_owner and dedupe_future:
             _resolve_sidebar_assist_future(dedupe_request_key, dedupe_future, result=final_result)
         return final_result

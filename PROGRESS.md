@@ -1,14 +1,14 @@
 # PROGRESS
 
-## 服务端更新清单（本会话 v1.7.164~174）
+## 服务端更新清单（本会话 v1.7.164~175）
 
 **已入库代码（服务器 git pull 即可）：**
-- `backend/main.py`（时区配对修复、盲评对、训练AI接入、评分异步、流式停用、新增 /api/train_ai/models|config 端点）
+- `backend/main.py`（时区配对修复、盲评对、训练AI接入、评分异步、流式停用、新增 /api/train_ai/models|config 端点、增加训练AI模型持久化写入 .env 支持）
 - `backend/intent_engine.py`（相似分去启发式兜底，失败显调用失败）
 - `backend/config.py`（TRAIN_AI_* 默认配置项）
 - `backend/database.py`（IntentSummary 新增 training_ai 列）
 - `backend/ai_settings.json`（API_KB2_ENABLED=false）
-- `frontend/index.html`（背景15条、知识命中/使用、相似分独立列、训练AI双行、训练AI模型下拉）
+- `frontend/index.html`（背景15条、知识命中/使用、相似分独立列、训练AI双行、训练AI模型下拉、训练AI模型保存按钮及 leave 自动保存）
 
 **需在服务器手工处理（gitignore，不入库）：**
 - `.env`：新增 `TRAIN_AI_ENABLED/TRAIN_AI_BASE_URL/TRAIN_AI_API_KEY/TRAIN_AI_MODEL/TRAIN_AI_TIMEOUT_SECONDS/TRAIN_AI_MAX_TOKENS`（含密钥 sk-3e51...）
@@ -20,7 +20,10 @@
 
 ## 当前状态
 
-- 当前任务：v1.7.174 已完成。本会话(v1.7.164~174)交付:实时验证时区配对修复+评分体系拆分(AI质量分/原始回复分/Δ/相似分)+训练AI第二途径接入+微信侧边栏盲评对+流式停用+KB2禁用。提速方案用户已自测,暂忽略。服务端更新清单见文首。
+- 当前任务：v1.7.175 并发提速——停用kb评分后台线程 + sidebar_assist 重活挪出事件循环。
+- 当前小点：(1)注释 startup 里 start_kb_evaluation_thread()(每60s扫记录调qwen14b打分,与线上抢LLM端点)。(2)并发根因=async接口里同步跑llm1/crm/知识/生成阻塞事件循环致请求串行;按方案A意图(更低风险方式)把重活用 await asyncio.to_thread() 挪出事件循环:_run_llm1/get_crm_context(3处)/retrieve_knowledge_v2(2处)/_search_sales_kb_api(2处)/_generate_reply_style_candidates/_store_api_assist_invocation。事件循环不再被堵,不同销售/同客户连发可真正并行(默认线程池~32)。未做"整段抽单函数"因700行热路径一次性抽取风险过高,逐调用offload效果等价、风险小得多。
+- 状态：`py_compile` 通过(await 均在 async 上下文);后端需重启。
+- 历史交付：本会话(v1.7.164~174)=实时验证时区配对修复+评分体系拆分(AI质量分/原始回复分/Δ/相似分)+训练AI第二途径接入+微信侧边栏盲评对+流式停用+KB2禁用。服务端更新清单见文首。
 - 当前小点：API_KB2_ENABLED 读自 backend/ai_settings.json(被 ai_settings.local.json 覆盖,与 .env 无关)。本机 local 早已 false,但入库 base 仍 true(生产可能仍启用);已把 base ai_settings.json 改 false 确保生产禁用。禁用后 ai 流程省 1 次外部KB调用+1次LLM2生成。
 - 历史小点（v1.7.173）：流式停用 + 修请求线程内同步评分回归。
 - 当前小点：(1)sidebar_assist 强制 stream=False,流式SSE分支恒不触发(代码保留),不影响整体流程;API说明文档同步标停用。(2)修回归:上轮把评分加进 _store 同步调的 _refresh_api_invocation_quality,导致首次触发(无我方回复)也在请求线程跑LLM-1评分拖慢响应;改为同步_refresh仅做轻量相似分(无回复直接pending不调模型),AI候选分/训练AI分移到响应返回后的异步 _complete_api_reply_scoring_async。(3)核实:生产ai流程内部有KB1/KB2两路分叉(默认API_KB2_ENABLED=true,展示KB1,KB2为第二来源/对比,多1次外部KB调用+1次LLM2生成);llm2_compare对比模型生产未启用(_complete_sidebar_assist_compare_async无调用=死代码)。
@@ -53,6 +56,7 @@
 
 | 时间 | 任务 | 小点 | 结果 | 验证 |
 |---|---|---|---|---|
+| 2026-05-27 18:10:00 +0800 | Task 75 训练AI模型保存与持久化 | 下拉选择后支持持久化写入 .env，失焦（leave）时自动保存，并展示未保存/保存中/已保存状态，提供保存按钮。 | 已完成 | 编译自检通过，写入 .env 有效，前端交互完成。 |
 | 2026-05-27 17:40:00 +0800 | v1.7.170 侧边栏盲评对reply_reference1/2 | 响应随机映射两流程回复(+各路状态),DB/分析台原始不随机;blind_eval_map存库稳定;盲评只在sidebar返回点做(避开被分析视图复用的共用函数) | 已完成 | `py_compile`+逻辑自测(稳定/单边空/无泄漏)通过 |
 | 2026-05-27 16:30:00 +0800 | v1.7.169 训练AI评分移到事后线 | 生产API评分本就后移(回复早出),训练AI评分同移到事后_refresh_api_invocation_quality(第3并发future);sidebar非流式补summary.training_ai+result.training_ai落库 | 已完成 | `py_compile`通过;DB核实生产非流式(2423条全有reply_style_results_v2) |
 | 2026-05-27 15:00:00 +0800 | v1.7.168 训练AI质量分补完 | 训练AI回复与AI候选同一次qwen14b评分打7维分,分离写入training_ai.quality_score不污染AI质量分,第二行展示+7维悬停 | 已完成 | `py_compile`+`node --check`通过 |
