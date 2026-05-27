@@ -2,7 +2,10 @@
 
 ## 当前状态
 
-- 当前任务：v1.7.172 流式响应也输出盲评对——流式 done 帧与非流式一致输出随机 reply_reference1/2(+各路状态)。
+- 当前任务：v1.7.173 流式停用 + 修请求线程内同步评分回归(评分移回异步)。
+- 当前小点：(1)sidebar_assist 强制 stream=False,流式SSE分支恒不触发(代码保留),不影响整体流程;API说明文档同步标停用。(2)修回归:上轮把评分加进 _store 同步调的 _refresh_api_invocation_quality,导致首次触发(无我方回复)也在请求线程跑LLM-1评分拖慢响应;改为同步_refresh仅做轻量相似分(无回复直接pending不调模型),AI候选分/训练AI分移到响应返回后的异步 _complete_api_reply_scoring_async。(3)核实:生产ai流程内部有KB1/KB2两路分叉(默认API_KB2_ENABLED=true,展示KB1,KB2为第二来源/对比,多1次外部KB调用+1次LLM2生成);llm2_compare对比模型生产未启用(_complete_sidebar_assist_compare_async无调用=死代码)。
+- 状态：`py_compile` 通过;后端需重启。
+- 历史小点（v1.7.172）：流式 done 帧也输出盲评对。
 - 当前小点：流式路径并行触发训练AI(复用同一prompt,10s超时),收集后随机映射到 reply_reference1/2,done 帧输出盲评对+_status;训练AI与blind_eval_map落库(_sm.training_ai+_result_doc),事后打分照常。保留 full_content/sales_advice 兼容旧客户端。已明确告知:流式 delta/full_content 仍暴露ai原文,真盲评需用非流式或客户端只读done盲评对。API说明文档已同步更新。
 - 历史小点（v1.7.171）：输出 sidebar_assist API 调用说明(docs/,gitignore 不入库)。
 - 历史小点（v1.7.170）：微信侧边栏盲评对 reply_reference1/2,响应随机映射两流程、DB与分析台原始不随机。

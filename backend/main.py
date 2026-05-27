@@ -13698,15 +13698,11 @@ def _refresh_api_invocation_quality(
         "core_demand": payload.get("core_demand"),
         "status": payload.get("status"),
     }
-    # 收到我方连续回复后才触发，属于事后评分，不在生成链路上 -> 不影响回复输出速度。
-    # 相似分(贴合代理分) 与 原始回复维度分(与 AI 质量分同一模型 qwen14b/LLM-1) 并发执行，缩短事后评分总耗时。
-    # 是否需要事后补训练AI质量分(生成时未打、且确有训练AI回复)
-    _ta = payload.get("training_ai")
-    need_train_ai_score = (
-        isinstance(_ta, dict)
-        and str(_ta.get("reply") or "").strip()
-        and _ta.get("quality_score") is None
-    )
+    # 仅做相似分(轻量,无我方回复时直接 pending,不调模型)。
+    # 重型评分(AI候选7维分 / 原始回复分 / 训练AI分)仅在"已有我方连续回复"时才在此并发补算;
+    # 首次触发(还没有我方回复)时不在请求线程里跑这些 LLM-1 评分 -> 不拖慢 API 响应。
+    # 首次的 AI候选分 / 训练AI分由 _complete_api_reply_scoring_async 在响应返回后异步补。
+    do_reply_scoring = bool(actual_sales_replies)
     with ThreadPoolExecutor(max_workers=3) as _ex:
         fut_similarity = _ex.submit(
             _build_api_similarity_payload,
@@ -13722,10 +13718,15 @@ def _refresh_api_invocation_quality(
             crm_context=payload.get("crm_info") if isinstance(payload.get("crm_info"), dict) else None,
             candidates=payload.get("reply_style_results_v2") if isinstance(payload.get("reply_style_results_v2"), list) else [],
             actual_sales_replies=actual_sales_replies,
+        ) if do_reply_scoring else None
+        _ta = payload.get("training_ai")
+        need_train_ai_score = (
+            do_reply_scoring and isinstance(_ta, dict)
+            and str(_ta.get("reply") or "").strip() and _ta.get("quality_score") is None
         )
         fut_train_ai = _ex.submit(_score_training_ai_reply, payload, summary_json) if need_train_ai_score else None
         similarity_payload, best_score, quality_status = fut_similarity.result()
-        refreshed_scores = fut_scores.result()
+        refreshed_scores = fut_scores.result() if fut_scores is not None else None
         train_ai_score = fut_train_ai.result() if fut_train_ai is not None else None
 
     # 回写 reply_scores_v2：此时 actual_sales_replies 已可逐维打分 -> 原始回复分可用
@@ -14742,6 +14743,18 @@ def _complete_api_reply_scoring_async(
         if api_invocation:
             payload = dict(api_invocation.result_payload or {})
             payload["reply_scores_v2"] = refreshed_scores
+            # 训练AI质量分:同模型(qwen14b)同维度,异步补算(响应已返回,不算请求延迟)
+            ta = payload.get("training_ai")
+            if isinstance(ta, dict) and str(ta.get("reply") or "").strip() and ta.get("quality_score") is None:
+                ta_score = _score_training_ai_reply(payload, summary_json)
+                if isinstance(ta_score, dict):
+                    ta = dict(ta)
+                    ta["quality_score"] = ta_score.get("quality_score")
+                    ta["scores"] = ta_score.get("scores")
+                    ta["score_reason"] = ta_score.get("score_reason")
+                    payload["training_ai"] = ta
+                    if summary:
+                        summary.training_ai = ta
             llm_runtime = dict(payload.get("llm_runtime") or {})
             current_runtime = _llm_runtime_config()
             for key, value in current_runtime.items():
@@ -17464,6 +17477,10 @@ async def sidebar_assist(
 ):
     """供企微原生右侧边栏应用调用的同步直出接口；stream=true 时改为 SSE 流式输出"""
     from time import perf_counter
+
+    # 2026-05-27：流式输出暂停用，统一走非流式盲评直出（reply_reference1/2）。
+    # 不影响整体流程；下方 SSE 流式分支因此恒不触发。恢复流式请删除本行。
+    stream = False
 
     total_started = perf_counter()
     timings_ms = {}
