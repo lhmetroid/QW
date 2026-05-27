@@ -17866,6 +17866,18 @@ async def sidebar_assist(
                     full_content = ""
                     validation   = {}
 
+                    # 训练AI(另一条途径)与流式 LLM-2 并行触发,复用同一份 prompt,自带 10s 超时
+                    _train_future = None
+                    try:
+                        _train_prompt = (_req_spec.get("final_prompt") if isinstance(_req_spec, dict) else "") or ""
+                        if _train_prompt:
+                            _train_future = REPLY_CHAIN_EXECUTOR.submit(
+                                _train_ai_chat, [{"role": "user", "content": _train_prompt}]
+                            )
+                    except Exception as _te:
+                        logger.warning("流式训练AI触发失败: %s", _te)
+                        _train_future = None
+
                     try:
                         for chunk in IntentEngine.generate_sales_assist_stream(
                             _cap["summary_json"],
@@ -17886,6 +17898,31 @@ async def sidebar_assist(
 
                     llm2_elapsed = round((_pc() - llm2_start) * 1000, 2)
 
+                    # 收集训练AI并行结果(超时即空值,记录实际费时)
+                    _training_ai = None
+                    if _train_future is not None:
+                        _tcfg = _train_ai_config()
+                        try:
+                            _training_ai = _train_future.result(timeout=_tcfg["timeout_seconds"] + 1)
+                        except Exception as _texc:
+                            _training_ai = {"reply": "", "status": "timeout", "latency_ms": None,
+                                            "model": _tcfg["model"], "error": sanitize_text(str(_texc))[:200]}
+
+                    # 盲评映射:与非流式一致,随机把 ai/训练AI 回复分到 reply_reference1/2
+                    _blind_map = _build_blind_eval_map()
+                    _blind_texts = {
+                        "ai": (full_content or "").strip(),
+                        "train_ai": str((_training_ai or {}).get("reply") or "").strip(),
+                    }
+                    _blind_status = {
+                        "ai": ("success" if _blind_texts["ai"] else "failed"),
+                        "train_ai": ((_training_ai or {}).get("status") or ("success" if _blind_texts["train_ai"] else "failed")),
+                    }
+                    _ref1 = _blind_texts.get(_blind_map["reference1"], "")
+                    _ref2 = _blind_texts.get(_blind_map["reference2"], "")
+                    _ref1_status = _blind_status.get(_blind_map["reference1"])
+                    _ref2_status = _blind_status.get(_blind_map["reference2"])
+
                     # 保存 LLM-2 结果到数据库
                     _done_ss = {**_cap["stage_status"], "llm2": "done" if full_content else "failed_no_content"}
                     _inv     = None
@@ -17898,6 +17935,7 @@ async def sidebar_assist(
                         if _sm:
                             _sm.sales_advice_v2  = full_content or None
                             _sm.assist_validation = validation or None
+                            _sm.training_ai       = _training_ai
                             _sm.stage_status      = {**dict(_sm.stage_status or {}), **_done_ss}
                             _save_db.commit()
                         _result_doc = _sanitize_api_sidebar_result_payload(_jsonable({
@@ -17910,9 +17948,13 @@ async def sidebar_assist(
                             "has_v2": bool(full_content),
                             "has_v2_compare": False,
                             "fast_track": _cap["fast_track_signals"],
+                            "reply_reference": full_content,
                             "sales_advice":    full_content,
                             "sales_advice_v2": full_content,
                             "assist_validation": validation,
+                            # 训练AI结果与盲评映射一并落库(原始一一对应,供事后打分与揭盲;分析台读原始)
+                            "training_ai": _training_ai,
+                            "blind_eval_map": _blind_map,
                             "stage_status": _done_ss,
                             "timings_ms": {
                                 **_cap["timings_ms"],
@@ -17942,10 +17984,16 @@ async def sidebar_assist(
                     finally:
                         _save_db.close()
 
-                    # 最终帧：完整文本 + 元数据
+                    # 最终帧：盲评对(与非流式一致) + 元数据
                     yield _sse("done", {
                         "stage": "done",
                         "has_v2": bool(full_content),
+                        # 盲评:随机映射两条流程回复(+各路状态),调用端用这两个字段
+                        "reply_reference1": _ref1,
+                        "reply_reference2": _ref2,
+                        "reply_reference1_status": _ref1_status,
+                        "reply_reference2_status": _ref2_status,
+                        # 兼容旧客户端的单回复字段(注:流式 delta 仍是该路文本,非盲;真盲评请用上面两字段或改非流式)
                         "full_content": full_content,
                         "sales_advice": full_content,
                         "validation": validation,
