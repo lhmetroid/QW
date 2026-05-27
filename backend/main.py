@@ -21266,6 +21266,20 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 "timestamp": current_customer["timestamp"]
             })
 
+        # 一次性载入该会话(最新 ref_time 之前最多 1000 条)历史，循环内内存切片做每轮背景。
+        # 替代原来"每轮一次远程查询"的 N+1：那会对远程库几百次往返，曾导致本接口跑 ~28 分钟、
+        # 最终 Postgres 连接被掐断(server closed the connection unexpectedly)，并堵死事件循环拖慢全部接口。
+        _ref_times = [g.get("timestamp") for g in groups if g.get("timestamp")]
+        session_hist_asc: list[MessageLog] = []
+        if _ref_times:
+            _latest_ref = max(_ref_times)
+            session_hist_asc = db.query(MessageLog).filter(
+                MessageLog.user_id == uid,
+                MessageLog.timestamp < _latest_ref,
+                MessageLog.is_mock.is_(False)
+            ).order_by(MessageLog.timestamp.desc()).limit(1000).all()
+            session_hist_asc.reverse()  # 转回正序，便于按 ref_time 切片
+
         for idx, g in enumerate(groups):
             matched_inv = None
             cust = g["customer"]
@@ -21286,14 +21300,9 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
             ref_time = cust["timestamp"] if cust else (g["sales"]["timestamp"] if g["sales"] else None)
             history_msgs = []
             if ref_time:
-                # 与上线链路 find_existing_single_session_id(limit=15) 对齐：背景只取触发点之前
-                # 最近 15 条真实消息（先按时间倒序取最近 15 条，再翻回正序用于展示）。
-                history_msgs = db.query(MessageLog).filter(
-                    MessageLog.user_id == uid,
-                    MessageLog.timestamp < ref_time,
-                    MessageLog.is_mock.is_(False)
-                ).order_by(MessageLog.timestamp.desc()).limit(15).all()
-                history_msgs.reverse()
+                # 与上线链路 find_existing_single_session_id(limit=15) 对齐：背景只取触发点之前最近 15 条。
+                # 从已一次性载入的 session_hist_asc 内存切片，不再每轮查库。
+                history_msgs = [m for m in session_hist_asc if m.timestamp < ref_time][-15:]
 
             bg_count = len(history_msgs)
             context_messages = []
