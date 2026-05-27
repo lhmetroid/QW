@@ -93,6 +93,11 @@ from mail_sla_guardrail import (
     MAIL_STANDARD_DELIVERY_SLA_LABEL,
     evaluate_and_calibrate_mail_delivery_sla_guardrail as _evaluate_and_calibrate_mail_delivery_sla_guardrail,
 )
+from mail_crm_mock_data import (
+    MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY,
+    MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY,
+    build_mail_crm_mock_catalog,
+)
 
 FRONTEND_AUTH_COOKIE_NAME = "qw_frontend_auth"
 
@@ -862,6 +867,15 @@ class MailSequenceInterruptRequest(BaseModel):
     interrupt_reason: str
     operator_name: str
     event_type: str | None = None
+    reply_channel: str | None = None
+    reply_message_id: str | None = None
+    reply_sender_email: str | None = None
+    reply_received_at: str | None = None
+    activity_channel: str | None = None
+    activity_recorded_at: str | None = None
+    activity_summary: str | None = None
+    deal_closure_channel: str | None = None
+    deal_closure_status: str | None = None
     crm_event_type: str | None = None
     crm_stage: str | None = None
     previous_crm_stage: str | None = None
@@ -921,6 +935,7 @@ class MailSequenceInterruptOperationLogEntry(BaseModel):
     deleted_pending_drafts_count: int = 0
     locked_pending_drafts_count: int = 0
     pending_draft_dispositions: list[dict[str, Any]] = []
+    customer_reply_trigger: dict[str, Any] | None = None
     crm_state_change_trigger: dict[str, Any] | None = None
     manual_seal_trigger: dict[str, Any] | None = None
     metadata: dict[str, Any] = {}
@@ -951,6 +966,7 @@ class MailSequenceInterruptResponse(BaseModel):
     planned_lock_pending_drafts_count: int = 0
     pending_draft_dispositions: list[MailPendingDraftInterruptPlan] = []
     cutoff_rule: dict[str, Any]
+    customer_reply_trigger: dict[str, Any] | None = None
     crm_state_change_trigger: dict[str, Any] | None = None
     manual_seal_trigger: dict[str, Any] | None = None
     interrupted_at: str
@@ -3249,27 +3265,12 @@ MAIL_CONFIDENTIALITY_RISKY_DOMAINS = {
     "yopmail.com",
 }
 MAIL_CONFIDENTIALITY_CUSTOMER_DOMAIN_WHITELIST_BY_CUSTOMER_KEY = {
-    "CUST-DEMO-MULTI-DOMAIN": {
-        "customer-domain.com",
-        "customer-domain.cn",
-    },
+    key: set(domains)
+    for key, domains in MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY.items()
 }
 MAIL_CRM_STATIC_PROFILE_BY_CUSTOMER_KEY = {
-    "CUST-DEMO-MULTI-DOMAIN": {
-        "company_industry": "manufacturing",
-        "payment_risk_level": "low",
-        "customer_domains": {
-            "customer-domain.com",
-            "customer-domain.cn",
-        },
-    },
-    "CUST-HIGH-RISK-DEMO": {
-        "company_industry": "legal",
-        "payment_risk_level": "high",
-        "customer_domains": {
-            "risk-customer.com",
-        },
-    },
+    key: dict(profile)
+    for key, profile in MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY.items()
 }
 MAIL_CRM_PAYMENT_RISK_LEVELS = {
     "blocked",
@@ -3379,8 +3380,8 @@ def _mail_crm_profile_from_static(customer_key: str | None) -> dict[str, Any] | 
             for domain in profile.get("customer_domains", set())
             if (normalized := _normalize_mail_recipient_domain(domain))
         },
-        "crm_profile_lookup_status": "matched_static_customer_key",
-        "crm_profile_source": "mail_static_customer_key_profile",
+        "crm_profile_lookup_status": sanitize_text(profile.get("crm_profile_lookup_status")) or "matched_mail_crm_mock_customer_key",
+        "crm_profile_source": sanitize_text(profile.get("crm_profile_source")) or "mail_crm_mock_review_only",
     }
 
 def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> dict[str, Any] | None:
@@ -4274,6 +4275,59 @@ CRM_STATE_CHANGE_INTERRUPT_REASON_ALIASES: dict[str, str] = {
     "contact_left": MailSequenceInterruptionReason.CRM_CONTACT_INVALID_OR_LEFT.value,
 }
 
+CUSTOMER_REPLY_INTERRUPT_REASON_ALIASES: dict[str, str] = {
+    "customer_reply": "",
+    "customer_replied": "",
+    "customer_responded": "",
+    "reply": "",
+    "replied": "",
+    "customer_replied_by_email": MailSequenceInterruptionReason.CUSTOMER_REPLIED_BY_EMAIL.value,
+    "email_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_BY_EMAIL.value,
+    "email": MailSequenceInterruptionReason.CUSTOMER_REPLIED_BY_EMAIL.value,
+    "mail_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_BY_EMAIL.value,
+    "mail": MailSequenceInterruptionReason.CUSTOMER_REPLIED_BY_EMAIL.value,
+    "customer_email_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_BY_EMAIL.value,
+    "customer_replied_same_domain": MailSequenceInterruptionReason.CUSTOMER_REPLIED_SAME_DOMAIN.value,
+    "same_domain_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_SAME_DOMAIN.value,
+    "same_domain": MailSequenceInterruptionReason.CUSTOMER_REPLIED_SAME_DOMAIN.value,
+    "domain_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_SAME_DOMAIN.value,
+    "domain": MailSequenceInterruptionReason.CUSTOMER_REPLIED_SAME_DOMAIN.value,
+    "customer_domain_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_SAME_DOMAIN.value,
+    "customer_replied_other_channel": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "other_channel_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "offline_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "chat_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "wechat_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "wecom_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "phone_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "phone_call_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "meeting_reply": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "deal_closed_other_channel": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "other_channel_deal_closed": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "wechat_deal_closed": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "wecom_deal_closed": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "phone_deal_closed": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "phone_call_deal_closed": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "deal_closed_by_wechat": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+    "deal_closed_by_phone": MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value,
+}
+
+CUSTOMER_REPLY_OTHER_CHANNEL_ALIASES: frozenset[str] = frozenset(
+    {
+        "other_channel",
+        "offline",
+        "chat",
+        "wechat",
+        "wecom",
+        "phone",
+        "phone_call",
+        "meeting",
+        "deal_closed",
+        "closed_won",
+        "won",
+    }
+)
+
 MANUAL_SEAL_INTERRUPT_REASON_ALIASES: dict[str, str] = {
     "manual_seal": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SALES.value,
     "sales": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SALES.value,
@@ -4291,6 +4345,41 @@ MANUAL_SEAL_INTERRUPT_REASON_ALIASES: dict[str, str] = {
     "manual_sealed_by_supervisor": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SUPERVISOR.value,
     "sealed_by_supervisor": MailSequenceInterruptionReason.MANUAL_SEALED_BY_SUPERVISOR.value,
 }
+
+def _normalize_customer_reply_channel(value: str | None) -> str | None:
+    normalized = sanitize_text(value or "").strip().lower()
+    normalized = re.sub(r"[\s\-]+", "_", normalized)
+    return normalized or None
+
+def _normalize_customer_reply_interrupt_reason(
+    value: str | None,
+    *,
+    reply_channel: str | None = None,
+) -> str | None:
+    normalized = sanitize_text(value or "").strip().lower()
+    normalized = re.sub(r"[\s\-]+", "_", normalized)
+    mapped = CUSTOMER_REPLY_INTERRUPT_REASON_ALIASES.get(normalized)
+    if mapped:
+        return mapped
+    channel = _normalize_customer_reply_channel(reply_channel)
+    if normalized in ("", "customer_reply", "customer_replied", "customer_responded", "reply", "replied"):
+        if channel in ("email", "mail"):
+            return MailSequenceInterruptionReason.CUSTOMER_REPLIED_BY_EMAIL.value
+        if channel in ("same_domain", "domain", "customer_domain"):
+            return MailSequenceInterruptionReason.CUSTOMER_REPLIED_SAME_DOMAIN.value
+        if channel in CUSTOMER_REPLY_OTHER_CHANNEL_ALIASES:
+            return MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value
+        return None
+    if normalized in CUSTOMER_REPLY_OTHER_CHANNEL_ALIASES:
+        return MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value
+    try:
+        reason = MailSequenceInterruptionReason(normalized)
+    except ValueError:
+        return None
+    cutoff_rule = get_mail_sequence_cutoff_rule(reason)
+    if cutoff_rule.event_type == MailSequenceCutoffEventType.CUSTOMER_REPLY.value:
+        return reason.value
+    return None
 
 def _normalize_crm_state_change_interrupt_reason(value: str | None) -> str | None:
     normalized = sanitize_text(value or "").strip().lower()
@@ -4337,9 +4426,11 @@ def _normalize_manual_seal_interrupt_reason(
 def _normalize_mail_interrupt_reason_for_api(
     value: str,
     *,
+    reply_channel: str | None = None,
     crm_event_type: str | None = None,
     manual_seal_actor: str | None = None,
 ) -> str:
+    customer_reply_reason = _normalize_customer_reply_interrupt_reason(value, reply_channel=reply_channel)
     crm_reason = _normalize_crm_state_change_interrupt_reason(crm_event_type)
     manual_seal_reason = _normalize_manual_seal_interrupt_reason(
         value,
@@ -4347,6 +4438,16 @@ def _normalize_mail_interrupt_reason_for_api(
     )
     normalized = sanitize_text(value).strip().lower()
     normalized = re.sub(r"[\s\-]+", "_", normalized)
+    if normalized == MailSequenceCutoffEventType.CUSTOMER_REPLY.value:
+        if customer_reply_reason:
+            return customer_reply_reason
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "reply_channel is required when interrupt_reason=customer_reply. "
+                "Use email, same_domain, wechat, phone, meeting, chat, or other_channel."
+            ),
+        )
     if normalized == MailSequenceCutoffEventType.CRM_STATE_CHANGE.value:
         if crm_reason:
             return crm_reason
@@ -4367,7 +4468,7 @@ def _normalize_mail_interrupt_reason_for_api(
     reason_from_value = _normalize_crm_state_change_interrupt_reason(normalized)
     try:
         reason = MailSequenceInterruptionReason(
-            manual_seal_reason or reason_from_value or normalized
+            customer_reply_reason or manual_seal_reason or reason_from_value or normalized
         ).value
     except ValueError as exc:
         allowed = ", ".join(reason.value for reason in MailSequenceInterruptionReason)
@@ -4379,6 +4480,12 @@ def _normalize_mail_interrupt_reason_for_api(
         raise HTTPException(
             status_code=422,
             detail=f"crm_event_type={crm_reason} does not match interrupt_reason={reason}",
+        )
+    channel_reason = _normalize_customer_reply_interrupt_reason(reply_channel)
+    if channel_reason and channel_reason != reason:
+        raise HTTPException(
+            status_code=422,
+            detail=f"reply_channel={channel_reason} does not match interrupt_reason={reason}",
         )
     actor_reason = _normalize_manual_seal_interrupt_reason(manual_seal_actor)
     if actor_reason and actor_reason != reason:
@@ -4396,6 +4503,27 @@ def _normalize_mail_interrupt_event_type_for_api(
         return cutoff_rule.event_type
     normalized = sanitize_text(event_type).strip().lower()
     normalized = re.sub(r"[\s\-]+", "_", normalized)
+    customer_reply_reason_from_event_type = _normalize_customer_reply_interrupt_reason(normalized)
+    if customer_reply_reason_from_event_type:
+        if customer_reply_reason_from_event_type != cutoff_rule.interruption_reason:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"event_type={customer_reply_reason_from_event_type} does not match "
+                    f"interrupt_reason={cutoff_rule.interruption_reason}"
+                ),
+            )
+        return MailSequenceCutoffEventType.CUSTOMER_REPLY.value
+    if normalized in CUSTOMER_REPLY_OTHER_CHANNEL_ALIASES:
+        if cutoff_rule.event_type != MailSequenceCutoffEventType.CUSTOMER_REPLY.value:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"event_type=customer_reply does not match "
+                    f"interrupt_reason={cutoff_rule.interruption_reason}"
+                ),
+            )
+        return MailSequenceCutoffEventType.CUSTOMER_REPLY.value
     crm_reason_from_event_type = _normalize_crm_state_change_interrupt_reason(normalized)
     if crm_reason_from_event_type:
         if crm_reason_from_event_type != cutoff_rule.interruption_reason:
@@ -4446,18 +4574,124 @@ def _build_mail_crm_state_change_trigger_preview(
         return None
     metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
     crm_event_type = sanitize_text(payload.crm_event_type or "").strip()
+    crm_stage = sanitize_text(payload.crm_stage or metadata.get("crm_stage") or "").strip() or None
+    previous_crm_stage = (
+        sanitize_text(payload.previous_crm_stage or metadata.get("previous_crm_stage") or "").strip()
+        or None
+    )
+    changed_at = sanitize_text(payload.crm_changed_at or metadata.get("changed_at") or "").strip() or None
+    missing_required_fields = [
+        field_name
+        for field_name, field_value in {
+            "customer_key": payload.customer_key,
+            "crm_stage": crm_stage,
+            "changed_at": changed_at,
+        }.items()
+        if not sanitize_text(str(field_value or "")).strip()
+    ]
     return {
         "source": "crm_state_change",
         "crm_event_type": crm_event_type or interruption_reason,
         "normalized_interrupt_reason": interruption_reason,
-        "crm_stage": sanitize_text(payload.crm_stage or metadata.get("crm_stage") or "").strip() or None,
-        "previous_crm_stage": (
-            sanitize_text(payload.previous_crm_stage or metadata.get("previous_crm_stage") or "").strip()
+        "crm_stage": crm_stage,
+        "previous_crm_stage": previous_crm_stage,
+        "changed_at": changed_at,
+        "review_only_validation": {
+            "validation_status": "passed" if not missing_required_fields else "needs_crm_review",
+            "missing_required_fields": missing_required_fields,
+            "required_metadata_keys": list(cutoff_rule.required_metadata_keys),
+            "terminal_crm_stage": cutoff_rule.audit_metadata.get("terminal_crm_stage"),
+            "will_update_crm_stage": False,
+            "will_update_wecom_state": False,
+            "wecom_state_change": "none",
+            "mail_sequence_state_change": "preview_only",
+        },
+        "review_only": True,
+        "review_required": True,
+        "will_write_database": False,
+        "will_delete_pending_drafts": False,
+        "will_lock_pending_drafts": False,
+        "will_send_email": False,
+    }
+
+def _build_mail_customer_reply_trigger_preview(
+    payload: MailSequenceInterruptRequest,
+    *,
+    interruption_reason: str,
+    cutoff_rule: Any,
+    interrupted_at: str,
+) -> dict[str, Any] | None:
+    if cutoff_rule.event_type != MailSequenceCutoffEventType.CUSTOMER_REPLY.value:
+        return None
+    metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
+    reply_channel = (
+        _normalize_customer_reply_channel(
+            payload.reply_channel
+            or payload.activity_channel
+            or payload.deal_closure_channel
+            or metadata.get("reply_channel")
+            or metadata.get("channel")
+            or metadata.get("activity_channel")
+            or metadata.get("deal_closure_channel")
+        )
+        or cutoff_rule.audit_metadata.get("reply_channel")
+        or "customer_reply"
+    )
+    is_other_channel_deal_closure = (
+        interruption_reason == MailSequenceInterruptionReason.CUSTOMER_REPLIED_OTHER_CHANNEL.value
+        and reply_channel in CUSTOMER_REPLY_OTHER_CHANNEL_ALIASES
+        and bool(
+            sanitize_text(payload.deal_closure_status or metadata.get("deal_closure_status") or "").strip()
+            or reply_channel in {"wechat", "wecom", "phone", "phone_call"}
+        )
+    )
+    return {
+        "source": "mail_sequence_customer_reply",
+        "normalized_interrupt_reason": interruption_reason,
+        "reply_channel": reply_channel,
+        "reply_message_id": (
+            sanitize_text(payload.reply_message_id or metadata.get("message_id") or "").strip()
             or None
         ),
-        "changed_at": sanitize_text(payload.crm_changed_at or metadata.get("changed_at") or "").strip() or None,
+        "reply_sender_email": (
+            sanitize_text(payload.reply_sender_email or metadata.get("sender_email") or "").strip()
+            or None
+        ),
+        "reply_received_at": (
+            sanitize_text(payload.reply_received_at or metadata.get("received_at") or "").strip()
+            or None
+        ),
+        "activity_recorded_at": (
+            sanitize_text(payload.activity_recorded_at or metadata.get("recorded_at") or "").strip()
+            or interrupted_at
+        ),
+        "activity_summary": (
+            sanitize_text(payload.activity_summary or metadata.get("activity_summary") or "").strip()
+            or None
+        ),
+        "deal_closure_channel": (
+            sanitize_text(payload.deal_closure_channel or metadata.get("deal_closure_channel") or "").strip()
+            or None
+        ),
+        "deal_closure_status": (
+            sanitize_text(payload.deal_closure_status or metadata.get("deal_closure_status") or "").strip()
+            or None
+        ),
+        "is_other_channel_deal_closure": is_other_channel_deal_closure,
+        "review_only_validation": {
+            "validation_status": "passed",
+            "required_metadata_keys": list(cutoff_rule.required_metadata_keys),
+            "matching_policy": cutoff_rule.audit_metadata.get("matching_policy"),
+            "auto_mail_policy": cutoff_rule.audit_metadata.get("auto_mail_policy"),
+            "mail_sequence_state_change": "preview_only",
+            "will_update_wecom_state": False,
+            "wecom_state_change": "none",
+        },
         "review_only": True,
+        "review_required": True,
         "will_write_database": False,
+        "will_delete_pending_drafts": False,
+        "will_lock_pending_drafts": False,
         "will_send_email": False,
     }
 
@@ -4541,6 +4775,11 @@ def _build_mail_sequence_interrupt_response(
 
     interruption_reason = _normalize_mail_interrupt_reason_for_api(
         payload.interrupt_reason,
+        reply_channel=(
+            payload.reply_channel
+            or payload.activity_channel
+            or payload.deal_closure_channel
+        ),
         crm_event_type=payload.crm_event_type,
         manual_seal_actor=payload.manual_seal_actor,
     )
@@ -4593,6 +4832,12 @@ def _build_mail_sequence_interrupt_response(
         interruption_reason=interruption_reason,
         cutoff_rule=cutoff_rule,
     )
+    customer_reply_trigger = _build_mail_customer_reply_trigger_preview(
+        payload,
+        interruption_reason=interruption_reason,
+        cutoff_rule=cutoff_rule,
+        interrupted_at=interrupted_at,
+    )
     manual_seal_trigger = _build_mail_manual_seal_trigger_preview(
         payload,
         interruption_reason=interruption_reason,
@@ -4624,6 +4869,7 @@ def _build_mail_sequence_interrupt_response(
         deleted_pending_drafts_count=planned_destroy_count,
         locked_pending_drafts_count=planned_lock_count,
         pending_draft_dispositions=[item.dict() for item in disposition_plans],
+        customer_reply_trigger=customer_reply_trigger,
         crm_state_change_trigger=crm_state_change_trigger,
         manual_seal_trigger=manual_seal_trigger,
         metadata=metadata,
@@ -4655,6 +4901,7 @@ def _build_mail_sequence_interrupt_response(
         planned_lock_pending_drafts_count=planned_lock_count,
         pending_draft_dispositions=disposition_plans,
         cutoff_rule=cutoff_rule.to_dict(),
+        customer_reply_trigger=customer_reply_trigger,
         crm_state_change_trigger=crm_state_change_trigger,
         manual_seal_trigger=manual_seal_trigger,
         interrupted_at=interrupted_at,
@@ -4673,6 +4920,9 @@ def _build_mail_sequence_interrupt_response(
             "will_delete_pending_drafts": False,
             "will_lock_pending_drafts": False,
             "will_send_email": False,
+            "will_update_wecom_state": False,
+            "wecom_state_change": "none",
+            "customer_reply_trigger": customer_reply_trigger,
             "crm_state_change_trigger": crm_state_change_trigger,
             "manual_seal_trigger": manual_seal_trigger,
             "operation_log_entry": operation_log_payload,
@@ -11586,6 +11836,11 @@ async def generate_mail_draft(payload: MailGenerateDraftRequest, db: Session = D
 @app.post("/api/v1/sequence/interrupt", response_model=MailSequenceInterruptResponse)
 async def interrupt_mail_sequence(payload: MailSequenceInterruptRequest):
     return _build_mail_sequence_interrupt_response(payload)
+
+@app.get("/api/v1/mail/crm/mock-profiles")
+async def get_mail_crm_mock_profiles():
+    """Return review-only mail CRM mock profiles for isolated integration."""
+    return build_mail_crm_mock_catalog()
 
 @app.get("/api/email_effect_feedback")
 async def list_email_effect_feedback(
@@ -20425,11 +20680,14 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
             ref_time = cust["timestamp"] if cust else (g["sales"]["timestamp"] if g["sales"] else None)
             history_msgs = []
             if ref_time:
+                # 与上线链路 find_existing_single_session_id(limit=15) 对齐：背景只取触发点之前
+                # 最近 15 条真实消息（先按时间倒序取最近 15 条，再翻回正序用于展示）。
                 history_msgs = db.query(MessageLog).filter(
                     MessageLog.user_id == uid,
                     MessageLog.timestamp < ref_time,
                     MessageLog.is_mock.is_(False)
-                ).order_by(MessageLog.timestamp.asc()).all()
+                ).order_by(MessageLog.timestamp.desc()).limit(15).all()
+                history_msgs.reverse()
 
             bg_count = len(history_msgs)
             context_messages = []
