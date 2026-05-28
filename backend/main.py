@@ -21431,6 +21431,24 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
             if matched_inv and matched_inv.result_payload:
                 crm_info = matched_inv.result_payload.get("crm_info")
 
+            # 耗时双行：第1行 fetch_to_output_ms = 抓取微信对话→输出；
+            #          第2行 api_total_ms = 收到API请求→输出(全程, total_started 打点在接口入口)。
+            # 两者差值 = 收到请求到开始抓取微信对话之间的前置耗时(参数规范化+构建会话ID+归档同步)。
+            # 非API匹配的轮次两值均为 None，前端留空、不报错。
+            fetch_to_output_ms = None
+            api_total_ms = None
+            if matched_inv and matched_inv.result_payload:
+                _timings = matched_inv.result_payload.get("timings_ms") or {}
+                _total = _timings.get("total_ms")
+                if _total is not None:
+                    api_total_ms = int(_total)
+                    _pre = 0.0
+                    for _k in ("normalize_request_ms", "build_session_id_ms", "archive_sync_ms"):
+                        _v = _timings.get(_k)
+                        if _v is not None:
+                            _pre += float(_v)
+                    fetch_to_output_ms = int(max(_total - _pre, 0))
+
             item = {
                 "result_id": result_id,
                 "run_id": run_id,
@@ -21464,6 +21482,8 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 "kb2_eval_score": kb2_eval,
                 "quality_status": matched_inv.quality_status if matched_inv else "manual_success",
                 "latency_ms": int(matched_inv.result_payload.get("timings_ms", {}).get("total_ms", 0)) if matched_inv and matched_inv.result_payload else None,
+                "fetch_to_output_ms": fetch_to_output_ms,
+                "api_total_ms": api_total_ms,
                 "status": "success" if matched_inv else "manual",
                 "case": case_meta,
                 "turn": turn_meta,
