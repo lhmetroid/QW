@@ -3425,7 +3425,17 @@ Alex</textarea>
         // 时间 ISO -> 本地友好显示
         function caselibFormatTime(s) {
             if (!s) return '-';
-            return String(s).replace('T', ' ').replace(/\.\d+.*$/, '').slice(0, 19);
+            // 统一按北京时间(UTC+8)展示。后端所有时间均以 UTC 存储：
+            // daily 记录的 triggered_at 是"北京零点对应的 UTC 瞬间"(北京零点-8h)，迭代用 utcnow。
+            // 这里把字符串当 UTC 解析后 +8h，再按 UTC 字段取值，结果即北京墙上时间(与浏览器所在时区无关)。
+            let str = String(s).trim().replace(' ', 'T').replace(/\.\d+/, '');
+            str = str.replace(/[zZ]$/, '').replace(/[+\-]\d{2}:?\d{2}$/, '');  // 去时区标记，统一按 UTC 处理
+            const m = str.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+            if (!m) return String(s).replace('T', ' ').replace(/\.\d+.*$/, '').slice(0, 19);
+            const utc = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+            const bj = new Date(utc + 8 * 3600 * 1000);
+            const p = n => String(n).padStart(2, '0');
+            return `${bj.getUTCFullYear()}-${p(bj.getUTCMonth() + 1)}-${p(bj.getUTCDate())} ${p(bj.getUTCHours())}:${p(bj.getUTCMinutes())}:${p(bj.getUTCSeconds())}`;
         }
         // 数字格式化（保留 n 位小数；null -> '-'）
         function caselibFmtNum(v, n) {
@@ -4706,7 +4716,8 @@ Alex</textarea>
                     trCls = 'bg-amber-50 hover:bg-amber-100 font-semibold';
                 }
 
-                const turnTime = (isDaily && turn.timestamp) ? turn.timestamp.substring(11, 16) : '';
+                // 轮次时间同样按北京时间(UTC+8)展示，取 HH:MM
+                const turnTime = (isDaily && turn.timestamp) ? caselibFormatTime(turn.timestamp).substring(11, 16) : '';
                 const turnNoDisplay = isDaily
                     ? `${r.turn_no || turn.turn_no || '-'}<br/><span class="text-[9px] text-slate-400 font-normal">${turnTime}</span>`
                     : (r.turn_no || turn.turn_no || '-');
