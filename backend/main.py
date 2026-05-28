@@ -329,8 +329,9 @@ async def request_observability_middleware(request: Request, call_next):
         response = await call_next(request)
     except Exception:
         elapsed_ms = round((perf_counter() - started) * 1000)
+        # 请求处理过程中抛出未捕获异常(FastAPI 框架捕获前)。tag=REQUEST_ERROR 便于日志检索。
         logger.exception(
-            "REQUEST_ERROR path=%s method=%s request_id=%s elapsed_ms=%s",
+            "REQUEST_ERROR 请求处理异常 path=%s method=%s request_id=%s elapsed_ms=%s",
             request.url.path,
             request.method,
             request_id,
@@ -341,13 +342,18 @@ async def request_observability_middleware(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Response-Time-Ms"] = str(elapsed_ms)
     if elapsed_ms >= settings.SLOW_REQUEST_MS:
+        # 请求耗时超过 SLOW_REQUEST_MS 阈值(默认 3000ms,由 .env 配置)的告警。
+        # 自身不影响请求结果(本次仍按 status 返回),仅用于性能监控/排障。
+        # tag=SLOW_REQUEST 便于日志检索;overshoot_ms = 比阈值多花的毫秒数。
         logger.warning(
-            "SLOW_REQUEST path=%s method=%s status=%s request_id=%s elapsed_ms=%s",
+            "SLOW_REQUEST 请求耗时过长(超阈值) path=%s method=%s status=%s request_id=%s elapsed_ms=%s threshold_ms=%s overshoot_ms=%s",
             request.url.path,
             request.method,
             response.status_code,
             request_id,
             elapsed_ms,
+            settings.SLOW_REQUEST_MS,
+            elapsed_ms - settings.SLOW_REQUEST_MS,
         )
     return response
 
@@ -3504,7 +3510,8 @@ def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> 
         finally:
             crm_db.close()
     except Exception as exc:
-        logger.info("MAIL_CRM_PROFILE_LOOKUP_SKIPPED customer_key/contact_email only: %s", str(exc)[:200])
+        # 邮件 CRM 画像查询跳过：customer_key 与 contact_email 仅有其一,或查询出异常时降级跳过,不阻塞主流程
+        logger.info("MAIL_CRM_PROFILE_LOOKUP_SKIPPED 邮件CRM画像查询跳过(降级) customer_key/contact_email only: %s", str(exc)[:200])
         return None
     if not row:
         return None
@@ -11781,7 +11788,8 @@ def _commit_kb_excel_import_raw(
         })
 
     db.commit()
-    logger.info("KB_EXCEL_IMPORT %s", json.dumps({
+    # 知识库 Excel 导入事件(结构化日志,JSON 部分用于机器解析,TAG 用于检索)
+    logger.info("KB_EXCEL_IMPORT 知识库Excel导入 %s", json.dumps({
         "filename": filename,
         "import_type": import_type,
         "import_batch": import_batch,
@@ -12205,7 +12213,8 @@ async def import_business_csv(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"business_csv 导入失败: {exc}") from exc
 
-    logger.info("KB_BUSINESS_CSV_IMPORT %s", json.dumps({
+    # 业务 CSV 知识导入事件
+    logger.info("KB_BUSINESS_CSV_IMPORT 业务CSV导入 %s", json.dumps({
         "filename": os.path.basename(filename),
         "start_row": start_row,
         "end_row": end_row,
@@ -12329,7 +12338,8 @@ async def import_faq_excel(file: UploadFile = File(...), db: Session = Depends(g
         })
 
     db.commit()
-    logger.info("KB_COMMON_QA_EXCEL_IMPORT %s", json.dumps({
+    # 常规问答 Excel 导入事件
+    logger.info("KB_COMMON_QA_EXCEL_IMPORT 常规问答Excel导入 %s", json.dumps({
         "filename": filename,
         "sheet": sheet.title,
         "import_batch": import_batch,
@@ -12530,7 +12540,8 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
         db.refresh(chunk)
     for rule in created_pricing_rules:
         db.refresh(rule)
-    logger.info("KB_ASSISTED_TEXT_IMPORT %s", json.dumps({
+    # 辅助文本知识导入事件
+    logger.info("KB_ASSISTED_TEXT_IMPORT 辅助文本导入 %s", json.dumps({
         "title": payload.title,
         "import_batch": import_batch,
         "chunks": len(created_chunks),
@@ -19371,7 +19382,8 @@ def _run_wecom_preprocess_bg(
                 _wecom_preprocess_jobs[job_id]["processed_slices"] += 1
                 _wecom_preprocess_jobs[job_id]["processed_rows"] += len(ids)
             except Exception as slice_error:
-                logger.error("[wecom_preprocess] slice failed slice_id=%s: %s", slice_id, slice_error, exc_info=True)
+                # 企微对话预处理：单个切片(slice)处理失败,该切片标记为 failed 但整批继续。
+                logger.error("[wecom_preprocess] 企微对话预处理-切片失败 slice failed slice_id=%s: %s", slice_id, slice_error, exc_info=True)
                 _wecom_update_slice_failed(db, slice_id, ids, str(slice_error))
                 _wecom_preprocess_jobs[job_id]["failed_slices"] += 1
                 _wecom_preprocess_jobs[job_id]["failed_rows"] += len(ids)
@@ -19382,7 +19394,8 @@ def _run_wecom_preprocess_bg(
             "elapsed_ms": round((perf_counter() - started) * 1000, 2),
         })
     except Exception as e:
-        logger.error("[wecom_preprocess] job failed batch=%s: %s", batch_id, e, exc_info=True)
+        # 企微对话预处理：整批任务异常退出,job 状态置 error。
+        logger.error("[wecom_preprocess] 企微对话预处理-整批失败 job failed batch=%s: %s", batch_id, e, exc_info=True)
         _wecom_preprocess_jobs[job_id].update({"status": "error", "error": sanitize_text(str(e))})
     finally:
         db.close()
