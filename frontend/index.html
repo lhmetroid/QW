@@ -3437,17 +3437,27 @@ Alex</textarea>
         // 时间 ISO -> 本地友好显示
         function caselibFormatTime(s) {
             if (!s) return '-';
-            // 统一按北京时间(UTC+8)展示。后端所有时间均以 UTC 存储：
-            // daily 记录的 triggered_at 是"北京零点对应的 UTC 瞬间"(北京零点-8h)，迭代用 utcnow。
-            // 这里把字符串当 UTC 解析后 +8h，再按 UTC 字段取值，结果即北京墙上时间(与浏览器所在时区无关)。
+            // v1.7.192: 后端实际有两种时间约定:
+            //   (A) 真 UTC: 由 datetime.utcnow() 写入(CaseIterationRun.triggered_at / 启动结束时间 等),
+            //       后端序列化时带 'Z' 后缀(或带数字时区偏移)以示标记。
+            //   (B) 北京-naive: 服务器 Beijing TZ 下 datetime.fromtimestamp / datetime.now 写入(MessageLog.timestamp),
+            //       以及 daily 合成行的 day_start_bj.isoformat(), 无时区后缀。
+            // 处理规则: 检测时区标记, 有标记按 UTC 解析后 +8 转北京显示; 无标记视为已是北京-naive,原样格式化。
             let str = String(s).trim().replace(' ', 'T').replace(/\.\d+/, '');
-            str = str.replace(/[zZ]$/, '').replace(/[+\-]\d{2}:?\d{2}$/, '');  // 去时区标记，统一按 UTC 处理
+            const hasZ = /[zZ]$/.test(str);
+            const hasOffset = /[+\-]\d{2}:?\d{2}$/.test(str);
+            str = str.replace(/[zZ]$/, '').replace(/[+\-]\d{2}:?\d{2}$/, '');
             const m = str.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
             if (!m) return String(s).replace('T', ' ').replace(/\.\d+.*$/, '').slice(0, 19);
-            const utc = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
-            const bj = new Date(utc + 8 * 3600 * 1000);
             const p = n => String(n).padStart(2, '0');
-            return `${bj.getUTCFullYear()}-${p(bj.getUTCMonth() + 1)}-${p(bj.getUTCDate())} ${p(bj.getUTCHours())}:${p(bj.getUTCMinutes())}:${p(bj.getUTCSeconds())}`;
+            if (hasZ || hasOffset) {
+                // (A) 真 UTC, 加 8 小时转北京
+                const utc = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+                const bj = new Date(utc + 8 * 3600 * 1000);
+                return `${bj.getUTCFullYear()}-${p(bj.getUTCMonth() + 1)}-${p(bj.getUTCDate())} ${p(bj.getUTCHours())}:${p(bj.getUTCMinutes())}:${p(bj.getUTCSeconds())}`;
+            }
+            // (B) 北京-naive, 原样
+            return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:${m[6]}`;
         }
         // 案例上下文 msg_time 显示格式化(YYYY-MM-DD HH:MM)。
         // 注意:case_library / wecom 历史里的 msg_time 用 strptime 无时区解析,存的就是"北京本地时间",

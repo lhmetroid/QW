@@ -20871,9 +20871,12 @@ def _caselib_serialize_run(r: CaseIterationRun) -> dict:
         "backup_commit_sha": r.backup_commit_sha,
         "backup_status": r.backup_status,
         "triggered_by": r.triggered_by,
-        "triggered_at": r.triggered_at.isoformat() if r.triggered_at else None,
-        "started_at": r.started_at.isoformat() if r.started_at else None,
-        "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+        # v1.7.192: CaseIterationRun.triggered_at 由 datetime.utcnow() 写入是真 UTC,
+        # 加 'Z' 后缀让前端 caselibFormatTime 识别为 UTC 并 +8 转北京显示。
+        # (daily 合成行的 triggered_at 不加 Z, 因为它是北京-naive。)
+        "triggered_at": (r.triggered_at.isoformat() + "Z") if r.triggered_at else None,
+        "started_at": (r.started_at.isoformat() + "Z") if r.started_at else None,
+        "finished_at": (r.finished_at.isoformat() + "Z") if r.finished_at else None,
         "error_message": r.error_message or "",
     }
 
@@ -21182,6 +21185,11 @@ def parse_session_id(uid: str, sales_ids: list) -> tuple | None:
 
 
 def _get_daily_validation_stats(db: Session, day_start: datetime, day_end: datetime):
+    """v1.7.192: 入参 day_start/day_end 应为 **北京-naive** 自然日边界(00:00-次日00:00)。
+    MessageLog.timestamp 是北京-naive(服务器 Beijing TZ + datetime.fromtimestamp), 直接用 day_start;
+    ApiAssistInvocation.triggered_at 是 datetime.utcnow 真 UTC, 函数内自行 -8h 转 UTC 边界。"""
+    day_start_utc = day_start - timedelta(hours=8)
+    day_end_utc = day_end - timedelta(hours=8)
     sales_ids = ["alicehe", "davidXiaoMeiPeng", "HanHan", "joycesheng", "WangHuiYing"]
 
     logs = db.query(MessageLog).filter(
@@ -21207,8 +21215,9 @@ def _get_daily_validation_stats(db: Session, day_start: datetime, day_end: datet
 
     invs = db.query(ApiAssistInvocation).filter(
         ApiAssistInvocation.session_id.in_(list(target_sessions.keys())),
-        ApiAssistInvocation.triggered_at >= day_start - timedelta(hours=1),
-        ApiAssistInvocation.triggered_at < day_end + timedelta(hours=1)
+        # ApiAssistInvocation.triggered_at 是 UTC, 用 day_start_utc 比较
+        ApiAssistInvocation.triggered_at >= day_start_utc - timedelta(hours=1),
+        ApiAssistInvocation.triggered_at < day_end_utc + timedelta(hours=1)
     ).all()
 
     # 同一锚点消息可能被多次触发(先 pending 占位、后补打分)，匹配时优先取"已打分"且最新的那次，
@@ -21325,11 +21334,12 @@ async def caselib_list_iterations(limit: int = Query(default=50, ge=1, le=500)):
         curr = start_date
         while curr <= today:
             date_str = curr.isoformat()
-            # 与明细页一致：按中国本地自然日取数，UTC 区间 = 本地零点减 8 小时(详见 get_daily_validation_detail)
-            day_start = datetime(curr.year, curr.month, curr.day) - timedelta(hours=8)
-            day_end = day_start + timedelta(days=1)
+            # v1.7.192: 与明细页一致, 按"北京本地自然日"取数。MessageLog 是北京-naive 直接用 day_start_bj;
+            # ApiAssistInvocation.triggered_at 是 utcnow 真 UTC, _get_daily_validation_stats 内部自行 -8h 转 UTC。
+            day_start_bj = datetime(curr.year, curr.month, curr.day)
+            day_end_bj = day_start_bj + timedelta(days=1)
 
-            count, avg_score, avg_latency = _get_daily_validation_stats(db, day_start, day_end)
+            count, avg_score, avg_latency = _get_daily_validation_stats(db, day_start_bj, day_end_bj)
 
             daily_rows.append({
                 "run_id": f"daily_{date_str.replace('-', '')}",
@@ -21359,9 +21369,10 @@ async def caselib_list_iterations(limit: int = Query(default=50, ge=1, le=500)):
                 "backup_commit_sha": "",
                 "backup_status": "",
                 "triggered_by": "api_assist",
-                "triggered_at": day_start.isoformat() + "Z",
-                "started_at": day_start.isoformat() + "Z",
-                "finished_at": day_end.isoformat() + "Z",
+                # 北京-naive, 不加 Z; 前端 caselibFormatTime 检测无时区标记 → 不再 +8。
+                "triggered_at": day_start_bj.isoformat(),
+                "started_at": day_start_bj.isoformat(),
+                "finished_at": day_end_bj.isoformat(),
                 "error_message": "",
             })
             curr += timedelta(days=1)
@@ -21387,12 +21398,20 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
     except Exception:
         raise HTTPException(status_code=400, detail="invalid date format, use YYYY-MM-DD")
 
-    # 企微消息 timestamp 以 UTC 存储、前端按 +8 展示。按"中国本地自然日(00:00-24:00 +08)"取数，
-    # 对应的 UTC 区间是本地零点减 8 小时。若直接用 UTC 自然日做边界，本地 00:00-08:00 的消息会落到
-    # 前一个 UTC 日被漏掉，导致当天首轮客户问被丢、问答无法配对、已触发并打分的 API 结果也匹配不上
-    # (表现为"销售发起 / 当天销售发起 / AI 回复为空")。
-    day_start = datetime(parsed_date.year, parsed_date.month, parsed_date.day) - timedelta(hours=8)
-    day_end = day_start + timedelta(days=1)
+    # v1.7.192: 修正历史误判 —— 服务器跑在 Beijing TZ, MessageLog.timestamp 由
+    # archive_service datetime.fromtimestamp() 写入, 是"北京-naive", **不是 UTC**。
+    # 之前 day_start 减 8 小时是按"MessageLog 是 UTC"的错误假设做的, 实际效果是把
+    # 北京 5.27 16:00 ~ 5.28 16:00 的消息全网了进来 —— 用户看到的"5.27 数据混进 5.28 详情"。
+    # 修正后两表分别按各自实际时区过滤:
+    #   - MessageLog (北京-naive): 用 day_start_bj
+    #   - ApiAssistInvocation.triggered_at (datetime.utcnow 真 UTC): 用 day_start_utc = bj - 8h
+    day_start_bj = datetime(parsed_date.year, parsed_date.month, parsed_date.day)
+    day_end_bj = day_start_bj + timedelta(days=1)
+    day_start_utc = day_start_bj - timedelta(hours=8)
+    day_end_utc = day_end_bj - timedelta(hours=8)
+    # 兼容旧代码引用名
+    day_start = day_start_bj
+    day_end = day_end_bj
 
     sales_ids = ["alicehe", "davidXiaoMeiPeng", "HanHan", "joycesheng", "WangHuiYing"]
     SALES_NAME_MAP = {
@@ -21404,8 +21423,8 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
     }
 
     logs = db.query(MessageLog).filter(
-        MessageLog.timestamp >= day_start,
-        MessageLog.timestamp < day_end,
+        MessageLog.timestamp >= day_start_bj,
+        MessageLog.timestamp < day_end_bj,
         MessageLog.is_mock.is_(False)
     ).order_by(MessageLog.timestamp.asc()).all()
 
@@ -21423,8 +21442,8 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
 
     invs = db.query(ApiAssistInvocation).filter(
         ApiAssistInvocation.session_id.in_(list(target_sessions.keys())) if target_sessions else False,
-        ApiAssistInvocation.triggered_at >= day_start - timedelta(hours=1),
-        ApiAssistInvocation.triggered_at < day_end + timedelta(hours=1)
+        ApiAssistInvocation.triggered_at >= day_start_utc - timedelta(hours=1),
+        ApiAssistInvocation.triggered_at < day_end_utc + timedelta(hours=1)
     ).all()
 
     # 同一锚点消息可能被多次触发(先 pending 占位、后补打分)，匹配时优先取"已打分"且最新的那次，
@@ -21549,12 +21568,12 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 # 从已一次性载入的 session_hist_asc 内存切片，不再每轮查库。
                 history_msgs = [m for m in session_hist_asc if m.timestamp < ref_time][-15:]
 
-            # v1.7.191: MessageLog.timestamp 是 UTC(服务器 datetime.utcnow / fromtimestamp 在 UTC 容器下也是 UTC),
-            # 但前端 caselibFmtMsgTime 不做时区转换 —— 用户看到背景浮层是"2026-05-27 18:53",误以为是 5.27 数据,
-            # 实际是 UTC 18:53 = 北京 02:53 次日。修复: 在 API 边界统一把 UTC → 北京-naive isoformat 下发,
-            # 前端 caselibFmtMsgTime 只做 T→空格 + 截分钟,显示就是北京时间,不会再跟 turn 行的时间错位。
+            # v1.7.192: 修正 v1.7.191 的误判 —— 服务器在 Beijing TZ 跑,
+            # MessageLog.timestamp(由 archive_service datetime.fromtimestamp 写入)是"北京-naive",
+            # 不是 UTC。所以 API 边界不再 +8(那会把已是北京的时间再前推 8 小时变成次日凌晨),
+            # 直接原样 isoformat 下发, 前端 caselibFmtMsgTime 不做时区转换, 就是北京时间。
             def _bj_iso(dt):
-                return (dt + timedelta(hours=8)).isoformat() if dt else ""
+                return dt.isoformat() if dt else ""
             bg_count = len(history_msgs)
             context_messages = []
             for m in history_msgs:
@@ -21789,9 +21808,11 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
         "backup_commit_sha": "",
         "backup_status": "",
         "triggered_by": "api_assist",
-        "triggered_at": day_start.isoformat() + "Z",
-        "started_at": day_start.isoformat() + "Z",
-        "finished_at": day_end.isoformat() + "Z",
+        # v1.7.192: day_start_bj 已是"北京-naive 5.28 00:00", 不再加 'Z' 后缀(那会把它当 UTC, 前端 +8 后变成 5.28 08:00)。
+        # 现在: 北京-naive 字符串 → 前端 caselibFormatTime 检测无时区标记 → 不转换, 原样显示 5.28 00:00。
+        "triggered_at": day_start_bj.isoformat(),
+        "started_at": day_start_bj.isoformat(),
+        "finished_at": day_end_bj.isoformat(),
         "error_message": "",
     }
 
