@@ -10958,12 +10958,27 @@ async def get_system_config_check():
     return _system_config_check()
 
 
+_TRAIN_AI_MODELS_CACHE = {"at_epoch": 0.0, "items": None}
+_TRAIN_AI_MODELS_CACHE_TTL_SECONDS = 300  # 5 分钟; 模型列表很少变, 没必要每次刷新都打外部接口
+
 @app.get("/api/train_ai/models")
 async def get_train_ai_models():
     """训练AI 可选模型列表(供下拉选择)，并标出当前选中的模型。"""
     cfg = _train_ai_config()
     try:
-        items = _train_ai_list_models()
+        # v1.7.190: 双重保护——
+        # (1) 用 asyncio.to_thread 把同步 requests.get 推到 worker 线程, 不再阻塞 FastAPI 事件循环
+        #     (之前 sync 调用塞在 async handler 里, 外部 llm.cycleforce.cc 慢一点就把整服务冻住,
+        #      连静态 index.html / tailwind.css 都被排队几秒到十几秒)。
+        # (2) 5 分钟内存缓存, 模型列表稳定, 不该每次前端打开就外连一次。
+        now_epoch = datetime.utcnow().timestamp()
+        cached = _TRAIN_AI_MODELS_CACHE
+        if cached["items"] is not None and (now_epoch - cached["at_epoch"]) < _TRAIN_AI_MODELS_CACHE_TTL_SECONDS:
+            items = cached["items"]
+        else:
+            items = await asyncio.to_thread(_train_ai_list_models)
+            _TRAIN_AI_MODELS_CACHE["items"] = items
+            _TRAIN_AI_MODELS_CACHE["at_epoch"] = now_epoch
         return {
             "status": "success",
             "enabled": cfg["enabled"],
