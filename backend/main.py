@@ -10006,6 +10006,19 @@ def _sales_kb_api_timeout_seconds() -> int:
     return max(3, _runtime_int_setting("SALES_KB_API_TIMEOUT_SECONDS", settings.SALES_KB_API_TIMEOUT_SECONDS, default=8))
 
 
+def _is_kb2_enabled() -> bool:
+    """KB2 (knowledge_external_api / sales_kb_api) 总开关。默认 True 以兼容旧部署；
+    backend/ai_settings.json|.local.json 中 API_KB2_ENABLED=false 即整体下线 KB2，
+    live 请求与健康检查都会跳过对 knowledgebase.speedasia.net 的访问。"""
+    try:
+        return _coerce_bool_setting(
+            IntentEngine.get_ai_settings().get("API_KB2_ENABLED", True),
+            default=True,
+        )
+    except Exception:
+        return True
+
+
 def _sales_kb_probe_and_suggestions() -> tuple[dict, list[str]]:
     base_url = _sales_kb_api_base_url()
     endpoint = f"{base_url}/kb-units/qa-retrieve" if base_url else ""
@@ -10580,16 +10593,29 @@ def _system_config_check() -> dict:
         "suggestions": embedding_suggestions,
     }
 
-    sales_kb_probe, sales_kb_suggestions = _sales_kb_probe_and_suggestions()
-    checks["sales_kb"] = {
-        "status": sales_kb_probe.get("status") or "error",
-        "configured": sales_kb_probe.get("configured"),
-        "url": _sales_kb_api_base_url(),
-        "endpoint": sales_kb_probe.get("probe_url"),
-        "timeout_seconds": _sales_kb_api_timeout_seconds(),
-        "probe": sales_kb_probe,
-        "suggestions": sales_kb_suggestions,
-    }
+    if _is_kb2_enabled():
+        sales_kb_probe, sales_kb_suggestions = _sales_kb_probe_and_suggestions()
+        checks["sales_kb"] = {
+            "status": sales_kb_probe.get("status") or "error",
+            "configured": sales_kb_probe.get("configured"),
+            "url": _sales_kb_api_base_url(),
+            "endpoint": sales_kb_probe.get("probe_url"),
+            "timeout_seconds": _sales_kb_api_timeout_seconds(),
+            "probe": sales_kb_probe,
+            "suggestions": sales_kb_suggestions,
+        }
+    else:
+        # API_KB2_ENABLED=false 时整体下线 KB2，不再 probe knowledgebase.speedasia.net，
+        # 也不再因该域名 502 把整体健康判为 degraded。
+        checks["sales_kb"] = {
+            "status": "disabled",
+            "configured": bool(_sales_kb_api_base_url()),
+            "url": _sales_kb_api_base_url(),
+            "endpoint": "",
+            "timeout_seconds": _sales_kb_api_timeout_seconds(),
+            "probe": {"status": "disabled", "reason": "API_KB2_ENABLED=false"},
+            "suggestions": [],
+        }
 
     def build_llm_check(name: str, api_url: str, api_key: str, model: str):
         configured = not any(_is_placeholder_value(value) for value in [api_url, api_key, model])
@@ -10767,17 +10793,28 @@ def _runtime_health() -> dict:
         if (embedding_probe.get("status") or "ok") != "ok":
             overall = "degraded"
 
-    sales_kb_probe, sales_kb_suggestions = _sales_kb_probe_and_suggestions()
-    checks["sales_kb"] = {
-        "status": sales_kb_probe.get("status") or "error",
-        "url": _sales_kb_api_base_url(),
-        "endpoint": sales_kb_probe.get("probe_url"),
-        "timeout_seconds": _sales_kb_api_timeout_seconds(),
-        "probe": sales_kb_probe,
-        "suggestions": sales_kb_suggestions,
-    }
-    if (sales_kb_probe.get("status") or "error") != "ok":
-        overall = "degraded"
+    if _is_kb2_enabled():
+        sales_kb_probe, sales_kb_suggestions = _sales_kb_probe_and_suggestions()
+        checks["sales_kb"] = {
+            "status": sales_kb_probe.get("status") or "error",
+            "url": _sales_kb_api_base_url(),
+            "endpoint": sales_kb_probe.get("probe_url"),
+            "timeout_seconds": _sales_kb_api_timeout_seconds(),
+            "probe": sales_kb_probe,
+            "suggestions": sales_kb_suggestions,
+        }
+        if (sales_kb_probe.get("status") or "error") != "ok":
+            overall = "degraded"
+    else:
+        # KB2 总开关关闭：不 probe、不参与 degraded 判定
+        checks["sales_kb"] = {
+            "status": "disabled",
+            "url": _sales_kb_api_base_url(),
+            "endpoint": "",
+            "timeout_seconds": _sales_kb_api_timeout_seconds(),
+            "probe": {"status": "disabled", "reason": "API_KB2_ENABLED=false"},
+            "suggestions": [],
+        }
 
     checks["runtime"] = {
         "status": "ok",
