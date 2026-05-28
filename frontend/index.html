@@ -154,7 +154,7 @@
                 <span class="text-slate-400 cursor-help text-sm" title="左侧为企业微信实时意图分析，右侧为知识库导入、审核、发布和检索治理。">ⓘ</span>
             </div>
             <div class="flex flex-wrap items-center justify-end gap-3">
-                <nav class="grid grid-cols-1 md:grid-cols-5 gap-2 min-w-[820px]">
+                <nav class="grid grid-cols-1 md:grid-cols-6 gap-2 min-w-[980px]">
                     <button id="main-tab-wecom" onclick="switchMainApp('wecom')" title="进入企业微信实时智能页面，用于查看真实会话、提取销售意图、生成建议话术。（会话同步、意图识别、客户画像、销售建议）" aria-label="企微实时智能：进入真实会话分析页面" class="rounded-xl border px-4 py-2 text-center transition bg-blue-600 text-white border-blue-600 shadow-sm">
                         <div class="text-sm font-bold">企微实时智能</div>
                     </button>
@@ -164,8 +164,13 @@
                     <button id="main-tab-kb" onclick="switchMainApp('kb')" title="进入知识库管理页面，用于导入、查看、审核、发布、检索和质量治理。（导入、查看、审核、发布、检索、质量治理）" aria-label="知识库管理：进入知识库管理页面" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300">
                         <div class="text-sm font-bold">知识库管理</div>
                     </button>
-                    <button id="main-tab-caselib" onclick="switchMainApp('caselib')" title="进入经典案例迭代优化页面：12场景x5案例=60案例的批量7步链路评测、版本回滚、AI自检计划。（60典型案例批量跑7步、版本号、平均分、AI下一步）" aria-label="经典案例迭代优化：批量跑7步并迭代提升" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300">
-                        <div class="text-sm font-bold">经典案例迭代优化</div>
+                    <!-- v1.7.186: 原"经典案例迭代优化"单按钮拆成两个 sub-tab 按钮(① 迭代记录 / ② 案例库),
+                         section 内部不再重复显示标题与子页 tab。 -->
+                    <button id="main-tab-caselib-list" onclick="switchMainApp('caselib','list')" title="经典案例迭代优化 → 迭代记录：历次迭代统计 + 最近一次得分分析 + AI 下一步迭代步骤。" aria-label="经典案例迭代优化 - 迭代记录" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300">
+                        <div class="text-sm font-bold">① 迭代记录</div>
+                    </button>
+                    <button id="main-tab-caselib-cases" onclick="switchMainApp('caselib','cases')" title="经典案例迭代优化 → 案例库（60案例）：只读浏览 60 个核心案例的元信息、核心对话和背景上文。" aria-label="经典案例迭代优化 - 案例库（60案例）" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300">
+                        <div class="text-sm font-bold">② 案例库（60案例）</div>
                     </button>
                     <button id="main-tab-mail-quality" onclick="switchMainApp('mailQuality')" title="进入邮件质量诊断面板，用于后续承载邮件草稿质量、Few-Shot、Sequence、安全门与人工纠偏诊断，独立于企微工作流。" aria-label="邮件质量诊断：进入邮件独立诊断面板" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-indigo-200">
                         <div class="text-sm font-bold">邮件质量诊断</div>
@@ -1050,28 +1055,21 @@ Alex</textarea>
     </main>
 
     <main id="app-caselib" class="hidden flex-1 flex flex-col bg-slate-50 overflow-hidden">
+        <!-- v1.7.186: section header Row 1(经典案例迭代优化 标题 + ①迭代记录/②案例库 子 tab + 使用提示) 已删除,
+             顶部导航的"经典案例迭代优化"已拆成 ①迭代记录 + ②案例库 两个按钮承担同一职责。这里只保留 Row 2 控件。 -->
         <div class="shrink-0 border-b bg-white">
-            <div class="px-6 py-2 flex flex-col gap-2">
-                <div class="flex flex-wrap items-center gap-2">
-                    <h1 class="text-lg font-bold text-slate-900" title="把12个销售场景每个挑出5个最高质量案例(共60)，反复批跑企微7步回复链路，对比版本得分，自动生成下次优化方向">经典案例迭代优化</h1>
-                    <span class="text-slate-400 cursor-help text-sm" title="12个销售场景 × 每场景5个最佳案例 = 60个核心案例，反复批量跑7步回复链路，记录版本号、平均分、AI下一步迭代计划。（60个固定案例作为回归集，每次代码或Prompt改动后跑一遍，看平均质量分有无提升）">ⓘ</span>
-                    <span class="mx-1 h-4 w-px bg-slate-200"></span>
-                    <button id="caselib-sub-tab-list" onclick="caselibSwitchSubTab('list')" class="px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 text-xs font-bold" title="历次迭代的统计表 + 最近一次的得分分析 + AI 下一步迭代步骤">① 迭代记录</button>
-                    <button id="caselib-sub-tab-cases" onclick="caselibSwitchSubTab('cases')" class="px-3 py-1.5 rounded-lg border bg-white text-slate-700 text-xs hover:bg-slate-50" title="只读浏览案例库 60 个核心案例的元信息、核心对话和背景上文">② 案例库（60案例）</button>
-                    <span class="text-[11px] text-slate-400 self-center cursor-help" title='提示：在「迭代记录」表里双击任一行或点"详细"，可进入该轮 60 案例的逐条结果详情页查看 7 步链路输出。'>ⓘ 使用提示</span>
+            <div class="px-6 py-2 flex flex-wrap gap-2 items-center">
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-indigo-200 bg-indigo-50" title="训练AI(另一条 model-chat 回复途径)使用的模型。与当前流程并行触发,10秒超时。切换并在保存后永久生效（修改 .env 文件）。">
+                    <span class="text-[11px] font-bold text-indigo-700">训练AI模型</span>
+                    <select id="train-ai-model-select" onchange="handleTrainAiModelChange(this.value)" onblur="handleTrainAiModelBlur()" class="text-[11px] rounded border border-indigo-200 bg-white px-1 py-0.5 text-slate-700 max-w-[200px]">
+                        <option value="">加载中…</option>
+                    </select>
+                    <span id="train-ai-model-status" class="hidden text-[10px] px-1.5 py-0.2 rounded font-bold transition-all duration-300"></span>
+                    <button id="train-ai-model-save-btn" onclick="saveTrainAiModelConfig()" class="hidden px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] transition-all" title="保存当前选择的模型为永久默认（写入 .env 文件）">保存</button>
                 </div>
-                <div class="flex flex-wrap gap-2 items-center">
-                    <div class="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-indigo-200 bg-indigo-50" title="训练AI(另一条 model-chat 回复途径)使用的模型。与当前流程并行触发,10秒超时。切换并在保存后永久生效（修改 .env 文件）。">
-                        <span class="text-[11px] font-bold text-indigo-700">训练AI模型</span>
-                        <select id="train-ai-model-select" onchange="handleTrainAiModelChange(this.value)" onblur="handleTrainAiModelBlur()" class="text-[11px] rounded border border-indigo-200 bg-white px-1 py-0.5 text-slate-700 max-w-[200px]">
-                            <option value="">加载中…</option>
-                        </select>
-                        <span id="train-ai-model-status" class="hidden text-[10px] px-1.5 py-0.2 rounded font-bold transition-all duration-300"></span>
-                        <button id="train-ai-model-save-btn" onclick="saveTrainAiModelConfig()" class="hidden px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] transition-all" title="保存当前选择的模型为永久默认（写入 .env 文件）">保存</button>
-                    </div>
-                    <button id="caselib-reimport-btn" onclick="caselibReimport()" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="从 sales_scenario_cases_v2.md 重新抽取每场景前5案例 + 各案例前15条背景对话，覆盖式写入 case_library_case 表">重新导入案例库</button>
-                    <button id="caselib-refresh-btn" onclick="loadCaselibList(true)" class="px-4 py-2 rounded-lg bg-purple-500 text-white text-xs font-bold hover:bg-purple-600" title="重新加载迭代历史列表">刷新列表</button>
-                </div>
+                <button id="caselib-reimport-btn" onclick="caselibReimport()" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="从 sales_scenario_cases_v2.md 重新抽取每场景前5案例 + 各案例前15条背景对话，覆盖式写入 case_library_case 表">重新导入案例库</button>
+                <button id="caselib-refresh-btn" onclick="loadCaselibList(true)" class="px-4 py-2 rounded-lg bg-purple-500 text-white text-xs font-bold hover:bg-purple-600" title="重新加载迭代历史列表">刷新列表</button>
+                <span class="text-[11px] text-slate-400 ml-2 self-center cursor-help" title='提示：双击"迭代记录"中任一行或点"详情"，可进入该轮 60 案例的逐条结果详情页查看 7 步链路输出。'>ⓘ 使用提示</span>
             </div>
         </div>
 
@@ -3289,7 +3287,10 @@ Alex</textarea>
             return normalizeTooltipKey(el.getAttribute('placeholder') || '');
         }
 
-        function switchMainApp(app) {
+        function switchMainApp(app, subTab) {
+            // v1.7.186: 顶部"经典案例迭代优化"单按钮已拆成 ①迭代记录 / ②案例库 两个按钮,
+            //          点这两个按钮会顺带把 sub-tab 切到对应的子页(list / cases)。
+            //          subTab 是新加的可选参数, 不传时沿用 caselibState.subTab。
             const validApps = ['wecom', 'analytics', 'kb', 'caselib', 'mailQuality'];
             const normalized = validApps.includes(app) ? app : 'wecom';
             document.getElementById('app-wecom')?.classList.toggle('hidden', normalized !== 'wecom');
@@ -3300,7 +3301,8 @@ Alex</textarea>
             const wecomTab = document.getElementById('main-tab-wecom');
             const analyticsTab = document.getElementById('main-tab-analytics');
             const kbTab = document.getElementById('main-tab-kb');
-            const caselibTab = document.getElementById('main-tab-caselib');
+            const caselibListTab = document.getElementById('main-tab-caselib-list');
+            const caselibCasesTab = document.getElementById('main-tab-caselib-cases');
             const mailQualityTab = document.getElementById('main-tab-mail-quality');
             if (wecomTab && analyticsTab && kbTab) {
                 wecomTab.className = normalized === 'wecom'
@@ -3313,10 +3315,18 @@ Alex</textarea>
                     ? 'rounded-2xl border px-5 py-3 text-left transition bg-emerald-600 text-white border-emerald-600 shadow-sm'
                     : 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300';
             }
-            if (caselibTab) {
-                caselibTab.className = normalized === 'caselib'
-                    ? 'rounded-2xl border px-5 py-3 text-left transition bg-purple-600 text-white border-purple-600 shadow-sm'
-                    : 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+            // 经典案例迭代优化 sub-tab 按钮: 在 caselib 内按当前 sub-tab 高亮(detail 视为 list 流的延伸),
+            // 不在 caselib 时两个都置灰。
+            if (caselibListTab && caselibCasesTab) {
+                const activeSub = normalized === 'caselib' ? (subTab || caselibState.subTab || 'list') : '';
+                const listActive = (activeSub === 'list' || activeSub === 'detail');
+                const casesActive = (activeSub === 'cases');
+                caselibListTab.className = listActive
+                    ? 'rounded-xl border px-4 py-2 text-center transition bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+                caselibCasesTab.className = casesActive
+                    ? 'rounded-xl border px-4 py-2 text-center transition bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
             }
             if (mailQualityTab) {
                 mailQualityTab.className = normalized === 'mailQuality'
@@ -3330,7 +3340,7 @@ Alex</textarea>
                 loadWecomTriggerAnalytics();
             } else if (normalized === 'caselib') {
                 history.replaceState(null, '', `${window.location.pathname}#caselib`);
-                caselibSwitchSubTab(caselibState.subTab || 'list');
+                caselibSwitchSubTab(subTab || caselibState.subTab || 'list');
             } else if (normalized === 'mailQuality') {
                 history.replaceState(null, '', `${window.location.pathname}#mail-quality`);
             } else {
@@ -3464,6 +3474,20 @@ Alex</textarea>
             document.getElementById('caselib-sub-list')?.classList.toggle('hidden', name !== 'list');
             document.getElementById('caselib-sub-detail')?.classList.toggle('hidden', name !== 'detail');
             document.getElementById('caselib-sub-cases')?.classList.toggle('hidden', name !== 'cases');
+            // v1.7.186: 同步顶部导航两个 sub-tab 按钮高亮(detail 沿用 ① 高亮, 因为 detail 是从迭代记录点进来的)。
+            const navList = document.getElementById('main-tab-caselib-list');
+            const navCases = document.getElementById('main-tab-caselib-cases');
+            if (navList && navCases) {
+                const listActive = (name === 'list' || name === 'detail');
+                const casesActive = (name === 'cases');
+                navList.className = listActive
+                    ? 'rounded-xl border px-4 py-2 text-center transition bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+                navCases.className = casesActive
+                    ? 'rounded-xl border px-4 py-2 text-center transition bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+            }
+            // 老的 section header 内 sub-tab 按钮已删, 下面的 if 永远不会命中 (null-safe)。保留代码不影响新结构。
             const tabList = document.getElementById('caselib-sub-tab-list');
             const tabCases = document.getElementById('caselib-sub-tab-cases');
             if (tabList && tabCases) {
@@ -9234,16 +9258,17 @@ Alex</textarea>
             const wecomTab = document.getElementById('main-tab-wecom');
             const analyticsTab = document.getElementById('main-tab-analytics');
             const kbTab = document.getElementById('main-tab-kb');
-            const caselibTab = document.getElementById('main-tab-caselib');
+            // v1.7.186: 顶部"经典案例迭代优化"拆成两个按钮; 切到 kb 时两个都置灰。
+            const caselibListTab = document.getElementById('main-tab-caselib-list');
+            const caselibCasesTab = document.getElementById('main-tab-caselib-cases');
             const mailQualityTab = document.getElementById('main-tab-mail-quality');
             if (wecomTab && analyticsTab && kbTab) {
                 wecomTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-blue-50 hover:border-blue-300';
                 analyticsTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300';
                 kbTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-emerald-600 text-white border-emerald-600 shadow-sm';
             }
-            if (caselibTab) {
-                caselibTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
-            }
+            if (caselibListTab) caselibListTab.className = 'rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+            if (caselibCasesTab) caselibCasesTab.className = 'rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
             if (mailQualityTab) {
                 mailQualityTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-indigo-200';
             }
