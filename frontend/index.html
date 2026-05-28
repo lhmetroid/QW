@@ -4404,7 +4404,7 @@ Alex</textarea>
                 '  • 风格匹配（style_match）：是否贴合所选回复风格\n' +
                 '  • 上下文贴合（context_alignment）：是否扣紧线程事实与 CRM\n' +
                 '打分模型：LLM-1（qwen14b）。这是 AI 回复自身的"绝对质量分"，与右侧"相似分"(像不像原始回复)是两件事。\n' +
-                '本列分两行：ai＝当前流程回复质量分；训练ai＝另一条 model-chat 途径回复质量分(同模型 qwen14b、同 7 维度独立打分)。训练AI超时/失败时显示失败。\n' +
+                '本列分两行：1 = 当前流程回复质量分(原 ai 路径)；2 = 另一条 model-chat 途径回复质量分(原 训练ai 路径, 同模型 qwen14b、同 7 维度独立打分)。训练AI超时/失败时显示失败。\n' +
                 '悬停每行单元格可看该案例的 7 维分明细。'
             );
             const mdHeaderTip = (
@@ -4432,7 +4432,7 @@ Alex</textarea>
                             <th class="px-2 py-2 text-left" style="width:90px; min-width:90px; max-width:90px; overflow:hidden;" title="本轮触发点之前的背景对话（最多15行）。悬停单元格看全部背景对话">背景</th>
                             <th class="px-2 py-2 text-left" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="步骤4：CRM 客户画像（联系人/公司/行业/等级/支付风险/生命周期）。悬停单元格看明细">客户画像</th>
                             <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="本轮真实输入给AI的原客户问；背景只包含客户问之前的15行，不包含本轮销售参考答案">原客户问</th>
-                            <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="步骤6：AI 回复建议(两行)。第1行 ai＝当前流程(大模型2)生成；第2行 训练ai＝另一条 model-chat 途径(与当前流程并行,10秒超时,无回值显示调用失败/超时)。各占一行,悬停看全文">第6步·AI生成回复（ai/训练ai）</th>
+                            <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="步骤6：AI 回复建议(两行)。第1行 1 = 当前流程(大模型2)生成 (原 ai 路径)；第2行 2 = 另一条 model-chat 途径 (原 训练ai 路径, 与当前流程并行,10秒超时,无回值显示调用失败/超时)。各占一行,悬停看全文">第6步·AI生成回复（1/2）</th>
                             <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" style="width:92px; min-width:92px; max-width:92px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" style="width:92px; min-width:92px; max-width:92px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(mdHeaderTip)}">原始回复分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
@@ -4594,21 +4594,22 @@ Alex</textarea>
                     <div style="${lineClamp2Style}" title="${escapeHtml(content)}">${escapeHtml(content) || '<span class="text-slate-400">（无）</span>'}</div>
                 </td>`;
             };
-            // 与第6步共用一列：ai / 训练ai 各占一行(单行截断,悬停看全文)
+            // 与第6步共用一列：第1行(ai 路径) / 第2行(训练ai 路径) 各占一行(单行截断,悬停看全文)
+            // v1.7.196: 标签 ai：/训练ai： 收敛成 1：/2： (固定映射 ai→1, 训练ai→2). 表头 tooltip 已标注对照关系.
             const oneLineStyle = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35;';
             const aiTrainTextCell = (aiText, trainText, aiTitle, trainTitle, clickStepHtml = '', cls = 'text-slate-700') => {
                 const a = String(aiText || '').trim();
                 const t = String(trainText || '').trim();
                 return `<td class="px-2 py-2 ${cls}" style="width:400px; max-width:400px; min-width:400px; overflow:hidden;" ${clickStepHtml || ''}>
-                    <div style="${oneLineStyle}" title="${escapeHtml(aiTitle != null ? aiTitle : a)}"><span class="text-slate-400">ai：</span>${escapeHtml(a) || '<span class="text-slate-400">（无）</span>'}</div>
-                    <div style="${oneLineStyle}" title="${escapeHtml(trainTitle != null ? trainTitle : t)}"><span class="text-indigo-500">训练ai：</span>${escapeHtml(t) || '<span class="text-slate-400">-</span>'}</div>
+                    <div style="${oneLineStyle}" title="${escapeHtml(aiTitle != null ? aiTitle : a)}"><span class="text-slate-400">1：</span>${escapeHtml(a) || '<span class="text-slate-400">（无）</span>'}</div>
+                    <div style="${oneLineStyle}" title="${escapeHtml(trainTitle != null ? trainTitle : t)}"><span class="text-indigo-500">2：</span>${escapeHtml(t) || '<span class="text-slate-400">-</span>'}</div>
                 </td>`;
             };
-            // 与AI质量分共用一列：ai分 / 训练ai分 各占一行(各自悬停看明细)
+            // 与AI质量分共用一列：第1行(ai 分) / 第2行(训练ai 分) 各占一行(各自悬停看明细)
             const aiTrainScoreCell = (aiTxt, trainTxt, cls, aiTitle, trainTitle) =>
                 `<td class="px-2 py-2 text-right ${cls}" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;">
-                    <div title="${escapeHtml(aiTitle || '')}"><span class="text-slate-400 text-[10px]">ai：</span>${aiTxt}</div>
-                    <div title="${escapeHtml(trainTitle || '')}"><span class="text-indigo-500 text-[10px]">训练ai：</span>${trainTxt}</div>
+                    <div title="${escapeHtml(aiTitle || '')}"><span class="text-slate-400 text-[10px]">1：</span>${aiTxt}</div>
+                    <div title="${escapeHtml(trainTitle || '')}"><span class="text-indigo-500 text-[10px]">2：</span>${trainTxt}</div>
                 </td>`;
             const tipParse = (v) => {
                 if (v == null) return null;
