@@ -21549,12 +21549,18 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 # 从已一次性载入的 session_hist_asc 内存切片，不再每轮查库。
                 history_msgs = [m for m in session_hist_asc if m.timestamp < ref_time][-15:]
 
+            # v1.7.191: MessageLog.timestamp 是 UTC(服务器 datetime.utcnow / fromtimestamp 在 UTC 容器下也是 UTC),
+            # 但前端 caselibFmtMsgTime 不做时区转换 —— 用户看到背景浮层是"2026-05-27 18:53",误以为是 5.27 数据,
+            # 实际是 UTC 18:53 = 北京 02:53 次日。修复: 在 API 边界统一把 UTC → 北京-naive isoformat 下发,
+            # 前端 caselibFmtMsgTime 只做 T→空格 + 截分钟,显示就是北京时间,不会再跟 turn 行的时间错位。
+            def _bj_iso(dt):
+                return (dt + timedelta(hours=8)).isoformat() if dt else ""
             bg_count = len(history_msgs)
             context_messages = []
             for m in history_msgs:
                 context_messages.append({
                     "role": "customer" if m.sender_type == "customer" else "sales",
-                    "msg_time": m.timestamp.isoformat(),
+                    "msg_time": _bj_iso(m.timestamp),
                     "content": m.content
                 })
 
@@ -21562,13 +21568,13 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
             if cust:
                 core_dialog.append({
                     "role": "customer",
-                    "msg_time": cust["timestamp"].isoformat(),
+                    "msg_time": _bj_iso(cust["timestamp"]),
                     "content": cust["content"]
                 })
             if g["sales"]:
                 core_dialog.append({
                     "role": "sales",
-                    "msg_time": g["sales"]["timestamp"].isoformat(),
+                    "msg_time": _bj_iso(g["sales"]["timestamp"]),
                     "content": g["sales"]["content"]
                 })
 
@@ -21626,7 +21632,9 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 "sales_text": sales_text,
                 "actual_sales_score": sales_score,
                 "actual_sales_scores": {},
-                "timestamp": g["timestamp"].isoformat() if g.get("timestamp") else "",
+                # v1.7.191: 同 context_messages.msg_time, 在 API 边界 UTC→北京 一次性转好,
+                # 前端无需(也不应)再 +8 二次转换。
+                "timestamp": _bj_iso(g["timestamp"]) if g.get("timestamp") else "",
             }
 
             step1 = None

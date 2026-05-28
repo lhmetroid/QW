@@ -4757,8 +4757,9 @@ Alex</textarea>
                     trCls = 'bg-amber-50 hover:bg-amber-100 font-semibold';
                 }
 
-                // 轮次时间同样按北京时间(UTC+8)展示，取 HH:MM
-                const turnTime = (isDaily && turn.timestamp) ? caselibFormatTime(turn.timestamp).substring(11, 16) : '';
+                // v1.7.191: 后端 daily 接口已统一在 API 边界把 turn.timestamp / msg_time 从 UTC 转成北京-naive,
+                // 这里只取 HH:MM 即可,不能再用 caselibFormatTime(那会再 +8 一次,看到的就成了次日凌晨)。
+                const turnTime = (isDaily && turn.timestamp) ? caselibFmtMsgTime(turn.timestamp).substring(11, 16) : '';
                 const turnNoDisplay = isDaily
                     ? `${r.turn_no || turn.turn_no || '-'}<br/><span class="text-[9px] text-slate-400 font-normal">${turnTime}</span>`
                     : (r.turn_no || turn.turn_no || '-');
