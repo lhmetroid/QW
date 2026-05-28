@@ -4,7 +4,11 @@ param(
     [switch]$CheckOnly,
     [switch]$KillPortOwner,
     [switch]$EnableHttps,
-    [switch]$EnsureDevCert
+    [switch]$EnsureDevCert,
+    # v1.7.193: 控制台 stdout/stderr 兜底落盘. Python logging 已写 backend/logs/app.log,
+    # 这里再加一条全量 console tee, 防止 uvicorn 启动错误 / print / 未捕获异常 / 段错误丢失.
+    [switch]$NoConsoleLog,
+    [string]$ConsoleLogFile = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -205,7 +209,26 @@ try {
     else {
         Write-Host "INFO: hot reload disabled. Use -Reload to enable it."
     }
-    python @args
+
+    # v1.7.193: 控制台 tee 落盘. 默认开, 在 $Root\logs\start_backend_<port>_<时间戳>.out.log.
+    # 关掉: -NoConsoleLog. 自定义路径: -ConsoleLogFile <path>.
+    if ($NoConsoleLog) {
+        python @args
+    }
+    else {
+        $consoleLogDir = Join-Path $Root "logs"
+        if (-not (Test-Path -LiteralPath $consoleLogDir)) {
+            New-Item -ItemType Directory -Path $consoleLogDir -Force | Out-Null
+        }
+        if ([string]::IsNullOrWhiteSpace($ConsoleLogFile)) {
+            $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+            $ConsoleLogFile = Join-Path $consoleLogDir "start_backend_${Port}_${stamp}.out.log"
+        }
+        Write-Host "INFO: console tee -> $ConsoleLogFile (use -NoConsoleLog to disable)"
+        # 2>&1 把 stderr 合并到 stdout 再交给 Tee-Object, 这样 PowerShell 控制台与文件双写;
+        # Python logging 仍独立写 backend/logs/app.log (RotatingFileHandler), 两者互不影响.
+        python @args 2>&1 | Tee-Object -FilePath $ConsoleLogFile -Append
+    }
 }
 finally {
     Pop-Location

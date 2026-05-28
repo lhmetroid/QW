@@ -802,6 +802,8 @@ def _run_api_invocation_rescore_backfill() -> dict:
                     _refresh_api_invocation_quality(db, it, all_messages=messages)
                     if it.quality_scored_at != old_ts:
                         refreshed += 1
+                        import time
+                        time.sleep(3.0)  # 给 LLM 留出喘息间隔，防过载
                 except Exception as item_exc:
                     failed += 1
                     logger.warning("API原始/相似分补算: 单条失败 inv=%s err=%s", it.invocation_id, item_exc)
@@ -13927,10 +13929,26 @@ def _refresh_api_invocation_quality(
     messages = all_messages if all_messages is not None else _load_session_messages(db, item.session_id)
     actual_sales_replies = _collect_actual_sales_replies(messages, int(item.anchor_message_id or 0)) if item.anchor_message_id else []
     reply_hash = _reply_block_hash(actual_sales_replies)
+    # 检查已存评分中是否含有 llm1_failed
+    has_failed_scores = False
+    stored_scores = (item.result_payload or {}).get("reply_scores_v2") if isinstance(item.result_payload, dict) else None
+    if isinstance(stored_scores, dict):
+        for cand in stored_scores.get("ai_candidates") or []:
+            if cand.get("score_reason") == "llm1_failed":
+                has_failed_scores = True
+                break
+        if not has_failed_scores:
+            for rep in stored_scores.get("actual_sales_replies") or []:
+                if rep.get("score_reason") == "llm1_failed":
+                    has_failed_scores = True
+                    break
+
     if (
         item.actual_sales_reply_hash == reply_hash
         and item.quality_similarity
         and item.quality_status
+        and item.quality_status != "llm1_failed"
+        and not has_failed_scores
     ):
         return
 
@@ -14212,6 +14230,14 @@ def _reply_scores_need_refresh(
     if stored_sales_ids != current_sales_ids:
         return True
 
+    # 如果已存的评分包含 llm1_failed 状态，需要重新刷新打分
+    for item in stored_ai:
+        if item.get("score_reason") == "llm1_failed":
+            return True
+    for item in stored_sales:
+        if item.get("score_reason") == "llm1_failed":
+            return True
+
     return False
 
 def _load_or_refresh_reply_scores(
@@ -14232,13 +14258,87 @@ def _load_or_refresh_reply_scores(
         actual_sales_replies=actual_sales_replies,
     ):
         return stored_scores
-    return IntentEngine.score_reply_candidates(
+
+    # 实现部分打分不重新计算逻辑
+    scored_ai_by_id = {}
+    scored_sales_by_id = {}
+    if isinstance(stored_scores, dict):
+        scored_ai_by_id = {
+            str(c.get("candidate_id") or "").strip(): c
+            for c in stored_scores.get("ai_candidates") or []
+            if c.get("score_reason") == "llm1_scored"
+        }
+        scored_sales_by_id = {
+            str(s.get("reply_id") or "").strip(): s
+            for s in stored_scores.get("actual_sales_replies") or []
+            if s.get("score_reason") == "llm1_scored"
+        }
+
+    # 找出哪些候选尚未打分成功
+    candidates_to_score = [
+        c for c in prepared_candidates
+        if str(c.get("candidate_id") or "").strip() not in scored_ai_by_id
+    ]
+    # 找出哪些销售回复尚未打分成功
+    sales_replies_to_score = [
+        s for s in (actual_sales_replies or [])
+        if str(s.get("id") or "").strip() not in scored_sales_by_id
+    ]
+
+    # 如果两者都已经成功打分，则直接返回已存的分数
+    if not candidates_to_score and not sales_replies_to_score:
+        return stored_scores
+
+    # 仅针对未成功打分的项调用 LLM-1
+    new_scores = IntentEngine.score_reply_candidates(
         summary_json=summary_json,
         knowledge_payload=knowledge_payload or {},
         crm_context=crm_context,
-        candidates=prepared_candidates,
-        actual_sales_replies=actual_sales_replies or [],
+        candidates=candidates_to_score,
+        actual_sales_replies=sales_replies_to_score,
     )
+
+    # 将新打好的分数与已有成功分数合并
+    merged_ai = list(scored_ai_by_id.values())
+    merged_sales = list(scored_sales_by_id.values())
+
+    if isinstance(new_scores, dict):
+        # 合并 AI 候选
+        new_ai = new_scores.get("ai_candidates") or []
+        for cand in new_ai:
+            cand_id = str(cand.get("candidate_id") or "").strip()
+            if cand_id not in scored_ai_by_id:
+                merged_ai.append(cand)
+        # 合并销售实发回复
+        new_sales = new_scores.get("actual_sales_replies") or []
+        for rep in new_sales:
+            rep_id = str(rep.get("reply_id") or "").strip()
+            if rep_id not in scored_sales_by_id:
+                merged_sales.append(rep)
+
+    merged_ai.sort(key=lambda item: item.get("overall_score") or 0, reverse=True)
+    merged_sales.sort(key=lambda item: item.get("overall_score") or 0, reverse=True)
+
+    return {
+        "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "scored_by": {
+            "model": settings.LLM1_MODEL,
+            "provider": IntentEngine._llm_provider_label(settings.LLM1_API_KEY),
+            "score_mode": "llm1",
+        },
+        "dimensions": [
+            {"key": "overall", "label": "总分"},
+            {"key": "low_barrier", "label": "易回复"},
+            {"key": "non_repetition", "label": "差异化"},
+            {"key": "safety", "label": "稳妥度"},
+            {"key": "conciseness", "label": "微信感"},
+            {"key": "style_match", "label": "风格匹配"},
+            {"key": "context_alignment", "label": "上下文贴合"},
+        ],
+        "ai_candidates": merged_ai,
+        "actual_sales_replies": merged_sales,
+        "best_ai_candidate_id": merged_ai[0]["candidate_id"] if merged_ai else None,
+    }
 
 def _prepare_candidates_for_scoring(candidates: list[dict] | None) -> list[dict]:
     prepared: list[dict] = []
@@ -18601,10 +18701,27 @@ async def sidebar_assist(
 
         result["crm_status"] = (crm_context or {}).get("crm_profile_status", "unknown")
         result["knowledge_status"] = knowledge_status
-        timings_ms["total_ms"] = round((perf_counter() - total_started) * 1000, 2)
+
+        # v1.7.193 计时改造 (盲区排查):
+        # 旧逻辑 total_ms 在主链路结束就截止, jsonable/sanitize/to_thread 存库/db.commit 全部不在统计内,
+        # 导致 sidebar 看到的"几百秒墙钟"与后端 total_ms (12s) 对不上, 之前补点不够细仍查不出 262s 落点。
+        # 现在: 1) 拆 pipeline_total_ms (主链路) 2) 尾段每一步单独 mark_timing
+        # 3) commit 后再算 wall_total_ms (真·墙钟) 4) 通过 flag_modified 回写 DB, 让 UI 双行显示真差值。
+        pipeline_total_ms = round((perf_counter() - total_started) * 1000, 2)
+        timings_ms["pipeline_total_ms"] = pipeline_total_ms
+        timings_ms["total_ms"] = pipeline_total_ms  # 兜底值, 后面 wall_total_ms 算出后覆盖
         result["timings_ms"] = timings_ms
         result["node_timings_ms"] = _extract_node_timings(stage_status)
-        result = _sanitize_api_sidebar_result_payload(_jsonable(result))
+
+        stage_started = perf_counter()
+        result_jsonable = _jsonable(result)
+        mark_timing("jsonable_ms", stage_started)
+
+        stage_started = perf_counter()
+        result = _sanitize_api_sidebar_result_payload(result_jsonable)
+        mark_timing("sanitize_ms", stage_started)
+
+        stage_started = perf_counter()
         api_invocation = await asyncio.to_thread(
             _store_api_assist_invocation,
             db,
@@ -18617,7 +18734,63 @@ async def sidebar_assist(
             trigger_source=trigger_source,
             request_id=current_request_id,
         )
+        mark_timing("store_invocation_ms", stage_started)
+
+        stage_started = perf_counter()
         db.commit()
+        mark_timing("first_db_commit_ms", stage_started)
+
+        # 真·墙钟: 从 RECEIVED 到这里 (即将打 SUCCESS) 的全程,
+        # 与 RECEIVED/SUCCESS 两条日志的 wall_clock_utc 差值应当一致 (单进程同时钟源)。
+        wall_total_ms = round((perf_counter() - total_started) * 1000, 2)
+        tail_ms = round(max(wall_total_ms - pipeline_total_ms, 0.0), 2)
+        timings_ms["total_ms"] = wall_total_ms
+        timings_ms["tail_ms"] = tail_ms
+
+        # 二阶段回写: 把真实 wall_total_ms / tail_ms / 各尾段细分塞回 DB 的 result_payload.timings_ms,
+        # 这样案例详情页(matched_inv.result_payload.timings_ms)读到的就是真墙钟, UI 双行才能拉开差值。
+        # 任一异常都不影响主请求返回 (best-effort)。
+        stage_started = perf_counter()
+        repatch_status = "skipped"
+        if api_invocation is not None:
+            try:
+                from sqlalchemy.orm.attributes import flag_modified as _flag_modified_local
+                _existing_timings = {}
+                if isinstance(api_invocation.result_payload, dict):
+                    _existing_timings = dict(api_invocation.result_payload.get("timings_ms") or {})
+                _merged_timings = {
+                    **_existing_timings,
+                    "pipeline_total_ms": pipeline_total_ms,
+                    "jsonable_ms": timings_ms.get("jsonable_ms"),
+                    "sanitize_ms": timings_ms.get("sanitize_ms"),
+                    "store_invocation_ms": timings_ms.get("store_invocation_ms"),
+                    "first_db_commit_ms": timings_ms.get("first_db_commit_ms"),
+                    "tail_ms": tail_ms,
+                    "total_ms": wall_total_ms,
+                }
+                if isinstance(api_invocation.result_payload, dict):
+                    api_invocation.result_payload = {
+                        **api_invocation.result_payload,
+                        "timings_ms": _merged_timings,
+                    }
+                    _flag_modified_local(api_invocation, "result_payload")
+                    db.commit()
+                    repatch_status = "done"
+                else:
+                    repatch_status = "skipped_non_dict_payload"
+            except Exception as _repatch_exc:
+                repatch_status = f"failed:{type(_repatch_exc).__name__}"
+                logger.warning(
+                    "v1.7.193 timings 二阶段回写失败 request_id=%s err=%s",
+                    current_request_id,
+                    _repatch_exc,
+                )
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+        mark_timing("timings_repatch_ms", stage_started)
+
         log_sidebar_result("SUCCESS", {
             "request_id": current_request_id,
             "role": "owner" if dedupe_future_owner else "fresh",   # v1.7.185: 标明这次 SUCCESS 是合并 owner 还是 fresh
@@ -18638,6 +18811,18 @@ async def sidebar_assist(
             "request_key": dedupe_request_key,
             "stage_status": stage_status,
             "timings_ms": timings_ms,
+            # v1.7.193: 把"主链路 vs 真墙钟 vs 尾段"摊在 SUCCESS 顶层, grep 时不用钻 timings_ms 字典
+            "pipeline_total_ms": pipeline_total_ms,
+            "wall_total_ms": wall_total_ms,
+            "tail_ms": tail_ms,
+            "tail_breakdown_ms": {
+                "jsonable_ms": timings_ms.get("jsonable_ms"),
+                "sanitize_ms": timings_ms.get("sanitize_ms"),
+                "store_invocation_ms": timings_ms.get("store_invocation_ms"),
+                "first_db_commit_ms": timings_ms.get("first_db_commit_ms"),
+                "timings_repatch_ms": timings_ms.get("timings_repatch_ms"),
+            },
+            "timings_repatch_status": repatch_status,
         })
         final_result = _api_invocation_result_payload(api_invocation) if api_invocation else result
         # 盲评:仅对返回给微信侧边栏的响应做随机映射(reply_reference1/2),DB 原始字段不变、分析台不受影响
@@ -21713,23 +21898,31 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
             if matched_inv and matched_inv.result_payload:
                 crm_info = matched_inv.result_payload.get("crm_info")
 
-            # 耗时双行：第1行 fetch_to_output_ms = 抓取微信对话→输出；
-            #          第2行 api_total_ms = 收到API请求→输出(全程, total_started 打点在接口入口)。
-            # 两者差值 = 收到请求到开始抓取微信对话之间的前置耗时(参数规范化+构建会话ID+归档同步)。
-            # 非API匹配的轮次两值均为 None，前端留空、不报错。
+            # 耗时双行 (v1.7.193 重定义, 让两行不再恒等):
+            #   第1行 fetch_to_output_ms = "主链路耗时" = pipeline_total_ms (LLM1+知识+LLM2+训练AI 全部跑完那一刻)
+            #   第2行 api_total_ms       = "全程墙钟"   = total_ms (含 sanitize/落库/commit/回写, 即真实墙钟)
+            #   两者差值 = 尾段开销 (序列化 + ApiAssistInvocation 落库 + db.commit + 二阶段回写)
+            # 旧逻辑 (差值 = 前置补偿) 因生产路径 archive_sync 改为异步, 前置≈0, 两行恒等失去意义。
+            # 兼容: 老记录(2026-05-28 之前)没有 pipeline_total_ms 字段, 退回老算法继续展示。
             fetch_to_output_ms = None
             api_total_ms = None
             if matched_inv and matched_inv.result_payload:
                 _timings = matched_inv.result_payload.get("timings_ms") or {}
                 _total = _timings.get("total_ms")
+                _pipeline = _timings.get("pipeline_total_ms")
                 if _total is not None:
                     api_total_ms = int(_total)
-                    _pre = 0.0
-                    for _k in ("normalize_request_ms", "build_session_id_ms", "archive_sync_ms"):
-                        _v = _timings.get(_k)
-                        if _v is not None:
-                            _pre += float(_v)
-                    fetch_to_output_ms = int(max(_total - _pre, 0))
+                    if _pipeline is not None:
+                        # 新记录: 直接读 pipeline_total_ms, 差值即尾段开销
+                        fetch_to_output_ms = int(max(float(_pipeline), 0))
+                    else:
+                        # 老记录回退: 按旧"减前置补偿"算法
+                        _pre = 0.0
+                        for _k in ("normalize_request_ms", "build_session_id_ms", "archive_sync_ms"):
+                            _v = _timings.get(_k)
+                            if _v is not None:
+                                _pre += float(_v)
+                        fetch_to_output_ms = int(max(_total - _pre, 0))
 
             item = {
                 "result_id": result_id,

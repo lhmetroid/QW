@@ -4774,7 +4774,9 @@ Alex</textarea>
                     ? `${r.turn_no || turn.turn_no || '-'}<br/><span class="text-[9px] text-slate-400 font-normal">${turnTime}</span>`
                     : (r.turn_no || turn.turn_no || '-');
 
-                // 耗时第1行：实时验证取"抓取微信对话→输出"(fetch_to_output_ms)，迭代模式回退原 latency_ms
+                // 耗时第1行 (v1.7.193 重定义): 主链路耗时 (LLM1+知识+LLM2 全部跑完那一刻, pipeline_total_ms),
+                // 迭代模式回退原 latency_ms。第2行 api_total_ms = 含尾段 (序列化+落库+commit) 的真墙钟。
+                // 两行差值 = 尾段开销, 直接暴露 sidebar"几百秒超时"是否卡在落库阶段。
                 const line1Latency = (r.fetch_to_output_ms != null) ? r.fetch_to_output_ms : r.latency_ms;
 
                 const curlCmd = getReproductionCurl(r);
@@ -4786,9 +4788,9 @@ Alex</textarea>
                     <td class="px-2 py-2 truncate text-slate-700" style="width:210px; min-width:210px; max-width:210px; overflow:hidden;" title="${sameCaseAsPrev ? '' : escapeHtml(c.case_title || '')}">${sameCaseAsPrev ? '' : escapeHtml(title)}</td>
                     <td class="px-2 py-2 text-center font-mono text-[11px] text-purple-700" style="width:45px; min-width:45px; max-width:45px; overflow:hidden;" title="第 ${r.turn_no || turn.turn_no || '-'} 轮">${turnNoDisplay}</td>
                     <td class="px-0.5 py-2 text-center" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="原始状态码：${r.quality_status || ''}">${escapeHtml(qstatus)}</span>${copyBtnHtml}</td>
-                    <td class="px-0.5 py-2 text-slate-500 whitespace-nowrap" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="第1行 = 抓取微信对话 → 输出 耗时&#10;第2行 = 收到 API 请求 → 输出 全程耗时（仅 API 触发的轮次有值，迭代模式留空）">
+                    <td class="px-0.5 py-2 text-slate-500 whitespace-nowrap" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="第1行 = 主链路耗时 (LLM1+知识检索+LLM2+训练AI 全部跑完那一刻)&#10;第2行 = 全程墙钟 (含序列化+落库+commit 的真实耗时, 仅 API 触发轮次有值)&#10;两行差值 = 尾段开销, 用于排查 sidebar 看到的'几百秒超时'是否卡在主链路之后">
                         <div>${line1Latency != null ? line1Latency + ' ms' : '-'}</div>
-                        ${r.api_total_ms != null ? `<div class="text-[10px] text-emerald-600" title="收到 API 请求 → 输出 全程">${r.api_total_ms} ms</div>` : ''}
+                        ${r.api_total_ms != null ? `<div class="text-[10px] text-emerald-600" title="全程墙钟 (API 入口 → SUCCESS 日志, 含尾段)">${r.api_total_ms} ms</div>` : ''}
                     </td>
                     <td class="px-2 py-2 truncate text-slate-700 cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" ${stepClick('第1步·主线话题')} onmouseenter="caselibCellTip(event,'${r.result_id}','topic')" onmouseleave="caselibCellTipHide()">${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 text-slate-500 truncate cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:130px; min-width:130px; max-width:130px; overflow:hidden;" ${stepClick('第4步·知识检索')} onmouseenter="caselibCellTip(event,'${r.result_id}','kb')" onmouseleave="caselibCellTipHide()">${kbCellText}</td>
