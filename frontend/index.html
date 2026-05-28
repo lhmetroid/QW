@@ -4148,57 +4148,62 @@ Alex</textarea>
                 ? `日常实时验证 ｜ 触发于 ${tt} ｜ 运行状态 = ${caselibRunStatusLabel(it.status)}`
                 : `代码版本 = ${it.git_short_sha || '-'}${it.git_dirty ? ' (含未提交改动)' : ''}  ｜  触发于 ${tt}  ｜  运行状态 = ${caselibRunStatusLabel(it.status)}`;
 
-            // === 顶部速览卡片：本次平均 / 原始平均 / Δ ===
+            // === 顶部速览卡片(v1.7.189): AI质量平均分(ai/训练ai) + 销售回复平均分 + 平均分差值(ai-销售/训练ai-销售) + AI相似平均分 ===
+            // 之前 真实成功 / 干跑/异常 / 最低/最高 / 备份 几个卡片对实时验证场景信息密度低,已删除。
             const aiScores = allRows.map(r => r.quality_score).filter(v => v != null);
+            const trainAiScores = allRows.map(r => r.training_ai_score).filter(v => v != null);
             const mdScores = allRows.map(r => getSalesScore(r)).filter(v => v != null);
-            const aiAvg = aiScores.length ? (aiScores.reduce((a,b)=>a+b,0) / aiScores.length) : null;
-            const mdAvg = mdScores.length ? (mdScores.reduce((a,b)=>a+b,0) / mdScores.length) : null;
+            const simScores = allRows.map(r => r.similarity_score).filter(v => v != null);
+            const avg = (arr) => arr.length ? (arr.reduce((a,b)=>a+b,0) / arr.length) : null;
+            const aiAvg = avg(aiScores);
+            const trainAiAvg = avg(trainAiScores);
+            const mdAvg = avg(mdScores);
+            const simAvg = avg(simScores);
             const delta = (aiAvg != null && mdAvg != null) ? (aiAvg - mdAvg) : null;
-            const successN = allRows.filter(r => r.quality_status === 'real_success').length;
-            const dryN = allRows.filter(r => (r.quality_status||'').startsWith('dry_run')).length;
-            const errN = allRows.filter(r => {
-                const s = r.quality_status||''; return s.includes('fail') || s.includes('error') || s.includes('empty') || s.startsWith('real_http_');
-            }).length;
+            const trainDelta = (trainAiAvg != null && mdAvg != null) ? (trainAiAvg - mdAvg) : null;
+            const fmt = (v) => v != null ? v.toFixed(2) : '—';
+            const fmtSigned = (v) => v == null ? '—' : ((v > 0 ? '+' : '') + v.toFixed(2));
+            const deltaCls = (v) => v == null ? 'text-slate-400' : (v > 0 ? 'text-emerald-700' : 'text-red-700');
             const aiCardTip = (
-                'AI 本轮平均分 = 60 案例 quality_score 的算术平均（满分100）。\n' +
-                '单案例 quality_score = reply_scores_v2.ai_candidates 中 overall_score 最高者。\n' +
-                'overall 由 LLM-1 综合 7 维评估：overall / low_barrier / non_repetition / safety / conciseness / style_match / context_alignment（每维 0-100）。\n' +
-                'LLM-1 失败时回退启发式；reply_scores 为空时按 advice 字数兜底。\n' +
-                '若想拿到 7 维分，点击下方「重新打分（AI + 人工）」。'
+                `AI 质量平均分 = 本轮 ${allRows.length} 条记录两路 quality_score 的算术平均(满分100)。\n` +
+                '左 = 主流程 AI(reply_scores_v2.ai_candidates 中 overall_score 最高者), 右 = 训练AI(另一条 model-chat 途径 quality_score)。\n' +
+                'overall 由 LLM-1 综合 7 维评估: overall / low_barrier / non_repetition / safety / conciseness / style_match / context_alignment(每维 0-100)。\n' +
+                'LLM-1 失败时回退启发式; 训练AI 调用失败/超时则不计入平均。'
             );
             const mdCardTip = (
-                '销售原始回复平均分 = 已打分案例的 LLM-1 overall 算术平均（满分100）。\n' +
-                '单案例分值来自 step7_reply_scores.actual_sales_replies[0].overall_score，与 AI 质量分同一评分器、同 7 维度。\n' +
-                '未打分或打分失败的案例不计入平均。'
+                '销售回复平均分 = 已打分案例的 LLM-1 overall 算术平均(满分100)。\n' +
+                '单案例分值来自 step7_reply_scores.actual_sales_replies[0].overall_score, 与 AI 质量分同一评分器、同 7 维度。\n' +
+                '未打分(销售尚未回复 / 后台补算未触达)或打分失败的案例不计入平均。'
             );
-            // 速览卡片与标题行合并到同一行（顶部 detail header 的右侧），不再单独占一行；
-            // 分数只保留一份(平均=AI本轮平均分卡片)，最低/最高、备份并入右侧小字。
-            const backupTxt = it.backup_commit_sha ? it.backup_commit_sha.slice(0,8) : (it.backup_status || '未备份');
+            const deltaCardTip = (
+                '平均分差值 = AI 质量平均分 − 销售回复平均分。\n' +
+                '左 = 主流程AI − 销售, 右 = 训练AI − 销售。\n' +
+                '正值(绿) = AI 这一路平均比销售原始回复评分高; 负值(红) = AI 不如销售。'
+            );
+            const simCardTip = (
+                'AI 相似平均分 = 主流程 AI 回复 vs 销售原始回复 的贴合代理分平均(quality_similarity.best_score)。\n' +
+                '同样由 LLM-1 打分(0-100, 越像越高), 与 quality_score 同一评分器但维度不同。\n' +
+                '训练AI 暂未独立计算相似分, 此处只统计主流程 AI。'
+            );
             const summaryInline = `
                 <div class="flex flex-wrap items-center gap-1.5">
                     <span class="rounded-lg border border-purple-100 bg-purple-50 px-2 py-1 inline-flex items-center gap-1.5 cursor-help" title="${escapeHtml(aiCardTip)}">
-                        <span class="text-[10px] text-purple-700 font-bold">AI 本轮平均分 ⓘ</span>
-                        <span class="text-xs font-bold text-purple-800">${aiAvg != null ? aiAvg.toFixed(2) : '—'}</span>
+                        <span class="text-[10px] text-purple-700 font-bold">AI 质量平均分 ⓘ</span>
+                        <span class="text-xs font-bold text-purple-800">${fmt(aiAvg)} / ${fmt(trainAiAvg)}</span>
                     </span>
                     <span class="rounded-lg border border-sky-100 bg-sky-50 px-2 py-1 inline-flex items-center gap-1.5 cursor-help" title="${escapeHtml(mdCardTip)}">
-                        <span class="text-[10px] text-sky-700 font-bold">销售原始回复分平均 ⓘ</span>
-                        <span class="text-xs font-bold text-sky-800">${mdAvg != null ? mdAvg.toFixed(2) : '—'}</span>
+                        <span class="text-[10px] text-sky-700 font-bold">销售回复平均分 ⓘ</span>
+                        <span class="text-xs font-bold text-sky-800">${fmt(mdAvg)}</span>
                     </span>
-                    <span class="rounded-lg border ${delta == null ? 'border-slate-200 bg-slate-50' : (delta > 0 ? 'border-emerald-100 bg-emerald-50' : 'border-red-100 bg-red-50')} px-2 py-1 inline-flex items-center gap-1.5 cursor-help" title="AI 质量分 − 销售原始回复分（均为 LLM-1 打分）。正值表示 AI 回复比人工原始回复得分更高；负值表示 AI 回复不如人工原始回复">
-                        <span class="text-[10px] ${delta == null ? 'text-slate-500' : (delta > 0 ? 'text-emerald-700' : 'text-red-700')} font-bold">Δ（AI − 人工）</span>
-                        <span class="text-xs font-bold ${delta == null ? 'text-slate-400' : (delta > 0 ? 'text-emerald-800' : 'text-red-800')}">${delta == null ? '—' : (delta > 0 ? '+' : '') + delta.toFixed(2)}</span>
+                    <span class="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 inline-flex items-center gap-1.5 cursor-help" title="${escapeHtml(deltaCardTip)}">
+                        <span class="text-[10px] text-slate-700 font-bold">平均分差值 ⓘ</span>
+                        <span class="text-xs font-bold ${deltaCls(delta)}">${fmtSigned(delta)}</span>
+                        <span class="text-xs text-slate-400">/</span>
+                        <span class="text-xs font-bold ${deltaCls(trainDelta)}">${fmtSigned(trainDelta)}</span>
                     </span>
-                    <span class="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 inline-flex items-center gap-1.5 cursor-help" title="本轮真实链路成功跑完的案例数（含 reply_reference 非空）">
-                        <span class="text-[10px] text-emerald-700 font-bold">真实成功</span>
-                        <span class="text-xs font-bold text-emerald-800">${successN}/${allRows.length}</span>
-                    </span>
-                    <span class="rounded-lg border border-amber-100 bg-amber-50 px-2 py-1 inline-flex items-center gap-1.5 cursor-help" title="干跑 ${dryN} 个（不调 LLM）+ 异常/HTTP错误 ${errN} 个（回退干跑或失败）">
-                        <span class="text-[10px] text-amber-700 font-bold">干跑 / 异常</span>
-                        <span class="text-xs font-bold text-amber-800">${dryN} / ${errN}</span>
-                    </span>
-                    <span class="text-[11px] text-slate-500 inline-flex items-center gap-2 pl-1 cursor-help" title="本轮最低/最高分 ｜ 完成后自动 git 备份的 commit SHA">
-                        <span>最低 ${caselibFmtNum(it.min_quality_score,1)} / 最高 ${caselibFmtNum(it.max_quality_score,1)}</span>
-                        <span>备份 ${backupTxt}</span>
+                    <span class="rounded-lg border border-indigo-100 bg-indigo-50 px-2 py-1 inline-flex items-center gap-1.5 cursor-help" title="${escapeHtml(simCardTip)}">
+                        <span class="text-[10px] text-indigo-700 font-bold">AI 相似平均分 ⓘ</span>
+                        <span class="text-xs font-bold text-indigo-800">${fmt(simAvg)}</span>
                     </span>
                 </div>`;
             document.getElementById('caselib-detail-summary').innerHTML = summaryInline;
