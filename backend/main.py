@@ -17728,6 +17728,16 @@ async def sidebar_assist(
     # 客户端 sidebar 那侧的 request_id(中间件已经写到 request.state, 见 request_observability_middleware),
     # 落到 ApiAssistInvocation.request_id, 后续可与 sidebar 日志一一对账。
     current_request_id: str | None = getattr(http_request.state, "request_id", None) if http_request is not None else None
+    # 诊断日志(v1.7.185): 接口入口立刻记一条, 带 wall_clock 便于和 sidebar 客户端时间戳对齐, 不再依赖只读到响应才看时间。
+    # 配合 DEDUPE/REUSED/SUCCESS/ERROR 与 SLOW_REQUEST/REQUEST_ERROR 中间件日志, 可还原一条 sidebar 请求的完整生命周期。
+    log_sidebar_result("RECEIVED", {
+        "request_id": current_request_id,
+        "wall_clock_utc": datetime.utcnow().isoformat() + "Z",
+        "external_userid": (request.external_userid or "").strip(),
+        "sales_userid": (request.userid or "").strip(),
+        "force_refresh": bool(getattr(request, "force_refresh", False)),
+        "stream": bool(stream),
+    })
 
     def mark_timing(name: str, started_at: float):
         timings_ms[name] = round((perf_counter() - started_at) * 1000, 2)
@@ -17743,6 +17753,8 @@ async def sidebar_assist(
         if not external_userid or not sales_userid:
             timings_ms["total_ms"] = round((perf_counter() - total_started) * 1000, 2)
             log_sidebar_result("ERROR", {
+                "request_id": current_request_id,                       # v1.7.185
+                "wall_clock_utc": datetime.utcnow().isoformat() + "Z",   # v1.7.185
                 "reason": "empty_required_params",
                 "external_userid": external_userid,
                 "sales_userid": sales_userid,
@@ -17827,6 +17839,8 @@ async def sidebar_assist(
                 )
                 timings_ms["total_ms"] = round((perf_counter() - total_started) * 1000, 2)
                 log_sidebar_result("REUSED_CONTENT", {
+                    "request_id": current_request_id,                       # v1.7.185
+                    "wall_clock_utc": datetime.utcnow().isoformat() + "Z",   # v1.7.185
                     "external_userid": external_userid,
                     "sales_userid": sales_userid,
                     "session_id": session_id,
@@ -17850,6 +17864,8 @@ async def sidebar_assist(
                     request_key=dedupe_request_key,
                 )
                 log_sidebar_result("REUSED", {
+                    "request_id": current_request_id,                       # v1.7.185
+                    "wall_clock_utc": datetime.utcnow().isoformat() + "Z",   # v1.7.185
                     "external_userid": external_userid,
                     "sales_userid": sales_userid,
                     "session_id": session_id,
@@ -17865,41 +17881,52 @@ async def sidebar_assist(
                 })
                 return cached_result
         if not stream:
-            if request.force_refresh:
-                # force_refresh=True 时不参与 in-flight 合并:每个 force_refresh 都独立计算,
-                # 避免 sidebar 短时间内多次发 force_refresh 全部排在第 1 个 future 上等同一个结果,
-                # 客户端测得 duration_ms 飙到 100-300 秒,而服务端 timings 实际只有 10-20 秒。
-                # 客户端纯网络重试由 60 秒内的"内容指纹缓存"挡掉(见上文 _get_cached_sidebar_content_result)。
-                dedupe_future = None
-                dedupe_future_owner = False
-                mark_timing("dedupe_lookup_ms", stage_started)
-                stage_status["dedupe_skipped"] = "force_refresh_bypass"
-            else:
-                dedupe_future, dedupe_future_owner = _acquire_sidebar_assist_future(dedupe_request_key)
-                mark_timing("dedupe_lookup_ms", stage_started)
-                if not dedupe_future_owner:
-                    reused_result = await asyncio.wrap_future(dedupe_future)
-                    reused_result = _decorate_sidebar_assist_result(
-                        reused_result,
-                        status="reused_inflight",
-                        reason="同一会话、同一消息内容的请求仍在处理中，当前请求直接复用进行中的结果",
-                        request_key=dedupe_request_key,
-                    )
-                    log_sidebar_result("REUSED", {
-                        "external_userid": external_userid,
-                        "sales_userid": sales_userid,
-                        "session_id": session_id,
-                        "requested_session_id": requested_session_id,
-                        "dedupe_status": "reused_inflight",
-                        "dedupe_reason": "same_content_inflight",
-                        "latest_dialog_count": len(recent_logs),
-                        "request_key": dedupe_request_key,
-                        "timings_ms": {
-                            **timings_ms,
-                            "total_ms": round((perf_counter() - total_started) * 1000, 2),
-                        },
-                    })
-                    return reused_result
+            # v1.7.185: 回滚 v1.7.184 task 2 的 force_refresh 绕过 —— 恢复原设计:
+            # 同 dedupe_key (同 session + 同 anchor + 同 message_signature + 同 force_refresh)
+            # 的请求合并到一个 future,第 1 个负责计算,后到的等结果一起返回。force_refresh 也走这套。
+            dedupe_future, dedupe_future_owner = _acquire_sidebar_assist_future(dedupe_request_key)
+            mark_timing("dedupe_lookup_ms", stage_started)
+            # 诊断日志(v1.7.185):每个请求记录是 owner 还是 waiter, 便于"sidebar 看到几百秒"再次出现时
+            # 一眼看清 4 个请求是 (a) 合并到同一个 future 一起返(那 owner 真慢) 还是 (b) 各自独立(其它瓶颈)。
+            log_sidebar_result("DEDUPE", {
+                "request_id": current_request_id,
+                "role": "owner" if dedupe_future_owner else "waiter",
+                "request_key": dedupe_request_key,
+                "external_userid": external_userid,
+                "sales_userid": sales_userid,
+                "session_id": session_id,
+                "force_refresh": bool(request.force_refresh),
+                "anchor_message_id": int(anchor_message.id) if anchor_message else None,
+                "latest_dialog_count": len(recent_logs),
+                "wall_clock_utc": datetime.utcnow().isoformat() + "Z",
+            })
+            if not dedupe_future_owner:
+                wait_start = perf_counter()
+                reused_result = await asyncio.wrap_future(dedupe_future)
+                wait_ms = round((perf_counter() - wait_start) * 1000, 2)
+                reused_result = _decorate_sidebar_assist_result(
+                    reused_result,
+                    status="reused_inflight",
+                    reason="同一会话、同一消息内容的请求仍在处理中，当前请求直接复用进行中的结果",
+                    request_key=dedupe_request_key,
+                )
+                log_sidebar_result("REUSED", {
+                    "request_id": current_request_id,
+                    "external_userid": external_userid,
+                    "sales_userid": sales_userid,
+                    "session_id": session_id,
+                    "requested_session_id": requested_session_id,
+                    "dedupe_status": "reused_inflight",
+                    "dedupe_reason": "same_content_inflight",
+                    "latest_dialog_count": len(recent_logs),
+                    "request_key": dedupe_request_key,
+                    "wait_for_owner_ms": wait_ms,   # v1.7.185: waiter 在 future 上等了多久,直接定位是 owner 慢还是 IO 慢
+                    "timings_ms": {
+                        **timings_ms,
+                        "total_ms": round((perf_counter() - total_started) * 1000, 2),
+                    },
+                })
+                return reused_result
         else:
             mark_timing("dedupe_lookup_ms", stage_started)
 
@@ -18577,6 +18604,9 @@ async def sidebar_assist(
         )
         db.commit()
         log_sidebar_result("SUCCESS", {
+            "request_id": current_request_id,
+            "role": "owner" if dedupe_future_owner else "fresh",   # v1.7.185: 标明这次 SUCCESS 是合并 owner 还是 fresh
+            "wall_clock_utc": datetime.utcnow().isoformat() + "Z",  # v1.7.185: 出口墙钟, 配 RECEIVED 算服务端真实墙钟耗时
             "external_userid": external_userid,
             "sales_userid": sales_userid,
             "session_id": session_id,
@@ -18620,9 +18650,12 @@ async def sidebar_assist(
     except Exception as e:
         if dedupe_request_key and dedupe_future_owner and dedupe_future:
             _resolve_sidebar_assist_future(dedupe_request_key, dedupe_future, error=e)
-        logger.error(f"侧边栏接口异常退出: {e}")
+        logger.error(f"侧边栏接口异常退出: request_id=%s err=%s", current_request_id, e)
         timings_ms["total_ms"] = round((perf_counter() - total_started) * 1000, 2)
         log_sidebar_result("ERROR", {
+            "request_id": current_request_id,                       # v1.7.185
+            "role": "owner" if dedupe_future_owner else "fresh",     # v1.7.185
+            "wall_clock_utc": datetime.utcnow().isoformat() + "Z",   # v1.7.185
             "error": str(e),
             "request_key": dedupe_request_key,
             "stage_status": stage_status,
