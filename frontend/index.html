@@ -364,7 +364,99 @@
                 </div>
             </div>
         </div>
-        <div class="flex-1 overflow-auto px-6 py-5">
+        <div class="flex-1 overflow-auto px-6 py-5 space-y-5">
+            <section id="mail-quality-live-demo" class="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-3 border-b border-emerald-200 pb-3">
+                    <div>
+                        <div class="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Phase 5 真接入 / Live</div>
+                        <h2 class="text-base font-bold text-slate-900 mt-1">真实草稿生成（连 LLM + 真查 Few-Shot 黄金库）</h2>
+                        <p class="text-xs text-slate-600 mt-1">这一段是 Task 78 真接入：表单提交后真实调用 <code>POST /api/v1/mail/generate-draft</code>，下方结果是后端真返回的数据（含 LLM model 名、Few-Shot 检索命中的种子 ID、CRM 画像、四道安全门评判）。下方原 Mock 静态卡片保留作字段说明。</p>
+                    </div>
+                    <span class="rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white">Real backend</span>
+                </div>
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-xs">
+                    <label class="flex flex-col gap-1">
+                        <span class="font-bold text-slate-700">customer_key</span>
+                        <input id="mql-customer-key" class="rounded border border-slate-300 px-2 py-1 font-mono" value="CUST-DEMO-MULTI-DOMAIN">
+                    </label>
+                    <label class="flex flex-col gap-1">
+                        <span class="font-bold text-slate-700">contact_email</span>
+                        <input id="mql-contact-email" class="rounded border border-slate-300 px-2 py-1 font-mono" value="buyer@customer-domain.mailmock.test">
+                    </label>
+                    <label class="flex flex-col gap-1">
+                        <span class="font-bold text-slate-700">scenario</span>
+                        <select id="mql-scenario" class="rounded border border-slate-300 px-2 py-1">
+                            <option value="re_activation">re_activation (老客户唤醒)</option>
+                            <option value="new_business_promotion">new_business_promotion (新业务推广)</option>
+                            <option value="new_contact_intro">new_contact_intro (新接手联系人)</option>
+                        </select>
+                    </label>
+                    <label class="flex flex-col gap-1">
+                        <span class="font-bold text-slate-700">suite_step (1-4)</span>
+                        <input id="mql-suite-step" type="number" min="1" max="4" value="1" class="rounded border border-slate-300 px-2 py-1 font-mono">
+                    </label>
+                    <label class="flex flex-col gap-1">
+                        <span class="font-bold text-slate-700">current_seller_name</span>
+                        <input id="mql-seller-name" class="rounded border border-slate-300 px-2 py-1" value="Mock Sales Owner">
+                    </label>
+                    <label class="flex flex-col gap-1">
+                        <span class="font-bold text-slate-700">current_seller_signature</span>
+                        <input id="mql-seller-sig" class="rounded border border-slate-300 px-2 py-1" value="Mock Sales Owner">
+                    </label>
+                </div>
+                <div class="mt-4 flex flex-wrap items-center gap-3">
+                    <button id="mql-run-btn" type="button" onclick="runMailQualityLiveDraft()" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">生成草稿（真调后端）</button>
+                    <span id="mql-status" class="text-xs text-slate-600">未发起请求</span>
+                </div>
+                <div id="mql-result" class="mt-4 hidden">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                        <div class="rounded border border-emerald-200 bg-white p-2">
+                            <div class="text-[10px] font-bold uppercase text-slate-500">status</div>
+                            <div id="mql-r-status" class="mt-1 font-bold text-slate-900 break-all"></div>
+                        </div>
+                        <div class="rounded border border-emerald-200 bg-white p-2">
+                            <div class="text-[10px] font-bold uppercase text-slate-500">llm_status</div>
+                            <div id="mql-r-llm-status" class="mt-1 font-bold text-slate-900 break-all"></div>
+                        </div>
+                        <div class="rounded border border-emerald-200 bg-white p-2">
+                            <div class="text-[10px] font-bold uppercase text-slate-500">llm_model_used</div>
+                            <div id="mql-r-llm-model" class="mt-1 font-mono text-slate-900 break-all"></div>
+                        </div>
+                        <div class="rounded border border-emerald-200 bg-white p-2">
+                            <div class="text-[10px] font-bold uppercase text-slate-500">retrieved_fewshot_id</div>
+                            <div id="mql-r-fewshot-id" class="mt-1 font-mono text-[10px] text-slate-900 break-all"></div>
+                        </div>
+                        <div class="rounded border border-emerald-200 bg-white p-2">
+                            <div class="text-[10px] font-bold uppercase text-slate-500">fewshot_score</div>
+                            <div id="mql-r-fewshot-score" class="mt-1 font-mono text-slate-900"></div>
+                        </div>
+                        <div class="rounded border border-emerald-200 bg-white p-2">
+                            <div class="text-[10px] font-bold uppercase text-slate-500">mail_uid</div>
+                            <div id="mql-r-mail-uid" class="mt-1 font-mono text-[10px] text-slate-900 break-all"></div>
+                        </div>
+                        <div class="rounded border border-emerald-200 bg-white p-2">
+                            <div class="text-[10px] font-bold uppercase text-slate-500">real_sending_enabled</div>
+                            <div id="mql-r-real-sending" class="mt-1 font-bold text-slate-900"></div>
+                        </div>
+                        <div class="rounded border border-emerald-200 bg-white p-2">
+                            <div class="text-[10px] font-bold uppercase text-slate-500">safety overall_outcome</div>
+                            <div id="mql-r-safety-outcome" class="mt-1 font-bold text-slate-900"></div>
+                        </div>
+                    </div>
+                    <div class="mt-3 rounded border border-emerald-200 bg-white p-3">
+                        <div class="text-[10px] font-bold uppercase text-slate-500">final_subject</div>
+                        <div id="mql-r-subject" class="mt-1 text-sm font-bold text-slate-900"></div>
+                    </div>
+                    <div class="mt-3 rounded border border-emerald-200 bg-white p-3">
+                        <div class="text-[10px] font-bold uppercase text-slate-500">final_body_html (后端真返回，含占位符强制保护)</div>
+                        <div id="mql-r-body" class="mt-2 text-sm text-slate-800 leading-relaxed prose prose-sm max-w-none"></div>
+                    </div>
+                    <details class="mt-3">
+                        <summary class="cursor-pointer text-[11px] font-bold text-slate-600">原始 JSON 响应（用于审计）</summary>
+                        <pre id="mql-r-raw" class="mt-2 max-h-64 overflow-auto rounded bg-slate-900 p-3 text-[10px] text-slate-100"></pre>
+                    </details>
+                </div>
+            </section>
             <div id="mail-quality-panel" class="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 <aside class="space-y-3">
                     <div class="rounded-lg border border-indigo-200 bg-white p-4">
@@ -1573,6 +1665,74 @@ Alex</textarea>
         const defaultStatusText = document.getElementById('status-text')?.innerText || '';
         const defaultAnalysisContent = document.getElementById('analysis-content')?.innerHTML || '';
         const defaultAssistContent = document.getElementById('assist-content')?.innerHTML || '';
+
+        async function runMailQualityLiveDraft() {
+            const btn = document.getElementById('mql-run-btn');
+            const statusEl = document.getElementById('mql-status');
+            const resultEl = document.getElementById('mql-result');
+            if (btn) { btn.disabled = true; btn.classList.add('opacity-60'); }
+            if (statusEl) { statusEl.textContent = '调用中...（LLM 上游可能 5-25 秒）'; }
+
+            const payload = {
+                customer_key: (document.getElementById('mql-customer-key')?.value || '').trim(),
+                contact_email: (document.getElementById('mql-contact-email')?.value || '').trim(),
+                scenario: document.getElementById('mql-scenario')?.value || 're_activation',
+                suite_step: parseInt(document.getElementById('mql-suite-step')?.value || '1', 10),
+                current_seller_name: (document.getElementById('mql-seller-name')?.value || '').trim(),
+                current_seller_signature: (document.getElementById('mql-seller-sig')?.value || '').trim(),
+            };
+
+            const started = performance.now();
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/generate-draft`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    credentials: 'include',
+                });
+                const text = await resp.text();
+                let data;
+                try { data = JSON.parse(text); } catch (e) { data = { _parse_error: e.message, _raw: text }; }
+                const elapsed = Math.round(performance.now() - started);
+                if (!resp.ok) {
+                    if (statusEl) {
+                        statusEl.textContent = `HTTP ${resp.status} after ${elapsed}ms — ${data.detail || text.slice(0, 120)}`;
+                        statusEl.className = 'text-xs text-red-600 font-bold';
+                    }
+                    if (resultEl) { resultEl.classList.add('hidden'); }
+                    return;
+                }
+                if (statusEl) {
+                    statusEl.textContent = `成功 HTTP 200，${elapsed}ms`;
+                    statusEl.className = 'text-xs text-emerald-700 font-bold';
+                }
+                if (resultEl) { resultEl.classList.remove('hidden'); }
+
+                const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = (v === null || v === undefined) ? '(null)' : String(v); };
+                setText('mql-r-status', data.status);
+                setText('mql-r-llm-status', data.llm_status);
+                setText('mql-r-llm-model', data.llm_model_used);
+                setText('mql-r-fewshot-id', data.retrieved_fewshot_id);
+                setText('mql-r-fewshot-score', data.fewshot_match_score);
+                setText('mql-r-mail-uid', data.mail_uid);
+                setText('mql-r-real-sending', data.real_sending_enabled);
+                setText('mql-r-safety-outcome', (data.safety_guardrail && data.safety_guardrail.overall_outcome) || '(n/a)');
+                setText('mql-r-subject', data.final_subject);
+
+                const bodyEl = document.getElementById('mql-r-body');
+                if (bodyEl) { bodyEl.innerHTML = data.final_body_html || '(empty)'; }
+                const rawEl = document.getElementById('mql-r-raw');
+                if (rawEl) { rawEl.textContent = JSON.stringify(data, null, 2); }
+            } catch (err) {
+                if (statusEl) {
+                    statusEl.textContent = `请求异常：${err.message}`;
+                    statusEl.className = 'text-xs text-red-600 font-bold';
+                }
+                if (resultEl) { resultEl.classList.add('hidden'); }
+            } finally {
+                if (btn) { btn.disabled = false; btn.classList.remove('opacity-60'); }
+            }
+        }
 
         function switchMailWorkspaceTab(tab) {
             const activeTab = tab === 'config' ? 'config' : 'quality';

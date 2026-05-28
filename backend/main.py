@@ -1008,6 +1008,9 @@ class MailGenerateDraftResponse(BaseModel):
     retrieved_fewshot_id: str | None = None
     fewshot_match_score: float | None = None
     safety_guardrail: MailSafetyGuardrail
+    llm_status: str = "fallback_template"
+    llm_model_used: str | None = None
+    llm_error: str | None = None
 
 class MailSequenceInterruptRequest(BaseModel):
     customer_key: str | None = None
@@ -1162,6 +1165,9 @@ class MailDraftIntentProfile(BaseModel):
 class MailDraftAssembledContent(BaseModel):
     subject: str
     body_html: str
+    llm_status: str = "fallback_template"
+    llm_model_used: str | None = None
+    llm_error: str | None = None
 
 class KnowledgeChunkCreate(BaseModel):
     title: str
@@ -3429,7 +3435,7 @@ MAIL_CRM_PAYMENT_RISK_LEVELS = {
 }
 
 def _normalize_mail_recipient_domain(value: str | None) -> str | None:
-    text_value = sanitize_text(value or "").strip().lower()
+    text_value = (value or "").strip().lower()
     if not text_value:
         return None
     if "<" in text_value and ">" in text_value:
@@ -3535,8 +3541,8 @@ def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> 
     if _looks_like_wecom_mail_key(customer_key):
         customer_key = None
     contact_domain = _normalize_mail_recipient_domain(contact_email)
-    normalized_contact_email = sanitize_text(contact_email).strip().lower()
-    normalized_customer_key = sanitize_text(customer_key or "").strip()
+    normalized_contact_email = (contact_email or "").strip().lower()
+    normalized_customer_key = (customer_key or "").strip()
     if not normalized_contact_email and not normalized_customer_key:
         return None
     try:
@@ -3688,9 +3694,9 @@ def _evaluate_mail_recipient_domain_confidentiality_guardrail(
     cc_emails: list[str] | None = None,
     crm_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    recipients = [{"field": "recipient", "email": sanitize_text(contact_email).strip()}]
+    recipients = [{"field": "recipient", "email": (contact_email or "").strip()}]
     for cc_email in cc_emails or []:
-        recipients.append({"field": "cc", "email": sanitize_text(cc_email).strip()})
+        recipients.append({"field": "cc", "email": (cc_email or "").strip()})
 
     customer_domain_whitelist = _mail_customer_domain_whitelist(customer_key, contact_email, crm_profile)
     blocked_recipients: list[dict[str, Any]] = []
@@ -4043,10 +4049,10 @@ def _build_mail_draft_intent_profile(
     admitted_fewshot: dict | None,
     commercial_terms: MailDraftCommercialTerms,
 ) -> MailDraftIntentProfile:
-    customer_key = sanitize_text(payload.customer_key).strip()
-    contact_email = sanitize_text(payload.contact_email).strip()
-    seller_name = sanitize_text(payload.current_seller_name).strip()
-    seller_signature = sanitize_text(payload.current_seller_signature).strip()
+    customer_key = (payload.customer_key or "").strip()
+    contact_email = (payload.contact_email or "").strip()
+    seller_name = (payload.current_seller_name or "").strip()
+    seller_signature = (payload.current_seller_signature or "").strip()
     if not customer_key:
         raise HTTPException(status_code=422, detail="customer_key is required")
     if not contact_email or "@" not in contact_email:
@@ -4092,23 +4098,106 @@ def _mail_subject_from_intent_profile(profile: MailDraftIntentProfile) -> str:
         .replace("[翻译+排版+印刷]", "translation and production")
     )
 
-def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) -> MailDraftAssembledContent:
-    paragraphs = [
-        f"Dear {html.escape(profile.recipient_name)},",
-        (
-            f"This is a draft-only scaffold for {html.escape(profile.scenario_label)} "
-            f"Step {profile.suite_step}: {html.escape(profile.objective)}"
-        ),
+_MAIL_DRAFT_LLM_SYSTEM_PROMPT = (
+    "You are a B2B sales email drafter for SpeedAsia, a translation and printing supplier.\n"
+    "Your job: write ONLY the human conversational portion (intro / value / CTA) of an outreach\n"
+    "email in English. Backend code injects pricing/delivery/discount/payment terms separately.\n"
+    "\n"
+    "HARD RULES:\n"
+    "1. NEVER write actual numeric prices, delivery days, discounts, percent-off, or payment terms.\n"
+    "   You only write the conversational text. Do NOT mention specific numbers, dates, or currency.\n"
+    "2. Address the recipient by their first name when possible. Keep tone professional, warm, concise.\n"
+    "3. Reference the few-shot snippet for angle/topic only. DO NOT copy any text verbatim.\n"
+    "4. Output STRICT JSON ONLY, format exactly:\n"
+    '   {\"subject\": \"<English subject under 80 chars>\",\n'
+    '    \"paragraphs\": [\"<paragraph 1>\", \"<paragraph 2>\", \"<paragraph 3>\"]}\n'
+    "5. 2 to 4 paragraphs total. Each paragraph 1 to 3 sentences. Plain text, no HTML, no markdown.\n"
+    "6. Do not invent meeting times, attachments, prior conversations, or facts not given.\n"
+)
+
+
+def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict:
+    """Call LLM-1 to draft the conversational intro/value/CTA paragraphs.
+
+    Returns dict with keys: status (success / fallback_template), model, subject, paragraphs,
+    error (when fallback). Never raises; on any failure returns status='fallback_template'.
+    """
+    fewshot_reference = (profile.admitted_fewshot_content or "")[:240]
+    user_prompt_lines = [
+        "CONTEXT:",
+        f"- Recipient name: {profile.recipient_name}",
+        f"- Scenario: {profile.scenario_label} (step {profile.suite_step}/4)",
+        f"- Step objective: {profile.objective}",
+        f"- Suggested CTA style: {profile.cta_style}",
+        f"- Subject hint: {profile.subject_hint}",
+        f"- Customer industry: {profile.company_industry or 'unknown'}",
+        f"- Few-shot reference (use angle, not text): {fewshot_reference or 'none available'}",
+        f"- Seller display name: {profile.seller_name}",
+        "",
+        "OUTPUT STRICT JSON NOW.",
     ]
-    if profile.admitted_fewshot_content:
-        paragraphs.append(f"Reference angle: {html.escape(profile.admitted_fewshot_content[:240])}")
+    user_prompt = "\n".join(user_prompt_lines)
+    full_prompt = _MAIL_DRAFT_LLM_SYSTEM_PROMPT + "\n\n" + user_prompt
+
+    try:
+        parsed = IntentEngine.run_llm1_json_prompt(
+            full_prompt,
+            user_id="mail_draft_assembler",
+            max_retries=1,
+            timeout_seconds=25,
+        )
+        subject = str((parsed or {}).get("subject") or "").strip()
+        raw_paragraphs = (parsed or {}).get("paragraphs") or []
+        paragraphs: list[str] = []
+        for item in raw_paragraphs:
+            text = str(item or "").strip()
+            if text:
+                paragraphs.append(text[:600])
+        if not subject or not paragraphs:
+            raise RuntimeError("LLM 返回缺少 subject 或 paragraphs")
+        return {
+            "status": "success",
+            "model": getattr(settings, "LLM1_MODEL", "") or "llm1",
+            "subject": subject[:200],
+            "paragraphs": paragraphs[:6],
+            "error": None,
+        }
+    except Exception as exc:
+        logger.warning("MAIL_DRAFT_LLM_FALLBACK reason=%s", exc)
+        return {
+            "status": "fallback_template",
+            "model": getattr(settings, "LLM1_MODEL", "") or "llm1",
+            "subject": "",
+            "paragraphs": [],
+            "error": sanitize_text(str(exc))[:240],
+        }
+
+
+def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) -> MailDraftAssembledContent:
+    llm_result = _llm_generate_mail_intro_paragraphs(profile)
+    terms = profile.commercial_terms
+
+    if llm_result["status"] == "success":
+        subject_text = llm_result["subject"] or _mail_subject_from_intent_profile(profile)
+        paragraphs = [html.escape(p) for p in llm_result["paragraphs"]]
+    else:
+        subject_text = _mail_subject_from_intent_profile(profile)
+        paragraphs = [
+            f"Dear {html.escape(profile.recipient_name)},",
+            (
+                f"This is a draft-only scaffold for {html.escape(profile.scenario_label)} "
+                f"Step {profile.suite_step}: {html.escape(profile.objective)}"
+            ),
+        ]
+        if profile.admitted_fewshot_content:
+            paragraphs.append(f"Reference angle: {html.escape(profile.admitted_fewshot_content[:240])}")
+
     paragraphs.append(
         "CRM profile signals for review: "
         f"Industry: {html.escape(profile.company_industry)}; "
         f"Payment risk: {html.escape(profile.payment_risk_level)}; "
         f"Customer domains: {html.escape(', '.join(profile.customer_domains) or 'unknown')}."
     )
-    terms = profile.commercial_terms
     paragraphs.append(
         "Backend-filled commercial terms for review: "
         f"Price: {html.escape(terms.price.value)}; "
@@ -4121,9 +4210,13 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
         "This draft is locked for human review and is not enabled for real sending.",
         html.escape(profile.seller_signature).replace("\n", "<br>"),
     ])
+
     return MailDraftAssembledContent(
-        subject=_mail_subject_from_intent_profile(profile),
+        subject=subject_text,
         body_html="".join(f"<p>{paragraph}</p>" for paragraph in paragraphs),
+        llm_status=llm_result["status"],
+        llm_model_used=llm_result["model"],
+        llm_error=llm_result["error"],
     )
 
 def _build_mail_generate_draft_response(
@@ -4232,6 +4325,9 @@ def _build_mail_generate_draft_response(
             final_body_html=assembled.body_html,
             retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
             fewshot_match_score=intent_profile.admitted_fewshot_score,
+            llm_status=assembled.llm_status,
+            llm_model_used=assembled.llm_model_used,
+            llm_error=assembled.llm_error,
             safety_guardrail=MailSafetyGuardrail(
                 overall_outcome=overall_outcome,
                 status="red_card_hard_block",
@@ -4266,6 +4362,9 @@ def _build_mail_generate_draft_response(
             final_body_html=assembled.body_html,
             retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
             fewshot_match_score=intent_profile.admitted_fewshot_score,
+            llm_status=assembled.llm_status,
+            llm_model_used=assembled.llm_model_used,
+            llm_error=assembled.llm_error,
             safety_guardrail=MailSafetyGuardrail(
                 overall_outcome=overall_outcome,
                 status="red_card_hard_block",
@@ -4298,6 +4397,9 @@ def _build_mail_generate_draft_response(
             final_body_html=assembled.body_html,
             retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
             fewshot_match_score=intent_profile.admitted_fewshot_score,
+            llm_status=assembled.llm_status,
+            llm_model_used=assembled.llm_model_used,
+            llm_error=assembled.llm_error,
             safety_guardrail=MailSafetyGuardrail(
                 overall_outcome=overall_outcome,
                 status="red_card_hard_block",
@@ -4332,6 +4434,9 @@ def _build_mail_generate_draft_response(
             final_body_html=assembled.body_html,
             retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
             fewshot_match_score=intent_profile.admitted_fewshot_score,
+            llm_status=assembled.llm_status,
+            llm_model_used=assembled.llm_model_used,
+            llm_error=assembled.llm_error,
             safety_guardrail=MailSafetyGuardrail(
                 overall_outcome=overall_outcome,
                 status="red_card_hard_block",
@@ -4366,6 +4471,9 @@ def _build_mail_generate_draft_response(
         final_body_html=assembled.body_html,
         retrieved_fewshot_id=intent_profile.admitted_fewshot_id,
         fewshot_match_score=intent_profile.admitted_fewshot_score,
+        llm_status=assembled.llm_status,
+        llm_model_used=assembled.llm_model_used,
+        llm_error=assembled.llm_error,
         safety_guardrail=MailSafetyGuardrail(
             overall_outcome=overall_outcome,
             status=(
@@ -4905,10 +5013,10 @@ def _build_mail_sequence_interrupt_scope(
 def _build_mail_sequence_interrupt_response(
     payload: MailSequenceInterruptRequest,
 ) -> MailSequenceInterruptResponse:
-    customer_key = sanitize_text(payload.customer_key or "").strip() or None
-    operator_name = sanitize_text(payload.operator_name).strip()
-    contact_email = sanitize_text(payload.contact_email or "").strip() or None
-    recipient_domain = sanitize_text(payload.recipient_domain or "").strip().lower() or None
+    customer_key = (payload.customer_key or "").strip() or None
+    operator_name = (payload.operator_name or "").strip()
+    contact_email = (payload.contact_email or "").strip() or None
+    recipient_domain = (payload.recipient_domain or "").strip().lower() or None
     if not operator_name:
         raise HTTPException(status_code=422, detail="operator_name is required")
     if contact_email and "@" not in contact_email:
@@ -13929,6 +14037,34 @@ def _refresh_api_invocation_quality(
     messages = all_messages if all_messages is not None else _load_session_messages(db, item.session_id)
     actual_sales_replies = _collect_actual_sales_replies(messages, int(item.anchor_message_id or 0)) if item.anchor_message_id else []
     reply_hash = _reply_block_hash(actual_sales_replies)
+
+    # 优先从数据库查找该会话相同客户锚点、且已成功评分的其它记录（同锚点重用评分，防止重复调用 LLM1 导致超时或丢分）
+    if item.session_id and item.anchor_message_id:
+        existing_scored = db.query(ApiAssistInvocation).filter(
+            ApiAssistInvocation.session_id == item.session_id,
+            ApiAssistInvocation.anchor_message_id == item.anchor_message_id,
+            ApiAssistInvocation.quality_status == "scored",
+            ApiAssistInvocation.quality_score.isnot(None),
+            ApiAssistInvocation.invocation_id != item.invocation_id
+        ).order_by(ApiAssistInvocation.triggered_at.desc()).first()
+        
+        if existing_scored and existing_scored.result_payload:
+            stored_scores = existing_scored.result_payload.get("reply_scores_v2")
+            if isinstance(stored_scores, dict) and stored_scores.get("ai_candidates"):
+                cand = stored_scores["ai_candidates"][0]
+                if cand.get("score_reason") == "llm1_scored" and cand.get("overall_score") is not None:
+                    # 发现已有成功打分的历史记录，直接重用，不进行大模型评分
+                    item.quality_score = existing_scored.quality_score
+                    item.quality_similarity = existing_scored.quality_similarity
+                    item.result_payload = existing_scored.result_payload
+                    item.actual_sales_replies = existing_scored.actual_sales_replies
+                    item.actual_sales_reply_text = existing_scored.actual_sales_reply_text
+                    item.actual_sales_reply_hash = existing_scored.actual_sales_reply_hash
+                    item.quality_status = "scored"
+                    item.quality_scored_at = existing_scored.quality_scored_at
+                    logger.info(f"重用同会话同锚点历史评分，避免重复调用 LLM1: Inv {item.invocation_id} <- Inv {existing_scored.invocation_id}")
+                    return
+
     # 检查已存评分中是否含有 llm1_failed
     has_failed_scores = False
     stored_scores = (item.result_payload or {}).get("reply_scores_v2") if isinstance(item.result_payload, dict) else None
