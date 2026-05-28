@@ -213,7 +213,7 @@ try {
         Write-Host "INFO: hot reload disabled. Use -Reload to enable it."
     }
 
-    # v1.7.194: 控制台 tee 落盘. 默认开, 路径用相对路径(不依赖任何机器特定的绝对路径).
+    # v1.7.195: 控制台 tee 落盘. 默认开, 路径用相对路径(不依赖任何机器特定的绝对路径).
     # 此刻 Push-Location $Backend 已生效, CWD = <script_dir>/backend, 所以 "logs" 即 backend/logs,
     # 与 Python logging 的 app.log 同目录, 不会再创建项目根级别的 logs/. 服务器直接拷过去就能跑.
     # 关闭 tee: -NoConsoleLog. 指定具体文件名(可绝对可相对): -ConsoleLogFile <path>.
@@ -230,9 +230,26 @@ try {
             $ConsoleLogFile = Join-Path $consoleLogDir "start_backend_${Port}_${stamp}.out.log"
         }
         Write-Host "INFO: console tee -> $ConsoleLogFile (relative to backend/; -NoConsoleLog to disable)"
-        # 2>&1 把 stderr 合并到 stdout 再交给 Tee-Object, 这样 PowerShell 控制台与文件双写;
-        # Python logging 仍独立写 backend/logs/app.log (RotatingFileHandler), 两者互不影响.
-        python @args 2>&1 | Tee-Object -FilePath $ConsoleLogFile -Append
+
+        # v1.7.195 关键修复 (NativeCommandError 导致 uvicorn 一启动就退):
+        # uvicorn 默认把 INFO 写到 stderr. 顶部 $ErrorActionPreference = "Stop" 会把 stderr 当
+        # NativeCommandError 立刻终止整个脚本, 进程 (PID 7944) 启起来就被父 PowerShell 杀掉.
+        # 现在做两件事:
+        #   1) 临时把 EAP 降到 Continue (try/finally 还原), 让 stderr 不会中断脚本
+        #   2) 用 ForEach-Object 把 stderr 派生的 ErrorRecord 对象 (会被默认格式化成
+        #      "+ CategoryInfo: ... + FullyQualifiedErrorId" 红字)转回纯字符串, Tee-Object
+        #      看到的就是干净文本, 既不报错也不刷屏.
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & python @args 2>&1 | ForEach-Object {
+                if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.ToString() }
+                else { $_ }
+            } | Tee-Object -FilePath $ConsoleLogFile -Append
+        }
+        finally {
+            $ErrorActionPreference = $prevEAP
+        }
     }
 }
 finally {
