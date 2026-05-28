@@ -1056,8 +1056,10 @@ Alex</textarea>
 
     <main id="app-caselib" class="hidden flex-1 flex flex-col bg-slate-50 overflow-hidden">
         <!-- v1.7.186: section header Row 1(经典案例迭代优化 标题 + ①迭代记录/②案例库 子 tab + 使用提示) 已删除,
-             顶部导航的"经典案例迭代优化"已拆成 ①迭代记录 + ②案例库 两个按钮承担同一职责。这里只保留 Row 2 控件。 -->
-        <div class="shrink-0 border-b bg-white">
+             顶部导航的"经典案例迭代优化"已拆成 ①迭代记录 + ②案例库 两个按钮承担同一职责。这里只保留 Row 2 控件。
+             v1.7.187: 加 id="caselib-controls-bar", 进入"迭代详情"(sub-tab='detail') 时整条 hidden,
+             返回"迭代记录"列表(list) 或切到"案例库"(cases) 时再显示出来 -->
+        <div id="caselib-controls-bar" class="shrink-0 border-b bg-white">
             <div class="px-6 py-2 flex flex-wrap gap-2 items-center">
                 <div class="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-indigo-200 bg-indigo-50" title="训练AI(另一条 model-chat 回复途径)使用的模型。与当前流程并行触发,10秒超时。切换并在保存后永久生效（修改 .env 文件）。">
                     <span class="text-[11px] font-bold text-indigo-700">训练AI模型</span>
@@ -3474,6 +3476,9 @@ Alex</textarea>
             document.getElementById('caselib-sub-list')?.classList.toggle('hidden', name !== 'list');
             document.getElementById('caselib-sub-detail')?.classList.toggle('hidden', name !== 'detail');
             document.getElementById('caselib-sub-cases')?.classList.toggle('hidden', name !== 'cases');
+            // v1.7.187: 进入"迭代详情"时整条控件栏隐藏(详情页头自有 ← 返回 等控件,不需要再叠模型/导入/刷新);
+            // 切回"迭代记录"(list)或"案例库"(cases)再显示出来。
+            document.getElementById('caselib-controls-bar')?.classList.toggle('hidden', name === 'detail');
             // v1.7.186: 同步顶部导航两个 sub-tab 按钮高亮(detail 沿用 ① 高亮, 因为 detail 是从迭代记录点进来的)。
             const navList = document.getElementById('main-tab-caselib-list');
             const navCases = document.getElementById('main-tab-caselib-cases');
