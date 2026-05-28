@@ -324,6 +324,8 @@ async def index_redirect():
 @app.middleware("http")
 async def request_observability_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    # 暴露给 handler(如 sidebar_assist 把它落到 ApiAssistInvocation.request_id, 便于双向对账)。
+    request.state.request_id = request_id
     started = perf_counter()
     try:
         response = await call_next(request)
@@ -514,6 +516,9 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE api_assist_invocation ADD COLUMN IF NOT EXISTS kb2_eval_score NUMERIC(6, 2);"))
         db.execute(text("ALTER TABLE api_assist_invocation ADD COLUMN IF NOT EXISTS kb2_eval_reason TEXT;"))
         db.execute(text("ALTER TABLE api_assist_invocation ADD COLUMN IF NOT EXISTS quality_annotations JSON;"))
+        # v1.7.184: 客户端 sidebar 那侧的 request_id 落库, 用于"客户端 duration_ms 长但服务端 timings 短"对账。
+        db.execute(text("ALTER TABLE api_assist_invocation ADD COLUMN IF NOT EXISTS request_id VARCHAR(64);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_api_ai_request_id ON api_assist_invocation (request_id);"))
         db.execute(text("ALTER TABLE wecom_trigger_record ADD COLUMN IF NOT EXISTS kb1_eval_score NUMERIC(6, 2);"))
         db.execute(text("ALTER TABLE wecom_trigger_record ADD COLUMN IF NOT EXISTS kb1_eval_reason TEXT;"))
         db.execute(text("ALTER TABLE wecom_trigger_record ADD COLUMN IF NOT EXISTS kb2_eval_score NUMERIC(6, 2);"))
@@ -696,19 +701,20 @@ def auto_patch_db():
     except Exception as e:
         logger.error(f"数据库补丁执行异常 (可能由于已存在): {e}")
 
-auto_patch_db()
+if os.environ.get("SKIP_DB_PATCH") != "1":
+    auto_patch_db()
 
-# 初始化邮件同步相关表（sync_checkpoint 等）并启动定时调度器
-try:
-    _patch_db = SessionLocal()
-    ensure_sync_tables(_patch_db)
-    ensure_schedule_table(_patch_db)
-    load_schedules_from_db(_patch_db)
-    _patch_db.close()
-    start_scheduler()
-    logger.info("邮件同步表初始化完成，调度器已启动")
-except Exception as _e:
-    logger.warning("邮件同步初始化跳过: %s", _e)
+    # 初始化邮件同步相关表（sync_checkpoint 等）并启动定时调度器
+    try:
+        _patch_db = SessionLocal()
+        ensure_sync_tables(_patch_db)
+        ensure_schedule_table(_patch_db)
+        load_schedules_from_db(_patch_db)
+        _patch_db.close()
+        start_scheduler()
+        logger.info("邮件同步表初始化完成，调度器已启动")
+    except Exception as _e:
+        logger.warning("邮件同步初始化跳过: %s", _e)
 
 import asyncio
 from archive_service import ArchiveService
@@ -13979,6 +13985,7 @@ def _store_api_assist_invocation(
     sales_userid: str,
     messages: list[MessageLog],
     trigger_source: str = "api",
+    request_id: str | None = None,
 ) -> ApiAssistInvocation | None:
     anchor_message = _find_latest_customer_anchor(messages)
     if not anchor_message:
@@ -14000,6 +14007,7 @@ def _store_api_assist_invocation(
         latest_dialog_count=len(visible_messages),
         trigger_source=trigger_source,
         trigger_kind="api_sidebar_assist",
+        request_id=request_id,
         triggered_at=datetime.utcnow(),
         stage_status=_jsonable(result_payload.get("stage_status") or {}),
         result_payload=_jsonable(result_payload),
@@ -17717,6 +17725,9 @@ async def sidebar_assist(
     dedupe_request_key: str | None = None
     dedupe_future: Future | None = None
     dedupe_future_owner = False
+    # 客户端 sidebar 那侧的 request_id(中间件已经写到 request.state, 见 request_observability_middleware),
+    # 落到 ApiAssistInvocation.request_id, 后续可与 sidebar 日志一一对账。
+    current_request_id: str | None = getattr(http_request.state, "request_id", None) if http_request is not None else None
 
     def mark_timing(name: str, started_at: float):
         timings_ms[name] = round((perf_counter() - started_at) * 1000, 2)
@@ -17854,31 +17865,41 @@ async def sidebar_assist(
                 })
                 return cached_result
         if not stream:
-            dedupe_future, dedupe_future_owner = _acquire_sidebar_assist_future(dedupe_request_key)
-            mark_timing("dedupe_lookup_ms", stage_started)
-            if not dedupe_future_owner:
-                reused_result = await asyncio.wrap_future(dedupe_future)
-                reused_result = _decorate_sidebar_assist_result(
-                    reused_result,
-                    status="reused_inflight",
-                    reason="同一会话、同一消息内容的请求仍在处理中，当前请求直接复用进行中的结果",
-                    request_key=dedupe_request_key,
-                )
-                log_sidebar_result("REUSED", {
-                    "external_userid": external_userid,
-                    "sales_userid": sales_userid,
-                    "session_id": session_id,
-                    "requested_session_id": requested_session_id,
-                    "dedupe_status": "reused_inflight",
-                    "dedupe_reason": "same_content_inflight",
-                    "latest_dialog_count": len(recent_logs),
-                    "request_key": dedupe_request_key,
-                    "timings_ms": {
-                        **timings_ms,
-                        "total_ms": round((perf_counter() - total_started) * 1000, 2),
-                    },
-                })
-                return reused_result
+            if request.force_refresh:
+                # force_refresh=True 时不参与 in-flight 合并:每个 force_refresh 都独立计算,
+                # 避免 sidebar 短时间内多次发 force_refresh 全部排在第 1 个 future 上等同一个结果,
+                # 客户端测得 duration_ms 飙到 100-300 秒,而服务端 timings 实际只有 10-20 秒。
+                # 客户端纯网络重试由 60 秒内的"内容指纹缓存"挡掉(见上文 _get_cached_sidebar_content_result)。
+                dedupe_future = None
+                dedupe_future_owner = False
+                mark_timing("dedupe_lookup_ms", stage_started)
+                stage_status["dedupe_skipped"] = "force_refresh_bypass"
+            else:
+                dedupe_future, dedupe_future_owner = _acquire_sidebar_assist_future(dedupe_request_key)
+                mark_timing("dedupe_lookup_ms", stage_started)
+                if not dedupe_future_owner:
+                    reused_result = await asyncio.wrap_future(dedupe_future)
+                    reused_result = _decorate_sidebar_assist_result(
+                        reused_result,
+                        status="reused_inflight",
+                        reason="同一会话、同一消息内容的请求仍在处理中，当前请求直接复用进行中的结果",
+                        request_key=dedupe_request_key,
+                    )
+                    log_sidebar_result("REUSED", {
+                        "external_userid": external_userid,
+                        "sales_userid": sales_userid,
+                        "session_id": session_id,
+                        "requested_session_id": requested_session_id,
+                        "dedupe_status": "reused_inflight",
+                        "dedupe_reason": "same_content_inflight",
+                        "latest_dialog_count": len(recent_logs),
+                        "request_key": dedupe_request_key,
+                        "timings_ms": {
+                            **timings_ms,
+                            "total_ms": round((perf_counter() - total_started) * 1000, 2),
+                        },
+                    })
+                    return reused_result
         else:
             mark_timing("dedupe_lookup_ms", stage_started)
 
@@ -18120,6 +18141,7 @@ async def sidebar_assist(
                     external_userid=external_userid,
                     sales_userid=sales_userid,
                     trigger_source=trigger_source,
+                    request_id=current_request_id,
                     total_started=total_started,
                     timings_ms=dict(timings_ms),
                     stage_status=dict(stage_status),
@@ -18250,6 +18272,7 @@ async def sidebar_assist(
                             sales_userid=_cap["sales_userid"],
                             messages=_messages_for_invocation,
                             trigger_source=_cap["trigger_source"],
+                            request_id=_cap.get("request_id"),
                         )
                         _invocation_id = str(_inv.invocation_id) if _inv else None
                         _save_db.commit()
@@ -18550,6 +18573,7 @@ async def sidebar_assist(
             sales_userid=sales_userid,
             messages=all_messages,
             trigger_source=trigger_source,
+            request_id=current_request_id,
         )
         db.commit()
         log_sidebar_result("SUCCESS", {

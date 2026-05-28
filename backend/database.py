@@ -372,6 +372,8 @@ class ApiAssistInvocation(Base):
     latest_dialog_count = Column(Integer, nullable=False, default=0)
     trigger_source = Column(String(30), nullable=True, default="api")
     trigger_kind = Column(String(50), nullable=True, default="api_sidebar_assist")
+    # 客户端 sidebar 那侧带来的 request_id(中间件 X-Request-ID),用于"客户端 duration_ms 长但服务端 timings 短"时双向对账。
+    request_id = Column(String(64), nullable=True, index=True)
     triggered_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     stage_status = Column(JSON, nullable=True)
     result_payload = Column(JSON, nullable=False)
