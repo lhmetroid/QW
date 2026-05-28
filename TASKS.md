@@ -29,6 +29,11 @@
 - 邮件 API、配置、数据库、前端入口、任务脚本应独立命名。
 - 所有 Mock、样例、推演数据必须明确标注 Mock。
 
+## 完成态补充说明
+
+- 截至 2026-05-27 07:29:14 +0800，`TASKS.md` 中全部任务已完成，并已再次执行完成态定向复核。
+- 当前不再新增本任务池内任务；仅等待人工复核或后续新任务池立项。
+
 ## 任务清单
 
 ### P0：文档与边界初始化
@@ -124,29 +129,80 @@
 
 - [x] Task 60：确认 CRM 客户 Key、联系人邮箱、行业、账期、销售负责人、签名字段 (已新增 `docs/mail_crm_field_contract.md`、`backend/mail_crm_field_contract.py` 与 `backend/mail_crm_field_contract_checks.py`，锁定邮件侧 CRM 字段契约、必填/可选边界、字段别名与企微隔离约束；当前 API 只接收已落地必填字段与 `cc_emails`，`company_industry` / `payment_risk_level` 留待 Task 61/62 接入 CRM 联查与风险审核链路)
 - [x] Task 61：实现 CRM 画像联查和域名级 fallback (已在 `backend/main.py` 接入邮件侧 CRM 画像联查，查找键仅限 `customer_key` 与 `contact_email`，明确不把企微 `external_userid` 当作邮件 key；草稿意图画像已合并 `company_industry`、`payment_risk_level` 与客户域名；收件域名白名单支持静态客户域名、CRM 画像域名和 `contact_email` 域名 fallback；新增 `backend/mail_crm_profile_lookup_checks.py` 定向校验)
-- [ ] Task 62：实现高欠款风险客户发送前锁定审核
-- [ ] Task 63：实现客户回复、微信/电话签单、CRM 阶段变化触发 Sequence 中断
-- [ ] Task 64：建立 CRM 联调 Mock 数据，避免一开始依赖生产系统
+- [x] Task 62：实现高欠款风险客户发送前锁定审核 (已在 `backend/main.py` 新增 `payment_risk_finance_review` 黄牌安全门，复用 CRM `payment_risk_level` 画像把 `blocked`/`high`/`prepaid_required` 高风险客户锁定到人工财务审核；保持 `review_only=true`、`real_sending_enabled=false`，并新增 `backend/mail_payment_risk_finance_review_checks.py` 定向校验高风险锁定、低风险不触发与 gate 汇总输出)
+- [x] Task 63：实现客户回复、微信/电话签单、CRM 阶段变化触发 Sequence 中断 (已在 `backend/main.py` 为 `POST /api/v1/sequence/interrupt` 补齐客户回复预览字段与 `customer_reply_trigger`，支持邮件回复、同域回复、微信/电话/会议/聊天等 other-channel 成交归一到邮件侧 `customer_reply` 中断规则；CRM 阶段变化预览新增 `review_only_validation`，明确 `will_update_crm_stage=false`、`will_update_wecom_state=false`、`real_sending_enabled=false`，继续不写库、不真实删除或锁定草稿、不触发企微状态变更)
+- [x] Task 64：建立 CRM 联调 Mock 数据，避免一开始依赖生产系统 (已新增 `backend/mail_crm_mock_data.py`、`backend/mail_crm_mock_data_checks.py` 与 `docs/mail_crm_mock_data.md`，提供邮件侧虚构 Mock CRM 画像、草稿生成 payload、Sequence 中断 payload 和只读 `GET /api/v1/mail/crm/mock-profiles` 目录；`backend/main.py` 的邮件 CRM 静态画像与域名白名单已改为复用 Mock 数据源，继续保持 review-only、不查询生产 CRM、不写库、不真实发信、不影响企微)
 
 ### P1：验证与质量闭环
 
-- [ ] Task 65：建立邮件系统单元测试与接口测试
-- [ ] Task 66：建立邮件草稿质量人工评分标准
-- [ ] Task 67：建立邮件安全门拦截率验证报告
-- [ ] Task 68：建立 25 条黄金种子切片可视化比对报告
-- [ ] Task 69：建立邮件系统运行日志和错误排查指南
+- [x] Task 65：建立邮件系统单元测试与接口测试 (已新增 `backend/mail_review_api_interface_checks.py`，建立邮件侧 review-only API 接口/契约测试：覆盖 `POST /api/v1/mail/generate-draft`、`POST /api/v1/sequence/interrupt`、`GET /api/v1/mail/crm/mock-profiles` 的路由注册、请求/响应契约、Mock payload 兼容性与“不真实发信/不写库/不更新企微状态”断言，并复用现有 `_checks.py` 风格完成可执行单元测试与接口测试脚本)
+- [x] Task 66：建立邮件草稿质量人工评分标准 (已新增 `docs/mail_draft_manual_scoring_standard.md`，沉淀 review-only 人工评分的硬失败门禁、7 维权重、分档阈值、审稿流程与可复用评分模板，并明确邮件/企微隔离与不真实发信约束)
+- [x] Task 67：建立邮件安全门拦截率验证报告 (已新增 `docs/mail_safety_guardrail_interception_report.md`，用中文汇总 review-only 验证范围、安全门分类、显式样例数量、红牌/黄牌/通过结果、验证命令与已知限制；本轮未改业务代码，并记录两个既有检查脚本因 CRM Mock 常量夹具缺口复跑失败)
+- [x] Task 68：建立 25 条黄金种子切片可视化比对报告 (已新增 `docs/mail_gold_seed_visual_comparison_report.md`，基于 `docs/mail_gold_candidates/latest_mail_gold_candidates.{json,md}` 对 25 条候选做全量横向比对，沉淀分数带、信号模式、场景覆盖、脱敏状态、风险清单与 Few-Shot 精筛/排除建议；保持 review-only，不写库、不发信、不影响企微链路)
+- [x] Task 69：建立邮件系统运行日志和错误排查指南 (已新增 `docs/mail_runtime_logging_troubleshooting.md`，沉淀邮件系统 review-only 运行日志、`TASKS.md`/`PROGRESS.md`/`TASK_HANDOFF.md`/`VALIDATION.md` 使用口径、`logs/codex-run.log` 与 `logs/codex-retry.log` 记录规范、常见失败场景、定向验证命令、恢复步骤，以及邮件/企微隔离检查清单)
 
 ### P2：上线前准备
 
-- [ ] Task 70：梳理邮件系统环境变量和部署说明
-- [ ] Task 71：补充邮件系统数据脱敏规范
-- [ ] Task 72：补充邮件系统回滚方案
-- [ ] Task 73：补充邮件系统真实发送开关和灰度前置条件
-- [ ] Task 74：准备后续四期规划的任务池，但不进入当前开发
+- [x] Task 70：梳理邮件系统环境变量和部署说明 (已新增 `docs/mail_review_only_env_deployment.md`，沉淀邮件 review-only 环境变量与部署说明，覆盖邮件/企微隔离、必需与可选环境变量、企微专属变量排除、默认关闭真实发送、不写生产 CRM、WSL 启动与验证步骤、发布前检查和禁止暴露密钥)
+- [x] Task 71：补充邮件系统数据脱敏规范 (已新增 `docs/mail_data_desensitization_standard.md`，沉淀邮件侧 review-only 数据分级、邮箱/联系人/公司/订单/价格/SLA/账户脱敏规则、日志/RAG/Few-Shot/导出/Mock 约束、人工审核清单、禁止行为与邮件/企微隔离边界)
+- [x] Task 72：补充邮件系统回滚方案 (已新增 `docs/mail_review_only_rollback_plan.md`，沉淀邮件系统 review-only 回滚适用范围、目标、触发条件、风险分级、可回滚与禁止自动回滚边界、docs/config/mock/frontend/api 分场景回滚步骤、验证命令、日志交接要求、邮件/企微隔离、已知风险与人工确认边界)
+- [x] Task 73：补充邮件系统真实发送开关和灰度前置条件 (已新增 `docs/mail_real_sending_switch_gray_release_prerequisites.md`，沉淀邮件系统真实发送开关命名/层级、默认关闭规则、审批门禁、灰度前置条件、分阶段放量清单、验证/监控/回滚/停止条件，并明确当前仍保持 review-only、不得启用真实发送、不得写生产 CRM 或企微状态)
+- [x] Task 74：准备后续四期规划的任务池，但不进入当前开发 (已新增 `docs/mail_phase4_task_pool.md`，从方案四期规划整理 5 个延期倡议为未来任务池：小批灰度、ROI 归因、域名信誉与随机延迟熔断、LTV 流失预警、跨文化风格过滤器；每项均包含目标、延期原因、前置条件、建议子任务、验收信号、风险，并明确当前不得真实发送或改生产 CRM)
+
+### P2：经典案例优化新增
+
+- [x] Task 75：训练AI模型选择支持持久化写入 .env 与前端保存按钮及离开自动保存交互 (已完成前端 change、blur、click 交互，并在后端增加写 env 逻辑)
+
+## ⚠️ 2026-05-28 复盘补充：Phase 1-4 实际只是契约骨架
+
+Task 1-75 全部标记 `[x]`，但人工复盘发现：整套邮件智能回复模块停留在 **review-only 契约骨架** 阶段，距离方案 md 描述的"人工最终能用上"还差 4 块硬接入。
+
+**根因（详见 [AUTO_DEV_MD_STANDARD.md](AUTO_DEV_MD_STANDARD.md)）**：
+
+1. cron 自治闭环无人 checkpoint，让保守化偏差在自我盖章中反复放大。
+2. AGENTS.md 原 line 402 一条安全护栏（"默认关闭真实发送"）被过度解读成"代码层也不接入"。
+3. 早期任务（Task 26-31）确立了 review-only 骨架的"成功验收模板"，后续任务的描述把"review-only Mock"直接写进任务标题，形成自我繁殖。
+4. VALIDATION.md 把 `real_sending_enabled is False` 写成必过断言，反向锁死了"接入真实 LLM 会验证失败"。
+
+**已在 AGENTS.md / VALIDATION.md 修复并加入 Definition of Done 强制 checkpoint。** Phase 5 任务清单见下方。Phase 1-4 不回滚（契约骨架本身有价值，只是不能当作"完成"），但 `FINAL_REPORT.md` 已改写。
+
+### Phase 5：真接入（P0，必须按顺序执行，每个 task 必须满足 AGENTS.md 的 Definition of Done）
+
+- [ ] **Task 76：黄金库种子灌库**
+  - 目标：让 `email_fragment_asset` 表里真实存在 25 条种子，Few-Shot 检索能查到东西。
+  - 实现：新建 `backend/seed_mail_gold_candidates.py`，把 `docs/mail_gold_candidates/latest_mail_gold_candidates.json` 的 25 条种子真实 upsert 进 `email_fragment_asset` 表（去重以 source_ref + scenario + snippet_type 为 key）。
+  - DoD：(1) `python backend/seed_mail_gold_candidates.py` 跑完无报错；(2) `psql -c "SELECT COUNT(*) FROM email_fragment_asset WHERE useful_score >= 0.6"` ≥ 25；(3) 调一次 `POST /api/v1/mail/generate-draft` 返回的 `retrieved_fewshot_id` 不为 null。
+  - 演示证据：贴 psql 截图 + curl 输出到 `logs/dod-task76.md`。
+
+- [ ] **Task 77：两阶段 LLM 真接入**
+  - 目标：草稿真由 LLM 生成，不是模板拼装。
+  - 实现：新建 `backend/mail_llm_client.py`，封装两阶段调用：(a) GPT-4o-mini 抽取意图与画像（temperature=0.0，JSON Schema 强约束）；(b) DeepSeek-R1（或同档 reasoning 模型）按 Few-Shot 装配 HTML（temperature 从 `MAIL_DRAFT_LLM_TEMPERATURE` 读，默认 0.2）。替换 `backend/main.py` 里 `_build_mail_draft_intent_profile` 和 `_assemble_mail_draft_from_intent_profile` 的硬编码逻辑。占位符强制替换不变（保留物理隔离防幻觉）。
+  - DoD：(1) 同一个 customer_key 调两次，`final_body_html` 不一字不差；(2) 响应里能看到 `llm_model_used` 字段；(3) 改 `MAIL_DRAFT_LLM_TEMPERATURE` 配置后输出明显变化。
+  - 演示证据：两次 curl 输出 diff + temperature 对比截图到 `logs/dod-task77.md`。
+
+- [ ] **Task 78：前端邮件质量诊断面板接后端**
+  - 目标：浏览器打开 `#mail-quality` 看到的是真 LLM 生成的草稿，不是静态 HTML。
+  - 实现：在 `frontend/index.html` 的 `app-mail-quality` 段，把"邮件样本列表"、"质量评分概览"、"诊断轨迹"、"双栏对比"全部改成真实 fetch `/api/v1/mail/generate-draft` 并渲染。新增"保存并反哺黄金库"按钮调一个新的 `PATCH /api/v1/mail/fewshot/{id}` 接口（同时实现该后端接口）。
+  - DoD：(1) 浏览器 Network 面板能看到对 `/api/v1/mail/*` 的真实请求；(2) 面板上 Draft ID 随后端 mail_uid 变化；(3) 点"保存并反哺"后用 psql 能查到 `email_fragment_asset` 表里 `useful_score` 被 PATCH 成 0.95。
+  - 演示证据：浏览器截图 + Network 截图 + psql 验证截图到 `logs/dod-task78.md`。
+
+- [ ] **Task 79：SMTP 真发通道（默认关闭）**
+  - 目标：在 `MAIL_REAL_SENDING_ENABLED=true` 时能真发邮件，默认 false 时拒发。
+  - 实现：新建 `backend/mail_sender.py`，封装 aiosmtplib 客户端。加高斯随机延迟（90-150 秒）+ 退信率熔断（超 5% 全停）+ 单账号日配额（默认 15 封/天）。新增 `POST /api/v1/mail/send/{mail_uid}` 接口；接口必须在 `MAIL_REAL_SENDING_ENABLED=false` 时直接返回 403 + `{"review_only": true}`，不允许任何代码路径绕过。
+  - DoD：(1) `MAIL_REAL_SENDING_ENABLED=false` 时调接口返回 403；(2) `MAIL_REAL_SENDING_ENABLED=true` + 测试邮箱白名单时真能收到一封邮件（截图收件箱）；(3) 单元测试覆盖高斯延迟、退信熔断、配额上限三个分支。
+  - 演示证据：两种模式的 curl 输出 + 测试邮箱截图到 `logs/dod-task79.md`。
+  - ⚠️ 这个 task 是 Phase 5 唯一一个动真出口的，做完后必须再次人工 review 才能继续。
+
+### Phase 5 任务追加规则
+
+- Task 76→77→78→79 必须按顺序，不允许并行（前一个不达 DoD，后一个的演示证据也无效）。
+- 每个 task 完成后必须在 `logs/dod-task<N>.md` 留真实演示证据，PROGRESS.md 同步更新。
+- 任何一个 task 描述里出现"review-only Mock"、"不调用后端"、"页面内预览"、"Mock dict 替代"等关键字，立即视为该 task 未完成，必须 revert。
+- 不再启用 cron 自治模式做 Phase 5——Phase 5 必须人工或半自动执行，每个 task 完成后人工确认才能开始下一个。
 
 ## 当前第一个未完成任务
 
-Task 62：实现高欠款风险客户发送前锁定审核
+Task 76：黄金库种子灌库（详见上方 Phase 5）。
 
 ## 任务执行规则
 

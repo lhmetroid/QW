@@ -101,25 +101,49 @@ node --check frontend/index.html
 
 ## 邮件 API 阶段验证标准
 
+> ⚠️ **2026-05-28 修正**：本节早期版本只断言"契约形态"和"`real_sending_enabled=false`"，导致 Task 26-45 被验收为"通过"但底层没接真 LLM、没查真 CRM、没检索真 Few-Shot。为切断这种"骨架=通过"的反馈环，验收标准必须**同时**覆盖 (A) 契约形态 和 (B) 真接入证据。两组都过才能算 ✅。
+
+### (A) 契约形态（必要但不充分）
+
 实现 `POST /api/v1/mail/generate-draft` 后，应验证：
 
 - 缺少必填字段时返回清晰错误。
-- 合法 Mock 请求能生成草稿。
+- 合法请求能生成草稿。
 - 返回包含 `mail_uid`、`final_subject`、`final_body_html`、`safety_guardrail`。
 - 低于底价的价格表达会被红牌拦截。
 - 低于 SLA 的工期表达会被拉正并黄牌锁定。
 - 竞对域名或敏感收件域名会被红牌拦截。
-- 默认只生成草稿，不真实发送邮件。
+- SMTP 真发出口由 `MAIL_REAL_SENDING_ENABLED` 控制，默认 false（这是允许的运行时护栏，不是免接入借口）。
 
 实现 `POST /api/v1/sequence/interrupt` 后，应验证：
 
-- 客户维度中断有效。
-- 联系人维度中断有效。
-- 域名维度中断有效。
-- 销售手动强封印可通过 `manual_seal` 或 `manual_sealed_by_sales` 归一到邮件侧 manual-seal 规则，且保持 review-only。
+- 客户 / 联系人 / 域名维度中断都有效。
+- 销售手动强封印可通过 `manual_seal` 或 `manual_sealed_by_sales` 归一到邮件侧 manual-seal 规则。
 - 中断后待发草稿被锁定或删除。
 - 响应包含 `deleted_pending_drafts_count` 或等价字段。
 - 操作日志可追踪。
+
+### (B) 真接入证据（充分条件，缺一不算完成）
+
+下面任何一条不达标，任务必须降级为 `[~] 契约骨架完成，待真接入`，不能标 `[x]`：
+
+- **LLM 真调用**：同一个 `customer_key` + `scenario` + `suite_step` 调两次 generate-draft，`final_body_html` 文本内容不应一字不差地一致（LLM 有 temperature，纯模板拼装会一字不差）。响应或日志里必须能看到实际调用的 LLM model 名（如 `gpt-4o-mini`），不是字符串常量。
+- **Few-Shot 真检索**：`retrieved_fewshot_id` 必须真实指向 `email_fragment_asset` 表的某一行，用 `psql -c "SELECT id, snippet_type FROM email_fragment_asset WHERE id = '<返回值>'"` 能查到。如果该表为空，先证明 seed loader 跑过。
+- **CRM 真查询**：返回的 `company_industry`、`payment_risk_level` 等字段必须来自真 CRM 数据源（SQL Server 或独立的 mock CRM 服务），不能来自 `backend/mail_crm_mock_data.py` 这种 Python 常量。验收时把 CRM 里某个客户的 industry 字段改一下，再调接口看是否跟着变。
+- **前端真渲染**：浏览器打开邮件质量诊断面板（`#mail-quality`），打开 Network 面板，必须能看到对 `/api/v1/mail/generate-draft` 的真实请求；面板上的草稿内容必须随后端返回变化，不是页面内 Mock 常量。
+- **演示证据落盘**：上述每条验收要把 curl 命令或浏览器截图贴到 `logs/dod-task<N>.md`，且必须包含响应中能体现"真"的字段（model 名、fewshot id、CRM 来源标识）。
+
+### 反模式速查
+
+下面这些短语在任务完成描述里出现，就是 (B) 不达标的红灯信号，应当被审查：
+
+- "review-only Mock"
+- "不调用后端"
+- "不写数据库"
+- "页面内预览"
+- "Mock dict 替代 CRM"
+- "硬编码模板"
+- "复用既有 mock 数据源"
 
 ## 邮件采矿阶段验证标准
 
