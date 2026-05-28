@@ -748,6 +748,86 @@ async def startup_event():
 
     asyncio.create_task(background_poll_worker())
 
+
+# === 30 分钟后台补算 API 调用的"原始回复分 + 相似分" ===
+# 背景:实时验证详情页里这两列默认空,因为 _refresh_api_invocation_quality 只在两个时机被触发:
+#   (a) 调用创建时——此时销售通常还没回复,actual_sales_replies=[],跳过原始回复分/相似分;
+#   (b) 分析详情页打开时——手动行为。
+# 实时验证是批量看一整天,不会逐条点开分析页,所以这两列绝大多数停留在 pending_no_sales_reply。
+# 这里加一个 30 分钟周期 worker,只补算"北京 2026-05-28 00:00 之后"创建的调用;之前历史数据不动。
+# 不重复算的两道防线:
+#   1) SQL 层只取 quality_status IS NULL / pending_no_sales_reply / quality_similarity 缺失的;
+#   2) _refresh_api_invocation_quality 内部 reply_hash 守卫:hash 未变就早 return,不调 LLM。
+API_RESCORE_BACKFILL_FROM_UTC = datetime(2026, 5, 28, 0, 0, 0) - timedelta(hours=8)  # = 北京 2026-05-28 00:00
+API_RESCORE_BACKFILL_INTERVAL_SECONDS = 1800   # 30 分钟
+API_RESCORE_BACKFILL_BATCH_LIMIT = 50          # 单轮最多处理 50 条,防一次跑太久把事件循环空闲时间吃光
+
+def _run_api_invocation_rescore_backfill() -> dict:
+    """单次扫描:取 5.28 起未完成评分的调用,按 session 分组共享 _load_session_messages,逐条调 refresh。"""
+    from sqlalchemy import or_
+    db = SessionLocal()
+    scanned = 0
+    refreshed = 0
+    failed = 0
+    try:
+        items = db.query(ApiAssistInvocation).filter(
+            ApiAssistInvocation.triggered_at >= API_RESCORE_BACKFILL_FROM_UTC,
+            ApiAssistInvocation.anchor_message_id.isnot(None),
+            or_(
+                ApiAssistInvocation.quality_status.is_(None),
+                ApiAssistInvocation.quality_status == "pending_no_sales_reply",
+                ApiAssistInvocation.quality_similarity.is_(None),
+            ),
+        ).order_by(ApiAssistInvocation.triggered_at.asc()).limit(API_RESCORE_BACKFILL_BATCH_LIMIT).all()
+        # 按 session 分组,一个 session 只查一次 _load_session_messages,避免 N+1。
+        by_session: dict = {}
+        for it in items:
+            by_session.setdefault(it.session_id, []).append(it)
+        for session_id, session_items in by_session.items():
+            try:
+                messages = _load_session_messages(db, session_id) if session_id else []
+            except Exception as msg_exc:
+                logger.warning("API原始/相似分补算: 加载会话消息失败 session=%s err=%s", session_id, msg_exc)
+                continue
+            for it in session_items:
+                scanned += 1
+                old_ts = it.quality_scored_at
+                try:
+                    _refresh_api_invocation_quality(db, it, all_messages=messages)
+                    if it.quality_scored_at != old_ts:
+                        refreshed += 1
+                except Exception as item_exc:
+                    failed += 1
+                    logger.warning("API原始/相似分补算: 单条失败 inv=%s err=%s", it.invocation_id, item_exc)
+                    try: db.rollback()
+                    except Exception: pass
+                    continue
+            try:
+                db.commit()
+            except Exception as commit_exc:
+                logger.warning("API原始/相似分补算: session 提交失败 session=%s err=%s", session_id, commit_exc)
+                try: db.rollback()
+                except Exception: pass
+    finally:
+        db.close()
+    return {"scanned": scanned, "refreshed": refreshed, "failed": failed}
+
+async def _api_invocation_rescore_backfill_worker():
+    """30 分钟周期循环;启动后立刻先跑一次,之后每 30 分钟再跑。"""
+    while True:
+        try:
+            stats = await asyncio.to_thread(_run_api_invocation_rescore_backfill)
+            logger.info("API原始/相似分后台补算 一轮完成: %s", stats)
+        except Exception as e:
+            logger.error("API原始/相似分后台补算 异常: %s", e)
+        await asyncio.sleep(API_RESCORE_BACKFILL_INTERVAL_SECONDS)
+
+@app.on_event("startup")
+async def _start_api_rescore_backfill_worker():
+    logger.info("启动 API 调用原始回复分/相似分 30 分钟后台补算任务(从北京 2026-05-28 00:00 起)")
+    asyncio.create_task(_api_invocation_rescore_backfill_worker())
+
+
 @app.get("/cb/qywx")
 async def qywx_verify(
     msg_signature: str = Query(...),
