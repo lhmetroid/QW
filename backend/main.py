@@ -21012,31 +21012,74 @@ def _caselib_serialize_result_thin(
 
 @app.get("/api/case_lib/results/{result_id}")
 async def caselib_get_result_detail(result_id: str):
-    """单行完整详情(7步链路 + 完整案例背景)，供前端 hover 浮层与双击弹窗按需懒加载。"""
+    """单行完整详情(7步链路 + 完整案例背景)，供前端 hover 浮层与双击弹窗按需懒加载。
+    两种 ID 都支持:
+      1) 迭代评测的 CaseIterationResult.result_id
+      2) v1.7.188: 实时验证(daily)的 ApiAssistInvocation.invocation_id
+         —— daily 列表为了控制响应体积只下发 step4_knowledge 的瘦字段(40KB→<1KB),
+         需要完整 hits/evidence/replyable_hits 时由前端 caselibEnsureResultDetail 调本接口懒加载。"""
     db = SessionLocal()
     try:
         rr = db.query(CaseIterationResult).filter(
             CaseIterationResult.result_id == result_id
         ).first()
-        if not rr:
-            raise HTTPException(status_code=404, detail="result not found")
-        case_meta = None
-        c = db.query(CaseLibraryCase).filter(
-            CaseLibraryCase.case_id == str(rr.case_id)
-        ).first()
-        if c:
-            turns = db.query(CaseLibraryDialogueTurn).filter(
-                CaseLibraryDialogueTurn.case_id == str(rr.case_id)
-            ).order_by(CaseLibraryDialogueTurn.turn_no).all()
-            case_meta = _caselib_serialize_case(c, turns, None)
-        item = _caselib_serialize_result(rr, case_meta)
-        if rr.turn_id:
-            t = db.query(CaseLibraryDialogueTurn).filter(
-                CaseLibraryDialogueTurn.turn_id == rr.turn_id
+        if rr:
+            case_meta = None
+            c = db.query(CaseLibraryCase).filter(
+                CaseLibraryCase.case_id == str(rr.case_id)
             ).first()
-            if t:
-                item["turn"] = _caselib_serialize_turn(t)
-        return {"status": "success", "result": item}
+            if c:
+                turns = db.query(CaseLibraryDialogueTurn).filter(
+                    CaseLibraryDialogueTurn.case_id == str(rr.case_id)
+                ).order_by(CaseLibraryDialogueTurn.turn_no).all()
+                case_meta = _caselib_serialize_case(c, turns, None)
+            item = _caselib_serialize_result(rr, case_meta)
+            if rr.turn_id:
+                t = db.query(CaseLibraryDialogueTurn).filter(
+                    CaseLibraryDialogueTurn.turn_id == rr.turn_id
+                ).first()
+                if t:
+                    item["turn"] = _caselib_serialize_turn(t)
+            return {"status": "success", "result": item}
+
+        # v1.7.188: 回退到 ApiAssistInvocation(daily/实时验证)。result_id 是 invocation_id(UUID)。
+        # 非 UUID 形态(如本地占位 'daily_turn_...') 直接 404。
+        inv = None
+        try:
+            inv = db.query(ApiAssistInvocation).filter(
+                ApiAssistInvocation.invocation_id == result_id
+            ).first()
+        except Exception:
+            inv = None
+        if inv and inv.result_payload:
+            rp = dict(inv.result_payload or {})
+            kv2 = rp.get("knowledge_v2")
+            item = {
+                "result_id": str(inv.invocation_id),
+                "case_id": inv.session_id,
+                "scenario_code": "实时",
+                "step1_summary": {
+                    "topic": rp.get("topic"),
+                    "core_demand": rp.get("core_demand"),
+                    "status": rp.get("status") or "done",
+                },
+                "step2_crm_info": rp.get("crm_info"),
+                "step3_thread_business_fact": rp.get("thread_business_fact"),
+                # 完整 knowledge_v2(hits / evidence_refs / evidence_context / replyable_hits)
+                "step4_knowledge": {
+                    "knowledge_status": rp.get("knowledge_status") or (kv2.get("status") if isinstance(kv2, dict) else None) or "done",
+                    "knowledge_v2": kv2 if isinstance(kv2, dict) else None,
+                },
+                "step6_sales_advice": rp.get("reply_reference") or "",
+                "step7_reply_scores": rp.get("reply_scores_v2"),
+                "stage_status": rp.get("stage_status") or {},
+                "quality_score": float(inv.quality_score) if inv.quality_score is not None else None,
+                "quality_status": inv.quality_status,
+                "training_ai_reply": (rp.get("training_ai") or {}).get("reply") if isinstance(rp.get("training_ai"), dict) else "",
+            }
+            return {"status": "success", "result": item}
+
+        raise HTTPException(status_code=404, detail="result not found")
     finally:
         db.close()
 
@@ -21602,10 +21645,20 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 if isinstance(kv2, dict):
                     kb_hit_count, kb_used_count = _caselib_kb_counts(kv2)
                     kb_hit_count = kb_hit_count or 0
-                    # 下发知识明细给前端 hover 浮层(命中条目 + 未使用原因)
+                    # v1.7.188: 列表只放瘦字段(<1KB), 单条 hits / evidence_refs / evidence_context / replyable_hits
+                    # 全文(占整行 82%, ~40KB)由前端 caselibEnsureResultDetail 调
+                    # /api/case_lib/results/{invocation_id} 懒加载, 命中浮层渲染时再取。
+                    # 实测: 1 行 49KB → 9KB 左右; 50 条 invocation 的天: 2.5MB → 450KB。
                     step4_knowledge = {
                         "knowledge_status": kb_status,
-                        "knowledge_v2": kv2,
+                        "knowledge_v2": {
+                            "status": kv2.get("status"),
+                            "query_text": kv2.get("query_text"),
+                            "retrieval_quality": kv2.get("retrieval_quality"),
+                            "no_hit_reason": kv2.get("no_hit_reason"),
+                            # hits/evidence_refs/replyable_hits/evidence_context 不放
+                            # 计数已由外层 r.kb_hit_count / r.kb_used_count 携带
+                        },
                     }
                 ta = matched_inv.result_payload.get("training_ai")
                 if isinstance(ta, dict):
