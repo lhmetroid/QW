@@ -3437,6 +3437,13 @@ Alex</textarea>
             const p = n => String(n).padStart(2, '0');
             return `${bj.getUTCFullYear()}-${p(bj.getUTCMonth() + 1)}-${p(bj.getUTCDate())} ${p(bj.getUTCHours())}:${p(bj.getUTCMinutes())}:${p(bj.getUTCSeconds())}`;
         }
+        // 案例上下文 msg_time 显示格式化(YYYY-MM-DD HH:MM)。
+        // 注意:case_library / wecom 历史里的 msg_time 用 strptime 无时区解析,存的就是"北京本地时间",
+        // 与 triggered_at(utcnow 存 UTC)语义不同——这里不能再 +8,只清理 'T' 分隔符。
+        function caselibFmtMsgTime(s) {
+            if (!s) return '';
+            return String(s).replace('T', ' ').replace(/\.\d+.*$/, '').slice(0, 16);
+        }
         // 数字格式化（保留 n 位小数；null -> '-'）
         function caselibFmtNum(v, n) {
             if (v == null || isNaN(v)) return '-';
@@ -4840,7 +4847,7 @@ Alex</textarea>
             if (!msgs.length) { lines.push('（无背景对话）'); return lines.join('\n'); }
             msgs.forEach(m => {
                 const role = m.role === 'customer' ? '客户' : '销售';
-                lines.push('[' + role + '] ' + ((m.msg_time || '').slice(0, 16)) + ' ' + (m.content || ''));
+                lines.push('[' + role + '] ' + (caselibFmtMsgTime(m.msg_time)) + ' ' + (m.content || ''));
             });
             return lines.join('\n');
         }
@@ -4926,10 +4933,10 @@ Alex</textarea>
             const c = r.case || {};
 
             const ctxList = (c.context_messages || []).map(m =>
-                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${caselibFmtMsgTime(m.msg_time)}</span> ${escapeHtml(m.content || '')}</div>`
             ).join('');
             const coreList = (c.core_dialog || []).map(m =>
-                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${caselibFmtMsgTime(m.msg_time)}</span> ${escapeHtml(m.content || '')}</div>`
             ).join('');
 
             const qstatus = caselibQualityStatusLabel(r.quality_status);
@@ -5315,10 +5322,10 @@ Alex</textarea>
             const c = (caselibState.cases || []).find(x => x.case_id === caseId);
             if (!c) return;
             const ctxList = (c.context_messages || []).map(m =>
-                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${caselibFmtMsgTime(m.msg_time)}</span> ${escapeHtml(m.content || '')}</div>`
             ).join('');
             const coreList = (c.core_dialog || []).map(m =>
-                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content || '')}</div>`
+                `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}" title="发送方角色">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400" title="消息时间">${caselibFmtMsgTime(m.msg_time)}</span> ${escapeHtml(m.content || '')}</div>`
             ).join('');
             const modal = document.createElement('div');
             modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
@@ -5383,7 +5390,7 @@ Alex</textarea>
             const renderMsg = (m) =>
                 `<div class="text-[11px] leading-5 py-0.5">
                     <b class="${m.role === 'customer' ? 'text-blue-700' : 'text-emerald-700'}">[${caselibRoleLabel(m.role)}]</b>
-                    <span class="text-slate-400">${(m.msg_time || '').slice(0, 16)}</span>
+                    <span class="text-slate-400">${caselibFmtMsgTime(m.msg_time)}</span>
                     <span class="text-slate-800 whitespace-pre-wrap break-words">${escapeHtml(m.content || '')}</span>
                 </div>`;
             const scored_count = turns.filter(t => t.actual_sales_score != null).length;
@@ -5530,7 +5537,7 @@ Alex</textarea>
                     </div>
                     <div>
                         <div class="text-[10px] font-semibold text-slate-500 mb-1">客户问之前的背景（${bg.length} 条，不含本轮销售参考答案）</div>
-                        ${bg.length ? bg.map(m => `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400">${(m.msg_time||'').slice(0,16)}</span> ${escapeHtml(m.content||'')}</div>`).join('') : '<div class="text-[11px] text-slate-400 italic">无背景</div>'}
+                        ${bg.length ? bg.map(m => `<div class="text-[11px] py-0.5"><b class="${m.role==='customer'?'text-blue-700':'text-emerald-700'}">[${caselibRoleLabel(m.role)}]</b> <span class="text-slate-400">${caselibFmtMsgTime(m.msg_time)}</span> ${escapeHtml(m.content||'')}</div>`).join('') : '<div class="text-[11px] text-slate-400 italic">无背景</div>'}
                     </div>
                 </div>`;
             } else if (stepKey === '第6步·AI生成回复') {
@@ -12510,7 +12517,7 @@ Alex</textarea>
                 const roleColor = isCustomer ? 'text-blue-600' : 'text-green-700';
                 const roleLabel = isCustomer ? '客户' : '销售';
                 const highlightRing = m.id === highlightId ? ' ring-2 ring-amber-400' : '';
-                const timeStr = (m.msg_time||'').slice(0,16).replace('T',' ');
+                const timeStr = caselibFmtMsgTime(m.msg_time).replace('T',' ');
                 const contentHtml = (m.content||'—').split('\n').map(l => `<div>${safeText(l)||'&nbsp;'}</div>`).join('');
                 const msgConclusion = m.slice_process_result || m.process_result;
                 const msgStage = [m.business_stage || m.stage, m.business_scenario_name || m.section].filter(Boolean).join(' - ');
