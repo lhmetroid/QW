@@ -166,6 +166,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $Backend "main.py"))) {
 $env:PYTHONDONTWRITEBYTECODE = "1"
 $env:PYTHONIOENCODING = "utf-8"
 $env:PYTHONUTF8 = "1"
+# v1.7.194: Tee-Object 管道下 python stdout 会从行缓冲变块缓冲(4KB), 控制台与日志文件可能延迟刷新.
+# 强制无缓冲, 让 uvicorn 启动 banner / 请求日志即时出现.
+$env:PYTHONUNBUFFERED = "1"
 
 Push-Location $Backend
 try {
@@ -210,13 +213,15 @@ try {
         Write-Host "INFO: hot reload disabled. Use -Reload to enable it."
     }
 
-    # v1.7.193: 控制台 tee 落盘. 默认开, 在 $Root\logs\start_backend_<port>_<时间戳>.out.log.
-    # 关掉: -NoConsoleLog. 自定义路径: -ConsoleLogFile <path>.
+    # v1.7.194: 控制台 tee 落盘. 默认开, 路径用相对路径(不依赖任何机器特定的绝对路径).
+    # 此刻 Push-Location $Backend 已生效, CWD = <script_dir>/backend, 所以 "logs" 即 backend/logs,
+    # 与 Python logging 的 app.log 同目录, 不会再创建项目根级别的 logs/. 服务器直接拷过去就能跑.
+    # 关闭 tee: -NoConsoleLog. 指定具体文件名(可绝对可相对): -ConsoleLogFile <path>.
     if ($NoConsoleLog) {
         python @args
     }
     else {
-        $consoleLogDir = Join-Path $Root "logs"
+        $consoleLogDir = "logs"
         if (-not (Test-Path -LiteralPath $consoleLogDir)) {
             New-Item -ItemType Directory -Path $consoleLogDir -Force | Out-Null
         }
@@ -224,7 +229,7 @@ try {
             $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
             $ConsoleLogFile = Join-Path $consoleLogDir "start_backend_${Port}_${stamp}.out.log"
         }
-        Write-Host "INFO: console tee -> $ConsoleLogFile (use -NoConsoleLog to disable)"
+        Write-Host "INFO: console tee -> $ConsoleLogFile (relative to backend/; -NoConsoleLog to disable)"
         # 2>&1 把 stderr 合并到 stdout 再交给 Tee-Object, 这样 PowerShell 控制台与文件双写;
         # Python logging 仍独立写 backend/logs/app.log (RotatingFileHandler), 两者互不影响.
         python @args 2>&1 | Tee-Object -FilePath $ConsoleLogFile -Append
