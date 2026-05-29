@@ -235,14 +235,18 @@ def _desensitize_profile(profile, demo_index: int) -> dict:
 
 
 def fetch_one_candidate_for_dimension(crm_db, dim: dict):
-    """对一个维度跑 SQL 拿候选列表，优先选 lifecycle 匹配的画像；没匹配回退到第一个有效画像。
+    """对一个维度跑 SQL 拿候选列表，严格按 lifecycle 匹配选画像；没匹配返 None（不回退）。
+
+    v1.7.207 按用户要求注释掉 lifecycle 软约束回退兜底 — 没找到匹配的 lifecycle 就直接跳过该维度,
+    不再回退到第一个有效画像假装"找到了"。如果某维度找不到匹配候选，5 个案例就不足 5 条，
+    暴露 CRM 数据本身在该维度上确实没有合适样本的事实。
+
     返回 (external_userid, contact_id, profile) 或 None。
     """
     rows = crm_db.execute(text(dim["sql"])).fetchall()
     print(f"  [维度{dim['demo_index']}] SQL 命中 {len(rows)} 个候选")
-    preferred_lifecycles = dim.get("required_lifecycles")  # 软约束：优先选这些 lifecycle
+    required_lifecycles = dim.get("required_lifecycles")  # 硬约束：必须是这些 lifecycle 之一
 
-    first_valid: tuple | None = None
     for row in rows:
         external_userid = row[0]
         contact_id = row[1]
@@ -252,18 +256,15 @@ def fetch_one_candidate_for_dimension(crm_db, dim: dict):
             profile = fetch_crm_profile(external_userid, crm_db)
         except Exception:
             continue
-        # 第一个有效画像兜底
-        if first_valid is None:
-            first_valid = (external_userid, contact_id, profile)
-        # 优先返回 lifecycle 匹配的
         lifecycle = (profile.customer_lifecycle_stage or "").strip()
-        if preferred_lifecycles and lifecycle in preferred_lifecycles:
-            return external_userid, contact_id, profile
-    if first_valid is not None and preferred_lifecycles:
-        # 没匹配到偏好 lifecycle，回退到第一个，打印警告
-        lifecycle = (first_valid[2].customer_lifecycle_stage or "").strip()
-        print(f"  [维度{dim['demo_index']}] 警告：未找到 lifecycle ∈ {preferred_lifecycles} 的候选，回退到 lifecycle={lifecycle!r}")
-    return first_valid
+        if required_lifecycles and lifecycle not in required_lifecycles:
+            continue
+        return external_userid, contact_id, profile
+
+    # v1.7.207 旧的"软约束回退"逻辑已注释 — 没匹配直接返 None。
+    if required_lifecycles:
+        print(f"  [维度{dim['demo_index']}] 警告：未找到 lifecycle ∈ {required_lifecycles} 的候选，按 v1.7.207 不回退第一个有效画像，跳过本维度。")
+    return None
 
 
 def upsert_demo_contact(pg_db, dim: dict, external_userid: str, contact_id, profile):
