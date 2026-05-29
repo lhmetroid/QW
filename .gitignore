@@ -28,3 +28,15 @@ backend/ai_settings.local.json
 
 # other/ 是独立项目，不上传到 QW 仓库
 other/
+
+# v1.7.214 一次性调试脚本与临时输出（用户确认全部排除）
+backend/check_timing.py
+backend/print_advice.py
+backend/print_prompt.py
+backend/query_invocation.py
+backend/query_session.py
+backend/query_summary_history.py
+draft1.json
+draft_v202.json
+llm_resp.txt
+运行日志.md
