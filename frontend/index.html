@@ -368,91 +368,91 @@
             <section id="mail-quality-live-demo" class="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-5">
                 <div class="flex flex-wrap items-start justify-between gap-3 border-b border-emerald-200 pb-3">
                     <div>
-                        <div class="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Phase 5 真接入 / Live</div>
-                        <h2 class="text-base font-bold text-slate-900 mt-1">真实草稿生成（连 LLM + 真查 Few-Shot 黄金库）</h2>
-                        <p class="text-xs text-slate-600 mt-1">这一段是 Task 78 真接入：表单提交后真实调用 <code>POST /api/v1/mail/generate-draft</code>，下方结果是后端真返回的数据（含 LLM model 名、Few-Shot 检索命中的种子 ID、CRM 画像、四道安全门评判）。下方原 Mock 静态卡片保留作字段说明。</p>
+                        <div class="text-[11px] font-bold tracking-wide text-emerald-700">第五阶段 · 真接入 · 实时演示</div>
+                        <h2 class="text-base font-bold text-slate-900 mt-1" title="本区域真实调用后端接口生成邮件草稿。区别于下方仅作展示的占位卡片。">真实草稿生成（接通大模型 + 真查范例黄金库）</h2>
+                        <p class="text-xs text-slate-600 mt-1">本区域为真接入演示。点击下方按钮后，表单会真实调用后端接口 <code>POST /api/v1/mail/generate-draft</code>，结果是后端真返回的数据（包含大模型名称、范例命中的种子编号、CRM 画像、六道安全门评判）。下方原占位静态卡片保留作字段说明用途。</p>
                     </div>
-                    <span class="rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white">Real backend</span>
+                    <span class="rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white" title="本区域所有数据均来自真实后端接口，不是页面内的占位 Mock。">真接后端</span>
                 </div>
                 <div class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-xs">
-                    <label class="flex flex-col gap-1">
-                        <span class="font-bold text-slate-700">customer_key</span>
+                    <label class="flex flex-col gap-1" title="CRM 中客户的唯一标识（API 字段名 customer_key）。用于联查 CRM 画像、客户域名白名单、欠款风险等级。示例：CUST-DEMO-MULTI-DOMAIN。必填。">
+                        <span class="font-bold text-slate-700">客户编号</span>
                         <input id="mql-customer-key" class="rounded border border-slate-300 px-2 py-1 font-mono" value="CUST-DEMO-MULTI-DOMAIN">
                     </label>
-                    <label class="flex flex-col gap-1">
-                        <span class="font-bold text-slate-700">contact_email</span>
+                    <label class="flex flex-col gap-1" title="本次草稿的目标收件人邮箱（API 字段名 contact_email）。后端会自动校验：是否在该客户的域名白名单内、是否命中竞对域名黑名单、是否在高敏感域列表。必填。">
+                        <span class="font-bold text-slate-700">收件人邮箱</span>
                         <input id="mql-contact-email" class="rounded border border-slate-300 px-2 py-1 font-mono" value="buyer@customer-domain.mailmock.test">
                     </label>
-                    <label class="flex flex-col gap-1">
-                        <span class="font-bold text-slate-700">scenario</span>
+                    <label class="flex flex-col gap-1" title="三个业务场景选其一（API 字段名 scenario）。决定加载哪套 4 轮邮件序列策略，同时影响范例黄金库召回的过滤口径。">
+                        <span class="font-bold text-slate-700">业务场景</span>
                         <select id="mql-scenario" class="rounded border border-slate-300 px-2 py-1">
-                            <option value="re_activation">re_activation (老客户唤醒)</option>
-                            <option value="new_business_promotion">new_business_promotion (新业务推广)</option>
-                            <option value="new_contact_intro">new_contact_intro (新接手联系人)</option>
+                            <option value="re_activation" title="客户 30 天以上无来往，用低压力问候重启关系。第 1 步破冰 / 第 2 步老案例 / 第 3 步标准流程 / 第 4 步临门样稿。">老客户唤醒（re_activation）</option>
+                            <option value="new_business_promotion" title="向老客户引入新产品或新服务线。第 1 步价值提示 / 第 2 步行业证据 / 第 3 步试用方案 / 第 4 步报价邀约。">新业务推广（new_business_promotion）</option>
+                            <option value="new_contact_intro" title="对方公司换了新对接人，需要重新自我介绍 + 交接背景 + 协作路径 + 下一步确认。">新接手联系人介绍（new_contact_intro）</option>
                         </select>
                     </label>
-                    <label class="flex flex-col gap-1">
-                        <span class="font-bold text-slate-700">suite_step (1-4)</span>
+                    <label class="flex flex-col gap-1" title="4 轮邮件套装中的第几步，取值 1 到 4（API 字段名 suite_step）。第 1 步破冰、第 2 步行业案例、第 3 步标准流程、第 4 步临门样稿。步数越大语气越主动，商业条款越具体，安全门越严格。">
+                        <span class="font-bold text-slate-700">邮件序列第几步（1-4）</span>
                         <input id="mql-suite-step" type="number" min="1" max="4" value="1" class="rounded border border-slate-300 px-2 py-1 font-mono">
                     </label>
-                    <label class="flex flex-col gap-1">
-                        <span class="font-bold text-slate-700">current_seller_name</span>
+                    <label class="flex flex-col gap-1" title="当前对接销售姓名（API 字段名 current_seller_name），会作为发件人代称写入草稿。必填。">
+                        <span class="font-bold text-slate-700">销售姓名</span>
                         <input id="mql-seller-name" class="rounded border border-slate-300 px-2 py-1" value="Mock Sales Owner">
                     </label>
-                    <label class="flex flex-col gap-1">
-                        <span class="font-bold text-slate-700">current_seller_signature</span>
+                    <label class="flex flex-col gap-1" title="销售在邮箱客户端常用的签名（API 字段名 current_seller_signature），通常包含姓名、职位、电话。后端会原样附在草稿末尾。多行用 \n 分隔。必填。">
+                        <span class="font-bold text-slate-700">销售签名档</span>
                         <input id="mql-seller-sig" class="rounded border border-slate-300 px-2 py-1" value="Mock Sales Owner">
                     </label>
                 </div>
                 <div class="mt-4 flex flex-wrap items-center gap-3">
-                    <button id="mql-run-btn" type="button" onclick="runMailQualityLiveDraft()" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">生成草稿（真调后端）</button>
-                    <span id="mql-status" class="text-xs text-slate-600">未发起请求</span>
+                    <button id="mql-run-btn" type="button" onclick="runMailQualityLiveDraft()" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700" title="向后端真路由 POST /api/v1/mail/generate-draft 发请求。后端会真调大模型 + 真查范例黄金库种子 + 跑六道安全门，5 到 25 秒返回真草稿。整个过程不会真实发送邮件。">生成草稿（真调后端）</button>
+                    <span id="mql-status" class="text-xs text-slate-600">尚未发起请求</span>
                 </div>
                 <div id="mql-result" class="mt-4 hidden">
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                        <div class="rounded border border-emerald-200 bg-white p-2">
-                            <div class="text-[10px] font-bold uppercase text-slate-500">status</div>
+                        <div class="rounded border border-emerald-200 bg-white p-2" title="API 字段名 status。drafted=草稿生成成功，可送审；blocked_by_xxx=被某道安全门红卡硬阻断，不可发送；其余状态参考后端响应文档。">
+                            <div class="text-[10px] font-bold text-slate-500">草稿状态</div>
                             <div id="mql-r-status" class="mt-1 font-bold text-slate-900 break-all"></div>
                         </div>
-                        <div class="rounded border border-emerald-200 bg-white p-2">
-                            <div class="text-[10px] font-bold uppercase text-slate-500">llm_status</div>
+                        <div class="rounded border border-emerald-200 bg-white p-2" title="API 字段名 llm_status。success=大模型上游真返回了 JSON；fallback_template=大模型上游超时或返回非法 JSON，走老硬编码模板兜底（接口仍 200，草稿仍可用，但文字风格固定）。">
+                            <div class="text-[10px] font-bold text-slate-500">大模型调用结果</div>
                             <div id="mql-r-llm-status" class="mt-1 font-bold text-slate-900 break-all"></div>
                         </div>
-                        <div class="rounded border border-emerald-200 bg-white p-2">
-                            <div class="text-[10px] font-bold uppercase text-slate-500">llm_model_used</div>
+                        <div class="rounded border border-emerald-200 bg-white p-2" title="API 字段名 llm_model_used。本次真调用的大模型名称，来自 .env 的 LLM1_MODEL 配置项。当前默认 qwen14b。">
+                            <div class="text-[10px] font-bold text-slate-500">调用的大模型</div>
                             <div id="mql-r-llm-model" class="mt-1 font-mono text-slate-900 break-all"></div>
                         </div>
-                        <div class="rounded border border-emerald-200 bg-white p-2">
-                            <div class="text-[10px] font-bold uppercase text-slate-500">retrieved_fewshot_id</div>
+                        <div class="rounded border border-emerald-200 bg-white p-2" title="API 字段名 retrieved_fewshot_id。命中的范例在 email_fragment_asset 表里的 UUID。可用此 ID 在数据库里反查原始邮件内容。null 表示本次没命中任何范例。">
+                            <div class="text-[10px] font-bold text-slate-500">命中的范例编号</div>
                             <div id="mql-r-fewshot-id" class="mt-1 font-mono text-[10px] text-slate-900 break-all"></div>
                         </div>
-                        <div class="rounded border border-emerald-200 bg-white p-2">
-                            <div class="text-[10px] font-bold uppercase text-slate-500">fewshot_score</div>
+                        <div class="rounded border border-emerald-200 bg-white p-2" title="API 字段名 fewshot_match_score。命中范例的 useful_score，区间 0.60 到 0.99，越接近 1 越优质。黄金库准入门槛是 0.60。">
+                            <div class="text-[10px] font-bold text-slate-500">范例有用度分数</div>
                             <div id="mql-r-fewshot-score" class="mt-1 font-mono text-slate-900"></div>
                         </div>
-                        <div class="rounded border border-emerald-200 bg-white p-2">
-                            <div class="text-[10px] font-bold uppercase text-slate-500">mail_uid</div>
+                        <div class="rounded border border-emerald-200 bg-white p-2" title="API 字段名 mail_uid。本次生成草稿的唯一 ID，后续审稿、反馈、真发件接口都用这个 ID 引用本份草稿。">
+                            <div class="text-[10px] font-bold text-slate-500">草稿唯一编号</div>
                             <div id="mql-r-mail-uid" class="mt-1 font-mono text-[10px] text-slate-900 break-all"></div>
                         </div>
-                        <div class="rounded border border-emerald-200 bg-white p-2">
-                            <div class="text-[10px] font-bold uppercase text-slate-500">real_sending_enabled</div>
+                        <div class="rounded border border-emerald-200 bg-white p-2" title="API 字段名 real_sending_enabled。永远是 false 直到 Task 79 SMTP 通道做完。当前所有草稿只生成不发送，这是设计上的安全底线。">
+                            <div class="text-[10px] font-bold text-slate-500">真发件开关</div>
                             <div id="mql-r-real-sending" class="mt-1 font-bold text-slate-900"></div>
                         </div>
-                        <div class="rounded border border-emerald-200 bg-white p-2">
-                            <div class="text-[10px] font-bold uppercase text-slate-500">safety overall_outcome</div>
+                        <div class="rounded border border-emerald-200 bg-white p-2" title="API 字段名 safety_guardrail.overall_outcome。passed=六道安全门全过，可直接送审；yellow_card_xxx=有警告（如工期被自动拉正、客户欠款需财务复核），需人工额外审核；red_card_xxx=硬阻断，不可发送。">
+                            <div class="text-[10px] font-bold text-slate-500">安全门总评</div>
                             <div id="mql-r-safety-outcome" class="mt-1 font-bold text-slate-900"></div>
                         </div>
                     </div>
-                    <div class="mt-3 rounded border border-emerald-200 bg-white p-3">
-                        <div class="text-[10px] font-bold uppercase text-slate-500">final_subject</div>
+                    <div class="mt-3 rounded border border-emerald-200 bg-white p-3" title="API 字段名 final_subject。大模型真写或 fallback 模板生成的英文邮件主题，长度不超过 200 字符。">
+                        <div class="text-[10px] font-bold text-slate-500">邮件主题（真返回）</div>
                         <div id="mql-r-subject" class="mt-1 text-sm font-bold text-slate-900"></div>
                     </div>
-                    <div class="mt-3 rounded border border-emerald-200 bg-white p-3">
-                        <div class="text-[10px] font-bold uppercase text-slate-500">final_body_html (后端真返回，含占位符强制保护)</div>
+                    <div class="mt-3 rounded border border-emerald-200 bg-white p-3" title="API 字段名 final_body_html。完整草稿正文。注意里面的 {{MAIL_PRICE_RESOLVED_xxx}} 占位符是设计：后端在真发件前会用 PricingRule 表的真值替换，这是物理隔离防大模型编造价格的关键。">
+                        <div class="text-[10px] font-bold text-slate-500">邮件正文 HTML（后端真返回，含占位符强制保护）</div>
                         <div id="mql-r-body" class="mt-2 text-sm text-slate-800 leading-relaxed prose prose-sm max-w-none"></div>
                     </div>
                     <details class="mt-3">
-                        <summary class="cursor-pointer text-[11px] font-bold text-slate-600">原始 JSON 响应（用于审计）</summary>
+                        <summary class="cursor-pointer text-[11px] font-bold text-slate-600" title="展开后看到完整的后端响应 JSON 原文，供调试和审计用。">原始 JSON 响应（用于审计）</summary>
                         <pre id="mql-r-raw" class="mt-2 max-h-64 overflow-auto rounded bg-slate-900 p-3 text-[10px] text-slate-100"></pre>
                     </details>
                 </div>
@@ -1671,7 +1671,10 @@ Alex</textarea>
             const statusEl = document.getElementById('mql-status');
             const resultEl = document.getElementById('mql-result');
             if (btn) { btn.disabled = true; btn.classList.add('opacity-60'); }
-            if (statusEl) { statusEl.textContent = '调用中...（LLM 上游可能 5-25 秒）'; }
+            if (statusEl) {
+                statusEl.textContent = '调用中……（大模型上游通常 5 到 25 秒返回）';
+                statusEl.className = 'text-xs text-slate-600';
+            }
 
             const payload = {
                 customer_key: (document.getElementById('mql-customer-key')?.value || '').trim(),
@@ -1696,19 +1699,19 @@ Alex</textarea>
                 const elapsed = Math.round(performance.now() - started);
                 if (!resp.ok) {
                     if (statusEl) {
-                        statusEl.textContent = `HTTP ${resp.status} after ${elapsed}ms — ${data.detail || text.slice(0, 120)}`;
+                        statusEl.textContent = `调用失败（HTTP ${resp.status}，耗时 ${elapsed} 毫秒）：${data.detail || text.slice(0, 120)}`;
                         statusEl.className = 'text-xs text-red-600 font-bold';
                     }
                     if (resultEl) { resultEl.classList.add('hidden'); }
                     return;
                 }
                 if (statusEl) {
-                    statusEl.textContent = `成功 HTTP 200，${elapsed}ms`;
+                    statusEl.textContent = `调用成功（HTTP 200，耗时 ${elapsed} 毫秒）`;
                     statusEl.className = 'text-xs text-emerald-700 font-bold';
                 }
                 if (resultEl) { resultEl.classList.remove('hidden'); }
 
-                const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = (v === null || v === undefined) ? '(null)' : String(v); };
+                const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = (v === null || v === undefined) ? '（空）' : String(v); };
                 setText('mql-r-status', data.status);
                 setText('mql-r-llm-status', data.llm_status);
                 setText('mql-r-llm-model', data.llm_model_used);
@@ -1716,11 +1719,11 @@ Alex</textarea>
                 setText('mql-r-fewshot-score', data.fewshot_match_score);
                 setText('mql-r-mail-uid', data.mail_uid);
                 setText('mql-r-real-sending', data.real_sending_enabled);
-                setText('mql-r-safety-outcome', (data.safety_guardrail && data.safety_guardrail.overall_outcome) || '(n/a)');
+                setText('mql-r-safety-outcome', (data.safety_guardrail && data.safety_guardrail.overall_outcome) || '（无）');
                 setText('mql-r-subject', data.final_subject);
 
                 const bodyEl = document.getElementById('mql-r-body');
-                if (bodyEl) { bodyEl.innerHTML = data.final_body_html || '(empty)'; }
+                if (bodyEl) { bodyEl.innerHTML = data.final_body_html || '（正文为空）'; }
                 const rawEl = document.getElementById('mql-r-raw');
                 if (rawEl) { rawEl.textContent = JSON.stringify(data, null, 2); }
             } catch (err) {
