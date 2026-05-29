@@ -3083,26 +3083,15 @@ def _first_mail_subject_hint(subject_hints: tuple[str, ...]) -> str:
     return ""
 
 def _mail_contact_name_from_email(contact_email: str) -> str:
-    # v1.7.208 按用户要求注释掉英文 "there" 兜底 — 中文邮件称呼不能塞英文假数据冒充收件人姓名.
-    # 邮箱本地段为空或脱敏后为空时直接 raise, 让上层 422 暴露给前端"邮箱不可解析出收件人姓名".
-    # 旧逻辑（已注释）:
-    #   local_part = str(contact_email or "").split("@", 1)[0].strip()
-    #   if not local_part:
-    #       return "there"
-    #   return sanitize_text(re.sub(r"[._-]+", " ", local_part)).title() or "there"
+    # v1.7.215 按用户校准"区分真为空 vs 真出错"：邮箱解析不出本地段是数据为空，不是读取出错。
+    # 返空字符串让流程继续，最终结果里收件人姓名就是空 — 暴露问题但不打断 V3 测试。
+    # 旧 v1.7.208 错误地 raise 422 中断流程；旧 v1 错误用英文 "there" 兜底假装成功。
+    # 现在的折中：空就是空，由 LLM 在 prompt 里看到 recipient_name="" 自己决定怎么处理。
     local_part = str(contact_email or "").split("@", 1)[0].strip()
     if not local_part:
-        raise HTTPException(
-            status_code=422,
-            detail=f"无法从联系邮箱 {contact_email!r} 解析出收件人姓名 — 邮箱本地段为空。",
-        )
+        return ""
     normalized = sanitize_text(re.sub(r"[._-]+", " ", local_part)).title()
-    if not normalized:
-        raise HTTPException(
-            status_code=422,
-            detail=f"无法从联系邮箱 {contact_email!r} 解析出收件人姓名 — 脱敏后为空。",
-        )
-    return normalized
+    return normalized or ""
 
 def _mail_commercial_placeholder(key: str) -> MailDraftResolvedTerm:
     placeholders = {
@@ -3591,24 +3580,12 @@ def _mail_crm_profile_from_static(customer_key: str | None) -> dict[str, Any] | 
     #       "crm_profile_lookup_status": sanitize_text(profile.get("crm_profile_lookup_status")) or "matched_mail_crm_mock_customer_key",
     #       "crm_profile_source": sanitize_text(profile.get("crm_profile_source")) or "mail_crm_mock_review_only",
     #   }
-    company_industry = sanitize_text(profile.get("company_industry"))
-    if not company_industry:
-        raise HTTPException(
-            status_code=500,
-            detail=f"MAIL_CRM_STATIC_PROFILE_BY_CUSTOMER_KEY[{normalized_customer_key}] 缺 company_industry 字段（v1.7.208 不再兜底 'unknown'）。",
-        )
-    crm_profile_lookup_status = sanitize_text(profile.get("crm_profile_lookup_status"))
-    if not crm_profile_lookup_status:
-        raise HTTPException(
-            status_code=500,
-            detail=f"MAIL_CRM_STATIC_PROFILE_BY_CUSTOMER_KEY[{normalized_customer_key}] 缺 crm_profile_lookup_status 字段（v1.7.208 不再兜底默认串）。",
-        )
-    crm_profile_source = sanitize_text(profile.get("crm_profile_source"))
-    if not crm_profile_source:
-        raise HTTPException(
-            status_code=500,
-            detail=f"MAIL_CRM_STATIC_PROFILE_BY_CUSTOMER_KEY[{normalized_customer_key}] 缺 crm_profile_source 字段（v1.7.208 不再兜底默认串）。",
-        )
+    # v1.7.215 按用户校准"真为空 vs 真出错"：静态字典里某条客户缺字段是【数据为空】,
+    # 不是【读取出错】, 让流程继续走, 结果里展示为空, 暴露问题以便单条修复, 不打断 V3 测试。
+    # 旧 v1.7.208 错误地把每个空字段都 raise 500 — 客户信息天然可能不全。
+    company_industry = sanitize_text(profile.get("company_industry")) or ""
+    crm_profile_lookup_status = sanitize_text(profile.get("crm_profile_lookup_status")) or ""
+    crm_profile_source = sanitize_text(profile.get("crm_profile_source")) or ""
     return {
         "company_industry": company_industry,
         "payment_risk_level": _normalize_mail_payment_risk_level(profile.get("payment_risk_level")),
@@ -3710,23 +3687,22 @@ def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> 
     #           payment_risk_level = _normalize_mail_payment_risk_level(_infer_payment_risk(recent_followup))
     #       except Exception:
     #           payment_risk_level = "unknown"
+    # v1.7.215 按用户校准"真为空 vs 真出错"：
+    #   - 推断函数导入失败 = 真出错 → 保留 raise（这是模块依赖缺失, 不是数据空）
+    #   - 推断函数返空字符串 = 真为空（公司名特征不足以判断行业）→ 返空值继续，不 raise
+    #   - 推断函数 raise 异常 = 真出错 → 让异常往上抛由外层 try/except 捕获返 None
     if not _infer_company_industry:
         raise HTTPException(
             status_code=503,
-            detail="crm_profile._infer_company_industry 导入失败（v1.7.208 不再兜底 'unknown'）。",
+            detail="crm_profile._infer_company_industry 导入失败 — 这是模块依赖出错, 不是数据空。",
         )
-    company_industry = sanitize_text(_infer_company_industry(company_name, None, None))
-    if not company_industry:
-        raise HTTPException(
-            status_code=503,
-            detail=f"_infer_company_industry({company_name!r}) 返空（v1.7.208 不再兜底 'unknown'）。",
-        )
+    company_industry = sanitize_text(_infer_company_industry(company_name, None, None)) or ""
     if not _infer_payment_risk:
         raise HTTPException(
             status_code=503,
-            detail="crm_profile._infer_payment_risk 导入失败（v1.7.208 不再兜底 'unknown'）。",
+            detail="crm_profile._infer_payment_risk 导入失败 — 这是模块依赖出错, 不是数据空。",
         )
-    payment_risk_level = _normalize_mail_payment_risk_level(_infer_payment_risk(recent_followup))
+    payment_risk_level = _normalize_mail_payment_risk_level(_infer_payment_risk(recent_followup)) or ""
     domains = set()
     row_email_domain = _normalize_mail_recipient_domain(row[2] if len(row) > 2 else None)
     if row_email_domain:
@@ -4467,29 +4443,12 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
 def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) -> MailDraftAssembledContent:
     llm_result = _llm_generate_mail_intro_paragraphs(profile)
     terms = profile.commercial_terms
-    # v1.7.208 按用户要求注释掉 industry_cn / risk_cn 取不到映射时回退 "未识别" 的兜底 —
-    # 取不到映射直接 raise, 让前端看到"行业映射表缺该 key"而不是假装"识别为未识别"。
-    # 旧逻辑（已注释）:
-    #   industry_cn = _MAIL_INDUSTRY_CN.get(profile.company_industry, profile.company_industry or "未识别")
-    #   risk_cn = _MAIL_PAYMENT_RISK_CN.get(profile.payment_risk_level, profile.payment_risk_level or "未识别")
-    industry_cn = _MAIL_INDUSTRY_CN.get(profile.company_industry)
-    if not industry_cn:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"_MAIL_INDUSTRY_CN 映射表缺 key={profile.company_industry!r}（v1.7.208 不再兜底 '未识别'）。"
-                "请在 _MAIL_INDUSTRY_CN 字典补全该行业的中文映射后重试。"
-            ),
-        )
-    risk_cn = _MAIL_PAYMENT_RISK_CN.get(profile.payment_risk_level)
-    if not risk_cn:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"_MAIL_PAYMENT_RISK_CN 映射表缺 key={profile.payment_risk_level!r}（v1.7.208 不再兜底 '未识别'）。"
-                "请在 _MAIL_PAYMENT_RISK_CN 字典补全该风险等级的中文映射后重试。"
-            ),
-        )
+    # v1.7.215 按用户校准"真为空 vs 真出错"：行业/风险中文映射缺 key 是【数据为空】
+    # （CRM 出现了字典里没覆盖的新枚举值），不是【读取出错】。返原始英文值或空串继续，
+    # 让前端看到原始值, 单条补字典 — 不打断 V3 测试。
+    # 旧 v1.7.208 错误地 raise 500 中断流程。
+    industry_cn = _MAIL_INDUSTRY_CN.get(profile.company_industry) or profile.company_industry or ""
+    risk_cn = _MAIL_PAYMENT_RISK_CN.get(profile.payment_risk_level) or profile.payment_risk_level or ""
 
     # v1.7.207 按用户要求注释掉 LLM 失败时的 fallback 模板分支 — 让 LLM 失败直接 raise, 不假装成功.
     # 旧逻辑（已注释，保留作为后续如要恢复 fallback 的参考）:
