@@ -13378,6 +13378,22 @@ def list_mail_gold_fewshot_seeds(db: Session = Depends(get_db)):
     items = []
     for r in rows:
         snapshot = r.source_snapshot or {}
+        # v1.7.219: 拍平切片元信息供前端展示
+        segment_metadata = None
+        if snapshot.get("segment_no") is not None:
+            segment_metadata = {
+                "segment_no": snapshot.get("segment_no"),
+                "segment_total": snapshot.get("segment_total"),
+                "segment_char_count": snapshot.get("segment_char_count"),
+                "segment_start_char": snapshot.get("segment_start_char"),
+                "segment_end_char": snapshot.get("segment_end_char"),
+                "kg_fragment_inferred": snapshot.get("kg_fragment_inferred"),
+                "function_fragment_mapped": snapshot.get("function_fragment_mapped"),
+                "parent_candidate_id": snapshot.get("parent_candidate_id"),
+                "parent_subject": snapshot.get("parent_subject"),
+                "split_method": snapshot.get("split_method"),
+                "bullet_cleaned": snapshot.get("bullet_cleaned", False),
+            }
         items.append({
             "fragment_id": str(r.fragment_id),
             "source_type": r.source_type,
@@ -13403,6 +13419,7 @@ def list_mail_gold_fewshot_seeds(db: Session = Depends(get_db)):
             "kb_business_line": snapshot.get("kb_business_line"),
             "score_source": snapshot.get("score_source"),
             "seed_source_file": snapshot.get("seed_source_file"),
+            "segment_metadata": segment_metadata,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "updated_at": r.updated_at.isoformat() if r.updated_at else None,
         })
