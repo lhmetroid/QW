@@ -645,12 +645,14 @@
                     </div>
                 </div>
 
-                <div id="mail-goldlib-detail" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-4">
-                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 pb-2">
-                        <div class="text-xs font-bold text-amber-900" id="mail-goldlib-detail-title">种子详情</div>
-                        <button type="button" onclick="closeMailGoldLibrarySeedDetail()" class="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50">收起</button>
+                <!-- v1.7.209: 黄金种子详情从原来"页面下方"改为"右侧固定抽屉", 不再挤掉表格视野 -->
+                <div id="mail-goldlib-detail-backdrop" class="hidden fixed inset-0 bg-black/30 z-[59]" onclick="closeMailGoldLibrarySeedDetail()"></div>
+                <div id="mail-goldlib-detail" class="hidden fixed top-0 right-0 h-screen w-full md:w-[560px] lg:w-[640px] bg-amber-50 border-l-2 border-amber-300 shadow-2xl z-[60] overflow-y-auto">
+                    <div class="sticky top-0 z-10 bg-amber-100/95 backdrop-blur border-b border-amber-300 px-4 py-3 flex items-center justify-between gap-2">
+                        <div class="text-sm font-bold text-amber-900" id="mail-goldlib-detail-title">种子详情</div>
+                        <button type="button" onclick="closeMailGoldLibrarySeedDetail()" class="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50" title="按 Esc 也可关闭">关闭 ✕</button>
                     </div>
-                    <div id="mail-goldlib-detail-body" class="mt-3 text-xs text-slate-700 space-y-2"></div>
+                    <div id="mail-goldlib-detail-body" class="p-4 text-xs text-slate-700 space-y-3"></div>
                 </div>
             </section>
             <section id="mail-config-panel" class="hidden space-y-5">
@@ -1978,10 +1980,18 @@
                 }
                 renderMailGoldLibrarySeeds();
             } catch (err) {
+                // v1.7.209 按 v1.7.208 "宁报错不假装" 原则: 加载失败必须清空 cache, 不能继续展示旧数据骗用户.
+                // 旧 bug: 失败时只更新状态文字, 表格里 mailGoldLibraryCache 仍是上一次成功的 25 条, 误导用户以为数据还在.
+                mailGoldLibraryCache = [];
+                const countEl = document.getElementById('mail-goldlib-count');
+                if (countEl) countEl.textContent = '0';
                 if (status) {
-                    status.textContent = `加载失败：${err.message}`;
+                    status.textContent = `加载失败：${err.message}（已清空展示，请检查后端 / 刷新重试）`;
                     status.className = 'text-[11px] text-red-600 font-bold';
                 }
+                // 详情卡若是已展开, 也要收起 — 旧数据不再可信
+                closeMailGoldLibrarySeedDetail();
+                renderMailGoldLibrarySeeds();
             }
         }
 
@@ -2033,44 +2043,75 @@
             const s = mailGoldLibraryCache.find(x => x.fragment_id === fragmentId);
             if (!s) return;
             const wrap = document.getElementById('mail-goldlib-detail');
+            const backdrop = document.getElementById('mail-goldlib-detail-backdrop');
             const title = document.getElementById('mail-goldlib-detail-title');
             const body = document.getElementById('mail-goldlib-detail-body');
             if (!wrap) return;
             wrap.classList.remove('hidden');
-            if (title) title.textContent = `种子详情 · ${s.source_ref}`;
+            if (backdrop) backdrop.classList.remove('hidden');
+            // v1.7.209: 右侧抽屉打开时锁滚动条防止 body 被滚穿
+            document.body.style.overflow = 'hidden';
+            if (title) title.textContent = `种子详情 · ${s.source_ref || s.fragment_id}`;
             if (body) {
                 const fmt = (v) => v == null || v === '' ? '—' : String(v);
+                const scenarioCn = (s) => ({
+                    're_activation': '老客户唤醒',
+                    'new_business_promotion': '新业务推广',
+                    'new_contact_intro': '新接手联系人介绍',
+                })[s] || s;
+                const fragmentCn = (f) => ({
+                    'greetings': '问候开场',
+                    'example': '案例示范',
+                    'process': '流程说明',
+                    'constraint': '交付约束',
+                    'quotation': '报价邀约',
+                })[f] || (f || '—');
                 body.innerHTML = `
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <div><b>种子编号：</b><code class="text-[10px]">${fmt(s.source_ref)}</code></div>
-                        <div><b>原 SQL Server 邮件标识：</b><code class="text-[10px]">${fmt(s.sqlserver_source_ref)}</code></div>
-                        <div><b>业务场景：</b>${fmt(s.scenario_label)}</div>
-                        <div><b>切片类型：</b>${fmt(s.function_fragment)}</div>
-                        <div><b>有用度分数：</b>${s.useful_score != null ? s.useful_score.toFixed(4) : '—'}（黄金库准入门槛 0.60）</div>
-                        <div><b>语言风格：</b>${fmt(s.language_style)}</div>
-                        <div class="md:col-span-2"><b>脱敏状态：</b>${fmt(s.desensitized_status)}（脱敏字段：${(s.desensitized_fields || []).join('、') || '无'}）</div>
-                        <div class="md:col-span-2"><b>评分来源公式：</b><code class="text-[10px]">${fmt(s.score_source)}</code></div>
+                    <div class="grid grid-cols-1 gap-2">
+                        <div><b>种子编号：</b><code class="text-[10px] break-all">${fmt(s.source_ref)}</code></div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><b>业务场景：</b><span class="rounded bg-indigo-100 text-indigo-700 px-1.5 py-0.5 text-[10px]">${fmt(scenarioCn(s.scenario_label))}</span></div>
+                            <div><b>切片类型：</b><span class="rounded bg-emerald-100 text-emerald-700 px-1.5 py-0.5 text-[10px]">${fmt(fragmentCn(s.function_fragment))}</span></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><b>有用度：</b>${s.useful_score != null ? s.useful_score.toFixed(4) : '—'}（门槛 0.60）</div>
+                            <div><b>语言风格：</b>${fmt(s.language_style)}</div>
+                        </div>
+                        <div><b>脱敏状态：</b>${fmt(s.desensitized_status)}（脱敏字段：${(s.desensitized_fields || []).join('、') || '无'}）</div>
+                        <div><b>评分来源：</b><code class="text-[10px] break-all">${fmt(s.score_source)}</code></div>
                     </div>
-                    <div class="mt-3">
+                    <div>
                         <div class="font-bold text-slate-700 mb-1">主题（来自原邮件，已脱敏）</div>
                         <div class="rounded border border-slate-200 bg-white p-2 text-xs">${fmt(s.title)}</div>
                     </div>
-                    <div class="mt-3">
+                    <div>
                         <div class="font-bold text-slate-700 mb-1">正文（完整内容，已脱敏）</div>
-                        <div class="rounded border border-slate-200 bg-white p-3 text-xs leading-relaxed whitespace-pre-wrap">${fmt(s.content)}</div>
+                        <div class="rounded border border-slate-200 bg-white p-3 text-xs leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto">${fmt(s.content)}</div>
                     </div>
-                    <div class="mt-3 text-[10px] text-slate-500">
-                        数据源：<code>${fmt(s.seed_source_file)}</code> · 入库时间：${fmt(s.created_at)} · 最后更新：${fmt(s.updated_at)}
+                    <div class="text-[10px] text-slate-500 border-t border-amber-200 pt-2">
+                        数据源：<code>${fmt(s.seed_source_file)}</code><br/>
+                        入库时间：${fmt(s.created_at)}<br/>
+                        最后更新：${fmt(s.updated_at)}
                     </div>
                 `;
             }
-            wrap.scrollIntoView({block: 'start', behavior: 'smooth'});
         }
 
         function closeMailGoldLibrarySeedDetail() {
             const wrap = document.getElementById('mail-goldlib-detail');
+            const backdrop = document.getElementById('mail-goldlib-detail-backdrop');
             if (wrap) wrap.classList.add('hidden');
+            if (backdrop) backdrop.classList.add('hidden');
+            document.body.style.overflow = '';
         }
+
+        // v1.7.209: Esc 键关闭右侧种子详情抽屉
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                const wrap = document.getElementById('mail-goldlib-detail');
+                if (wrap && !wrap.classList.contains('hidden')) closeMailGoldLibrarySeedDetail();
+            }
+        });
 
         let mailQualityInfoPanelCollapsed = true;
         function toggleMailQualityInfoPanel() {
