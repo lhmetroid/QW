@@ -12659,8 +12659,236 @@ async def retrieve_mail_fewshots(payload: MailFewShotRetrieveRequest, db: Sessio
     }
 
 @app.post("/api/v1/mail/generate-draft", response_model=MailGenerateDraftResponse)
-async def generate_mail_draft(payload: MailGenerateDraftRequest, db: Session = Depends(get_db)):
-    return _build_mail_generate_draft_response(db, payload)
+async def generate_mail_draft(
+    payload: MailGenerateDraftRequest,
+    db: Session = Depends(get_db),
+    test_version: str | None = None,
+    test_label: str | None = None,
+):
+    """生成邮件草稿。
+
+    v1.7.217 起支持可选 query string 参数:
+      - test_version: 传入则自动把请求/响应快照落到 mail_draft_test_record 表 (V1/V2/V3 等)
+      - test_label: 人工备注 (例如 "v1.7.217 第一轮真跑")
+    """
+    started_at = datetime.utcnow()
+    response = _build_mail_generate_draft_response(db, payload)
+    finished_at = datetime.utcnow()
+
+    # v1.7.217: 可选落表, 不影响主响应
+    if test_version and test_version.strip():
+        try:
+            _persist_mail_draft_test_record(
+                db,
+                payload=payload,
+                response=response,
+                test_version=test_version.strip(),
+                test_label=(test_label or "").strip() or None,
+                started_at=started_at,
+                finished_at=finished_at,
+            )
+        except Exception as exc:
+            logger.warning("MAIL_DRAFT_TEST_RECORD_PERSIST_FAILED version=%s err=%s", test_version, str(exc)[:200])
+    return response
+
+
+def _persist_mail_draft_test_record(
+    db: Session,
+    *,
+    payload: MailGenerateDraftRequest,
+    response: MailGenerateDraftResponse,
+    test_version: str,
+    test_label: str | None,
+    started_at: datetime,
+    finished_at: datetime,
+) -> None:
+    """把 generate-draft 一次调用的请求/响应快照落到 mail_draft_test_record 表."""
+    from database import MailDraftTestRecord, MailDemoContact
+
+    # 推 demo_index / demo_label (按 customer_key)
+    demo_index = None
+    demo_label = None
+    if payload.customer_key and payload.customer_key.startswith("CUST-DEMO-FROM-CRM-"):
+        try:
+            demo_index = int(payload.customer_key.rsplit("-", 1)[1])
+        except (ValueError, IndexError):
+            pass
+        if demo_index is not None:
+            row = db.query(MailDemoContact).filter(MailDemoContact.demo_index == demo_index).first()
+            if row:
+                demo_label = row.demo_label
+
+    response_dict = response.model_dump() if hasattr(response, "model_dump") else dict(response)
+    review_meta = response_dict.get("review_metadata") or {}
+
+    record = MailDraftTestRecord(
+        test_version=test_version,
+        test_label=test_label,
+        demo_index=demo_index,
+        demo_label=demo_label,
+        scenario=payload.scenario,
+        suite_step=int(payload.suite_step) if payload.suite_step is not None else None,
+        customer_key=payload.customer_key,
+        contact_email=payload.contact_email,
+        request_payload=payload.model_dump(),
+        response_payload=response_dict,
+        final_subject=response_dict.get("final_subject"),
+        final_body_html=response_dict.get("final_body_html"),
+        retrieved_fewshot_id=response_dict.get("retrieved_fewshot_id"),
+        fewshot_match_score=(
+            Decimal(str(response_dict.get("fewshot_match_score"))).quantize(Decimal("0.0001"))
+            if response_dict.get("fewshot_match_score") is not None
+            else None
+        ),
+        llm_status=response_dict.get("llm_status"),
+        llm_model_used=response_dict.get("llm_model_used"),
+        llm_error=response_dict.get("llm_error"),
+        llm_prompt=(response_dict.get("llm_prompt") or "")[:8000] if response_dict.get("llm_prompt") else None,
+        crm_profile_signals=review_meta.get("crm_profile_signals"),
+        commercial_terms_resolved=review_meta.get("commercial_terms_for_review"),
+        overall_outcome=(response_dict.get("safety_guardrail") or {}).get("overall_outcome"),
+        safety_status=(response_dict.get("safety_guardrail") or {}).get("status"),
+        started_at=started_at,
+        finished_at=finished_at,
+        elapsed_ms=int((finished_at - started_at).total_seconds() * 1000),
+    )
+    db.add(record)
+    db.commit()
+
+
+@app.get("/api/v1/mail/test-records")
+def list_mail_draft_test_records(
+    db: Session = Depends(get_db),
+    test_version: str | None = None,
+    demo_index: int | None = None,
+    scenario: str | None = None,
+    limit: int = 100,
+):
+    """查询邮件草稿测试记录 (v1.7.217)。
+
+    Query params:
+      - test_version: 按版本号筛 (V1 / V2 / V3 / V3.1...)
+      - demo_index: 按案例 ID 筛 (1-5)
+      - scenario: 按场景筛 (re_activation / new_business_promotion / new_contact_intro)
+      - limit: 返回条数上限 (默认 100)
+    """
+    from database import MailDraftTestRecord
+    q = db.query(MailDraftTestRecord)
+    if test_version:
+        q = q.filter(MailDraftTestRecord.test_version == test_version)
+    if demo_index is not None:
+        q = q.filter(MailDraftTestRecord.demo_index == demo_index)
+    if scenario:
+        q = q.filter(MailDraftTestRecord.scenario == scenario)
+    rows = q.order_by(MailDraftTestRecord.created_at.desc()).limit(limit).all()
+
+    items = []
+    for r in rows:
+        items.append({
+            "record_id": str(r.record_id),
+            "test_version": r.test_version,
+            "test_label": r.test_label,
+            "demo_index": r.demo_index,
+            "demo_label": r.demo_label,
+            "scenario": r.scenario,
+            "suite_step": r.suite_step,
+            "customer_key": r.customer_key,
+            "contact_email": r.contact_email,
+            "final_subject": r.final_subject,
+            "final_body_html_preview": (r.final_body_html or "")[:300],
+            "retrieved_fewshot_id": str(r.retrieved_fewshot_id) if r.retrieved_fewshot_id else None,
+            "fewshot_match_score": float(r.fewshot_match_score) if r.fewshot_match_score is not None else None,
+            "llm_status": r.llm_status,
+            "llm_model_used": r.llm_model_used,
+            "llm_error": r.llm_error,
+            "crm_profile_signals": r.crm_profile_signals,
+            "commercial_terms_resolved": r.commercial_terms_resolved,
+            "overall_outcome": r.overall_outcome,
+            "safety_status": r.safety_status,
+            "elapsed_ms": r.elapsed_ms,
+            "notes": r.notes,
+            "reviewed_by": r.reviewed_by,
+            "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        })
+
+    from collections import Counter
+    return {
+        "version": "mail_draft_test_records.v1",
+        "count": len(items),
+        "records": items,
+        "filters": {
+            "test_version": test_version,
+            "demo_index": demo_index,
+            "scenario": scenario,
+            "limit": limit,
+        },
+        "summary": {
+            "by_test_version": dict(Counter(r["test_version"] for r in items)),
+            "by_llm_status": dict(Counter(r["llm_status"] for r in items)),
+        },
+    }
+
+
+@app.get("/api/v1/mail/test-records/{record_id}")
+def get_mail_draft_test_record(record_id: str, db: Session = Depends(get_db)):
+    """查询单条测试记录完整内容 (含完整请求/响应/prompt)。"""
+    from database import MailDraftTestRecord
+    r = db.query(MailDraftTestRecord).filter(MailDraftTestRecord.record_id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail=f"mail_draft_test_record record_id={record_id} 不存在")
+    return {
+        "record_id": str(r.record_id),
+        "test_version": r.test_version,
+        "test_label": r.test_label,
+        "demo_index": r.demo_index,
+        "demo_label": r.demo_label,
+        "scenario": r.scenario,
+        "suite_step": r.suite_step,
+        "customer_key": r.customer_key,
+        "contact_email": r.contact_email,
+        "request_payload": r.request_payload,
+        "response_payload": r.response_payload,
+        "final_subject": r.final_subject,
+        "final_body_html": r.final_body_html,
+        "retrieved_fewshot_id": str(r.retrieved_fewshot_id) if r.retrieved_fewshot_id else None,
+        "fewshot_match_score": float(r.fewshot_match_score) if r.fewshot_match_score is not None else None,
+        "llm_status": r.llm_status,
+        "llm_model_used": r.llm_model_used,
+        "llm_error": r.llm_error,
+        "llm_prompt": r.llm_prompt,
+        "crm_profile_signals": r.crm_profile_signals,
+        "commercial_terms_resolved": r.commercial_terms_resolved,
+        "overall_outcome": r.overall_outcome,
+        "safety_status": r.safety_status,
+        "started_at": r.started_at.isoformat() if r.started_at else None,
+        "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+        "elapsed_ms": r.elapsed_ms,
+        "notes": r.notes,
+        "reviewed_by": r.reviewed_by,
+        "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    }
+
+
+@app.patch("/api/v1/mail/test-records/{record_id}/notes")
+def update_mail_draft_test_record_notes(
+    record_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+):
+    """更新测试记录的人工备注 (notes / reviewed_by)。"""
+    from database import MailDraftTestRecord
+    r = db.query(MailDraftTestRecord).filter(MailDraftTestRecord.record_id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail=f"mail_draft_test_record record_id={record_id} 不存在")
+    if "notes" in payload:
+        r.notes = (payload.get("notes") or "")[:4000] or None
+    if "reviewed_by" in payload:
+        r.reviewed_by = (payload.get("reviewed_by") or "")[:120] or None
+        r.reviewed_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "record_id": str(r.record_id)}
 
 @app.post("/api/v1/sequence/interrupt", response_model=MailSequenceInterruptResponse)
 async def interrupt_mail_sequence(payload: MailSequenceInterruptRequest):

@@ -913,6 +913,75 @@ class MailIterationDraft(Base):
         Index("idx_mid_run_demo_step", "run_id", "demo_index", "suite_step", unique=True),
     )
 
+
+class MailDraftTestRecord(Base):
+    """邮件草稿测试案例独立记录表 (v1.7.217)
+
+    用户要求: "案例请单独开表保存，V1,2,3。。。等之后每轮测试也都要记录便于之后核对验证"
+
+    跟 MailIterationDraft 区别:
+    - MailIterationDraft 是"一次性跑 5案例×4步=20封压测"的批量记录, 强制 (run_id, demo_index, suite_step) 唯一
+    - MailDraftTestRecord 是"每次草稿生成都按版本号 V1/V2/V3 落一笔" 的累积记录, 不强制唯一,
+      允许同一案例在同一版本下重复测试, 便于回溯每次实验的 prompt/response/CRM 信号
+    """
+    __tablename__ = "mail_draft_test_record"
+
+    record_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    # 版本号 - 用户最关键的维度, V1 / V2 / V3 / V3.1 等自由字符串
+    test_version = Column(String(40), nullable=False)
+    test_label = Column(Text, nullable=True)  # 人工备注 "v1.7.217 第一轮真跑" 等
+
+    # 案例 + 步骤
+    demo_index = Column(Integer, nullable=True)
+    demo_label = Column(Text, nullable=True)
+    scenario = Column(String(80), nullable=True)
+    suite_step = Column(Integer, nullable=True)
+
+    # 请求 + 响应 完整快照
+    customer_key = Column(String(255), nullable=True)
+    contact_email = Column(String(255), nullable=True)
+    request_payload = Column(JSON, nullable=True)
+    response_payload = Column(JSON, nullable=True)
+
+    # 关键产出
+    final_subject = Column(Text, nullable=True)
+    final_body_html = Column(Text, nullable=True)
+    retrieved_fewshot_id = Column(UUID(as_uuid=False), nullable=True)
+    fewshot_match_score = Column(Numeric(6, 4), nullable=True)
+
+    # LLM 信号
+    llm_status = Column(String(40), nullable=True)
+    llm_model_used = Column(String(80), nullable=True)
+    llm_error = Column(Text, nullable=True)
+    llm_prompt = Column(Text, nullable=True)
+
+    # CRM + 商业条款解析快照
+    crm_profile_signals = Column(JSON, nullable=True)
+    commercial_terms_resolved = Column(JSON, nullable=True)
+
+    # 安全门
+    overall_outcome = Column(String(40), nullable=True)
+    safety_status = Column(String(60), nullable=True)
+
+    # 时间
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    elapsed_ms = Column(Integer, nullable=True)
+
+    # 人工标注 (核查时填)
+    notes = Column(Text, nullable=True)
+    reviewed_by = Column(String(120), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_mdtr_version", "test_version", "created_at"),
+        Index("idx_mdtr_version_demo_step", "test_version", "demo_index", "suite_step"),
+        Index("idx_mdtr_created", "created_at"),
+    )
+
+
 # 初始化数据库连接
 _engine_kwargs = {
     "pool_pre_ping": True,
