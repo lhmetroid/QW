@@ -469,9 +469,13 @@
                         <div class="text-[10px] font-bold text-slate-500">邮件主题（真返回）</div>
                         <div id="mql-r-subject" class="mt-1 text-sm font-bold text-slate-900"></div>
                     </div>
-                    <div class="mt-3 rounded border border-emerald-200 bg-white p-3" title="API 字段名 final_body_html。完整草稿正文。注意里面的 {{MAIL_PRICE_RESOLVED_xxx}} 占位符是设计：后端在真发件前会用 PricingRule 表的真值替换，这是物理隔离防大模型编造价格的关键。">
-                        <div class="text-[10px] font-bold text-slate-500">邮件正文 HTML（后端真返回，含占位符强制保护）</div>
+                    <div class="mt-3 rounded border border-emerald-200 bg-white p-3" title="邮件正文 HTML（API 字段 final_body_html）。本字段只含【LLM 真生成的邮件内容 + 销售签名档】，不再混杂审稿参考信息（v1.7.204 把审稿信息拆到下方独立卡）。">
+                        <div class="text-[10px] font-bold text-slate-500">邮件正文 HTML（仅含真要发出去的内容）</div>
                         <div id="mql-r-body" class="mt-2 text-sm text-slate-800 leading-relaxed prose prose-sm max-w-none"></div>
+                    </div>
+                    <div class="mt-3 rounded border border-amber-200 bg-amber-50 p-3" title="审稿参考信息（API 字段 review_metadata）。这块是给销售/运营审稿用的辅助信号，不会进真邮件正文。包含: CRM 画像信号 / 后端注入的商业条款占位符 / 推荐行动呼吁 / 锁定说明。">
+                        <div class="text-[10px] font-bold text-amber-800">审稿参考信息（仅审稿用，不进真邮件正文）</div>
+                        <div id="mql-r-review-meta" class="mt-2 text-xs text-slate-700"></div>
                     </div>
                     <details class="mt-3">
                         <summary class="cursor-pointer text-[11px] font-bold text-slate-600" title="展开后看到完整的后端响应 JSON 原文，供调试和审计用。">原始 JSON 响应（用于审计）</summary>
@@ -486,385 +490,67 @@
                     <div id="mql-multi-grid" class="mt-3 grid grid-cols-1 gap-3"></div>
                 </div>
             </section>
-            <div id="mail-quality-panel" class="grid grid-cols-1 xl:grid-cols-2 gap-5" title="以下卡片是面板字段说明骨架（占位静态示例）。真实数据请使用上方绿色【真接后端】演示区。">
-                <aside class="space-y-3">
-                    <div class="rounded-lg border border-indigo-200 bg-white p-4" title="本卡片列举邮件质量诊断覆盖的四类指标。状态【待接入】表示静态展示样例，真实指标已在上方 Live Demo 区接通。">
-                        <div class="text-xs font-bold text-indigo-700 mb-3">邮件诊断范围</div>
-                        <div class="space-y-2 text-xs text-slate-600">
-                            <div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-2" title="衡量草稿是否符合人工评分七维（场景契合 / 上下文 / 清晰度 / 可回复性 / 商业安全 / 范例质量 / 邮件企微隔离）。">
-                                <span>草稿质量</span>
-                                <span class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">待接入</span>
-                            </div>
-                            <div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-2" title="范例命中：从黄金库 email_fragment_asset 表里检索到的范例数量与有用度分数。">
-                                <span>范例命中</span>
-                                <span class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">待接入</span>
-                            </div>
-                            <div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-2" title="邮件序列步骤：本草稿在 4 轮序列套装里的第几步（1 破冰 / 2 案例 / 3 流程 / 4 样稿）。">
-                                <span>邮件序列步骤</span>
-                                <span class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">待接入</span>
-                            </div>
-                            <div class="flex items-center justify-between gap-3" title="六道安全门评判结果汇总：通过 / 黄牌锁定 / 红牌硬阻断。">
-                                <span>安全门结果</span>
-                                <span class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">待接入</span>
-                            </div>
+            <div id="mail-quality-panel-info" class="rounded-lg border border-slate-300 bg-slate-50 p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                        <button type="button" id="mql-info-toggle" onclick="toggleMailQualityInfoPanel()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50" title="点击展开或折叠下方未接入字段路线图。默认折叠以保持页面专注于上方真接入演示区。">▶ 展开</button>
+                        <div class="text-xs font-bold text-slate-800">未接入字段路线图（默认折叠，仅说明未来真接入会出现哪些字段）</div>
+                    </div>
+                    <span class="rounded-full bg-slate-200 px-2 py-1 text-[10px] font-bold text-slate-600" title="本区只列字段结构与作用说明。空 = 该字段还没真接入。要看真接入数据请用上方绿色真接后端演示区。">仅字段说明 · 无 Mock 数据</span>
+                </div>
+                <div id="mql-info-collapsible" class="hidden mt-4">
+                    <p class="text-[11px] text-slate-500 mb-3">下方每个节点都是邮件 AI 回复链路中设计中但未真接入的字段。当前所有值为空，真接入后会在此区域填充真数据。展开仅供产品同学和审稿人理解模块覆盖范围。</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                        <div class="rounded border border-slate-200 bg-white p-3" title="作用：给每封草稿打七维质量分（场景契合 / 上下文 / 清晰度 / 可回复性 / 商业安全 / 范例质量 / 邮件企微隔离）。未来由后端按草稿生成时自动算出。当前未接入。">
+                            <div class="font-bold text-slate-700 mb-1">草稿质量评分（七维）</div>
+                            <div class="text-slate-500">字段：<code>quality_score_7d</code></div>
+                            <div class="text-slate-500">状态：<span class="rounded bg-slate-100 px-1 text-slate-600">未接入</span></div>
+                            <div class="text-slate-400 mt-1">未来接入后：每封草稿配 7 维雷达分（0-100），用于反哺与人工评分对齐。</div>
+                        </div>
+                        <div class="rounded border border-slate-200 bg-white p-3" title="作用：显示本次草稿命中的范例黄金库种子（几条加各自分数）。上方 实时演示 区的「命中的范例编号」字段是真接入的，这里只是规划的可视化扩展（显示多条 + 命中原因 + 对比）。">
+                            <div class="font-bold text-slate-700 mb-1">范例命中明细（多条 + 命中原因）</div>
+                            <div class="text-slate-500">字段：<code>fewshot_hits[]</code>、<code>hit_reasons[]</code></div>
+                            <div class="text-slate-500">状态：<span class="rounded bg-amber-100 text-amber-700 px-1">部分接入</span></div>
+                            <div class="text-slate-400 mt-1">上方 实时演示 区已返回 retrieved_fewshot_id（单条）。这里规划：展示 TOP-K 多条 + 各自分数 + 命中原因可视化。</div>
+                        </div>
+                        <div class="rounded border border-slate-200 bg-white p-3" title="作用：把这封草稿放在 4 轮邮件序列套装里的当前进度 + 下次触发时间。上方 实时演示 区已显示 suite_step，这里规划：进度条 + 与上一封间隔 + 下一封触发预计时间。">
+                            <div class="font-bold text-slate-700 mb-1">邮件序列进度可视化</div>
+                            <div class="text-slate-500">字段：<code>suite_progress</code>、<code>next_step_eta</code></div>
+                            <div class="text-slate-500">状态：<span class="rounded bg-slate-100 px-1 text-slate-600">未接入</span></div>
+                            <div class="text-slate-400 mt-1">未来接入后：4 步进度条 + 上一封距今天数 + 下一封自动触发预计时间。</div>
+                        </div>
+                        <div class="rounded border border-slate-200 bg-white p-3" title="作用：显示六道安全门各自的红/黄/绿评判和具体证据。上方 实时演示 区返回的 safety_guardrail.overall_outcome 是聚合后的总评，这里规划逐门展开。">
+                            <div class="font-bold text-slate-700 mb-1">六道安全门逐门展开</div>
+                            <div class="text-slate-500">字段：<code>safety_guardrail.gate_results[]</code></div>
+                            <div class="text-slate-500">状态：<span class="rounded bg-emerald-100 text-emerald-700 px-1">已接入（聚合）</span></div>
+                            <div class="text-slate-400 mt-1">上方 JSON 审计区可看到聚合后的 gate_results 数组。这里规划：6 道门各自的徽章 + 触发原因 + 证据预览。</div>
+                        </div>
+                        <div class="rounded border border-slate-200 bg-white p-3" title="作用：完整诊断轨迹（SQL粗筛 → HTML去噪 → CRM画像 → 范例检索 → 安全门）的每段耗时和数据源标识。当前后端没单独暴露每段耗时，未来加 stage_timings 字段。">
+                            <div class="font-bold text-slate-700 mb-1">诊断轨迹（五段耗时与证据）</div>
+                            <div class="text-slate-500">字段：<code>stage_timings[]</code>、<code>stage_evidence[]</code></div>
+                            <div class="text-slate-500">状态：<span class="rounded bg-slate-100 px-1 text-slate-600">未接入</span></div>
+                            <div class="text-slate-400 mt-1">未来接入后：每段毫秒级耗时 + 数据源标识 + 命中/丢弃证据，用于定位性能瓶颈和调试。</div>
+                        </div>
+                        <div class="rounded border border-slate-200 bg-white p-3" title="作用：销售/运营对当前草稿做点赞/差评/拉黑范例/反哺到黄金库. 当前没真接 PATCH 接口, 反哺到 email_fragment_asset 的写入 API 也没开放, 整块属规划中.">
+                            <div class="font-bold text-slate-700 mb-1">人工纠偏 / 反哺黄金库</div>
+                            <div class="text-slate-500">字段：<code>feedback_actions[]</code>、<code>backfeed_action</code></div>
+                            <div class="text-slate-500">状态：<span class="rounded bg-slate-100 px-1 text-slate-600">未接入</span></div>
+                            <div class="text-slate-400 mt-1">未来接入后：点赞/差评/拉黑该范例 + 编辑修正版 + 满足黄金库准入门后真写库（需 PATCH 接口）。</div>
+                        </div>
+                        <div class="rounded border border-slate-200 bg-white p-3" title="作用：显示真实发件出口的状态（IP/SMTP 账号/今日额度/退信率）。Task 79 SMTP 通道做完前永远不亮，默认 MAIL_REAL_SENDING_ENABLED=false。">
+                            <div class="font-bold text-slate-700 mb-1">真发件通道状态</div>
+                            <div class="text-slate-500">字段：<code>smtp_channel_status</code></div>
+                            <div class="text-slate-500">状态：<span class="rounded bg-rose-100 text-rose-700 px-1">Task 79 待启</span></div>
+                            <div class="text-slate-400 mt-1">未来接入后：发件 IP / SMTP 账号 / 今日剩余配额 / 7 日退信率。当前 real_sending_enabled 永远 false。</div>
+                        </div>
+                        <div class="rounded border border-slate-200 bg-white p-3" title="作用：监听客户邮件回复并触发 Sequence 自动停发. 当前 /api/v1/sequence/interrupt 接口在但只有手动调用, 没有 IMAP 真监听。">
+                            <div class="font-bold text-slate-700 mb-1">客户回复自动中断</div>
+                            <div class="text-slate-500">字段：<code>auto_interrupt_listener</code></div>
+                            <div class="text-slate-500">状态：<span class="rounded bg-slate-100 px-1 text-slate-600">未接入（API 已有，需 IMAP）</span></div>
+                            <div class="text-slate-400 mt-1">未来接入后：IMAP 监听客户邮箱回复，自动调 interrupt API 停掉序列后续草稿。</div>
                         </div>
                     </div>
-                    <div class="rounded-lg border border-slate-200 bg-white p-4" title="本卡片列举后端处理草稿时经过的五段链路。徽章【占位】表示静态展示样例，真链路真实结果在上方 Live Demo 区 JSON 审计区可见。">
-                        <div class="text-xs font-bold text-slate-700 mb-3">诊断轨迹</div>
-                        <div class="grid grid-cols-1 gap-2 text-xs text-slate-600">
-                            <div class="flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 px-3 py-2" title="SQL 粗筛：从 mail_cleaned 表筛出客户邮件，排除自动回复、退信、内部抄送。">
-                                <span>SQL 粗筛</span>
-                                <span class="font-bold text-indigo-700">占位</span>
-                            </div>
-                            <div class="flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 px-3 py-2" title="HTML 去噪：去除邮件签名、引用历史、追踪像素、营销页脚。">
-                                <span>HTML 去噪</span>
-                                <span class="font-bold text-indigo-700">占位</span>
-                            </div>
-                            <div class="flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 px-3 py-2" title="CRM 画像：根据客户编号联查 CRM 拿行业、阶段、欠款风险等画像信息。">
-                                <span>CRM 画像</span>
-                                <span class="font-bold text-indigo-700">占位</span>
-                            </div>
-                            <div class="flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 px-3 py-2" title="范例检索：在 email_fragment_asset 表里按场景/步骤/类型条件召回黄金库范例。">
-                                <span>范例检索</span>
-                                <span class="font-bold text-indigo-700">占位</span>
-                            </div>
-                            <div class="flex items-center justify-between gap-3 rounded border border-slate-100 bg-slate-50 px-3 py-2" title="安全门轨迹：六道门（收件域、工期 SLA、价格底线、敏感词、占位符绕过、欠款风险）的逐一评判记录。">
-                                <span>安全门轨迹</span>
-                                <span class="font-bold text-indigo-700">占位</span>
-                            </div>
-                        </div>
-                    </div>
-                </aside>
-                <section class="h-full rounded-lg border border-slate-200 bg-white p-5">
-                    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4">
-                        <div>
-                            <h2 class="text-base font-bold text-slate-900" title="占位样例区：展示草稿在面板里的字段结构，所有内容是静态写死的演示数据。真实草稿请看上方绿色 Live Demo 区。">待质检草稿概览</h2>
-                            <p class="mt-1 text-xs text-slate-500">仅评审用静态样例内容，仅用于邮件质量面板字段展示，不接入企微会话数据。</p>
-                        </div>
-                        <span class="rounded-full border border-indigo-200 bg-indigo-100 px-3 py-1 text-[11px] font-bold text-indigo-700" title="本徽章表示当前区域只用于评审字段结构，不真发邮件、不写数据库、不接企微。">仅评审</span>
-                    </div>
-                    <div class="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-4">
-                        <div class="rounded-lg border border-slate-200 bg-slate-50 p-4" title="邮件样本列表：展示待审稿草稿的卡片（占位样例）。真草稿列表未来由 GET /api/v1/mail/drafts 提供。">
-                            <div class="text-xs font-bold text-slate-700">邮件样本列表</div>
-                            <div class="mt-3 rounded border border-indigo-200 bg-white p-3 text-xs text-slate-700">
-                                <div class="flex items-center justify-between gap-3">
-                                    <span class="font-mono text-[11px] font-bold text-indigo-700" title="草稿编号样例（API 字段 mail_uid）">mail_review_draft_047</span>
-                                    <span class="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700">仅评审</span>
-                                </div>
-                                <div class="mt-3 grid grid-cols-1 gap-2">
-                                    <div class="flex justify-between gap-3" title="业务场景（API 字段 scenario）。new_contact_intro = 新接手联系人介绍。">
-                                        <span class="text-slate-500">业务场景</span>
-                                        <span class="font-bold text-slate-800">新接手联系人介绍 <span class="text-slate-400">(new_contact_intro)</span></span>
-                                    </div>
-                                    <div class="flex justify-between gap-3" title="邮件序列第几步（API 字段 suite_step）。本样例为第 1 步破冰。">
-                                        <span class="text-slate-500">邮件序列步骤</span>
-                                        <span class="font-bold text-slate-800">第 1 步</span>
-                                    </div>
-                                    <div title="邮件主题（API 字段 final_subject）。本样例为占位英文主题。">
-                                        <div class="text-slate-500">邮件主题</div>
-                                        <div class="mt-1 font-bold text-slate-800">Introduction and next steps for localization support</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="rounded-lg border border-slate-200 bg-slate-50 p-4" title="质量评分概览：未来此处显示七维评分的雷达图或柱状图（占位空白）。">
-                            <div class="text-xs font-bold text-slate-700">质量评分概览</div>
-                            <div class="mt-3 h-28 rounded border border-dashed border-slate-300 bg-white"></div>
-                        </div>
-                        <div class="rounded-lg border border-slate-200 bg-slate-50 p-4" title="人工纠偏入口：未来此处显示销售/运营修正后的差异对比和反哺黄金库按钮（占位空白）。">
-                            <div class="text-xs font-bold text-slate-700">人工纠偏入口</div>
-                            <div class="mt-3 h-28 rounded border border-dashed border-slate-300 bg-white"></div>
-                        </div>
-                    </div>
-                    <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <div class="flex flex-wrap items-center justify-between gap-3">
-                            <div class="text-xs font-bold text-slate-700" title="邮件诊断详情：展开后展示草稿在五段链路上的处理细节（占位样例）。">邮件诊断详情</div>
-                            <span class="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-500" title="本徽章表示当前区域只展示占位样例，不接企微会话数据。">仅占位 / 不接企微</span>
-                        </div>
-                        <div class="mt-3 rounded border border-slate-200 bg-white p-4">
-                            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
-                                <div class="rounded border border-slate-100 bg-slate-50 p-3" title="草稿编号（API 字段 mail_uid）。本样例为占位字符串。">
-                                    <div class="text-[10px] font-bold text-slate-400">草稿编号</div>
-                                    <div class="mt-1 font-mono font-bold text-slate-900">mail_review_draft_047</div>
-                                </div>
-                                <div class="rounded border border-slate-100 bg-slate-50 p-3" title="业务场景（API 字段 scenario）。决定加载哪套邮件序列策略。">
-                                    <div class="text-[10px] font-bold text-slate-400">业务场景</div>
-                                    <div class="mt-1 font-bold text-slate-900">新接手联系人介绍</div>
-                                    <div class="mt-1 font-mono text-[11px] text-slate-500">new_contact_intro</div>
-                                </div>
-                                <div class="rounded border border-slate-100 bg-slate-50 p-3" title="邮件序列第几步（API 字段 suite_step）。1-4 步对应破冰/案例/流程/样稿。">
-                                    <div class="text-[10px] font-bold text-slate-400">邮件序列步骤</div>
-                                    <div class="mt-1 font-bold text-slate-900">第 1 步</div>
-                                    <div class="mt-1 text-[11px] text-slate-500">建立接手关系</div>
-                                </div>
-                                <div class="rounded border border-slate-100 bg-slate-50 p-3" title="邮件主题（API 字段 final_subject）。最终发出去的英文邮件标题。">
-                                    <div class="text-[10px] font-bold text-slate-400">邮件主题</div>
-                                    <div class="mt-1 font-bold text-slate-900">Introduction and next steps for localization support</div>
-                                </div>
-                            </div>
-                            <div class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 text-xs">
-                                <div class="rounded border border-indigo-100 bg-indigo-50 p-3" title="第一段：SQL 粗筛。从 mail_cleaned 表里按时间窗 + 客户 + sender_side 三个条件粗筛，剔除自动回复/退信/内部抄送。徽章【通过】= 本样例草稿成功通过粗筛。">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <div class="font-bold text-indigo-800">SQL 粗筛</div>
-                                        <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-indigo-700">通过</span>
-                                    </div>
-                                    <div class="mt-2 text-slate-600">近 180 天客户邮件；排除自动回复、退信、内部抄送。</div>
-                                    <div class="mt-2 font-mono text-[10px] text-slate-500">数据源：mail_cleaned / 模式：仅评审</div>
-                                </div>
-                                <div class="rounded border border-sky-100 bg-sky-50 p-3" title="第二段：HTML 去噪。把原始 HTML 邮件正文里的签名、引用历史、追踪像素、营销页脚全部去掉，只保留正文。徽章【已清洗】= 本样例已完成清洗。">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <div class="font-bold text-sky-800">HTML 去噪</div>
-                                        <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-sky-700">已清洗</span>
-                                    </div>
-                                    <div class="mt-2 text-slate-600">移除签名、引用历史、追踪像素和营销页脚。</div>
-                                    <div class="mt-2 font-mono text-[10px] text-slate-500">清洗状态字段：clean_status=mock_clean</div>
-                                </div>
-                                <div class="rounded border border-emerald-100 bg-emerald-50 p-3" title="第三段：CRM 画像。根据客户编号 + 联系人邮箱去 CRM 拿行业、阶段、欠款风险、客户域名等画像信息。徽章【只读】= 本面板只读 CRM，不写。">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <div class="font-bold text-emerald-800">CRM 画像</div>
-                                        <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-700">只读</span>
-                                    </div>
-                                    <div class="mt-2 text-slate-600">行业：游戏本地化；阶段：新联系人接手；偏好：短句。</div>
-                                    <div class="mt-2 font-mono text-[10px] text-slate-500">数据源标识：mail_profile_mock</div>
-                                </div>
-                                <div class="rounded border border-violet-100 bg-violet-50 p-3" title="第四段：范例检索。在 email_fragment_asset 表里按场景/步骤/类型条件召回 useful_score ≥ 0.6 的黄金库范例。徽章【3 条】= 本样例命中 3 条范例。">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <div class="font-bold text-violet-800">范例检索</div>
-                                        <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-violet-700">3 条</span>
-                                    </div>
-                                    <div class="mt-2 text-slate-600">命中新接手介绍、项目续聊、轻量行动呼吁三类样例。</div>
-                                    <div class="mt-2 font-mono text-[10px] text-slate-500">数据源标识：gold_snippet_mock</div>
-                                </div>
-                                <div class="rounded border border-rose-100 bg-rose-50 p-3" title="第五段：安全门轨迹。六道门逐一评判（收件域、工期 SLA、价格底线、敏感词、占位符绕过、欠款风险）。徽章【放行】= 全部安全门通过。">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <div class="font-bold text-rose-800">安全门轨迹</div>
-                                        <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-rose-700">放行</span>
-                                    </div>
-                                    <div class="mt-2 text-slate-600">价格、工期、收件域名均未触发红牌硬拦截。</div>
-                                    <div class="mt-2 font-mono text-[10px] text-slate-500">数据源标识：guardrail_trace_mock</div>
-                                </div>
-                            </div>
-                            <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                                <div class="flex flex-wrap items-center justify-between gap-3">
-                                    <div>
-                                        <div class="text-xs font-bold text-slate-800" title="左右对比：左边是大模型刚生成的草稿，右边是销售/运营专家修正后的版本。差异即为人工纠偏价值，可反哺黄金库。">大模型生成版 / 运营专家修正版</div>
-                                        <div class="mt-1 text-[11px] text-slate-500">占位样例对比，仅展示邮件侧质检结果，不保存、不发信、不接企微。</div>
-                                    </div>
-                                    <span class="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-500" title="数据源标识：占位样例修正对比（前端常量 mock_revision_pair）。">占位修正对比</span>
-                                </div>
-                                <div class="mt-3 grid grid-cols-1 xl:grid-cols-2 gap-3">
-                                    <article class="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                                        <div class="flex flex-wrap items-center justify-between gap-2">
-                                            <div class="text-xs font-bold text-amber-800">AI 生成草稿</div>
-                                            <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-amber-700">待运营复核</span>
-                                        </div>
-                                        <div class="mt-3 rounded border border-amber-100 bg-white p-3 text-xs leading-6 text-slate-700">
-                                            <p>Hi Jordan,</p>
-                                            <p class="mt-2">I am taking over the localization support for your team. We can help with game localization and future updates.</p>
-                                            <p class="mt-2">Could you share the next file when available? We can review it and provide a plan soon.</p>
-                                            <p class="mt-2">Best regards,<br>Alex</p>
-                                        </div>
-                                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
-                                            <div class="rounded border border-amber-100 bg-white px-2 py-1 text-amber-700">关系接手不够具体</div>
-                                            <div class="rounded border border-amber-100 bg-white px-2 py-1 text-amber-700">价值点偏泛</div>
-                                            <div class="rounded border border-amber-100 bg-white px-2 py-1 text-amber-700">行动呼吁可以更轻</div>
-                                        </div>
-                                    </article>
-                                    <article class="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                                        <div class="flex flex-wrap items-center justify-between gap-2">
-                                            <div class="text-xs font-bold text-emerald-800">运营专家修正版</div>
-                                            <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-700">只读 Mock</span>
-                                        </div>
-                                        <div class="mt-3 rounded border border-emerald-100 bg-white p-3 text-xs leading-6 text-slate-700">
-                                            <p>Hi Jordan,</p>
-                                            <p class="mt-2">I am Alex, your new point of contact for localization coordination. I reviewed the recent handover notes and saw that your team usually prefers short milestone updates.</p>
-                                            <p class="mt-2">If there is a new build or string update this week, you can send it over and I will first confirm scope, schedule, and any questions before drafting the next plan.</p>
-                                            <p class="mt-2">Best regards,<br>Alex</p>
-                                        </div>
-                                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
-                                            <div class="rounded border border-emerald-100 bg-white px-2 py-1 text-emerald-700">补足接手背景</div>
-                                            <div class="rounded border border-emerald-100 bg-white px-2 py-1 text-emerald-700">加入客户偏好</div>
-                                            <div class="rounded border border-emerald-100 bg-white px-2 py-1 text-emerald-700">保留审核边界</div>
-                                        </div>
-                                    </article>
-                                </div>
-                            </div>
-                            <div class="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
-                                <div class="flex flex-wrap items-center justify-between gap-3">
-                                    <div>
-                                        <div class="text-xs font-bold text-indigo-900" title="销售/运营专家在此手动修正大模型生成的草稿，保存后生成一份新的候选范例（仅页面内预览，不真写库）。修正质量足够高可被反哺到黄金库。">专家编辑区 / 候选范例预览</div>
-                                        <div class="mt-1 text-[11px] text-slate-600">占位演示：可编辑主题和正文，保存后仅生成页面内候选范例预览，不写库、不发信、不调用后端、不接企微。</div>
-                                    </div>
-                                    <span id="mail-candidate-save-state" class="rounded-full border border-indigo-200 bg-white px-2 py-1 text-[10px] font-bold text-indigo-700" title="保存状态：默认【尚未保存候选预览】，点击下方按钮后变为【已保存到页面预览】。">尚未保存候选预览</span>
-                                </div>
-                                <div class="mt-3 grid grid-cols-1 xl:grid-cols-2 gap-3">
-                                    <section class="rounded-lg border border-indigo-100 bg-white p-4">
-                                        <div class="text-xs font-bold text-slate-800" title="左侧：运营专家在此编辑主题/正文/分类/分数。右侧实时同步预览效果。">运营专家可编辑版本</div>
-                                        <label for="mail-expert-subject" class="mt-3 block text-[11px] font-bold text-slate-500" title="编辑后的邮件主题。会成为候选范例的标题字段（API 字段 title），≤200 字。">编辑后的邮件主题</label>
-                                        <input id="mail-expert-subject" type="text" class="mt-1 w-full rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" value="Introduction and next steps for localization support">
-                                        <label for="mail-expert-body" class="mt-3 block text-[11px] font-bold text-slate-500" title="编辑后的邮件正文。会成为候选范例的内容字段（API 字段 content）。注意：邮件正文应保持英文（产品就是面向海外客户发英文邮件）。">编辑后的邮件正文</label>
-                                        <textarea id="mail-expert-body" rows="9" class="mt-1 w-full resize-y rounded border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100">Hi Jordan,
-
-I am Alex, your new point of contact for localization coordination. I reviewed the recent handover notes and saw that your team usually prefers short milestone updates.
-
-If there is a new build or string update this week, you can send it over and I will first confirm scope, schedule, and any questions before drafting the next plan.
-
-Best regards,
-Alex</textarea>
-                                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
-                                            <label class="block" title="候选范例的切片类型（API 字段 function_fragment / snippet_type）。决定后续草稿生成时按哪类条件召回。">
-                                                <span class="block font-bold text-slate-500">切片类型</span>
-                                                <select id="mail-candidate-snippet-type" class="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-2 text-xs">
-                                                    <option value="example" title="完整示例邮件，最常用类型">示例（example）</option>
-                                                    <option value="greetings" title="问候/破冰开场段">问候开场（greetings）</option>
-                                                    <option value="process" title="流程描述/SOP 说明段">流程说明（process）</option>
-                                                    <option value="constraint" title="交付约束/边界条件段">交付约束（constraint）</option>
-                                                    <option value="quotation" title="报价邀约/商业条款段">报价邀约（quotation）</option>
-                                                </select>
-                                            </label>
-                                            <label class="block" title="候选范例适用的业务场景（API 字段 scenario_label）。三选一对应 4 轮序列套装。">
-                                                <span class="block font-bold text-slate-500">适用场景</span>
-                                                <select id="mail-candidate-scenario" class="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-2 text-xs">
-                                                    <option value="new_contact_intro">新接手联系人介绍（new_contact_intro）</option>
-                                                    <option value="re_activation">老客户唤醒（re_activation）</option>
-                                                    <option value="new_business_promotion">新业务推广（new_business_promotion）</option>
-                                                </select>
-                                            </label>
-                                            <label class="block" title="候选范例的有用度分数（API 字段 useful_score），0.00-1.00。≥0.60 才能进入黄金库；运营手动修正版通常给 0.95。">
-                                                <span class="block font-bold text-slate-500">有用度分数</span>
-                                                <input id="mail-candidate-score" type="text" class="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-2 text-xs" value="0.95">
-                                            </label>
-                                        </div>
-                                        <button type="button" onclick="saveMailCandidateSnippetPreview()" class="mt-4 w-full rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700" title="保存当前编辑结果为页面内候选范例预览。仅在浏览器内显示，不真写数据库（真写库需先通过下方黄金库准入门）。">保存为候选范例预览</button>
-                                    </section>
-                                    <section class="rounded-lg border border-slate-200 bg-white p-4">
-                                        <div class="flex flex-wrap items-center justify-between gap-2">
-                                            <div class="text-xs font-bold text-slate-800" title="右侧：左侧保存后的候选范例字段实时回显，验证保存动作的结构正确性。">已保存候选范例字段</div>
-                                            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500" title="数据源标识：仅页面候选预览（前端常量 candidate_preview_only），不写后端。">仅页面候选预览</span>
-                                        </div>
-                                        <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                                            <div class="rounded border border-slate-100 bg-slate-50 p-2" title="候选范例编号（API 字段 candidate_id 或 fragment_id）。保存后自动生成。">
-                                                <div class="font-bold text-slate-500">候选编号</div>
-                                                <div id="mail-candidate-preview-id" class="mt-1 font-mono text-slate-800">未保存</div>
-                                            </div>
-                                            <div class="rounded border border-slate-100 bg-slate-50 p-2" title="来源草稿编号（API 字段 source_ref / source_draft_id）。指向本范例从哪一份草稿修正而来。">
-                                                <div class="font-bold text-slate-500">来源草稿编号</div>
-                                                <div id="mail-candidate-preview-source" class="mt-1 font-mono text-slate-800">mail_review_draft_047</div>
-                                            </div>
-                                            <div class="rounded border border-slate-100 bg-slate-50 p-2" title="适用场景（API 字段 scenario_label）。">
-                                                <div class="font-bold text-slate-500">业务场景</div>
-                                                <div id="mail-candidate-preview-scenario" class="mt-1 font-mono text-slate-800">new_contact_intro</div>
-                                            </div>
-                                            <div class="rounded border border-slate-100 bg-slate-50 p-2" title="切片类型（API 字段 function_fragment / snippet_type）。">
-                                                <div class="font-bold text-slate-500">切片类型</div>
-                                                <div id="mail-candidate-preview-type" class="mt-1 font-mono text-slate-800">example</div>
-                                            </div>
-                                            <div class="rounded border border-slate-100 bg-slate-50 p-2" title="有用度分数（API 字段 useful_score）。">
-                                                <div class="font-bold text-slate-500">有用度分数</div>
-                                                <div id="mail-candidate-preview-score" class="mt-1 font-mono text-slate-800">0.95</div>
-                                            </div>
-                                            <div class="rounded border border-slate-100 bg-slate-50 p-2" title="保存状态：等待保存 / 已保存到页面预览。">
-                                                <div class="font-bold text-slate-500">已保存状态</div>
-                                                <div id="mail-candidate-preview-state" class="mt-1 font-bold text-slate-800">等待保存</div>
-                                            </div>
-                                        </div>
-                                        <div class="mt-3" title="候选范例的主题字段预览（API 字段 title）。">
-                                            <div class="text-[11px] font-bold text-slate-500">候选主题</div>
-                                            <div id="mail-candidate-preview-subject" class="mt-1 rounded border border-slate-100 bg-slate-50 p-2 text-xs font-bold text-slate-800">保存后显示编辑后的主题</div>
-                                        </div>
-                                        <div class="mt-3" title="候选范例的正文预览（API 字段 content）。">
-                                            <div class="text-[11px] font-bold text-slate-500">候选正文预览</div>
-                                            <div id="mail-candidate-preview-body" class="mt-1 min-h-32 whitespace-pre-wrap rounded border border-slate-100 bg-slate-50 p-3 text-xs leading-6 text-slate-700">保存后显示编辑后的正文预览。</div>
-                                        </div>
-                                    </section>
-                                </div>
-                            </div>
-                            <div class="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-4">
-                                <div class="flex flex-wrap items-center justify-between gap-3">
-                                    <div>
-                                        <div class="text-xs font-bold text-violet-900" title="销售/运营对草稿打分、对命中范例拉黑、保存反馈生成反哺预览，反哺到黄金库的前置门是【人工批准】+【成单证据】。">范例反馈 / 反哺预览</div>
-                                        <div class="mt-1 text-[11px] text-slate-600">占位演示：点赞、差评、拉黑范例与保存反哺只更新页面内预览，不调用接口、不写数据库、不发信、不接企微。</div>
-                                    </div>
-                                    <span id="mail-feedback-save-state" class="rounded-full border border-violet-200 bg-white px-2 py-1 text-[10px] font-bold text-violet-700" title="保存状态：默认【尚未保存反馈】，点击保存按钮后变为【已保存反馈】。">尚未保存反馈</span>
-                                </div>
-                                <div class="mt-3 grid grid-cols-1 xl:grid-cols-3 gap-3">
-                                    <section class="rounded-lg border border-violet-100 bg-white p-4">
-                                        <div class="text-xs font-bold text-slate-800" title="对当前草稿整体打分（点赞/差评）+ 写一段说明，作为反馈给后续模型/范例优化参考。">草稿质量反馈</div>
-                                        <div class="mt-3 grid grid-cols-2 gap-2">
-                                            <button id="mail-feedback-thumbs-up" type="button" onclick="recordMailQualityDraftFeedback('thumbs_up')" class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100" title="点赞：标记该草稿质量好，可作为正样本。">点赞</button>
-                                            <button id="mail-feedback-thumbs-down" type="button" onclick="recordMailQualityDraftFeedback('thumbs_down')" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100" title="差评：标记该草稿质量差，可作为负样本，未来影响范例召回降权。">差评</button>
-                                        </div>
-                                        <label for="mail-feedback-note" class="mt-3 block text-[11px] font-bold text-slate-500" title="人工填写差评原因或修正建议，记入反馈事件日志。">人工反馈说明</label>
-                                        <textarea id="mail-feedback-note" rows="5" class="mt-1 w-full resize-y rounded border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-800 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100">修正版更适合进入候选范例：补充了接手背景、客户偏好和轻量行动呼吁；原命中样例可保留但需要降低优先级。</textarea>
-                                    </section>
-                                    <section class="rounded-lg border border-violet-100 bg-white p-4">
-                                        <div class="flex flex-wrap items-center justify-between gap-2">
-                                            <div class="text-xs font-bold text-slate-800" title="对本次草稿命中的那条范例进行处置：拉黑后未来不再召回。">命中范例处置</div>
-                                            <span id="mail-fewshot-blacklist-state" class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500" title="拉黑状态：默认【未拉黑】，点击按钮后变为【已拉黑】。仅页面内 Mock 状态，不真写。">未拉黑</span>
-                                        </div>
-                                        <div class="mt-3 rounded border border-slate-100 bg-slate-50 p-3 text-[11px]">
-                                            <div class="font-bold text-slate-500" title="命中的范例编号（API 字段 retrieved_fewshot_id）。指向 email_fragment_asset 表里的某条范例。">命中的范例编号</div>
-                                            <div id="mail-feedback-fewshot-id" class="mt-1 font-mono text-violet-800">gold_snippet_mock_new_contact_014</div>
-                                            <div class="mt-2 font-bold text-slate-500" title="为什么这条范例被召回，便于人工判断是否合适。">命中原因</div>
-                                            <div class="mt-1 text-slate-700">新接手联系人介绍 + 轻量行动呼吁 + 客户偏好短句。</div>
-                                        </div>
-                                        <button id="mail-fewshot-blacklist-btn" type="button" onclick="toggleMailQualityFewshotBlacklist()" class="mt-3 w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50" title="拉黑该范例：未来召回时排除这条。仅页面内 Mock，不真写后端。">拉黑该范例（仅页面演示）</button>
-                                    </section>
-                                    <section class="rounded-lg border border-violet-100 bg-white p-4">
-                                        <div class="text-xs font-bold text-slate-800" title="将上述反馈保存为反哺预览，并通过【人工批准】和【成单证据】两道门决定是否进入黄金库。">保存反馈与反哺</div>
-                                        <div class="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
-                                            <div class="flex flex-wrap items-center justify-between gap-2">
-                                                <div class="text-[11px] font-bold text-amber-900" title="黄金库准入门：必须同时满足【人工批准】和【成单证据】两个条件，候选范例才能真正反哺进入黄金库。">黄金库准入门</div>
-                                                <span id="mail-gold-gate-status" class="rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[10px] font-bold text-amber-700" title="准入门状态：勾选两个条件后变为【就绪：可反哺黄金库】。">阻断：缺少人工批准或成单证据</span>
-                                            </div>
-                                            <div class="mt-2 grid grid-cols-1 gap-2 text-[11px] text-slate-700">
-                                                <label class="flex items-start gap-2 rounded border border-amber-100 bg-white px-2 py-2" title="第一道门：运营专家手动确认。勾选表示该修正版质量经人工背书，可进入候选黄金范例池。">
-                                                    <input id="mail-gold-gate-manual-approval" type="checkbox" onchange="toggleMailGoldLibraryGate('manual_approval')" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500">
-                                                    <span><b>人工批准</b><br><span class="text-slate-500">运营专家确认该修正版可进入候选黄金范例。</span></span>
-                                                </label>
-                                                <label class="flex items-start gap-2 rounded border border-amber-100 bg-white px-2 py-2" title="第二道门：成单证据。客户最终签约或等价转化证据。防止销售口头习惯被错误反哺成范例。">
-                                                    <input id="mail-gold-gate-closed-won" type="checkbox" onchange="toggleMailGoldLibraryGate('closed_won_evidence')" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500">
-                                                    <span><b>成单证据</b><br><span class="text-slate-500">存在赢单或等价转化证据，可作为黄金库准入依据。</span></span>
-                                                </label>
-                                            </div>
-                                            <div id="mail-gold-gate-help" class="mt-2 text-[11px] font-bold text-amber-800">未满足准入门时，仅保存页面内反馈预览，不进入黄金库。</div>
-                                        </div>
-                                        <div class="mt-3 grid grid-cols-1 gap-2 text-[11px]">
-                                            <div class="rounded border border-slate-100 bg-slate-50 p-2" title="草稿反馈结果（API 字段 draft_feedback）。pending=待保存 / thumbs_up=点赞 / thumbs_down=差评。">
-                                                <div class="font-bold text-slate-500">草稿反馈结果</div>
-                                                <div id="mail-feedback-preview-draft" class="mt-1 font-mono text-slate-800">pending（待保存）</div>
-                                            </div>
-                                            <div class="rounded border border-slate-100 bg-slate-50 p-2" title="范例操作（API 字段 fewshot_action）。keep=保留 / blacklist=拉黑。">
-                                                <div class="font-bold text-slate-500">范例操作</div>
-                                                <div id="mail-feedback-preview-fewshot" class="mt-1 font-mono text-slate-800">keep（保留）</div>
-                                            </div>
-                                            <div class="rounded border border-slate-100 bg-slate-50 p-2" title="反哺目标（API 字段 backfeed_target）。指向反馈反哺到哪个数据源。">
-                                                <div class="font-bold text-slate-500">反哺目标</div>
-                                                <div id="mail-feedback-preview-backfeed" class="mt-1 font-mono text-slate-800">等待保存反馈</div>
-                                            </div>
-                                            <div class="rounded border border-slate-100 bg-slate-50 p-2" title="准入门证据（API 字段 gate_evidence）。两个条件的当前勾选状态。">
-                                                <div class="font-bold text-slate-500">准入门证据</div>
-                                                <div id="mail-feedback-preview-gate-evidence" class="mt-1 font-mono text-slate-800">人工批准=否；成单证据=否</div>
-                                            </div>
-                                            <div class="rounded border border-slate-100 bg-slate-50 p-2" title="黄金库操作（API 字段 gold_library_action）。blocked_no_gold_library_entry=被门挡住 / feedback_backfeed_ready_for_gold_library=就绪可反哺。">
-                                                <div class="font-bold text-slate-500">黄金库操作</div>
-                                                <div id="mail-feedback-preview-gold-action" class="mt-1 font-mono text-amber-700">阻断：未进入黄金库</div>
-                                            </div>
-                                        </div>
-                                        <button type="button" onclick="saveMailQualityFeedbackBackfeed()" class="mt-3 w-full rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-700" title="保存当前反馈并在右侧字段生成反哺预览。仅页面内更新，不真写后端。">保存反馈并生成反哺预览</button>
-                                    </section>
-                                </div>
-                                <div class="mt-3 rounded border border-violet-100 bg-white p-3">
-                                    <div class="flex flex-wrap items-center justify-between gap-2">
-                                        <div class="text-xs font-bold text-slate-800" title="反馈事件流水：每次保存反馈/拉黑/勾选门都在此追加一条时间戳事件。仅页面内日志。">反馈事件预览</div>
-                                        <span class="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700" title="数据源标识：仅页面内反馈反哺（前端常量 mock_feedback_backfeed_only），不写后端。">仅页面反馈日志</span>
-                                    </div>
-                                    <div id="mail-feedback-event-log" class="mt-2 min-h-20 whitespace-pre-wrap rounded border border-slate-100 bg-slate-50 p-3 text-[11px] leading-5 text-slate-700">等待页面内反馈操作。</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
+                </div>
             </div>
             <section id="mail-config-panel" class="hidden space-y-5">
                 <div class="rounded-lg border border-indigo-200 bg-white p-5">
@@ -1899,6 +1585,7 @@ Alex</textarea>
                     <div class="mt-2 text-[11px]" id="mql-multi-step-${step}-meta"></div>
                     <div class="mt-2 text-xs font-bold text-slate-900" id="mql-multi-step-${step}-subject"></div>
                     <div class="mt-2 text-xs text-slate-700 leading-relaxed prose prose-sm max-w-none" id="mql-multi-step-${step}-body"></div>
+                    <div class="mt-2 rounded border border-amber-100 bg-amber-50 p-2 text-[10px]" id="mql-multi-step-${step}-review"></div>
                 `;
                 multiGrid.appendChild(stepCard);
 
@@ -1937,6 +1624,7 @@ Alex</textarea>
                         }
                         if (subjectSpan) subjectSpan.textContent = `主题：${data.final_subject || '（空）'}`;
                         if (bodySpan) bodySpan.innerHTML = data.final_body_html || '（正文为空）';
+                        renderMailReviewMetadata(`mql-multi-step-${step}-review`, data.review_metadata || {});
                     }
                 } catch (err) {
                     errCount++;
@@ -1973,6 +1661,49 @@ Alex</textarea>
                 setTimeout(loadMailDemoContacts, 200);
             }
         });
+
+        let mailQualityInfoPanelCollapsed = true;
+        function toggleMailQualityInfoPanel() {
+            mailQualityInfoPanelCollapsed = !mailQualityInfoPanelCollapsed;
+            const wrap = document.getElementById('mql-info-collapsible');
+            const btn = document.getElementById('mql-info-toggle');
+            if (wrap) wrap.classList.toggle('hidden', mailQualityInfoPanelCollapsed);
+            if (btn) btn.textContent = mailQualityInfoPanelCollapsed ? '▶ 展开' : '▼ 折叠';
+        }
+
+        function renderMailReviewMetadata(targetId, reviewMeta) {
+            const el = document.getElementById(targetId);
+            if (!el) return;
+            const crm = reviewMeta.crm_profile_signals || {};
+            const terms = reviewMeta.commercial_terms_for_review || {};
+            const fmt = (v) => (v == null || v === '') ? '（空）' : String(v);
+            const customerDomains = Array.isArray(crm.customer_domains) ? crm.customer_domains : [];
+            el.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div class="rounded border border-amber-100 bg-white p-2" title="CRM 画像信号：行业 / 欠款风险等级 / 已知客户域名。来自 fetch_crm_profile() 返回的真实画像或后端 fallback。">
+                        <div class="font-bold text-slate-700 mb-1">CRM 画像信号</div>
+                        <div>行业：<b>${fmt(crm.company_industry_cn)}</b></div>
+                        <div>欠款风险等级：<b>${fmt(crm.payment_risk_level_cn)}</b></div>
+                        <div>已知客户域名：<b>${customerDomains.length ? customerDomains.join('、') : '（无）'}</b></div>
+                    </div>
+                    <div class="rounded border border-amber-100 bg-white p-2" title="后端注入的商业条款占位符。这些是物理隔离防大模型编造价格的关键：LLM 永远只看到/写出占位符字符串, 真发件前由 PricingRule 表强制替换成真值。">
+                        <div class="font-bold text-slate-700 mb-1">后端注入商业条款</div>
+                        <div>单价：<code class="text-[10px]">${fmt(terms.price)}</code></div>
+                        <div>交付工期：<code class="text-[10px]">${fmt(terms.delivery_sla)}</code></div>
+                        <div>折扣：<code class="text-[10px]">${fmt(terms.discount)}</code></div>
+                        <div>付款周期：<code class="text-[10px]">${fmt(terms.payment_terms)}</code></div>
+                        <div class="text-[10px] text-slate-500 mt-1">${fmt(terms.note)}</div>
+                    </div>
+                </div>
+                <div class="mt-2 rounded border border-amber-100 bg-white p-2" title="LLM 看到的推荐行动呼吁风格（来自邮件序列策略表）。LLM 已经基于此生成草稿的最后一段, 此处仅供审稿对照原始策略口径。">
+                    <div class="font-bold text-slate-700 mb-1">推荐行动呼吁（来自策略表）</div>
+                    <div class="text-slate-600">${fmt(reviewMeta.suggested_next_step)}</div>
+                </div>
+                <div class="mt-2 rounded border border-amber-100 bg-white p-2 text-amber-800 font-bold" title="安全锁定说明: 当前所有草稿默认锁定到人工审稿队列, 永远不会被自动真发出去。Task 79 SMTP 通道做完前这条规则不变。">
+                    ${fmt(reviewMeta.lock_notice)}
+                </div>
+            `;
+        }
 
         async function runMailQualityLiveDraft() {
             const btn = document.getElementById('mql-run-btn');
@@ -2032,6 +1763,7 @@ Alex</textarea>
 
                 const bodyEl = document.getElementById('mql-r-body');
                 if (bodyEl) { bodyEl.innerHTML = data.final_body_html || '（正文为空）'; }
+                renderMailReviewMetadata('mql-r-review-meta', data.review_metadata || {});
                 const rawEl = document.getElementById('mql-r-raw');
                 if (rawEl) { rawEl.textContent = JSON.stringify(data, null, 2); }
             } catch (err) {

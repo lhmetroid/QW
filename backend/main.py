@@ -998,6 +998,14 @@ class MailSafetyGuardrail(BaseModel):
     block_details: dict[str, Any] | None = None
     gate_results: list[dict[str, Any]] = []
 
+class MailGenerateDraftReviewMetadata(BaseModel):
+    """供销售/运营审稿参考的辅助信息（独立于真邮件正文，不会发出去）。"""
+    crm_profile_signals: dict[str, Any] = {}
+    commercial_terms_for_review: dict[str, Any] = {}
+    lock_notice: str = ""
+    suggested_next_step: str = ""
+
+
 class MailGenerateDraftResponse(BaseModel):
     status: str
     draft_status: str = MailSequenceStatus.DRAFTED.value
@@ -1013,6 +1021,7 @@ class MailGenerateDraftResponse(BaseModel):
     llm_status: str = "fallback_template"
     llm_model_used: str | None = None
     llm_error: str | None = None
+    review_metadata: MailGenerateDraftReviewMetadata = MailGenerateDraftReviewMetadata()
 
 class MailSequenceInterruptRequest(BaseModel):
     customer_key: str | None = None
@@ -1170,6 +1179,7 @@ class MailDraftAssembledContent(BaseModel):
     llm_status: str = "fallback_template"
     llm_model_used: str | None = None
     llm_error: str | None = None
+    review_metadata: MailGenerateDraftReviewMetadata = MailGenerateDraftReviewMetadata()
 
 class KnowledgeChunkCreate(BaseModel):
     title: str
@@ -4117,6 +4127,23 @@ _MAIL_PAYMENT_RISK_CN = {
     "prepaid_required": "需预付",
 }
 
+# 邮件序列推荐"下一步动作"的中文版本，按 (scenario, suite_step) 元组查表。
+# 这是给销售/运营审稿看的，覆盖 mail_sequence_strategy.py 里 cta_style 字段的英文表述。
+_MAIL_CTA_CN_BY_STEP: dict[tuple[str, int], str] = {
+    ("re_activation", 1): "低压力问候，邀请客户简单更新近况，不强推业务。",
+    ("re_activation", 2): "分享一个同行业的合作案例，引出可类比的项目机会。",
+    ("re_activation", 3): "展示标准服务流程与工期 SLA，给客户安全感。",
+    ("re_activation", 4): "提供小批量试用样稿邀约，降低客户决策门槛。",
+    ("new_business_promotion", 1): "低门槛价值提示：用一两句话讲清新业务能为对方解决什么具体问题。",
+    ("new_business_promotion", 2): "引用一两个行业案例，强化新业务的可靠性。",
+    ("new_business_promotion", 3): "邀请客户试用方案或小批量测试，作为决策前的低成本验证。",
+    ("new_business_promotion", 4): "给出报价邀约，附带工期、账期、折扣等结构化商业条款（由后端占位符替换）。",
+    ("new_contact_intro", 1): "自我介绍新接手身份，询问对方是否还有其他同事需要抄送。",
+    ("new_contact_intro", 2): "请客户分享当前在进行的项目背景或近期需要协助的点。",
+    ("new_contact_intro", 3): "介绍标准协作路径（接稿、审稿、交付、复盘），给客户专业感。",
+    ("new_contact_intro", 4): "确认下一步协作切入点（试稿、会议、小项目），形成具体动作。",
+}
+
 _MAIL_SCENARIO_DEFAULT_SUBJECT = {
     "re_activation": "好久不见 想跟您聊聊最近的项目动向",
     "new_business_promotion": "向您介绍我们新增的本地化服务能力",
@@ -4238,23 +4265,29 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
 
     industry_cn = _MAIL_INDUSTRY_CN.get(profile.company_industry, profile.company_industry or "未识别")
     risk_cn = _MAIL_PAYMENT_RISK_CN.get(profile.payment_risk_level, profile.payment_risk_level or "未识别")
-    paragraphs.append(
-        "供审稿参考的客户画像信号："
-        f"行业：{html.escape(industry_cn)}；"
-        f"欠款风险等级：{html.escape(risk_cn)}；"
-        f"已知客户域名：{html.escape('、'.join(profile.customer_domains) or '未识别')}。"
+
+    # 邮件正文只含: LLM 生成的段落 + 销售签名档。审稿辅助信息走独立字段 review_metadata, 不夹在邮件正文里。
+    paragraphs.append(html.escape(profile.seller_signature).replace("\n", "<br>"))
+
+    review_meta = MailGenerateDraftReviewMetadata(
+        crm_profile_signals={
+            "company_industry_cn": industry_cn,
+            "payment_risk_level_cn": risk_cn,
+            "customer_domains": list(profile.customer_domains),
+        },
+        commercial_terms_for_review={
+            "price": terms.price.value,
+            "delivery_sla": terms.delivery.value,
+            "discount": terms.discount.value,
+            "payment_terms": terms.payment_terms.value,
+            "note": "以上占位符将在真发件前由 PricingRule 表强制替换；本草稿当前未启用真实发件。",
+        },
+        lock_notice="本草稿已锁定到人工审稿队列，当前未启用真实发件。",
+        suggested_next_step=_MAIL_CTA_CN_BY_STEP.get(
+            (profile.scenario, int(profile.suite_step)),
+            profile.cta_style or "",
+        ),
     )
-    paragraphs.append(
-        "供审稿参考的后端注入商业条款（占位符将在真发件前由 PricingRule 表强制替换）："
-        f"单价 {html.escape(terms.price.value)}；"
-        f"交付工期 {html.escape(terms.delivery.value)}；"
-        f"折扣 {html.escape(terms.discount.value)}；"
-        f"付款周期 {html.escape(terms.payment_terms.value)}。"
-    )
-    paragraphs.extend([
-        "本草稿已锁定到人工审稿队列，当前未启用真实发件。",
-        html.escape(profile.seller_signature).replace("\n", "<br>"),
-    ])
 
     return MailDraftAssembledContent(
         subject=subject_text,
@@ -4262,6 +4295,7 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
         llm_status=llm_result["status"],
         llm_model_used=llm_result["model"],
         llm_error=llm_result["error"],
+        review_metadata=review_meta,
     )
 
 def _build_mail_generate_draft_response(
@@ -4372,6 +4406,7 @@ def _build_mail_generate_draft_response(
             llm_status=assembled.llm_status,
             llm_model_used=assembled.llm_model_used,
             llm_error=assembled.llm_error,
+            review_metadata=assembled.review_metadata,
             safety_guardrail=MailSafetyGuardrail(
                 overall_outcome=overall_outcome,
                 status="red_card_hard_block",
@@ -4408,6 +4443,7 @@ def _build_mail_generate_draft_response(
             llm_status=assembled.llm_status,
             llm_model_used=assembled.llm_model_used,
             llm_error=assembled.llm_error,
+            review_metadata=assembled.review_metadata,
             safety_guardrail=MailSafetyGuardrail(
                 overall_outcome=overall_outcome,
                 status="red_card_hard_block",
@@ -4442,6 +4478,7 @@ def _build_mail_generate_draft_response(
             llm_status=assembled.llm_status,
             llm_model_used=assembled.llm_model_used,
             llm_error=assembled.llm_error,
+            review_metadata=assembled.review_metadata,
             safety_guardrail=MailSafetyGuardrail(
                 overall_outcome=overall_outcome,
                 status="red_card_hard_block",
@@ -4479,6 +4516,7 @@ def _build_mail_generate_draft_response(
             llm_status=assembled.llm_status,
             llm_model_used=assembled.llm_model_used,
             llm_error=assembled.llm_error,
+            review_metadata=assembled.review_metadata,
             safety_guardrail=MailSafetyGuardrail(
                 overall_outcome=overall_outcome,
                 status="red_card_hard_block",
@@ -4515,6 +4553,7 @@ def _build_mail_generate_draft_response(
         llm_status=assembled.llm_status,
         llm_model_used=assembled.llm_model_used,
         llm_error=assembled.llm_error,
+        review_metadata=assembled.review_metadata,
         safety_guardrail=MailSafetyGuardrail(
             overall_outcome=overall_outcome,
             status=(
