@@ -821,6 +821,98 @@ class MailDemoContact(Base):
         Index("idx_mail_demo_contact_index", "demo_index", unique=True),
     )
 
+
+class MailIterationRun(Base):
+    """邮件 AI 回复迭代记录主表：每次跑 5 案例 × 4 步 = 20 封邮件为一次迭代。"""
+    __tablename__ = "mail_iteration_run"
+
+    run_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    version_no = Column(Integer, nullable=False)
+    run_label = Column(Text, nullable=True)
+    triggered_by = Column(String(120), nullable=True)
+    triggered_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    status = Column(String(20), nullable=False, default="queued")  # queued / running / success / partial / failed
+
+    # 统计
+    total_drafts = Column(Integer, nullable=False, default=0)
+    succeeded_drafts = Column(Integer, nullable=False, default=0)
+    failed_drafts = Column(Integer, nullable=False, default=0)
+    avg_quality_score = Column(Numeric(6, 2), nullable=True)
+    min_quality_score = Column(Numeric(6, 2), nullable=True)
+    max_quality_score = Column(Numeric(6, 2), nullable=True)
+    avg_elapsed_ms = Column(Integer, nullable=True)
+    llm_success_count = Column(Integer, nullable=False, default=0)
+    llm_fallback_count = Column(Integer, nullable=False, default=0)
+
+    # 本次跑的脚本/Prompt/模型快照
+    pipeline_snapshot = Column(JSON, nullable=True)
+    notes = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_mir_triggered_at", "triggered_at"),
+        Index("idx_mir_version_no", "version_no"),
+        Index("idx_mir_status", "status", "triggered_at"),
+    )
+
+
+class MailIterationDraft(Base):
+    """邮件 AI 回复迭代逐封草稿明细：1 run × 5 案例 × 4 步 = 20 行。"""
+    __tablename__ = "mail_iteration_draft"
+
+    draft_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    run_id = Column(UUID(as_uuid=False), ForeignKey("mail_iteration_run.run_id"), nullable=False)
+
+    # 案例 + 步骤
+    demo_index = Column(Integer, nullable=False)
+    demo_label = Column(Text, nullable=True)
+    scenario = Column(String(80), nullable=False)
+    suite_step = Column(Integer, nullable=False)
+
+    # 请求
+    customer_key = Column(String(255), nullable=True)
+    contact_email = Column(String(255), nullable=True)
+    request_payload = Column(JSON, nullable=True)
+
+    # LLM
+    llm_prompt = Column(Text, nullable=True)
+    llm_status = Column(String(40), nullable=True)
+    llm_model_used = Column(String(80), nullable=True)
+    llm_error = Column(Text, nullable=True)
+
+    # 响应
+    response_payload = Column(JSON, nullable=True)
+    final_subject = Column(Text, nullable=True)
+    final_body_html = Column(Text, nullable=True)
+    retrieved_fewshot_id = Column(UUID(as_uuid=False), nullable=True)
+    fewshot_match_score = Column(Numeric(6, 4), nullable=True)
+
+    # 安全门
+    overall_outcome = Column(String(40), nullable=True)
+    safety_status = Column(String(60), nullable=True)
+
+    # 评分（规则版，0-100）
+    quality_score = Column(Numeric(6, 2), nullable=True)
+    quality_breakdown = Column(JSON, nullable=True)
+    quality_notes = Column(Text, nullable=True)
+
+    # 元数据
+    elapsed_ms = Column(Integer, nullable=True)
+    status = Column(String(20), nullable=False, default="pending")  # pending / running / success / failed
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_mid_run", "run_id"),
+        Index("idx_mid_run_demo_step", "run_id", "demo_index", "suite_step", unique=True),
+    )
+
 # 初始化数据库连接
 _engine_kwargs = {
     "pool_pre_ping": True,

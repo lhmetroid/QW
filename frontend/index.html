@@ -359,6 +359,7 @@
                 </div>
                 <div class="flex flex-wrap gap-2">
                     <button id="mail-subtab-quality" type="button" onclick="switchMailWorkspaceTab('quality')" class="px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold" title="查看邮件质量诊断面板（含真接入演示区 + 占位静态卡片），不接入企微工作流。">质量诊断</button>
+                    <button id="mail-subtab-iteration" type="button" onclick="switchMailWorkspaceTab('iteration')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件迭代记录: 一次迭代跑 5 案例 × 4 步 = 20 封邮件并打分入库, 可对比多次迭代的草稿质量变化, 含每封邮件用到的真实大模型 prompt。">邮件迭代记录</button>
                     <button id="mail-subtab-config" type="button" onclick="switchMailWorkspaceTab('config')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="查看邮件全局配置面板的占位骨架（评审 Mock 用），不调用后端、不写库、不真实热加载。">邮件配置</button>
                     <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">返回企微实时智能</button>
                 </div>
@@ -552,6 +553,57 @@
                     </div>
                 </div>
             </div>
+            <section id="mail-iteration-panel" class="hidden space-y-5">
+                <div class="rounded-lg border border-indigo-200 bg-white p-5">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900" title="邮件 AI 回复迭代记录：每次跑 5 个真实测试案例 × 4 步邮件序列 = 20 封草稿, 全部串行真调后端 generate-draft, 每封打分入库, 含真实大模型 prompt。可对比多次迭代评估邮件质量提升。">邮件迭代记录（每次 5 案例 × 4 步 = 20 封草稿，含真实大模型 prompt）</h2>
+                            <p class="text-xs text-slate-500 mt-1">触发后串行真调后端 5-10 分钟跑完 20 封；过程中可刷新列表看实时进度。所有数据从后端 PG <code>mail_iteration_run / mail_iteration_draft</code> 真表查。</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <input id="mail-iter-trigger-label" type="text" placeholder="本次迭代标签（可选）" class="rounded border border-slate-300 px-2 py-1 text-xs w-48" title="可选标签，用于在列表里区分本次迭代的目的（例如 'v1.7.205 prompt 调整测试'）。">
+                            <button type="button" onclick="triggerMailIterationRun()" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700" title="触发一次新的邮件迭代: 5 案例 × 4 步 = 20 封真调后端生成。后台线程跑约 5-10 分钟, 立即返回 run_id, 前端可轮询查进度。">触发新迭代</button>
+                            <button type="button" onclick="loadMailIterationList()" class="rounded border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50" title="刷新下方迭代列表（也用于轮询进度）。">刷新列表</button>
+                            <span id="mail-iter-trigger-status" class="text-[11px] text-slate-500"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="mail-iter-list-container" class="rounded-lg border border-slate-200 bg-white p-4">
+                    <div class="text-xs font-bold text-slate-700 mb-3" title="历史迭代记录列表，按触发时间倒序。点击 [查看详情] 展开该次迭代的 20 封邮件明细。">历史迭代列表</div>
+                    <div id="mail-iter-list-empty" class="text-xs text-slate-500 hidden">尚无迭代记录。点击上方【触发新迭代】开始第一次。</div>
+                    <div class="overflow-x-auto">
+                        <table id="mail-iter-list-table" class="w-full text-xs">
+                            <thead class="bg-slate-50">
+                                <tr class="text-slate-600">
+                                    <th class="px-2 py-2 text-left" title="自增版本号">版本</th>
+                                    <th class="px-2 py-2 text-left">标签</th>
+                                    <th class="px-2 py-2 text-left">触发人</th>
+                                    <th class="px-2 py-2 text-left">触发时间</th>
+                                    <th class="px-2 py-2 text-center">状态</th>
+                                    <th class="px-2 py-2 text-center" title="已完成 / 计划总数">完成数</th>
+                                    <th class="px-2 py-2 text-center" title="平均质量分（0-100 规则评分）">均分</th>
+                                    <th class="px-2 py-2 text-center" title="范围 = 最小 - 最大">分数范围</th>
+                                    <th class="px-2 py-2 text-center" title="大模型成功 / fallback 次数">大模型</th>
+                                    <th class="px-2 py-2 text-center" title="单封平均耗时">均耗时</th>
+                                    <th class="px-2 py-2 text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mail-iter-list-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="mail-iter-detail-container" class="hidden rounded-lg border border-indigo-200 bg-white p-4">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                        <div class="text-xs font-bold text-indigo-900" id="mail-iter-detail-title">迭代详情</div>
+                        <button type="button" onclick="closeMailIterationDetail()" class="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50">收起详情</button>
+                    </div>
+                    <div id="mail-iter-detail-meta" class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]"></div>
+                    <div class="mt-3 text-xs font-bold text-slate-700">20 封草稿明细（按案例 × 步骤展开，点 [查看 prompt] 看真实大模型输入）</div>
+                    <div id="mail-iter-detail-drafts" class="mt-2 space-y-2"></div>
+                </div>
+            </section>
             <section id="mail-config-panel" class="hidden space-y-5">
                 <div class="rounded-lg border border-indigo-200 bg-white p-5">
                     <div class="flex flex-wrap items-start justify-between gap-4">
@@ -1662,6 +1714,199 @@
             }
         });
 
+        // ===== 邮件 AI 回复迭代记录（v1.7.205） =====
+        async function triggerMailIterationRun() {
+            const labelInput = document.getElementById('mail-iter-trigger-label');
+            const statusEl = document.getElementById('mail-iter-trigger-status');
+            const label = (labelInput?.value || '').trim();
+            if (statusEl) {
+                statusEl.textContent = '触发中……';
+                statusEl.className = 'text-[11px] text-slate-600';
+            }
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/iterations/run`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ run_label: label || null }),
+                    credentials: 'include',
+                });
+                const text = await resp.text();
+                let data;
+                try { data = JSON.parse(text); } catch (e) { data = { _raw: text }; }
+                if (!resp.ok) {
+                    if (statusEl) {
+                        statusEl.textContent = `触发失败: ${data.detail || text.slice(0, 80)}`;
+                        statusEl.className = 'text-[11px] text-red-600 font-bold';
+                    }
+                    return;
+                }
+                if (statusEl) {
+                    statusEl.textContent = `已触发 v${data.version_no}（${data.run_id.slice(0,8)}…）, 后台跑约 5-10 分钟, 请点击【刷新列表】查看进度`;
+                    statusEl.className = 'text-[11px] text-emerald-700 font-bold';
+                }
+                if (labelInput) labelInput.value = '';
+                setTimeout(loadMailIterationList, 800);
+            } catch (err) {
+                if (statusEl) {
+                    statusEl.textContent = `请求异常: ${err.message}`;
+                    statusEl.className = 'text-[11px] text-red-600 font-bold';
+                }
+            }
+        }
+
+        async function loadMailIterationList() {
+            const tbody = document.getElementById('mail-iter-list-tbody');
+            const emptyEl = document.getElementById('mail-iter-list-empty');
+            if (!tbody) return;
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/iterations?limit=50`, { credentials: 'include' });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                const items = data.items || [];
+                tbody.innerHTML = '';
+                if (!items.length) {
+                    if (emptyEl) emptyEl.classList.remove('hidden');
+                    return;
+                }
+                if (emptyEl) emptyEl.classList.add('hidden');
+                for (const r of items) {
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-t border-slate-100 hover:bg-slate-50';
+                    const statusBadge = ({
+                        'queued': '<span class="rounded bg-slate-200 px-1.5 py-0.5 text-slate-700">排队中</span>',
+                        'running': '<span class="rounded bg-amber-200 px-1.5 py-0.5 text-amber-800">运行中</span>',
+                        'success': '<span class="rounded bg-emerald-200 px-1.5 py-0.5 text-emerald-800">成功</span>',
+                        'partial': '<span class="rounded bg-amber-300 px-1.5 py-0.5 text-amber-900">部分成功</span>',
+                        'failed': '<span class="rounded bg-rose-200 px-1.5 py-0.5 text-rose-800">失败</span>',
+                    })[r.status] || `<span class="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">${r.status}</span>`;
+                    const fmt = (v) => v == null ? '—' : String(v);
+                    const fmtTime = (v) => {
+                        if (!v) return '—';
+                        try {
+                            const d = new Date(v.endsWith('Z') || v.includes('+') ? v : v + 'Z');
+                            const bj = new Date(d.getTime() + 8 * 3600 * 1000);
+                            return bj.toISOString().slice(0, 19).replace('T', ' ') + ' +08';
+                        } catch (e) { return v; }
+                    };
+                    tr.innerHTML = `
+                        <td class="px-2 py-2 font-mono">v${r.version_no}</td>
+                        <td class="px-2 py-2">${fmt(r.run_label)}</td>
+                        <td class="px-2 py-2">${fmt(r.triggered_by)}</td>
+                        <td class="px-2 py-2 text-slate-600">${fmtTime(r.triggered_at)}</td>
+                        <td class="px-2 py-2 text-center">${statusBadge}</td>
+                        <td class="px-2 py-2 text-center font-mono">${r.succeeded_drafts}/${r.total_drafts}</td>
+                        <td class="px-2 py-2 text-center font-mono font-bold">${r.avg_quality_score != null ? r.avg_quality_score.toFixed(1) : '—'}</td>
+                        <td class="px-2 py-2 text-center font-mono text-slate-500">${r.min_quality_score != null ? r.min_quality_score.toFixed(0) : '—'} - ${r.max_quality_score != null ? r.max_quality_score.toFixed(0) : '—'}</td>
+                        <td class="px-2 py-2 text-center font-mono text-[10px]" title="大模型 success / fallback 次数">${r.llm_success_count}/${r.llm_fallback_count}</td>
+                        <td class="px-2 py-2 text-center font-mono text-[10px]">${r.avg_elapsed_ms != null ? (r.avg_elapsed_ms/1000).toFixed(1) + 's' : '—'}</td>
+                        <td class="px-2 py-2 text-center">
+                            <button type="button" onclick="openMailIterationDetail('${r.run_id}')" class="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">查看详情</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                }
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="11" class="px-2 py-3 text-center text-red-600">列表加载失败: ${err.message}</td></tr>`;
+            }
+        }
+
+        async function openMailIterationDetail(runId) {
+            const wrap = document.getElementById('mail-iter-detail-container');
+            const title = document.getElementById('mail-iter-detail-title');
+            const meta = document.getElementById('mail-iter-detail-meta');
+            const draftsEl = document.getElementById('mail-iter-detail-drafts');
+            if (!wrap) return;
+            wrap.classList.remove('hidden');
+            if (title) title.textContent = '加载详情中……';
+            if (meta) meta.innerHTML = '';
+            if (draftsEl) draftsEl.innerHTML = '<div class="text-xs text-slate-500">加载中……</div>';
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/iterations/${runId}`, { credentials: 'include' });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                const run = data.run || {};
+                const drafts = data.drafts || [];
+                if (title) title.textContent = `迭代详情 · v${run.version_no} · ${run.run_label || '(无标签)'}`;
+                if (meta) {
+                    const fmt = (v) => v == null ? '—' : String(v);
+                    const fmtNum = (v, d=1) => v == null ? '—' : Number(v).toFixed(d);
+                    const snap = run.pipeline_snapshot || {};
+                    meta.innerHTML = `
+                        <div title="本次迭代触发时间（北京时间）"><b>触发：</b>${fmt(run.triggered_at)}</div>
+                        <div title="本次迭代完成时间"><b>完成：</b>${fmt(run.finished_at)}</div>
+                        <div title="本次跑通的草稿数 / 计划总数"><b>完成数：</b>${run.succeeded_drafts}/${run.total_drafts}（失败 ${run.failed_drafts}）</div>
+                        <div title="所有草稿的平均规则评分（0-100）"><b>平均分：</b>${fmtNum(run.avg_quality_score, 1)}（${fmtNum(run.min_quality_score, 0)} - ${fmtNum(run.max_quality_score, 0)}）</div>
+                        <div title="大模型真调用成功的次数 / fallback 走老模板的次数"><b>大模型：</b>success ${run.llm_success_count} / fallback ${run.llm_fallback_count}</div>
+                        <div title="单封平均耗时"><b>均耗时：</b>${run.avg_elapsed_ms != null ? (run.avg_elapsed_ms/1000).toFixed(1) + 's' : '—'}</div>
+                        <div title="本次迭代用的大模型名（来自 .env LLM1_MODEL）"><b>模型：</b><code>${fmt(snap.llm_model)}</code></div>
+                        <div title="大模型 API 服务地址"><b>API：</b><code class="text-[10px]">${fmt(snap.llm_url)}</code></div>
+                    `;
+                }
+                if (draftsEl) {
+                    draftsEl.innerHTML = '';
+                    for (const d of drafts) {
+                        const card = document.createElement('details');
+                        card.className = 'rounded border border-slate-200 bg-slate-50';
+                        const statusColor = d.status === 'success' ? 'emerald' : d.status === 'failed' ? 'rose' : 'slate';
+                        const score = d.quality_score != null ? d.quality_score.toFixed(1) : '—';
+                        card.innerHTML = `
+                            <summary class="cursor-pointer px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2 hover:bg-slate-100">
+                                <div>
+                                    <span class="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">案例${d.demo_index}·第${d.suite_step}步</span>
+                                    <span class="ml-2 text-slate-700">${d.demo_label || ''}</span>
+                                </div>
+                                <div class="flex items-center gap-2 text-[11px]">
+                                    <span class="rounded bg-${statusColor}-100 px-1.5 py-0.5 text-${statusColor}-700">${d.status}</span>
+                                    <span class="font-mono font-bold text-slate-900">${score}</span>
+                                    <span class="text-slate-500">${d.elapsed_ms != null ? (d.elapsed_ms/1000).toFixed(1)+'s' : '—'}</span>
+                                    <span class="text-slate-500">LLM=${d.llm_status || '—'}</span>
+                                    <span class="text-slate-500">门=${d.overall_outcome || '—'}</span>
+                                </div>
+                            </summary>
+                            <div class="px-3 py-3 border-t border-slate-200 bg-white space-y-3">
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-[11px]">
+                                    <div><b>客户编号：</b><code class="text-[10px]">${d.customer_key || '—'}</code></div>
+                                    <div><b>收件邮箱：</b><code class="text-[10px]">${d.contact_email || '—'}</code></div>
+                                    <div><b>场景：</b>${d.scenario}</div>
+                                    <div><b>大模型：</b><code class="text-[10px]">${d.llm_model_used || '—'}</code></div>
+                                    <div><b>范例命中：</b><code class="text-[10px]">${d.retrieved_fewshot_id ? d.retrieved_fewshot_id.slice(0,8)+'…' : '—'}</code></div>
+                                    <div><b>范例分：</b>${d.fewshot_match_score != null ? d.fewshot_match_score.toFixed(2) : '—'}</div>
+                                </div>
+                                <div class="rounded border border-emerald-100 bg-emerald-50 p-2">
+                                    <div class="text-[10px] font-bold text-emerald-700 mb-1">质量评分细目（满分 100）</div>
+                                    <div class="text-[11px]">总分：<b>${score}</b>，备注：${d.quality_notes || '全维度通过'}</div>
+                                    <pre class="mt-1 text-[10px] font-mono text-slate-600 whitespace-pre-wrap">${JSON.stringify(d.quality_breakdown || {}, null, 2)}</pre>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] font-bold text-slate-700 mb-1">邮件主题</div>
+                                    <div class="text-xs font-bold text-slate-900">${d.final_subject || '（空）'}</div>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] font-bold text-slate-700 mb-1">邮件正文 HTML（真返回）</div>
+                                    <div class="text-xs text-slate-800 leading-relaxed prose prose-sm max-w-none">${d.final_body_html || '（正文为空）'}</div>
+                                </div>
+                                <details>
+                                    <summary class="cursor-pointer text-[11px] font-bold text-indigo-700" title="本次草稿真实发到大模型的完整 prompt 字符串。用于调优 prompt 模板。">查看真实大模型 prompt（${(d.llm_prompt || '').length} 字符）</summary>
+                                    <pre class="mt-2 max-h-80 overflow-auto rounded bg-slate-900 p-3 text-[10px] text-slate-100 whitespace-pre-wrap">${(d.llm_prompt || '（未记录）').replace(/</g, '&lt;')}</pre>
+                                </details>
+                                ${d.error_message ? `<div class="rounded border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-700"><b>错误：</b>${d.error_message}</div>` : ''}
+                            </div>
+                        `;
+                        draftsEl.appendChild(card);
+                    }
+                }
+                wrap.scrollIntoView({block: 'start', behavior: 'smooth'});
+            } catch (err) {
+                if (title) title.textContent = `详情加载失败: ${err.message}`;
+                if (draftsEl) draftsEl.innerHTML = '';
+            }
+        }
+
+        function closeMailIterationDetail() {
+            const wrap = document.getElementById('mail-iter-detail-container');
+            if (wrap) wrap.classList.add('hidden');
+        }
+
         let mailQualityInfoPanelCollapsed = true;
         function toggleMailQualityInfoPanel() {
             mailQualityInfoPanelCollapsed = !mailQualityInfoPanelCollapsed;
@@ -1778,18 +2023,26 @@
         }
 
         function switchMailWorkspaceTab(tab) {
-            const activeTab = tab === 'config' ? 'config' : 'quality';
-            const qualityPanel = document.getElementById('mail-quality-panel');
+            const validTabs = ['quality', 'iteration', 'config'];
+            const activeTab = validTabs.includes(tab) ? tab : 'quality';
+            const liveDemo = document.getElementById('mail-quality-live-demo');
+            const qualityInfo = document.getElementById('mail-quality-panel-info');
+            const iterationPanel = document.getElementById('mail-iteration-panel');
             const configPanel = document.getElementById('mail-config-panel');
             const qualityBtn = document.getElementById('mail-subtab-quality');
+            const iterationBtn = document.getElementById('mail-subtab-iteration');
             const configBtn = document.getElementById('mail-subtab-config');
             const activeClass = 'px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold';
             const inactiveClass = 'px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50';
-            if (qualityPanel) qualityPanel.classList.toggle('hidden', activeTab !== 'quality');
+            if (liveDemo) liveDemo.classList.toggle('hidden', activeTab !== 'quality');
+            if (qualityInfo) qualityInfo.classList.toggle('hidden', activeTab !== 'quality');
+            if (iterationPanel) iterationPanel.classList.toggle('hidden', activeTab !== 'iteration');
             if (configPanel) configPanel.classList.toggle('hidden', activeTab !== 'config');
             if (qualityBtn) qualityBtn.className = activeTab === 'quality' ? activeClass : inactiveClass;
+            if (iterationBtn) iterationBtn.className = activeTab === 'iteration' ? activeClass : inactiveClass;
             if (configBtn) configBtn.className = activeTab === 'config' ? activeClass : inactiveClass;
             if (activeTab === 'config') renderMailConfigReviewOnlyMocks();
+            if (activeTab === 'iteration' && typeof loadMailIterationList === 'function') loadMailIterationList();
         }
 
         function cloneMailSequenceStepDefaults() {

@@ -1179,6 +1179,7 @@ class MailDraftAssembledContent(BaseModel):
     llm_status: str = "fallback_template"
     llm_model_used: str | None = None
     llm_error: str | None = None
+    llm_prompt: str | None = None  # 真实发到大模型的 prompt 字符串，仅服务端内部用（不进 MailGenerateDraftResponse 顶层 contract）
     review_metadata: MailGenerateDraftReviewMetadata = MailGenerateDraftReviewMetadata()
 
 class KnowledgeChunkCreate(BaseModel):
@@ -4228,6 +4229,7 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
             "subject": subject[:200],
             "paragraphs": paragraphs[:6],
             "error": None,
+            "prompt": full_prompt,
         }
     except Exception as exc:
         logger.warning("MAIL_DRAFT_LLM_FALLBACK reason=%s", exc)
@@ -4237,6 +4239,7 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
             "subject": "",
             "paragraphs": [],
             "error": sanitize_text(str(exc))[:240],
+            "prompt": full_prompt,
         }
 
 
@@ -4295,6 +4298,7 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
         llm_status=llm_result["status"],
         llm_model_used=llm_result["model"],
         llm_error=llm_result["error"],
+        llm_prompt=llm_result.get("prompt"),
         review_metadata=review_meta,
     )
 
@@ -12437,6 +12441,430 @@ async def get_mail_demo_contacts(db: Session = Depends(get_db)):
             "未来步数可配置，由 mail_sequence_strategy.ALL_MAIL_SEQUENCE_STEPS 控制。"
         ),
     }
+
+
+# ===================== 邮件 AI 回复迭代记录（v1.7.205） =====================
+# 一次迭代 = 5 案例 × 4 步 = 20 封邮件串行生成，落 mail_iteration_run + mail_iteration_draft。
+# 后台线程跑（HTTP 立即返回 run_id），前端轮询查状态。
+
+def _score_mail_iteration_draft(
+    *,
+    response_data: dict,
+    elapsed_ms: int,
+    final_subject: str,
+    final_body_html: str,
+) -> dict:
+    """规则版评分（0-100），返回 {score, breakdown, notes}。"""
+    breakdown = {}
+    notes_parts = []
+
+    # 维度 1：LLM 真调用成功 30 分
+    if (response_data.get("llm_status") or "") == "success":
+        breakdown["llm_success"] = 30
+    else:
+        breakdown["llm_success"] = 0
+        notes_parts.append("LLM 未真调用成功（fallback 模板）")
+
+    # 维度 2：命中 Few-Shot 15 分
+    if response_data.get("retrieved_fewshot_id"):
+        breakdown["fewshot_hit"] = 15
+    else:
+        breakdown["fewshot_hit"] = 0
+        notes_parts.append("Few-Shot 未命中")
+
+    # 维度 3：主题中文 + 长度 6-60 字符 10 分
+    subject = (final_subject or "").strip()
+    has_chinese_subject = bool(re.search(r"[一-鿿]", subject))
+    if has_chinese_subject and 6 <= len(subject) <= 80:
+        breakdown["subject_quality"] = 10
+    elif has_chinese_subject:
+        breakdown["subject_quality"] = 6
+        notes_parts.append("主题中文但长度不在 6-80 区间")
+    else:
+        breakdown["subject_quality"] = 0
+        notes_parts.append("主题非中文或为空")
+
+    # 维度 4：正文长度 ≥ 80 字符 10 分
+    body_text = re.sub(r"<[^>]+>", "", final_body_html or "")
+    body_len = len(body_text.strip())
+    if body_len >= 80:
+        breakdown["body_length"] = 10
+    elif body_len >= 30:
+        breakdown["body_length"] = 5
+    else:
+        breakdown["body_length"] = 0
+        notes_parts.append(f"正文过短（{body_len} 字符）")
+
+    # 维度 5：正文段落 ≥ 3 段 10 分
+    paragraph_count = len(re.findall(r"<p[^>]*>", final_body_html or ""))
+    if paragraph_count >= 3:
+        breakdown["paragraph_count"] = 10
+    elif paragraph_count >= 2:
+        breakdown["paragraph_count"] = 5
+    else:
+        breakdown["paragraph_count"] = 0
+        notes_parts.append(f"段落过少（{paragraph_count} 段）")
+
+    # 维度 6：安全门 passed / yellow_card / red_card
+    sg = response_data.get("safety_guardrail") or {}
+    overall = sg.get("overall_outcome") or ""
+    if overall == "passed":
+        breakdown["safety_outcome"] = 15
+    elif overall.startswith("yellow_card"):
+        breakdown["safety_outcome"] = 8
+        notes_parts.append(f"安全门黄牌：{overall}")
+    elif overall.startswith("red_card"):
+        breakdown["safety_outcome"] = 0
+        notes_parts.append(f"安全门红卡阻断：{overall}")
+    else:
+        breakdown["safety_outcome"] = 4
+        notes_parts.append(f"安全门状态未识别：{overall}")
+
+    # 维度 7：正文不含中英混杂错乱 10 分
+    en_word_count = len(re.findall(r"\b[A-Za-z]{4,}\b", body_text))
+    if en_word_count == 0:
+        breakdown["language_purity"] = 10
+    elif en_word_count <= 3:
+        breakdown["language_purity"] = 6
+    else:
+        breakdown["language_purity"] = 0
+        notes_parts.append(f"正文含 {en_word_count} 个英文词（≥4 字符），疑似中英混杂")
+
+    score = sum(breakdown.values())
+    return {
+        "score": score,
+        "breakdown": breakdown,
+        "notes": "；".join(notes_parts) or "全维度通过",
+    }
+
+
+def _run_one_mail_iteration_draft(
+    *,
+    db: Session,
+    run_id: str,
+    demo_contact: dict,
+    suite_step: int,
+) -> None:
+    """跑单封草稿，落 mail_iteration_draft 一行。"""
+    from database import MailIterationDraft
+    demo_index = demo_contact["demo_index"]
+    scenario = demo_contact["default_scenario"]
+    payload = MailGenerateDraftRequest(
+        customer_key=demo_contact["customer_key"],
+        contact_email=demo_contact["contact_email"],
+        cc_emails=[],
+        scenario=scenario,
+        suite_step=suite_step,
+        current_seller_name=demo_contact.get("default_seller_name") or "销售测试",
+        current_seller_signature=demo_contact.get("default_seller_signature") or "销售测试\nSpeedAsia 翻译与本地化部",
+    )
+
+    started_at = datetime.utcnow()
+    draft_row = MailIterationDraft(
+        run_id=run_id,
+        demo_index=demo_index,
+        demo_label=demo_contact.get("demo_label"),
+        scenario=scenario,
+        suite_step=suite_step,
+        customer_key=payload.customer_key,
+        contact_email=payload.contact_email,
+        request_payload=payload.model_dump(),
+        status="running",
+        started_at=started_at,
+    )
+    db.add(draft_row)
+    db.commit()
+
+    try:
+        # 注意: _build_mail_generate_draft_response 内部会调用 _assemble_mail_draft_from_intent_profile
+        # 我们需要拿到 llm_prompt，但 response 顶层 contract 没暴露。这里直接复算一份 prompt 落库。
+        # 为了准确，我们调一份内部装配再读 assembled.llm_prompt。
+        step = get_mail_sequence_step(payload.scenario, int(payload.suite_step))
+        interval = get_mail_sequence_step_interval(payload.scenario, int(payload.suite_step))
+        min_score = _mail_fewshot_min_score()
+        fewshot = _mail_generate_draft_fewshot(
+            db,
+            scenario=payload.scenario,
+            function_fragments=tuple(step.recommended_snippet_types),
+            min_score=min_score,
+        )
+        commercial_terms = _resolve_mail_commercial_terms(db, suite_step=int(payload.suite_step))
+        intent_profile = _build_mail_draft_intent_profile(
+            payload=payload,
+            step=step,
+            interval=interval,
+            admitted_fewshot=fewshot,
+            commercial_terms=commercial_terms,
+        )
+        assembled = _assemble_mail_draft_from_intent_profile(intent_profile)
+        # 拿到 llm_prompt 后调真正 endpoint 拿完整响应
+        response = _build_mail_generate_draft_response(db, payload)
+        response_dict = response.model_dump()
+
+        elapsed_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+        quality = _score_mail_iteration_draft(
+            response_data=response_dict,
+            elapsed_ms=elapsed_ms,
+            final_subject=response.final_subject,
+            final_body_html=response.final_body_html,
+        )
+
+        # 更新落库
+        draft_row.llm_prompt = (assembled.llm_prompt or "")[:8000]
+        draft_row.llm_status = response.llm_status
+        draft_row.llm_model_used = response.llm_model_used
+        draft_row.llm_error = response.llm_error
+        draft_row.response_payload = response_dict
+        draft_row.final_subject = response.final_subject
+        draft_row.final_body_html = response.final_body_html
+        draft_row.retrieved_fewshot_id = response.retrieved_fewshot_id
+        if response.fewshot_match_score is not None:
+            try:
+                draft_row.fewshot_match_score = Decimal(str(response.fewshot_match_score)).quantize(Decimal("0.0001"))
+            except Exception:
+                pass
+        sg = response_dict.get("safety_guardrail") or {}
+        draft_row.overall_outcome = sg.get("overall_outcome")
+        draft_row.safety_status = sg.get("status")
+        draft_row.quality_score = Decimal(str(quality["score"]))
+        draft_row.quality_breakdown = quality["breakdown"]
+        draft_row.quality_notes = quality["notes"]
+        draft_row.elapsed_ms = elapsed_ms
+        draft_row.status = "success"
+        draft_row.finished_at = datetime.utcnow()
+        db.commit()
+    except Exception as exc:
+        logger.exception("MAIL_ITERATION_DRAFT_FAILED run=%s demo=%s step=%s", run_id, demo_index, suite_step)
+        draft_row.status = "failed"
+        draft_row.error_message = str(exc)[:500]
+        draft_row.finished_at = datetime.utcnow()
+        draft_row.elapsed_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
+
+def _run_mail_iteration_background(run_id: str, run_label: str) -> None:
+    """后台线程入口：跑 5 案例 × 4 步 = 20 封，落库并更新 run 统计。"""
+    from database import MailIterationRun, MailIterationDraft, MailDemoContact
+    from mail_sequence_strategy import ALL_MAIL_SEQUENCE_STEPS
+    db = SessionLocal()
+    try:
+        run_row = db.query(MailIterationRun).filter(MailIterationRun.run_id == run_id).first()
+        if not run_row:
+            logger.error("MAIL_ITERATION_RUN not found: %s", run_id)
+            return
+        run_row.started_at = datetime.utcnow()
+        run_row.status = "running"
+        db.commit()
+
+        demo_rows = db.query(MailDemoContact).order_by(MailDemoContact.demo_index).all()
+        demo_contacts = []
+        for r in demo_rows:
+            demo_contacts.append({
+                "demo_index": r.demo_index,
+                "demo_label": r.demo_label,
+                "customer_key": f"CUST-DEMO-FROM-CRM-{r.demo_index}",
+                "contact_email": r.contact_email_masked,
+                "default_scenario": r.default_scenario,
+                "default_suite_step": r.default_suite_step,
+                "default_seller_name": r.default_seller_name,
+                "default_seller_signature": r.default_seller_signature,
+            })
+
+        steps = list(ALL_MAIL_SEQUENCE_STEPS)
+        total = len(demo_contacts) * len(steps)
+        run_row.total_drafts = total
+        db.commit()
+
+        for contact in demo_contacts:
+            for step_no in steps:
+                _run_one_mail_iteration_draft(
+                    db=db, run_id=run_id, demo_contact=contact, suite_step=step_no
+                )
+
+        # 汇总统计
+        all_drafts = db.query(MailIterationDraft).filter(MailIterationDraft.run_id == run_id).all()
+        succeeded = sum(1 for d in all_drafts if d.status == "success")
+        failed = sum(1 for d in all_drafts if d.status == "failed")
+        llm_success = sum(1 for d in all_drafts if d.llm_status == "success")
+        llm_fallback = sum(1 for d in all_drafts if d.llm_status == "fallback_template")
+        scored = [float(d.quality_score) for d in all_drafts if d.quality_score is not None]
+        elapsed = [d.elapsed_ms for d in all_drafts if d.elapsed_ms is not None]
+
+        run_row.succeeded_drafts = succeeded
+        run_row.failed_drafts = failed
+        run_row.llm_success_count = llm_success
+        run_row.llm_fallback_count = llm_fallback
+        run_row.avg_quality_score = Decimal(str(round(sum(scored) / len(scored), 2))) if scored else None
+        run_row.min_quality_score = Decimal(str(round(min(scored), 2))) if scored else None
+        run_row.max_quality_score = Decimal(str(round(max(scored), 2))) if scored else None
+        run_row.avg_elapsed_ms = int(sum(elapsed) / len(elapsed)) if elapsed else None
+        run_row.finished_at = datetime.utcnow()
+        run_row.status = "success" if failed == 0 else ("partial" if succeeded > 0 else "failed")
+        db.commit()
+        logger.info("MAIL_ITERATION_RUN_COMPLETED run=%s status=%s succeeded=%d failed=%d", run_id, run_row.status, succeeded, failed)
+    except Exception as exc:
+        logger.exception("MAIL_ITERATION_RUN_FAILED run=%s", run_id)
+        try:
+            run_row = db.query(MailIterationRun).filter(MailIterationRun.run_id == run_id).first()
+            if run_row:
+                run_row.status = "failed"
+                run_row.error_message = str(exc)[:1000]
+                run_row.finished_at = datetime.utcnow()
+                db.commit()
+        except Exception:
+            db.rollback()
+    finally:
+        db.close()
+
+
+class MailIterationRunRequest(BaseModel):
+    run_label: str | None = None
+    triggered_by: str | None = None
+    notes: str | None = None
+
+    model_config = {"extra": "forbid"}
+
+
+@app.post("/api/v1/mail/iterations/run")
+def trigger_mail_iteration_run(payload: MailIterationRunRequest, db: Session = Depends(get_db)):
+    """触发一次邮件 AI 回复迭代：5 案例 × 4 步 = 20 封，后台线程跑完落库。立即返回 run_id。"""
+    from database import MailIterationRun, MailDemoContact
+    import threading
+    # 校验有案例可跑
+    demo_count = db.query(MailDemoContact).count()
+    if demo_count == 0:
+        raise HTTPException(status_code=400, detail="尚未灌入测试案例，请先跑 python backend/seed_mail_demo_contacts.py")
+
+    # 自增版本号
+    last = db.query(MailIterationRun).order_by(MailIterationRun.version_no.desc()).first()
+    next_version = (last.version_no + 1) if last else 1
+
+    run_row = MailIterationRun(
+        version_no=next_version,
+        run_label=(payload.run_label or f"邮件迭代 v{next_version}").strip(),
+        triggered_by=(payload.triggered_by or "manual").strip(),
+        triggered_at=datetime.utcnow(),
+        status="queued",
+        notes=(payload.notes or "").strip() or None,
+        pipeline_snapshot={
+            "llm_model": getattr(settings, "LLM1_MODEL", "") or "llm1",
+            "llm_url": getattr(settings, "LLM1_API_URL", "") or "",
+            "system_prompt_first_120_chars": _MAIL_DRAFT_LLM_SYSTEM_PROMPT[:120],
+            "demo_contact_count": demo_count,
+            "version_no": next_version,
+            "snapshot_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        },
+    )
+    db.add(run_row)
+    db.commit()
+    db.refresh(run_row)
+    run_id = str(run_row.run_id)
+    run_label = run_row.run_label
+
+    threading.Thread(
+        target=_run_mail_iteration_background,
+        args=(run_id, run_label),
+        daemon=True,
+        name=f"mail-iteration-{run_id[:8]}",
+    ).start()
+
+    return {
+        "run_id": run_id,
+        "version_no": next_version,
+        "run_label": run_label,
+        "status": "queued",
+        "total_drafts_planned": demo_count * 4,
+        "started_in_background_thread": True,
+        "notice": "本次迭代会串行跑 5 案例 × 4 步 = 20 封邮件，预计 5-10 分钟。前端轮询 GET /api/v1/mail/iterations/{run_id} 查看实时进度。",
+    }
+
+
+def _serialize_mail_iteration_run_row(row) -> dict:
+    return {
+        "run_id": str(row.run_id),
+        "version_no": row.version_no,
+        "run_label": row.run_label,
+        "triggered_by": row.triggered_by,
+        "triggered_at": row.triggered_at.isoformat() if row.triggered_at else None,
+        "started_at": row.started_at.isoformat() if row.started_at else None,
+        "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+        "status": row.status,
+        "total_drafts": row.total_drafts,
+        "succeeded_drafts": row.succeeded_drafts,
+        "failed_drafts": row.failed_drafts,
+        "avg_quality_score": float(row.avg_quality_score) if row.avg_quality_score is not None else None,
+        "min_quality_score": float(row.min_quality_score) if row.min_quality_score is not None else None,
+        "max_quality_score": float(row.max_quality_score) if row.max_quality_score is not None else None,
+        "avg_elapsed_ms": row.avg_elapsed_ms,
+        "llm_success_count": row.llm_success_count,
+        "llm_fallback_count": row.llm_fallback_count,
+        "pipeline_snapshot": row.pipeline_snapshot,
+        "notes": row.notes,
+        "error_message": row.error_message,
+    }
+
+
+def _serialize_mail_iteration_draft_row(row) -> dict:
+    return {
+        "draft_id": str(row.draft_id),
+        "demo_index": row.demo_index,
+        "demo_label": row.demo_label,
+        "scenario": row.scenario,
+        "suite_step": row.suite_step,
+        "customer_key": row.customer_key,
+        "contact_email": row.contact_email,
+        "llm_prompt": row.llm_prompt,
+        "llm_status": row.llm_status,
+        "llm_model_used": row.llm_model_used,
+        "llm_error": row.llm_error,
+        "final_subject": row.final_subject,
+        "final_body_html": row.final_body_html,
+        "retrieved_fewshot_id": str(row.retrieved_fewshot_id) if row.retrieved_fewshot_id else None,
+        "fewshot_match_score": float(row.fewshot_match_score) if row.fewshot_match_score is not None else None,
+        "overall_outcome": row.overall_outcome,
+        "safety_status": row.safety_status,
+        "quality_score": float(row.quality_score) if row.quality_score is not None else None,
+        "quality_breakdown": row.quality_breakdown,
+        "quality_notes": row.quality_notes,
+        "elapsed_ms": row.elapsed_ms,
+        "status": row.status,
+        "error_message": row.error_message,
+        "started_at": row.started_at.isoformat() if row.started_at else None,
+        "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+    }
+
+
+@app.get("/api/v1/mail/iterations")
+def list_mail_iterations(limit: int = Query(default=50, ge=1, le=200), db: Session = Depends(get_db)):
+    from database import MailIterationRun
+    rows = db.query(MailIterationRun).order_by(
+        MailIterationRun.triggered_at.desc()
+    ).limit(limit).all()
+    return {
+        "version": "mail_iteration.v1",
+        "count": len(rows),
+        "items": [_serialize_mail_iteration_run_row(r) for r in rows],
+    }
+
+
+@app.get("/api/v1/mail/iterations/{run_id}")
+def get_mail_iteration_detail(run_id: str, db: Session = Depends(get_db)):
+    from database import MailIterationRun, MailIterationDraft
+    run_row = db.query(MailIterationRun).filter(MailIterationRun.run_id == run_id).first()
+    if not run_row:
+        raise HTTPException(status_code=404, detail=f"迭代记录不存在：{run_id}")
+    drafts = db.query(MailIterationDraft).filter(
+        MailIterationDraft.run_id == run_id
+    ).order_by(MailIterationDraft.demo_index, MailIterationDraft.suite_step).all()
+    return {
+        "version": "mail_iteration_detail.v1",
+        "run": _serialize_mail_iteration_run_row(run_row),
+        "drafts": [_serialize_mail_iteration_draft_row(d) for d in drafts],
+    }
+
 
 @app.get("/api/email_effect_feedback")
 async def list_email_effect_feedback(
