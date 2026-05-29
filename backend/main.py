@@ -740,19 +740,21 @@ async def startup_event():
     # from kb_evaluation_worker import start_kb_evaluation_thread
     # start_kb_evaluation_thread()
 
-    logger.info("启动企微会话存档 15 分钟异步轮询任务")
-    async def background_poll_worker():
-        while True:
-            try:
-                # 使用 to_thread 将底层 C-SDK 同步阻塞(10秒超时网络I/O) 推到独立线程池，绝不卡死 FastAPI 主服务
-                result = await asyncio.to_thread(ArchiveService.sync_today_data)
-                if result.get("status") != "success":
-                    logger.warning("企微会话存档轮询未成功: %s", result.get("msg"))
-            except Exception as e:
-                logger.error(f"企微会话存档自动轮询异常: {e}")
-            await asyncio.sleep(900)
-
-    asyncio.create_task(background_poll_worker())
+    # 2026-05-29: 现有轮询收取企微消息已注释关闭，下一步改为回调形式收取消息避免延时。
+    logger.info("企微会话存档自动轮询已停用，下一步切换为回调事件流触发。")
+    # logger.info("启动企微会话存档 15 分钟异步轮询任务")
+    # async def background_poll_worker():
+    #     while True:
+    #         try:
+    #             # 使用 to_thread 将底层 C-SDK 同步阻塞 推到独立线程池
+    #             result = await asyncio.to_thread(ArchiveService.sync_today_data)
+    #             if result.get("status") != "success":
+    #                 logger.warning("企微会话存档轮询未成功: %s", result.get("msg"))
+    #         except Exception as e:
+    #             logger.error(f"企微会话存档自动轮询异常: {e}")
+    #         await asyncio.sleep(900)
+    # 
+    # asyncio.create_task(background_poll_worker())
 
 
 # === 30 分钟后台补算 API 调用的"原始回复分 + 相似分" ===
@@ -4091,50 +4093,88 @@ def _build_mail_draft_intent_profile(
         commercial_terms=commercial_terms,
     )
 
+_MAIL_SCENARIO_CHINESE = {
+    "re_activation": "老客户唤醒",
+    "new_business_promotion": "新业务推广",
+    "new_contact_intro": "新接手联系人介绍",
+}
+
+_MAIL_INDUSTRY_CN = {
+    "unknown": "未识别",
+    "medical": "医疗医药",
+    "legal": "法律服务",
+    "manufacturing": "制造业",
+    "exhibition": "展会会展",
+    "education": "教育培训",
+}
+
+_MAIL_PAYMENT_RISK_CN = {
+    "unknown": "未识别",
+    "low": "低",
+    "medium": "中",
+    "high": "高",
+    "blocked": "黑名单",
+    "prepaid_required": "需预付",
+}
+
+_MAIL_SCENARIO_DEFAULT_SUBJECT = {
+    "re_activation": "好久不见 想跟您聊聊最近的项目动向",
+    "new_business_promotion": "向您介绍我们新增的本地化服务能力",
+    "new_contact_intro": "您好 我是您本次项目的新对接人",
+}
+
+
 def _mail_subject_from_intent_profile(profile: MailDraftIntentProfile) -> str:
+    """中文邮件主题：优先按场景拿预设的中文主题，再加上步骤标识。"""
+    scenario_subject = _MAIL_SCENARIO_DEFAULT_SUBJECT.get(profile.scenario)
+    if scenario_subject:
+        return scenario_subject
+    # fallback: 把 subject_hint 里的中文占位符替换掉
     return (
         profile.subject_hint
-        .replace("[行业]", "your industry")
-        .replace("[翻译+排版+印刷]", "translation and production")
-    )
+        .replace("[行业]", "贵司所在行业")
+        .replace("[翻译+排版+印刷]", "翻译排版印刷一体化")
+    ) or "向您同步项目协作的最新进展"
 
 _MAIL_DRAFT_LLM_SYSTEM_PROMPT = (
-    "You are a B2B sales email drafter for SpeedAsia, a translation and printing supplier.\n"
-    "Your job: write ONLY the human conversational portion (intro / value / CTA) of an outreach\n"
-    "email in English. Backend code injects pricing/delivery/discount/payment terms separately.\n"
+    "你是 SpeedAsia 翻译与本地化部的资深 B2B 销售邮件起草人。你的工作只写一封中文邮件里偏【人际沟通】"
+    "的那一段内容（自我介绍 / 价值点 / 行动呼吁），不写商业条款数字。\n"
     "\n"
-    "HARD RULES:\n"
-    "1. NEVER write actual numeric prices, delivery days, discounts, percent-off, or payment terms.\n"
-    "   You only write the conversational text. Do NOT mention specific numbers, dates, or currency.\n"
-    "2. Address the recipient by their first name when possible. Keep tone professional, warm, concise.\n"
-    "3. Reference the few-shot snippet for angle/topic only. DO NOT copy any text verbatim.\n"
-    "4. Output STRICT JSON ONLY, format exactly:\n"
-    '   {\"subject\": \"<English subject under 80 chars>\",\n'
-    '    \"paragraphs\": [\"<paragraph 1>\", \"<paragraph 2>\", \"<paragraph 3>\"]}\n'
-    "5. 2 to 4 paragraphs total. Each paragraph 1 to 3 sentences. Plain text, no HTML, no markdown.\n"
-    "6. Do not invent meeting times, attachments, prior conversations, or facts not given.\n"
+    "硬性规则：\n"
+    "1. 邮件正文必须使用【简体中文】。称呼可以含对方姓名。语气专业、温和、克制，不要夸张。\n"
+    "2. 绝对不要写任何具体价格、单价、折扣百分比、付款周期天数、交付天数等商业数字 — 这些由后端代码"
+    "用占位符强制填入，你写了反而会被安全门拦截。\n"
+    "3. 不要使用任何英文单词或英文句子，邮件正文里不能出现英文（除非是项目专名、机构名、人名）。\n"
+    "4. 引用范例只用其角度/选题/语气，不要逐字抄袭。\n"
+    "5. 严格输出 JSON 对象（不要 markdown 不要代码块），格式必须为：\n"
+    "   {\"subject\": \"<中文邮件主题，不超过 60 字>\", \"paragraphs\": [\"<第一段>\", \"<第二段>\", \"<第三段>\"]}\n"
+    "6. 段落数 2 到 4 段；每段 1 到 3 句话；纯文本不要 HTML 不要 markdown。\n"
+    "7. 不要凭空编造客户名、订单号、附件、会议时间、过往对话或未给定的事实。\n"
+    "8. 如果场景是【新接手联系人介绍】，第一段必须明确自我介绍是新接手；如果是【老客户唤醒】，第一段必须"
+    "表达久未联系的问候并表示尊重对方时间。\n"
 )
 
 
 def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict:
-    """Call LLM-1 to draft the conversational intro/value/CTA paragraphs.
+    """调用 LLM-1 起草中文邮件的"人际沟通"段（自我介绍 / 价值 / 行动呼吁）。
 
     Returns dict with keys: status (success / fallback_template), model, subject, paragraphs,
     error (when fallback). Never raises; on any failure returns status='fallback_template'.
     """
     fewshot_reference = (profile.admitted_fewshot_content or "")[:240]
+    scenario_cn = _MAIL_SCENARIO_CHINESE.get(profile.scenario, profile.scenario_label)
     user_prompt_lines = [
-        "CONTEXT:",
-        f"- Recipient name: {profile.recipient_name}",
-        f"- Scenario: {profile.scenario_label} (step {profile.suite_step}/4)",
-        f"- Step objective: {profile.objective}",
-        f"- Suggested CTA style: {profile.cta_style}",
-        f"- Subject hint: {profile.subject_hint}",
-        f"- Customer industry: {profile.company_industry or 'unknown'}",
-        f"- Few-shot reference (use angle, not text): {fewshot_reference or 'none available'}",
-        f"- Seller display name: {profile.seller_name}",
+        "上下文信息：",
+        f"- 收件人姓名：{profile.recipient_name}",
+        f"- 业务场景：{scenario_cn}（第 {profile.suite_step} 步，共 4 步）",
+        f"- 本步目标：{profile.objective}",
+        f"- 推荐的行动呼吁风格：{profile.cta_style}",
+        f"- 主题提示：{profile.subject_hint or '（无）'}",
+        f"- 客户行业：{profile.company_industry or '未识别'}",
+        f"- 范例参考（只用其角度，不要逐字抄）：{fewshot_reference or '（无）'}",
+        f"- 发件销售姓名：{profile.seller_name}",
         "",
-        "OUTPUT STRICT JSON NOW.",
+        "请立即输出严格 JSON 对象（含 subject 与 paragraphs 两个字段，全部中文）。",
     ]
     user_prompt = "\n".join(user_prompt_lines)
     full_prompt = _MAIL_DRAFT_LLM_SYSTEM_PROMPT + "\n\n" + user_prompt
@@ -4176,38 +4216,43 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
 def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) -> MailDraftAssembledContent:
     llm_result = _llm_generate_mail_intro_paragraphs(profile)
     terms = profile.commercial_terms
+    scenario_cn = _MAIL_SCENARIO_CHINESE.get(profile.scenario, profile.scenario_label)
 
     if llm_result["status"] == "success":
         subject_text = llm_result["subject"] or _mail_subject_from_intent_profile(profile)
         paragraphs = [html.escape(p) for p in llm_result["paragraphs"]]
     else:
+        # 大模型上游不可用时的中文兜底模板。仍保证邮件内容中文 + 占位符强制保护。
         subject_text = _mail_subject_from_intent_profile(profile)
         paragraphs = [
-            f"Dear {html.escape(profile.recipient_name)},",
+            f"{html.escape(profile.recipient_name)} 您好，",
             (
-                f"This is a draft-only scaffold for {html.escape(profile.scenario_label)} "
-                f"Step {profile.suite_step}: {html.escape(profile.objective)}"
+                f"这是一封【{html.escape(scenario_cn)}】场景第 {profile.suite_step} 步的草稿样例。"
+                f"本步目标：{html.escape(profile.objective)}。"
             ),
         ]
         if profile.admitted_fewshot_content:
-            paragraphs.append(f"Reference angle: {html.escape(profile.admitted_fewshot_content[:240])}")
+            paragraphs.append(
+                f"参考角度（来自我们历史的高质量邮件范例库）：{html.escape(profile.admitted_fewshot_content[:240])}"
+            )
 
+    industry_cn = _MAIL_INDUSTRY_CN.get(profile.company_industry, profile.company_industry or "未识别")
+    risk_cn = _MAIL_PAYMENT_RISK_CN.get(profile.payment_risk_level, profile.payment_risk_level or "未识别")
     paragraphs.append(
-        "CRM profile signals for review: "
-        f"Industry: {html.escape(profile.company_industry)}; "
-        f"Payment risk: {html.escape(profile.payment_risk_level)}; "
-        f"Customer domains: {html.escape(', '.join(profile.customer_domains) or 'unknown')}."
+        "供审稿参考的客户画像信号："
+        f"行业：{html.escape(industry_cn)}；"
+        f"欠款风险等级：{html.escape(risk_cn)}；"
+        f"已知客户域名：{html.escape('、'.join(profile.customer_domains) or '未识别')}。"
     )
     paragraphs.append(
-        "Backend-filled commercial terms for review: "
-        f"Price: {html.escape(terms.price.value)}; "
-        f"Delivery SLA: {html.escape(terms.delivery.value)}; "
-        f"Discount: {html.escape(terms.discount.value)}; "
-        f"Payment terms: {html.escape(terms.payment_terms.value)}."
+        "供审稿参考的后端注入商业条款（占位符将在真发件前由 PricingRule 表强制替换）："
+        f"单价 {html.escape(terms.price.value)}；"
+        f"交付工期 {html.escape(terms.delivery.value)}；"
+        f"折扣 {html.escape(terms.discount.value)}；"
+        f"付款周期 {html.escape(terms.payment_terms.value)}。"
     )
     paragraphs.extend([
-        f"Suggested next step: {html.escape(profile.cta_style)}",
-        "This draft is locked for human review and is not enabled for real sending.",
+        "本草稿已锁定到人工审稿队列，当前未启用真实发件。",
         html.escape(profile.seller_signature).replace("\n", "<br>"),
     ])
 
@@ -4293,26 +4338,25 @@ def _build_mail_generate_draft_response(
     overall_outcome = _mail_safety_overall_outcome(gate_results)
 
     warnings = [
-        "Review-only draft: no real email sending is enabled.",
+        "仅评审草稿：当前未启用真实发件。",
         *intent_profile.commercial_terms.warnings,
     ]
     if intent_profile.interval_delay_days > 0:
         warnings.append(
-            f"Default sequence interval metadata says this step waits {intent_profile.interval_delay_days} days."
+            f"邮件序列默认间隔：本步骤需等待 {intent_profile.interval_delay_days} 天后才生成。"
         )
     if delivery_sla_guardrail:
         warnings.append(
-            "YELLOW CARD: delivery promise was faster than the standard SLA; "
-            f"draft was physically calibrated to {delivery_sla_guardrail['standard_sla_label']} and remains locked."
+            "黄牌：交付承诺早于标准工期，"
+            f"草稿正文已自动校准为 {delivery_sla_guardrail['standard_sla_label']} 并锁定审稿。"
         )
     if payment_risk_finance_review_guardrail:
         warnings.append(
-            "YELLOW CARD: CRM payment risk level requires manual finance review before any sending."
+            "黄牌：CRM 显示该客户欠款风险等级偏高，发件前必须经过人工财务审核。"
         )
     if recipient_domain_confidentiality_block:
         warnings.append(
-            "RED CARD: recipient-domain confidentiality guardrail blocked a recipient or CC domain; "
-            "draft is hard-blocked and real sending remains disabled."
+            "红牌：收件人/抄送域名命中竞争对手或高敏感域名单，草稿已硬阻断，真实发件继续保持关闭。"
         )
         return MailGenerateDraftResponse(
             status="blocked_by_recipient_domain_confidentiality_gate",
@@ -4334,8 +4378,8 @@ def _build_mail_generate_draft_response(
                 triggered_warnings=warnings,
                 is_locked_for_approval=True,
                 lock_reason=(
-                    "Recipient-domain confidentiality guardrail blocked this draft because "
-                    "the recipient or CC domain is competitor or risky. Real sending remains disabled."
+                    "收件域名防泄密门拦截：收件人或抄送邮箱域名命中竞争对手或高敏感域，"
+                    "草稿硬阻断，真实发件继续保持关闭。"
                 ),
                 real_sending_enabled=False,
                 draft_status=MailSequenceStatus.BLOCKED.value,
@@ -4348,8 +4392,7 @@ def _build_mail_generate_draft_response(
         )
     if sensitive_content_red_card_block:
         warnings.append(
-            "RED CARD: sensitive internal or finance-only content was detected; "
-            "draft is hard-blocked and real sending remains disabled."
+            "红牌：草稿命中敏感内容（内部底价/财务个人账户/未公开返点等），已硬阻断，真实发件继续保持关闭。"
         )
         return MailGenerateDraftResponse(
             status="blocked_by_sensitive_content_red_card_gate",
@@ -4371,9 +4414,8 @@ def _build_mail_generate_draft_response(
                 triggered_warnings=warnings,
                 is_locked_for_approval=True,
                 lock_reason=(
-                    "Sensitive-content red-card guardrail blocked this draft because it "
-                    "contains internal floor prices, personal finance account details, "
-                    "or unpublished rebates/discounts. Real sending remains disabled."
+                    "敏感内容红牌门拦截：草稿中包含内部底价、财务个人账户或未公开的返点折扣，"
+                    "已硬阻断，真实发件继续保持关闭。"
                 ),
                 real_sending_enabled=False,
                 draft_status=MailSequenceStatus.BLOCKED.value,
@@ -4385,7 +4427,7 @@ def _build_mail_generate_draft_response(
             ),
         )
     if financial_price_floor_block:
-        warnings.append("RED CARD: explicit price is below the active pricing rule floor; draft is hard-blocked.")
+        warnings.append("红牌：草稿中明示价格低于当前 PricingRule 底线价，已硬阻断。")
         return MailGenerateDraftResponse(
             status="blocked_by_financial_safety_gate",
             draft_status=MailSequenceStatus.BLOCKED.value,
@@ -4406,8 +4448,8 @@ def _build_mail_generate_draft_response(
                 triggered_warnings=warnings,
                 is_locked_for_approval=True,
                 lock_reason=(
-                    "Financial price-floor guardrail blocked this draft because an explicit "
-                    "price is below the active pricing rule floor. Real sending remains disabled."
+                    "财务价格底线门拦截：草稿中出现的明示价格低于当前生效的 PricingRule 底价，"
+                    "已硬阻断，真实发件继续保持关闭。"
                 ),
                 real_sending_enabled=False,
                 draft_status=MailSequenceStatus.BLOCKED.value,
@@ -4420,8 +4462,8 @@ def _build_mail_generate_draft_response(
         )
     if placeholder_bypass_red_card_block:
         warnings.append(
-            "RED CARD: unsafe customer-visible placeholders were detected; "
-            "draft is hard-blocked and real sending remains disabled."
+            "红牌：草稿中残留未被后端替换的客户可见占位符（如 XX/xxxx@xx.com/POxxxx），"
+            "已硬阻断，真实发件继续保持关闭。"
         )
         return MailGenerateDraftResponse(
             status="blocked_by_placeholder_bypass_gate",
@@ -4443,9 +4485,8 @@ def _build_mail_generate_draft_response(
                 triggered_warnings=warnings,
                 is_locked_for_approval=True,
                 lock_reason=(
-                    "Placeholder-bypass guardrail blocked this draft because unresolved "
-                    "customer-visible placeholders remain in the subject or body. "
-                    "Real sending remains disabled."
+                    "占位符绕过门拦截：邮件主题或正文中残留未被后端替换的客户可见占位符，"
+                    "已硬阻断，真实发件继续保持关闭。"
                 ),
                 real_sending_enabled=False,
                 draft_status=MailSequenceStatus.BLOCKED.value,
@@ -4486,15 +4527,15 @@ def _build_mail_generate_draft_response(
             triggered_warnings=warnings,
             is_locked_for_approval=True,
             lock_reason=(
-                "Delivery SLA guardrail calibrated a too-fast promise to the standard SLA; "
-                "draft remains locked for human review and real sending remains disabled."
+                "履约工期 SLA 校准门：本草稿原本承诺的交付工期早于标准工期，已自动校准为标准工期，"
+                "草稿继续锁定到人工审稿，真实发件保持关闭。"
                 if delivery_sla_guardrail else
                 (
-                    "CRM payment risk level requires manual finance review before any sending; "
-                    "draft remains review-only and real sending remains disabled."
+                    "CRM 欠款风险等级偏高，发件前必须经过人工财务审核，"
+                    "草稿保持仅评审状态，真实发件继续关闭。"
                 )
                 if payment_risk_finance_review_guardrail else
-                "Mail draft generation is review-only; real sending remains disabled."
+                "邮件草稿生成处于仅评审状态，真实发件继续保持关闭。"
             ),
             real_sending_enabled=False,
             draft_status=MailSequenceStatus.DRAFTED.value,
@@ -12305,6 +12346,52 @@ async def get_mail_crm_mock_profiles():
     """Return review-only mail CRM mock profiles for isolated integration."""
     return build_mail_crm_mock_catalog()
 
+
+@app.get("/api/v1/mail/demo-contacts")
+async def get_mail_demo_contacts(db: Session = Depends(get_db)):
+    """返回 5 个邮件 AI 回复测试案例联系人（从 CRM 真实画像脱敏后入 PG 表）。
+
+    用途：前端邮件质量诊断面板的 Live Demo 区做案例切换 + 默认值预填。
+    数据来源：mail_demo_contact 表（由 backend/seed_mail_demo_contacts.py 灌入）。
+    数据流：CRM 接口 fetch_crm_profile() 只读 → 脱敏 → 存 PG 独立表 → 本接口只读返回。
+    边界：本接口只读 PG mail_demo_contact 表；不读 CRM 库；不写任何库；不真发邮件。
+    """
+    from database import MailDemoContact
+    rows = db.query(MailDemoContact).order_by(MailDemoContact.demo_index).all()
+    contacts = []
+    for row in rows:
+        contacts.append({
+            "demo_index": row.demo_index,
+            "demo_label": row.demo_label,
+            "demo_label_detail": row.demo_label_detail,
+            "customer_key": f"CUST-DEMO-FROM-CRM-{row.demo_index}",
+            "contact_email": row.contact_email_masked,
+            "contact_name_masked": row.contact_name_masked,
+            "company_name_masked": row.company_name_masked,
+            "company_industry": row.company_industry or "未识别",
+            "customer_lifecycle_stage": row.customer_lifecycle_stage or "未识别",
+            "customer_tier": row.customer_tier or "未识别",
+            "payment_risk_level": row.payment_risk_level or "未识别",
+            "high_risk_flags": row.high_risk_flags or [],
+            "default_scenario": row.default_scenario,
+            "default_suite_step": row.default_suite_step,
+            "default_seller_name": row.default_seller_name,
+            "default_seller_signature": row.default_seller_signature,
+            "source_note": row.source_note,
+            "refreshed_at": row.refreshed_at.isoformat() if row.refreshed_at else None,
+            "crm_profile_snapshot": row.crm_profile_snapshot,
+        })
+    return {
+        "version": "mail_demo_contact.v1",
+        "source": "mail_demo_contact_table",
+        "read_only": True,
+        "wrote_to_crm": False,
+        "wrote_to_db_in_this_request": False,
+        "real_sending_enabled": False,
+        "count": len(contacts),
+        "contacts": contacts,
+    }
+
 @app.get("/api/email_effect_feedback")
 async def list_email_effect_feedback(
     session_id: str | None = None,
@@ -18204,7 +18291,7 @@ async def sidebar_assist(
                 **current_timings,
             }
 
-        need_v1 = request.force_refresh or summary is None
+        need_v1 = request.force_refresh or summary is None or summary.status == "done"
         if need_v1:
             stage_status["analysis_mode"] = "force_refresh" if request.force_refresh else "first_analyze"
             if recent_logs:
@@ -21887,7 +21974,16 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
             if ref_time:
                 # 与上线链路 find_existing_single_session_id(limit=15) 对齐：背景只取触发点之前最近 15 条。
                 # 从已一次性载入的 session_hist_asc 内存切片，不再每轮查库。
-                history_msgs = [m for m in session_hist_asc if m.timestamp < ref_time][-15:]
+                # 排除属于当前合并轮次的所有消息ID，防止发送中的“多段首句”由于时序提早而被误判成历史背景。
+                current_ids = set()
+                if cust and "ids" in cust:
+                    current_ids.update(cust["ids"])
+                if g["sales"] and "ids" in g["sales"]:
+                    current_ids.update(g["sales"]["ids"])
+                history_msgs = [
+                    m for m in session_hist_asc
+                    if m.timestamp < ref_time and m.id not in current_ids
+                ][-15:]
 
             # v1.7.192: 修正 v1.7.191 的误判 —— 服务器在 Beijing TZ 跑,
             # MessageLog.timestamp(由 archive_service datetime.fromtimestamp 写入)是"北京-naive",

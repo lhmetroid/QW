@@ -11,7 +11,7 @@ from typing import Any
 
 
 MAIL_STANDARD_DELIVERY_SLA_DAYS = 3
-MAIL_STANDARD_DELIVERY_SLA_LABEL = f"{MAIL_STANDARD_DELIVERY_SLA_DAYS} business days"
+MAIL_STANDARD_DELIVERY_SLA_LABEL = f"{MAIL_STANDARD_DELIVERY_SLA_DAYS} 个工作日"
 
 
 def delivery_days_from_match(match: re.Match) -> Decimal | None:

@@ -775,6 +775,52 @@ class JobTask(Base):
         Index("idx_job_task_type_created", "job_type", "created_at"),
     )
 
+class MailDemoContact(Base):
+    """邮件 AI 回复演示用的 5 个测试案例联系人快照表（独立 PG 表）。
+
+    数据来源：从 CRM 接口 fetch_crm_profile() 只读拉取后脱敏存入。
+    用途：前端邮件质量诊断面板的真接入演示区做案例切换 + 默认值预填。
+    边界：本表只存测试案例，不写回 CRM。CRM 数据库本身只读，绝不改动。
+    """
+    __tablename__ = "mail_demo_contact"
+
+    demo_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    demo_index = Column(Integer, nullable=False)  # 1-5 案例序号
+    demo_label = Column(String(80), nullable=False)  # 中文维度名 如"熟联系人多合同活跃"
+    demo_label_detail = Column(Text, nullable=True)  # 维度描述详情
+
+    # CRM 来源（脱敏后存）
+    crm_external_userid_masked = Column(String(120), nullable=False)
+    crm_contact_id_masked = Column(String(80), nullable=True)
+    contact_name_masked = Column(String(120), nullable=True)
+    company_name_masked = Column(String(255), nullable=True)
+    contact_email_masked = Column(String(255), nullable=False)
+
+    # CRM 画像可分类字段
+    company_industry = Column(String(80), nullable=True)
+    customer_lifecycle_stage = Column(String(40), nullable=True)
+    customer_tier = Column(String(40), nullable=True)
+    payment_risk_level = Column(String(40), nullable=True)
+    high_risk_flags = Column(JSON, nullable=True)
+
+    # CRM 画像快照（完整 JSON，脱敏后）
+    crm_profile_snapshot = Column(JSON, nullable=False)
+
+    # 邮件 Live Demo 默认表单值
+    default_scenario = Column(String(80), nullable=False)
+    default_suite_step = Column(Integer, nullable=False, default=1)
+    default_seller_name = Column(String(120), nullable=False, default="销售测试")
+    default_seller_signature = Column(Text, nullable=False, default="销售测试\nSpeedAsia 翻译与本地化部")
+
+    # 元数据
+    source_note = Column(Text, nullable=True)
+    refreshed_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_mail_demo_contact_index", "demo_index", unique=True),
+    )
+
 # 初始化数据库连接
 _engine_kwargs = {
     "pool_pre_ping": True,

@@ -374,6 +374,17 @@
                     </div>
                     <span class="rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white" title="本区域所有数据均来自真实后端接口，不是页面内的占位 Mock。">真接后端</span>
                 </div>
+                <div class="mt-4 rounded-lg border border-emerald-200 bg-white p-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="text-xs font-bold text-slate-800" title="5 个测试案例来自 CRM 真实联系人（脱敏后存入独立 mail_demo_contact 表，CRM 库本身只读）。点击案例卡片即自动填入下方表单。">真实测试案例切换（5 选 1，来自 CRM 真实联系人脱敏存档）</div>
+                        <div class="flex items-center gap-2">
+                            <span id="mql-demo-contacts-status" class="text-[11px] text-slate-500">加载中……</span>
+                            <button type="button" onclick="reloadMailDemoContacts()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50" title="重新从后端 GET /api/v1/mail/demo-contacts 拉取 5 个案例。">刷新案例</button>
+                        </div>
+                    </div>
+                    <div id="mql-demo-contacts-grid" class="mt-3 grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-2"></div>
+                    <div id="mql-demo-contact-detail" class="mt-3 hidden rounded border border-emerald-100 bg-emerald-50 p-3 text-[11px] text-slate-700"></div>
+                </div>
                 <div class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-xs">
                     <label class="flex flex-col gap-1" title="CRM 中客户的唯一标识（API 字段名 customer_key）。用于联查 CRM 画像、客户域名白名单、欠款风险等级。示例：CUST-DEMO-MULTI-DOMAIN。必填。">
                         <span class="font-bold text-slate-700">客户编号</span>
@@ -1665,6 +1676,143 @@ Alex</textarea>
         const defaultStatusText = document.getElementById('status-text')?.innerText || '';
         const defaultAnalysisContent = document.getElementById('analysis-content')?.innerHTML || '';
         const defaultAssistContent = document.getElementById('assist-content')?.innerHTML || '';
+
+        // === 邮件 AI 回复测试案例切换器（v1.7.202 真接入 mail_demo_contact 表） ===
+        let mailDemoContactCache = [];
+        let mailDemoContactActiveIndex = null;
+
+        async function loadMailDemoContacts() {
+            const statusEl = document.getElementById('mql-demo-contacts-status');
+            const gridEl = document.getElementById('mql-demo-contacts-grid');
+            const detailEl = document.getElementById('mql-demo-contact-detail');
+            if (!gridEl) return;
+            if (statusEl) statusEl.textContent = '加载中……';
+            gridEl.innerHTML = '';
+            if (detailEl) { detailEl.classList.add('hidden'); detailEl.innerHTML = ''; }
+
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/demo-contacts`, { credentials: 'include' });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                const contacts = (data && data.contacts) || [];
+                mailDemoContactCache = contacts;
+                if (!contacts.length) {
+                    if (statusEl) {
+                        statusEl.textContent = '尚未灌入测试案例（请在后端跑 python backend/seed_mail_demo_contacts.py）';
+                        statusEl.className = 'text-[11px] text-amber-700 font-bold';
+                    }
+                    return;
+                }
+                if (statusEl) {
+                    statusEl.textContent = `已加载 ${contacts.length} 个案例（数据源：${data.source || 'mail_demo_contact_table'}，只读）`;
+                    statusEl.className = 'text-[11px] text-emerald-700';
+                }
+                renderMailDemoContactsGrid(contacts);
+                // 默认选第一个
+                if (contacts.length) pickMailDemoContact(contacts[0].demo_index);
+            } catch (err) {
+                if (statusEl) {
+                    statusEl.textContent = `加载失败：${err.message}`;
+                    statusEl.className = 'text-[11px] text-red-600 font-bold';
+                }
+            }
+        }
+
+        function renderMailDemoContactsGrid(contacts) {
+            const gridEl = document.getElementById('mql-demo-contacts-grid');
+            if (!gridEl) return;
+            gridEl.innerHTML = '';
+            for (const c of contacts) {
+                const card = document.createElement('button');
+                card.type = 'button';
+                card.dataset.demoIndex = c.demo_index;
+                card.className = 'rounded-lg border border-slate-200 bg-white p-3 text-left text-[11px] text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 transition';
+                card.title = `案例 ${c.demo_index}：${c.demo_label}\n${c.demo_label_detail || ''}\n点击后自动填入下方表单。`;
+                card.innerHTML = `
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">案例 ${c.demo_index}</span>
+                        <span class="text-[10px] text-slate-400" title="客户级别 / 欠款风险等级 / 行业">${c.customer_tier || '—'} · ${c.payment_risk_level || '—'} · ${c.company_industry || '—'}</span>
+                    </div>
+                    <div class="mt-2 font-bold text-slate-900">${c.demo_label}</div>
+                    <div class="mt-1 text-slate-600">${c.contact_name_masked || '—'} · ${c.company_name_masked || '—'}</div>
+                    <div class="mt-1 text-[10px] text-slate-500">生命周期：${c.customer_lifecycle_stage || '未识别'}</div>
+                    <div class="mt-1 text-[10px] text-slate-500">推荐场景：${chineseScenarioName(c.default_scenario)} 第 ${c.default_suite_step} 步</div>
+                `;
+                card.onclick = () => pickMailDemoContact(c.demo_index);
+                gridEl.appendChild(card);
+            }
+        }
+
+        function chineseScenarioName(scenario) {
+            return ({
+                're_activation': '老客户唤醒',
+                'new_business_promotion': '新业务推广',
+                'new_contact_intro': '新接手联系人介绍',
+            })[scenario] || scenario;
+        }
+
+        function pickMailDemoContact(demoIndex) {
+            const c = mailDemoContactCache.find(x => x.demo_index === demoIndex);
+            if (!c) return;
+            mailDemoContactActiveIndex = demoIndex;
+
+            // 高亮当前卡片
+            document.querySelectorAll('#mql-demo-contacts-grid button').forEach(btn => {
+                if (parseInt(btn.dataset.demoIndex || '0', 10) === demoIndex) {
+                    btn.classList.add('border-emerald-500', 'bg-emerald-50', 'ring-2', 'ring-emerald-200');
+                } else {
+                    btn.classList.remove('border-emerald-500', 'bg-emerald-50', 'ring-2', 'ring-emerald-200');
+                }
+            });
+
+            // 填表
+            const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = String(v); };
+            setVal('mql-customer-key', c.customer_key);
+            setVal('mql-contact-email', c.contact_email);
+            setVal('mql-scenario', c.default_scenario);
+            setVal('mql-suite-step', c.default_suite_step);
+            setVal('mql-seller-name', c.default_seller_name);
+            setVal('mql-seller-sig', c.default_seller_signature);
+
+            // 展示完整画像
+            const detailEl = document.getElementById('mql-demo-contact-detail');
+            if (detailEl) {
+                const flags = (c.high_risk_flags || []).join('、') || '无';
+                const snapshot = c.crm_profile_snapshot || {};
+                const fmt = (v) => (v == null || v === '') ? '—' : String(v);
+                detailEl.innerHTML = `
+                    <div class="font-bold text-emerald-900 mb-2">案例 ${c.demo_index} · ${c.demo_label}</div>
+                    <div class="mb-2 text-slate-700">${c.demo_label_detail || ''}</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div><b>联系人（脱敏）：</b>${fmt(c.contact_name_masked)}</div>
+                        <div><b>公司（脱敏）：</b>${fmt(c.company_name_masked)}</div>
+                        <div><b>行业：</b>${fmt(c.company_industry)}</div>
+                        <div><b>客户级别：</b>${fmt(c.customer_tier)}</div>
+                        <div><b>生命周期阶段：</b>${fmt(c.customer_lifecycle_stage)}</div>
+                        <div><b>欠款风险等级：</b>${fmt(c.payment_risk_level)}</div>
+                        <div class="md:col-span-2"><b>高风险标记：</b>${flags}</div>
+                        <div class="md:col-span-2"><b>进行中商机摘要（脱敏）：</b>${fmt(snapshot.recent_opportunities_masked)}</div>
+                        <div class="md:col-span-2"><b>合同摘要（脱敏）：</b>${fmt(snapshot.ongoing_contracts_masked)}</div>
+                        <div class="md:col-span-2"><b>最近跟进（脱敏）：</b><pre class="whitespace-pre-wrap text-[10px] mt-1">${fmt(snapshot.contact_recent_followup_masked)}</pre></div>
+                        <div class="md:col-span-2"><b>数据来源：</b>${fmt(c.source_note)}</div>
+                        <div class="md:col-span-2"><b>最后刷新：</b>${fmt(c.refreshed_at)}</div>
+                    </div>
+                `;
+                detailEl.classList.remove('hidden');
+            }
+        }
+
+        function reloadMailDemoContacts() {
+            loadMailDemoContacts();
+        }
+
+        // 首次进入邮件质量诊断面板时自动加载（在 switchMainApp / switchMailWorkspaceTab 触发后跑一次）
+        document.addEventListener('DOMContentLoaded', () => {
+            // 如果用户已经在 mail-quality 路由，立即加载
+            if (window.location.hash === '#mail-quality') {
+                setTimeout(loadMailDemoContacts, 200);
+            }
+        });
 
         async function runMailQualityLiveDraft() {
             const btn = document.getElementById('mql-run-btn');
@@ -3508,6 +3656,10 @@ Alex</textarea>
                 caselibSwitchSubTab(subTab || caselibState.subTab || 'list');
             } else if (normalized === 'mailQuality') {
                 history.replaceState(null, '', `${window.location.pathname}#mail-quality`);
+                // 进入邮件质量诊断时自动加载 5 个测试案例（mail_demo_contact 真接入）
+                if (typeof loadMailDemoContacts === 'function') {
+                    setTimeout(() => loadMailDemoContacts(), 150);
+                }
             } else {
                 history.replaceState(null, '', window.location.pathname);
             }
