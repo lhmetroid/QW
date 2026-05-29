@@ -3078,13 +3078,31 @@ def _first_mail_subject_hint(subject_hints: tuple[str, ...]) -> str:
         normalized = sanitize_text(hint)
         if normalized:
             return normalized
-    return "Following up with a quick note"
+    # v1.7.208 按用户要求注释掉英文兜底字符串 — 中文邮件不能塞英文假数据冒充"已有主题提示"。
+    # 旧逻辑（已注释）:  return "Following up with a quick note"
+    return ""
 
 def _mail_contact_name_from_email(contact_email: str) -> str:
+    # v1.7.208 按用户要求注释掉英文 "there" 兜底 — 中文邮件称呼不能塞英文假数据冒充收件人姓名.
+    # 邮箱本地段为空或脱敏后为空时直接 raise, 让上层 422 暴露给前端"邮箱不可解析出收件人姓名".
+    # 旧逻辑（已注释）:
+    #   local_part = str(contact_email or "").split("@", 1)[0].strip()
+    #   if not local_part:
+    #       return "there"
+    #   return sanitize_text(re.sub(r"[._-]+", " ", local_part)).title() or "there"
     local_part = str(contact_email or "").split("@", 1)[0].strip()
     if not local_part:
-        return "there"
-    return sanitize_text(re.sub(r"[._-]+", " ", local_part)).title() or "there"
+        raise HTTPException(
+            status_code=422,
+            detail=f"无法从联系邮箱 {contact_email!r} 解析出收件人姓名 — 邮箱本地段为空。",
+        )
+    normalized = sanitize_text(re.sub(r"[._-]+", " ", local_part)).title()
+    if not normalized:
+        raise HTTPException(
+            status_code=422,
+            detail=f"无法从联系邮箱 {contact_email!r} 解析出收件人姓名 — 脱敏后为空。",
+        )
+    return normalized
 
 def _mail_commercial_placeholder(key: str) -> MailDraftResolvedTerm:
     placeholders = {
@@ -3154,7 +3172,16 @@ def _resolve_mail_price_term(db: Session) -> MailDraftResolvedTerm:
                 source=f"pricing_rule:{active_rules[0].rule_id}",
                 is_placeholder=False,
             )
-    return _mail_commercial_placeholder("price")
+    # v1.7.208 按用户要求注释掉 PricingRule 未唯一时的 placeholder 兜底 — 不再假装"已解析为占位符".
+    # 旧逻辑（已注释）:  return _mail_commercial_placeholder("price")
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "商业条款 price 无法解析：active PricingRule 数量不是恰好 1 条 "
+            f"(当前 {len(active_rules)} 条)，按 v1.7.208 用户要求不再走 placeholder 兜底。"
+            "请在 PricingRule 表配置且仅配置一条 active 规则后重试。"
+        ),
+    )
 
 def _mail_pricing_context_unit(context: str) -> str | None:
     text_value = sanitize_text(context).lower()
@@ -3554,16 +3581,44 @@ def _mail_crm_profile_from_static(customer_key: str | None) -> dict[str, Any] | 
     profile = MAIL_CRM_STATIC_PROFILE_BY_CUSTOMER_KEY.get(normalized_customer_key)
     if not profile:
         return None
+    # v1.7.208 按用户要求注释掉静态字典的字段级 "unknown" / 默认状态串兜底 —
+    # 字典里就该有完整字段, 缺字段直接 raise 暴露字典数据问题, 不假装"已识别为未知".
+    # 旧逻辑（已注释）:
+    #   return {
+    #       "company_industry": sanitize_text(profile.get("company_industry")) or "unknown",
+    #       "payment_risk_level": _normalize_mail_payment_risk_level(profile.get("payment_risk_level")),
+    #       "customer_domains": {...},
+    #       "crm_profile_lookup_status": sanitize_text(profile.get("crm_profile_lookup_status")) or "matched_mail_crm_mock_customer_key",
+    #       "crm_profile_source": sanitize_text(profile.get("crm_profile_source")) or "mail_crm_mock_review_only",
+    #   }
+    company_industry = sanitize_text(profile.get("company_industry"))
+    if not company_industry:
+        raise HTTPException(
+            status_code=500,
+            detail=f"MAIL_CRM_STATIC_PROFILE_BY_CUSTOMER_KEY[{normalized_customer_key}] 缺 company_industry 字段（v1.7.208 不再兜底 'unknown'）。",
+        )
+    crm_profile_lookup_status = sanitize_text(profile.get("crm_profile_lookup_status"))
+    if not crm_profile_lookup_status:
+        raise HTTPException(
+            status_code=500,
+            detail=f"MAIL_CRM_STATIC_PROFILE_BY_CUSTOMER_KEY[{normalized_customer_key}] 缺 crm_profile_lookup_status 字段（v1.7.208 不再兜底默认串）。",
+        )
+    crm_profile_source = sanitize_text(profile.get("crm_profile_source"))
+    if not crm_profile_source:
+        raise HTTPException(
+            status_code=500,
+            detail=f"MAIL_CRM_STATIC_PROFILE_BY_CUSTOMER_KEY[{normalized_customer_key}] 缺 crm_profile_source 字段（v1.7.208 不再兜底默认串）。",
+        )
     return {
-        "company_industry": sanitize_text(profile.get("company_industry")) or "unknown",
+        "company_industry": company_industry,
         "payment_risk_level": _normalize_mail_payment_risk_level(profile.get("payment_risk_level")),
         "customer_domains": {
             normalized
             for domain in profile.get("customer_domains", set())
             if (normalized := _normalize_mail_recipient_domain(domain))
         },
-        "crm_profile_lookup_status": sanitize_text(profile.get("crm_profile_lookup_status")) or "matched_mail_crm_mock_customer_key",
-        "crm_profile_source": sanitize_text(profile.get("crm_profile_source")) or "mail_crm_mock_review_only",
+        "crm_profile_lookup_status": crm_profile_lookup_status,
+        "crm_profile_source": crm_profile_source,
     }
 
 def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> dict[str, Any] | None:
@@ -3640,18 +3695,38 @@ def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> 
         return None
 
     company_name = sanitize_text(row[4] if len(row) > 4 else "")
-    company_industry = "unknown"
-    if _infer_company_industry:
-        try:
-            company_industry = sanitize_text(_infer_company_industry(company_name, None, None)) or "unknown"
-        except Exception:
-            company_industry = "unknown"
-    payment_risk_level = "unknown"
-    if _infer_payment_risk:
-        try:
-            payment_risk_level = _normalize_mail_payment_risk_level(_infer_payment_risk(recent_followup))
-        except Exception:
-            payment_risk_level = "unknown"
+    # v1.7.208 按用户要求注释掉 industry / payment_risk 推断的 "unknown" 兜底 —
+    # 推断函数缺失或抛异常时直接 raise, 不把异常吞掉假装"识别为 unknown"。
+    # 旧逻辑（已注释）:
+    #   company_industry = "unknown"
+    #   if _infer_company_industry:
+    #       try:
+    #           company_industry = sanitize_text(_infer_company_industry(company_name, None, None)) or "unknown"
+    #       except Exception:
+    #           company_industry = "unknown"
+    #   payment_risk_level = "unknown"
+    #   if _infer_payment_risk:
+    #       try:
+    #           payment_risk_level = _normalize_mail_payment_risk_level(_infer_payment_risk(recent_followup))
+    #       except Exception:
+    #           payment_risk_level = "unknown"
+    if not _infer_company_industry:
+        raise HTTPException(
+            status_code=503,
+            detail="crm_profile._infer_company_industry 导入失败（v1.7.208 不再兜底 'unknown'）。",
+        )
+    company_industry = sanitize_text(_infer_company_industry(company_name, None, None))
+    if not company_industry:
+        raise HTTPException(
+            status_code=503,
+            detail=f"_infer_company_industry({company_name!r}) 返空（v1.7.208 不再兜底 'unknown'）。",
+        )
+    if not _infer_payment_risk:
+        raise HTTPException(
+            status_code=503,
+            detail="crm_profile._infer_payment_risk 导入失败（v1.7.208 不再兜底 'unknown'）。",
+        )
+    payment_risk_level = _normalize_mail_payment_risk_level(_infer_payment_risk(recent_followup))
     domains = set()
     row_email_domain = _normalize_mail_recipient_domain(row[2] if len(row) > 2 else None)
     if row_email_domain:
@@ -4079,22 +4154,36 @@ def _mail_safety_overall_outcome(gate_results: list[dict[str, Any]]) -> str:
 def _resolve_mail_commercial_terms(db: Session, *, suite_step: int) -> MailDraftCommercialTerms:
     price = _resolve_mail_price_term(db)
     delivery = _mail_standard_delivery_sla_term()
-    discount = _mail_commercial_placeholder("discount")
-    payment_terms = _mail_commercial_placeholder("payment_terms")
-    warnings = [
-        "Price, delivery SLA, discount, and payment terms are backend-filled and locked for review.",
-    ]
-    if price.is_placeholder:
-        warnings.append("No single unambiguous active pricing rule was resolved; price placeholder remains for approval.")
-    if int(suite_step) >= 4:
-        warnings.append("Discount and payment terms require explicit backend or finance approval.")
-    return MailDraftCommercialTerms(
-        price=price,
-        delivery=delivery,
-        discount=discount,
-        payment_terms=payment_terms,
-        warnings=tuple(warnings),
+    # v1.7.208 按用户要求注释掉 discount / payment_terms 的 placeholder 兜底 —
+    # 这两项当前没有任何真实数据库表存储, 永远走 _mail_commercial_placeholder() 假装"已识别为占位符"
+    # 是 v1.7.207 用户禁止的"假数据冒充成功"模式。按"宁报错或为空"原则直接 raise 503,
+    # 等真实的 discount / payment_terms 配置表上线后再恢复.
+    # 旧逻辑（已注释）:
+    #   discount = _mail_commercial_placeholder("discount")
+    #   payment_terms = _mail_commercial_placeholder("payment_terms")
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "商业条款 discount / payment_terms 当前无任何后端数据源, "
+            "按 v1.7.208 用户要求不再走 placeholder 兜底假装'已识别'。"
+            "等 discount / payment_terms 配置表上线后再恢复邮件草稿生成。"
+        ),
     )
+    # 以下代码 v1.7.208 不可达, 保留作为后续恢复占位符策略时的参考骨架（已注释）:
+    # warnings = [
+    #     "Price, delivery SLA, discount, and payment terms are backend-filled and locked for review.",
+    # ]
+    # if price.is_placeholder:
+    #     warnings.append("No single unambiguous active pricing rule was resolved; price placeholder remains for approval.")
+    # if int(suite_step) >= 4:
+    #     warnings.append("Discount and payment terms require explicit backend or finance approval.")
+    # return MailDraftCommercialTerms(
+    #     price=price,
+    #     delivery=delivery,
+    #     discount=discount,
+    #     payment_terms=payment_terms,
+    #     warnings=tuple(warnings),
+    # )
 
 def _mail_sanitize_fewshot_reference_for_draft(content: str | None) -> str | None:
     text_value = sanitize_text(content or "")
@@ -4210,16 +4299,30 @@ _MAIL_SCENARIO_DEFAULT_SUBJECT = {
 
 
 def _mail_subject_from_intent_profile(profile: MailDraftIntentProfile) -> str:
-    """中文邮件主题：优先按场景拿预设的中文主题，再加上步骤标识。"""
-    scenario_subject = _MAIL_SCENARIO_DEFAULT_SUBJECT.get(profile.scenario)
-    if scenario_subject:
-        return scenario_subject
-    # fallback: 把 subject_hint 里的中文占位符替换掉
-    return (
-        profile.subject_hint
-        .replace("[行业]", "贵司所在行业")
-        .replace("[翻译+排版+印刷]", "翻译排版印刷一体化")
-    ) or "向您同步项目协作的最新进展"
+    """中文邮件主题：优先按场景拿预设的中文主题，再加上步骤标识。
+
+    v1.7.208 整段函数体已不再被 _assemble_mail_draft_from_intent_profile 调用
+    （LLM 返空 subject 直接 raise 502, 见 v1.7.207 上面已注释的 line 4389-4390）。
+    保留函数签名供潜在第三方调用方导入兼容, 但函数体改为 raise — 不再返硬编码兜底主题
+    冒充"已生成主题"。
+    """
+    # 旧逻辑（v1.7.208 已注释 — 该函数实际不被主流程调用, 但函数体本身是兜底假数据, 一并注释）:
+    #   scenario_subject = _MAIL_SCENARIO_DEFAULT_SUBJECT.get(profile.scenario)
+    #   if scenario_subject:
+    #       return scenario_subject
+    #   # fallback: 把 subject_hint 里的中文占位符替换掉
+    #   return (
+    #       profile.subject_hint
+    #       .replace("[行业]", "贵司所在行业")
+    #       .replace("[翻译+排版+印刷]", "翻译排版印刷一体化")
+    #   ) or "向您同步项目协作的最新进展"
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "_mail_subject_from_intent_profile 已被 v1.7.208 禁用 — "
+            "邮件主题必须由 LLM 直接生成, 不再走硬编码场景默认主题兜底。"
+        ),
+    )
 
 _MAIL_DRAFT_LLM_SYSTEM_PROMPT = (
     "你是 SpeedAsia 翻译与本地化部的资深 B2B 销售邮件起草人。你的工作只写一封中文邮件里偏【人际沟通】"
@@ -4284,18 +4387,22 @@ def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> di
         parsed = json.loads(raw_text.strip())
         return {"parsed": parsed, "raw_text": raw_text, "error": None, "model": model}
     except json.JSONDecodeError as exc:
-        # v1.7.207 解析失败把错误 return 上去，上层 _llm_generate_mail_intro_paragraphs 会让 status!=success,
-        # 然后 _assemble_mail_draft_from_intent_profile raise HTTPException 503 暴露给前端.
+        # v1.7.208 保留：JSON 解析失败 return error dict 上去，上层 _llm_generate_mail_intro_paragraphs
+        # 立即 raise HTTPException 503 暴露给前端。这不是兜底假数据 — error 字段明示失败，parsed=None。
+        # 属于用户允许保留的"异常跳过 + return 失败信号给调用方"模式。
         return {"parsed": None, "raw_text": raw_text, "error": f"JSON 解析失败（已禁用 markdown 剥离兜底）: {exc}", "model": model}
     except Exception as exc:
+        # v1.7.208 保留：未知异常同上 — return error dict 给上层立刻 raise。不假装成功，不返 placeholder。
         return {"parsed": None, "raw_text": "", "error": f"LLM2 调用异常: {sanitize_text(str(exc))[:200]}", "model": model}
 
 
 def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict:
     """调用 LLM-2 (DeepSeek) 起草中文邮件的"人际沟通"段（自我介绍 / 价值 / 行动呼吁）。
 
-    Returns dict with keys: status (success / fallback_template), model, subject, paragraphs,
-    error (when fallback). Never raises; on any failure returns status='fallback_template'.
+    v1.7.208 行为变更（按用户要求注释掉所有 fallback_template 返回）：
+    - LLM-2 报错 / 返空 / 返缺字段 → 直接 raise HTTPException 503, 不再返 status='fallback_template'
+      让上层 _assemble_mail_draft_from_intent_profile 假装"已识别为兜底"。
+    - 成功路径返 {status: 'success', model, subject, paragraphs, error: None, prompt}。
     """
     fewshot_reference = (profile.admitted_fewshot_content or "")[:240]
     scenario_cn = _MAIL_SCENARIO_CHINESE.get(profile.scenario, profile.scenario_label)
@@ -4317,17 +4424,18 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
 
     llm_resp = _call_llm2_json_for_mail_draft(full_prompt, timeout_seconds=35)
     model_name = llm_resp.get("model") or "llm2"
+    # v1.7.208 旧的 fallback_template 返回逻辑（已注释 — 用户禁止假装成功）:
+    #   if llm_resp.get("error") or not llm_resp.get("parsed"):
+    #       err = llm_resp.get("error") or "LLM-2 返回空"
+    #       logger.warning("MAIL_DRAFT_LLM2_FALLBACK reason=%s", err)
+    #       return {"status": "fallback_template", "model": model_name, "subject": "", "paragraphs": [], "error": ..., "prompt": full_prompt}
     if llm_resp.get("error") or not llm_resp.get("parsed"):
         err = llm_resp.get("error") or "LLM-2 返回空"
-        logger.warning("MAIL_DRAFT_LLM2_FALLBACK reason=%s", err)
-        return {
-            "status": "fallback_template",
-            "model": model_name,
-            "subject": "",
-            "paragraphs": [],
-            "error": sanitize_text(str(err))[:240],
-            "prompt": full_prompt,
-        }
+        logger.warning("MAIL_DRAFT_LLM2_FAILED reason=%s", err)
+        raise HTTPException(
+            status_code=503,
+            detail=f"LLM-2 (DeepSeek) 调用失败（v1.7.208 不再返 fallback_template 兜底）: {sanitize_text(str(err))[:240]}",
+        )
     parsed = llm_resp["parsed"]
     subject = str((parsed or {}).get("subject") or "").strip()
     raw_paragraphs = (parsed or {}).get("paragraphs") or []
@@ -4336,16 +4444,16 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
         text = str(item or "").strip()
         if text:
             paragraphs.append(text[:600])
+    # v1.7.208 旧的"缺 subject/paragraphs 返 fallback_template"逻辑（已注释）:
+    #   if not subject or not paragraphs:
+    #       logger.warning("MAIL_DRAFT_LLM2_FALLBACK reason=missing subject/paragraphs")
+    #       return {"status": "fallback_template", ...}
     if not subject or not paragraphs:
-        logger.warning("MAIL_DRAFT_LLM2_FALLBACK reason=missing subject/paragraphs")
-        return {
-            "status": "fallback_template",
-            "model": model_name,
-            "subject": "",
-            "paragraphs": [],
-            "error": "LLM-2 返回缺少 subject 或 paragraphs",
-            "prompt": full_prompt,
-        }
+        logger.warning("MAIL_DRAFT_LLM2_FAILED reason=missing subject/paragraphs")
+        raise HTTPException(
+            status_code=502,
+            detail="LLM-2 (DeepSeek) 返回的 JSON 缺少 subject 或 paragraphs 字段（v1.7.208 不再返 fallback_template 兜底）。",
+        )
     return {
         "status": "success",
         "model": model_name,
@@ -4359,8 +4467,29 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
 def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) -> MailDraftAssembledContent:
     llm_result = _llm_generate_mail_intro_paragraphs(profile)
     terms = profile.commercial_terms
-    industry_cn = _MAIL_INDUSTRY_CN.get(profile.company_industry, profile.company_industry or "未识别")
-    risk_cn = _MAIL_PAYMENT_RISK_CN.get(profile.payment_risk_level, profile.payment_risk_level or "未识别")
+    # v1.7.208 按用户要求注释掉 industry_cn / risk_cn 取不到映射时回退 "未识别" 的兜底 —
+    # 取不到映射直接 raise, 让前端看到"行业映射表缺该 key"而不是假装"识别为未识别"。
+    # 旧逻辑（已注释）:
+    #   industry_cn = _MAIL_INDUSTRY_CN.get(profile.company_industry, profile.company_industry or "未识别")
+    #   risk_cn = _MAIL_PAYMENT_RISK_CN.get(profile.payment_risk_level, profile.payment_risk_level or "未识别")
+    industry_cn = _MAIL_INDUSTRY_CN.get(profile.company_industry)
+    if not industry_cn:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"_MAIL_INDUSTRY_CN 映射表缺 key={profile.company_industry!r}（v1.7.208 不再兜底 '未识别'）。"
+                "请在 _MAIL_INDUSTRY_CN 字典补全该行业的中文映射后重试。"
+            ),
+        )
+    risk_cn = _MAIL_PAYMENT_RISK_CN.get(profile.payment_risk_level)
+    if not risk_cn:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"_MAIL_PAYMENT_RISK_CN 映射表缺 key={profile.payment_risk_level!r}（v1.7.208 不再兜底 '未识别'）。"
+                "请在 _MAIL_PAYMENT_RISK_CN 字典补全该风险等级的中文映射后重试。"
+            ),
+        )
 
     # v1.7.207 按用户要求注释掉 LLM 失败时的 fallback 模板分支 — 让 LLM 失败直接 raise, 不假装成功.
     # 旧逻辑（已注释，保留作为后续如要恢复 fallback 的参考）:
