@@ -4183,8 +4183,58 @@ _MAIL_DRAFT_LLM_SYSTEM_PROMPT = (
 )
 
 
+def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> dict:
+    """直接调 LLM-2（默认 DeepSeek）拿 JSON 响应。
+
+    返回 {parsed: dict | None, raw_text: str, error: str | None, model: str}.
+    用 LLM-2 而不是 LLM-1 是因为 LLM-1 上游 (zjsphs) 当前不稳, 邮件草稿生成切到 DeepSeek
+    （v1.7.206）。后续如需切回 LLM-1 把本函数体改成调 IntentEngine.run_llm1_json_prompt 即可。
+    """
+    import requests as _rq
+
+    api_url = (getattr(settings, "LLM2_API_URL", "") or "").rstrip("/")
+    api_key = getattr(settings, "LLM2_API_KEY", "") or ""
+    model = getattr(settings, "LLM2_MODEL", "") or ""
+    if not api_url or not api_key or not model:
+        return {"parsed": None, "raw_text": "", "error": "LLM2 环境变量未配置完整", "model": model}
+
+    url = api_url + "/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.2,
+        "max_tokens": 1200,
+        "response_format": {"type": "json_object"},
+    }
+    try:
+        resp = _rq.post(url, json=payload, headers=headers, timeout=timeout_seconds)
+        if resp.status_code != 200:
+            return {"parsed": None, "raw_text": "", "error": f"HTTP {resp.status_code}: {resp.text[:200]}", "model": model}
+        data = resp.json()
+        raw_text = data["choices"][0]["message"]["content"] if "choices" in data else ""
+        # 剥 markdown 代码块
+        cleaned = raw_text.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        if cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        try:
+            parsed = json.loads(cleaned.strip())
+        except json.JSONDecodeError as exc:
+            return {"parsed": None, "raw_text": raw_text, "error": f"JSON 解析失败: {exc}", "model": model}
+        return {"parsed": parsed, "raw_text": raw_text, "error": None, "model": model}
+    except Exception as exc:
+        return {"parsed": None, "raw_text": "", "error": f"LLM2 调用异常: {sanitize_text(str(exc))[:200]}", "model": model}
+
+
 def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict:
-    """调用 LLM-1 起草中文邮件的"人际沟通"段（自我介绍 / 价值 / 行动呼吁）。
+    """调用 LLM-2 (DeepSeek) 起草中文邮件的"人际沟通"段（自我介绍 / 价值 / 行动呼吁）。
 
     Returns dict with keys: status (success / fallback_template), model, subject, paragraphs,
     error (when fallback). Never raises; on any failure returns status='fallback_template'.
@@ -4207,40 +4257,45 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
     user_prompt = "\n".join(user_prompt_lines)
     full_prompt = _MAIL_DRAFT_LLM_SYSTEM_PROMPT + "\n\n" + user_prompt
 
-    try:
-        parsed = IntentEngine.run_llm1_json_prompt(
-            full_prompt,
-            user_id="mail_draft_assembler",
-            max_retries=1,
-            timeout_seconds=25,
-        )
-        subject = str((parsed or {}).get("subject") or "").strip()
-        raw_paragraphs = (parsed or {}).get("paragraphs") or []
-        paragraphs: list[str] = []
-        for item in raw_paragraphs:
-            text = str(item or "").strip()
-            if text:
-                paragraphs.append(text[:600])
-        if not subject or not paragraphs:
-            raise RuntimeError("LLM 返回缺少 subject 或 paragraphs")
-        return {
-            "status": "success",
-            "model": getattr(settings, "LLM1_MODEL", "") or "llm1",
-            "subject": subject[:200],
-            "paragraphs": paragraphs[:6],
-            "error": None,
-            "prompt": full_prompt,
-        }
-    except Exception as exc:
-        logger.warning("MAIL_DRAFT_LLM_FALLBACK reason=%s", exc)
+    llm_resp = _call_llm2_json_for_mail_draft(full_prompt, timeout_seconds=35)
+    model_name = llm_resp.get("model") or "llm2"
+    if llm_resp.get("error") or not llm_resp.get("parsed"):
+        err = llm_resp.get("error") or "LLM-2 返回空"
+        logger.warning("MAIL_DRAFT_LLM2_FALLBACK reason=%s", err)
         return {
             "status": "fallback_template",
-            "model": getattr(settings, "LLM1_MODEL", "") or "llm1",
+            "model": model_name,
             "subject": "",
             "paragraphs": [],
-            "error": sanitize_text(str(exc))[:240],
+            "error": sanitize_text(str(err))[:240],
             "prompt": full_prompt,
         }
+    parsed = llm_resp["parsed"]
+    subject = str((parsed or {}).get("subject") or "").strip()
+    raw_paragraphs = (parsed or {}).get("paragraphs") or []
+    paragraphs: list[str] = []
+    for item in raw_paragraphs:
+        text = str(item or "").strip()
+        if text:
+            paragraphs.append(text[:600])
+    if not subject or not paragraphs:
+        logger.warning("MAIL_DRAFT_LLM2_FALLBACK reason=missing subject/paragraphs")
+        return {
+            "status": "fallback_template",
+            "model": model_name,
+            "subject": "",
+            "paragraphs": [],
+            "error": "LLM-2 返回缺少 subject 或 paragraphs",
+            "prompt": full_prompt,
+        }
+    return {
+        "status": "success",
+        "model": model_name,
+        "subject": subject[:200],
+        "paragraphs": paragraphs[:6],
+        "error": None,
+        "prompt": full_prompt,
+    }
 
 
 def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) -> MailDraftAssembledContent:
@@ -12447,6 +12502,15 @@ async def get_mail_demo_contacts(db: Session = Depends(get_db)):
 # 一次迭代 = 5 案例 × 4 步 = 20 封邮件串行生成，落 mail_iteration_run + mail_iteration_draft。
 # 后台线程跑（HTTP 立即返回 run_id），前端轮询查状态。
 
+_MAIL_FALLBACK_TEMPLATE_MARKERS = [
+    "这是一封",
+    "草稿样例",
+    "本步目标",
+    "场景第",
+    "参考角度（来自我们历史的高质量邮件范例库）",
+]
+
+
 def _score_mail_iteration_draft(
     *,
     response_data: dict,
@@ -12454,81 +12518,85 @@ def _score_mail_iteration_draft(
     final_subject: str,
     final_body_html: str,
 ) -> dict:
-    """规则版评分（0-100），返回 {score, breakdown, notes}。"""
+    """规则版评分（0-100），返回 {score, breakdown, notes}。
+
+    v1.7.206 重价：LLM 真调用 50 分（之前 30）+ 新增"不含 fallback 模板痕迹"15 分 + 新增
+    "不含英文邮件正文"10 分。fallback 模板的草稿天花板 ≈ 30 分（LLM 真调用 0 + 模板痕迹 0 +
+    可能含英文 cta_style → 0 + 范例命中 10 + 主题 5 + 正文段落 5 + 安全门 5 = 25-30），
+    符合"几乎不可用"的真实评价。
+    """
     breakdown = {}
     notes_parts = []
 
-    # 维度 1：LLM 真调用成功 30 分
+    # 维度 1：LLM 真调用成功 50 分（提高权重 — 不调通邮件本质上不可用）
     if (response_data.get("llm_status") or "") == "success":
-        breakdown["llm_success"] = 30
+        breakdown["llm_success"] = 50
     else:
         breakdown["llm_success"] = 0
-        notes_parts.append("LLM 未真调用成功（fallback 模板）")
+        notes_parts.append("大模型未真调用成功（走兜底模板，邮件不可用）")
 
-    # 维度 2：命中 Few-Shot 15 分
+    # 维度 2：邮件正文不含 fallback 模板痕迹 15 分（新增 — fallback 模板含 meta 字眼 必须扣）
+    body_text = re.sub(r"<[^>]+>", "", final_body_html or "")
+    fallback_markers_hit = [m for m in _MAIL_FALLBACK_TEMPLATE_MARKERS if m in body_text]
+    if not fallback_markers_hit:
+        breakdown["no_fallback_marker"] = 15
+    else:
+        breakdown["no_fallback_marker"] = 0
+        notes_parts.append(f"正文含兜底模板痕迹：{fallback_markers_hit}")
+
+    # 维度 3：邮件正文不含英文邮件正文 10 分（新增 — fallback 的 cta_style 是英文）
+    en_word_count = len(re.findall(r"\b[A-Za-z]{4,}\b", body_text))
+    if en_word_count == 0:
+        breakdown["language_purity"] = 10
+    elif en_word_count <= 2:
+        breakdown["language_purity"] = 6
+    else:
+        breakdown["language_purity"] = 0
+        notes_parts.append(f"正文含 {en_word_count} 个英文词（≥4 字符），疑似中英混杂")
+
+    # 维度 4：命中范例 10 分
     if response_data.get("retrieved_fewshot_id"):
-        breakdown["fewshot_hit"] = 15
+        breakdown["fewshot_hit"] = 10
     else:
         breakdown["fewshot_hit"] = 0
-        notes_parts.append("Few-Shot 未命中")
+        notes_parts.append("范例未命中")
 
-    # 维度 3：主题中文 + 长度 6-60 字符 10 分
+    # 维度 5：主题中文 + 长度 6-80 字符 5 分
     subject = (final_subject or "").strip()
     has_chinese_subject = bool(re.search(r"[一-鿿]", subject))
     if has_chinese_subject and 6 <= len(subject) <= 80:
-        breakdown["subject_quality"] = 10
+        breakdown["subject_quality"] = 5
     elif has_chinese_subject:
-        breakdown["subject_quality"] = 6
+        breakdown["subject_quality"] = 3
         notes_parts.append("主题中文但长度不在 6-80 区间")
     else:
         breakdown["subject_quality"] = 0
         notes_parts.append("主题非中文或为空")
 
-    # 维度 4：正文长度 ≥ 80 字符 10 分
-    body_text = re.sub(r"<[^>]+>", "", final_body_html or "")
+    # 维度 6：正文长度 ≥ 80 字符 + 段落 ≥ 3 段 5 分（合并为正文形态）
     body_len = len(body_text.strip())
-    if body_len >= 80:
-        breakdown["body_length"] = 10
-    elif body_len >= 30:
-        breakdown["body_length"] = 5
-    else:
-        breakdown["body_length"] = 0
-        notes_parts.append(f"正文过短（{body_len} 字符）")
-
-    # 维度 5：正文段落 ≥ 3 段 10 分
     paragraph_count = len(re.findall(r"<p[^>]*>", final_body_html or ""))
-    if paragraph_count >= 3:
-        breakdown["paragraph_count"] = 10
-    elif paragraph_count >= 2:
-        breakdown["paragraph_count"] = 5
+    if body_len >= 80 and paragraph_count >= 3:
+        breakdown["body_shape"] = 5
+    elif body_len >= 50 and paragraph_count >= 2:
+        breakdown["body_shape"] = 3
     else:
-        breakdown["paragraph_count"] = 0
-        notes_parts.append(f"段落过少（{paragraph_count} 段）")
+        breakdown["body_shape"] = 0
+        notes_parts.append(f"正文形态弱（长度 {body_len} 段落 {paragraph_count}）")
 
-    # 维度 6：安全门 passed / yellow_card / red_card
+    # 维度 7：安全门通过 5 分
     sg = response_data.get("safety_guardrail") or {}
     overall = sg.get("overall_outcome") or ""
     if overall == "passed":
-        breakdown["safety_outcome"] = 15
+        breakdown["safety_outcome"] = 5
     elif overall.startswith("yellow_card"):
-        breakdown["safety_outcome"] = 8
+        breakdown["safety_outcome"] = 3
         notes_parts.append(f"安全门黄牌：{overall}")
     elif overall.startswith("red_card"):
         breakdown["safety_outcome"] = 0
-        notes_parts.append(f"安全门红卡阻断：{overall}")
+        notes_parts.append(f"安全门红牌硬阻断：{overall}")
     else:
-        breakdown["safety_outcome"] = 4
-        notes_parts.append(f"安全门状态未识别：{overall}")
-
-    # 维度 7：正文不含中英混杂错乱 10 分
-    en_word_count = len(re.findall(r"\b[A-Za-z]{4,}\b", body_text))
-    if en_word_count == 0:
-        breakdown["language_purity"] = 10
-    elif en_word_count <= 3:
-        breakdown["language_purity"] = 6
-    else:
-        breakdown["language_purity"] = 0
-        notes_parts.append(f"正文含 {en_word_count} 个英文词（≥4 字符），疑似中英混杂")
+        breakdown["safety_outcome"] = 1
 
     score = sum(breakdown.values())
     return {
@@ -12834,6 +12902,60 @@ def _serialize_mail_iteration_draft_row(row) -> dict:
         "error_message": row.error_message,
         "started_at": row.started_at.isoformat() if row.started_at else None,
         "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+    }
+
+
+@app.get("/api/v1/mail/gold-fewshot-seeds")
+def list_mail_gold_fewshot_seeds(db: Session = Depends(get_db)):
+    """返回 email_fragment_asset 表里 source_type='mail_gold_seed' 的黄金范例种子（当前 25 条）。
+
+    数据由 backend/seed_mail_gold_candidates.py 从 docs/mail_gold_candidates/latest_*.json
+    脱敏后灌入。本接口只读, 不真写库。
+    """
+    rows = db.query(EmailFragmentAsset).filter(
+        EmailFragmentAsset.source_type == 'mail_gold_seed'
+    ).order_by(EmailFragmentAsset.source_ref).all()
+
+    items = []
+    for r in rows:
+        snapshot = r.source_snapshot or {}
+        items.append({
+            "fragment_id": str(r.fragment_id),
+            "source_ref": r.source_ref,
+            "title": r.title,
+            "content": r.content,
+            "content_preview": (r.content or "")[:200],
+            "scenario_label": r.scenario_label,
+            "intent_label": r.intent_label,
+            "function_fragment": r.function_fragment,
+            "language_style": r.language_style,
+            "useful_score": float(r.useful_score) if r.useful_score is not None else None,
+            "library_type": r.library_type,
+            "usable_for_reply": r.usable_for_reply,
+            "allowed_for_generation": r.allowed_for_generation,
+            "publishable": r.publishable,
+            "status": r.status,
+            "candidate_rank": snapshot.get("candidate_rank"),
+            "desensitized_status": snapshot.get("desensitized_status"),
+            "desensitized_fields": snapshot.get("desensitized_fields") or [],
+            "sqlserver_source_ref": snapshot.get("sqlserver_source_ref"),
+            "score_source": snapshot.get("score_source"),
+            "seed_source_file": snapshot.get("seed_source_file"),
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+        })
+
+    # 按 candidate_rank 排序（如果存在），再按 source_ref
+    items.sort(key=lambda x: (x.get("candidate_rank") or 9999, x.get("source_ref") or ""))
+
+    return {
+        "version": "mail_gold_fewshot_seeds.v1",
+        "source": "email_fragment_asset where source_type='mail_gold_seed'",
+        "read_only": True,
+        "count": len(items),
+        "seeds": items,
+        "loader_script": "backend/seed_mail_gold_candidates.py",
+        "data_origin": "docs/mail_gold_candidates/latest_mail_gold_candidates.json（脱敏后入库）",
     }
 
 

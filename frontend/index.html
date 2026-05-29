@@ -360,6 +360,7 @@
                 <div class="flex flex-wrap gap-2">
                     <button id="mail-subtab-quality" type="button" onclick="switchMailWorkspaceTab('quality')" class="px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold" title="查看邮件质量诊断面板（含真接入演示区 + 占位静态卡片），不接入企微工作流。">质量诊断</button>
                     <button id="mail-subtab-iteration" type="button" onclick="switchMailWorkspaceTab('iteration')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件迭代记录: 一次迭代跑 5 案例 × 4 步 = 20 封邮件并打分入库, 可对比多次迭代的草稿质量变化, 含每封邮件用到的真实大模型 prompt。">邮件迭代记录</button>
+                    <button id="mail-subtab-goldlib" type="button" onclick="switchMailWorkspaceTab('goldlib')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="黄金范例库: 邮件草稿生成时由后端 RAG 从此库召回参考。当前 25 条种子由 backend/seed_mail_gold_candidates.py 从历史真实邮件脱敏后灌入。">黄金范例库</button>
                     <button id="mail-subtab-config" type="button" onclick="switchMailWorkspaceTab('config')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="查看邮件全局配置面板的占位骨架（评审 Mock 用），不调用后端、不写库、不真实热加载。">邮件配置</button>
                     <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">返回企微实时智能</button>
                 </div>
@@ -602,6 +603,54 @@
                     <div id="mail-iter-detail-meta" class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]"></div>
                     <div class="mt-3 text-xs font-bold text-slate-700">20 封草稿明细（按案例 × 步骤展开，点 [查看 prompt] 看真实大模型输入）</div>
                     <div id="mail-iter-detail-drafts" class="mt-2 space-y-2"></div>
+                </div>
+            </section>
+            <section id="mail-goldlib-panel" class="hidden space-y-5">
+                <div class="rounded-lg border border-amber-300 bg-amber-50 p-5">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900" title="黄金范例库: email_fragment_asset 表里 source_type='mail_gold_seed' 的种子。邮件草稿生成时由后端 RAG 按场景/类型条件召回参考。">黄金范例库（当前 <span id="mail-goldlib-count" class="font-mono">—</span> 条）</h2>
+                            <p class="text-xs text-slate-600 mt-1">数据由 <code>backend/seed_mail_gold_candidates.py</code> 从 <code>docs/mail_gold_candidates/latest_mail_gold_candidates.json</code> 脱敏后灌入。本页只读不写库。要重灌就跑该脚本。</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <select id="mail-goldlib-filter-scenario" onchange="renderMailGoldLibrarySeeds()" class="rounded border border-slate-300 px-2 py-1 text-xs" title="按场景过滤">
+                                <option value="">全部场景</option>
+                                <option value="re_activation">老客户唤醒</option>
+                                <option value="new_business_promotion">新业务推广</option>
+                                <option value="new_contact_intro">新接手联系人介绍</option>
+                            </select>
+                            <button type="button" onclick="loadMailGoldLibrarySeeds()" class="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50" title="重新从后端 GET /api/v1/mail/gold-fewshot-seeds 拉取最新种子列表。">刷新</button>
+                            <span id="mail-goldlib-status" class="text-[11px] text-slate-500"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="rounded-lg border border-slate-200 bg-white p-4">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="bg-slate-50">
+                                <tr class="text-slate-600">
+                                    <th class="px-2 py-2 text-left" title="按 useful_score 排名">排名</th>
+                                    <th class="px-2 py-2 text-left">种子编号</th>
+                                    <th class="px-2 py-2 text-left">业务场景</th>
+                                    <th class="px-2 py-2 text-left">切片类型</th>
+                                    <th class="px-2 py-2 text-center" title="0.00 - 1.00, 越高越优质, ≥ 0.60 才能进黄金库">有用度分</th>
+                                    <th class="px-2 py-2 text-center">脱敏状态</th>
+                                    <th class="px-2 py-2 text-left">主题（来自原邮件）</th>
+                                    <th class="px-2 py-2 text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mail-goldlib-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="mail-goldlib-detail" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 pb-2">
+                        <div class="text-xs font-bold text-amber-900" id="mail-goldlib-detail-title">种子详情</div>
+                        <button type="button" onclick="closeMailGoldLibrarySeedDetail()" class="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50">收起</button>
+                    </div>
+                    <div id="mail-goldlib-detail-body" class="mt-3 text-xs text-slate-700 space-y-2"></div>
                 </div>
             </section>
             <section id="mail-config-panel" class="hidden space-y-5">
@@ -1835,10 +1884,10 @@
                         <div title="本次迭代触发时间（北京时间）"><b>触发：</b>${fmt(run.triggered_at)}</div>
                         <div title="本次迭代完成时间"><b>完成：</b>${fmt(run.finished_at)}</div>
                         <div title="本次跑通的草稿数 / 计划总数"><b>完成数：</b>${run.succeeded_drafts}/${run.total_drafts}（失败 ${run.failed_drafts}）</div>
-                        <div title="所有草稿的平均规则评分（0-100）"><b>平均分：</b>${fmtNum(run.avg_quality_score, 1)}（${fmtNum(run.min_quality_score, 0)} - ${fmtNum(run.max_quality_score, 0)}）</div>
-                        <div title="大模型真调用成功的次数 / fallback 走老模板的次数"><b>大模型：</b>success ${run.llm_success_count} / fallback ${run.llm_fallback_count}</div>
-                        <div title="单封平均耗时"><b>均耗时：</b>${run.avg_elapsed_ms != null ? (run.avg_elapsed_ms/1000).toFixed(1) + 's' : '—'}</div>
-                        <div title="本次迭代用的大模型名（来自 .env LLM1_MODEL）"><b>模型：</b><code>${fmt(snap.llm_model)}</code></div>
+                        <div title="所有草稿的平均规则评分（0-100）。fallback 模板天花板约 30 分（v1.7.206 评分体系重价）。"><b>平均分：</b>${fmtNum(run.avg_quality_score, 1)}（${fmtNum(run.min_quality_score, 0)} - ${fmtNum(run.max_quality_score, 0)}）</div>
+                        <div title="大模型真调用成功次数 / 兜底模板次数。后者表示该封草稿大模型上游不可用走了硬编码兜底, 内容包含 meta 字眼几乎不可用。"><b>大模型：</b>真调用成功 ${run.llm_success_count} 封 / 走兜底模板 ${run.llm_fallback_count} 封</div>
+                        <div title="单封平均耗时"><b>均耗时：</b>${run.avg_elapsed_ms != null ? (run.avg_elapsed_ms/1000).toFixed(1) + ' 秒' : '—'}</div>
+                        <div title="本次迭代用的大模型名（v1.7.206 起用 LLM2 / DeepSeek）"><b>模型：</b><code>${fmt(snap.llm_model)}</code></div>
                         <div title="大模型 API 服务地址"><b>API：</b><code class="text-[10px]">${fmt(snap.llm_url)}</code></div>
                     `;
                 }
@@ -1849,6 +1898,9 @@
                         card.className = 'rounded border border-slate-200 bg-slate-50';
                         const statusColor = d.status === 'success' ? 'emerald' : d.status === 'failed' ? 'rose' : 'slate';
                         const score = d.quality_score != null ? d.quality_score.toFixed(1) : '—';
+                        const statusCn = ({success: '生成完成', failed: '失败', running: '运行中', pending: '排队中'})[d.status] || d.status;
+                        const llmCn = ({success: '真返中文', fallback_template: '走兜底'})[d.llm_status] || (d.llm_status || '—');
+                        const gateCn = ({passed: '通过'})[d.overall_outcome] || (d.overall_outcome || '—');
                         card.innerHTML = `
                             <summary class="cursor-pointer px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2 hover:bg-slate-100">
                                 <div>
@@ -1856,11 +1908,11 @@
                                     <span class="ml-2 text-slate-700">${d.demo_label || ''}</span>
                                 </div>
                                 <div class="flex items-center gap-2 text-[11px]">
-                                    <span class="rounded bg-${statusColor}-100 px-1.5 py-0.5 text-${statusColor}-700">${d.status}</span>
-                                    <span class="font-mono font-bold text-slate-900">${score}</span>
-                                    <span class="text-slate-500">${d.elapsed_ms != null ? (d.elapsed_ms/1000).toFixed(1)+'s' : '—'}</span>
-                                    <span class="text-slate-500">LLM=${d.llm_status || '—'}</span>
-                                    <span class="text-slate-500">门=${d.overall_outcome || '—'}</span>
+                                    <span class="rounded bg-${statusColor}-100 px-1.5 py-0.5 text-${statusColor}-700" title="本封草稿生成的最终状态: 生成完成 / 失败 / 排队中 / 运行中">${statusCn}</span>
+                                    <span class="font-mono font-bold text-slate-900" title="本封草稿规则评分（满分 100）。≥70 才算可用，30 分以下基本是兜底模板。">${score} 分</span>
+                                    <span class="text-slate-500" title="本封草稿生成耗时">${d.elapsed_ms != null ? (d.elapsed_ms/1000).toFixed(1)+' 秒' : '—'}</span>
+                                    <span class="text-slate-500" title="大模型调用结果: 真返中文（草稿真由大模型生成）/ 走兜底（上游超时，走老硬编码模板，内容含 meta 字眼几乎不可用）">大模型: ${llmCn}</span>
+                                    <span class="text-slate-500" title="安全门总评">安全门: ${gateCn}</span>
                                 </div>
                             </summary>
                             <div class="px-3 py-3 border-t border-slate-200 bg-white space-y-3">
@@ -1904,6 +1956,119 @@
 
         function closeMailIterationDetail() {
             const wrap = document.getElementById('mail-iter-detail-container');
+            if (wrap) wrap.classList.add('hidden');
+        }
+
+        // ===== 黄金范例库（v1.7.206） =====
+        let mailGoldLibraryCache = [];
+
+        async function loadMailGoldLibrarySeeds() {
+            const status = document.getElementById('mail-goldlib-status');
+            if (status) status.textContent = '加载中……';
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/gold-fewshot-seeds`, { credentials: 'include' });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                mailGoldLibraryCache = data.seeds || [];
+                const countEl = document.getElementById('mail-goldlib-count');
+                if (countEl) countEl.textContent = data.count;
+                if (status) {
+                    status.textContent = `共 ${data.count} 条种子（数据源：${data.source}，只读）`;
+                    status.className = 'text-[11px] text-emerald-700';
+                }
+                renderMailGoldLibrarySeeds();
+            } catch (err) {
+                if (status) {
+                    status.textContent = `加载失败：${err.message}`;
+                    status.className = 'text-[11px] text-red-600 font-bold';
+                }
+            }
+        }
+
+        function renderMailGoldLibrarySeeds() {
+            const tbody = document.getElementById('mail-goldlib-tbody');
+            const filter = (document.getElementById('mail-goldlib-filter-scenario')?.value || '').trim();
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            const scenarioCn = (s) => ({
+                're_activation': '老客户唤醒',
+                'new_business_promotion': '新业务推广',
+                'new_contact_intro': '新接手联系人介绍',
+            })[s] || s;
+            const fragmentCn = (f) => ({
+                'example': '示例',
+                'greetings': '问候开场',
+                'process': '流程说明',
+                'constraint': '交付约束',
+                'quotation': '报价邀约',
+            })[f] || (f || '—');
+            const list = filter ? mailGoldLibraryCache.filter(s => s.scenario_label === filter) : mailGoldLibraryCache;
+            if (!list.length) {
+                tbody.innerHTML = `<tr><td colspan="8" class="px-2 py-4 text-center text-slate-500">${mailGoldLibraryCache.length === 0 ? '尚未灌入种子（请跑 python backend/seed_mail_gold_candidates.py）' : '当前筛选条件下无匹配种子'}</td></tr>`;
+                return;
+            }
+            for (const s of list) {
+                const tr = document.createElement('tr');
+                tr.className = 'border-t border-slate-100 hover:bg-slate-50';
+                const score = s.useful_score != null ? s.useful_score.toFixed(2) : '—';
+                const scoreClass = (s.useful_score || 0) >= 0.9 ? 'text-emerald-700 font-bold' : (s.useful_score || 0) >= 0.7 ? 'text-amber-700' : 'text-slate-600';
+                const desensitized = s.desensitized_status === 'desensitized' ? '<span class="rounded bg-emerald-100 text-emerald-700 px-1.5 py-0.5 text-[10px]">已脱敏</span>' : '<span class="rounded bg-amber-100 text-amber-700 px-1.5 py-0.5 text-[10px]">未脱敏</span>';
+                tr.innerHTML = `
+                    <td class="px-2 py-2 font-mono text-slate-500">#${s.candidate_rank || '—'}</td>
+                    <td class="px-2 py-2 font-mono text-[10px] text-slate-600">${s.source_ref || '—'}</td>
+                    <td class="px-2 py-2"><span class="rounded bg-indigo-100 text-indigo-700 px-1.5 py-0.5 text-[10px]">${scenarioCn(s.scenario_label)}</span></td>
+                    <td class="px-2 py-2 text-slate-700">${fragmentCn(s.function_fragment)}</td>
+                    <td class="px-2 py-2 text-center font-mono ${scoreClass}">${score}</td>
+                    <td class="px-2 py-2 text-center">${desensitized}</td>
+                    <td class="px-2 py-2 text-slate-700">${(s.title || '').slice(0, 50)}${(s.title || '').length > 50 ? '…' : ''}</td>
+                    <td class="px-2 py-2 text-center">
+                        <button type="button" onclick="openMailGoldLibrarySeedDetail('${s.fragment_id}')" class="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100">查看正文</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            }
+        }
+
+        function openMailGoldLibrarySeedDetail(fragmentId) {
+            const s = mailGoldLibraryCache.find(x => x.fragment_id === fragmentId);
+            if (!s) return;
+            const wrap = document.getElementById('mail-goldlib-detail');
+            const title = document.getElementById('mail-goldlib-detail-title');
+            const body = document.getElementById('mail-goldlib-detail-body');
+            if (!wrap) return;
+            wrap.classList.remove('hidden');
+            if (title) title.textContent = `种子详情 · ${s.source_ref}`;
+            if (body) {
+                const fmt = (v) => v == null || v === '' ? '—' : String(v);
+                body.innerHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div><b>种子编号：</b><code class="text-[10px]">${fmt(s.source_ref)}</code></div>
+                        <div><b>原 SQL Server 邮件标识：</b><code class="text-[10px]">${fmt(s.sqlserver_source_ref)}</code></div>
+                        <div><b>业务场景：</b>${fmt(s.scenario_label)}</div>
+                        <div><b>切片类型：</b>${fmt(s.function_fragment)}</div>
+                        <div><b>有用度分数：</b>${s.useful_score != null ? s.useful_score.toFixed(4) : '—'}（黄金库准入门槛 0.60）</div>
+                        <div><b>语言风格：</b>${fmt(s.language_style)}</div>
+                        <div class="md:col-span-2"><b>脱敏状态：</b>${fmt(s.desensitized_status)}（脱敏字段：${(s.desensitized_fields || []).join('、') || '无'}）</div>
+                        <div class="md:col-span-2"><b>评分来源公式：</b><code class="text-[10px]">${fmt(s.score_source)}</code></div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="font-bold text-slate-700 mb-1">主题（来自原邮件，已脱敏）</div>
+                        <div class="rounded border border-slate-200 bg-white p-2 text-xs">${fmt(s.title)}</div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="font-bold text-slate-700 mb-1">正文（完整内容，已脱敏）</div>
+                        <div class="rounded border border-slate-200 bg-white p-3 text-xs leading-relaxed whitespace-pre-wrap">${fmt(s.content)}</div>
+                    </div>
+                    <div class="mt-3 text-[10px] text-slate-500">
+                        数据源：<code>${fmt(s.seed_source_file)}</code> · 入库时间：${fmt(s.created_at)} · 最后更新：${fmt(s.updated_at)}
+                    </div>
+                `;
+            }
+            wrap.scrollIntoView({block: 'start', behavior: 'smooth'});
+        }
+
+        function closeMailGoldLibrarySeedDetail() {
+            const wrap = document.getElementById('mail-goldlib-detail');
             if (wrap) wrap.classList.add('hidden');
         }
 
@@ -2023,26 +2188,31 @@
         }
 
         function switchMailWorkspaceTab(tab) {
-            const validTabs = ['quality', 'iteration', 'config'];
+            const validTabs = ['quality', 'iteration', 'goldlib', 'config'];
             const activeTab = validTabs.includes(tab) ? tab : 'quality';
             const liveDemo = document.getElementById('mail-quality-live-demo');
             const qualityInfo = document.getElementById('mail-quality-panel-info');
             const iterationPanel = document.getElementById('mail-iteration-panel');
+            const goldlibPanel = document.getElementById('mail-goldlib-panel');
             const configPanel = document.getElementById('mail-config-panel');
             const qualityBtn = document.getElementById('mail-subtab-quality');
             const iterationBtn = document.getElementById('mail-subtab-iteration');
+            const goldlibBtn = document.getElementById('mail-subtab-goldlib');
             const configBtn = document.getElementById('mail-subtab-config');
             const activeClass = 'px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold';
             const inactiveClass = 'px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50';
             if (liveDemo) liveDemo.classList.toggle('hidden', activeTab !== 'quality');
             if (qualityInfo) qualityInfo.classList.toggle('hidden', activeTab !== 'quality');
             if (iterationPanel) iterationPanel.classList.toggle('hidden', activeTab !== 'iteration');
+            if (goldlibPanel) goldlibPanel.classList.toggle('hidden', activeTab !== 'goldlib');
             if (configPanel) configPanel.classList.toggle('hidden', activeTab !== 'config');
             if (qualityBtn) qualityBtn.className = activeTab === 'quality' ? activeClass : inactiveClass;
             if (iterationBtn) iterationBtn.className = activeTab === 'iteration' ? activeClass : inactiveClass;
+            if (goldlibBtn) goldlibBtn.className = activeTab === 'goldlib' ? activeClass : inactiveClass;
             if (configBtn) configBtn.className = activeTab === 'config' ? activeClass : inactiveClass;
             if (activeTab === 'config') renderMailConfigReviewOnlyMocks();
             if (activeTab === 'iteration' && typeof loadMailIterationList === 'function') loadMailIterationList();
+            if (activeTab === 'goldlib' && typeof loadMailGoldLibrarySeeds === 'function') loadMailGoldLibrarySeeds();
         }
 
         function cloneMailSequenceStepDefaults() {
