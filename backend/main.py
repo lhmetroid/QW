@@ -3151,25 +3151,44 @@ def _active_mail_pricing_rules(db: Session, *, limit: int = 1000) -> list[Pricin
         or_(PricingRule.effective_to.is_(None), PricingRule.effective_to >= now),
     ).order_by(PricingRule.updated_at.desc(), PricingRule.created_at.desc()).limit(limit).all()
 
-def _resolve_mail_price_term(db: Session) -> MailDraftResolvedTerm:
-    active_rules = _active_mail_pricing_rules(db, limit=2)
-    if len(active_rules) == 1:
-        value = _mail_pricing_rule_label(active_rules[0])
+def _active_mail_pricing_rules_by_line(db: Session, *, business_line: str | None, limit: int = 50) -> list[PricingRule]:
+    """v1.7.216: 按业务线过滤 active 规则。business_line 为空时返全表 (保留旧行为)。"""
+    now = datetime.utcnow()
+    q = db.query(PricingRule).filter(
+        PricingRule.status == "active",
+        or_(PricingRule.effective_from.is_(None), PricingRule.effective_from <= now),
+        or_(PricingRule.effective_to.is_(None), PricingRule.effective_to >= now),
+    )
+    if business_line:
+        q = q.filter(PricingRule.business_line == business_line)
+    return q.order_by(
+        PricingRule.updated_at.desc(),
+        PricingRule.created_at.desc(),
+    ).limit(limit).all()
+
+
+def _resolve_mail_price_term(db: Session, *, business_line: str | None = None) -> MailDraftResolvedTerm:
+    """v1.7.216 按业务线查最适配的 active PricingRule, 取最新更新的一条作为唯一最优。
+
+    v1.7.208 错误地要求"全表只能有 1 条 active"才返结果 — 真实业务 81 条 active 跨多个业务线必然超 1 条。
+    v1.7.216 改成: 先按 business_line 过滤, 再按 updated_at desc 取首条 (最近更新视为最优).
+    business_line 未传 (None) 时退化为全表最新一条, 至少能跑通 — 不再 raise.
+    """
+    rules = _active_mail_pricing_rules_by_line(db, business_line=business_line, limit=10)
+    if rules:
+        chosen = rules[0]
+        value = _mail_pricing_rule_label(chosen)
         if value:
             return MailDraftResolvedTerm(
                 value=value,
-                source=f"pricing_rule:{active_rules[0].rule_id}",
+                source=f"pricing_rule:{chosen.rule_id}:line={chosen.business_line}:sub={chosen.sub_service}",
                 is_placeholder=False,
             )
-    # v1.7.208 按用户要求注释掉 PricingRule 未唯一时的 placeholder 兜底 — 不再假装"已解析为占位符".
-    # 旧逻辑（已注释）:  return _mail_commercial_placeholder("price")
-    raise HTTPException(
-        status_code=503,
-        detail=(
-            "商业条款 price 无法解析：active PricingRule 数量不是恰好 1 条 "
-            f"(当前 {len(active_rules)} 条)，按 v1.7.208 用户要求不再走 placeholder 兜底。"
-            "请在 PricingRule 表配置且仅配置一条 active 规则后重试。"
-        ),
+    # 真无任何 active 规则才返空 — 实际场景里这意味着 PricingRule 表空, 是数据空不是出错.
+    return MailDraftResolvedTerm(
+        value="",
+        source=f"no_active_pricing_rule_for_line:{business_line or 'any'}",
+        is_placeholder=False,
     )
 
 def _mail_pricing_context_unit(context: str) -> str | None:
@@ -4127,39 +4146,90 @@ def _mail_safety_overall_outcome(gate_results: list[dict[str, Any]]) -> str:
         return "yellow_card"
     return "passed"
 
-def _resolve_mail_commercial_terms(db: Session, *, suite_step: int) -> MailDraftCommercialTerms:
-    price = _resolve_mail_price_term(db)
-    delivery = _mail_standard_delivery_sla_term()
-    # v1.7.208 按用户要求注释掉 discount / payment_terms 的 placeholder 兜底 —
-    # 这两项当前没有任何真实数据库表存储, 永远走 _mail_commercial_placeholder() 假装"已识别为占位符"
-    # 是 v1.7.207 用户禁止的"假数据冒充成功"模式。按"宁报错或为空"原则直接 raise 503,
-    # 等真实的 discount / payment_terms 配置表上线后再恢复.
-    # 旧逻辑（已注释）:
-    #   discount = _mail_commercial_placeholder("discount")
-    #   payment_terms = _mail_commercial_placeholder("payment_terms")
-    raise HTTPException(
-        status_code=503,
-        detail=(
-            "商业条款 discount / payment_terms 当前无任何后端数据源, "
-            "按 v1.7.208 用户要求不再走 placeholder 兜底假装'已识别'。"
-            "等 discount / payment_terms 配置表上线后再恢复邮件草稿生成。"
-        ),
+def _recall_kb_term_phrase(
+    db: Session,
+    *,
+    function_fragment: str,
+    keyword_any: tuple[str, ...] = (),
+    business_line: str | None = None,
+) -> tuple[str, str]:
+    """v1.7.216: 从 email_fragment_asset 表 (source_type='mail_pricing_constraint_seed') 召回 1 条最高分话术规则。
+
+    用于 _resolve_mail_commercial_terms 给 discount / payment_terms 填话术句子, 替代之前的占位符兜底。
+    返回 (value, source_tag), 召不到返 ("", "no_kb_term_found:...").
+    """
+    q = db.query(EmailFragmentAsset).filter(
+        EmailFragmentAsset.source_type == "mail_pricing_constraint_seed",
+        EmailFragmentAsset.function_fragment == function_fragment,
+        EmailFragmentAsset.status == "ready",
     )
-    # 以下代码 v1.7.208 不可达, 保留作为后续恢复占位符策略时的参考骨架（已注释）:
-    # warnings = [
-    #     "Price, delivery SLA, discount, and payment terms are backend-filled and locked for review.",
-    # ]
-    # if price.is_placeholder:
-    #     warnings.append("No single unambiguous active pricing rule was resolved; price placeholder remains for approval.")
-    # if int(suite_step) >= 4:
-    #     warnings.append("Discount and payment terms require explicit backend or finance approval.")
-    # return MailDraftCommercialTerms(
-    #     price=price,
-    #     delivery=delivery,
-    #     discount=discount,
-    #     payment_terms=payment_terms,
-    #     warnings=tuple(warnings),
-    # )
+    if keyword_any:
+        from sqlalchemy import or_ as _sa_or
+        q = q.filter(_sa_or(*[EmailFragmentAsset.content.ilike(f"%{kw}%") for kw in keyword_any]))
+    if business_line:
+        # kb_business_line 在 source_snapshot 里, 直接 SQL JSON 操作太复杂 — 这里只按 content 关键词与 function_fragment 召回
+        pass
+    chosen = q.order_by(EmailFragmentAsset.useful_score.desc().nullslast()).first()
+    if chosen and chosen.content:
+        value = chosen.content.strip()
+        # 截断到合理长度防 prompt 过长
+        if len(value) > 280:
+            value = value[:280] + "..."
+        return value, f"kb_chunk:{chosen.fragment_id}"
+    return "", f"no_kb_term_found:fragment={function_fragment}"
+
+
+def _resolve_mail_commercial_terms(db: Session, *, suite_step: int, business_line: str | None = None) -> MailDraftCommercialTerms:
+    """v1.7.216 改造: 不再 raise, 而是从知识库召回话术规则 + 真为空时返空值继续。
+
+    - price: _resolve_mail_price_term 按业务线查最优 PricingRule, 查不到返空 (是真为空, 不 raise)
+    - delivery: 常量标准 SLA 标签
+    - discount: 从 email_fragment_asset 召回 1 条折扣相关 quotation 类话术
+    - payment_terms: 从 email_fragment_asset 召回 1 条账期/付款相关 constraint 类话术
+    召不到就返空值, 让 V3 实测看到"哪一项实际为空", 单条修复 KB 即可, 不打断流程.
+    """
+    price = _resolve_mail_price_term(db, business_line=business_line)
+    delivery = _mail_standard_delivery_sla_term()
+
+    # discount: 优先匹配含"折扣/折/优惠/阶梯/discount"的 quotation 类话术
+    discount_value, discount_source = _recall_kb_term_phrase(
+        db,
+        function_fragment="quotation",
+        keyword_any=("折扣", "折后", "阶梯", "优惠", "discount"),
+    )
+    discount = MailDraftResolvedTerm(
+        value=discount_value,
+        source=discount_source,
+        is_placeholder=False,
+    )
+
+    # payment_terms: 优先匹配含"账期/付款/PO/结算/天/net"的 constraint 类话术
+    payment_value, payment_source = _recall_kb_term_phrase(
+        db,
+        function_fragment="constraint",
+        keyword_any=("账期", "付款", "PO", "结算", "天付款", "net "),
+    )
+    payment_terms = MailDraftResolvedTerm(
+        value=payment_value,
+        source=payment_source,
+        is_placeholder=False,
+    )
+
+    warnings = []
+    if not price.value:
+        warnings.append("price 解析为空 — 该业务线下无 active PricingRule 或 PricingRule 表空, 邮件正文将不含具体价格.")
+    if not discount.value:
+        warnings.append("discount 召回为空 — KB 里无含折扣关键词的 quotation 话术, 单条补 KB 后即可.")
+    if not payment_terms.value:
+        warnings.append("payment_terms 召回为空 — KB 里无含账期关键词的 constraint 话术, 单条补 KB 后即可.")
+
+    return MailDraftCommercialTerms(
+        price=price,
+        delivery=delivery,
+        discount=discount,
+        payment_terms=payment_terms,
+        warnings=tuple(warnings),
+    )
 
 def _mail_sanitize_fewshot_reference_for_draft(content: str | None) -> str | None:
     text_value = sanitize_text(content or "")
