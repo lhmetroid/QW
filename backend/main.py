@@ -13105,13 +13105,17 @@ def _serialize_mail_iteration_draft_row(row) -> dict:
 
 @app.get("/api/v1/mail/gold-fewshot-seeds")
 def list_mail_gold_fewshot_seeds(db: Session = Depends(get_db)):
-    """返回 email_fragment_asset 表里 source_type='mail_gold_seed' 的黄金范例种子（当前 25 条）。
+    """返回 email_fragment_asset 表里邮件 Few-Shot 用的全部黄金种子。
 
-    数据由 backend/seed_mail_gold_candidates.py 从 docs/mail_gold_candidates/latest_*.json
-    脱敏后灌入。本接口只读, 不真写库。
+    v1.7.213 起包含两类来源：
+      - source_type='mail_gold_seed'              : 25 条销售开发邮件 (greetings/example/process), 来源 docs/mail_gold_candidates/latest_*.json
+      - source_type='mail_pricing_constraint_seed': 20 条报价/约束话术规则 (quotation/constraint), 来源 knowledge_chunk 表
+
+    本接口只读, 不真写库。
     """
+    MAIL_FEWSHOT_SOURCE_TYPES = ('mail_gold_seed', 'mail_pricing_constraint_seed')
     rows = db.query(EmailFragmentAsset).filter(
-        EmailFragmentAsset.source_type == 'mail_gold_seed'
+        EmailFragmentAsset.source_type.in_(MAIL_FEWSHOT_SOURCE_TYPES)
     ).order_by(EmailFragmentAsset.source_ref).all()
 
     items = []
@@ -13119,6 +13123,7 @@ def list_mail_gold_fewshot_seeds(db: Session = Depends(get_db)):
         snapshot = r.source_snapshot or {}
         items.append({
             "fragment_id": str(r.fragment_id),
+            "source_type": r.source_type,
             "source_ref": r.source_ref,
             "title": r.title,
             "content": r.content,
@@ -13137,23 +13142,36 @@ def list_mail_gold_fewshot_seeds(db: Session = Depends(get_db)):
             "desensitized_status": snapshot.get("desensitized_status"),
             "desensitized_fields": snapshot.get("desensitized_fields") or [],
             "sqlserver_source_ref": snapshot.get("sqlserver_source_ref"),
+            "kb_chunk_id": snapshot.get("kb_chunk_id"),
+            "kb_business_line": snapshot.get("kb_business_line"),
             "score_source": snapshot.get("score_source"),
             "seed_source_file": snapshot.get("seed_source_file"),
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "updated_at": r.updated_at.isoformat() if r.updated_at else None,
         })
 
-    # 按 candidate_rank 排序（如果存在），再按 source_ref
-    items.sort(key=lambda x: (x.get("candidate_rank") or 9999, x.get("source_ref") or ""))
+    # 排序: 先按 source_type (mail_gold_seed 前 / pricing_constraint 后), 再按 candidate_rank / source_ref
+    _source_order = {"mail_gold_seed": 0, "mail_pricing_constraint_seed": 1}
+    items.sort(key=lambda x: (
+        _source_order.get(x.get("source_type"), 9),
+        x.get("candidate_rank") or 9999,
+        x.get("source_ref") or "",
+    ))
 
     return {
-        "version": "mail_gold_fewshot_seeds.v1",
-        "source": "email_fragment_asset where source_type='mail_gold_seed'",
+        "version": "mail_gold_fewshot_seeds.v2",
+        "source": "email_fragment_asset where source_type IN ('mail_gold_seed','mail_pricing_constraint_seed')",
         "read_only": True,
         "count": len(items),
         "seeds": items,
-        "loader_script": "backend/seed_mail_gold_candidates.py",
-        "data_origin": "docs/mail_gold_candidates/latest_mail_gold_candidates.json（脱敏后入库）",
+        "loader_scripts": [
+            "backend/seed_mail_gold_candidates.py",
+            "backend/seed_mail_pricing_constraint_from_kb.py",
+        ],
+        "data_origins": {
+            "mail_gold_seed": "docs/mail_gold_candidates/latest_mail_gold_candidates.json（脱敏后入库）",
+            "mail_pricing_constraint_seed": "knowledge_chunk 表 chunk_type IN ('constraint','rule' AND knowledge_type='pricing')",
+        },
     }
 
 
