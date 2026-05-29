@@ -12357,6 +12357,8 @@ async def get_mail_demo_contacts(db: Session = Depends(get_db)):
     边界：本接口只读 PG mail_demo_contact 表；不读 CRM 库；不写任何库；不真发邮件。
     """
     from database import MailDemoContact
+    from mail_sequence_strategy import ALL_MAIL_SEQUENCE_STEPS
+    suite_total_steps = len(ALL_MAIL_SEQUENCE_STEPS)
     rows = db.query(MailDemoContact).order_by(MailDemoContact.demo_index).all()
     contacts = []
     for row in rows:
@@ -12382,7 +12384,7 @@ async def get_mail_demo_contacts(db: Session = Depends(get_db)):
             "crm_profile_snapshot": row.crm_profile_snapshot,
         })
     return {
-        "version": "mail_demo_contact.v1",
+        "version": "mail_demo_contact.v2",
         "source": "mail_demo_contact_table",
         "read_only": True,
         "wrote_to_crm": False,
@@ -12390,6 +12392,11 @@ async def get_mail_demo_contacts(db: Session = Depends(get_db)):
         "real_sending_enabled": False,
         "count": len(contacts),
         "contacts": contacts,
+        "suite_total_steps": suite_total_steps,
+        "suite_steps_note": (
+            "邮件序列套装总步数。当前所有场景均为 4 步（破冰 → 案例 → 流程 → 样稿）。"
+            "未来步数可配置，由 mail_sequence_strategy.ALL_MAIL_SEQUENCE_STEPS 控制。"
+        ),
     }
 
 @app.get("/api/email_effect_feedback")

@@ -376,14 +376,19 @@
                 </div>
                 <div class="mt-4 rounded-lg border border-emerald-200 bg-white p-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div class="text-xs font-bold text-slate-800" title="5 个测试案例来自 CRM 真实联系人（脱敏后存入独立 mail_demo_contact 表，CRM 库本身只读）。点击案例卡片即自动填入下方表单。">真实测试案例切换（5 选 1，来自 CRM 真实联系人脱敏存档）</div>
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="mql-demo-contacts-toggle" onclick="toggleMailDemoContactsCollapsed()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50" title="点击展开或折叠下方 5 个案例卡片区。">▼ 折叠</button>
+                            <div class="text-xs font-bold text-slate-800" title="5 个测试案例来自 CRM 真实联系人（脱敏后存入独立 mail_demo_contact 表，CRM 库本身只读）。点击案例卡片即自动填入下方表单。">真实测试案例切换（5 选 1，来自 CRM 真实联系人脱敏存档）</div>
+                        </div>
                         <div class="flex items-center gap-2">
                             <span id="mql-demo-contacts-status" class="text-[11px] text-slate-500">加载中……</span>
                             <button type="button" onclick="reloadMailDemoContacts()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50" title="重新从后端 GET /api/v1/mail/demo-contacts 拉取 5 个案例。">刷新案例</button>
                         </div>
                     </div>
-                    <div id="mql-demo-contacts-grid" class="mt-3 grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-2"></div>
-                    <div id="mql-demo-contact-detail" class="mt-3 hidden rounded border border-emerald-100 bg-emerald-50 p-3 text-[11px] text-slate-700"></div>
+                    <div id="mql-demo-contacts-collapsible">
+                        <div id="mql-demo-contacts-grid" class="mt-3 grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-2"></div>
+                        <div id="mql-demo-contact-detail" class="mt-3 hidden rounded border border-emerald-100 bg-emerald-50 p-3 text-[11px] text-slate-700"></div>
+                    </div>
                 </div>
                 <div class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-xs">
                     <label class="flex flex-col gap-1" title="CRM 中客户的唯一标识（API 字段名 customer_key）。用于联查 CRM 画像、客户域名白名单、欠款风险等级。示例：CUST-DEMO-MULTI-DOMAIN。必填。">
@@ -402,9 +407,14 @@
                             <option value="new_contact_intro" title="对方公司换了新对接人，需要重新自我介绍 + 交接背景 + 协作路径 + 下一步确认。">新接手联系人介绍（new_contact_intro）</option>
                         </select>
                     </label>
-                    <label class="flex flex-col gap-1" title="4 轮邮件套装中的第几步，取值 1 到 4（API 字段名 suite_step）。第 1 步破冰、第 2 步行业案例、第 3 步标准流程、第 4 步临门样稿。步数越大语气越主动，商业条款越具体，安全门越严格。">
-                        <span class="font-bold text-slate-700">邮件序列第几步（1-4）</span>
-                        <input id="mql-suite-step" type="number" min="1" max="4" value="1" class="rounded border border-slate-300 px-2 py-1 font-mono">
+                    <label class="flex flex-col gap-1" title="4 轮邮件套装中的第几步（API 字段名 suite_step）。第 1 步破冰、第 2 步行业案例、第 3 步标准流程、第 4 步临门样稿。步数越大语气越主动，商业条款越具体，安全门越严格。套装总步数当前为 4（写死），未来由 mail_sequence_strategy.ALL_MAIL_SEQUENCE_STEPS 可配置。">
+                        <span class="font-bold text-slate-700">邮件序列第几步</span>
+                        <select id="mql-suite-step" class="rounded border border-slate-300 px-2 py-1 font-mono">
+                            <option value="1">第 1 步 · 破冰</option>
+                            <option value="2">第 2 步 · 行业案例</option>
+                            <option value="3">第 3 步 · 标准流程</option>
+                            <option value="4">第 4 步 · 临门样稿</option>
+                        </select>
                     </label>
                     <label class="flex flex-col gap-1" title="当前对接销售姓名（API 字段名 current_seller_name），会作为发件人代称写入草稿。必填。">
                         <span class="font-bold text-slate-700">销售姓名</span>
@@ -416,7 +426,8 @@
                     </label>
                 </div>
                 <div class="mt-4 flex flex-wrap items-center gap-3">
-                    <button id="mql-run-btn" type="button" onclick="runMailQualityLiveDraft()" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700" title="向后端真路由 POST /api/v1/mail/generate-draft 发请求。后端会真调大模型 + 真查范例黄金库种子 + 跑六道安全门，5 到 25 秒返回真草稿。整个过程不会真实发送邮件。">生成草稿（真调后端）</button>
+                    <button id="mql-run-btn" type="button" onclick="runMailQualityLiveDraft()" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700" title="只生成当前选定步骤的 1 封草稿。后端会真调大模型 + 真查范例黄金库 + 跑六道安全门，5 到 25 秒返回真草稿。整个过程不会真实发送邮件。">生成当前步骤草稿（真调后端）</button>
+                    <button id="mql-run-all-btn" type="button" onclick="runMailQualityLiveDraftAllSteps()" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700" title="按当前业务场景的套装步数依次生成所有邮件（默认 4 封，每封对应 1 步）。每封串行真调后端，总耗时约 N × 单封耗时。生成完成后下方按步骤显示所有草稿。">生成本场景全部草稿（按套装步数）</button>
                     <span id="mql-status" class="text-xs text-slate-600">尚未发起请求</span>
                 </div>
                 <div id="mql-result" class="mt-4 hidden">
@@ -466,6 +477,13 @@
                         <summary class="cursor-pointer text-[11px] font-bold text-slate-600" title="展开后看到完整的后端响应 JSON 原文，供调试和审计用。">原始 JSON 响应（用于审计）</summary>
                         <pre id="mql-r-raw" class="mt-2 max-h-64 overflow-auto rounded bg-slate-900 p-3 text-[10px] text-slate-100"></pre>
                     </details>
+                </div>
+                <div id="mql-multi-result" class="mt-4 hidden">
+                    <div class="rounded border border-indigo-200 bg-indigo-50 p-3">
+                        <div class="text-xs font-bold text-indigo-900" title="本区域展示本场景【整套】邮件序列的全部草稿（默认 4 封）。每封对应套装的一步，串行调后端真生成。">本场景全套邮件草稿（按套装步数依次生成）</div>
+                        <div id="mql-multi-status" class="mt-1 text-[11px] text-slate-600">尚未发起整套生成</div>
+                    </div>
+                    <div id="mql-multi-grid" class="mt-3 grid grid-cols-1 gap-3"></div>
                 </div>
             </section>
             <div id="mail-quality-panel" class="grid grid-cols-1 xl:grid-cols-2 gap-5" title="以下卡片是面板字段说明骨架（占位静态示例）。真实数据请使用上方绿色【真接后端】演示区。">
@@ -1677,9 +1695,19 @@ Alex</textarea>
         const defaultAnalysisContent = document.getElementById('analysis-content')?.innerHTML || '';
         const defaultAssistContent = document.getElementById('assist-content')?.innerHTML || '';
 
-        // === 邮件 AI 回复测试案例切换器（v1.7.202 真接入 mail_demo_contact 表） ===
+        // === 邮件 AI 回复测试案例切换器（v1.7.203 加折叠 + 套装步数 + 批量生成） ===
         let mailDemoContactCache = [];
         let mailDemoContactActiveIndex = null;
+        let mailDemoSuiteTotalSteps = 4;  // 由 GET demo-contacts 的 suite_total_steps 字段动态填充，默认 4
+        let mailDemoContactsCollapsed = false;
+
+        function toggleMailDemoContactsCollapsed() {
+            mailDemoContactsCollapsed = !mailDemoContactsCollapsed;
+            const wrap = document.getElementById('mql-demo-contacts-collapsible');
+            const btn = document.getElementById('mql-demo-contacts-toggle');
+            if (wrap) wrap.classList.toggle('hidden', mailDemoContactsCollapsed);
+            if (btn) btn.textContent = mailDemoContactsCollapsed ? '▶ 展开' : '▼ 折叠';
+        }
 
         async function loadMailDemoContacts() {
             const statusEl = document.getElementById('mql-demo-contacts-status');
@@ -1696,6 +1724,8 @@ Alex</textarea>
                 const data = await resp.json();
                 const contacts = (data && data.contacts) || [];
                 mailDemoContactCache = contacts;
+                mailDemoSuiteTotalSteps = parseInt(data.suite_total_steps || 4, 10) || 4;
+                rebuildMailSuiteStepOptions();
                 if (!contacts.length) {
                     if (statusEl) {
                         statusEl.textContent = '尚未灌入测试案例（请在后端跑 python backend/seed_mail_demo_contacts.py）';
@@ -1704,7 +1734,7 @@ Alex</textarea>
                     return;
                 }
                 if (statusEl) {
-                    statusEl.textContent = `已加载 ${contacts.length} 个案例（数据源：${data.source || 'mail_demo_contact_table'}，只读）`;
+                    statusEl.textContent = `已加载 ${contacts.length} 个案例 · 当前套装共 ${mailDemoSuiteTotalSteps} 步（数据源：${data.source || 'mail_demo_contact_table'}，只读）`;
                     statusEl.className = 'text-[11px] text-emerald-700';
                 }
                 renderMailDemoContactsGrid(contacts);
@@ -1716,6 +1746,27 @@ Alex</textarea>
                     statusEl.className = 'text-[11px] text-red-600 font-bold';
                 }
             }
+        }
+
+        function rebuildMailSuiteStepOptions() {
+            // 根据 mailDemoSuiteTotalSteps 重建 step select 选项。当前每场景都是同样总步数，未来可按 scenario 分别定。
+            const sel = document.getElementById('mql-suite-step');
+            if (!sel) return;
+            const stepLabels = ['破冰', '行业案例', '标准流程', '临门样稿'];
+            const current = sel.value || '1';
+            sel.innerHTML = '';
+            for (let i = 1; i <= mailDemoSuiteTotalSteps; i++) {
+                const opt = document.createElement('option');
+                opt.value = String(i);
+                opt.textContent = stepLabels[i - 1] ? `第 ${i} 步 · ${stepLabels[i - 1]}` : `第 ${i} 步`;
+                sel.appendChild(opt);
+            }
+            // 保留原选中（如果还在范围内）
+            const fallback = (parseInt(current, 10) >= 1 && parseInt(current, 10) <= mailDemoSuiteTotalSteps) ? current : '1';
+            sel.value = fallback;
+            // 同步更新"生成本场景全部草稿"按钮文字
+            const allBtn = document.getElementById('mql-run-all-btn');
+            if (allBtn) allBtn.textContent = `生成本场景全部草稿（共 ${mailDemoSuiteTotalSteps} 封）`;
         }
 
         function renderMailDemoContactsGrid(contacts) {
@@ -1735,8 +1786,7 @@ Alex</textarea>
                     </div>
                     <div class="mt-2 font-bold text-slate-900">${c.demo_label}</div>
                     <div class="mt-1 text-slate-600">${c.contact_name_masked || '—'} · ${c.company_name_masked || '—'}</div>
-                    <div class="mt-1 text-[10px] text-slate-500">生命周期：${c.customer_lifecycle_stage || '未识别'}</div>
-                    <div class="mt-1 text-[10px] text-slate-500">推荐场景：${chineseScenarioName(c.default_scenario)} 第 ${c.default_suite_step} 步</div>
+                    <div class="mt-1 text-[10px] text-slate-500">邮件序列：${chineseScenarioName(c.default_scenario)} · 共 ${mailDemoSuiteTotalSteps} 封</div>
                 `;
                 card.onclick = () => pickMailDemoContact(c.demo_index);
                 gridEl.appendChild(card);
@@ -1780,6 +1830,7 @@ Alex</textarea>
                 const flags = (c.high_risk_flags || []).join('、') || '无';
                 const snapshot = c.crm_profile_snapshot || {};
                 const fmt = (v) => (v == null || v === '') ? '—' : String(v);
+                const lifecycleTooltip = "CRM 内部规则算的生命周期阶段（基于 crmContactYeWuSetting 配置的时间窗 + 合同/商机数量阈值）。注意：该字段由 CRM 业务规则动态算出，可能与本案例的【维度标签】不同源 — 例如沉默老客户因 180+ 天无跟进，CRM 会把生命周期降级为「新联系人」，但案例维度仍标记为「沉默老客户」。";
                 detailEl.innerHTML = `
                     <div class="font-bold text-emerald-900 mb-2">案例 ${c.demo_index} · ${c.demo_label}</div>
                     <div class="mb-2 text-slate-700">${c.demo_label_detail || ''}</div>
@@ -1788,7 +1839,7 @@ Alex</textarea>
                         <div><b>公司（脱敏）：</b>${fmt(c.company_name_masked)}</div>
                         <div><b>行业：</b>${fmt(c.company_industry)}</div>
                         <div><b>客户级别：</b>${fmt(c.customer_tier)}</div>
-                        <div><b>生命周期阶段：</b>${fmt(c.customer_lifecycle_stage)}</div>
+                        <div title="${lifecycleTooltip}"><b>CRM 生命周期阶段：</b>${fmt(c.customer_lifecycle_stage)} <span class="text-slate-400">(?)</span></div>
                         <div><b>欠款风险等级：</b>${fmt(c.payment_risk_level)}</div>
                         <div class="md:col-span-2"><b>高风险标记：</b>${flags}</div>
                         <div class="md:col-span-2"><b>进行中商机摘要（脱敏）：</b>${fmt(snapshot.recent_opportunities_masked)}</div>
@@ -1800,6 +1851,115 @@ Alex</textarea>
                 `;
                 detailEl.classList.remove('hidden');
             }
+        }
+
+        async function runMailQualityLiveDraftAllSteps() {
+            // 按当前 scenario 的套装步数依次串行调 generate-draft 生成 N 封草稿。
+            const totalSteps = mailDemoSuiteTotalSteps || 4;
+            const btnSingle = document.getElementById('mql-run-btn');
+            const btnAll = document.getElementById('mql-run-all-btn');
+            const multiWrap = document.getElementById('mql-multi-result');
+            const multiStatus = document.getElementById('mql-multi-status');
+            const multiGrid = document.getElementById('mql-multi-grid');
+            const statusEl = document.getElementById('mql-status');
+            if (!multiWrap || !multiGrid) return;
+
+            // 锁按钮
+            [btnSingle, btnAll].forEach(b => { if (b) { b.disabled = true; b.classList.add('opacity-60'); } });
+            if (statusEl) {
+                statusEl.textContent = `开始批量生成 ${totalSteps} 封草稿……`;
+                statusEl.className = 'text-xs text-indigo-700 font-bold';
+            }
+            multiWrap.classList.remove('hidden');
+            multiGrid.innerHTML = '';
+
+            // 收集基础 payload
+            const basePayload = {
+                customer_key: (document.getElementById('mql-customer-key')?.value || '').trim(),
+                contact_email: (document.getElementById('mql-contact-email')?.value || '').trim(),
+                scenario: document.getElementById('mql-scenario')?.value || 're_activation',
+                current_seller_name: (document.getElementById('mql-seller-name')?.value || '').trim(),
+                current_seller_signature: (document.getElementById('mql-seller-sig')?.value || '').trim(),
+            };
+            const scenarioCn = chineseScenarioName(basePayload.scenario);
+
+            let okCount = 0;
+            let errCount = 0;
+            const totalStarted = performance.now();
+
+            for (let step = 1; step <= totalSteps; step++) {
+                if (multiStatus) multiStatus.textContent = `正在生成第 ${step} / ${totalSteps} 封……`;
+                const stepCard = document.createElement('div');
+                stepCard.className = 'rounded border border-indigo-200 bg-white p-3';
+                stepCard.innerHTML = `
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                        <div class="text-xs font-bold text-slate-800">${scenarioCn} · 第 ${step} 步</div>
+                        <div class="text-[11px] text-slate-500" id="mql-multi-step-${step}-status">调用中……</div>
+                    </div>
+                    <div class="mt-2 text-[11px]" id="mql-multi-step-${step}-meta"></div>
+                    <div class="mt-2 text-xs font-bold text-slate-900" id="mql-multi-step-${step}-subject"></div>
+                    <div class="mt-2 text-xs text-slate-700 leading-relaxed prose prose-sm max-w-none" id="mql-multi-step-${step}-body"></div>
+                `;
+                multiGrid.appendChild(stepCard);
+
+                const payload = { ...basePayload, suite_step: step };
+                const tStarted = performance.now();
+                try {
+                    const resp = await fetch(`${window.location.origin}/api/v1/mail/generate-draft`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                        credentials: 'include',
+                    });
+                    const text = await resp.text();
+                    let data;
+                    try { data = JSON.parse(text); } catch (e) { data = { _parse_error: e.message, _raw: text }; }
+                    const elapsed = Math.round(performance.now() - tStarted);
+                    const statusSpan = document.getElementById(`mql-multi-step-${step}-status`);
+                    const metaSpan = document.getElementById(`mql-multi-step-${step}-meta`);
+                    const subjectSpan = document.getElementById(`mql-multi-step-${step}-subject`);
+                    const bodySpan = document.getElementById(`mql-multi-step-${step}-body`);
+                    if (!resp.ok) {
+                        errCount++;
+                        if (statusSpan) {
+                            statusSpan.textContent = `HTTP ${resp.status} · ${elapsed}ms · ${data.detail || ''}`;
+                            statusSpan.className = 'text-[11px] text-red-600 font-bold';
+                        }
+                    } else {
+                        okCount++;
+                        if (statusSpan) {
+                            statusSpan.textContent = `HTTP 200 · ${elapsed}ms · 大模型=${data.llm_model_used || '—'} · LLM ${data.llm_status || '—'} · 范例命中=${data.retrieved_fewshot_id ? '是' : '否'}`;
+                            statusSpan.className = 'text-[11px] text-emerald-700';
+                        }
+                        if (metaSpan) {
+                            const so = (data.safety_guardrail && data.safety_guardrail.overall_outcome) || '—';
+                            metaSpan.textContent = `安全门总评：${so} · 草稿编号：${data.mail_uid || '—'} · 真发件开关：${data.real_sending_enabled === false ? '关闭' : '开启'}`;
+                        }
+                        if (subjectSpan) subjectSpan.textContent = `主题：${data.final_subject || '（空）'}`;
+                        if (bodySpan) bodySpan.innerHTML = data.final_body_html || '（正文为空）';
+                    }
+                } catch (err) {
+                    errCount++;
+                    const statusSpan = document.getElementById(`mql-multi-step-${step}-status`);
+                    if (statusSpan) {
+                        statusSpan.textContent = `请求异常：${err.message}`;
+                        statusSpan.className = 'text-[11px] text-red-600 font-bold';
+                    }
+                }
+            }
+
+            const totalElapsed = Math.round(performance.now() - totalStarted);
+            if (multiStatus) {
+                multiStatus.textContent = `批量生成完成：成功 ${okCount} 封，失败 ${errCount} 封，总耗时 ${totalElapsed} 毫秒`;
+                multiStatus.className = okCount === totalSteps
+                    ? 'mt-1 text-[11px] text-emerald-700 font-bold'
+                    : 'mt-1 text-[11px] text-amber-700 font-bold';
+            }
+            if (statusEl) {
+                statusEl.textContent = `批量生成完成：成功 ${okCount} / ${totalSteps}`;
+                statusEl.className = 'text-xs text-emerald-700 font-bold';
+            }
+            [btnSingle, btnAll].forEach(b => { if (b) { b.disabled = false; b.classList.remove('opacity-60'); } });
         }
 
         function reloadMailDemoContacts() {

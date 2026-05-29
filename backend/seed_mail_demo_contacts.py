@@ -47,6 +47,7 @@ DIMENSION_SQLS: list[dict] = [
         "demo_label_detail": "至少 3 张销售合同 + 近 30 天有跟进记录。典型推新业务场景。",
         "default_scenario": "new_business_promotion",
         "default_suite_step": 1,
+        "required_lifecycles": ["熟联系人", "老联系人"],
         "sql": """
             SELECT TOP 30 w.external_userid, c.ContactId
             FROM usrCustomerContact c
@@ -70,6 +71,7 @@ DIMENSION_SQLS: list[dict] = [
         "demo_label_detail": "历史 1 到 2 张合同。典型唤醒续约或推增项场景。",
         "default_scenario": "re_activation",
         "default_suite_step": 1,
+        "required_lifecycles": ["老联系人", "熟联系人"],
         "sql": """
             SELECT TOP 30 w.external_userid, c.ContactId
             FROM usrCustomerContact c
@@ -88,6 +90,7 @@ DIMENSION_SQLS: list[dict] = [
         "demo_label_detail": "0 张合同，但有进行中的商机询价。典型新接手联系人介绍场景。",
         "default_scenario": "new_contact_intro",
         "default_suite_step": 1,
+        "required_lifecycles": ["新联系人"],
         "sql": """
             SELECT TOP 30 w.external_userid, c.ContactId
             FROM usrCustomerContact c
@@ -110,6 +113,7 @@ DIMENSION_SQLS: list[dict] = [
         "demo_label_detail": "曾有合同但最后跟进超过 180 天。典型唤醒重启关系场景。",
         "default_scenario": "re_activation",
         "default_suite_step": 2,
+        "required_lifecycles": ["老联系人", "熟联系人"],
         "sql": """
             SELECT TOP 30 w.external_userid, c.ContactId
             FROM usrCustomerContact c
@@ -131,6 +135,7 @@ DIMENSION_SQLS: list[dict] = [
         "demo_label_detail": "近 30 天有 5 次以上有效跟进。典型推新业务或深化合作场景。",
         "default_scenario": "new_business_promotion",
         "default_suite_step": 2,
+        "required_lifecycles": ["老联系人", "熟联系人"],
         "sql": """
             SELECT TOP 30 w.external_userid, c.ContactId
             FROM usrCustomerContact c
@@ -230,11 +235,14 @@ def _desensitize_profile(profile, demo_index: int) -> dict:
 
 
 def fetch_one_candidate_for_dimension(crm_db, dim: dict):
-    """对一个维度跑 SQL 拿候选列表，逐个调 fetch_crm_profile 直到成功。
+    """对一个维度跑 SQL 拿候选列表，优先选 lifecycle 匹配的画像；没匹配回退到第一个有效画像。
     返回 (external_userid, contact_id, profile) 或 None。
     """
     rows = crm_db.execute(text(dim["sql"])).fetchall()
     print(f"  [维度{dim['demo_index']}] SQL 命中 {len(rows)} 个候选")
+    preferred_lifecycles = dim.get("required_lifecycles")  # 软约束：优先选这些 lifecycle
+
+    first_valid: tuple | None = None
     for row in rows:
         external_userid = row[0]
         contact_id = row[1]
@@ -242,11 +250,20 @@ def fetch_one_candidate_for_dimension(crm_db, dim: dict):
             continue
         try:
             profile = fetch_crm_profile(external_userid, crm_db)
-        except Exception as exc:
-            # 个别 external_userid 可能查不到完整画像，跳过
+        except Exception:
             continue
-        return external_userid, contact_id, profile
-    return None
+        # 第一个有效画像兜底
+        if first_valid is None:
+            first_valid = (external_userid, contact_id, profile)
+        # 优先返回 lifecycle 匹配的
+        lifecycle = (profile.customer_lifecycle_stage or "").strip()
+        if preferred_lifecycles and lifecycle in preferred_lifecycles:
+            return external_userid, contact_id, profile
+    if first_valid is not None and preferred_lifecycles:
+        # 没匹配到偏好 lifecycle，回退到第一个，打印警告
+        lifecycle = (first_valid[2].customer_lifecycle_stage or "").strip()
+        print(f"  [维度{dim['demo_index']}] 警告：未找到 lifecycle ∈ {preferred_lifecycles} 的候选，回退到 lifecycle={lifecycle!r}")
+    return first_valid
 
 
 def upsert_demo_contact(pg_db, dim: dict, external_userid: str, contact_id, profile):
