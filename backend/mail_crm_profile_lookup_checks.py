@@ -1,7 +1,15 @@
 import re
+import sys
 import unittest
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from mail_crm_mock_data import (
+    MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY,
+    MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY,
+)
 
 
 class HTTPException(Exception):
@@ -27,6 +35,8 @@ def _load_mail_crm_helpers() -> dict[str, Any]:
     namespace: dict[str, Any] = {
         "Any": Any,
         "HTTPException": HTTPException,
+        "MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY": MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY,
+        "MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY": MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY,
         "logger": _Logger(),
         "re": re,
         "sanitize_text": sanitize_text,
@@ -44,15 +54,15 @@ class MailCrmProfileLookupTest(unittest.TestCase):
     def test_static_customer_key_profile_adds_profile_signals_and_domains(self):
         profile = self.helpers["_lookup_mail_crm_profile"](
             "CUST-DEMO-MULTI-DOMAIN",
-            "buyer@customer-domain.com",
+            "buyer@customer-domain.mailmock.test",
         )
 
         self.assertEqual(profile["company_industry"], "manufacturing")
         self.assertEqual(profile["payment_risk_level"], "low")
-        self.assertEqual(profile["crm_profile_lookup_status"], "matched_static_customer_key")
+        self.assertEqual(profile["crm_profile_lookup_status"], "matched_mail_crm_mock_customer_key")
         self.assertEqual(
             profile["customer_domains"],
-            ("customer-domain.cn", "customer-domain.com"),
+            ("customer-domain-cn.mailmock.test", "customer-domain.mailmock.test"),
         )
 
     def test_contact_email_domain_fallback_does_not_use_wecom_identifier_as_mail_key(self):
@@ -69,12 +79,12 @@ class MailCrmProfileLookupTest(unittest.TestCase):
     def test_guardrail_allows_crm_profile_domain_fallback_for_cc(self):
         profile = self.helpers["_lookup_mail_crm_profile"](
             "CUST-DEMO-MULTI-DOMAIN",
-            "buyer@customer-domain.com",
+            "buyer@customer-domain.mailmock.test",
         )
         result = self.helpers["_evaluate_mail_recipient_domain_confidentiality_guardrail"](
             customer_key="CUST-DEMO-MULTI-DOMAIN",
-            contact_email="buyer@customer-domain.com",
-            cc_emails=["legal@customer-domain.cn"],
+            contact_email="buyer@customer-domain.mailmock.test",
+            cc_emails=["legal@customer-domain-cn.mailmock.test"],
             crm_profile=profile,
         )
 

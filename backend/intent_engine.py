@@ -241,15 +241,34 @@ class IntentEngine:
         return sanitized
 
     @classmethod
-    def sanitize_thread_fact_for_prompt(cls, thread_fact: dict | None) -> dict:
-        fact = thread_fact or {}
-        stage_signals = fact.get("stage_signals") or {}
-        merged_facts = fact.get("merged_facts") or {}
+    def sanitize_thread_fact_for_prompt(cls, thread_fact: Any) -> dict:
+        if not thread_fact:
+            return {}
+
+        def get_val(obj, key, default=None):
+            if obj is None:
+                return default
+            if isinstance(obj, dict):
+                val = obj.get(key)
+            else:
+                val = getattr(obj, key, None)
+            return val if val is not None else default
+
+        stage_signals = get_val(thread_fact, "stage_signals", {})
+        merged_facts = get_val(thread_fact, "merged_facts", {})
+
         sanitized = {}
         for key in ["scenario_label", "intent_label", "language_style", "business_state", "reply_guard_reason"]:
-            value = fact.get(key)
+            value = get_val(thread_fact, key)
             if cls._is_meaningful_prompt_value(value):
                 sanitized[key] = value
+
+        # Ensure latest messages are flat-mapped at the root of thread_context for front-and-center LLM visibility
+        for key in ["latest_customer_message", "latest_sales_message", "recent_sales_messages"]:
+            val = get_val(merged_facts, key)
+            if cls._is_meaningful_prompt_value(val):
+                sanitized[key] = val
+
         allowed_stage_keys = [
             "has_formal_quote",
             "crm_has_quote_history",
@@ -258,13 +277,14 @@ class IntentEngine:
             "sales_only_conversation",
             "followup_after_no_reply",
         ]
-        filtered_stage_signals = {
-            key: stage_signals.get(key)
-            for key in allowed_stage_keys
-            if key in stage_signals
-        }
+        filtered_stage_signals = {}
+        for key in allowed_stage_keys:
+            val = get_val(stage_signals, key)
+            if val is not None:
+                filtered_stage_signals[key] = val
         if filtered_stage_signals:
             sanitized["stage_signals"] = filtered_stage_signals
+
         allowed_merged_keys = [
             "summary_status",
             "last_sender",
@@ -274,18 +294,15 @@ class IntentEngine:
             "awaiting_customer_reply",
             "sales_only_conversation",
             "followup_after_no_reply",
-            "latest_sales_message",
-            "recent_sales_messages",
-            "latest_customer_message",
             "latest_customer_reply_type",
             "latest_customer_time_mentions",
             "crm_has_quote_history",
         ]
-        filtered_merged_facts = {
-            key: merged_facts.get(key)
-            for key in allowed_merged_keys
-            if cls._is_meaningful_prompt_value(merged_facts.get(key))
-        }
+        filtered_merged_facts = {}
+        for key in allowed_merged_keys:
+            val = get_val(merged_facts, key)
+            if cls._is_meaningful_prompt_value(val):
+                filtered_merged_facts[key] = val
         if filtered_merged_facts:
             sanitized["merged_facts"] = filtered_merged_facts
         return sanitized
@@ -2292,55 +2309,60 @@ class IntentEngine:
             sales_scores.append(entry)
             sales_by_id[str(item.get("id"))] = entry
 
+        curr_topic = (summary_json or {}).get("topic")
+        curr_core_demand = (summary_json or {}).get("core_demand")
+        curr_status = (summary_json or {}).get("status")
+
+        # 解决多轮对话中，打分 Payload 里的 summary 仍残留上一轮旧主题，而本轮 thread_context.scenario_label
+        # 已更新为当前轮次最新主题的不一致问题。在此以本轮最新时序分类为准进行对齐。
+        if thread_fact:
+            cur_scenario = thread_fact.get("scenario_label")
+            if cur_scenario and cur_scenario not in {"general", "inquiry"}:
+                curr_topic = cur_scenario
+            cur_intent = thread_fact.get("intent_label")
+            if cur_intent and cur_intent not in {"general", "inquiry"}:
+                curr_core_demand = cur_intent
+
+        sanitized_thread = cls.sanitize_thread_fact_for_prompt(thread_fact)
+        if curr_status:
+            sanitized_thread["conversation_status"] = curr_status
+
         base_context = {
-            "summary": {
-                "topic": (summary_json or {}).get("topic"),
-                "core_demand": (summary_json or {}).get("core_demand"),
-                "status": (summary_json or {}).get("status"),
-            },
-            "thread_context": cls.sanitize_thread_fact_for_prompt(thread_fact),
+            "thread_context": sanitized_thread,
             "crm_context": cls.sanitize_crm_context_for_prompt(crm_context),
-            "dimensions": [
-                "overall", "low_barrier", "non_repetition", "safety",
-                "conciseness", "style_match", "context_alignment",
-            ],
         }
         score_dims = ["overall", "low_barrier", "non_repetition", "safety", "conciseness", "style_match", "context_alignment"]
 
         # --- AI 候选独立评分 ---
         if ai_candidates:
             ai_payload = dict(base_context)
-            ai_payload["candidates"] = [
+            ai_payload["ai_candidates"] = [
                 {
                     "candidate_id": item.get("candidate_id"),
-                    "model_slot": item.get("model_slot"),
-                    "model_label": item.get("model_label"),
-                    "model_display_name": item.get("model_display_name"),
-                    "knowledge_source": item.get("knowledge_source"),
-                    "knowledge_source_label": item.get("knowledge_source_label"),
-                    "style_title": item.get("style_title"),
                     "reply_text": item.get("reply_text"),
                 }
                 for item in ai_candidates
             ]
             ai_prompt = (
-                "你是销售回复评分器。请使用当前 LLM-1 模型，对下列 AI 候选回复打分。\n"
-                "评分维度：low_barrier, non_repetition, safety, conciseness, style_match, context_alignment。\n"
-                "每个维度取 0-100 的整数。评分要结合线程历史、最近我方已发内容、客户最后状态、风格要求和 CRM 风险。\n"
-                "特别注意：\n"
-                "- conciseness（微信感）字数规则：≤50字应给80-95分，严禁对≤50字的回复给低于75分；"
-                "50-80字给40-70分；>80字给0-30分。"
-                "若回复含未填占位符（如 xxxx@xx.com、XX元、X折、X到X、POXX）或元注释与开发说明（如【...】、【企微回复参考】、备注、风格要求、说明等本不该发给客户的文字），conciseness 直接<40。\n"
-                "- safety（稳妥度）：口径稳、不超额、不催逼、不编数字的正常跟进/确认/收尾给90-100；"
-                "遇到降价、开票、工期等敏感点时用 我去申请/找财务确认/看操作空间/给准信 且不越权，也可给90-100；"
-                "给出未核实的具体承诺或轻微贬低竞品给78-84；越权让利、报低价、方式票给50-77；"
-                "编造客户可见的具体数字或案例（核对知识库与上下文查无实据）给<50。\n"
-                "- low_barrier（易回复）：客户已收尾或只需轻确认时，一句干净确认且不给客户新增负担=95-100；"
-                "需要推进时给出明确、低成本、客户容易答应的下一步（如 现在打给你5分钟、今天下班前给准信、我发明细表给你对照）=95-100；"
-                "有推进但仍需客户多判断或多补信息=85-94；把球踢回客户或一次问多个问题=70-84；让客户替我方决策或明显增加负担<60。\n"
-                "请只返回 JSON 对象，不要输出 markdown。\n"
+                "你是一个高度专业、绝不妥协的销售回复语义审查与打分器。请严格遵循《销售回复质量评分标准（7维）》，"
+                "结合线程背景、历史对话、CRM画像和检索到的知识库，对下列候选回复进行深度的语义打分。\n\n"
+                "【重要评分原则：彻底打碎中庸陷阱，拉大分数差距，充分利用 0-100 的连续动态范围】\n"
+                "打分必须好坏分明，绝不允许将有瑕疵的回复挤在 70-80 的中间地带！请严格按照以下四个语义档位进行打分（每个维度都必须在 0-100 范围内给出具体语义打分，禁止有任何保护下限）：\n"
+                "1. 致命硬伤（打 0-20 分的极低分）：包括事实编造、严重时序倒退、违规越权、泄露元指令或未填占位符等。允许打到 0 分，没有下限！\n"
+                "2. 明显瑕疵（打 21-50 分的低分区）：包括收尾期画蛇添足强行追问（严重增加决策门槛）、答非所问、或忽略客户明确情绪/赞叹等。\n"
+                "3. 正常合格（打 51-85 分的中等区）：大体符合但并非最优解，存在一定精简或改进空间。\n"
+                "4. 极致优秀（打 86-100 分的高分区）：本轮无可挑剔的最优解（前期精准低门槛推进，收尾期极其克制干净）。\n\n"
+                "【核心维度审查标准（深度语义理解，严禁非通用化与生硬凑分）】\n"
+                "1. non_repetition（差异化）：对比 `reply_text` 与上一轮回复 `latest_sales_message`。若我方上一轮已经发送了已发动作/已结结果，当前候选却宣称将要重新去安排或进行该同一动作（属于动作时序逻辑倒退与语义复读），或者原地打转语义复读上一两轮的话术，本维度分必须重扣至极低档（0-20分）！\n"
+                "2. safety（稳妥度）：安全红线。警告：绝对不能因为回复中没有具体数字，就判定为“安全老实”而给出 90-100 高分！核心规则：如果回复中编造了与当前业务状态、流程、上下文事实或历史对话不符的任何虚假行动、状态或承诺（例如：上一轮已完成的事项，当前却声称要重新‘安排’；或者虚构并不存在的开票、发货、退款流程），这属于严重的【业务状态编造与对客户虚假陈述】，稳妥度评分必须重扣至极低档（0-20分）！若擅自越权承诺折扣、退款口径或主动软让步（如“能便宜点”），扣至 21-50 分！只有在完全符合事实且没有越权倾向时，才能给 90-100 分。\n"
+                "3. context_alignment（上下文贴合）：深度语义贴合。核心规则：必须仔细对比客户上一句消息。如果回复完全忽略客户上一句的情绪、特定的夸赞/认可或具体问题（例如客户明确夸奖我方效率高或特定能力，回复却机械重复、无视客户赞赏，或者答非所问、根本没有承接客户情绪），这属于严重的【忽略客户情绪与上下文事实】，上下文贴合度评分必须重扣至极低档（0-20分）！绝对不能给 60 分等中等分数。\n"
+                "4. conciseness（微信感）：微信口语精炼。≤50字无多余元注释给 90-100 分；泄露占位符或元注释立即一票否决扣至 0-20 分。\n"
+                "5. low_barrier（易回复）：依语境看。收尾期多余强推钩子属于画蛇添足，极大增加决策门槛，必须扣至 0-40 分！开发期低门槛给高分。\n"
+                "6. style_match（风格匹配）：称呼语气自然贴合。\n\n"
+                "【输出格式规范】\n"
+                "请只返回标准 JSON，不要输出任何 markdown 格式说明。\n"
                 "JSON 结构：\n"
-                "{\"ai_candidates\": [{\"candidate_id\": \"...\", \"scores\": {...}, \"reason\": \"一句话原因\"}]}\n\n"
+                "{\"ai_candidates\": [{\"candidate_id\": \"...\", \"scores\": {...}, \"reason\": \"说明打分理由，尤其是触发红线扣分的具体事实原因\"}]}\n\n"
                 f"评分输入：{json.dumps(ai_payload, ensure_ascii=False)}"
             )
             try:
@@ -2367,21 +2389,36 @@ class IntentEngine:
                         )
                         note = str(item.get("reason") or "").strip()
                         # 硬约束：标准3.2 红线硬封顶(基于模型给的语义子维度分，非关键词命中)
-                        # 占位符/元注释：conciseness<40 -> 总分<=55
-                        if normalized.get("conciseness", 100) < 40:
+                        # 时序逻辑错误：non_repetition<=30 -> 总分<=30
+                        if normalized.get("non_repetition", 100) <= 30:
+                            overall_val = min(overall_val, 30)
+                        # 复读或套话：non_repetition<=70 -> 总分<=82
+                        elif normalized.get("non_repetition", 100) <= 70:
+                            overall_val = min(overall_val, 82)
+                        # 占位符/元注释：conciseness<=40 -> 总分<=55
+                        if normalized.get("conciseness", 100) <= 40:
                             overall_val = min(overall_val, 55)
-                        # 编造具体数字/案例(safety<50) -> 总分<=60；超额定价/越权让利/报低价/方式票(safety 50-77) -> 总分<=55
+                        # 编造事实逻辑(safety<=30) -> 总分<=30；编造数字/案例(safety<=50) -> 总分<=50；超额定价/越权让利/报低价(safety<=77) -> 总分<=55
                         _safe = normalized.get("safety", 100)
-                        if _safe < 50:
-                            overall_val = min(overall_val, 60)
-                        elif _safe < 78:
+                        if _safe <= 30:
+                            overall_val = min(overall_val, 30)
+                        elif _safe <= 50:
+                            overall_val = min(overall_val, 50)
+                        elif _safe <= 77:
                             overall_val = min(overall_val, 55)
-                        # 答非所问(context_alignment<60) -> 总分<=65
-                        if normalized.get("context_alignment", 100) < 60:
-                            overall_val = min(overall_val, 65)
-                        if normalized.get("conciseness", 100) < 75:
-                            overall_val = min(overall_val, 84)
-                        if normalized.get("low_barrier", 100) < 75:
+                        # 严重答非所问(context_alignment<=30) -> 总分<=30；忽略客户情绪(context_alignment<=60) -> 总分<=55
+                        _ctx = normalized.get("context_alignment", 100)
+                        if _ctx <= 30:
+                            overall_val = min(overall_val, 30)
+                        elif _ctx <= 60:
+                            overall_val = min(overall_val, 55)
+                        # 低门槛推进严重违规
+                        _low = normalized.get("low_barrier", 100)
+                        if _low <= 30:
+                            overall_val = min(overall_val, 30)
+                        elif _low <= 60:
+                            overall_val = min(overall_val, 55)
+                        if normalized.get("conciseness", 100) <= 75:
                             overall_val = min(overall_val, 84)
                         if any(kw in note for kw in ["未直接回应", "缺关键事实", "缺具体行动"]):
                             overall_val = min(overall_val, 82)
@@ -2408,23 +2445,25 @@ class IntentEngine:
                 for item in sales_scores
             ]
             sales_prompt = (
-                "你是销售回复评分器。请使用当前 LLM-1 模型，对下列销售实发回复打分。\n"
-                "评分维度：low_barrier, non_repetition, safety, conciseness, style_match, context_alignment。\n"
-                "每个维度取 0-100 的整数。评分要结合线程历史、最近我方已发内容、客户最后状态、风格要求和 CRM 风险。\n"
-                "特别注意：\n"
-                "- conciseness（微信感）字数规则：≤50字应给80-95分，严禁对≤50字的回复给低于75分；"
-                "50-80字给40-70分；>80字给0-30分。"
-                "若回复含未填占位符（如 xxxx@xx.com、XX元、X折、X到X、POXX）或元注释与开发说明（如【...】、【企微回复参考】、备注、风格要求、说明等本不该发给客户的文字），conciseness 直接<40。\n"
-                "- safety（稳妥度）：口径稳、不超额、不催逼、不编数字的正常跟进/确认/收尾给90-100；"
-                "遇到降价、开票、工期等敏感点时用 我去申请/找财务确认/看操作空间/给准信 且不越权，也可给90-100；"
-                "给出未核实的具体承诺或轻微贬低竞品给78-84；越权让利、报低价、方式票给50-77；"
-                "编造客户可见的具体数字或案例（核对知识库与上下文查无实据）给<50。\n"
-                "- low_barrier（易回复）：客户已收尾或只需轻确认时，一句干净确认且不给客户新增负担=95-100；"
-                "需要推进时给出明确、低成本、客户容易答应的下一步（如 现在打给你5分钟、今天下班前给准信、我发明细表给你对照）=95-100；"
-                "有推进但仍需客户多判断或多补信息=85-94；把球踢回客户或一次问多个问题=70-84；让客户替我方决策或明显增加负担<60。\n"
-                "请只返回 JSON 对象，不要输出 markdown。\n"
+                "你是一个高度专业、绝不妥协的销售回复语义审查与打分器。请严格遵循《销售回复质量评分标准（7维）》，"
+                "结合线程背景、历史对话、CRM画像和检索到的知识库，对下列销售实发回复进行深度的语义打分。\n\n"
+                "【重要评分原则：彻底打碎中庸陷阱，拉大分数差距，充分利用 0-100 的连续动态范围】\n"
+                "打分必须好坏分明，绝不允许将有瑕疵的回复挤在 70-80 的中间地带！请严格按照以下四个语义档位进行打分（每个维度都必须在 0-100 范围内给出具体语义打分，禁止有任何保护下限）：\n"
+                "1. 致命硬伤（打 0-20 分的极低分）：包括事实编造、严重时序倒退、违规越权、泄露元指令或未填占位符等。允许打到 0 分，没有下限！\n"
+                "2. 明显瑕疵（打 21-50 分的低分区）：包括收尾期画蛇添足强行追问（严重增加决策门槛）、答非所问、或忽略客户明确情绪/赞叹等。\n"
+                "3. 正常合格（打 51-85 分的中等区）：大体符合但并非最优解，存在一定精简或改进空间。\n"
+                "4. 极致优秀（打 86-100 分的高分区）：本轮无可挑剔的最优解（前期精准低门槛推进，收尾期极其克制干净）。\n\n"
+                "【核心维度审查标准（深度语义理解，严禁非通用化与生硬凑分）】\n"
+                "1. non_repetition（差异化）：对比 `content` 与上一轮回复 `latest_sales_message`。若我方上一轮已经发送了已发动作/已结结果，当前销售回复却宣称将要重新去安排或进行该同一动作（属于动作时序逻辑倒退与语义复读），或者原地打转语义复读上一两轮的话术，本维度分必须重扣至极低档（0-20分）！\n"
+                "2. safety（稳妥度）：安全红线。警告：绝对不能因为回复中没有具体数字，就判定为“安全老实”而给出 90-100 高分！核心规则：如果回复中编造了与当前业务状态、流程、上下文事实或历史对话不符的任何虚假行动、状态或承诺（例如：上一轮已完成的事项，当前却声称要重新‘安排’；或者虚构并不存在的开票、发货、退款流程），这属于严重的【业务状态编造与对客户虚假陈述】，稳妥度评分必须重扣至极低档（0-20分）！若擅自越权承诺折扣、退款口径或主动软让步（如“能便宜点”），扣至 21-50 分！只有在完全符合事实且没有越权倾向时，才能给 90-100 分。\n"
+                "3. context_alignment（上下文贴合）：深度语义贴合。核心规则：必须仔细对比客户上一句消息。如果回复完全忽略客户上一句的情绪、特定的夸赞/认可或具体问题（例如客户明确夸奖我方效率高或特定能力，回复却机械重复、无视客户赞赏，或者答非所问、根本没有承接客户情绪），这属于严重的【忽略客户情绪与上下文事实】，上下文贴合度评分必须重扣至极低档（0-20分）！绝对不能给 60 分等中等分数。\n"
+                "4. conciseness（微信感）：微信口语精炼。≤50字无多余元注释给 90-100 分；泄露占位符或元注释立即一票否决扣至 0-20 分。\n"
+                "5. low_barrier（易回复）：依语境看。收尾期多余强推钩子属于画蛇添足，极大增加决策门槛，必须扣至 0-40 分！开发期低门槛给高分。\n"
+                "6. style_match（风格匹配）：称呼语气自然贴合。\n\n"
+                "【输出格式规范】\n"
+                "请只返回标准 JSON，不要输出任何 markdown 格式说明。\n"
                 "JSON 结构：\n"
-                "{\"actual_sales_replies\": [{\"reply_id\": \"...\", \"scores\": {...}, \"reason\": \"一句话原因\"}]}\n\n"
+                "{\"actual_sales_replies\": [{\"reply_id\": \"...\", \"scores\": {...}, \"reason\": \"说明打分理由，尤其是触发红线扣分的具体事实原因\"}]}\n\n"
                 f"评分输入：{json.dumps(sales_payload, ensure_ascii=False)}"
             )
             try:
@@ -2451,21 +2490,36 @@ class IntentEngine:
                         )
                         note = str(item.get("reason") or "").strip()
                         # 硬约束：标准3.2 红线硬封顶(基于模型给的语义子维度分，非关键词命中)
-                        # 占位符/元注释：conciseness<40 -> 总分<=55
-                        if normalized.get("conciseness", 100) < 40:
+                        # 时序逻辑错误：non_repetition<=30 -> 总分<=30
+                        if normalized.get("non_repetition", 100) <= 30:
+                            overall_val = min(overall_val, 30)
+                        # 复读或套话：non_repetition<=70 -> 总分<=82
+                        elif normalized.get("non_repetition", 100) <= 70:
+                            overall_val = min(overall_val, 82)
+                        # 占位符/元注释：conciseness<=40 -> 总分<=55
+                        if normalized.get("conciseness", 100) <= 40:
                             overall_val = min(overall_val, 55)
-                        # 编造具体数字/案例(safety<50) -> 总分<=60；超额定价/越权让利/报低价/方式票(safety 50-77) -> 总分<=55
+                        # 编造事实逻辑(safety<=30) -> 总分<=30；编造数字/案例(safety<=50) -> 总分<=50；超额定价/越权让利/报低价(safety<=77) -> 总分<=55
                         _safe = normalized.get("safety", 100)
-                        if _safe < 50:
-                            overall_val = min(overall_val, 60)
-                        elif _safe < 78:
+                        if _safe <= 30:
+                            overall_val = min(overall_val, 30)
+                        elif _safe <= 50:
+                            overall_val = min(overall_val, 50)
+                        elif _safe <= 77:
                             overall_val = min(overall_val, 55)
-                        # 答非所问(context_alignment<60) -> 总分<=65
-                        if normalized.get("context_alignment", 100) < 60:
-                            overall_val = min(overall_val, 65)
-                        if normalized.get("conciseness", 100) < 75:
-                            overall_val = min(overall_val, 84)
-                        if normalized.get("low_barrier", 100) < 75:
+                        # 严重答非所问(context_alignment<=30) -> 总分<=30；忽略客户情绪(context_alignment<=60) -> 总分<=55
+                        _ctx = normalized.get("context_alignment", 100)
+                        if _ctx <= 30:
+                            overall_val = min(overall_val, 30)
+                        elif _ctx <= 60:
+                            overall_val = min(overall_val, 55)
+                        # 低门槛推进严重违规
+                        _low = normalized.get("low_barrier", 100)
+                        if _low <= 30:
+                            overall_val = min(overall_val, 30)
+                        elif _low <= 60:
+                            overall_val = min(overall_val, 55)
+                        if normalized.get("conciseness", 100) <= 75:
                             overall_val = min(overall_val, 84)
                         if any(kw in note for kw in ["未直接回应", "缺关键事实", "缺具体行动"]):
                             overall_val = min(overall_val, 82)
@@ -2552,11 +2606,22 @@ class IntentEngine:
             scored_items.append(entry)
 
         if actual_text and scorable_by_key:
+            clean_candidates = [
+                {
+                    "key": item["key"],
+                    "reply_text": item["reply_text"]
+                }
+                for item in candidates
+            ]
             similarity_prompt = (
-                "你是销售跟进质量评分器。请比较 AI 候选回复与销售实际发出的连续回复块，"
-                "判断两者在意图、推进方向、信息重点、语气和下一步动作上的相似度。"
-                "评分范围 0-100，越像越高。"
-                "请只返回 JSON，不要输出 markdown。\n"
+                "你是销售回复相似度评估器。请仔细对比 AI 候选回复与销售实际回复，"
+                "并对两者的相似度进行评估打分（0-100的整数，越匹配、意图越接近分数越高）。\n"
+                "【打分维度标准】\n"
+                "- 95-100：意图、业务重点、语气和行动完全吻合或高度一致。\n"
+                "- 80-94：核心推进方向和意图基本契合，但具体表述或细节信息有所出入。\n"
+                "- 60-79：方向有所偏差，或只承接了一半的意图。\n"
+                "- <60：意图完全风马牛不相及，或答非所问。\n"
+                "请只返回标准 JSON，不要输出任何 markdown 格式说明。\n"
                 "JSON 结构：\n"
                 "{\n"
                 "  \"scores\": [\n"
@@ -2567,7 +2632,7 @@ class IntentEngine:
                 "}\n\n"
                 f"当前摘要：{json.dumps(summary_json or {}, ensure_ascii=False)}\n"
                 f"实际销售连续回复：{actual_text}\n"
-                f"候选回复：{json.dumps(candidates, ensure_ascii=False)}"
+                f"候选回复：{json.dumps(clean_candidates, ensure_ascii=False)}"
             )
             try:
                 llm_scores = cls.run_llm1_json_prompt(similarity_prompt, user_id="reply_similarity")

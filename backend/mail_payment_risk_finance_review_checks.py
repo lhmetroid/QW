@@ -1,7 +1,15 @@
 import re
+import sys
 import unittest
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from mail_crm_mock_data import (
+    MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY,
+    MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY,
+)
 
 
 class HTTPException(Exception):
@@ -27,6 +35,8 @@ def _load_mail_payment_risk_helpers() -> dict[str, Any]:
     namespace: dict[str, Any] = {
         "Any": Any,
         "HTTPException": HTTPException,
+        "MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY": MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY,
+        "MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY": MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY,
         "logger": _Logger(),
         "re": re,
         "sanitize_text": sanitize_text,
@@ -44,7 +54,7 @@ class MailPaymentRiskFinanceReviewTest(unittest.TestCase):
     def test_high_payment_risk_from_crm_locks_manual_finance_review(self):
         profile = self.helpers["_lookup_mail_crm_profile"](
             "CUST-HIGH-RISK-DEMO",
-            "buyer@risk-customer.com",
+            "buyer@risk-customer.mailmock.test",
         )
         guardrail = self.helpers["_evaluate_mail_payment_risk_finance_review_guardrail"](
             payment_risk_level=profile["payment_risk_level"],
