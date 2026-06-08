@@ -14,6 +14,7 @@ def _load_safety_result_helpers() -> dict[str, Any]:
     namespace: dict[str, Any] = {
         "Any": Any,
         "sanitize_text": sanitize_text,
+        "Session": Any,
     }
     exec(source[start:end], namespace)
     return namespace

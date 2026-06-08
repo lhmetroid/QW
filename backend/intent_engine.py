@@ -746,6 +746,31 @@ class IntentEngine:
             except Exception as e:
                 logger.error("知识库 LLM 辅助调用异常(attempt %d): %s", attempt + 1, e)
                 last_exc = e
+
+        # LLM-1 completely failed/timed out: attempt LLM-2 fallback
+        try:
+            logger.warning("LLM-1 Dify 调用失败或超时，正在启动 LLM-2 (DeepSeek) 自动兜底机制...")
+            fallback_url = settings.LLM2_API_URL.rstrip("/") + "/chat/completions"
+            fallback_headers = {
+                "Authorization": f"Bearer {settings.LLM2_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            fallback_payload = {
+                "model": settings.LLM2_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1
+            }
+            fallback_response = cls._post_json(fallback_url, fallback_headers, fallback_payload, timeout=35)
+            if fallback_response.status_code == 200:
+                fallback_raw_text = fallback_response.json()["choices"][0]["message"]["content"]
+                parsed_json = json.loads(cls._strip_json_fences(fallback_raw_text))
+                logger.info("LLM-2 (DeepSeek) 自动兜底成功解析 JSON！")
+                return parsed_json
+            else:
+                logger.error("LLM-2 兜底失败: HTTP %d", fallback_response.status_code)
+        except Exception as fallback_err:
+            logger.error("LLM-2 兜底调用也发生异常: %s", fallback_err)
+
         raise last_exc  # type: ignore[misc]
 
     @classmethod

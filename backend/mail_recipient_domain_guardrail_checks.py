@@ -4,6 +4,12 @@ from pathlib import Path
 from typing import Any
 
 
+from mail_crm_mock_data import (
+    MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY,
+    MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY,
+)
+
+
 class HTTPException(Exception):
     def __init__(self, status_code: int, detail: str):
         self.status_code = status_code
@@ -24,6 +30,9 @@ def _load_guardrail_helpers() -> dict[str, Any]:
         "HTTPException": HTTPException,
         "re": re,
         "sanitize_text": sanitize_text,
+        "Session": Any,
+        "MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY": MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY,
+        "MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY": MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY,
     }
     exec(source[start:end], namespace)
     return namespace
@@ -84,7 +93,7 @@ class MailRecipientDomainGuardrailTest(unittest.TestCase):
         result = self.helpers["_evaluate_mail_recipient_domain_confidentiality_guardrail"](
             customer_key="CUST-DEMO-MULTI-DOMAIN",
             contact_email="buyer@customer-domain.com",
-            cc_emails=["ops@customer-domain.cn"],
+            cc_emails=["ops@customer-domain-cn.mailmock.test"],
         )
 
         self.assertIsNone(result)

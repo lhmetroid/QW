@@ -66,6 +66,7 @@ from database import (
     EmailFragmentAsset, EmailEffectFeedback, ModelTrainingSample, ReplyChainSnapshot,
     ApiAssistInvocation, WecomTriggerRecord,
     CaseLibraryCase, CaseLibraryDialogueTurn, CaseIterationRun, CaseIterationResult,
+    MailSequenceTemplate, MailCustomerSuiteFeedback,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -79,6 +80,7 @@ from knowledge_governance import (
     validate_thread_state_consistency,
 )
 from mail_sequence_strategy import (
+    ALL_MAIL_SEQUENCE_STEPS,
     MAIL_UNSENT_DRAFT_STATUSES,
     MailSequenceCutoffEventType,
     MailSequenceInterruptionReason,
@@ -101,6 +103,7 @@ from mail_crm_mock_data import (
 )
 
 FRONTEND_AUTH_COOKIE_NAME = "qw_frontend_auth"
+FRONTEND_AUTH_DEFAULT_ROLE = "admin"
 
 
 class FrontendLoginRequest(BaseModel):
@@ -200,6 +203,49 @@ def _frontend_auth_secret() -> bytes:
     return fallback_secret.encode("utf-8")
 
 
+def _frontend_auth_user_records() -> dict[str, dict[str, str]]:
+    users: dict[str, dict[str, str]] = {}
+    primary_username = str(settings.FRONTEND_AUTH_USERNAME or "").strip()
+    primary_password = str(settings.FRONTEND_AUTH_PASSWORD or "")
+    if primary_username and primary_password:
+        users[primary_username] = {
+            "password": primary_password,
+            "role": FRONTEND_AUTH_DEFAULT_ROLE,
+        }
+
+    raw_extra_users = str(getattr(settings, "FRONTEND_AUTH_EXTRA_USERS", "") or "")
+    for item in re.split(r"[\n,;]+", raw_extra_users):
+        item = item.strip()
+        if not item:
+            continue
+        parts = item.split(":", 2)
+        if len(parts) < 2:
+            logger.warning("FRONTEND_AUTH_EXTRA_USERS 配置项格式错误，已跳过 username=%s", parts[0] if parts else "")
+            continue
+        username = parts[0].strip()
+        password = parts[1]
+        role = parts[2].strip() if len(parts) >= 3 and parts[2].strip() else FRONTEND_AUTH_DEFAULT_ROLE
+        if not username or not password:
+            logger.warning("FRONTEND_AUTH_EXTRA_USERS 配置项缺少账号或密码，已跳过 username=%s", username)
+            continue
+        users[username] = {"password": password, "role": role}
+    return users
+
+
+def _frontend_auth_record_for_username(username: str | None) -> dict[str, str] | None:
+    username_text = str(username or "").strip()
+    if not username_text:
+        return None
+    for configured_username, record in _frontend_auth_user_records().items():
+        if hmac.compare_digest(username_text, configured_username):
+            return {
+                "username": configured_username,
+                "password": str(record.get("password") or ""),
+                "role": str(record.get("role") or FRONTEND_AUTH_DEFAULT_ROLE),
+            }
+    return None
+
+
 def _base64url_encode(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
@@ -209,10 +255,10 @@ def _base64url_decode(value: str) -> bytes:
     return base64.urlsafe_b64decode((value + padding).encode("ascii"))
 
 
-def _make_frontend_auth_token(username: str) -> str:
+def _make_frontend_auth_token(username: str, role: str | None = None) -> str:
     expires_at = int(datetime.utcnow().timestamp()) + max(60, int(settings.FRONTEND_AUTH_SESSION_SECONDS))
     payload = _base64url_encode(json.dumps(
-        {"u": username, "exp": expires_at},
+        {"u": username, "r": role or FRONTEND_AUTH_DEFAULT_ROLE, "exp": expires_at},
         separators=(",", ":"),
     ).encode("utf-8"))
     signature = hmac.new(_frontend_auth_secret(), payload.encode("ascii"), hashlib.sha256).hexdigest()
@@ -230,10 +276,13 @@ def _verify_frontend_auth_token(token: str | None) -> dict[str, Any] | None:
         data = json.loads(_base64url_decode(payload).decode("utf-8"))
     except Exception:
         return None
-    if data.get("u") != settings.FRONTEND_AUTH_USERNAME:
+    user_record = _frontend_auth_record_for_username(data.get("u"))
+    if not user_record:
         return None
     if int(data.get("exp") or 0) < int(datetime.utcnow().timestamp()):
         return None
+    data["u"] = user_record["username"]
+    data["r"] = data.get("r") or user_record["role"]
     return data
 
 
@@ -254,7 +303,7 @@ def _safe_next_url(value: str | None) -> str:
 def _frontend_path_requires_auth(path: str) -> bool:
     if not settings.FRONTEND_AUTH_ENABLED:
         return False
-    if path in {"/static/login.html"}:
+    if path in {"/static/login.html", "/static/agent_builder.html", "/static/mail-suite.html"}:
         return False
     if path == "/static/index.html":
         return True
@@ -283,22 +332,21 @@ async def frontend_auth_middleware(request: Request, call_next):
 async def frontend_login(payload: FrontendLoginRequest, request: Request, response: Response):
     username = str(payload.username or "").strip()
     password = str(payload.password or "")
-    valid_username = hmac.compare_digest(username, settings.FRONTEND_AUTH_USERNAME)
-    valid_password = hmac.compare_digest(password, settings.FRONTEND_AUTH_PASSWORD)
-    if not valid_username or not valid_password:
+    user_record = _frontend_auth_record_for_username(username)
+    if not user_record or not hmac.compare_digest(password, user_record["password"]):
         raise HTTPException(status_code=401, detail="账号或密码错误")
 
     max_age = max(60, int(settings.FRONTEND_AUTH_SESSION_SECONDS))
     response.set_cookie(
         FRONTEND_AUTH_COOKIE_NAME,
-        _make_frontend_auth_token(username),
+        _make_frontend_auth_token(user_record["username"], user_record["role"]),
         max_age=max_age,
         httponly=True,
         secure=request.url.scheme == "https",
         samesite="lax",
         path="/",
     )
-    return {"status": "success", "username": username, "expires_in": max_age}
+    return {"status": "success", "username": user_record["username"], "role": user_record["role"], "expires_in": max_age}
 
 
 @app.post("/api/auth/logout")
@@ -310,11 +358,16 @@ async def frontend_logout(response: Response):
 @app.get("/api/auth/me")
 async def frontend_auth_me(request: Request):
     if not settings.FRONTEND_AUTH_ENABLED:
-        return {"status": "success", "authenticated": True, "username": "auth_disabled"}
+        return {"status": "success", "authenticated": True, "username": "auth_disabled", "role": FRONTEND_AUTH_DEFAULT_ROLE}
     session = _verify_frontend_auth_token(request.cookies.get(FRONTEND_AUTH_COOKIE_NAME))
     if not session:
         return {"status": "success", "authenticated": False}
-    return {"status": "success", "authenticated": True, "username": session.get("u")}
+    return {
+        "status": "success",
+        "authenticated": True,
+        "username": session.get("u"),
+        "role": session.get("r") or FRONTEND_AUTH_DEFAULT_ROLE,
+    }
 
 
 @app.get("/")
@@ -384,6 +437,10 @@ app.include_router(callback_router)
 
 from crm_profile import router as crm_profile_router
 app.include_router(crm_profile_router)
+
+from agent_builder.router import router as agent_builder_router
+app.include_router(agent_builder_router)
+
 
 # 挂载前端静态文件
 frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
@@ -568,6 +625,53 @@ def auto_patch_db():
             "END IF; END $$;"
         ))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_cir_run_case_turn ON case_iteration_result (run_id, case_id, turn_no);"))
+        db.execute(text("ALTER TABLE mail_demo_contact ADD COLUMN IF NOT EXISTS real_customer_key VARCHAR(120);"))
+        db.execute(text("ALTER TABLE mail_demo_contact ADD COLUMN IF NOT EXISTS display_group VARCHAR(40) DEFAULT 'legacy';"))
+        db.execute(text("ALTER TABLE mail_demo_contact ADD COLUMN IF NOT EXISTS is_current_test_case BOOLEAN DEFAULT FALSE;"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mail_demo_contact_current ON mail_demo_contact (is_current_test_case, display_group, demo_index);"))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_sequence_template ("
+            "template_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "scenario VARCHAR(80) NOT NULL,"
+            "suite_step INTEGER NOT NULL,"
+            "scenario_label_cn VARCHAR(80) NOT NULL,"
+            "step_label_cn VARCHAR(120) NOT NULL,"
+            "purpose_cn TEXT NOT NULL,"
+            "send_timing_cn VARCHAR(120) NOT NULL,"
+            "variable_notes JSON NOT NULL DEFAULT '{}'::json,"
+            "script_template TEXT NOT NULL,"
+            "ai_instruction_script TEXT NOT NULL DEFAULT '',"
+            "version_no INTEGER NOT NULL DEFAULT 1,"
+            "is_active BOOLEAN NOT NULL DEFAULT TRUE,"
+            "updated_by VARCHAR(120),"
+            "created_at TIMESTAMP DEFAULT now(),"
+            "updated_at TIMESTAMP DEFAULT now(),"
+            "CONSTRAINT uq_mail_sequence_template_scenario_step UNIQUE(scenario, suite_step)"
+            ");"
+        ))
+        db.execute(text("ALTER TABLE mail_sequence_template ADD COLUMN IF NOT EXISTS ai_instruction_script TEXT NOT NULL DEFAULT '';"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mst_scenario_step ON mail_sequence_template (scenario, suite_step);"))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_customer_suite_feedback ("
+            "feedback_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "customer_id VARCHAR(120) NOT NULL,"
+            "contact_email VARCHAR(255),"
+            "company_name VARCHAR(255),"
+            "scenario VARCHAR(80) NOT NULL,"
+            "suite_step INTEGER NOT NULL,"
+            "mail_uid VARCHAR(120),"
+            "final_subject VARCHAR(500),"
+            "final_body_html TEXT,"
+            "feedback_text TEXT NOT NULL,"
+            "feedback_source VARCHAR(80) NOT NULL DEFAULT 'mail_suite_page',"
+            "feedback_status VARCHAR(50) NOT NULL DEFAULT 'submitted',"
+            "draft_payload JSON,"
+            "customer_profile JSON,"
+            "created_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcsf_customer_created ON mail_customer_suite_feedback (customer_id, created_at);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcsf_scenario_step ON mail_customer_suite_feedback (scenario, suite_step);"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS wecom_trigger_record ("
             "record_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -770,9 +874,53 @@ API_RESCORE_BACKFILL_FROM_UTC = datetime(2026, 5, 28, 0, 0, 0) - timedelta(hours
 API_RESCORE_BACKFILL_INTERVAL_SECONDS = 1800   # 30 分钟
 API_RESCORE_BACKFILL_BATCH_LIMIT = 50          # 单轮最多处理 50 条,防一次跑太久把事件循环空闲时间吃光
 
+def _wecom_followup_scoring_window_status(now_utc: datetime | None = None) -> dict:
+    """Return whether follow-up WeCom scoring may run in the Beijing daily window."""
+    enabled = bool(getattr(settings, "WECOM_FOLLOWUP_SCORING_WINDOW_ENABLED", True))
+    start_hour = int(getattr(settings, "WECOM_FOLLOWUP_SCORING_WINDOW_START_HOUR_BJ", 20))
+    end_hour = int(getattr(settings, "WECOM_FOLLOWUP_SCORING_WINDOW_END_HOUR_BJ", 24))
+    start_hour = max(0, min(start_hour, 24))
+    end_hour = max(0, min(end_hour, 24))
+    start_minute = start_hour * 60
+    end_minute = end_hour * 60
+    now_bj = (now_utc or datetime.utcnow()) + timedelta(hours=8)
+    current_minute = now_bj.hour * 60 + now_bj.minute
+
+    if not enabled or start_minute == end_minute:
+        allowed = True
+    elif start_minute < end_minute:
+        allowed = start_minute <= current_minute < end_minute
+    else:
+        allowed = current_minute >= start_minute or current_minute < end_minute
+
+    next_start_bj = now_bj.replace(hour=min(start_hour, 23), minute=0, second=0, microsecond=0)
+    if enabled and not allowed:
+        if start_minute < end_minute:
+            if current_minute >= start_minute:
+                next_start_bj += timedelta(days=1)
+        elif not (end_minute <= current_minute < start_minute):
+            next_start_bj += timedelta(days=1)
+    seconds_until_start = max(60, int((next_start_bj - now_bj).total_seconds())) if enabled and not allowed else 0
+    return {
+        "allowed": allowed,
+        "enabled": enabled,
+        "beijing_time": now_bj.isoformat(timespec="seconds"),
+        "window": f"{start_hour:02d}:00-{end_hour:02d}:00",
+        "seconds_until_start": seconds_until_start,
+    }
+
+
 def _run_api_invocation_rescore_backfill() -> dict:
     """单次扫描:取 5.28 起未完成评分的调用,按 session 分组共享 _load_session_messages,逐条调 refresh。"""
     from sqlalchemy import or_, exists
+    window = _wecom_followup_scoring_window_status()
+    if not window["allowed"]:
+        logger.info(
+            "API原始/相似分后台补算跳过: 当前北京时间=%s 不在配置窗口 %s",
+            window["beijing_time"],
+            window["window"],
+        )
+        return {"scanned": 0, "refreshed": 0, "failed": 0, "skipped_by_window": True, "window": window}
     db = SessionLocal()
     scanned = 0
     refreshed = 0
@@ -838,12 +986,19 @@ def _run_api_invocation_rescore_backfill() -> dict:
 async def _api_invocation_rescore_backfill_worker():
     """30 分钟周期循环;启动后立刻先跑一次,之后每 30 分钟再跑。"""
     while True:
+        sleep_seconds = API_RESCORE_BACKFILL_INTERVAL_SECONDS
         try:
             stats = await asyncio.to_thread(_run_api_invocation_rescore_backfill)
             logger.info(f"API原始/相似分后台补算 一轮完成: {stats}")
+            if isinstance(stats, dict) and stats.get("skipped_by_window"):
+                window = stats.get("window") if isinstance(stats.get("window"), dict) else {}
+                sleep_seconds = max(
+                    60,
+                    min(API_RESCORE_BACKFILL_INTERVAL_SECONDS, int(window.get("seconds_until_start") or API_RESCORE_BACKFILL_INTERVAL_SECONDS)),
+                )
         except Exception as e:
             logger.error("API原始/相似分后台补算 异常: %s", e)
-        await asyncio.sleep(API_RESCORE_BACKFILL_INTERVAL_SECONDS)
+        await asyncio.sleep(sleep_seconds)
 
 @app.on_event("startup")
 async def _start_api_rescore_backfill_worker():
@@ -984,9 +1139,17 @@ class MailFewShotRetrieveRequest(BaseModel):
     min_useful_score: float | None = None
     top_k: int = 5
 
+class MailContractCaseCandidateRequest(BaseModel):
+    limit: int = 100
+    min_amount: float = 5000
+    business_type: str | None = None
+    product_keyword: str | None = None
+    description_keyword: str | None = None
+    order_by: str = "InputTime"
+
 class MailGenerateDraftRequest(BaseModel):
     customer_key: str
-    contact_email: str
+    contact_email: str | None = None
     cc_emails: list[str] = []
     scenario: str
     suite_step: int
@@ -1147,6 +1310,36 @@ class MailSequenceInterruptResponse(BaseModel):
     operation_log_entry: MailSequenceInterruptOperationLogEntry
     audit_preview: dict[str, Any]
 
+class MailSequenceTemplateUpdateRequest(BaseModel):
+    purpose_cn: str | None = None
+    send_timing_cn: str | None = None
+    script_template: str | None = None
+    ai_instruction_script: str | None = None
+    updated_by: str | None = None
+
+    class Config:
+        extra = "forbid"
+
+
+class MailCustomerSuiteFeedbackRequest(BaseModel):
+    customer_id: str
+    contact_email: str | None = None
+    company_name: str | None = None
+    scenario: str
+    suite_step: int
+    mail_uid: str | None = None
+    final_subject: str | None = None
+    final_body_html: str | None = None
+    feedback_text: str
+    feedback_source: str | None = None
+    feedback_status: str | None = None
+    draft_payload: dict[str, Any] | None = None
+    customer_profile: dict[str, Any] | None = None
+
+    class Config:
+        extra = "forbid"
+
+
 class MailDraftResolvedTerm(BaseModel):
     value: str
     source: str
@@ -1165,7 +1358,12 @@ class MailDraftIntentProfile(BaseModel):
     recipient_name: str
     seller_name: str
     seller_signature: str
+    company_name: str = ""
     company_industry: str = "unknown"
+    customer_lifecycle_stage: str = ""
+    recent_opportunities: str = ""
+    ongoing_contracts: str = ""
+    contact_recent_followup: str = ""
     payment_risk_level: str = "unknown"
     customer_domains: tuple[str, ...] = ()
     crm_profile_lookup_status: str = "not_looked_up"
@@ -1181,8 +1379,13 @@ class MailDraftIntentProfile(BaseModel):
     retrieval_filter_requirements: tuple[str, ...]
     forbidden_boundaries: tuple[str, ...]
     interval_delay_days: int
+    sequence_template_script: str | None = None
+    sequence_template_ai_instruction: str | None = None
+    sequence_template_purpose: str | None = None
+    sequence_template_send_timing: str | None = None
     admitted_fewshot_id: str | None = None
     admitted_fewshot_score: float | None = None
+    admitted_fewshot_title: str | None = None
     admitted_fewshot_content: str | None = None
     commercial_terms: MailDraftCommercialTerms
 
@@ -3029,24 +3232,44 @@ def _mail_generate_draft_fewshot(
     db: Session,
     *,
     scenario: str,
+    suite_step: int,
     function_fragments: tuple[str, ...],
     min_score: Decimal,
 ) -> dict | None:
+    effective_fragments = set(function_fragments)
+    if int(suite_step) == 2:
+        effective_fragments.update({"example", "process"})
+    if int(suite_step) == 4:
+        effective_fragments.discard("quotation")
+        effective_fragments.update({"process", "constraint"})
     query = db.query(EmailFragmentAsset).filter(
+        EmailFragmentAsset.source_type == "mail_gold_seed",
+        EmailFragmentAsset.scenario_label == scenario,
         EmailFragmentAsset.status.in_(sorted(MAIL_FEWSHOT_READY_STATUSES)),
         EmailFragmentAsset.publishable.is_(True),
         EmailFragmentAsset.allowed_for_generation.is_(True),
         EmailFragmentAsset.usable_for_reply.is_(True),
         EmailFragmentAsset.useful_score >= min_score,
     )
-    if function_fragments:
-        query = query.filter(EmailFragmentAsset.function_fragment.in_(list(function_fragments)))
+    if effective_fragments:
+        query = query.filter(EmailFragmentAsset.function_fragment.in_(sorted(effective_fragments)))
 
     candidates = query.order_by(
         EmailFragmentAsset.useful_score.desc(),
         EmailFragmentAsset.effect_score.desc(),
         EmailFragmentAsset.updated_at.desc(),
-    ).limit(10).all()
+    ).limit(20).all()
+    candidates = sorted(
+        candidates,
+        key=lambda item: _mail_fewshot_rank(item, int(suite_step)),
+        reverse=True,
+    )
+    preferred = [
+        item for item in candidates
+        if _mail_fewshot_sequence_step_hint(item) in {0, int(suite_step)}
+    ]
+    if preferred:
+        candidates = preferred + [item for item in candidates if item not in preferred]
     for item in candidates:
         if _mail_fewshot_admission_status(item, min_score)[0]:
             return _mail_fewshot_to_dict(item, min_score)
@@ -3072,6 +3295,40 @@ def _mail_generate_draft_fewshot(
     #       if _mail_fewshot_admission_status(item, min_score)[0]:
     #           return _mail_fewshot_to_dict(item, min_score)
     return None
+
+
+def _mail_fewshot_rank(item: EmailFragmentAsset, suite_step: int) -> tuple:
+    title = sanitize_text(getattr(item, "title", "") or "")
+    content = sanitize_text(getattr(item, "content", "") or "")
+    text_value = f"{title}\n{content}"
+    useful = float(item.useful_score or 0)
+    effect = float(item.effect_score or 0)
+    case_signal = 1 if re.search(r"案例|实战|我们能为您做什么|一体化|流程|清单", text_value) else 0
+    price_risk = 1 if re.search(r"报价|单价|账期|付款|折扣|金额|费用|工期|交期|\d+\s*(?:小时|天|场|%)", text_value) else 0
+    if suite_step == 2:
+        return (case_signal, -price_risk, useful, effect)
+    if suite_step in {1, 3, 4}:
+        return (-price_risk, case_signal, useful, effect)
+    return (-price_risk, useful, effect)
+
+
+def _mail_fewshot_sequence_step_hint(item: EmailFragmentAsset) -> int:
+    snapshot = item.source_snapshot or {}
+    if isinstance(snapshot, dict):
+        for key in ("sequence_step_hint", "suite_step", "step_hint"):
+            try:
+                value = int(snapshot.get(key) or 0)
+                if value in {1, 2, 3, 4}:
+                    return value
+            except (TypeError, ValueError):
+                pass
+        segment_metadata = snapshot.get("segment_metadata") or {}
+        if isinstance(segment_metadata, dict):
+            parent = sanitize_text(segment_metadata.get("parent_subject") or "")
+            match = re.search(r"(?:第|step\s*)([1-4])", parent, flags=re.IGNORECASE)
+            if match:
+                return int(match.group(1))
+    return 0
 
 def _first_mail_subject_hint(subject_hints: tuple[str, ...]) -> str:
     for hint in subject_hints:
@@ -3635,9 +3892,44 @@ def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> 
 
         crm_db = CRMSessionLocal()
         try:
+            customer_cols = {
+                row[0]
+                for row in crm_db.execute(text(
+                    """
+                    SELECT COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = 'usrCustomer'
+                      AND COLUMN_NAME IN ('CustomerCode','CustomerNo','CustomerNumber','CustomerName','CompanyName','NewCustomerId')
+                    """
+                )).fetchall()
+                if row and row[0]
+            }
+            contact_cols = {
+                row[0]
+                for row in crm_db.execute(text(
+                    """
+                    SELECT COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = 'usrCustomerContact'
+                      AND COLUMN_NAME IN ('ContactId','CustomerCode','CustomerNo','CustomerNumber','ContactNo','NewContactId')
+                    """
+                )).fetchall()
+                if row and row[0]
+            }
+            key_conditions = [
+                "LOWER(ISNULL(c.Email, '')) = :contact_email",
+                "CAST(c.CustomerId AS NVARCHAR(120)) = :customer_key",
+                "LOWER(ISNULL(d.CompanyName, '')) = :customer_key_lower",
+            ]
+            for col in ("ContactId", "CustomerCode", "CustomerNo", "CustomerNumber", "ContactNo", "NewContactId"):
+                if col in contact_cols:
+                    key_conditions.append(f"LOWER(ISNULL(CAST(c.{col} AS NVARCHAR(120)), '')) = :customer_key_lower")
+            for col in ("CustomerCode", "CustomerNo", "CustomerNumber", "CustomerName", "NewCustomerId"):
+                if col in customer_cols:
+                    key_conditions.append(f"LOWER(ISNULL(CAST(d.{col} AS NVARCHAR(120)), '')) = :customer_key_lower")
             row = crm_db.execute(
                 text(
-                    """
+                    f"""
                     SELECT TOP 1
                         c.ContactId,
                         c.ContactName,
@@ -3647,11 +3939,7 @@ def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> 
                     FROM usrCustomerContact AS c
                     LEFT JOIN usrCustomer AS d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL
                     WHERE c.Deleter IS NULL
-                      AND (
-                        LOWER(ISNULL(c.Email, '')) = :contact_email
-                        OR CAST(c.CustomerId AS NVARCHAR(120)) = :customer_key
-                        OR LOWER(ISNULL(d.CompanyName, '')) = :customer_key_lower
-                      )
+                      AND ({" OR ".join(key_conditions)})
                     ORDER BY c.ContactId DESC
                     """
                 ),
@@ -3681,6 +3969,75 @@ def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> 
                 ).fetchone()
                 if followup_row and followup_row[0]:
                     recent_followup = sanitize_text(followup_row[0])
+            recent_opportunities = None
+            ongoing_contracts = None
+            customer_lifecycle_stage = ""
+            if row and row[3]:
+                opportunity_rows = crm_db.execute(
+                    text(
+                        """
+                        SELECT TOP 3
+                            QuotationId,
+                            ISNULL(CAST(Product AS NVARCHAR(MAX)), ISNULL(CAST(ProductTypes AS NVARCHAR(MAX)), '')) AS product_text,
+                            ISNULL(CAST(StaffName AS NVARCHAR(MAX)), '') AS staff_name,
+                            ISNULL(CAST(Result AS NVARCHAR(MAX)), '') AS result_text,
+                            QuotationTime
+                        FROM usrQuotation
+                        WHERE Deleter IS NULL
+                          AND CustomerId = :customer_id
+                        ORDER BY ISNULL(QuotationTime, InputTime) DESC, QuotationId DESC
+                        """
+                    ),
+                    {"customer_id": row[3]},
+                ).fetchall()
+                opportunity_items = []
+                for opp in opportunity_rows:
+                    parts = [
+                        f"报价 {opp[0]}",
+                        f"产品/业务：{sanitize_text(opp[1])}" if sanitize_text(opp[1]) else None,
+                        f"负责人：{sanitize_text(opp[2])}" if sanitize_text(opp[2]) else None,
+                        f"状态：{sanitize_text(opp[3])}" if sanitize_text(opp[3]) else None,
+                        f"时间：{opp[4].strftime('%Y-%m-%d')}" if getattr(opp[4], "strftime", None) else None,
+                    ]
+                    opportunity_items.append("｜".join(part for part in parts if part))
+                recent_opportunities = "\n".join(opportunity_items) or None
+
+                contract_rows = crm_db.execute(
+                    text(
+                        """
+                        SELECT TOP 3
+                            ContractId,
+                            ISNULL(CAST(BusinessType AS NVARCHAR(MAX)), '') AS business_type,
+                            ISNULL(CAST(ProductNameAll AS NVARCHAR(MAX)), ISNULL(CAST(ProjectName AS NVARCHAR(MAX)), '')) AS product_text,
+                            ISNULL(CAST(InChargeName AS NVARCHAR(MAX)), '') AS incharge_name,
+                            ContractTime,
+                            ISNULL(CAST(ContractStatus AS NVARCHAR(MAX)), '') AS contract_status
+                        FROM usrContract
+                        WHERE Deleter IS NULL
+                          AND CustomerId = :customer_id
+                          AND ContractType = '销售合同'
+                        ORDER BY ISNULL(ContractTime, InputTime) DESC, ContractId DESC
+                        """
+                    ),
+                    {"customer_id": row[3]},
+                ).fetchall()
+                contract_items = []
+                for contract in contract_rows:
+                    parts = [
+                        f"合同 {contract[0]}",
+                        f"业务类型：{sanitize_text(contract[1])}" if sanitize_text(contract[1]) else None,
+                        f"产品：{sanitize_text(contract[2])}" if sanitize_text(contract[2]) else None,
+                        f"负责人：{sanitize_text(contract[3])}" if sanitize_text(contract[3]) else None,
+                        f"合同时间：{contract[4].strftime('%Y-%m-%d')}" if getattr(contract[4], "strftime", None) else None,
+                        f"状态：{sanitize_text(contract[5])}" if sanitize_text(contract[5]) else None,
+                    ]
+                    contract_items.append("｜".join(part for part in parts if part))
+                ongoing_contracts = "\n".join(contract_items) or None
+                try:
+                    from crm_profile import _get_customer_lifecycle_stage as _mail_get_customer_lifecycle_stage
+                    customer_lifecycle_stage = sanitize_text(_mail_get_customer_lifecycle_stage(row[0], crm_db)) or ""
+                except Exception:
+                    customer_lifecycle_stage = ""
         finally:
             crm_db.close()
     except Exception as exc:
@@ -3729,7 +4086,14 @@ def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> 
     if contact_domain:
         domains.add(contact_domain)
     return {
+        "contact_name": sanitize_text(row[1] if len(row) > 1 else ""),
+        "contact_email": sanitize_text(row[2] if len(row) > 2 else ""),
+        "company_name": sanitize_text(row[4] if len(row) > 4 else ""),
         "company_industry": company_industry,
+        "customer_lifecycle_stage": customer_lifecycle_stage,
+        "recent_opportunities": recent_opportunities,
+        "ongoing_contracts": ongoing_contracts,
+        "contact_recent_followup": recent_followup,
         "payment_risk_level": payment_risk_level,
         "customer_domains": domains,
         "crm_profile_lookup_status": "matched_crm_contact_email_or_customer_key",
@@ -3768,7 +4132,8 @@ def _mail_crm_profile_from_demo_contact_table(customer_key: str | None) -> dict[
 def _lookup_mail_crm_profile(customer_key: str | None, contact_email: str) -> dict[str, Any]:
     contact_domain = _normalize_mail_recipient_domain(contact_email)
     profile = (
-        _mail_crm_profile_from_static(customer_key)
+        _mail_crm_profile_from_current_case(customer_key)
+        or _mail_crm_profile_from_static(customer_key)
         or _mail_crm_profile_from_demo_contact_table(customer_key)
         or _mail_crm_profile_from_sql(customer_key, contact_email)
     )
@@ -3800,12 +4165,264 @@ def _lookup_mail_crm_profile(customer_key: str | None, contact_email: str) -> di
     if contact_domain:
         domains.add(contact_domain)
     return {
+        "contact_name": sanitize_text(profile.get("contact_name")),
+        "contact_email": sanitize_text(profile.get("contact_email")),
+        "company_name": sanitize_text(profile.get("company_name")),
         "company_industry": sanitize_text(profile.get("company_industry")) or "unknown",
+        "customer_lifecycle_stage": sanitize_text(profile.get("customer_lifecycle_stage")),
+        "recent_opportunities": sanitize_text(profile.get("recent_opportunities")),
+        "recent_quote_summary": sanitize_text(profile.get("recent_quote_summary")),
+        "ongoing_contracts": sanitize_text(profile.get("ongoing_contracts")),
+        "contact_recent_followup": sanitize_text(profile.get("contact_recent_followup")),
         "payment_risk_level": _normalize_mail_payment_risk_level(profile.get("payment_risk_level")),
         "customer_domains": tuple(sorted(domains)),
         "crm_profile_lookup_status": sanitize_text(profile.get("crm_profile_lookup_status")) or "unknown",
         "crm_profile_source": sanitize_text(profile.get("crm_profile_source")) or "unknown",
     }
+
+
+def _fetch_mail_current_case_crm_detail(customer_key: str) -> dict[str, Any]:
+    """只读查询当前邮件质量诊断 3 个案例的 CRM 原始信息。"""
+    normalized_key = sanitize_text(customer_key).strip()
+    if not normalized_key:
+        return {"crm_lookup_status": "missing_customer_key", "crm_lookup_error": "customer_key is empty"}
+    try:
+        from crm_database import CRMSessionLocal
+        from crm_profile import (
+            _build_high_risk_flags,
+            _get_customer_lifecycle_stage,
+            _get_method_display_name,
+            _infer_company_industry,
+            _infer_customer_tier,
+            _infer_payment_risk,
+        )
+
+        crm_db = CRMSessionLocal()
+        try:
+            row = crm_db.execute(
+                text(
+                    """
+                    SELECT TOP 1
+                        c.ContactId,
+                        c.ContactName,
+                        c.Email,
+                        c.NewContactId,
+                        c.CustomerId,
+                        d.CompanyName,
+                        d.NewCustomerId,
+                        d.CompanyNameEnglish,
+                        d.OwnerName AS CustomerOwnerName,
+                        d.CustomerStatus,
+                        c.StaffName,
+                        c.OwnerName AS ContactOwnerName,
+                        c.CustomerContactStatus,
+                        c.LastFollowUpTime
+                    FROM usrCustomerContact AS c
+                    LEFT JOIN usrCustomer AS d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL
+                    WHERE c.Deleter IS NULL
+                      AND (
+                        LOWER(ISNULL(CAST(c.ContactId AS NVARCHAR(120)), '')) = :key_lower
+                        OR LOWER(ISNULL(CAST(c.NewContactId AS NVARCHAR(120)), '')) = :key_lower
+                        OR LOWER(ISNULL(CAST(c.CustomerId AS NVARCHAR(120)), '')) = :key_lower
+                        OR LOWER(ISNULL(CAST(d.NewCustomerId AS NVARCHAR(120)), '')) = :key_lower
+                        OR LOWER(ISNULL(d.CompanyName, '')) LIKE :like_key
+                        OR LOWER(ISNULL(d.CompanyNameEnglish, '')) LIKE :like_key
+                      )
+                    ORDER BY c.ContactId DESC
+                    """
+                ),
+                {"key_lower": normalized_key.lower(), "like_key": f"%{normalized_key.lower()}%"},
+            ).fetchone()
+            if not row:
+                return {
+                    "crm_lookup_status": "not_found",
+                    "crm_lookup_error": f"CRM 未查到当前案例客户编号 {normalized_key}",
+                }
+
+            contact_id = row[0]
+            customer_id = row[4]
+            company_name = sanitize_text(row[5])
+
+            opportunities_rows = crm_db.execute(
+                text(
+                    """
+                    SELECT TOP 3
+                        QuotationId,
+                        ISNULL(CAST(Product AS NVARCHAR(MAX)), ISNULL(CAST(ProductTypes AS NVARCHAR(MAX)), '')) AS product_text,
+                        ISNULL(CAST(StaffName AS NVARCHAR(MAX)), '') AS staff_name,
+                        ISNULL(CAST(BusinessDescription AS NVARCHAR(MAX)), '') AS business_description,
+                        ISNULL(CAST(QuotationDescription AS NVARCHAR(MAX)), '') AS quotation_description,
+                        ISNULL(CAST(Result AS NVARCHAR(MAX)), '') AS result_text,
+                        QuotationTime
+                    FROM usrQuotation
+                    WHERE Deleter IS NULL
+                      AND CustomerId = :customer_id
+                    ORDER BY ISNULL(QuotationTime, InputTime) DESC, QuotationId DESC
+                    """
+                ),
+                {"customer_id": customer_id},
+            ).fetchall()
+            opportunity_items = []
+            for opp in opportunities_rows:
+                parts = [
+                    f"报价 {opp[0]}",
+                    f"产品/业务：{sanitize_text(opp[1])}" if sanitize_text(opp[1]) else None,
+                    f"负责人：{sanitize_text(opp[2])}" if sanitize_text(opp[2]) else None,
+                    f"状态：{sanitize_text(opp[5])}" if sanitize_text(opp[5]) else None,
+                    f"时间：{opp[6].strftime('%Y-%m-%d')}" if getattr(opp[6], "strftime", None) else None,
+                    sanitize_text(opp[3]) or sanitize_text(opp[4]) or None,
+                ]
+                opportunity_items.append("｜".join(part for part in parts if part))
+            recent_opportunities = "\n".join(opportunity_items) or None
+
+            contract_rows = crm_db.execute(
+                text(
+                    """
+                    SELECT TOP 3
+                        ContractId,
+                        ISNULL(CAST(BusinessType AS NVARCHAR(MAX)), '') AS business_type,
+                        ISNULL(CAST(ProductNameAll AS NVARCHAR(MAX)), ISNULL(CAST(ProjectName AS NVARCHAR(MAX)), '')) AS product_text,
+                        ISNULL(CAST(InChargeName AS NVARCHAR(MAX)), '') AS incharge_name,
+                        ISNULL(CAST(ContractDescription AS NVARCHAR(MAX)), '') AS contract_description,
+                        ContractTime,
+                        EndTime,
+                        ISNULL(CAST(ContractStatus AS NVARCHAR(MAX)), '') AS contract_status
+                    FROM usrContract
+                    WHERE Deleter IS NULL
+                      AND CustomerId = :customer_id
+                    ORDER BY ISNULL(ContractTime, InputTime) DESC, ContractId DESC
+                    """
+                ),
+                {"customer_id": customer_id},
+            ).fetchall()
+            contract_items = []
+            for contract in contract_rows:
+                parts = [
+                    f"合同 {contract[0]}",
+                    f"业务类型：{sanitize_text(contract[1])}" if sanitize_text(contract[1]) else None,
+                    f"产品：{sanitize_text(contract[2])}" if sanitize_text(contract[2]) else None,
+                    f"负责人：{sanitize_text(contract[3])}" if sanitize_text(contract[3]) else None,
+                    f"状态：{sanitize_text(contract[7])}" if sanitize_text(contract[7]) else None,
+                    f"合同时间：{contract[5].strftime('%Y-%m-%d')}" if getattr(contract[5], "strftime", None) else None,
+                    f"结束时间：{contract[6].strftime('%Y-%m-%d')}" if getattr(contract[6], "strftime", None) else None,
+                    sanitize_text(contract[4]) or None,
+                ]
+                contract_items.append("｜".join(part for part in parts if part))
+            ongoing_contracts = "\n".join(contract_items) or None
+
+            followup_rows = crm_db.execute(
+                text(
+                    """
+                    SELECT TOP 5
+                        FollowUpId,
+                        FollowUpMethod,
+                        ISNULL(RemarkClass, '') AS intent,
+                        ISNULL(CAST(ai_summary AS NVARCHAR(MAX)), ISNULL(CAST(CustomerRemark AS NVARCHAR(MAX)), '')) AS summary,
+                        FollowUpTime,
+                        ISNULL(MsgIO, 0) AS msg_io,
+                        ISNULL(CAST(FollowUpStaffName AS NVARCHAR(MAX)), '') AS staff_name
+                    FROM usrCustomerFollowUpRecord
+                    WHERE ContactId = :contact_id
+                      AND FollowUpTime <= CURRENT_TIMESTAMP
+                      AND ISNULL(IfSuccess, 0) = 1
+                    ORDER BY FollowUpTime DESC
+                    """
+                ),
+                {"contact_id": contact_id},
+            ).fetchall()
+            followup_items = []
+            for follow in followup_rows:
+                follow_time = follow[4].strftime("%Y-%m-%d %H:%M") if getattr(follow[4], "strftime", None) else ""
+                method_display = _get_method_display_name(follow[1], follow[5])
+                parts = [
+                    follow_time,
+                    method_display,
+                    f"销售：{sanitize_text(follow[6])}" if sanitize_text(follow[6]) else None,
+                    f"意图：{sanitize_text(follow[2])}" if sanitize_text(follow[2]) else None,
+                    sanitize_text(follow[3]) or None,
+                ]
+                followup_items.append("，".join(part for part in parts if part))
+            contact_recent_followup = "\n----------------------\n".join(followup_items) or None
+
+            customer_lifecycle_stage = _get_customer_lifecycle_stage(contact_id, crm_db)
+            company_industry = _infer_company_industry(company_name, recent_opportunities, ongoing_contracts)
+            customer_tier = _infer_customer_tier(customer_lifecycle_stage, recent_opportunities, ongoing_contracts)
+            payment_risk_level = _infer_payment_risk(contact_recent_followup)
+            high_risk_flags = _build_high_risk_flags(payment_risk_level, customer_tier, recent_opportunities)
+
+            return {
+                "crm_lookup_status": "matched_crm_contact_id_or_customer_id",
+                "crm_profile_source": "crm_sql_current_case_unmasked",
+                "contact_id": sanitize_text(row[0]),
+                "contact_name": sanitize_text(row[1]),
+                "contact_email": sanitize_text(row[2]),
+                "new_contact_id": sanitize_text(row[3]),
+                "customer_id": sanitize_text(row[4]),
+                "company_name": company_name,
+                "new_customer_id": sanitize_text(row[6]),
+                "company_name_english": sanitize_text(row[7]),
+                "customer_owner_name": sanitize_text(row[8]),
+                "customer_status": sanitize_text(row[9]),
+                "contact_staff_name": sanitize_text(row[10]),
+                "contact_owner_name": sanitize_text(row[11]),
+                "contact_status": sanitize_text(row[12]),
+                "last_followup_time": row[13].isoformat() if row[13] else None,
+                "company_industry": sanitize_text(company_industry) or "",
+                "recent_opportunities": recent_opportunities,
+                "recent_quote_summary": recent_opportunities,
+                "ongoing_contracts": ongoing_contracts,
+                "contact_recent_followup": contact_recent_followup,
+                "customer_lifecycle_stage": sanitize_text(customer_lifecycle_stage) or "",
+                "customer_tier": sanitize_text(customer_tier) or "",
+                "payment_risk_level": sanitize_text(payment_risk_level) or "",
+                "high_risk_flags": high_risk_flags or [],
+                "refreshed_at": datetime.utcnow().isoformat(),
+            }
+        finally:
+            crm_db.close()
+    except Exception as exc:
+        logger.exception("MAIL_CURRENT_CASE_CRM_DETAIL_FAILED customer_key=%s", normalized_key)
+        return {
+            "crm_lookup_status": "error",
+            "crm_lookup_error": sanitize_text(str(exc))[:500],
+            "crm_profile_source": "crm_sql_current_case_unmasked",
+        }
+
+
+def _mail_crm_profile_from_current_case(customer_key: str | None) -> dict[str, Any] | None:
+    normalized_key = sanitize_text(customer_key or "").strip().upper()
+    if not normalized_key:
+        return None
+    try:
+        current_keys = {item["real_customer_key"].upper() for item in MAIL_CURRENT_DEMO_CASES}
+    except NameError:
+        current_keys = set()
+    if normalized_key not in current_keys:
+        return None
+    detail = _fetch_mail_current_case_crm_detail(normalized_key)
+    if detail.get("crm_lookup_status") != "matched_crm_contact_id_or_customer_id":
+        return None
+    contact_email = _mail_demo_contact_email_for_draft(detail.get("contact_email"))
+    domains = set()
+    domain = _normalize_mail_recipient_domain(contact_email)
+    if domain:
+        domains.add(domain)
+    return {
+        "contact_name": detail.get("contact_name"),
+        "contact_email": contact_email,
+        "company_name": detail.get("company_name"),
+        "company_industry": detail.get("company_industry"),
+        "customer_lifecycle_stage": detail.get("customer_lifecycle_stage"),
+        "recent_opportunities": detail.get("recent_opportunities"),
+        "recent_quote_summary": detail.get("recent_quote_summary"),
+        "ongoing_contracts": detail.get("ongoing_contracts"),
+        "contact_recent_followup": detail.get("contact_recent_followup"),
+        "payment_risk_level": detail.get("payment_risk_level"),
+        "customer_domains": domains,
+        "crm_profile_lookup_status": "current_case_crm_snapshot_hit",
+        "crm_profile_source": "crm_sql_current_case_snapshot",
+    }
+
 
 def _mail_customer_domain_whitelist(
     customer_key: str | None,
@@ -4244,7 +4861,233 @@ def _mail_sanitize_fewshot_reference_for_draft(content: str | None) -> str | Non
     ]
     for pattern, replacement in replacements:
         text_value = re.sub(pattern, replacement, text_value, flags=re.IGNORECASE)
-    return text_value[:240]
+    text_value = _mail_remove_internal_business_codes(text_value)
+    return text_value[:420]
+
+
+def _mail_remove_internal_business_codes(value: str | None) -> str:
+    text_value = sanitize_text(value or "")
+    if not text_value:
+        return ""
+    replacements = [
+        (r"合同\s*[A-Z]{1,8}\d[\w-]*", "历史合作记录"),
+        (r"报价\s*[A-Z]{1,8}\d[\w-]*", "近期商机记录"),
+        (r"\b(?:XS|BJD|HT|QZKH|INV|PO)[A-Z0-9-]{4,}\b", "内部记录"),
+        (r"\bKH\d{3,}(?:-\d+)?\b", "客户记录"),
+        (r"\b\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2})?\b", "近期时间"),
+    ]
+    for pattern, replacement in replacements:
+        text_value = re.sub(pattern, replacement, text_value, flags=re.IGNORECASE)
+    text_value = re.sub(r"\s+", " ", text_value).strip()
+    return text_value
+
+
+def _mail_prompt_fact(value: str | None, limit: int = 150) -> str:
+    text_value = _mail_remove_internal_business_codes(value)
+    if not text_value:
+        return "无明确记录"
+    return text_value[:limit]
+
+
+def _mail_gold_style_brief(profile: "MailDraftIntentProfile") -> str:
+    fragment_type = sanitize_text(profile.recommended_snippet_types[0] if profile.recommended_snippet_types else "")
+    if profile.suite_step == 1:
+        return "学黄金库写法：短承接+一个具体业务机会+2-3项服务，不写长案例。"
+    if profile.suite_step == 2:
+        return "学黄金库写法：场景痛点->我们做法->客户可迁移价值；案例必须脱敏且不能是当前联系人本人历史。"
+    if profile.suite_step == 3:
+        return "学黄金库写法：先列可服务事项，再写客户只需提供什么、我们如何推进。"
+    if profile.suite_step == 4:
+        return "学黄金库写法：服务清单/评估项/负责人确认三选一收口，不写价格或强成交。"
+    if fragment_type == "process":
+        return "学黄金库写法：用小标题式服务清单和流程，不空喊能力。"
+    return "学黄金库写法：用具体场景、具体做法和低压力下一步，不写泛泛宣传。"
+
+
+def _mail_service_focus_brief(profile: "MailDraftIntentProfile") -> str:
+    scenario = sanitize_text(profile.scenario)
+    if scenario == "new_business_promotion":
+        return (
+            "具体业务聚焦：会议同传/设备租赁、现场流程支持、多媒体字幕/配音、培训课件本地化、"
+            "宣传物料排版印刷、活动物料制作；按客户行业选2-3项写。"
+        )
+    if scenario == "re_activation":
+        return "具体业务聚焦：从旧合作自然延展到近期资料评估、会议/培训支持、视频或物料本地化、排版印刷。"
+    if scenario == "new_contact_intro":
+        if int(profile.suite_step) == 1:
+            return (
+                "具体业务聚焦：第1封必须写出差异化服务组合：法律/合同或技术资料笔译、术语库与审校、"
+                "培训课件/视频字幕本地化、会议口译支持、宣传物料排版印刷；按客户行业选3项，"
+                "同时确认是否为正确负责人。"
+            )
+        return "具体业务聚焦：先确认对接人，再介绍翻译、本地化、会议支持、多媒体、排版印刷的启动路径。"
+    return "具体业务聚焦：选择2-3项与客户背景最相关的服务写清楚。"
+
+
+def _mail_sanitize_generated_mail_paragraph(value: str | None) -> str:
+    text_value = _mail_remove_internal_business_codes(value)
+    if not text_value:
+        return ""
+    replacements = [
+        (r"(?:客户|对方|业务方)(?:反馈|表示|直言)[“\"'][^”\"']{0,80}[”\"']", "客户后续反馈稳定"),
+        (r"(?:免费|无偿)\s*(?:提供|安排|支持)?\s*(?:样稿|试译|打样|评估|修改|服务)", "安排小范围资料评估"),
+        (r"(?:提供|安排)?\s*(?:免费|无偿)\s*(?:样稿|试译|打样|评估|修改|服务)", "安排小范围资料评估"),
+        (r"(?:最终|后续)?客户(?:对交付质量)?(?:非常)?满意", "交付反馈稳定"),
+        (r"(?:评估|确认)[^。；;，,]{0,16}(?:报价|费用|价格)", "给出评估意见"),
+    ]
+    for pattern, replacement in replacements:
+        text_value = re.sub(pattern, replacement, text_value, flags=re.IGNORECASE)
+    text_value = re.sub(r"\s+", " ", text_value).strip()
+    return text_value
+
+
+def _mail_generation_material_gap_warnings(profile: "MailDraftIntentProfile") -> list[str]:
+    warnings: list[str] = []
+    fewshot_title = sanitize_text(profile.admitted_fewshot_title or "")
+    fewshot_content = sanitize_text(profile.admitted_fewshot_content or "")
+    material_need = _mail_required_case_material_brief(profile)
+    if not profile.admitted_fewshot_id:
+        warnings.append(f"素材提示：未命中可用邮件黄金范例；需要补充{material_need}。")
+    if profile.suite_step == 2 and not re.search(r"案例|实战|项目|活动|年会|会议", fewshot_title + fewshot_content):
+        warnings.append(f"素材提示：第2封缺少明确的脱敏外部案例；需要补充{material_need}，建议先进入独立案例库再抽取黄金表达。")
+    crm_source = "；".join(
+        [
+            sanitize_text(profile.ongoing_contracts or ""),
+            sanitize_text(profile.recent_opportunities or ""),
+            sanitize_text(profile.contact_recent_followup or ""),
+        ]
+    )
+    if not crm_source.strip():
+        warnings.append("素材提示：缺少该联系人近期合同、商机或跟进记录；当前只能按公司画像和黄金范例保守生成。")
+    return warnings
+
+
+def _mail_required_case_material_brief(profile: "MailDraftIntentProfile") -> str:
+    scenario = sanitize_text(profile.scenario)
+    step_no = int(profile.suite_step)
+    if scenario == "new_business_promotion":
+        if step_no == 2:
+            return "医疗/法律/制造等行业的多业务组合案例，最好包含会议支持、多媒体本地化、排版印刷或活动物料，并带可公开的速度/协同价值描述"
+        return "老客户多业务开发的黄金表达样本，按行业和产品线区分翻译以外服务组合"
+    if scenario == "re_activation":
+        if step_no == 2:
+            return "老客户沉默后重新激活的案例，包含历史合作承接、近期需求唤醒和低压力恢复沟通表达"
+        return "老客户唤醒场景的关系维护、资料评估、服务清单或转介绍收口样本"
+    if scenario == "new_contact_intro":
+        if step_no == 1:
+            return "新联系人首次介绍邮件样本，包含公司可信身份、行业差异化服务组合和正确负责人确认"
+        if step_no == 2:
+            return "新联系人可信度建立案例，按行业提供脱敏外部案例，避免写成该联系人本人历史"
+        return "新联系人项目启动路径与负责人确认样本，覆盖资料清单、多业务入口和低压力转介绍"
+    return "对应场景、阶段、行业和产品线的脱敏案例或黄金表达样本"
+
+
+def _mail_contract_case_business_line(business_type: str | None, product_name: str | None) -> str:
+    text_value = f"{business_type or ''};{product_name or ''}".lower()
+    rules = [
+        ("interpretation", ("口译", "同传", "交传", "耳机", "主机", "导览")),
+        ("multimedia", ("字幕", "听写", "配音", "视频", "多媒体", "译制")),
+        ("printing", ("设计", "印刷", "制版", "排版", "易拉宝", "海报", "画册")),
+        ("exhibition", ("展会", "搭建", "活动")),
+        ("gift", ("礼品", "充电宝", "保温杯")),
+        ("translation", ("笔译", "英译", "中译", "日译", "德译", "法译", "西班牙", "翻译")),
+    ]
+    for label, tokens in rules:
+        if any(token in text_value for token in tokens):
+            return label
+    return "other"
+
+
+def _mail_contract_case_language_pair(product_name: str | None) -> str:
+    text_value = sanitize_text(product_name or "")
+    pairs = re.findall(r"[\u4e00-\u9fa5A-Za-z]+译[\u4e00-\u9fa5A-Za-z]+", text_value)
+    if pairs:
+        return "；".join(dict.fromkeys(pairs))
+    if "英语" in text_value:
+        return "英语"
+    if "日语" in text_value:
+        return "日语"
+    if "德语" in text_value:
+        return "德语"
+    return ""
+
+
+def _mail_contract_case_industry_hint(description: str | None, product_name: str | None) -> str:
+    text_value = f"{description or ''} {product_name or ''}".lower()
+    mapping = [
+        ("medical", ("医疗", "医学", "患者", "医院", "临床", "实验室", "药", "tla")),
+        ("legal", ("合同", "章程", "法律", "法务", "证明", "护照", "营业执照", "工商登记", "保密协议")),
+        ("event", ("会议", "活动", "展会", "媒体专访", "播客", "发布会")),
+        ("training", ("培训", "课件", "手册", "说明书")),
+        ("marketing", ("海报", "彩页", "宣传", "折页", "易拉宝", "礼品", "样本")),
+        ("manufacturing", ("设备", "自动化", "系统", "包装", "产品")),
+    ]
+    hits = [label for label, tokens in mapping if any(token in text_value for token in tokens)]
+    return "；".join(dict.fromkeys(hits)) if hits else "unknown"
+
+
+def _mail_contract_case_quality_flags(description: str | None, product_name: str | None, business_type: str | None) -> list[str]:
+    flags: list[str] = []
+    desc = sanitize_text(description or "")
+    product = sanitize_text(product_name or "")
+    business = sanitize_text(business_type or "")
+    if len(desc) < 4 or desc in {"翻译", "报价", "排版", "制版"}:
+        flags.append("描述过短")
+    if re.search(r"补差价|尾款|增补", product + desc):
+        flags.append("可能是补差价/尾款")
+    if not business:
+        flags.append("缺业务类型")
+    if not product:
+        flags.append("缺产品")
+    if _mail_contract_case_business_line(business, product) == "other":
+        flags.append("产品线待人工判断")
+    return flags
+
+
+def _mail_contract_case_to_candidate(row: Any) -> dict[str, Any]:
+    m = row._mapping
+    product_name = sanitize_text(m.get("ProductNameAll"))
+    business_type = sanitize_text(m.get("BusinessType"))
+    description = sanitize_text(m.get("ContractDescription"))
+    amount = float(m.get("TotalMoney") or 0)
+    business_line = _mail_contract_case_business_line(business_type, product_name)
+    language_pair = _mail_contract_case_language_pair(product_name)
+    industry_hint = _mail_contract_case_industry_hint(description, product_name)
+    flags = _mail_contract_case_quality_flags(description, product_name, business_type)
+    amount_bucket = "gt_50000" if amount >= 50000 else "gt_20000" if amount >= 20000 else "gt_10000" if amount >= 10000 else "gt_5000" if amount >= 5000 else "lt_5000"
+    return {
+        "contract_id": sanitize_text(m.get("ContractId")),
+        "customer_id": sanitize_text(m.get("CustomerId")),
+        "contact_id": sanitize_text(m.get("ContactId")),
+        "total_money": amount,
+        "amount_bucket": amount_bucket,
+        "product_name_all": product_name,
+        "business_type": business_type,
+        "contract_description": description,
+        "input_time": m.get("InputTime").isoformat(timespec="seconds") if getattr(m.get("InputTime"), "isoformat", None) else sanitize_text(m.get("InputTime")),
+        "contract_time": m.get("ContractTime").isoformat(timespec="seconds") if getattr(m.get("ContractTime"), "isoformat", None) else sanitize_text(m.get("ContractTime")),
+        "start_time": m.get("StartTime").isoformat(timespec="seconds") if getattr(m.get("StartTime"), "isoformat", None) else sanitize_text(m.get("StartTime")),
+        "end_time": m.get("EndTime").isoformat(timespec="seconds") if getattr(m.get("EndTime"), "isoformat", None) else sanitize_text(m.get("EndTime")),
+        "business_line_inferred": business_line,
+        "language_pair_inferred": language_pair,
+        "industry_inferred": industry_hint,
+        "quality_flags": flags,
+        "case_text_raw": "；".join(
+            item for item in [
+                f"业务类型：{business_type}" if business_type else "",
+                f"产品：{product_name}" if product_name else "",
+                f"描述：{description}" if description else "",
+                f"行业线索：{industry_hint}" if industry_hint and industry_hint != "unknown" else "",
+            ]
+            if item
+        ),
+        "storage_suggestion": {
+            "target": "mail_contract_case_library",
+            "ready_for_generation": bool(amount >= 5000 and description and len(description) >= 4 and "可能是补差价/尾款" not in flags),
+            "needs_review": True,
+            "reason": "当前接口只读展示原始合同案例候选，未脱敏、未入库；入库前需人工确认产品/行业/描述是否可作为案例。",
+        },
+    }
 
 def _build_mail_draft_intent_profile(
     *,
@@ -4253,6 +5096,7 @@ def _build_mail_draft_intent_profile(
     interval: Any,
     admitted_fewshot: dict | None,
     commercial_terms: MailDraftCommercialTerms,
+    sequence_template: dict[str, Any] | None = None,
 ) -> MailDraftIntentProfile:
     customer_key = (payload.customer_key or "").strip()
     contact_email = (payload.contact_email or "").strip()
@@ -4260,22 +5104,33 @@ def _build_mail_draft_intent_profile(
     seller_signature = (payload.current_seller_signature or "").strip()
     if not customer_key:
         raise HTTPException(status_code=422, detail="customer_key is required")
-    if not contact_email or "@" not in contact_email:
-        raise HTTPException(status_code=422, detail="valid contact_email is required")
     if not seller_name:
         raise HTTPException(status_code=422, detail="current_seller_name is required")
     if not seller_signature:
         raise HTTPException(status_code=422, detail="current_seller_signature is required")
     crm_profile = _lookup_mail_crm_profile(customer_key, contact_email)
+    recipient_name = (
+        _mail_contact_name_from_email(contact_email)
+        if contact_email and "@" in contact_email
+        else sanitize_text(crm_profile.get("contact_name"))
+        or sanitize_text(crm_profile.get("company_name"))
+        or sanitize_text(customer_key)
+        or "客户"
+    )
 
     return MailDraftIntentProfile(
         customer_key=customer_key,
         contact_email=contact_email,
-        recipient_name=_mail_contact_name_from_email(contact_email),
+        recipient_name=recipient_name,
         seller_name=seller_name,
         seller_signature=seller_signature,
-        company_industry=crm_profile["company_industry"],
-        payment_risk_level=crm_profile["payment_risk_level"],
+        company_name=sanitize_text(crm_profile.get("company_name")) or "",
+        company_industry=crm_profile.get("company_industry") or "unknown",
+        customer_lifecycle_stage=sanitize_text(crm_profile.get("customer_lifecycle_stage")) or "",
+        recent_opportunities=sanitize_text(crm_profile.get("recent_opportunities") or crm_profile.get("recent_quote_summary")) or "",
+        ongoing_contracts=sanitize_text(crm_profile.get("ongoing_contracts")) or "",
+        contact_recent_followup=sanitize_text(crm_profile.get("contact_recent_followup")) or "",
+        payment_risk_level=crm_profile.get("payment_risk_level") or "unknown",
         customer_domains=crm_profile["customer_domains"],
         crm_profile_lookup_status=crm_profile["crm_profile_lookup_status"],
         crm_profile_source=crm_profile["crm_profile_source"],
@@ -4290,16 +5145,21 @@ def _build_mail_draft_intent_profile(
         retrieval_filter_requirements=tuple(sanitize_text(item) for item in step.retrieval_filter_requirements),
         forbidden_boundaries=tuple(sanitize_text(item) for item in step.forbidden_boundaries),
         interval_delay_days=int(interval.delay_days),
+        sequence_template_script=sanitize_text((sequence_template or {}).get("script_template")),
+        sequence_template_ai_instruction=sanitize_text((sequence_template or {}).get("ai_instruction_script")),
+        sequence_template_purpose=sanitize_text((sequence_template or {}).get("purpose_cn")),
+        sequence_template_send_timing=sanitize_text((sequence_template or {}).get("send_timing_cn")),
         admitted_fewshot_id=(admitted_fewshot or {}).get("fragment_id"),
         admitted_fewshot_score=(admitted_fewshot or {}).get("useful_score"),
+        admitted_fewshot_title=sanitize_text((admitted_fewshot or {}).get("title")),
         admitted_fewshot_content=_mail_sanitize_fewshot_reference_for_draft((admitted_fewshot or {}).get("content")),
         commercial_terms=commercial_terms,
     )
 
 _MAIL_SCENARIO_CHINESE = {
-    "re_activation": "老客户唤醒",
-    "new_business_promotion": "新业务推广",
-    "new_contact_intro": "新接手联系人介绍",
+    "re_activation": "老客户激活",
+    "new_business_promotion": "老客户其他业务介绍",
+    "new_contact_intro": "新客户开发介绍",
 }
 
 _MAIL_INDUSTRY_CN = {
@@ -4323,18 +5183,24 @@ _MAIL_PAYMENT_RISK_CN = {
 # 邮件序列推荐"下一步动作"的中文版本，按 (scenario, suite_step) 元组查表。
 # 这是给销售/运营审稿看的，覆盖 mail_sequence_strategy.py 里 cta_style 字段的英文表述。
 _MAIL_CTA_CN_BY_STEP: dict[tuple[str, int], str] = {
-    ("re_activation", 1): "低压力问候，邀请客户简单更新近况，不强推业务。",
-    ("re_activation", 2): "分享一个同行业的合作案例，引出可类比的项目机会。",
-    ("re_activation", 3): "展示标准服务流程与工期 SLA，给客户安全感。",
-    ("re_activation", 4): "提供小批量试用样稿邀约，降低客户决策门槛。",
-    ("new_business_promotion", 1): "低门槛价值提示：用一两句话讲清新业务能为对方解决什么具体问题。",
-    ("new_business_promotion", 2): "引用一两个行业案例，强化新业务的可靠性。",
-    ("new_business_promotion", 3): "邀请客户试用方案或小批量测试，作为决策前的低成本验证。",
-    ("new_business_promotion", 4): "给出报价邀约，附带工期、账期、折扣等结构化商业条款（由后端占位符替换）。",
-    ("new_contact_intro", 1): "自我介绍新接手身份，询问对方是否还有其他同事需要抄送。",
-    ("new_contact_intro", 2): "请客户分享当前在进行的项目背景或近期需要协助的点。",
-    ("new_contact_intro", 3): "介绍标准协作路径（接稿、审稿、交付、复盘），给客户专业感。",
-    ("new_contact_intro", 4): "确认下一步协作切入点（试稿、会议、小项目），形成具体动作。",
+    ("re_activation", 1): "低压力问候，承接历史合作，轻量询问近期是否有翻译、本地化、同传或物料需求。",
+    ("re_activation", 2): "补充同行业经验和客户历史合作关联，说明我们能支持的多业务范围。",
+    ("re_activation", 3): "说明多业务协作流程、质量控制和资料准备方式，让客户感觉推进成本低。",
+    ("re_activation", 4): "收口到样稿评估、资料清单或方案沟通，并礼貌请求转介绍。",
+    ("new_business_promotion", 1): (
+        "作为 4 封套装的开场邮件，先用老客户历史合作建立亲和信任，再明确介绍翻译以外的同传/会议支持、多媒体本地化、"
+        "排版印刷、活动物料、海外内容适配等可落地业务线；必须结合客户行业、CRM 历史和知识库/同行业案例，形成有理有据的低压力价值提示。"
+    ),
+    ("new_business_promotion", 2): (
+        "作为 4 封套装的第 2 封，承接第 1 封的多业务破冰，重点用客户行业、CRM 历史合作和知识库/同行业案例证明"
+        "SpeedAsia 的多业务组合有实际落地经验；本封不急于讲完整方案流程，也不进入报价收口。"
+    ),
+    ("new_business_promotion", 3): "给出多业务协作方案和分工流程，避免只围绕翻译单一业务。",
+    ("new_business_promotion", 4): "以方案评估、预算沟通或对接人推荐收口，不承诺免费服务或未审核优惠。",
+    ("new_contact_intro", 1): "新联系人首次触达，先做简洁公司介绍、服务范围和低压力确认。",
+    ("new_contact_intro", 2): "同步与该客户或同行业客户的合作背景，让新联系人快速建立信任。",
+    ("new_contact_intro", 3): "说明后续项目协作路径和多业务入口，让新联系人知道如何开始。",
+    ("new_contact_intro", 4): "收口到小项目评估、资料清单或正确对接人确认，并礼貌请求转介绍。",
 }
 
 _MAIL_SCENARIO_DEFAULT_SUBJECT = {
@@ -4342,6 +5208,616 @@ _MAIL_SCENARIO_DEFAULT_SUBJECT = {
     "new_business_promotion": "向您介绍我们新增的本地化服务能力",
     "new_contact_intro": "您好 我是您本次项目的新对接人",
 }
+
+MAIL_CURRENT_DEMO_CASES: tuple[dict[str, Any], ...] = (
+    {
+        "demo_index": 1,
+        "real_customer_key": "KH15411-117",
+        "demo_label": "老客户其他业务介绍",
+        "demo_label_detail": "老客户基础上介绍翻译以外的其他业务，邮件要使用历史合作信任、客户行业和同行业经验，推进同传、多媒体本地化、排版印刷、活动物料等多业务机会。",
+        "default_scenario": "new_business_promotion",
+        "default_suite_step": 1,
+    },
+    {
+        "demo_index": 2,
+        "real_customer_key": "KH02659-011",
+        "demo_label": "老客户激活",
+        "demo_label_detail": "曾经合作或长期沉默客户的关系重启，邮件要先恢复联系，再逐步引入行业经验、历史合作与转介绍。",
+        "default_scenario": "re_activation",
+        "default_suite_step": 1,
+    },
+    {
+        "demo_index": 3,
+        "real_customer_key": "KH13770-006",
+        "demo_label": "新客户开发介绍",
+        "demo_label_detail": "新客户或新联系人建立信任，邮件要先做简洁公司介绍，再说明服务范围、行业经验、协作方式与下一步低门槛动作。",
+        "default_scenario": "new_contact_intro",
+        "default_suite_step": 1,
+    },
+)
+
+
+def _mail_demo_contact_email_for_draft(value: str | None) -> str:
+    email = sanitize_text(value).strip()
+    if not email or email == "***EMAIL***" or "@" not in email:
+        return ""
+    return email
+
+
+_MAIL_SEQUENCE_STEP_LABEL_CN = {
+    1: "第 1 封：破冰与低压力价值提示",
+    2: "第 2 封：同行业案例与历史合作证据",
+    3: "第 3 封：多业务服务方案与协作流程",
+    4: "第 4 封：方案评估/报价沟通/转介绍收口",
+}
+
+_MAIL_SEQUENCE_STEP_LABEL_BY_SCENARIO: dict[tuple[str, int], str] = {
+    ("new_business_promotion", 1): "第 1 封：老客户多业务破冰与低压力价值提示",
+    ("new_business_promotion", 2): "第 2 封：同行业案例证明与历史合作承接",
+}
+
+_MAIL_SEQUENCE_SEND_TIMING_CN = {
+    1: "第 1 天发送：建立联系，不急于成交。",
+    2: "第 8 天发送：间隔 7 天，用行业案例强化可信度。",
+    3: "第 18 天发送：再间隔 10 天，说明可执行的多业务协作方案。",
+    4: "第 28 天发送：再间隔 10 天，给出低门槛下一步并礼貌请求转介绍。",
+}
+
+_MAIL_SEQUENCE_SEND_TIMING_BY_SCENARIO: dict[tuple[str, int], str] = {
+    ("new_business_promotion", 1): (
+        "第 1 天发送：承接老客户既有合作或近期 CRM 触点，先做亲和破冰和多业务价值提示；"
+        "不急于报价或成交，为第 2 封同行业案例、第 3 封组合方案、第 4 封评估/转介绍收口做铺垫。"
+    ),
+    ("new_business_promotion", 2): (
+        "第 8 天发送：与第 1 封间隔 7 天；如果客户未回复，用同行业案例、历史合作事实和知识库证据增强可信度，"
+        "证明多业务组合不是泛泛推广，但仍保持克制，不进入详细报价或方案执行。"
+    ),
+}
+
+
+def _mail_sequence_step_label_cn(scenario: str, suite_step: int) -> str:
+    scenario_key = sanitize_text(scenario).strip()
+    step_no = int(suite_step)
+    return _MAIL_SEQUENCE_STEP_LABEL_BY_SCENARIO.get(
+        (scenario_key, step_no),
+        _MAIL_SEQUENCE_STEP_LABEL_CN.get(step_no, f"第 {step_no} 封"),
+    )
+
+
+def _mail_sequence_send_timing_cn(scenario: str, suite_step: int) -> str:
+    scenario_key = sanitize_text(scenario).strip()
+    step_no = int(suite_step)
+    return _MAIL_SEQUENCE_SEND_TIMING_BY_SCENARIO.get(
+        (scenario_key, step_no),
+        _MAIL_SEQUENCE_SEND_TIMING_CN.get(step_no, "按序列间隔发送。"),
+    )
+
+_MAIL_SEQUENCE_TEMPLATE_VARIABLE_NOTES = {
+    "customer_name": "客户联系人称呼，来自收件邮箱、CRM 联系人或人工确认。",
+    "company_name": "客户公司名称或脱敏公司名，来自 CRM 画像；缺失时不要编造。",
+    "industry": "客户行业，用于选择同行业经验和痛点表达。",
+    "history": "客户历史合作、合同、商机或最近跟进摘要；只能使用 CRM/历史邮件已有事实。",
+    "peer_case": "同行业服务经验或黄金范例库案例，只能概括能力和结果，不能泄露其他客户敏感信息。",
+    "business_lines": "本轮可推广的多业务组合，如翻译、本地化、同传、排版印刷、多媒体本地化、活动物料等。",
+    "seller_name": "当前销售姓名。",
+    "referral_request": "结尾转介绍请求，可请客户推荐负责同类业务的同事或部门。",
+}
+
+_MAIL_SEQUENCE_TEMPLATE_VARIABLE_USAGE_INSTRUCTION = (
+    "【变量位置与使用规则】\n"
+    "1. {customer_name}：只放在邮件开头称呼位置，例如“{customer_name} 您好”。如果为空，改用“您好”，不要输出变量名。\n"
+    "2. {company_name}：用于第 1 段承接客户背景，可写“贵司/贵公司”或公司简称；如果缺失，用“贵司”，不要编造公司名。\n"
+    "3. {industry}：用于第 2 或第 3 段判断行业场景和选择同行业案例；如果为 unknown/未识别，不要写“未知行业”，改写成“结合贵司业务场景/类似业务场景”。\n"
+    "4. {history}：用于第 1 段或第 2 段承接真实历史合作、合同、商机、最近跟进或客户活跃度；只能使用已有事实。没有真实内容时，写“之前有过业务沟通/关注到贵司相关业务场景”，不能虚构合作。\n"
+    "5. {peer_case}：用于案例证明段，只能写成知识库/同行业经验，不得写成当前客户自己的历史。必须概括为“场景-做法-价值”；只有明确允许公开的公司名才可写公司名，否则写“某同行业客户/类似行业客户”。\n"
+    "6. {business_lines}：用于多业务介绍段，必须自然融入正文，不要机械罗列；优先选择与客户行业和历史业务相关的 2-3 类，如同传/会议支持、多媒体本地化、排版印刷、活动物料、海外内容适配。\n"
+    "7. {seller_name}：只用于落款或轻量自我介绍；如果系统会统一追加签名，正文末尾不要重复完整签名块。\n"
+    "8. {referral_request}：用于最后一段低压力转介绍；如果变量为空，也必须写出自然转介绍句，例如“如果这块不是您负责，也烦请您推荐市场、培训、活动、采购或海外内容相关同事”。\n"
+    "9. 禁止把变量名原样输出给客户；变量缺失时必须用自然中文降级，不得出现 `{customer_name}`、`unknown`、`None`、空括号或系统字段名。"
+)
+
+_MAIL_SEQUENCE_TEMPLATE_VARIABLE_USAGE_TARGETS = {
+    ("new_business_promotion", 1),
+    ("new_business_promotion", 2),
+}
+
+
+def _mail_sequence_template_ai_instruction(scenario: str, suite_step: int) -> str:
+    base = _MAIL_SEQUENCE_TEMPLATE_AI_INSTRUCTION.get((scenario, suite_step), "")
+    if (sanitize_text(scenario).strip(), int(suite_step)) in _MAIL_SEQUENCE_TEMPLATE_VARIABLE_USAGE_TARGETS:
+        return f"{base}\n\n{_MAIL_SEQUENCE_TEMPLATE_VARIABLE_USAGE_INSTRUCTION}"
+    return base
+
+_MAIL_SEQUENCE_TEMPLATE_SCRIPT: dict[tuple[str, int], str] = {
+    ("new_business_promotion", 1): (
+        "【邮件目标】\n"
+        "这是老客户其他业务介绍场景的第 1 封，不是群发宣传，也不是简单问候。目标是在承接既有合作信任的基础上，"
+        "让客户明确知道 SpeedAsia 除翻译外，还可以支持同传/会议支持、多媒体本地化、排版印刷、活动物料、海外内容适配等业务，"
+        "并引导客户回复近期是否有相关项目，或推荐负责这些事项的同事。它在 4 封套装中的定位是：第 1 封打开多业务话题，"
+        "第 2 封再展开同行业案例，第 3 封讲组合方案和流程，第 4 封做评估、预算沟通或转介绍收口。\n\n"
+        "【必须使用的数据】\n"
+        "1. 必须优先使用 {customer_name}、{company_name}、{industry}。\n"
+        "2. 如果 {history} 中有真实历史合作、合同、商机或最近跟进，只能基于这些事实承接，不能虚构合作内容。\n"
+        "3. 必须使用 {business_lines} 中至少 3 类翻译以外业务，且不能把正文写成只卖翻译。\n"
+        "4. 必须尝试使用 {peer_case} 或知识库案例；如果系统能读取客户公司行业、同行业成功案例或系统知识库，应优先调用并改写进第 3 段。"
+        "案例只能概括行业、项目类型、解决的问题和可迁移价值；只有知识库明确允许公开的同行业公司名才可例举，否则不能泄露客户名称、金额、底价、项目号或敏感细节。\n"
+        "5. 如果客户是高频活跃老客户，语气要更亲和、更像关系维护；如果历史合作较少，则更强调行业场景和低压力介绍。\n\n"
+        "【正文结构，建议 4 段】\n"
+        "第 1 段：自然称呼客户，承接真实历史合作或最近联系背景。没有历史事实时，只写“之前有过业务沟通/关注到贵司相关业务场景”，不要编造具体项目。\n"
+        "第 2 段：说明这次联系的原因：不是继续推单一翻译，而是同步 SpeedAsia 可支持的多业务能力，并点名 3 类以上适合客户行业的业务线。第 1 封优先讲业务面，不做重报价、不展开复杂流程。\n"
+        "第 3 段：加入知识库或同行业经验。写法要像商业证据，例如“在类似 {industry} 场景中，客户通常会把培训资料、发布会内容、视频字幕和宣传物料统一协调，以减少多供应商沟通成本”。\n"
+        "第 4 段：低压力 CTA。询问客户近期是否有培训、市场、活动、海外内容或跨部门多语资料需求；如果不是本人负责，请推荐市场、培训、活动、采购或海外内容相关同事。\n\n"
+        "【禁止内容】\n"
+        "禁止写具体价格、折扣、账期、付款方式、内部底价、工期承诺或免费服务。禁止虚构客户历史、虚构案例、虚构同行客户名。禁止使用“我们什么都能做”这类空泛表达。\n\n"
+        "【合格标准】\n"
+        "输出应是一封正式商业邮件，正文不能只有两段；必须肉眼可见地包含：客户背景承接、多业务线、知识库/同行业经验、低压力下一步和转介绍句。篇幅适合商务邮件，避免过短显得空泛，也避免长篇方案书。"
+    ),
+    ("new_business_promotion", 2): (
+        "【邮件目标】\n"
+        "这是老客户其他业务介绍场景的第 2 封。它承接第 1 封的多业务破冰，核心任务是用客户行业、历史合作事实和知识库/同行业案例建立可信度，"
+        "证明 SpeedAsia 的多业务能力不是泛泛介绍。第 2 封不要重复第 1 封的大范围业务清单，也不要提前讲第 3 封的完整协作方案或第 4 封的报价收口。\n\n"
+        "【必须使用的数据】\n"
+        "1. 必须使用 {industry} 判断客户行业场景；如果行业缺失，要用客户公司或历史业务类型保守推断，不得编造。\n"
+        "2. 必须承接 {history} 中真实存在的合作、合同、商机、最近跟进或客户活跃度；高频活跃老客户要写得更亲和，低频老客户要写得更克制。\n"
+        "3. 必须使用 {peer_case} 或知识库/黄金范例库中的同行业、同业务类型或相近场景案例。案例写法必须转成商业证据：客户遇到什么类型问题、我们如何协调多业务、可迁移价值是什么。\n"
+        "4. 如果知识库明确允许公开同行业公司名，可以例举公司名；否则只能写“某同行业客户/类似行业客户”，不能泄露客户名称、金额、项目号、底价、内部成本或敏感细节。\n\n"
+        "【正文结构，建议 4 段】\n"
+        "第 1 段：承接第 1 封，简短说明这次补充一条和 {industry} 相关的经验，不要重新大段介绍 SpeedAsia。\n"
+        "第 2 段：结合 {history}，说明为什么这个案例/经验与客户有关；如果客户过去只合作过翻译，要自然过渡到“类似材料常常还会牵涉排版、视频字幕、会议支持、活动物料”等相关业务。\n"
+        "第 3 段：写知识库/同行业案例证明。必须包含“场景-做法-价值”三要素，例如：在类似行业项目中，多语内容、培训材料、视频字幕、宣传物料由一个窗口统筹，减少多供应商沟通成本并提高交付一致性。\n"
+        "第 4 段：低压力 CTA。询问客户近期是否有类似资料、活动节点、培训内容或海外市场材料需要提前评估；如果不是本人负责，请推荐市场、培训、活动、采购或海外内容相关同事。\n\n"
+        "【禁止内容】\n"
+        "禁止只讲翻译。禁止虚构同行业公司名或案例结果。禁止写具体价格、折扣、账期、付款方式、工期承诺、免费服务或未审核优惠。禁止把知识库内容写成客户自己的历史合作。\n\n"
+        "【合格标准】\n"
+        "输出应比第 1 封更有证据感，必须肉眼可见地包含客户行业、客户历史或活跃度、知识库/同行业案例、多业务价值和转介绍句；篇幅适合正式商务邮件。"
+    ),
+    ("new_business_promotion", 3): (
+        "如果后续涉及多语材料、会议同传、培训视频、宣传册、展会资料或活动物料，我们建议按“需求梳理-材料确认-服务组合建议-排期交付-复盘优化”的方式推进。\n\n"
+        "我可以先基于一份真实文件、一个近期活动或一类常见资料，为贵司整理一版小范围评估建议，帮助内部判断哪些业务可以统一交给一个窗口协调。"
+    ),
+    ("new_business_promotion", 4): (
+        "如果这些方向对贵司团队有帮助，我可以按贵司现有业务类型整理一版方案评估或预算沟通提纲，具体价格、工期和账期仍以审核后的正式方案为准。\n\n"
+        "如果这块目前不是您负责，也烦请您帮忙推荐负责市场、培训、活动、采购或海外内容的同事，我再带着背景单独沟通，不给您增加额外负担。"
+    ),
+    ("re_activation", 1): (
+        "{customer_name} 您好，好久没有打扰。我们之前与贵司有过 {history}，所以想礼貌问候一下近期是否有新的项目安排。\n\n"
+        "除了翻译，我们现在也能支持本地化、同传会议、多媒体字幕/配音、排版印刷和活动物料等内容。如果近期暂时没有需求，也欢迎您把负责相关事项的同事推荐给我。"
+    ),
+    ("re_activation", 2): (
+        "近期我们在 {industry} 相关客户中，常见需求是多语资料、培训内容、会议支持、宣传册和视频字幕需要一起统筹。\n\n"
+        "如果系统里有 {peer_case} 或贵司过往 {history}，请把它们转化为可信但不泄密的经验说明；如果没有，就只说我们可按行业资料类型做匹配评估。"
+    ),
+    ("re_activation", 3): (
+        "如果贵司后续有项目，我们可以先从资料用途、语言方向、文件类型、排版/多媒体要求、会议或活动节点几项开始确认。\n\n"
+        "这样不论是单项翻译，还是同传、视频字幕、宣传册印刷、活动物料等组合需求，都能减少多头沟通，并让销售、项目和交付节奏更清楚。"
+    ),
+    ("re_activation", 4): (
+        "如果方便，我可以先为贵司整理一份小范围资料评估、服务清单或预算沟通提纲，方便您内部判断是否需要继续推进。\n\n"
+        "如果目前相关需求由其他同事负责，也烦请您推荐一下对接人。我会先说明我们与贵司的历史合作背景，再用克制的方式沟通。"
+    ),
+    ("new_contact_intro", 1): (
+        "{customer_name} 您好，我是 {seller_name}，来自 SpeedAsia。我们主要为企业客户提供翻译、本地化、同传会议、多媒体内容、排版印刷和活动物料等语言与内容服务。\n\n"
+        "了解到贵司可能有相关业务对接需求，我先做一个简短介绍。若您不是负责同类事项的同事，也烦请您帮忙推荐合适对接人。"
+    ),
+    ("new_contact_intro", 2): (
+        "为了让您快速了解我们的相关经验，我们服务过不少 {industry} 场景客户，常见内容包括多语资料、培训课件、会议支持、宣传物料和视频字幕等。\n\n"
+        "如果系统中已有贵司 {history}，请自然承接这段合作背景；如果没有历史记录，就以同行业经验和服务能力为主，不要编造曾经合作。"
+    ),
+    ("new_contact_intro", 3): (
+        "后续如有需求，您只需要提供资料用途、文件类型、语言方向、是否涉及排版/字幕/同传/印刷和大致节点，我们会先做范围判断，再给到协作路径建议。\n\n"
+        "涉及多个业务类型时，也可以由同一项目窗口统一协调，减少您在不同供应商之间反复转述。"
+    ),
+    ("new_contact_intro", 4): (
+        "如果近期有小项目、资料评估、活动物料或跨语内容计划，我可以先协助做一轮初步梳理，便于您判断是否适合继续沟通。\n\n"
+        "如果这类事项由其他部门或同事负责，也烦请您帮忙转介绍。我会把 SpeedAsia 的服务范围和联系背景说明清楚，不做打扰式跟进。"
+    ),
+}
+
+_MAIL_SEQUENCE_TEMPLATE_AI_INSTRUCTION: dict[tuple[str, int], str] = {
+    ("new_business_promotion", 1): (
+        "你要生成“老客户其他业务介绍”第1封正式商业邮件。必须中文输出，语气专业、亲和、克制，像一封销售经理写给老客户的真实邮件，不要像群发广告。\n"
+        "硬性要求：\n"
+        "1. 正文必须 4 段左右，不能只写两段，也不能只写寒暄 + 约聊。\n"
+        "2. 第 1 段必须承接 CRM 或历史事实：客户公司、行业、历史合作、合同、商机、最近跟进中能用哪个就用哪个；没有事实时必须保守表达，不能编造。\n"
+        "3. 第 2 段必须明确说明这次不是继续推单一翻译，而是介绍翻译以外的业务线；至少写出同传/会议支持、多媒体本地化、排版印刷、活动物料、海外内容适配中的 3 类。第 1 封只打开多业务话题，不要把第 2-4 封要讲的案例、方案、报价收口全部讲完。\n"
+        "4. 第 3 段必须使用知识库、黄金范例或同行业经验作为商业证据。不得直接复制案例原文；要改写成“类似行业/类似场景客户通常如何解决问题、SpeedAsia 能迁移什么经验”。如果知识库没有命中，必须写成保守的行业经验表达，不能虚构案例。只有知识库明确允许公开的同行业公司名才可写出公司名，否则使用“某同行业客户/类似行业客户”。\n"
+        "5. 第 4 段必须是低压力 CTA：询问近期是否有培训资料、市场物料、发布会/活动、多媒体内容或海外内容需求；如果不是收件人负责，请推荐市场、培训、活动、采购或海外内容相关同事。\n"
+        "6. 禁止输出具体价格、折扣、账期、付款方式、内部底价、工期承诺、免费服务、未审核优惠。\n"
+        "7. 禁止写“我们拥有丰富经验、欢迎咨询”这类空泛结尾，必须让客户知道下一步怎么回复。\n"
+        "8. 不要泄露其他客户名称、金额、项目号、内部成本或敏感细节。\n"
+        "9. 4 封套装必须层层递进：第 1 封讲多业务价值和亲和破冰；第 2 封重点讲同行业案例；第 3 封讲组合方案和协作流程；第 4 封做评估、预算沟通或转介绍收口。本封不能和后续三封内容过度重复。\n"
+        "10. 结尾署名使用 {seller_name}；如果系统会统一追加签名，正文末尾不要重复写完整签名块。"
+    ),
+    ("new_business_promotion", 2): (
+        "你要生成“老客户其他业务介绍”第2封正式商业邮件。必须中文输出，语气专业、亲和、有证据感，不要像群发广告。\n"
+        "硬性要求：\n"
+        "1. 本封定位是“同行业案例证明与历史合作承接”，必须比第 1 封更有证据，但不能提前写第 3 封的完整方案流程，也不能进入第 4 封的报价/预算收口。\n"
+        "2. 正文建议 4 段左右，不能只写两段。第 1 段承接第 1 封，说明这次补充一条与客户行业或类似业务相关的经验。\n"
+        "3. 必须使用 CRM 行业、客户公司、历史合同、最近商机、最近跟进、客户活跃度中可用的真实信息；没有事实时保守表达，不得编造。\n"
+        "4. 必须使用知识库、黄金范例或同行业经验作为商业证据。案例要改写为“场景-做法-价值”，不得直接复制原文。只有知识库明确允许公开的同行业公司名才可写出公司名，否则写“某同行业客户/类似行业客户”。\n"
+        "5. 必须覆盖翻译以外至少 2 类业务，例如同传/会议支持、多媒体本地化、排版印刷、活动物料、海外内容适配；不能整封只围绕翻译。\n"
+        "6. 如果客户是高频活跃老客户，语气要更熟悉、更像业务关系维护；如果只是普通老客户，语气克制，重点放在行业证据和低压力提醒。\n"
+        "7. 禁止输出具体价格、折扣、账期、付款方式、内部底价、工期承诺、免费服务、未审核优惠。\n"
+        "8. 禁止把知识库同行业案例写成当前客户自己的历史合作；必须区分“贵司历史/CRM事实”和“类似行业经验/知识库案例”。\n"
+        "9. 结尾必须有低压力下一步和转介绍：询问是否有近期资料、活动、培训、多媒体或海外内容需要提前评估；如果不是收件人负责，请推荐市场、培训、活动、采购或海外内容相关同事。\n"
+        "10. 结尾署名使用 {seller_name}；如果系统会统一追加签名，正文末尾不要重复写完整签名块。"
+    ),
+    ("new_business_promotion", 3): (
+        "请生成老客户其他业务介绍场景第3封。重点讲可执行的协作方案：需求梳理、材料确认、服务组合建议、排期交付、复盘优化。"
+        "不要承诺免费服务。可以写“小范围评估建议”“资料评估”“方案梳理”。"
+        "要体现对客户行业和历史合作的理解，语气专业但亲和，篇幅适合商务邮件。"
+    ),
+    ("new_business_promotion", 4): (
+        "请生成老客户其他业务介绍场景第4封。目标是商业收口：方案评估、预算沟通、资料清单或正确对接人推荐。"
+        "不得生成具体价格、折扣、账期、工期或免费服务承诺，这些只能由后端规则和人工审核补充。"
+        "结尾必须有礼貌转介绍：如果不是收件人负责，请推荐市场、培训、活动、采购或海外内容相关同事。"
+    ),
+    ("re_activation", 1): (
+        "请生成老客户激活场景第1封。先轻声问候，再承接真实历史合作或最近跟进；没有历史事实时不要编造。"
+        "业务范围不要只写翻译，要自然带到本地化、同传会议、多媒体、排版印刷和活动物料。"
+        "语气亲和克制，不催促，不强推。结尾可问近期是否有项目安排，或请推荐相关负责同事。"
+    ),
+    ("re_activation", 2): (
+        "请生成老客户激活场景第2封。重点用行业经验和同行业成功案例唤醒客户兴趣。"
+        "如果知识库或范例参考提供同行业案例，可概括业务类型和解决的问题；没有案例时只说可按行业资料类型做匹配评估。"
+        "必须避免泄露其他客户名称、项目号、金额或具体敏感细节。"
+    ),
+    ("re_activation", 3): (
+        "请生成老客户激活场景第3封。重点讲清多业务协作流程和客户需要提供的信息，让客户觉得推进简单。"
+        "至少覆盖资料用途、语言方向、文件类型、排版/多媒体/同传/印刷要求、交付节奏这些结构。"
+        "不要写具体工期、价格和优惠。语气要像老客户关怀，不要像冷启动销售。"
+    ),
+    ("re_activation", 4): (
+        "请生成老客户激活场景第4封。目标是低压力收口到资料评估、服务清单、预算沟通提纲或转介绍。"
+        "不要出现免费服务、未审核优惠、限时促销等未经审核承诺。"
+        "结尾必须加转介绍请求：如果当前收件人不负责，请推荐相关同事，并说明会先带着历史合作背景沟通。"
+    ),
+    ("new_contact_intro", 1): (
+        "请生成新客户开发介绍场景第1封。必须有1到2句简洁公司介绍：SpeedAsia 做翻译、本地化、同传会议、多媒体内容、排版印刷和活动物料等语言与内容服务。"
+        "不要假设已经有合作历史；若 CRM 有历史合同，也只说系统显示有过相关合作背景，语气谨慎。"
+        "结尾请确认是否为正确对接人，或请求推荐负责相关业务的同事。"
+    ),
+    ("new_contact_intro", 2): (
+        "请生成新客户开发介绍场景第2封。重点建立可信度：行业经验、同行业场景、可服务的业务范围。"
+        "如果有同行业案例或知识库内容，可概括行业和业务类型；没有就不要编造公司名和成果数字。"
+        "邮件要让新联系人快速理解为什么收到这封邮件，而不是泛泛推销。"
+    ),
+    ("new_contact_intro", 3): (
+        "请生成新客户开发介绍场景第3封。重点说明未来合作怎么开始：提供资料用途、文件类型、语言方向、是否涉及排版/字幕/同传/印刷和时间节点。"
+        "强调同一项目窗口可以统一协调多业务，减少客户沟通成本。"
+        "不要写具体报价、交期和折扣。"
+    ),
+    ("new_contact_intro", 4): (
+        "请生成新客户开发介绍场景第4封。目标是形成低门槛下一步：资料评估、项目梳理、业务范围确认，或请对方推荐正确负责人。"
+        "语气要礼貌、亲和、有商务价值，不要强推下单。"
+        "结尾必须包含转介绍表达，并说明会把 SpeedAsia 服务范围和联系背景讲清楚。"
+    ),
+}
+
+_MAIL_COMMERCIAL_SCENARIO_PROFILES: dict[str, dict[str, str]] = {
+    "new_business_promotion": {
+        "scenario_name": "老客户其他业务介绍",
+        "relationship": "老客户已有合作或业务沟通基础",
+        "main_goal": "在不只重复翻译业务的前提下，逐步开发同传/会议支持、多媒体本地化、排版印刷、活动物料、海外内容适配等翻译以外业务机会",
+        "tone": "亲和、专业、克制，像熟悉客户背景的销售经理，不像群发广告",
+        "history_rule": "必须承接 CRM 中真实存在的历史合作、合同、商机、最近跟进或客户活跃度；没有事实时只做保守业务场景承接",
+        "case_rule": "优先使用客户行业和知识库/黄金范例库中的同行业、同业务类型或相近场景案例，证明多业务组合有实际落地经验",
+        "intro_rule": "不需要重新做完整公司介绍，只需在必要时轻量说明 SpeedAsia 不只支持翻译，也能协调多业务内容服务",
+        "referral_targets": "市场、培训、活动、采购、海外内容或品牌传播相关同事",
+    },
+    "re_activation": {
+        "scenario_name": "老客户激活",
+        "relationship": "曾经合作、近期沉默或长期未触达、需要恢复联系和关系重启的老客户",
+        "main_goal": "先恢复联系、恢复关系和信任，再从历史合作自然延展到翻译、本地化、同传会议、多媒体内容、排版印刷和活动物料等可重新启动的业务机会",
+        "tone": "温和、熟悉、低压力，重点像关系维护而不是冷启动销售",
+        "history_rule": "必须使用真实历史合作、合同、最近跟进或沉默状态；不能虚构曾经合作内容。高频活跃老客户要更亲和，长期沉默客户要更克制",
+        "case_rule": "使用同行业经验或历史合作相近案例唤醒客户兴趣，强调类似客户如何重新梳理资料、活动、多媒体或多语内容需求",
+        "intro_rule": "不做新客户式公司介绍，只需提醒 SpeedAsia 当前可支持的业务范围比过去更完整",
+        "referral_targets": "目前负责翻译、本地化、培训、市场物料、活动或海外内容的同事",
+    },
+    "new_contact_intro": {
+        "scenario_name": "新客户开发介绍",
+        "relationship": "新客户、新联系人或新接手的对接人",
+        "main_goal": "先建立可信身份和服务范围认知，再用行业经验和低门槛协作路径让对方知道如何开始或转给正确负责人",
+        "tone": "礼貌、清晰、专业，不假设已建立熟人关系",
+        "history_rule": "不能假设已有合作。若 CRM 有真实历史，只能谨慎写“系统显示有相关合作/沟通背景”；没有历史时以公司介绍、行业经验和正确对接确认为主",
+        "case_rule": "用同行业经验建立可信度，案例必须保守表达，不得虚构客户名、成果数字或项目事实",
+        "intro_rule": "第 1 封必须达到商业介绍标准：写清 SpeedAsia 身份，结合客户行业列出 3 项差异化服务组合，并确认正确负责人；不能只写一句公司介绍",
+        "referral_targets": "负责市场、培训、活动、采购、品牌传播、海外内容或本地化项目的同事",
+    },
+}
+
+_MAIL_COMMERCIAL_STEP_PROFILES: dict[int, dict[str, str]] = {
+    1: {
+        "role": "开场破冰",
+        "focus": "建立关系、说明为什么联系、轻量打开本场景最重要的业务话题",
+        "avoid": "不要把案例、完整方案、报价收口全部讲完",
+        "timing": "第 1 天发送：建立联系或恢复联系，先让客户理解这套邮件的业务价值，不急于成交。",
+    },
+    2: {
+        "role": "证据增强",
+        "focus": "用客户行业、CRM 历史和知识库/同行业案例证明不是泛泛推广",
+        "avoid": "不要重复第 1 封的大范围介绍，不要提前展开第 3 封的完整方案或第 4 封的报价收口",
+        "timing": "第 8 天发送：与第 1 封间隔 7 天；如果客户未回复，用行业案例和历史事实增强可信度。",
+    },
+    3: {
+        "role": "方案路径",
+        "focus": "说明客户如果要推进，具体可以从哪些资料、业务组合、项目节点和协作流程开始",
+        "avoid": "不要写具体价格、折扣、账期或未经审核工期，也不要重新讲第 2 封案例证明",
+        "timing": "第 18 天发送：再间隔 10 天；把兴趣转化为可执行的资料评估、业务组合建议或协作路径。",
+    },
+    4: {
+        "role": "低压力收口",
+        "focus": "收口到资料评估、预算沟通、服务清单、正确负责人确认或转介绍",
+        "avoid": "不要做强成交逼单，不要承诺免费服务、未审核优惠、具体价格、账期或无依据工期",
+        "timing": "第 28 天发送：再间隔 10 天；给出低门槛下一步，并礼貌请求转介绍或正确负责人确认。",
+    },
+}
+
+_MAIL_COMMERCIAL_SEQUENCE_LABELS: dict[tuple[str, int], str] = {
+    ("new_business_promotion", 1): "第 1 封：老客户多业务破冰与低压力价值提示",
+    ("new_business_promotion", 2): "第 2 封：同行业案例证明与历史合作承接",
+    ("new_business_promotion", 3): "第 3 封：多业务组合方案与协作流程",
+    ("new_business_promotion", 4): "第 4 封：方案评估、预算沟通与转介绍收口",
+    ("re_activation", 1): "第 1 封：老客户关系重启与轻量需求确认",
+    ("re_activation", 2): "第 2 封：历史合作承接与同行业案例唤醒",
+    ("re_activation", 3): "第 3 封：低门槛多业务协作路径说明",
+    ("re_activation", 4): "第 4 封：资料评估、服务清单与转介绍收口",
+    ("new_contact_intro", 1): "第 1 封：新联系人公司介绍与正确对接确认",
+    ("new_contact_intro", 2): "第 2 封：同行业经验与可信度建立",
+    ("new_contact_intro", 3): "第 3 封：项目启动路径与多业务入口说明",
+    ("new_contact_intro", 4): "第 4 封：小范围评估、负责人确认与转介绍收口",
+}
+
+
+def _mail_commercial_sequence_step_label(scenario: str, suite_step: int) -> str:
+    return _MAIL_COMMERCIAL_SEQUENCE_LABELS.get(
+        (sanitize_text(scenario).strip(), int(suite_step)),
+        _mail_sequence_step_label_cn(scenario, suite_step),
+    )
+
+
+def _mail_commercial_sequence_purpose(scenario: str, suite_step: int) -> str:
+    profile = _MAIL_COMMERCIAL_SCENARIO_PROFILES[sanitize_text(scenario).strip()]
+    step = _MAIL_COMMERCIAL_STEP_PROFILES[int(suite_step)]
+    return (
+        f"作为“{profile['scenario_name']}”4 封套装的第 {int(suite_step)} 封，定位是{step['role']}；"
+        f"{step['focus']}。必须服务于总目标：{profile['main_goal']}。"
+        f"本封要符合商用邮件标准：亲和、有理有据、篇幅适合，并与其他 3 封形成递进而不是重复。"
+    )
+
+
+def _mail_commercial_sequence_send_timing(scenario: str, suite_step: int) -> str:
+    profile = _MAIL_COMMERCIAL_SCENARIO_PROFILES[sanitize_text(scenario).strip()]
+    step = _MAIL_COMMERCIAL_STEP_PROFILES[int(suite_step)]
+    return f"{step['timing']} 场景策略：{profile['relationship']}，语气要求：{profile['tone']}。"
+
+
+def _mail_commercial_sequence_script(scenario: str, suite_step: int) -> str:
+    scenario_key = sanitize_text(scenario).strip()
+    step_no = int(suite_step)
+    profile = _MAIL_COMMERCIAL_SCENARIO_PROFILES[scenario_key]
+    step = _MAIL_COMMERCIAL_STEP_PROFILES[step_no]
+    step_path = "4封递进：1建立关系/说明来意，2用案例证据增强可信度，3给协作路径，4做评估或转介绍收口。"
+    intro_requirement = profile["intro_rule"]
+    new_contact_first_rule = (
+        "\n【新联系人第1封专项】\n"
+        "若本封是新联系人第1封，正文必须像正式商业介绍邮件：说明销售身份和联系原因；"
+        "结合客户行业写出3项差异化服务组合，例如法律/技术资料笔译、术语库审校、培训课件或视频字幕本地化、会议口译、宣传物料排版印刷；"
+        "最后确认对方是否为正确负责人或请其转给相关同事。不要只写“我们提供翻译服务”。\n"
+        if scenario_key == "new_contact_intro" and step_no == 1 else ""
+    )
+    return (
+        "【邮件目标】\n"
+        f"这是“{profile['scenario_name']}”场景的第 {step_no} 封，阶段定位是“{step['role']}”。"
+        f"本封只做本阶段任务：{step['focus']}。{step_path}\n\n"
+        "【个性信息优先级】\n"
+        "先用联系人姓名、公司名、行业、生命周期、CRM历史/商机/最近跟进，再用检索案例。"
+        "当前客户事实只用于关系承接和需求判断，不得把当前联系人本人往来包装成案例再推给本人。"
+        "案例只写脱敏外部案例或其他部门可迁移场景，按“场景-做法-价值”表达，不得泄露客户名称、金额、项目号、底价、内部成本。\n\n"
+        "【变量映射】\n"
+        "{customer_name}=称呼；{company_name}/{industry}=公司与行业背景；{history}=当前客户事实，只承接不当案例；"
+        "{peer_case}=脱敏外部案例或黄金范例；{business_lines}=本封选2-3项具体服务；"
+        "{referral_request}=转介绍对象；{seller_name}=落款。\n\n"
+        "【场景边界】\n"
+        f"客户关系：{profile['relationship']}。历史规则：{profile['history_rule']}。"
+        f"案例规则：{profile['case_rule']}。公司介绍规则：{intro_requirement}\n\n"
+        "【正文结构，建议 4 段】\n"
+        "1. 称呼并承接客户画像或真实触点，说明为什么联系。\n"
+        f"2. 围绕本阶段重点展开，不泛泛宣传：{step['focus']}。\n"
+        "3. 使用知识库/同行业案例或可迁移经验，明确与客户行业或可能需求的关联。\n"
+        f"4. 低压力 CTA：引导回复、提供资料、确认方向，或推荐{profile['referral_targets']}。\n\n"
+        "【阶段排他规则】\n"
+        "第1封只破冰和打开一个具体业务方向；第2封才写脱敏外部案例；第3封只写资料、服务清单和协作流程；第4封只做评估项、负责人确认或转介绍收口。\n\n"
+        f"{new_contact_first_rule}"
+        "【禁止内容】\n"
+        f"{step['avoid']}。禁止只讲翻译；至少自然覆盖翻译以外2类相关业务。"
+        "禁止价格、折扣、账期、付款方式、无依据工期、免费服务、未审核优惠、内部编号。\n\n"
+        "【合格标准】\n"
+        "亲和、商用、有证据、篇幅适合；能看到客户个性信息、检索案例、多业务价值和转介绍，不与其他阶段重复。"
+    )
+
+
+def _mail_commercial_sequence_ai_instruction(scenario: str, suite_step: int) -> str:
+    scenario_key = sanitize_text(scenario).strip()
+    step_no = int(suite_step)
+    profile = _MAIL_COMMERCIAL_SCENARIO_PROFILES[scenario_key]
+    step = _MAIL_COMMERCIAL_STEP_PROFILES[step_no]
+    new_contact_first_rule = (
+        "\n9. 新联系人第1封必须写出商业介绍的实质内容：身份+来意、客户行业相关的3项差异化服务组合、正确负责人确认或转介绍；不能只写简单公司介绍。"
+        if scenario_key == "new_contact_intro" and step_no == 1 else ""
+    )
+    return (
+        f"你要生成“{profile['scenario_name']}”第 {step_no} 封正式商业邮件。必须中文输出，语气要求：{profile['tone']}。\n"
+        "硬性要求：\n"
+        f"1. 本封定位：{step['role']}，只完成“{step['focus']}”；4封递进为破冰、案例、方案、收口，不能互相重复。\n"
+        "2. 个性信息优先级：联系人姓名/公司/行业/生命周期/历史合作或商机/最近跟进 > 检索案例 > 通用服务能力。必须让正文看出用了这些信息。\n"
+        f"3. 历史规则：{profile['history_rule']}。当前客户本人历史只能用于开场承接或说明熟悉背景，不能写成案例证明推回本人。\n"
+        f"4. 案例规则：{profile['case_rule']}。案例必须来自脱敏外部案例或其他部门可迁移场景，写成“场景-做法-价值”，不能复制原文，不能写成当前客户历史。\n"
+        f"5. 场景区分：{profile['intro_rule']} 总目标：{profile['main_goal']}。\n"
+        "6. 正文3-4段且阶段排他：第1封破冰，第2封案例，第3封流程清单，第4封评估/负责人收口；不要四封都写能力介绍。\n"
+        f"7. 禁止：{step['avoid']}；不得出现价格、折扣、账期、底价、无依据工期、免费服务、未审核优惠、内部编号。\n"
+        f"8. 至少自然覆盖翻译以外2类业务；结尾可推荐给{profile['referral_targets']}。{new_contact_first_rule}"
+    )
+
+
+def _mail_commercial_sequence_template_payload(scenario: str, suite_step: int) -> dict[str, str] | None:
+    scenario_key = sanitize_text(scenario).strip()
+    step_no = int(suite_step)
+    if scenario_key not in _MAIL_COMMERCIAL_SCENARIO_PROFILES or step_no not in _MAIL_COMMERCIAL_STEP_PROFILES:
+        return None
+    return {
+        "step_label_cn": _mail_commercial_sequence_step_label(scenario_key, step_no),
+        "purpose_cn": _mail_commercial_sequence_purpose(scenario_key, step_no),
+        "send_timing_cn": _mail_commercial_sequence_send_timing(scenario_key, step_no),
+        "script_template": _mail_commercial_sequence_script(scenario_key, step_no),
+        "ai_instruction_script": _mail_commercial_sequence_ai_instruction(scenario_key, step_no),
+    }
+
+_MAIL_SEQUENCE_TEMPLATE_DEFAULT_VERSION = 30
+_MAIL_SEQUENCE_TEMPLATE_TARGETED_VERSIONS: dict[tuple[str, int], int] = {
+    ("new_business_promotion", 1): 44,
+    ("new_business_promotion", 2): 44,
+    ("new_business_promotion", 3): 44,
+    ("new_business_promotion", 4): 44,
+    ("re_activation", 1): 44,
+    ("re_activation", 2): 44,
+    ("re_activation", 3): 44,
+    ("re_activation", 4): 44,
+    ("new_contact_intro", 1): 44,
+    ("new_contact_intro", 2): 44,
+    ("new_contact_intro", 3): 44,
+    ("new_contact_intro", 4): 44,
+}
+
+
+def _mail_sequence_template_default_version(scenario: str, suite_step: int) -> int:
+    return _MAIL_SEQUENCE_TEMPLATE_TARGETED_VERSIONS.get(
+        (sanitize_text(scenario).strip(), int(suite_step)),
+        _MAIL_SEQUENCE_TEMPLATE_DEFAULT_VERSION,
+    )
+
+
+def _default_mail_sequence_template_payload(scenario: str, suite_step: int, step: Any | None = None) -> dict[str, Any]:
+    scenario_cn = _MAIL_SCENARIO_CHINESE.get(scenario, scenario)
+    commercial_template = _mail_commercial_sequence_template_payload(scenario, suite_step)
+    purpose = _MAIL_CTA_CN_BY_STEP.get((scenario, suite_step)) or sanitize_text(getattr(step, "objective", "")) or "按当前场景推进客户沟通。"
+    version_no = _mail_sequence_template_default_version(scenario, suite_step)
+    return {
+        "scenario": scenario,
+        "suite_step": suite_step,
+        "scenario_label_cn": scenario_cn,
+        "step_label_cn": (commercial_template or {}).get("step_label_cn") or _mail_sequence_step_label_cn(scenario, suite_step),
+        "purpose_cn": (commercial_template or {}).get("purpose_cn") or purpose,
+        "send_timing_cn": (commercial_template or {}).get("send_timing_cn") or _mail_sequence_send_timing_cn(scenario, suite_step),
+        "variable_notes": dict(_MAIL_SEQUENCE_TEMPLATE_VARIABLE_NOTES),
+        "script_template": (commercial_template or {}).get("script_template") or _MAIL_SEQUENCE_TEMPLATE_SCRIPT.get((scenario, suite_step), sanitize_text(getattr(step, "objective", ""))),
+        "ai_instruction_script": (commercial_template or {}).get("ai_instruction_script") or _mail_sequence_template_ai_instruction(scenario, suite_step),
+        "version_no": version_no,
+    }
+
+
+def _serialize_mail_sequence_template(row) -> dict[str, Any]:
+    return {
+        "template_id": str(row.template_id) if getattr(row, "template_id", None) else None,
+        "scenario": row.scenario,
+        "suite_step": row.suite_step,
+        "scenario_label_cn": row.scenario_label_cn,
+        "step_label_cn": row.step_label_cn,
+        "purpose_cn": row.purpose_cn,
+        "send_timing_cn": row.send_timing_cn,
+        "variable_notes": row.variable_notes or {},
+        "script_template": row.script_template,
+        "ai_instruction_script": getattr(row, "ai_instruction_script", "") or "",
+        "version_no": row.version_no,
+        "is_active": row.is_active,
+        "updated_by": row.updated_by,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def _serialize_mail_customer_suite_feedback(row) -> dict[str, Any]:
+    profile = row.customer_profile or {}
+    draft = row.draft_payload or {}
+    return {
+        "feedback_id": str(row.feedback_id) if getattr(row, "feedback_id", None) else None,
+        "customer_id": row.customer_id,
+        "contact_email": row.contact_email,
+        "company_name": row.company_name,
+        "scenario": row.scenario,
+        "scenario_label_cn": _MAIL_SCENARIO_CHINESE.get(row.scenario, row.scenario),
+        "suite_step": row.suite_step,
+        "step_label_cn": _mail_sequence_step_label_cn(row.scenario, int(row.suite_step)),
+        "mail_uid": row.mail_uid,
+        "final_subject": row.final_subject,
+        "final_body_html": row.final_body_html,
+        "feedback_text": row.feedback_text,
+        "feedback_source": row.feedback_source,
+        "feedback_status": row.feedback_status,
+        "draft_payload": draft,
+        "customer_profile": profile,
+        "customer_contact_info": {
+            "customer_id": row.customer_id,
+            "company_name": row.company_name or profile.get("company_name") or profile.get("company_name_masked"),
+            "contact_email": row.contact_email or profile.get("contact_email"),
+            "contact_name": profile.get("contact_name") or profile.get("contact_name_masked") or profile.get("recipient_name"),
+            "industry": profile.get("company_industry") or profile.get("industry"),
+            "seller_name": profile.get("seller_name") or profile.get("current_seller_name") or profile.get("owner_name"),
+        },
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _ensure_mail_sequence_templates(db: Session) -> list[Any]:
+    from mail_sequence_strategy import list_mail_sequence_strategies
+
+    rows = []
+    for strategy in list_mail_sequence_strategies():
+        scenario = strategy["scenario"]
+        for step in strategy.get("steps") or []:
+            suite_step = int(step["suite_step"])
+            row = db.query(MailSequenceTemplate).filter(
+                MailSequenceTemplate.scenario == scenario,
+                MailSequenceTemplate.suite_step == suite_step,
+            ).first()
+            if row is None:
+                defaults = _default_mail_sequence_template_payload(scenario, suite_step)
+                row = MailSequenceTemplate(**defaults, updated_by="system_default")
+                db.add(row)
+                db.flush()
+            target_version = _mail_sequence_template_default_version(scenario, suite_step)
+            if int(row.version_no or 0) < target_version:
+                defaults = _default_mail_sequence_template_payload(scenario, suite_step)
+                row.scenario_label_cn = defaults["scenario_label_cn"]
+                row.step_label_cn = defaults["step_label_cn"]
+                row.purpose_cn = defaults["purpose_cn"]
+                row.send_timing_cn = defaults["send_timing_cn"]
+                row.variable_notes = defaults["variable_notes"]
+                row.script_template = defaults["script_template"]
+                row.ai_instruction_script = defaults["ai_instruction_script"]
+                row.version_no = target_version
+                row.updated_by = f"system_default_v{target_version}"
+                row.updated_at = datetime.utcnow()
+            rows.append(row)
+    db.commit()
+    return rows
+
+
+def _get_mail_sequence_template_for_prompt(db: Session, scenario: str, suite_step: int) -> dict[str, Any] | None:
+    row = db.query(MailSequenceTemplate).filter(
+        MailSequenceTemplate.scenario == scenario,
+        MailSequenceTemplate.suite_step == suite_step,
+        MailSequenceTemplate.is_active.is_(True),
+    ).first()
+    if row is None:
+        _ensure_mail_sequence_templates(db)
+        row = db.query(MailSequenceTemplate).filter(
+            MailSequenceTemplate.scenario == scenario,
+            MailSequenceTemplate.suite_step == suite_step,
+            MailSequenceTemplate.is_active.is_(True),
+        ).first()
+    return _serialize_mail_sequence_template(row) if row else None
 
 
 def _mail_subject_from_intent_profile(profile: MailDraftIntentProfile) -> str:
@@ -4371,21 +5847,9 @@ def _mail_subject_from_intent_profile(profile: MailDraftIntentProfile) -> str:
     )
 
 _MAIL_DRAFT_LLM_SYSTEM_PROMPT = (
-    "你是 SpeedAsia 翻译与本地化部的资深 B2B 销售邮件起草人。你的工作只写一封中文邮件里偏【人际沟通】"
-    "的那一段内容（自我介绍 / 价值点 / 行动呼吁），不写商业条款数字。\n"
-    "\n"
-    "硬性规则：\n"
-    "1. 邮件正文必须使用【简体中文】。称呼可以含对方姓名。语气专业、温和、克制，不要夸张。\n"
-    "2. 绝对不要写任何具体价格、单价、折扣百分比、付款周期天数、交付天数等商业数字 — 这些由后端代码"
-    "用占位符强制填入，你写了反而会被安全门拦截。\n"
-    "3. 不要使用任何英文单词或英文句子，邮件正文里不能出现英文（除非是项目专名、机构名、人名）。\n"
-    "4. 引用范例只用其角度/选题/语气，不要逐字抄袭。\n"
-    "5. 严格输出 JSON 对象（不要 markdown 不要代码块），格式必须为：\n"
-    "   {\"subject\": \"<中文邮件主题，不超过 60 字>\", \"paragraphs\": [\"<第一段>\", \"<第二段>\", \"<第三段>\"]}\n"
-    "6. 段落数 2 到 4 段；每段 1 到 3 句话；纯文本不要 HTML 不要 markdown。\n"
-    "7. 不要凭空编造客户名、订单号、附件、会议时间、过往对话或未给定的事实。\n"
-    "8. 如果场景是【新接手联系人介绍】，第一段必须明确自我介绍是新接手；如果是【老客户唤醒】，第一段必须"
-    "表达久未联系的问候并表示尊重对方时间。\n"
+    "你是 SpeedAsia 资深B2B销售邮件起草人。优先使用联系人、公司、行业画像、CRM事实和检索案例；"
+    "缺事实则保守写。禁价格/折扣/账期/无依据工期/免费服务/内部编号/虚构。"
+    "禁编造数字、客户反馈引语、客户名或未给出的交付细节。只输出JSON：{\"subject\":\"自然简洁\",\"paragraphs\":[\"3-5段\"]}。"
 )
 
 
@@ -4418,7 +5882,9 @@ def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> di
     }
     raw_text = ""
     try:
-        resp = _rq.post(url, json=payload, headers=headers, timeout=timeout_seconds)
+        session = _rq.Session()
+        session.trust_env = False
+        resp = session.post(url, json=payload, headers=headers, timeout=timeout_seconds)
         if resp.status_code != 200:
             return {"parsed": None, "raw_text": "", "error": f"HTTP {resp.status_code}: {resp.text[:200]}", "model": model}
         data = resp.json()
@@ -4450,20 +5916,49 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
       让上层 _assemble_mail_draft_from_intent_profile 假装"已识别为兜底"。
     - 成功路径返 {status: 'success', model, subject, paragraphs, error: None, prompt}。
     """
-    fewshot_reference = (profile.admitted_fewshot_content or "")[:240]
+    fewshot_reference = _mail_prompt_fact(profile.admitted_fewshot_content, 120)
+    fewshot_title = _mail_prompt_fact(profile.admitted_fewshot_title, 80)
     scenario_cn = _MAIL_SCENARIO_CHINESE.get(profile.scenario, profile.scenario_label)
+    stage_rule = {
+        1: "只破冰和说明来意，选1个具体新业务方向+2项服务；不写案例证明、方案流程或收口。",
+        2: "只做脱敏外部案例证明，按场景痛点/做法/价值写；不重复第1封能力介绍。",
+        3: "只写执行路径：客户给什么资料、我们做什么、如何交付；不再讲案例。",
+        4: "只做低压力收口：服务清单/评估项/正确负责人；不再铺陈能力。",
+    }.get(int(profile.suite_step), "按当前阶段目标推进。")
+    scenario_rule = {
+        "new_business_promotion": "老客户多业务开发：基于合作信任，介绍会议支持、多媒体、排版印刷、活动物料、海外内容适配。",
+        "re_activation": "老客户激活：先恢复联系和信任，再从历史合作延展新机会。",
+        "new_contact_intro": "新联系人介绍：不假设熟人关系；第1封要像正式商业介绍邮件，写清SpeedAsia身份、行业相关服务组合和正确负责人确认。",
+    }.get(profile.scenario, "按当前场景写作。")
+    if profile.scenario == "new_contact_intro" and int(profile.suite_step) == 1:
+        stage_rule = (
+            "只做首次商业介绍：1段建立身份与来意，1段结合客户行业写3项差异化服务组合，"
+            "1段说明如何低门槛开始或确认正确负责人；不写案例证明、报价或完整方案。"
+        )
+    crm_history = "；".join(
+        part
+        for part in [
+            f"商机：{_mail_prompt_fact(profile.recent_opportunities, 85)}",
+            f"历史：{_mail_prompt_fact(profile.ongoing_contracts, 85)}",
+            f"跟进：{_mail_prompt_fact(profile.contact_recent_followup, 85)}",
+        ]
+        if "无明确记录" not in part
+    ) or "无明确历史记录，需保守承接。"
     user_prompt_lines = [
-        "上下文信息：",
-        f"- 收件人姓名：{profile.recipient_name}",
-        f"- 业务场景：{scenario_cn}（第 {profile.suite_step} 步，共 4 步）",
-        f"- 本步目标：{profile.objective}",
-        f"- 推荐的行动呼吁风格：{profile.cta_style}",
-        f"- 主题提示：{profile.subject_hint or '（无）'}",
-        f"- 客户行业：{profile.company_industry or '未识别'}",
-        f"- 范例参考（只用其角度，不要逐字抄）：{fewshot_reference or '（无）'}",
-        f"- 发件销售姓名：{profile.seller_name}",
+        f"任务：写{scenario_cn}第{profile.suite_step}/4封。{stage_rule}",
+        f"场景：{scenario_rule}",
+        "个性信息必须优先使用并写进正文：",
+        f"1. 联系人/称呼：{_mail_prompt_fact(profile.recipient_name, 40)}；公司：{_mail_prompt_fact(profile.company_name, 80)}。",
+        f"2. 画像：行业={_mail_prompt_fact(profile.company_industry, 40)}；生命周期={_mail_prompt_fact(profile.customer_lifecycle_stage, 60)}。",
+        f"3. 当前客户CRM事实：{crm_history}。只能用于关系承接/判断需求，禁止写成案例证明推回给本人；可说“贵司其他团队如有类似场景”。",
+        f"4. 黄金范例：{fewshot_title}；{fewshot_reference}。只学表达结构，禁止照抄。",
+        f"案例边界：第2封才可写脱敏外部案例；不得把当前联系人与我们的笔译/同传/患者日往来写成“案例”。检索范例若不是案例，只写可迁移经验。",
+        f"{_mail_gold_style_brief(profile)} {_mail_service_focus_brief(profile)}",
+        f"本步目标：{_mail_prompt_fact(profile.sequence_template_purpose or profile.objective, 90)}",
+        f"CTA：{_mail_prompt_fact(profile.cta_style, 70)}；非本人负责则请转介绍市场/培训/活动/采购/海外内容同事。",
+        "标准：3-5段；具体=服务项/资料输入/流程动作/案例已有事实，不等于编数字；禁内部编号、项目号、金额、价格、折扣、账期、免费服务、客户反馈引语。",
         "",
-        "请立即输出严格 JSON 对象（含 subject 与 paragraphs 两个字段，全部中文）。",
+        "立即输出JSON，不要markdown。",
     ]
     user_prompt = "\n".join(user_prompt_lines)
     full_prompt = _MAIL_DRAFT_LLM_SYSTEM_PROMPT + "\n\n" + user_prompt
@@ -4487,7 +5982,7 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
     raw_paragraphs = (parsed or {}).get("paragraphs") or []
     paragraphs: list[str] = []
     for item in raw_paragraphs:
-        text = str(item or "").strip()
+        text = _mail_sanitize_generated_mail_paragraph(str(item or "").strip())
         if text:
             paragraphs.append(text[:600])
     # v1.7.208 旧的"缺 subject/paragraphs 返 fallback_template"逻辑（已注释）:
@@ -4598,16 +6093,19 @@ def _build_mail_generate_draft_response(
     fewshot = _mail_generate_draft_fewshot(
         db,
         scenario=payload.scenario,
+        suite_step=int(payload.suite_step),
         function_fragments=tuple(step.recommended_snippet_types),
         min_score=min_score,
     )
     commercial_terms = _resolve_mail_commercial_terms(db, suite_step=int(payload.suite_step))
+    sequence_template = _get_mail_sequence_template_for_prompt(db, payload.scenario, int(payload.suite_step))
     intent_profile = _build_mail_draft_intent_profile(
         payload=payload,
         step=step,
         interval=interval,
         admitted_fewshot=fewshot,
         commercial_terms=commercial_terms,
+        sequence_template=sequence_template,
     )
     assembled = _assemble_mail_draft_from_intent_profile(intent_profile)
     delivery_sla_guardrail = _evaluate_and_calibrate_mail_delivery_sla_guardrail(assembled.body_html)
@@ -4660,6 +6158,7 @@ def _build_mail_generate_draft_response(
     warnings = [
         "仅评审草稿：当前未启用真实发件。",
         *intent_profile.commercial_terms.warnings,
+        *_mail_generation_material_gap_warnings(intent_profile),
     ]
     if intent_profile.interval_delay_days > 0:
         warnings.append(
@@ -10932,61 +12431,217 @@ def _train_ai_config() -> dict:
 
 def _train_ai_list_models() -> list[dict]:
     cfg = _train_ai_config()
-    if not cfg["base_url"] or not cfg["api_key"]:
+    if not cfg["base_url"]:
         return []
-    resp = requests.get(
-        f"{cfg['base_url']}/api/model-chat/models",
-        headers={"Authorization": f"Bearer {cfg['api_key']}"},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    items = data.get("items") if isinstance(data, dict) else data
-    return items if isinstance(items, list) else []
+    headers = {"Authorization": f"Bearer {cfg['api_key']}"} if cfg.get("api_key") else {}
+    try:
+        session = requests.Session()
+        session.trust_env = settings.HTTP_TRUST_ENV
+        attempts = [
+            ("ollama_tags", f"{cfg['base_url']}/api/tags", None),
+            ("openai_models", f"{cfg['base_url']}/v1/models", headers or None),
+            ("model_chat_models", f"{cfg['base_url']}/api/model-chat/models", headers or None),
+        ]
+        last_error = ""
+        for protocol, url, request_headers in attempts:
+            try:
+                resp = session.get(url, headers=request_headers, timeout=15)
+                if resp.status_code == 404:
+                    last_error = f"{protocol}:404"
+                    continue
+                resp.raise_for_status()
+                data = resp.json() if resp.content else {}
+                if protocol == "model_chat_models":
+                    raw_items = data.get("data") or data.get("models") or data.get("items") or data
+                    if isinstance(raw_items, dict):
+                        raw_items = raw_items.get("models") or raw_items.get("items") or []
+                elif protocol == "openai_models":
+                    raw_items = data.get("data") or []
+                else:
+                    raw_items = data.get("models") or []
+
+                items = []
+                for m in raw_items if isinstance(raw_items, list) else []:
+                    if isinstance(m, str):
+                        name = m
+                    elif isinstance(m, dict):
+                        name = m.get("model_name") or m.get("name") or m.get("id")
+                    else:
+                        name = ""
+                    if name:
+                        items.append({"model_name": name})
+                if items:
+                    logger.info("TRAIN_AI_MODELS_OK protocol=%s count=%s", protocol, len(items))
+                    return items
+                last_error = f"{protocol}:empty"
+            except Exception as exc:
+                last_error = f"{protocol}:{sanitize_text(str(exc))[:160]}"
+                continue
+        logger.error("TRAIN_AI_MODELS_FAILED base_url=%s last_error=%s", cfg["base_url"], last_error)
+        return []
+    except Exception as e:
+        logger.error("Error listing train_ai models: %s", e)
+        return []
 
 
 def _train_ai_chat(messages: list[dict], *, temperature: float | None = None, max_tokens: int | None = None) -> dict:
-    """调用训练AI model-chat 接口。返回统一结构：
+    """调用训练AI接口，兼容 model-chat、Ollama 与 OpenAI chat completions。
+
+    返回统一结构：
     reply(回复文本)/status(success|timeout|failed|disabled)/latency_ms(实际费时)/model/error。
     超时按 TRAIN_AI_TIMEOUT_SECONDS(默认10s)，超时即返回 status=timeout 且 reply 为空，由上层走空值下一步。"""
     cfg = _train_ai_config()
     out = {"reply": "", "status": "disabled", "latency_ms": None, "model": cfg["model"], "error": ""}
-    if not cfg["enabled"] or not cfg["base_url"] or not cfg["api_key"] or not cfg["model"]:
+    if not cfg["enabled"] or not cfg["base_url"] or not cfg["model"]:
         out["error"] = "训练AI未启用或未配置"
         return out
-    body = {
-        "model_name": cfg["model"],
+
+    ollama_options = {}
+    temp = settings.TRAIN_AI_TEMPERATURE if temperature is None else temperature
+    if temp is not None:
+        ollama_options["temperature"] = temp
+    mt = cfg["max_tokens"] if max_tokens is None else max_tokens
+    if mt is not None:
+        ollama_options["num_predict"] = mt
+
+    ollama_body = {
+        "model": cfg["model"],
         "messages": messages,
-        "temperature": settings.TRAIN_AI_TEMPERATURE if temperature is None else temperature,
-        "max_tokens": cfg["max_tokens"] if max_tokens is None else max_tokens,
+        "stream": False,
     }
+    if ollama_options:
+        ollama_body["options"] = ollama_options
+
+    openai_body = {
+        "model": cfg["model"],
+        "messages": messages,
+        "stream": False,
+    }
+    if temp is not None:
+        openai_body["temperature"] = temp
+    if mt is not None:
+        openai_body["max_tokens"] = mt
+
+    model_chat_body = {
+        "model_name": cfg["model"],
+        "model": cfg["model"],
+        "messages": messages,
+        "temperature": temp,
+        "max_tokens": mt,
+    }
+
     started = perf_counter()
     try:
-        resp = requests.post(
-            f"{cfg['base_url']}/api/model-chat/chat",
-            headers={"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"},
-            json=body,
-            timeout=cfg["timeout_seconds"],
+        session = requests.Session()
+        session.trust_env = settings.HTTP_TRUST_ENV
+        headers = {}
+        if cfg.get("api_key"):
+            headers["Authorization"] = f"Bearer {cfg['api_key']}"
+        if headers:
+            headers["Content-Type"] = "application/json"
+
+        attempts = [
+            ("ollama_api_chat", f"{cfg['base_url']}/api/chat", ollama_body, None),
+            ("openai_chat_completions", f"{cfg['base_url']}/v1/chat/completions", openai_body, headers or None),
+            ("model_chat", f"{cfg['base_url']}/api/model-chat/chat", model_chat_body, headers or None),
+        ]
+        logger.info(
+            "TRAIN_AI_START base_url=%s model=%s timeout=%s protocols=%s",
+            cfg["base_url"],
+            cfg["model"],
+            cfg["timeout_seconds"],
+            ",".join(item[0] for item in attempts),
         )
+
+        last_error = ""
+        for protocol, url, body, request_headers in attempts:
+            protocol_started = perf_counter()
+            try:
+                resp = session.post(
+                    url,
+                    json=body,
+                    headers=request_headers,
+                    timeout=cfg["timeout_seconds"],
+                )
+                protocol_ms = round((perf_counter() - protocol_started) * 1000, 2)
+                if resp.status_code == 404:
+                    last_error = f"{protocol}:404"
+                    logger.info("TRAIN_AI_ATTEMPT_SKIP protocol=%s status=404 latency_ms=%s", protocol, protocol_ms)
+                    continue
+                resp.raise_for_status()
+                data = resp.json() if resp.content else {}
+                reply = _extract_train_ai_reply_text(data)
+                out["latency_ms"] = round((perf_counter() - started) * 1000, 2)
+                out["protocol"] = protocol
+                if reply:
+                    out["reply"] = reply
+                    out["status"] = "success"
+                    logger.info(
+                        "TRAIN_AI_SUCCESS protocol=%s model=%s latency_ms=%s reply_chars=%s",
+                        protocol,
+                        cfg["model"],
+                        out["latency_ms"],
+                        len(reply),
+                    )
+                    return out
+                last_error = f"{protocol}:empty"
+                logger.warning("TRAIN_AI_ATTEMPT_EMPTY protocol=%s status=%s latency_ms=%s", protocol, resp.status_code, protocol_ms)
+            except requests.Timeout:
+                raise
+            except Exception as exc:
+                protocol_ms = round((perf_counter() - protocol_started) * 1000, 2)
+                last_error = f"{protocol}:{sanitize_text(str(exc))[:160]}"
+                logger.warning(
+                    "TRAIN_AI_ATTEMPT_FAILED protocol=%s latency_ms=%s error=%s",
+                    protocol,
+                    protocol_ms,
+                    last_error,
+                )
+                continue
+
         out["latency_ms"] = round((perf_counter() - started) * 1000, 2)
-        resp.raise_for_status()
-        data = resp.json() if resp.content else {}
-        reply = str((data or {}).get("reply") or "").strip()
-        if reply:
-            out["reply"] = reply
-            out["status"] = "success"
-        else:
-            out["status"] = "failed"
-            out["error"] = "训练AI返回空内容"
+        out["status"] = "failed"
+        out["protocol"] = "all_failed"
+        out["error"] = last_error or "训练AI所有协议均未返回有效内容"
+        logger.error("TRAIN_AI_FAILED model=%s latency_ms=%s error=%s", cfg["model"], out["latency_ms"], out["error"])
     except requests.Timeout:
         out["latency_ms"] = round((perf_counter() - started) * 1000, 2)
         out["status"] = "timeout"
         out["error"] = f"训练AI调用超过 {cfg['timeout_seconds']} 秒超时"
+        logger.error("TRAIN_AI_TIMEOUT model=%s latency_ms=%s error=%s", cfg["model"], out["latency_ms"], out["error"])
     except Exception as exc:
         out["latency_ms"] = round((perf_counter() - started) * 1000, 2)
         out["status"] = "failed"
         out["error"] = sanitize_text(str(exc))[:200]
+        logger.error("TRAIN_AI_ERROR model=%s latency_ms=%s error=%s", cfg["model"], out["latency_ms"], out["error"])
     return out
+
+
+def _extract_train_ai_reply_text(data: dict) -> str:
+    if not isinstance(data, dict):
+        return ""
+    candidates = [
+        data.get("reply"),
+        data.get("answer"),
+        data.get("text"),
+        data.get("content"),
+        (data.get("message") or {}).get("content") if isinstance(data.get("message"), dict) else None,
+        (data.get("data") or {}).get("reply") if isinstance(data.get("data"), dict) else None,
+        (data.get("data") or {}).get("answer") if isinstance(data.get("data"), dict) else None,
+        (data.get("data") or {}).get("text") if isinstance(data.get("data"), dict) else None,
+        (data.get("data") or {}).get("content") if isinstance(data.get("data"), dict) else None,
+    ]
+    for value in candidates:
+        text = str(value or "").strip()
+        if text:
+            return text
+    choices = data.get("choices") or []
+    if choices and isinstance(choices[0], dict):
+        first = choices[0]
+        text = str(((first.get("message") or {}).get("content")) or first.get("text") or "").strip()
+        if text:
+            return text
+    return ""
 
 def _runtime_llm_configured(config: dict) -> bool:
     return not any(
@@ -12900,52 +14555,326 @@ async def get_mail_crm_mock_profiles():
     return build_mail_crm_mock_catalog()
 
 
+@app.get("/api/v1/mail/sequence-templates")
+def list_mail_sequence_templates(db: Session = Depends(get_db)):
+    """返回三大邮件场景 × 4 阶段的可编辑脚本模板。"""
+    rows = _ensure_mail_sequence_templates(db)
+    rows = sorted(rows, key=lambda row: (row.scenario, row.suite_step))
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(row.scenario, []).append(_serialize_mail_sequence_template(row))
+    return {
+        "version": "mail_sequence_template.v1",
+        "source": "mail_sequence_template",
+        "read_only": False,
+        "real_sending_enabled": False,
+        "scenario_order": ["new_business_promotion", "re_activation", "new_contact_intro"],
+        "count": len(rows),
+        "templates": grouped,
+        "requirements_cn": [
+            "套装邮件 4 封必须层层递进，不能 4 封重复同一套话。",
+            "内容不能只局限于翻译业务，要能支持同传、多媒体本地化、排版印刷、活动物料等多业务开发。",
+            "必须使用客户行业和同行业经验，避免泛泛介绍公司能力。",
+            "必须使用客户历史合作或 CRM 跟进事实，不能编造。",
+            "语气要亲和克制，结尾要有低压力转介绍请求。",
+        ],
+    }
+
+
+@app.put("/api/v1/mail/sequence-templates/{scenario}/{suite_step}")
+def update_mail_sequence_template(
+    scenario: str,
+    suite_step: int,
+    payload: MailSequenceTemplateUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    """保存单个场景单个阶段的目的、发送日期或脚本模板。"""
+    if scenario not in _MAIL_SCENARIO_CHINESE:
+        raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
+    if suite_step not in ALL_MAIL_SEQUENCE_STEPS:
+        raise HTTPException(status_code=422, detail=f"unsupported suite_step: {suite_step}")
+    _ensure_mail_sequence_templates(db)
+    row = db.query(MailSequenceTemplate).filter(
+        MailSequenceTemplate.scenario == scenario,
+        MailSequenceTemplate.suite_step == suite_step,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="sequence template not found")
+    if payload.purpose_cn is not None:
+        row.purpose_cn = sanitize_text(payload.purpose_cn).strip()[:4000]
+    if payload.send_timing_cn is not None:
+        row.send_timing_cn = sanitize_text(payload.send_timing_cn).strip()[:240]
+    if payload.script_template is not None:
+        row.script_template = sanitize_text(payload.script_template).strip()[:12000]
+    if payload.ai_instruction_script is not None:
+        row.ai_instruction_script = sanitize_text(payload.ai_instruction_script).strip()[:12000]
+    row.updated_by = sanitize_text(payload.updated_by or "web_admin")[:120]
+    row.version_no = int(row.version_no or 1) + 1
+    row.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return {
+        "ok": True,
+        "template": _serialize_mail_sequence_template(row),
+        "real_sending_enabled": False,
+    }
+
+
+@app.get("/api/v1/mail/customer-suite")
+def get_mail_customer_suite(
+    request: Request,
+    id: str = Query(..., min_length=1),
+    scenario: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """独立客户套装邮件页数据源：按客户编号真生成 4 封套装草稿。"""
+    customer_id = sanitize_text(id).strip()
+    if not customer_id:
+        raise HTTPException(status_code=422, detail="id is required")
+    accept = (request.headers.get("accept") or "").lower()
+    if "text/html" in accept and "application/json" not in accept:
+        return RedirectResponse(url=f"/static/mail-suite.html?id={quote(customer_id, safe='')}")
+
+    current_case = next((item for item in MAIL_CURRENT_DEMO_CASES if item["real_customer_key"].upper() == customer_id.upper()), None)
+    scenario_norm = sanitize_text(scenario or (current_case or {}).get("default_scenario") or "new_business_promotion").strip()
+    if scenario_norm not in _MAIL_SCENARIO_CHINESE:
+        raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario_norm}")
+
+    seller_name = "SpeedAsia Sales"
+    seller_signature = "SpeedAsia Sales"
+    crm_profile = _lookup_mail_crm_profile(customer_id, "")
+    contact_email = sanitize_text(crm_profile.get("contact_email"))
+    customer_profile = {
+        "customer_id": customer_id,
+        "company_name": sanitize_text(crm_profile.get("company_name")) or customer_id,
+        "contact_email": contact_email,
+        "contact_email_note": "CRM 邮箱为空时保持空值；本页只生成草稿模板，不真实发信。",
+        "company_industry": crm_profile.get("company_industry"),
+        "payment_risk_level": crm_profile.get("payment_risk_level"),
+        "customer_domains": list(crm_profile.get("customer_domains") or []),
+        "crm_profile_lookup_status": crm_profile.get("crm_profile_lookup_status"),
+        "crm_profile_source": crm_profile.get("crm_profile_source"),
+        "scenario_label_cn": _MAIL_SCENARIO_CHINESE.get(scenario_norm, scenario_norm),
+        "seller_name": seller_name,
+    }
+
+    drafts = []
+    for suite_step in ALL_MAIL_SEQUENCE_STEPS:
+        payload = MailGenerateDraftRequest(
+            customer_key=customer_id,
+            contact_email=contact_email,
+            scenario=scenario_norm,
+            suite_step=int(suite_step),
+            current_seller_name=seller_name,
+            current_seller_signature=seller_signature,
+        )
+        try:
+            response = _build_mail_generate_draft_response(db, payload)
+            draft = response.dict() if hasattr(response, "dict") else dict(response)
+            drafts.append({
+                "suite_step": int(suite_step),
+                "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(suite_step)),
+                "status": "success",
+                "draft": draft,
+            })
+        except HTTPException as exc:
+            drafts.append({
+                "suite_step": int(suite_step),
+                "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(suite_step)),
+                "status": "failed",
+                "error": exc.detail,
+                "draft": None,
+            })
+        except Exception as exc:
+            logger.exception("MAIL_CUSTOMER_SUITE_DRAFT_FAILED customer_id=%s suite_step=%s", sanitize_text(customer_id), suite_step)
+            drafts.append({
+                "suite_step": int(suite_step),
+                "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(suite_step)),
+                "status": "failed",
+                "error": sanitize_text(str(exc))[:500],
+                "draft": None,
+            })
+
+    return {
+        "status": "success" if any(item["status"] == "success" for item in drafts) else "failed",
+        "source": "crm_sql_customer_suite_id",
+        "customer_id": customer_id,
+        "scenario": scenario_norm,
+        "scenario_label_cn": _MAIL_SCENARIO_CHINESE.get(scenario_norm, scenario_norm),
+        "customer_profile": customer_profile,
+        "drafts": drafts,
+        "suite_total": len(drafts),
+        "real_sending_enabled": False,
+        "note": "套装页只生成草稿和保存反馈，不真实发送邮件。",
+    }
+
+
+@app.post("/api/v1/mail/customer-suite-feedback")
+def create_mail_customer_suite_feedback(
+    payload: MailCustomerSuiteFeedbackRequest,
+    db: Session = Depends(get_db),
+):
+    """独立客户套装邮件页反馈保存：每次提交新建一条记录。"""
+    customer_id = sanitize_text(payload.customer_id).strip()
+    scenario = sanitize_text(payload.scenario).strip()
+    feedback_text = sanitize_text(payload.feedback_text).strip()
+    if not customer_id:
+        raise HTTPException(status_code=422, detail="customer_id is required")
+    if scenario not in _MAIL_SCENARIO_CHINESE:
+        raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
+    if payload.suite_step not in ALL_MAIL_SEQUENCE_STEPS:
+        raise HTTPException(status_code=422, detail=f"unsupported suite_step: {payload.suite_step}")
+    if not feedback_text:
+        raise HTTPException(status_code=422, detail="feedback_text is required")
+
+    row = MailCustomerSuiteFeedback(
+        customer_id=customer_id[:120],
+        contact_email=sanitize_text(payload.contact_email or "").strip()[:255] or None,
+        company_name=sanitize_text(payload.company_name or "").strip()[:255] or None,
+        scenario=scenario,
+        suite_step=int(payload.suite_step),
+        mail_uid=sanitize_text(payload.mail_uid or "").strip()[:120] or None,
+        final_subject=sanitize_text(payload.final_subject or "").strip()[:500] or None,
+        final_body_html=sanitize_text(payload.final_body_html or "").strip() or None,
+        feedback_text=feedback_text[:20000],
+        feedback_source=sanitize_text(payload.feedback_source or "mail_suite_page").strip()[:80] or "mail_suite_page",
+        feedback_status=sanitize_text(payload.feedback_status or "submitted").strip()[:50] or "submitted",
+        draft_payload=_json_safe(payload.draft_payload or {}),
+        customer_profile=_json_safe(payload.customer_profile or {}),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {
+        "ok": True,
+        "feedback_id": str(row.feedback_id),
+        "record": _serialize_mail_customer_suite_feedback(row),
+        "storage_policy": "one_feedback_submit_one_row",
+        "real_sending_enabled": False,
+    }
+
+
+@app.get("/api/v1/mail/customer-suite-feedback")
+def list_mail_customer_suite_feedback(
+    limit: int = Query(100, ge=1, le=500),
+    customer_id: str | None = Query(None),
+    scenario: str | None = Query(None),
+    suite_step: int | None = Query(None, ge=1, le=4),
+    db: Session = Depends(get_db),
+):
+    """查询独立客户套装邮件页反馈记录，供邮件质检页验证反馈、模板和客户联系人。"""
+    q = db.query(MailCustomerSuiteFeedback)
+    filters = {
+        "limit": limit,
+        "customer_id": customer_id,
+        "scenario": scenario,
+        "suite_step": suite_step,
+    }
+    if customer_id:
+        q = q.filter(MailCustomerSuiteFeedback.customer_id == sanitize_text(customer_id).strip())
+    if scenario:
+        scenario_norm = sanitize_text(scenario).strip()
+        if scenario_norm not in _MAIL_SCENARIO_CHINESE:
+            raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario_norm}")
+        q = q.filter(MailCustomerSuiteFeedback.scenario == scenario_norm)
+    if suite_step is not None:
+        q = q.filter(MailCustomerSuiteFeedback.suite_step == int(suite_step))
+    rows = q.order_by(MailCustomerSuiteFeedback.created_at.desc()).limit(limit).all()
+    return {
+        "version": "mail_customer_suite_feedback.v1",
+        "source": "mail_customer_suite_feedback",
+        "storage_policy": "one_feedback_submit_one_row",
+        "count": len(rows),
+        "filters": filters,
+        "items": [_serialize_mail_customer_suite_feedback(row) for row in rows],
+        "real_sending_enabled": False,
+    }
+
+
 @app.get("/api/v1/mail/demo-contacts")
 async def get_mail_demo_contacts(db: Session = Depends(get_db)):
-    """返回 5 个邮件 AI 回复测试案例联系人（从 CRM 真实画像脱敏后入 PG 表）。
+    """返回当前邮件 AI 回复测试案例。
 
     用途：前端邮件质量诊断面板的 Live Demo 区做案例切换 + 默认值预填。
-    数据来源：mail_demo_contact 表（由 backend/seed_mail_demo_contacts.py 灌入）。
-    数据流：CRM 接口 fetch_crm_profile() 只读 → 脱敏 → 存 PG 独立表 → 本接口只读返回。
-    边界：本接口只读 PG mail_demo_contact 表；不读 CRM 库；不写任何库；不真发邮件。
+    当前展示/测试只使用 3 个真实客户编号；原 5 个脱敏案例保留在 mail_demo_contact 表中。
+    边界：本接口只读 CRM 与 PG；不写任何库；不真发邮件。
     """
     from database import MailDemoContact
     from mail_sequence_strategy import ALL_MAIL_SEQUENCE_STEPS
     suite_total_steps = len(ALL_MAIL_SEQUENCE_STEPS)
-    rows = db.query(MailDemoContact).order_by(MailDemoContact.demo_index).all()
+    rows = db.query(MailDemoContact).filter(
+        MailDemoContact.is_current_test_case.is_(True)
+    ).order_by(MailDemoContact.demo_index).all()
+    rows_by_key = {
+        (row.real_customer_key or "").strip().upper(): row
+        for row in rows
+        if (row.real_customer_key or "").strip()
+    }
     contacts = []
-    for row in rows:
+    for current_case in MAIL_CURRENT_DEMO_CASES:
+        real_customer_key = current_case["real_customer_key"]
+        row = rows_by_key.get(real_customer_key.upper())
+        crm_detail = _fetch_mail_current_case_crm_detail(real_customer_key)
+        crm_hit = crm_detail.get("crm_lookup_status") == "matched_crm_contact_id_or_customer_id"
+        snapshot = {
+            **(row.crm_profile_snapshot if row else {}),
+            **crm_detail,
+        }
+        contact_email = _mail_demo_contact_email_for_draft(crm_detail.get("contact_email")) if crm_hit else ""
+        draft_contact_email = contact_email
+        seller_name = (
+            sanitize_text(crm_detail.get("contact_staff_name"))
+            or sanitize_text(crm_detail.get("contact_owner_name"))
+            or (row.default_seller_name if row else "")
+            or "销售测试"
+        )
         contacts.append({
-            "demo_index": row.demo_index,
-            "demo_label": row.demo_label,
-            "demo_label_detail": row.demo_label_detail,
-            "customer_key": f"CUST-DEMO-FROM-CRM-{row.demo_index}",
-            "contact_email": row.contact_email_masked,
-            "contact_name_masked": row.contact_name_masked,
-            "company_name_masked": row.company_name_masked,
-            "company_industry": row.company_industry or "未识别",
-            "customer_lifecycle_stage": row.customer_lifecycle_stage or "未识别",
-            "customer_tier": row.customer_tier or "未识别",
-            "payment_risk_level": row.payment_risk_level or "未识别",
-            "high_risk_flags": row.high_risk_flags or [],
-            "default_scenario": row.default_scenario,
-            "default_suite_step": row.default_suite_step,
-            "default_seller_name": row.default_seller_name,
-            "default_seller_signature": row.default_seller_signature,
-            "source_note": row.source_note,
-            "refreshed_at": row.refreshed_at.isoformat() if row.refreshed_at else None,
-            "crm_profile_snapshot": row.crm_profile_snapshot,
+            "demo_index": current_case["demo_index"],
+            "demo_label": row.demo_label if row else current_case["demo_label"],
+            "demo_label_detail": row.demo_label_detail if row else current_case["demo_label_detail"],
+            "real_customer_key": real_customer_key,
+            "customer_key": real_customer_key,
+            "contact_email": contact_email,
+            "draft_contact_email": draft_contact_email,
+            "contact_name": sanitize_text(crm_detail.get("contact_name")) if crm_hit else "",
+            "company_name": sanitize_text(crm_detail.get("company_name")) if crm_hit else "",
+            "contact_name_masked": sanitize_text(crm_detail.get("contact_name")) if crm_hit else (row.contact_name_masked if row else "CRM 联系人"),
+            "company_name_masked": sanitize_text(crm_detail.get("company_name")) if crm_hit else (row.company_name_masked if row else real_customer_key),
+            "company_industry": (sanitize_text(crm_detail.get("company_industry")) if crm_hit else (row.company_industry if row else "CRM 查询失败")) or "未识别",
+            "customer_lifecycle_stage": (sanitize_text(crm_detail.get("customer_lifecycle_stage")) if crm_hit else (row.customer_lifecycle_stage if row else "CRM 查询失败")) or "未识别",
+            "customer_tier": (sanitize_text(crm_detail.get("customer_tier")) if crm_hit else (row.customer_tier if row else "CRM 查询失败")) or "未识别",
+            "payment_risk_level": (sanitize_text(crm_detail.get("payment_risk_level")) if crm_hit else (row.payment_risk_level if row else "CRM 查询失败")) or "未识别",
+            "high_risk_flags": (crm_detail.get("high_risk_flags") if crm_hit else (row.high_risk_flags if row else [])) or [],
+            "default_scenario": (row.default_scenario if row else current_case["default_scenario"]),
+            "default_suite_step": (row.default_suite_step if row else current_case["default_suite_step"]),
+            "default_seller_name": seller_name,
+            "default_seller_signature": f"{seller_name}\nSpeedAsia 多业务开发部",
+            "source_note": (
+                "当前 3 个案例按产品指定客户编号实时只读查询 CRM 原始信息；未脱敏，仅限邮件质量诊断当前案例展示/测试。"
+                if crm_hit
+                else f"CRM 查询失败：{sanitize_text(crm_detail.get('crm_lookup_error')) or '未查到'}"
+            ),
+            "refreshed_at": crm_detail.get("refreshed_at") or (row.refreshed_at.isoformat() if row and row.refreshed_at else None),
+            "crm_profile_snapshot": snapshot,
+            "display_group": row.display_group if row else "current_3_cases",
+            "is_current_test_case": True,
+            "crm_lookup_status": crm_detail.get("crm_lookup_status"),
+            "crm_profile_source": crm_detail.get("crm_profile_source"),
+            "is_unmasked_current_case": bool(crm_hit),
         })
     return {
-        "version": "mail_demo_contact.v2",
-        "source": "mail_demo_contact_table",
+        "version": "mail_demo_contact.v3_current_3_cases",
+        "source": "crm_sql_current_case_unmasked_overlay",
         "read_only": True,
         "wrote_to_crm": False,
         "wrote_to_db_in_this_request": False,
+        "unmasked_current_cases": True,
         "real_sending_enabled": False,
         "count": len(contacts),
         "contacts": contacts,
         "suite_total_steps": suite_total_steps,
+        "legacy_cases_retained": True,
+        "current_case_customer_keys": [item["real_customer_key"] for item in MAIL_CURRENT_DEMO_CASES],
         "suite_steps_note": (
             "邮件序列套装总步数。当前所有场景均为 4 步（破冰 → 案例 → 流程 → 样稿）。"
             "未来步数可配置，由 mail_sequence_strategy.ALL_MAIL_SEQUENCE_STEPS 控制。"
@@ -12954,7 +14883,7 @@ async def get_mail_demo_contacts(db: Session = Depends(get_db)):
 
 
 # ===================== 邮件 AI 回复迭代记录（v1.7.205） =====================
-# 一次迭代 = 5 案例 × 4 步 = 20 封邮件串行生成，落 mail_iteration_run + mail_iteration_draft。
+# 一次迭代 = 当前 3 案例 × 4 步 = 12 封邮件串行生成，落 mail_iteration_run + mail_iteration_draft。
 # 后台线程跑（HTTP 立即返回 run_id），前端轮询查状态。
 
 _MAIL_FALLBACK_TEMPLATE_MARKERS = [
@@ -13108,16 +15037,19 @@ def _run_one_mail_iteration_draft(
         fewshot = _mail_generate_draft_fewshot(
             db,
             scenario=payload.scenario,
+            suite_step=int(payload.suite_step),
             function_fragments=tuple(step.recommended_snippet_types),
             min_score=min_score,
         )
         commercial_terms = _resolve_mail_commercial_terms(db, suite_step=int(payload.suite_step))
+        sequence_template = _get_mail_sequence_template_for_prompt(db, payload.scenario, int(payload.suite_step))
         intent_profile = _build_mail_draft_intent_profile(
             payload=payload,
             step=step,
             interval=interval,
             admitted_fewshot=fewshot,
             commercial_terms=commercial_terms,
+            sequence_template=sequence_template,
         )
         assembled = _assemble_mail_draft_from_intent_profile(intent_profile)
         # 拿到 llm_prompt 后调真正 endpoint 拿完整响应
@@ -13169,7 +15101,7 @@ def _run_one_mail_iteration_draft(
 
 
 def _run_mail_iteration_background(run_id: str, run_label: str) -> None:
-    """后台线程入口：跑 5 案例 × 4 步 = 20 封，落库并更新 run 统计。"""
+    """后台线程入口：跑当前 3 案例 × 4 步 = 12 封，落库并更新 run 统计。"""
     from database import MailIterationRun, MailIterationDraft, MailDemoContact
     from mail_sequence_strategy import ALL_MAIL_SEQUENCE_STEPS
     db = SessionLocal()
@@ -13182,18 +15114,32 @@ def _run_mail_iteration_background(run_id: str, run_label: str) -> None:
         run_row.status = "running"
         db.commit()
 
-        demo_rows = db.query(MailDemoContact).order_by(MailDemoContact.demo_index).all()
+        demo_rows = db.query(MailDemoContact).filter(
+            MailDemoContact.is_current_test_case.is_(True)
+        ).order_by(MailDemoContact.demo_index).all()
+        rows_by_key = {
+            (r.real_customer_key or "").strip().upper(): r
+            for r in demo_rows
+            if (r.real_customer_key or "").strip()
+        }
         demo_contacts = []
-        for r in demo_rows:
+        for current_case in MAIL_CURRENT_DEMO_CASES:
+            r = rows_by_key.get(current_case["real_customer_key"].upper())
+            crm_detail = _fetch_mail_current_case_crm_detail(current_case["real_customer_key"])
+            contact_email = _mail_demo_contact_email_for_draft(
+                crm_detail.get("contact_email")
+                if crm_detail.get("crm_lookup_status") == "matched_crm_contact_id_or_customer_id"
+                else (r.contact_email_masked if r else "")
+            )
             demo_contacts.append({
-                "demo_index": r.demo_index,
-                "demo_label": r.demo_label,
-                "customer_key": f"CUST-DEMO-FROM-CRM-{r.demo_index}",
-                "contact_email": r.contact_email_masked,
-                "default_scenario": r.default_scenario,
-                "default_suite_step": r.default_suite_step,
-                "default_seller_name": r.default_seller_name,
-                "default_seller_signature": r.default_seller_signature,
+                "demo_index": current_case["demo_index"],
+                "demo_label": r.demo_label if r else current_case["demo_label"],
+                "customer_key": current_case["real_customer_key"],
+                "contact_email": contact_email,
+                "default_scenario": r.default_scenario if r else current_case["default_scenario"],
+                "default_suite_step": r.default_suite_step if r else current_case["default_suite_step"],
+                "default_seller_name": r.default_seller_name if r else "销售测试",
+                "default_seller_signature": r.default_seller_signature if r else "销售测试\nSpeedAsia 多业务开发部",
             })
 
         steps = list(ALL_MAIL_SEQUENCE_STEPS)
@@ -13253,13 +15199,11 @@ class MailIterationRunRequest(BaseModel):
 
 @app.post("/api/v1/mail/iterations/run")
 def trigger_mail_iteration_run(payload: MailIterationRunRequest, db: Session = Depends(get_db)):
-    """触发一次邮件 AI 回复迭代：5 案例 × 4 步 = 20 封，后台线程跑完落库。立即返回 run_id。"""
+    """触发一次邮件 AI 回复迭代：当前 3 案例 × 4 步 = 12 封，后台线程跑完落库。立即返回 run_id。"""
     from database import MailIterationRun, MailDemoContact
     import threading
-    # 校验有案例可跑
-    demo_count = db.query(MailDemoContact).count()
-    if demo_count == 0:
-        raise HTTPException(status_code=400, detail="尚未灌入测试案例，请先跑 python backend/seed_mail_demo_contacts.py")
+    # 当前迭代只跑产品指定的 3 个客户编号；旧 5 个脱敏案例保留但不参与新测试。
+    demo_count = len(MAIL_CURRENT_DEMO_CASES)
 
     # 自增版本号
     last = db.query(MailIterationRun).order_by(MailIterationRun.version_no.desc()).first()
@@ -13277,6 +15221,8 @@ def trigger_mail_iteration_run(payload: MailIterationRunRequest, db: Session = D
             "llm_url": getattr(settings, "LLM1_API_URL", "") or "",
             "system_prompt_first_120_chars": _MAIL_DRAFT_LLM_SYSTEM_PROMPT[:120],
             "demo_contact_count": demo_count,
+            "demo_contact_scope": "current_3_cases",
+            "current_case_customer_keys": [item["real_customer_key"] for item in MAIL_CURRENT_DEMO_CASES],
             "version_no": next_version,
             "snapshot_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         },
@@ -13301,7 +15247,7 @@ def trigger_mail_iteration_run(payload: MailIterationRunRequest, db: Session = D
         "status": "queued",
         "total_drafts_planned": demo_count * 4,
         "started_in_background_thread": True,
-        "notice": "本次迭代会串行跑 5 案例 × 4 步 = 20 封邮件，预计 5-10 分钟。前端轮询 GET /api/v1/mail/iterations/{run_id} 查看实时进度。",
+        "notice": "本次迭代会串行跑当前 3 案例 × 4 步 = 12 封邮件，预计 3-8 分钟。前端轮询 GET /api/v1/mail/iterations/{run_id} 查看实时进度。",
     }
 
 
@@ -13445,6 +15391,136 @@ def list_mail_gold_fewshot_seeds(db: Session = Depends(get_db)):
         "data_origins": {
             "mail_gold_seed": "docs/mail_gold_candidates/latest_mail_gold_candidates.json（脱敏后入库）",
             "mail_pricing_constraint_seed": "knowledge_chunk 表 chunk_type IN ('constraint','rule' AND knowledge_type='pricing')",
+        },
+    }
+
+
+@app.get("/api/v1/mail/contract-case-candidates")
+def list_mail_contract_case_candidates(
+    limit: int = Query(default=100, ge=1, le=500),
+    min_amount: float = Query(default=5000, ge=0),
+    business_type: str | None = Query(default=None),
+    product_keyword: str | None = Query(default=None),
+    description_keyword: str | None = Query(default=None),
+    order_by: str = Query(default="InputTime"),
+):
+    """只读读取 CRM usrContract，生成邮件合同案例库候选。
+
+    当前接口只做页面可见的候选分析，不脱敏、不写入邮件知识库、不触发邮件生成。
+    """
+    from collections import Counter
+    from sqlalchemy import text
+
+    from crm_database import CRMSessionLocal
+
+    def _optional_query_str(value: Any) -> str:
+        return value.strip() if isinstance(value, str) else ""
+
+    safe_order_columns = {
+        "InputTime": "InputTime",
+        "ContractTime": "ContractTime",
+        "StartTime": "StartTime",
+        "EndTime": "EndTime",
+        "ModifyTime": "ModifyTime",
+    }
+    order_column = safe_order_columns.get(order_by, "InputTime")
+    safe_limit = max(1, min(int(limit or 100), 500))
+    clauses = [
+        "ContractId LIKE '%XS%'",
+        "Deleter IS NULL",
+        "(ISNULL(Money1,0)+ISNULL(Money2,0)+ISNULL(Money3,0)) >= :min_amount",
+    ]
+    params: dict[str, Any] = {"min_amount": float(min_amount or 0)}
+    business_type_value = _optional_query_str(business_type)
+    product_keyword_value = _optional_query_str(product_keyword)
+    description_keyword_value = _optional_query_str(description_keyword)
+    if business_type_value:
+        clauses.append("ISNULL(BusinessType,'') LIKE :business_type")
+        params["business_type"] = f"%{business_type_value}%"
+    if product_keyword_value:
+        clauses.append("ISNULL(ProductNameAll,'') LIKE :product_keyword")
+        params["product_keyword"] = f"%{product_keyword_value}%"
+    if description_keyword_value:
+        clauses.append("ISNULL(ContractDescription,'') LIKE :description_keyword")
+        params["description_keyword"] = f"%{description_keyword_value}%"
+
+    sql = text(f"""
+        SELECT TOP ({safe_limit})
+            ContractId,
+            CustomerId,
+            ContactId,
+            (ISNULL(Money1,0)+ISNULL(Money2,0)+ISNULL(Money3,0)) AS TotalMoney,
+            ProductNameAll,
+            BusinessType,
+            ContractDescription,
+            InputTime,
+            ContractTime,
+            StartTime,
+            EndTime
+        FROM usrContract
+        WHERE {" AND ".join(clauses)}
+        ORDER BY {order_column} DESC, ContractId DESC
+    """)
+
+    crm_db = CRMSessionLocal()
+    try:
+        rows = crm_db.execute(sql, params).fetchall()
+    finally:
+        crm_db.close()
+
+    items = [_mail_contract_case_to_candidate(row) for row in rows]
+    business_line_counts = Counter(item.get("business_line_inferred") or "unknown" for item in items)
+    business_type_counts = Counter(item.get("business_type") or "缺业务类型" for item in items)
+    industry_counts = Counter(item.get("industry_inferred") or "unknown" for item in items)
+    quality_flag_counts: Counter[str] = Counter()
+    for item in items:
+        flags = item.get("quality_flags") or ["可初筛"]
+        quality_flag_counts.update(flags)
+
+    ready_count = sum(1 for item in items if (item.get("storage_suggestion") or {}).get("ready_for_generation"))
+    return {
+        "version": "mail_contract_case_candidates.v1",
+        "source": "CRM usrContract read-only",
+        "read_only": True,
+        "ingested_to_knowledge": False,
+        "desensitized": False,
+        "filters": {
+            "limit": safe_limit,
+            "min_amount": float(min_amount or 0),
+            "business_type": business_type_value,
+            "product_keyword": product_keyword_value,
+            "description_keyword": description_keyword_value,
+            "order_by": order_column,
+            "contact_id_blank_used": False,
+        },
+        "field_notes": [
+            "ContactId='' 只作为排查参考；当前默认不按 ContactId 过滤，直接读取 usrContract 原表。",
+            f"时间字段默认使用 {order_column} 倒序；InputTime 可理解为新增/录入时间。",
+            "金额过滤使用 Money1+Money2+Money3，默认只展示合计金额 >= 5000 的销售合同。",
+            "当前先展示原始合同字段和自动推断，不脱敏、不入库；真实进入邮件知识库前必须人工审核和脱敏。",
+        ],
+        "count": len(items),
+        "ready_for_generation_count": ready_count,
+        "items": items,
+        "analysis": {
+            "by_business_line": dict(business_line_counts.most_common()),
+            "by_business_type_top10": dict(business_type_counts.most_common(10)),
+            "by_industry_inferred": dict(industry_counts.most_common()),
+            "quality_flags": dict(quality_flag_counts.most_common()),
+            "irrelevant_or_low_quality_signals": [
+                "描述过短：如仅写日期、翻译、报价、排版，难以作为商业案例。",
+                "可能是补差价/尾款：更像结算记录，不适合直接做案例。",
+                "产品线待人工判断：产品或业务类型无法映射到翻译、口译、多媒体、印刷、活动、礼品等邮件可介绍业务线。",
+                "缺业务类型/缺产品：字段不足，入库前需要人工补全或剔除。",
+            ],
+            "recommended_ingestion_rule": {
+                "amount_min": 5000,
+                "require_description": True,
+                "exclude_flags": ["描述过短", "可能是补差价/尾款", "缺产品"],
+                "store_as": "mail_contract_case_library",
+                "scene_required": False,
+                "must_desensitize_before_generation": True,
+            },
         },
     }
 
@@ -15207,6 +17283,15 @@ def _refresh_api_invocation_quality(
     *,
     all_messages: list[MessageLog] | None = None,
 ) -> None:
+    window = _wecom_followup_scoring_window_status()
+    if not window["allowed"]:
+        logger.info(
+            "API调用后续评分跳过: invocation_id=%s 当前北京时间=%s 不在配置窗口 %s",
+            getattr(item, "invocation_id", None),
+            window["beijing_time"],
+            window["window"],
+        )
+        return
     messages = all_messages if all_messages is not None else _load_session_messages(db, item.session_id)
     actual_sales_replies = _collect_actual_sales_replies(messages, int(item.anchor_message_id or 0)) if item.anchor_message_id else []
     reply_hash = _reply_block_hash(actual_sales_replies)
@@ -16330,6 +18415,16 @@ def _complete_api_reply_scoring_async(
     invocation_id: str | None,
     session_id: str,
 ) -> None:
+    window = _wecom_followup_scoring_window_status()
+    if not window["allowed"]:
+        logger.info(
+            "API 侧边栏异步补齐评分跳过 session_id=%s invocation_id=%s 当前北京时间=%s 不在配置窗口 %s",
+            session_id,
+            invocation_id,
+            window["beijing_time"],
+            window["window"],
+        )
+        return
     db = SessionLocal()
     try:
         summary = db.query(IntentSummary).filter(IntentSummary.id == summary_id).first() if summary_id else None
@@ -20143,12 +22238,22 @@ async def sidebar_assist(
             request_key=dedupe_request_key,
         )
         if summary and api_invocation:
-            REPLY_CHAIN_EXECUTOR.submit(
-                _complete_api_reply_scoring_async,
-                summary_id=summary.id,
-                invocation_id=str(api_invocation.invocation_id),
-                session_id=session_id,
-            )
+            window = _wecom_followup_scoring_window_status()
+            if window["allowed"]:
+                REPLY_CHAIN_EXECUTOR.submit(
+                    _complete_api_reply_scoring_async,
+                    summary_id=summary.id,
+                    invocation_id=str(api_invocation.invocation_id),
+                    session_id=session_id,
+                )
+            else:
+                logger.info(
+                    "API 侧边栏异步评分任务未提交 session_id=%s invocation_id=%s 当前北京时间=%s 不在配置窗口 %s",
+                    session_id,
+                    str(api_invocation.invocation_id),
+                    window["beijing_time"],
+                    window["window"],
+                )
         if dedupe_request_key:
             _remember_sidebar_assist_result(dedupe_request_key, final_result)
         if session_id and recent_logs:
@@ -22885,8 +24990,19 @@ async def caselib_list_iterations(limit: int = Query(default=50, ge=1, le=500)):
 
 
 @app.get("/api/case_lib/daily_validation/{date}")
-async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
+async def get_daily_validation_detail(
+    date: str,
+    view: str = Query(default="api"),
+    limit: int = Query(default=300, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
     """获取指定日期的日常实时验证明细列表，格式与 iterations/{run_id} 结果对齐"""
+    total_started = perf_counter()
+    timings_ms: dict[str, float] = {}
+
+    def _mark_timing(name: str, started_at: float) -> None:
+        timings_ms[name] = round((perf_counter() - started_at) * 1000, 2)
+
     try:
         parsed_date = datetime.fromisoformat(date[:10])
     except Exception:
@@ -22916,12 +25032,37 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
         "WangHuiYing": "王慧莹"
     }
 
-    logs = db.query(MessageLog).filter(
-        MessageLog.timestamp >= day_start_bj,
-        MessageLog.timestamp < day_end_bj,
-        MessageLog.is_mock.is_(False)
-    ).order_by(MessageLog.timestamp.asc()).all()
+    stage_started = perf_counter()
+    api_fast_view = str(view or "").lower() == "api"
+    invs: list[ApiAssistInvocation] = []
+    if api_fast_view:
+        invs = db.query(ApiAssistInvocation).filter(
+            ApiAssistInvocation.triggered_at >= day_start_utc,
+            ApiAssistInvocation.triggered_at < day_end_utc,
+            ApiAssistInvocation.session_id.isnot(None),
+        ).order_by(ApiAssistInvocation.triggered_at.desc()).limit(limit).all()
+        _mark_timing("query_invocations_ms", stage_started)
 
+        stage_started = perf_counter()
+        api_session_ids = sorted({str(inv.session_id) for inv in invs if inv.session_id})
+        logs = []
+        if api_session_ids:
+            logs = db.query(MessageLog).filter(
+                MessageLog.user_id.in_(api_session_ids),
+                MessageLog.timestamp >= day_start_bj,
+                MessageLog.timestamp < day_end_bj,
+                MessageLog.is_mock.is_(False)
+            ).order_by(MessageLog.timestamp.asc()).all()
+        _mark_timing("query_session_logs_ms", stage_started)
+    else:
+        logs = db.query(MessageLog).filter(
+            MessageLog.timestamp >= day_start_bj,
+            MessageLog.timestamp < day_end_bj,
+            MessageLog.is_mock.is_(False)
+        ).order_by(MessageLog.timestamp.asc()).all()
+        _mark_timing("query_all_day_logs_ms", stage_started)
+
+    stage_started = perf_counter()
     session_logs = {}
     for l in logs:
         session_logs.setdefault(l.user_id, []).append(l)
@@ -22933,12 +25074,16 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
             sales_userid, external_userid = parsed
             if external_userid.startswith("wm") or external_userid.startswith("wo"):
                 target_sessions[uid] = msgs
+    _mark_timing("group_sessions_ms", stage_started)
 
-    invs = db.query(ApiAssistInvocation).filter(
-        ApiAssistInvocation.session_id.in_(list(target_sessions.keys())) if target_sessions else False,
-        ApiAssistInvocation.triggered_at >= day_start_utc - timedelta(hours=1),
-        ApiAssistInvocation.triggered_at < day_end_utc + timedelta(hours=1)
-    ).all()
+    if not api_fast_view:
+        stage_started = perf_counter()
+        invs = db.query(ApiAssistInvocation).filter(
+            ApiAssistInvocation.session_id.in_(list(target_sessions.keys())) if target_sessions else False,
+            ApiAssistInvocation.triggered_at >= day_start_utc - timedelta(hours=1),
+            ApiAssistInvocation.triggered_at < day_end_utc + timedelta(hours=1)
+        ).all()
+        _mark_timing("query_invocations_ms", stage_started)
 
     # 同一锚点消息可能被多次触发(先 pending 占位、后补打分)，匹配时优先取"已打分"且最新的那次，
     # 避免命中早先的 pending_no_sales_reply 占位导致 AI 回复/质量分显示为空。
@@ -22946,6 +25091,7 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
         scored = 1 if (inv.quality_status == "scored" or inv.quality_score is not None) else 0
         return (scored, inv.triggered_at or datetime.min)
 
+    stage_started = perf_counter()
     inv_map = {}
     for inv in invs:
         if inv.anchor_message_id is None:
@@ -22954,10 +25100,12 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
         existing = inv_map.get(key)
         if existing is None or _inv_rank(inv) >= _inv_rank(existing):
             inv_map[key] = inv
+    _mark_timing("build_invocation_map_ms", stage_started)
 
     results = []
     run_id = f"daily_{date.replace('-', '')}"
 
+    stage_started = perf_counter()
     for uid, msgs in target_sessions.items():
         parsed = parse_session_id(uid, sales_ids)
         if not parsed:
@@ -23054,6 +25202,8 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                             if time_diff < 180:
                                 matched_inv = inv
                                 break
+            if api_fast_view and not matched_inv:
+                continue
 
             ref_time = cust["timestamp"] if cust else (g["sales"]["timestamp"] if g["sales"] else None)
             history_msgs = []
@@ -23224,8 +25374,10 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
             # 兼容: 老记录(2026-05-28 之前)没有 pipeline_total_ms 字段, 退回老算法继续展示。
             fetch_to_output_ms = None
             api_total_ms = None
+            timings_payload = {}
             if matched_inv and matched_inv.result_payload:
                 _timings = matched_inv.result_payload.get("timings_ms") or {}
+                timings_payload = _jsonable(_timings) if isinstance(_timings, dict) else {}
                 _total = _timings.get("total_ms")
                 _pipeline = _timings.get("pipeline_total_ms")
                 if _total is not None:
@@ -23277,12 +25429,15 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
                 "latency_ms": int(matched_inv.result_payload.get("timings_ms", {}).get("total_ms", 0)) if matched_inv and matched_inv.result_payload else None,
                 "fetch_to_output_ms": fetch_to_output_ms,
                 "api_total_ms": api_total_ms,
+                "timings_ms": timings_payload,
                 "status": "success" if matched_inv else "manual",
                 "case": case_meta,
                 "turn": turn_meta,
             }
             results.append(item)
+    _mark_timing("build_results_ms", stage_started)
 
+    stage_started = perf_counter()
     results.sort(key=lambda x: str(x.get("turn", {}).get("timestamp") or ""), reverse=False)
 
     total_cases = len(results)
@@ -23326,6 +25481,20 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
         "finished_at": day_end_bj.isoformat(),
         "error_message": "",
     }
+    _mark_timing("build_summary_ms", stage_started)
+    timings_ms["total_ms"] = round((perf_counter() - total_started) * 1000, 2)
+    if timings_ms["total_ms"] >= 1000 or api_fast_view:
+        logger.info(
+            "CASELIB_DAILY_DETAIL_TIMING date=%s view=%s limit=%s logs=%s sessions=%s invocations=%s results=%s timings_ms=%s",
+            date,
+            view,
+            limit,
+            len(logs),
+            len(target_sessions),
+            len(invs),
+            len(results),
+            json.dumps(timings_ms, ensure_ascii=False),
+        )
 
     return {
         "status": "success",
@@ -23337,11 +25506,20 @@ async def get_daily_validation_detail(date: str, db: Session = Depends(get_db)):
 @app.get("/api/case_lib/iterations/{run_id}")
 async def caselib_get_iteration_detail(run_id: str):
     db = SessionLocal()
+    total_started = perf_counter()
+    timings_ms: dict[str, float] = {}
+
+    def _mark_timing(name: str, started_at: float) -> None:
+        timings_ms[name] = round((perf_counter() - started_at) * 1000, 2)
+
     try:
+        stage_started = perf_counter()
         r = db.query(CaseIterationRun).filter(CaseIterationRun.run_id == run_id).first()
+        _mark_timing("query_run_ms", stage_started)
         if not r:
             raise HTTPException(status_code=404, detail="iteration not found")
         # 列表只取轻量字段：跳过 step3/step5/step7候选全文 大列(详情页/浮层按需懒加载)
+        stage_started = perf_counter()
         results = db.query(CaseIterationResult).options(
             defer(CaseIterationResult.step3_thread_business_fact),
             defer(CaseIterationResult.step5_llm1_compare),
@@ -23349,31 +25527,38 @@ async def caselib_get_iteration_detail(run_id: str):
         ).filter(
             CaseIterationResult.run_id == run_id
         ).all()
+        _mark_timing("query_results_ms", stage_started)
         case_ids = [str(rr.case_id) for rr in results]
         case_map = {}
         turn_map = {}
         bg_count_by_case: dict[str, int] = {}
         if case_ids:
             # 案例只取元信息列 + context_messages(用于统计背景条数)，不带 core_dialog 大数组
+            stage_started = perf_counter()
             cases = db.query(CaseLibraryCase).options(
                 defer(CaseLibraryCase.core_dialog),
             ).filter(
                 CaseLibraryCase.case_id.in_(case_ids)
             ).all()
+            _mark_timing("query_cases_ms", stage_started)
+            stage_started = perf_counter()
             for c in cases:
                 ctx = _caselib_load_json(c.context_messages)
                 bg_count_by_case[str(c.case_id)] = len(ctx) if isinstance(ctx, list) else 0
             case_ids2 = [str(c.case_id) for c in cases]
             if case_ids2:
                 # 轮次只取文本/评分列，跳过 messages/context_messages 大数组
+                stage_started = perf_counter()
                 turn_rows = db.query(CaseLibraryDialogueTurn).options(
                     defer(CaseLibraryDialogueTurn.messages),
                     defer(CaseLibraryDialogueTurn.context_messages),
                 ).filter(
                     CaseLibraryDialogueTurn.case_id.in_(case_ids2)
                 ).order_by(CaseLibraryDialogueTurn.case_id, CaseLibraryDialogueTurn.turn_no).all()
+                _mark_timing("query_turns_ms", stage_started)
                 for t in turn_rows:
                     turn_map[str(t.turn_id)] = _caselib_serialize_turn_thin(t)
+            stage_started = perf_counter()
             sales_scores_by_case: dict[str, list[float]] = {}
             for rr in results:
                 score = _caselib_sales_score_from_step7(rr.step7_reply_scores)
@@ -23392,6 +25577,8 @@ async def caselib_get_iteration_detail(run_id: str):
                 )
                 for c in cases
             }
+            _mark_timing("build_case_maps_ms", stage_started)
+        stage_started = perf_counter()
         rows = []
         for rr in results:
             item = _caselib_serialize_result_thin(
@@ -23407,6 +25594,16 @@ async def caselib_get_iteration_detail(run_id: str):
             x.get("scenario_rank") or 0,
             x.get("turn_no") or 0,
         ))
+        _mark_timing("build_rows_ms", stage_started)
+        timings_ms["total_ms"] = round((perf_counter() - total_started) * 1000, 2)
+        if timings_ms["total_ms"] >= 1000:
+            logger.info(
+                "CASELIB_ITERATION_DETAIL_TIMING run_id=%s results=%s rows=%s timings_ms=%s",
+                run_id,
+                len(results),
+                len(rows),
+                json.dumps(timings_ms, ensure_ascii=False),
+            )
         return {
             "status": "success",
             "iteration": _caselib_serialize_run(r),

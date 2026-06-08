@@ -109,13 +109,39 @@ def _load_mail_review_api_helpers() -> dict[str, Any]:
     exec(source[sequence_helper_start:sequence_helper_end], namespace)
 
     namespace["_active_mail_pricing_rules"] = lambda _db, limit=1000: []
+    namespace["_active_mail_pricing_rules_by_line"] = lambda _db, business_line=None, limit=50: []
+    namespace["_recall_kb_term_phrase"] = lambda _db, function_fragment, keyword_any=(), business_line=None: ("", "mock_phrase")
     namespace["_mail_fewshot_min_score"] = lambda: 0.60
     namespace["_mail_generate_draft_fewshot"] = (
         lambda _db, scenario, function_fragments, min_score: None
     )
+    namespace["_get_mail_sequence_template_for_prompt"] = lambda _db, scenario, suite_step: {
+        "template_id": "mock_id",
+        "scenario": scenario,
+        "suite_step": suite_step,
+        "scenario_label_cn": "Mock Scenario",
+        "step_label_cn": "Mock Step",
+        "purpose_cn": "Mock Purpose",
+        "send_timing_cn": "Mock Timing",
+        "variable_notes": {},
+        "script_template": "Mock Script Template",
+        "ai_instruction_script": "Mock AI Instruction",
+        "version_no": 1,
+        "is_active": True,
+        "updated_by": "mock_user",
+        "created_at": None,
+    }
     namespace["_mail_crm_profile_from_sql"] = (
-        lambda customer_key, contact_email: None
+        lambda customer_key, contact_email: MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY.get(customer_key)
     )
+    namespace["_llm_generate_mail_intro_paragraphs"] = lambda profile: {
+        "status": "success",
+        "model": "gpt-4o-mini",
+        "subject": "Mock Subject",
+        "paragraphs": ["Mock Paragraph 1", "Mock Paragraph 2", "Mock Paragraph 3", "not enabled for real sending"],
+        "error": None,
+        "prompt": "Mock Prompt",
+    }
     return namespace
 
 

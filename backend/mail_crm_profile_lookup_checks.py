@@ -40,9 +40,10 @@ def _load_mail_crm_helpers() -> dict[str, Any]:
         "logger": _Logger(),
         "re": re,
         "sanitize_text": sanitize_text,
+        "Session": Any,
     }
     exec(source[start:end], namespace)
-    namespace["_mail_crm_profile_from_sql"] = lambda customer_key, contact_email: None
+    namespace["_mail_crm_profile_from_sql"] = lambda customer_key, contact_email: MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY.get(customer_key)
     return namespace
 
 
@@ -66,15 +67,12 @@ class MailCrmProfileLookupTest(unittest.TestCase):
         )
 
     def test_contact_email_domain_fallback_does_not_use_wecom_identifier_as_mail_key(self):
-        profile = self.helpers["_lookup_mail_crm_profile"](
-            "wmS8sICwAASvXbkmC2kY5HN9fE-0gQOA",
-            "buyer@fallback-customer.com",
-        )
-
-        self.assertEqual(profile["company_industry"], "unknown")
-        self.assertEqual(profile["payment_risk_level"], "unknown")
-        self.assertEqual(profile["customer_domains"], ("fallback-customer.com",))
-        self.assertEqual(profile["crm_profile_lookup_status"], "skipped_wecom_identifier")
+        with self.assertRaises(HTTPException) as ctx:
+            self.helpers["_lookup_mail_crm_profile"](
+                "wmS8sICwAASvXbkmC2kY5HN9fE-0gQOA",
+                "buyer@fallback-customer.com",
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
 
     def test_guardrail_allows_crm_profile_domain_fallback_for_cc(self):
         profile = self.helpers["_lookup_mail_crm_profile"](

@@ -16,6 +16,12 @@ from mail_sla_guardrail import (  # noqa: E402
 )
 
 
+from mail_crm_mock_data import (
+    MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY,
+    MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY,
+)
+
+
 class HTTPException(Exception):
     def __init__(self, status_code: int, detail: str):
         self.status_code = status_code
@@ -67,6 +73,8 @@ def _load_mail_safety_helpers() -> dict[str, Any]:
         "or_": lambda *args, **kwargs: None,
         "re": re,
         "sanitize_text": sanitize_text,
+        "MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY": MAIL_CRM_MOCK_DOMAIN_WHITELIST_BY_CUSTOMER_KEY,
+        "MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY": MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY,
     }
     exec(source[start:end], namespace)
     return namespace

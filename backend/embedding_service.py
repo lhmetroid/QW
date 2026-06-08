@@ -129,22 +129,50 @@ class EmbeddingService:
 
     @staticmethod
     def _embed_ollama(text: str) -> Optional[List[float]]:
-        url = settings.EMBEDDING_API_URL.rstrip("/") + "/api/embeddings"
-        payload = {
+        base_url = settings.EMBEDDING_API_URL.rstrip("/")
+        ollama_url = base_url + "/api/embeddings"
+        openai_url = base_url + "/v1/embeddings"
+        ollama_payload = {
             "model": settings.EMBEDDING_MODEL,
             "prompt": text,
         }
+        openai_payload = {
+            "model": settings.EMBEDDING_MODEL,
+            "input": text,
+        }
         try:
             session = EmbeddingService._session_for("ollama")
+            errors = []
             response = session.post(
-                url,
-                json=payload,
+                openai_url,
+                json=openai_payload,
+                timeout=settings.EMBEDDING_TIMEOUT_SECONDS,
+            )
+            if response.ok:
+                data = response.json() if response.content else {}
+                embedding = (data.get("data") or [{}])[0].get("embedding")
+                if embedding:
+                    logger.info("EMBEDDING_OK protocol=openai_v1_embeddings model=%s dim=%s", settings.EMBEDDING_MODEL, len(embedding))
+                    return EmbeddingService._normalize_embedding_vector(
+                        embedding,
+                        source_label="OpenAI-compatible embedding via Ollama",
+                    )
+                errors.append("openai_v1_embeddings:empty_embedding")
+                logger.warning("Ollama /v1/embeddings 返回空向量，回退 /api/embeddings: model=%s", settings.EMBEDDING_MODEL)
+            else:
+                errors.append(f"openai_v1_embeddings:http_{response.status_code}:{EmbeddingService._summarize_error_response(response)}")
+
+            response = session.post(
+                ollama_url,
+                json=ollama_payload,
                 timeout=settings.EMBEDDING_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
-            data = response.json()
+            data = response.json() if response.content else {}
+            embedding = data.get("embedding")
+            logger.info("EMBEDDING_OK protocol=ollama_api_embeddings model=%s dim=%s", settings.EMBEDDING_MODEL, len(embedding or []))
             return EmbeddingService._normalize_embedding_vector(
-                data.get("embedding"),
+                embedding,
                 source_label="Ollama embedding",
             )
         except Exception as e:
@@ -202,23 +230,22 @@ class EmbeddingService:
 
     @staticmethod
     def _embed_openai_compatible(text: str) -> Optional[List[float]]:
-        if not settings.EMBEDDING_API_KEY:
-            raise RuntimeError("知识库 Embedding KEY 未配置")
-
-        url = settings.EMBEDDING_API_URL.rstrip("/") + "/embeddings"
-        headers = {"Authorization": f"Bearer {settings.EMBEDDING_API_KEY}"}
+        base_url = settings.EMBEDDING_API_URL.rstrip("/")
+        url = base_url + ("/embeddings" if base_url.endswith("/v1") else "/v1/embeddings")
+        headers = {"Authorization": f"Bearer {settings.EMBEDDING_API_KEY}"} if settings.EMBEDDING_API_KEY else {}
         payload = {"model": settings.EMBEDDING_MODEL, "input": text}
         try:
             session = EmbeddingService._session_for("openai_compatible")
             response = session.post(
                 url,
-                headers=headers,
+                headers=headers or None,
                 json=payload,
                 timeout=settings.EMBEDDING_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
             data = response.json()
             embedding = data.get("data", [{}])[0].get("embedding")
+            logger.info("EMBEDDING_OK protocol=openai_compatible model=%s dim=%s", settings.EMBEDDING_MODEL, len(embedding or []))
             return EmbeddingService._normalize_embedding_vector(
                 embedding,
                 source_label="OpenAI-compatible embedding",

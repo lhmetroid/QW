@@ -1,47 +1,336 @@
 # PROGRESS
- 
-## 服务端更新清单（本会话 v1.7.164~220）
- 
+
+## 2026-06-08 企微实时对话获取方式整理
+
+- 已按当前代码整理企微实时对话获取方式，新增 `docs/企微实时对话获取方式.md`。
+- 文档覆盖会话存档同步、侧边栏实时辅助、请求参数、响应字段、关键表、排查接口和 curl 示例。
+- 本轮只新增说明文档，不修改企微/邮件业务代码，不读取或输出 `.env` 中的真实密钥。
+- 验证：`git diff --check -- docs/企微实时对话获取方式.md PROGRESS.md TASK_HANDOFF.md` 通过；`docs/` 与 `*.log` 当前受 `.gitignore` 忽略，文件已在本地生成。
+
+## 2026-06-08 邮件合同案例库只读入口
+
+- 已新增独立“邮件合同案例库”，在邮件工作台中与“黄金范例库”同级展示。
+- 后端新增 `GET /api/v1/mail/contract-case-candidates`，只读查询 CRM `usrContract` 原表；默认按 `InputTime`（新增/录入时间）倒序取最近 100 条，金额过滤为 `Money1+Money2+Money3 >= 5000`。
+- `ContactId=''` 仅作为排查参考，默认不按联系人为空过滤；页面会展示原始合同字段、产品线/语种/行业粗推、质量标记和入库建议。
+- 当前不区分新业务推广、老客户激活、新联系人介绍三类场景；不脱敏、不入邮件知识库、不触发邮件迭代或 V22。
+- 真实 CRM 只读验证摘要：最近 100 条中 77 条可初筛；产品线粗推为口译/同传 35、排版印刷 29、翻译 22、多媒体译制 9、礼品物料 3、会议活动 2；主要低质量信号为描述过短 21、补差价/尾款 2。
+- 验证：`backend/main.py` AST 通过；`frontend/index.html` 内联 JS 抽取后 `node --check` 通过；`git diff --check -- backend/main.py frontend/index.html` 通过；直接调用后端函数成功读取真实 CRM 摘要。
+
+## 2026-06-08 Agent Builder 补齐与验证完成
+
+- **已完成**：
+  - 数据库模型 `BuilderKnowledge` 与 `BuilderKnowledgeChunk` 已落地，支持上传库存商品目录，计算 1024 维 Cosine 相似度进行 B2B 语料 RAG 检索。
+  - 完善并验证了 `backend/agent_builder/` 下的接口：支持文件上传分块、微信/WhatsApp Webhook 仿真及解密分流、以及 Prompt 自愈优化自愈端点。
+  - 实现了 `frontend/agent_builder.html` 的前端大屏：包含 SVG 无限贝塞尔曲线连接的 SOP 流程图画布（支持卡片拖拽、连线重绘、双击修改）、真实产品库文件上传终端、以及 Webhook 仿真控制台，可进行前后台实时联调。
+  - **质检测试通过率**：12个对抗用例自动化测试套件 100% 成功通过（12 PASS / 0 FAIL / 0 WARN），且自愈优化端点 `/optimize_prompt` 调用结果符合预期。
+
+## 2026-06-05 企微实时验证浮层中文化
+
+- 已将案例库实时验证列表相关浮层说明中文化，重点覆盖链路状态、LLM2 主回复、训练AI并行回复、耗时列总说明和耗时列逐行实测拆分。
+- 耗时浮层不再直接展示 `normalize_request`、`build_session_id`、`jsonable`、`sanitize`、`store_invocation` 等英文技术字段作为说明标题，改为“请求解析”“会话ID生成”“结果转可存储结构”“脱敏清理返回内容”“写轻量调用记录”等中文解释。
+- 保留必要技术名如 LLM2、CRM、KB1/KB2、ApiAssistInvocation，用于和日志/后端对象对账。
+- 验证：`frontend/index.html` 内联 JS 抽取后 `node --check` 通过；`git diff --check -- frontend/index.html` 通过（仅 CRLF 提示）。
+
+## 2026-06-05 企微实时验证耗时浮层按环节拆分修复
+
+- 已按用户反馈修复案例库实时验证列表“耗时”单元格悬停说明：不再只显示泛化链路说明，而是按当前行实测数据拆分第一行/第二行耗时。
+- 后端 `GET /api/case_lib/daily_validation/{date}?view=api` 的行数据新增返回 `timings_ms`，用于前端读取 `pipeline_total_ms`、`total_ms`、`tail_ms`、`jsonable_ms`、`sanitize_ms`、`store_invocation_ms`、`first_db_commit_ms` 等真实耗时。
+- 前端耗时 tooltip 新增当前触发的环节拆分：请求解析、会话定位、全量消息读取、Fast-Track、LLM-1、CRM、知识检索、LLM2 主回复、训练AI并行回复、尾段轻量落库分别显示独立毫秒数；并行环节不再混成单一总耗时。
+- 验证：`backend/main.py` AST 解析通过；`frontend/index.html` 内联 JS 抽取后 `node --check` 通过；`git diff --check -- backend/main.py frontend/index.html` 通过（仅 CRLF 提示）。
+
+## 2026-06-05 邮件三场景十二封商业模板升级
+
+- 已按用户要求将邮件质量诊断页模板布局再次调整：
+  - `当前模板目的说明 + 输入框 + 保存目的 + 发送日期 / 间隔说明 + 输入框 + 保存发送日期` 在宽屏下一整行展示。
+  - `变量说明 / 生产脚本模板 / 给 AI 的指令脚本` 等分 3 列，自适应小屏堆叠。
+  - 生产脚本与 AI 指令输入框固定约 15 行高。
+- 已将 3 个案例场景文案统一为：
+  - `KH15411-117`：老客户其他业务介绍。
+  - `KH02659-011`：老客户激活。
+  - `KH13770-006`：新客户开发介绍。
+- 已重写 `backend/main.py` 中 3 场景 × 4 步 = 12 条 `生产脚本模板` 和 `给 AI 的指令脚本`：
+  - 四封邮件层层递进。
+  - 不只讲翻译，覆盖本地化、同传会议、多媒体内容、排版印刷、活动物料等多业务。
+  - 强制结合客户行业、CRM 历史合作/合同、最近商机/跟进、同行业范例；缺真实依据则不得编造。
+  - 新客户开发第 1 封要求 1-2 句 SpeedAsia 公司与服务范围介绍。
+  - 结尾保留低压力转介绍请求。
+  - 已移除“试用”导向，改为资料评估、方案评估、服务清单、预算沟通提纲等商用表达。
+- 已补邮件 LLM prompt 结构：将 CRM 公司名、生命周期、最近商机/报价、历史合同/合作、最近跟进和范例参考传入 LLM；系统 prompt 增加多业务、行业历史、转介绍和禁止编造约束。
+- 已新增模板默认版本 `_MAIL_SEQUENCE_TEMPLATE_DEFAULT_VERSION = 30`，`_ensure_mail_sequence_templates()` 会把旧版本模板自动升级到新商业模板；本地数据库 12 条模板已升级到 version 30。
+- 验证：`backend/main.py`/`backend/crm_profile.py` AST 通过；抽取 `frontend/index.html` 内联 JS 后 `node --check` 通过；定向 `git diff --check` 通过（仅 CRLF 提示）；数据库 12 条模板检查 `DB_HAS_TRIAL_WORD=False`。
+
+## 2026-06-05 邮件全量测试校验与 CRM 真数据异常修复
+
+- **已完成**：
+  - `backend/main.py`：修复了 `_build_mail_draft_intent_profile` 中，当从真实 CRM 数据库（如 `KH33886`）查询 opportunities, contracts 等字段返回 `None` 时，传入 `MailDraftIntentProfile`（类型为 `str`）导致的 Pydantic `ValidationError` 崩溃问题，现已加入安全的 `or ""` 默认 fallback。
+  - `backend/mail_review_api_interface_checks.py`：修复了由于 `main.py` 的 `_build_mail_generate_draft_response` 引入了模板数据库查询，导致单元测试 Mock database `_NoPricingRulesDb` 缺少 `query` 属性引发 `AttributeError` 报错的 bug。
+  - `scratch/verify_mail_generation_crm.py`：移除了对 `intent_profile.customer_tier` 的无效 print 语句（`MailDraftIntentProfile` 模型中无该属性）。
+- **验证结果**：
+  - 全量 11 个 check 测试文件，共 43 个单元/接口测试用例 100% 成功通过（全绿）。
+  - 执行 `scratch/verify_mail_generation_crm.py` 成功完成端到端 CRM SQL 真实查询与 `deepseek-chat` 模型草稿生成交互，且所有 6 个物理安全门全部 `passed` 校验通行。
+
+## 2026-06-05 邮件模板目的与发送间隔布局调整
+
+- 已按用户截图要求调整邮件质量诊断页“三大场景全阶段脚本模板”的单个阶段布局。
+- `当前模板目的说明` 与 `发送日期 / 间隔说明` 改为顶部同一行展示：标签 + 单行输入框 + 右侧保存按钮。
+- 下方内容改为三列：变量说明、生产脚本模板、给 AI 的指令脚本，避免原先左侧两块 textarea 竖排占高。
+- 保存逻辑仍复用原 `saveMailSequenceTemplateField()`，字段 ID 不变，不改后端接口和 `.env`。
+- 验证：抽取 `frontend/index.html` 内联 JS 后 `node --check` 通过；`git diff --check -- frontend/index.html` 通过（仅 CRLF 提示）。
+
+## 2026-06-05 CRM 生命周期阶段规则更新
+
+- 已按用户确认的新口径更新 `backend/crm_profile.py` 的 `_get_customer_lifecycle_stage()`：
+  - 熟联系人：客户/公司近 1 年有 3 个及以上销售合同。
+  - 老联系人：客户/公司历史上有过销售合同，不再受 6 个月窗口限制。
+  - 新联系人：客户/公司没有过销售合同。
+- 生命周期统计口径从原先 `ContactId + crmContactYeWuSetting 时间窗/报价阈值` 改为优先按 `CustomerId` 客户/公司维度统计销售合同；找不到 `CustomerId` 时才退回 `ContactId`。
+- 已移除原函数中 `old_contract_number=3` 覆盖 CRM 配置、以及“不满足熟/老就无条件新联系人”的错误口径。
+- 已同步更新邮件质量诊断页 tooltip，说明新生命周期规则。
+- 只读验证当前 3 个案例：
+  - `KH15411-117`：总合同 362，近 1 年合同 20，阶段为熟联系人。
+  - `KH02659-011`：总合同 214，近 1 年合同 0，阶段为老联系人。
+  - `KH13770-006`：总合同 20，近 1 年合同 2，按新规则阶段为老联系人。
+- 验证：`backend/crm_profile.py`、`backend/main.py` AST 解析通过；`git diff --check -- backend/crm_profile.py frontend/index.html` 通过（仅 CRLF 提示）。
+
+## 2026-06-05 案例库日常验证详情加载优化
+
+- 已定位截图中“正在加载详情...”对应前端 `caselibOpenDetail()` 调用的后端接口：`GET /api/case_lib/daily_validation/{date}?view=api&limit=300`。
+- 已修复后端此前忽略 `view=api&limit=300` 的问题：API 快路径现在先按当天 `ApiAssistInvocation.triggered_at` 查询最近调用记录，再只加载这些调用涉及的会话消息，不再先全量扫描当天全部 `MessageLog`。
+- API 快路径只返回本批 API 调用匹配到的轮次，避免同一会话当天其它人工轮次被带入详情页导致结果膨胀。
+- 已新增耗时日志：
+  - `CASELIB_DAILY_DETAIL_TIMING`：日常验证详情，字段包含 `query_invocations_ms`、`query_session_logs_ms`、`group_sessions_ms`、`build_invocation_map_ms`、`build_results_ms`、`build_summary_ms`、`total_ms`。
+  - `CASELIB_ITERATION_DETAIL_TIMING`：普通迭代详情，字段包含 `query_run_ms`、`query_results_ms`、`query_cases_ms`、`query_turns_ms`、`build_case_maps_ms`、`build_rows_ms`、`total_ms`。
+- 验证：`backend/main.py` AST 解析通过；`git diff --check -- backend/main.py` 通过（仅 CRLF 提示）。`python -m py_compile backend/main.py` 仍被 Windows pyc 文件权限拒绝，已清理本轮产生的临时 `.codex_pycache`。
+
+## 2026-06-05 当前可用模型协议优先顺序调整
+
+- 已按用户要求把当前 `http://zjsphs.2288.org:11486` 已验证可用的协议放到最先尝试。
+- 训练 AI 模型列表顺序调整为：`/api/tags` -> `/v1/models` -> `/api/model-chat/models`。
+- 训练 AI 生成顺序调整为：`/api/chat` -> `/v1/chat/completions` -> `/api/model-chat/chat`。
+- Embedding 顺序调整为：`/v1/embeddings` 优先，失败或空向量再回退 `/api/embeddings`。
+- 验证：`backend/main.py`、`backend/embedding_service.py` AST 解析通过；定向 `git diff --check` 通过；`EmbeddingService.embed()` 再次返回 1024 维真实向量。
+
+## 2026-06-05 当前 11486 模型与 Embedding 适配
+
+- 已确认训练 AI 兜底逻辑不会产生假数据：只按协议顺序调用真实外部接口，全部失败时返回 `status=failed/timeout` 和错误原因，不会拼接模板回复或伪造成功。
+- 已确认 `http://zjsphs.2288.org:11486` 当前存在并可调用 `unsloth-qwen2.5-task-60:latest`，训练 AI 配置应使用带 `:latest` 的完整模型名。
+- 已确认 `qllama/bge-m3:latest` 在 `11486` 存在；`/api/embeddings` 返回空向量，真实可用接口是 `/v1/embeddings`。
+- 已修改 `backend/embedding_service.py`：Ollama provider 下先试 `/api/embeddings`，若空向量则自动回退 `/v1/embeddings`；OpenAI-compatible provider 默认补 `/v1/embeddings`，并允许无 API key 的本地兼容服务。
+- 验证：`backend/embedding_service.py`、`backend/main.py` AST 解析通过；`git diff --check -- backend/embedding_service.py backend/main.py` 通过；直接调用 `EmbeddingService.embed()` 返回 1024 维真实向量。
+
+## 2026-06-05 训练AI恢复 model-chat 优先与日志增强
+
+- 已按用户反馈修复训练 AI 仍未成功的问题：`_train_ai_chat()` 从单纯直连 Ollama/OpenAI 回退，改为优先尝试旧链路 `/api/model-chat/chat`，再回退 `/api/chat`，最后回退 `/v1/chat/completions`。
+- `_train_ai_list_models()` 同步恢复多协议探测：优先 `/api/model-chat/models`，再 `/api/tags`，最后 `/v1/models`。
+- 已新增训练 AI 专属日志关键字：`TRAIN_AI_START`、`TRAIN_AI_ATTEMPT_SKIP`、`TRAIN_AI_ATTEMPT_EMPTY`、`TRAIN_AI_ATTEMPT_FAILED`、`TRAIN_AI_SUCCESS`、`TRAIN_AI_FAILED`、`TRAIN_AI_TIMEOUT`、`TRAIN_AI_ERROR`、`TRAIN_AI_MODELS_OK`、`TRAIN_AI_MODELS_FAILED`。
+- 成功结果继续写入 `training_ai.protocol`，可区分 `model_chat`、`ollama_api_chat`、`openai_chat_completions` 或 `all_failed`。
+- 验证：`backend/main.py` AST 解析通过；`git diff --check -- backend/main.py` 通过。
+
+## 2026-06-05 训练AI接口 404 协议兼容修复
+
+- 已修复训练 AI 调用 `http://zjsphs.2288.org:11486/api/chat` 返回 404 时无法生成的问题。
+- `_train_ai_chat()` 现在先尝试 Ollama 原生 `/api/chat`，若返回 404，会自动回退到 OpenAI 兼容 `/v1/chat/completions`，并在 `training_ai.protocol` 中记录实际命中的协议。
+- 服务器本次只需更新 `backend/main.py` 并重启；`.env` 仍使用现有 `TRAIN_AI_BASE_URL`、`TRAIN_AI_API_KEY`、`TRAIN_AI_MODEL` 配置即可。
+- 验证：`backend/main.py` AST 解析通过；`git diff --check -- backend/main.py` 通过。
+
+## 2026-06-05 邮件模板顶部控件单行布局修复
+
+- 已按用户截图反馈调整邮件质量诊断“三大场景全阶段脚本模板”中每阶段顶部控件：`当前模板目的说明 + 输入框 + 保存目的 + 发送日期 / 间隔说明 + 输入框 + 保存发送日期` 强制同一行展示。
+- 修复点：动态渲染区不再依赖 Tailwind 任意 grid 列宽类，改为明确 inline CSS grid，并给输入框、按钮和标签设置不换行宽度，避免退回 4 行。
+- 验证：`frontend/index.html` 内联脚本抽取后 `node --check` 通过；`git diff --check -- frontend/index.html` 通过。
+
+## 2026-06-05 第一个场景第1阶段商业模板精细化
+
+- 已严格修改第一个场景 `new_business_promotion`（老客户其他业务介绍）第 1 阶段模板。
+- 生产脚本已从简短两段改为强约束商业 SOP：邮件目标、必须使用的数据、知识库/同行业案例使用规则、4 段正文结构、禁止内容和合格标准。
+- AI 指令已补强：要求 4 段左右、必须承接 CRM 事实、必须说明翻译以外至少 3 类业务线、必须使用知识库/黄金范例/同行业经验作为商业证据、禁止价格/折扣/账期/工期/免费服务等未经审核承诺。
+- 已新增单模板目标版本：仅 `new_business_promotion + suite_step=1` 升级到 version 31，其他阶段保持现有 version 30，避免扩散重写。
+- 验证：`backend/main.py` AST 解析通过；`git diff --check -- backend/main.py` 通过；轻量导入确认第 1 阶段 version 31、第 2 阶段仍为 30，且模板包含“知识库”和“4 段”硬约束。`python -m py_compile backend/main.py` 仍因既有 `backend/__pycache__` 权限拒绝失败。
+
+## 2026-06-05 第一个场景第1阶段标题/目的/发送说明商用优化
+
+- 已继续优化 `new_business_promotion` 第 1 阶段的三个顶部字段：阶段标题、当前模板目的说明、发送日期 / 间隔说明。
+- 阶段标题从通用“破冰与低压力价值提示”改为场景专属“老客户多业务破冰与低压力价值提示”，避免与老客户激活、新客户开发混用。
+- 目的说明补强为 4 封套装开场定位：承接老客户历史合作，介绍翻译以外的同传/会议支持、多媒体本地化、排版印刷、活动物料、海外内容适配，并要求结合客户行业、CRM 历史和知识库/同行业案例。
+- 发送说明补强为第 1 天发送策略：亲和破冰、不急于报价成交，并明确为第 2 封同行业案例、第 3 封组合方案、第 4 封评估/转介绍收口做铺垫。
+- 生产脚本和 AI 指令同步补充用户 8 条要求：4 封层层递进、多业务开发、客户行业、客户历史、亲和语气、结尾转介绍、读取知识库/同行业案例、首封只打开多业务话题避免与后续重复。
+- 该单模板目标版本从 31 升至 32，仍只覆盖 `new_business_promotion + suite_step=1`，不扩散更新其他 11 个模板。
+- 验证：`backend/main.py` AST 解析通过；`git diff --check -- backend/main.py` 通过；`SKIP_DB_PATCH=1` 轻量导入确认 version 32、新标题、新目的说明、新发送说明，并确认脚本包含 4 封套装、知识库、转介绍、后续阶段递进约束。`python -m py_compile backend/main.py` 仍因既有 `backend/__pycache__` 权限拒绝失败。
+
+## 2026-06-05 第一个场景第1阶段数据库模板实际保存
+
+- 用户反馈页面仍显示旧内容；已确认原因：此前改的是代码默认模板和自动升级规则，数据库 `mail_sequence_template` 中 `new_business_promotion + suite_step=1` 仍为 version 30 旧行。
+- 已实际执行单行升级，把数据库该模板保存为 version 32；未更新其他 11 条模板。
+- 本地 API `http://127.0.0.1:8071/api/v1/mail/sequence-templates` 已返回新标题、新目的说明、新发送说明、生产脚本和 AI 指令。
+- 需要页面端点击“刷新模板”或重新加载页面；如果访问的是非 8071 的另一台服务/域名，则需确保该服务连接同一数据库并加载同一接口。
+
+## 2026-06-05 第一个场景第2阶段模板完成并保存
+
+- 已完成第一个场景 `new_business_promotion` 第 2 阶段模板，定位为“同行业案例证明与历史合作承接”。
+- 已优化顶部字段：标题改为 `第 2 封：同行业案例证明与历史合作承接`；目的说明强调承接第 1 封，用客户行业、CRM 历史合作和知识库/同行业案例证明多业务组合；发送说明明确第 8 天、间隔 7 天、用证据增强可信度但不进入报价或完整方案。
+- 生产脚本已改为商业 SOP：邮件目标、必须使用的数据、4 段正文结构、禁止内容、合格标准；要求区分 CRM 历史事实与知识库案例，避免把同行业案例写成当前客户历史。
+- AI 指令已补强：必须使用 CRM/行业/历史/知识库证据，必须覆盖翻译以外至少 2 类业务，必须有低压力下一步和转介绍，禁止价格/折扣/账期/工期/免费承诺。
+- 已将 `new_business_promotion + suite_step=2` 目标版本设为 31，并实际保存数据库该行；其他模板不被本轮覆盖。
+- 验证：`backend/main.py` AST 解析通过；`git diff --check -- backend/main.py` 通过；数据库查询和本地 8071 API 均确认第 2 阶段返回 version 31、新标题、新目的说明、新发送说明和新脚本。
+
+## 2026-06-05 1-1/1-2 AI 指令变量使用规则补齐
+
+- 用户指出已改的“给 AI 的指令脚本”缺少变量位置和变量说明。已补齐 `new_business_promotion` 第 1、2 阶段 AI 指令中的变量使用规则。
+- 新增统一变量规则：`{customer_name}` 放开头称呼；`{company_name}` 用于客户背景；`{industry}` 用于行业场景和案例选择；`{history}` 用于真实历史合作/商机/跟进；`{peer_case}` 只能作为知识库/同行业案例；`{business_lines}` 自然融入多业务段；`{seller_name}` 只作落款/轻介绍；`{referral_request}` 用于结尾转介绍。
+- 明确缺失处理：变量为空时必须自然中文降级，不得输出 `{customer_name}`、`unknown`、`None`、空括号或系统字段名。
+- 代码默认值已更新，并通过 8071 的 `PUT /api/v1/mail/sequence-templates/new_business_promotion/{1,2}` 实际保存到页面读取的数据库行。
+- 本地 8071 `GET /api/v1/mail/sequence-templates` 验证：第 1 阶段 version 34、第 2 阶段 version 33，二者均包含“变量位置与使用规则”、`{customer_name}`、`{peer_case}` 和“禁止把变量名原样输出”。
+
+## 2026-06-05 三场景十二封商用模板全量完成
+
+- 已按用户要求把剩余场景和邮件全部按同一标准完成，覆盖三大场景 × 4 封 = 12 封，不遗漏。
+- 已在 `backend/main.py` 新增商用模板生成器：按场景画像（老客户其他业务介绍、老客户激活、新客户开发介绍）和阶段画像（开场破冰、证据增强、方案路径、低压力收口）生成标题、目的说明、发送说明、生产脚本和 AI 指令。
+- 每封模板均包含：4 封层层递进、多业务开发、客户行业、客户历史/CRM 事实、知识库/同行业案例、亲和语气、结尾转介绍、变量位置与缺失处理、禁止价格/折扣/账期/工期/免费服务、当前客户历史与知识库案例边界。
+- 已实际保存数据库 12 行，统一 version 40，`updated_by=codex_commercial_all_templates_v40`。
+- 已验证单场景逻辑无矛盾：
+  - `new_business_promotion`：多业务破冰 -> 同行业案例证明 -> 多业务组合方案 -> 评估/预算/转介绍收口。
+  - `re_activation`：关系重启 -> 历史合作与案例唤醒 -> 低门槛协作路径 -> 资料评估/服务清单/转介绍收口。
+  - `new_contact_intro`：公司介绍与正确对接确认 -> 行业经验建立可信度 -> 项目启动路径 -> 小范围评估/负责人确认/转介绍收口。
+- 验证：`backend/main.py` AST 解析通过；`git diff --check -- backend/main.py` 通过；本地 8071 API `GET /api/v1/mail/sequence-templates` 校验 12 封均为 version 40，均包含变量规则、知识库、转介绍、价格禁区、历史/案例边界；专项逻辑校验通过。`python -m py_compile backend/main.py` 仍因既有 `backend/__pycache__` 权限拒绝失败。
+
+## 2026-06-05 企微后续评分北京时间窗口限制
+
+- 已新增企微后续评分时间窗配置：`WECOM_FOLLOWUP_SCORING_WINDOW_ENABLED=true`、`WECOM_FOLLOWUP_SCORING_WINDOW_START_HOUR_BJ=20`、`WECOM_FOLLOWUP_SCORING_WINDOW_END_HOUR_BJ=24`，默认只允许北京时间 20:00（含）到 24:00（不含）执行；本轮不要求修改服务器 `.env`，也不把 `.env.example` 作为服务器必更文件。
+- 已在 WeCom API 调用后续评分的三个入口加门控：30 分钟后台补算 worker、`_refresh_api_invocation_quality()` 手动/补算刷新、`_complete_api_reply_scoring_async()` 响应返回后的异步评分补齐。
+- 窗口外不会提交新的异步评分任务，也不会执行原始回复分、相似分、候选回复评分或训练 AI 评分补算；已有未评分记录保持待补状态，等 20:00-24:00 窗口内继续计算。
+- 验证：`backend/main.py`、`backend/config.py` AST 解析通过；`git diff --check -- backend/main.py backend/config.py` 通过；时间窗函数验证输出为 `19:59=False`、`20:00=True`、`23:59=True`、`00:00=False`。`python -m py_compile backend/config.py` 仍因既有 `backend/__pycache__` 权限拒绝失败。
+
+## 2026-06-05 邮件质量诊断模板三列编辑与空邮箱限制移除
+
+- 已将邮件质量诊断页的“三大场景全阶段脚本模板”改为每阶段三列编辑布局：目的/发送日期、变量说明+生产脚本模板、给 AI 的指令脚本，文本框限制最大约 20 行高度，减少页面纵向滚动。
+- 已新增 `mail_sequence_template.ai_instruction_script` 字段，启动期自动补列；`GET/PUT /api/v1/mail/sequence-templates` 支持读取和保存给 AI 的指令脚本，并注入邮件草稿 LLM Prompt。
+- 已移除空邮箱占位限制：当前 3 案例、独立客户套装页和后台迭代不再合成 `customer.test` 或 `mailmock.test` 收件邮箱；CRM 邮箱为空时保持空值，只生成草稿模板，不做收件域名校验、不补造邮箱、不发信。
+- 验证：`backend/main.py`、`backend/database.py` AST 解析通过；`frontend/index.html` 内联 JS `node --check` 通过；定向 `git diff --check -- backend/main.py backend/database.py frontend/index.html` 通过；`SKIP_DB_PATCH=1` 导入 `main` 并确认相关邮件路由注册通过。`python -m py_compile backend/main.py backend/database.py` 仍因既有 `backend/__pycache__` 权限拒绝失败。
+
+## 2026-06-05 邮件质量诊断当前案例 CRM 未脱敏查询
+
+- 已按用户要求把邮件质量诊断当前 3 个案例改为实时只读查询 CRM 原始信息，不再在该案例区显示“脱敏”字段；旧 5 个保留案例和其他页面的脱敏逻辑不改。
+- 已确认 3 个产品指定编号在 CRM 中实际对应 `usrCustomerContact.ContactId`：`KH15411-117`、`KH02659-011`、`KH13770-006` 均可命中真实联系人和公司。
+- `GET /api/v1/mail/demo-contacts` 现在合并返回未脱敏字段：联系人、公司、邮箱、ContactId、CustomerId、联系人/客户状态、销售/负责人、行业、生命周期、客户级别、欠款风险、最近 3 条商机、最近 3 条合同、最近 5 条跟进。
+- 已同步修正草稿生成 CRM 查询条件，把 `ContactId`、`NewContactId`、`NewCustomerId` 纳入查找，避免卡片能查到但点击生成草稿时查不到。
+- 第二个案例 `KH02659-011` 的 CRM 邮箱为空；页面展示真实空值，同时生成表单内部使用独立占位邮箱，仅用于草稿生成链路，不真实发信。
+- 验证：直接调用 `_fetch_mail_current_case_crm_detail()` 对 3 个 KH 编号均返回 `matched_crm_contact_id_or_customer_id` 且公司名非空；`backend/main.py`/`backend/database.py` AST 通过；`frontend/index.html` 内联 JS `node --check` 通过；定向 `git diff --check -- backend/main.py frontend/index.html` 通过；`SKIP_DB_PATCH=1` 导入 `main` 并确认 `/api/v1/mail/demo-contacts` 路由注册成功。`python -m py_compile backend/main.py backend/database.py` 仍因既有 `backend/__pycache__` 权限拒绝写 pyc 失败。
+
+## 2026-06-05 训练AI与知识库检索迁移至 Ollama 11486 端口
+
+- 已将 `.env` 配置文件中的 `TRAIN_AI_BASE_URL` 改为 `http://zjsphs.2288.org:11486`，`TRAIN_AI_MODEL` 改为 `unsloth-qwen2.5-task-60`，`TRAIN_AI_API_KEY` 置空。
+- 已将 `.env` 配置文件中的 `EMBEDDING_API_URL` 改为 `http://zjsphs.2288.org:11486`，且确认对应的 embedding 模型 `qllama/bge-m3:latest` 命中无误。
+- 已将 `backend/config.py` 中的对应配置默认值同步更新。
+- 重构了 `backend/main.py` 中的 `_train_ai_list_models` 函数，将其切换为直接请求 Ollama 原生 `/api/tags` 接口并返回匹配前端格式的模型列表。
+- 重构了 `backend/main.py` 中的 `_train_ai_chat` 函数，将其切换为直接请求 Ollama 原生 `/api/chat` 接口，支持 `options` 字段以传递 `temperature` 和 `num_predict` (对应 `max_tokens`)，并解析返回结构。
+- 验证：`.env`、`backend/config.py`、`backend/main.py` 的 AST 解析及 Python 语法校验全部通过。`git diff --check` 定向格式检查通过。编写了直连测试脚本对 Ollama 11486 端口的 tags 与 chat 接口进行了完整验证，返回结果完全正确。
+
+## 2026-06-05 邮件套装反馈记录节点
+
+- 已确认独立套装页 `/static/mail-suite.html` 的反馈设计为“每次保存反馈 = `mail_customer_suite_feedback` 一条新记录”；本轮补齐当前工作区缺失的后端 POST 保存路由，避免前端保存调用落空。
+- 已新增 `GET /api/v1/mail/customer-suite-feedback` 查询接口，支持按客户编号、业务场景、套装阶段和 limit 查询，返回完整反馈、对应草稿主题/正文、草稿 payload、客户画像和联系人摘要。
+- 已补齐 `GET /api/v1/mail/customer-suite` 路由：浏览器直开 API 会跳转到独立页面；JSON 调用会按客户编号和场景串行生成 4 封套装草稿，仍保持 `real_sending_enabled=false`。
+- 已把 `/static/mail-suite.html` 加入前端认证免登录白名单，确保独立客户套装页可直接访问。
+- 已在邮件质量诊断工作台新增“反馈记录”子节点，提供客户编号/场景/阶段/条数筛选、刷新、列表、完整详情展开；详情中展示完整反馈、对应邮件主题正文、草稿 JSON、客户画像 JSON 和联系人信息，便于人工验证。
+- 验证：`backend/main.py`、`backend/database.py` AST 解析通过；`frontend/index.html` 内联脚本抽取后 `node --check` 通过；定向 `git diff --check -- backend/main.py frontend/index.html backend/database.py` 通过；`SKIP_DB_PATCH=1` 导入 `main` 成功并确认 3 个 customer-suite 路由注册。`python -m py_compile backend/main.py backend/database.py` 仍因既有 `backend/__pycache__` 权限拒绝写 pyc 失败，未改权限。
+
+## 2026-06-05 邮件质量诊断案例与脚本模板调整
+
+- 已将邮件质量诊断页的当前显示/测试案例从旧 5 个切到 3 个产品指定客户编号：`KH15411-117`（老客户多业务）、`KH02659-011`（老客户激活）、`KH13770-006`（新客户）。原 5 个 `mail_demo_contact` 旧案例保留，新增字段用于区分当前测试集合。
+- 已新增 `mail_sequence_template` 表模型与启动期自动补表逻辑，按 3 个邮件场景 × 4 个阶段独立保存脚本模板、目的说明、发送日期说明、变量说明。
+- 已新增后端接口 `GET /api/v1/mail/sequence-templates` 与 `PUT /api/v1/mail/sequence-templates/{scenario}/{suite_step}`，支持单独保存每个阶段的目的、发送日期或脚本模板；保存后的模板会进入邮件草稿 LLM Prompt。
+- 已将邮件迭代运行范围改为当前 3 案例 × 4 步 = 12 封，页面文案同步从旧 5×4=20 调整为 3×4=12。
+- 前端 `frontend/index.html` 已在绿色真接后端演示区新增折叠的“三大场景全阶段脚本模板”面板，可按场景切换查看 4 个阶段，展示变量说明，并分别保存目的、发送日期和脚本。
+- 验证：`backend/main.py`、`backend/database.py` AST 解析通过；`frontend/index.html` 内联脚本抽取后 `node --check` 通过；`git diff --check -- backend/main.py backend/database.py frontend/index.html` 通过。`python -m py_compile backend/main.py backend/database.py` 仍因既有 `backend/__pycache__` 权限拒绝写 pyc 失败，未改权限。
+
+## 2026-06-04 独立客户套装邮件页实现
+
+- 已新增无需登录的独立页面 `frontend/mail-suite.html`，访问形态为 `/static/mail-suite.html?id=KH23447-001`。页面不包含跳转现有工作台/其他页面的快捷入口。
+- 已新增 `GET /api/v1/mail/customer-suite?id=...`：按客户编号读取 CRM 画像，自动判断三类邮件场景之一，并复用现有邮件草稿生成链路一次生成 4 封套装邮件；真实发信仍关闭。
+- 已新增 `POST /api/v1/mail/customer-suite-feedback`：每封邮件旁边可填写反馈并保存，每次保存新建一条反馈记录。
+- 已新增反馈表模型 `mail_customer_suite_feedback`，并在 `auto_patch_db()` 中加入 `CREATE TABLE IF NOT EXISTS` 与索引创建，便于生产重启后自动补表。
+- 验证：`backend/main.py`、`backend/database.py` AST 解析通过；`frontend/mail-suite.html` 内联脚本抽取后 `node --check` 通过；定向 `git diff --check -- backend/main.py backend/database.py frontend/mail-suite.html` 通过。
+- 本轮未启动服务、未调用 LLM、未实际访问 CRM 生成邮件；需要部署重启后用真实客户编号在页面端到端确认。
+- 2026-06-04 追加修正：浏览器直开 `/api/v1/mail/customer-suite?id=...` 会自动跳转到 `/static/mail-suite.html?id=...`，避免显示 JSON 中间页；套装生成不再要求真实联系人邮箱，无邮箱时使用内部占位收件地址仅供草稿链路运行，页面显示“仅生成模板，不发邮件”；页面顶部和状态样式已调整为与现有工作台更一致的白色顶栏、紫色主色和处理中 spinner。
+
+## 2026-06-04 邮件 V8 有效复测完成
+
+- 已完成邮件 V8 有效复测，最终有效记录为 `mail_iteration_run` v14（run_id `ecf5a1aa-7c08-4779-aec7-ea1b3bfc2609`），20/20 成功，均分 99.2，最低 96，最高 100，平均耗时 7577ms。
+- 已修复邮件草稿 LLM 请求被系统代理劫持的问题：`backend/main.py` 的邮件草稿 LLM 请求改用 `requests.Session()` 且 `trust_env=False`。
+- 已新增邮件草稿专用 LLM 配置：`MAIL_DRAFT_LLM_API_URL`、`MAIL_DRAFT_LLM_API_KEY`、`MAIL_DRAFT_LLM_MODEL`、`MAIL_DRAFT_LLM_TIMEOUT_SECONDS`、`MAIL_DRAFT_LLM_TEMPERATURE`，未配置时回落到现有 `LLM2_*`。
+- 已强化重复签名控制：Prompt 明确禁止 LLM 输出落款/签名，后端统一追加签名前会清理 LLM 段落末尾误写的销售签名。
+- 结果分析见 `logs/mail-v8-analysis.md`。本轮失败的 v8-v12 均为环境/端口/模型出口诊断记录，最终质量结果以 v14 为准；邮件真发仍未启用。
+- 2026-06-04 用户页面复核修正：v14 不能判定已解决最初邮件质量问题。v14 与 v7 页面正文肉眼差异很小；正文仍缺少直接、明确、稳定运用知识库案例段；案例1老客户仍主要围绕翻译/本地化，没有把同传、多媒体本地化、排版印刷等新业务作为明确主推。后续迭代必须以页面可见正文结果为验收标准，而不是均分、段落数、关键词命中等指标。
+- 调用环境说明：v14 是本机临时高端口服务触发，用来确保加载当前工作区最新代码；不是直接调用生产 `api.speedasia.net`。因此 v14 只说明本机最新代码链路跑通，不能等同于生产页面结果已改善。
+
+## 服务端更新清单（本会话 v1.7.164~230）
+
 **已入库代码（服务器 git pull 即可）：**
 - `backend/main.py`：
+  - 邮件 Prompt 一致性与篇幅优化（v1.7.236）：将知识库同行业案例、范例参考、当前客户历史跟进拆成独立 Prompt 区域，禁止知识库内容混入历史跟进；新增 `target_product_line` / `existing_business_lines`，新业务推广时明确本次目标新业务并禁止把客户已有旧业务当作主推内容；放宽正文段落硬限制，要求按业务叙事传达清晰商业价值。
+  - 启动期 DB 补丁防卡死（v1.7.235）：`auto_patch_db()` 在 PostgreSQL 下增加 advisory lock、`lock_timeout=2s`、`statement_timeout=20s` 和异常回滚/关连接；`message_logs(timestamp)` 与 `(user_id,timestamp)` 日期索引改为事务外 `CREATE INDEX CONCURRENTLY`，避免服务器更新后长时间等待 DDL 锁导致启动慢。
+  - 账号受限视图（v1.7.232）：新增 `hj` 登录账号，角色为 `mail_quality_only`；`/api/auth/login` 与 `/api/auth/me` 返回 role，供前端裁剪页面入口。
+  - 清理动态案例兜底硬编码（v1.7.230）：移除了 `_get_mail_industry_case_study_from_db` 中的硬编码兜底案例段落，无匹配时直接返回空字符串，完全清除假数据。
   - 核心 WeCom 后台评分补算 worker 热修复（v1.7.208）：引入 SQL `exists` 子查询智能过滤无销售回复会话，解决饥饿队列；移动 `db.commit()` 到 loop 内部，在 time.sleep 前即时提交，彻底消除 87.6 秒的数据库行锁等待延迟；修复 logger 报错。
   - 贯彻“宁报错或为空”原则，彻底注释掉漏网的 8 处 A 类/B 类 fallback 兜底（v1.7.207 & v1.7.209），暴露真实上游错误。
   - 邮件系统 Phase 5 真实大模型两阶段生成接入，并在 v1.7.206 切换为 DeepSeek-Chat，保留占位符防幻觉物理隔离（v1.7.198）。
   - 新增邮件迭代记录与草稿 7 维打分落库模块（v1.7.205）。
-  - 时区配对修复、评分异步、盲评对、训练AI模型下拉保存。
+  - 邮件生成优化（Task 80）：添加新 B2B 画像字段，重构 Prompt 防范 Few-Shot 抄袭。恢复 `_mail_crm_profile_from_demo_contact_table` 的路由与完整字段解析，修复 demo 客户 key 报 404 的问题。
+  - 本地服务搭载：使用 `SKIP_DB_PATCH=1` 绕过 DDL 死锁启动 8071 服务，并成功触发、跑通**邮件迭代 v6**（20/20 全量生成成功，均分 97.2，已全部落库并显示于前端面板）。
+  - 时区配对修复、评分异步、盲评对、训练AI model下拉保存。
 - `frontend/index.html`：
+  - hj 邮件页权限调整（v1.7.234）：`hj` 账号允许点击并查看“质量诊断 / 邮件迭代记录 / 黄金范例库”三个子页，仅隐藏“邮件配置”和“返回企微实时智能”。
+  - 账号受限视图修正（v1.7.233）：修复邮件子导航点击/渲染时 `className` 覆盖 `hidden` 的问题；`hj` 账号下“邮件迭代记录 / 黄金范例库 / 邮件配置”会在每次切页后重新隐藏。
+  - 账号受限视图（v1.7.232）：`mail_quality_only` 登录后只显示“邮件质量诊断”主节点；邮件页内只保留“质量诊断”子页，隐藏“邮件迭代记录 / 黄金范例库 / 邮件配置 / 返回企微实时智能”，并在切页函数中强制回到质量诊断。
   - 全面上线邮件工作台，包含：“邮件迭代记录”列表与 20 封详情面板（v1.7.205），“黄金范例库” 25 条种子探索面板（v1.7.206），绿色动态 “Live Demo” 生成与表单交互区（v1.7.198）。
   - 界面全面中文化（v1.7.200 - v1.7.203），优化 180+ 处详细浮动 tooltip 诊断提示。
 - `backend/seed_mail_gold_candidates.py`（NEW）：Task 76 黄金库 25 条种子自动幂等灌库脚本（v1.7.198）。
 - `backend/database.py`：新增 mail_iteration_run 与 mail_iteration_draft 评分与 prompt 数据库表（v1.7.205）。
+- `backend/crm_profile.py`：修复 CRM 生命周期配置 `RecentMonths` 日期计算（v1.7.236），在 Python 端算出真实 datetime 范围并传 SQL，不再把 `RecentMonths` / `6` 直接作为字符串参与日期比较。
+- `backend/mail_sequence_strategy.py`：三套邮件 Sequence 的 `objective` 与 `cta_style` 已中文化（v1.7.236），并修正新业务推广步骤中的中英文混杂描述。
 - `backend/seed_mail_demo_contacts.py`（NEW）：5 个 CRM 真实联系人画像灌库与校验脚本（v1.7.202）。
 - `scratch/overwrite_529_scores.py`（NEW）：WeCom 5.29 质量评分本地语义化重算与离线回写脚本，全量覆盖 68 条有销售回复记录（v1.7.220）。
 - `logs/dod-task76-78.md`（NEW）：Task 76/77/78 真接入端到端 DoD 演示证据（v1.7.198）。
 - `HOWTO_VERIFY_MAIL_AI_REPLY.md`（NEW）：人工最终验证邮件草稿质量的操作指南（v1.7.199）。
 - `项目进展.md`：追加入库 v1.7.176 ~ v1.7.220 共三十多个版本进展，无一漏网。
- 
+
+
 **需在服务器手工处理（gitignore，不入库）：**
-- `.env`：确认 `MAIL_DRAFT_LLM_TEMPERATURE` 等邮件环境变量，以及已配置的 `DEEPSEEK_API_KEY` 等。
-- `backend/ai_settings.local.json`：确认 `API_KB2_ENABLED` 为 false 禁用 KB2 冗余外部调用。
- 
-**部署动作：**
-- 重启后端服务以加载新编译的 `backend/main.py`（释放 87.6 秒行锁等待，开启 latest 评分倒序补算）。
- 
-## 当前状态
- 
-- **当前任务**：WeCom 评分优化与 5.29 评分语义化重算覆盖。
-- **当前状态**：已经完美解决 87.6s 实时保存调用记录锁等待的尾段延迟；已解决后台补算队列被 `pending_no_sales_reply` 历史数据占满发生饥饿的问题。
-- **5.29评分重算完成**：通过本地语义分析打分，使用 `overwrite_529_scores.py` 成功且极其稳健地回写更新了 5.29 全量 68 条已回复的会话质量分与 7 维明细，彻底杜绝了机械评分、去除了 30 分限制，完美拉开优秀与冗余/拖沓/漏接话术的分数带。
-- **历史交付**：
-  - 接入 LLM2 (deepseek-chat) 进行二阶段 HTML 装配与评分重价。
-  - 完成了 5 案例 × 4 步 = 20 封邮件批量迭代和 true prompt 数据库落库。
-  - 前端上线了迭代记录详情、黄金种子范例查看面板、Live Demo 生成中文化及 180+ Tooltips。
-  - 彻底移除了 8 处条目 fallback 代码以贯彻“宁报错或为空”的原则。
- 
-## 运行监控要求（gateway + cron 循环）
- 
-- 任务由 Hermes gateway（每 60 秒 tick）+ cron 循环驱动；每个 cron tick 是独立隔离会话，只做第一个未完成任务，做完即结束，下一 tick 继续（间隔 2 分钟，近似连续）。
-- 每个 tick 必须用中文向 `logs/codex-run.log` 追加记录：当前时间、当前任务（任务号）、本轮做了什么、成功或失败（失败写原因）、下一步动作。
 - 失败（网络/模型临时断开等）如实写入 `logs/codex-run.log` 和 `logs/codex-retry.log`，由 cron 周期自动重试，不丢任务，严禁"假绿"。
 - 真实进度以 `TASKS.md` 勾选 + `logs/codex-run.log` 实际内容 + 产出文件为准，不以 cron `last_status` 为准。
 - 查看：`hermes cron list` / `hermes cron status` / `~/.hermes/cron/output/<job_id>/`。
+
+## 2026-06-08 hj 受限账号登录修复
+
+- 已修复前端工作台认证后端只支持单一 `admin` 账号的问题，新增 `FRONTEND_AUTH_EXTRA_USERS` 配置并默认包含 `hj:123456:mail_quality_only`。
+- `/api/auth/login` 现在会返回 `role`，`/api/auth/me` 也会返回登录用户角色；前端既有 `mail_quality_only` 限制逻辑可据此生效。
+- `hj` 账号登录后会被限制在邮件质量工作台，按现有前端逻辑可查看质量诊断、邮件迭代记录、黄金范例库、反馈记录，并隐藏邮件配置及返回企微入口。
+- 验证：`git diff --check -- backend/main.py backend/config.py .env.example` 通过；`backend/main.py`、`backend/config.py` AST 解析通过；FastAPI TestClient 验证 `hj / 123456` 登录返回 `role=mail_quality_only`，`/api/auth/me` 返回同一角色；`admin / Qw@2026` 登录仍返回 `role=admin`。
+- 注意：`python -m py_compile backend/main.py backend/config.py` 在当前 Windows 环境仍因 `.pyc` 写入/rename 权限拒绝失败，本轮采用 AST 解析和接口级 TestClient 验证补足。
+
+## 2026-06-08 邮件 V15 训练案例结果生成
+
+- 已按最新当前邮件案例与 v40 商用脚本模板生成 `mail_iteration_run` V15，run_id 为 `226aa34b-2d47-4115-9ee8-ab49bc6a302b`。
+- 本轮只涉及邮件链路：当前 3 个邮件案例 × 4 个 Sequence Step = 12 封草稿；V14 保留为历史结果，未覆盖、删除或改写。
+- V15 最终状态：`success`，12/12 成功，LLM 成功 12/12，fallback 0，平均分 94.50，最低 90.00，最高 96.00，真实发信仍关闭。
+- 修复了邮件迭代后台把 `***EMAIL***` 脱敏占位邮箱当作真实邮箱导致 422 的问题；邮件当前案例/迭代生成遇到脱敏占位或无效邮箱时归一为空邮箱，沿用空邮箱只生成草稿模板的既有规则。
+- 邮件草稿 LLM 请求改为使用 `requests.Session()` 且 `trust_env=False`，避免本地代理环境劫持 DeepSeek 请求。
+- 结果分析已写入 `logs/mail-v15-analysis.md`；8071 本地后端已恢复，可通过 `/api/v1/mail/iterations?limit=1` 查看 V15。
+
+## 2026-06-08 邮件 V16 案例1问题修复与有效复测
+
+- 已按用户反馈修复 V15 案例1问题：邮件侧 prompt 不再重复塞入完整脚本和完整 AI 指令，改为优先强调联系人、公司、行业画像、CRM 历史/商机/跟进和检索案例。
+- 已新增邮件 prompt 脱敏清理：合同、报价、客户编号等内部编号在进入 LLM 前改写为“历史合作记录”“近期商机记录”“内部记录”，避免出现 `合同 XS260601-012` 这类内部编号。
+- 已将三大场景 × 4 阶段商用模板升级到 v41，脚本与 AI 指令合并去重并明确 4 封递进：破冰、案例证据、方案路径、低压力收口。
+- V16 run `af3bd9de-2044-4d9b-80a8-eaf2a72ae1e0` 已成功生成 12/12，但案例1 prompt 约 1301-1313 字，仍略超用户要求的 800-1200。
+- 已继续压缩模型输入并完成有效复测 V18：run `e3b8f956-cbac-4126-b3ea-5d19ddf6ce3b`，12/12 成功，fallback 0，均分 98.17；全量 prompt 958-1009 字，内部编号检查 0 命中。
+- V18 场景区分正常：案例1 `new_business_promotion`、案例2 `re_activation`、案例3 `new_contact_intro`，每个客户 4 封套装，阶段定位分别为破冰、证据、路径、收口。
+- 结果分析已写入 `logs/mail-v16-v18-analysis.md`。本轮未改企微/微信链路，邮件真发仍关闭。
+
+## 2026-06-08 邮件 V21 后续修正（未跑 V22）
+
+- 按用户校准：案例中已有的周期、速度、字数表达可以保留，不再把“在两周内交付”等案例事实误判为无来源工期。
+- 已强化免费/无偿服务出口替换，避免生成“免费提供样稿”“免费试译”“免费服务”等未审核承诺。
+- 已增强 `new_contact_intro` 第 1 封：要求写出 SpeedAsia 身份、客户行业相关的 3 项差异化服务组合、正确负责人确认或转介绍，不再只是简单公司介绍。
+- 已将素材缺口提示改为明确说明缺哪类案例或样本：如新联系人首次介绍样本、同行业脱敏案例、项目启动路径样本等。
+- 未触发 V22；验证仅执行 `backend/main.py` AST 和定向 `git diff --check`。

@@ -16,6 +16,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    print(
+        f"INFO: launching uvicorn app=main:app host={args.host} port={args.port} reload={args.reload}",
+        flush=True,
+    )
     try:
         uvicorn.run(
             "main:app",

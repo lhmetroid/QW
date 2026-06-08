@@ -45,12 +45,25 @@ class MailCrmMockProfile:
     will_update_wecom_state: bool = False
 
     def to_profile_lookup_payload(self) -> dict[str, Any]:
+        # Derive mock facts based on industry
+        company_name = ""
+        opps = ""
+        contracts = ""
+        followup = ""
+
         return {
+            "company_name": company_name,
+            "crm_contact_name": "张经理" if self.payment_risk_level == "low" else "李工",
             "company_industry": self.company_industry,
             "payment_risk_level": self.payment_risk_level,
             "customer_domains": set(self.customer_domains),
             "crm_profile_lookup_status": "matched_mail_crm_mock_customer_key",
             "crm_profile_source": MAIL_CRM_MOCK_SOURCE,
+            "customer_lifecycle_stage": "熟联系人" if self.payment_risk_level == "low" else "老联系人",
+            "customer_tier": "key",
+            "recent_opportunities": opps,
+            "ongoing_contracts": contracts,
+            "contact_recent_followup": followup,
         }
 
     def to_generate_draft_payload(self) -> dict[str, Any]:

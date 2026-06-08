@@ -1,0 +1,2953 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3Chat.ai - Agent Builder (随线智能助手搭建面复刻)</title>
+    <meta name="description" content="随线 Builder 销冠智能客服助手搭建与调试环境 - 高保真复刻版">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* CSS 变量与设计系统 (浅色/明亮模式 SaaS 风格，与视频实际界面对齐) */
+        :root {
+            --primary: #2563eb;
+            --primary-glow: rgba(37, 99, 235, 0.06);
+            --primary-hover: #1d4ed8;
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.08);
+            --warning: #d97706;
+            --warning-glow: rgba(217, 119, 6, 0.08);
+            --danger: #dc2626;
+            --danger-glow: rgba(220, 38, 38, 0.08);
+            --bg-main: #f8fafc;
+            --bg-card: #ffffff;
+            --border-color: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --font-main: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --font-title: 'Outfit', sans-serif;
+            --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.04);
+            --shadow-hover: 0 10px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            transition: background-color 0.2s, border-color 0.2s, transform 0.2s;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            overflow-x: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部演示导航栏 */
+        .demo-bar {
+            background: #ffffff;
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+            flex-shrink: 0;
+        }
+
+        .demo-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .demo-logo {
+            font-family: var(--font-title);
+            font-weight: 700;
+            font-size: 22px;
+            color: var(--text-main);
+            letter-spacing: -0.5px;
+        }
+
+        .demo-badge {
+            background: var(--primary-glow);
+            color: var(--primary);
+            border: 1px solid rgba(37, 99, 235, 0.2);
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .view-selectors {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            max-width: 75%;
+            padding: 4px 0;
+        }
+
+        .view-btn {
+            background: #f1f5f9;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .view-btn:hover {
+            color: var(--text-main);
+            border-color: #cbd5e1;
+            background: #e2e8f0;
+        }
+
+        .view-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+        }
+
+        /* 主工作空间 */
+        .workspace {
+            flex-grow: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .page-container {
+            width: 100%;
+            height: 100%;
+            display: none;
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .page-container.active {
+            display: flex;
+            gap: 24px;
+        }
+
+        /* 卡片设计 */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            box-shadow: var(--shadow-card);
+            padding: 24px;
+            position: relative;
+        }
+
+        .flex-left {
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+        }
+
+        .flex-right {
+            flex: 1.3;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+        }
+
+        h2 {
+            font-family: var(--font-title);
+            font-size: 19px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-main);
+        }
+
+        /* 搭建助手对话区域 */
+        .chat-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            overflow: hidden;
+            height: 520px;
+            box-shadow: var(--shadow-card);
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background: #f8fafc;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            line-height: 1.5;
+            font-size: 14px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
+
+        .message.bot {
+            align-self: flex-start;
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: var(--primary);
+            color: white;
+        }
+
+        .message-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .message.user .message-title {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* AI 执行过程折叠日志盒 (与视频截图 100% 对齐) */
+        .execution-process-box {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin: 6px 0;
+            font-size: 12px;
+            align-self: center;
+            width: 90%;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+            border-left: 3px solid var(--primary);
+        }
+
+        .ep-header {
+            font-weight: 600;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+        }
+
+        .ep-content {
+            color: #ef4444; /* 红色高亮字体，展示具体的分析执行意图 */
+            font-weight: 600;
+            font-family: monospace;
+        }
+
+        .radio-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .radio-option {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .radio-option:hover {
+            border-color: #cbd5e1;
+            background: #f8fafc;
+        }
+
+        .radio-option.selected {
+            border-color: var(--primary);
+            background: var(--primary-glow);
+        }
+
+        .radio-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 1px solid #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .radio-option.selected .radio-dot {
+            border-color: var(--primary);
+        }
+
+        .radio-option.selected .radio-dot::after {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: block;
+        }
+
+        .chat-input-wrapper {
+            padding: 14px 20px;
+            background: #ffffff;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .chat-input {
+            flex-grow: 1;
+            background: #f1f5f9;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .chat-input:focus {
+            border-color: var(--primary);
+            background: #ffffff;
+        }
+
+        .send-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+        }
+
+        .send-btn:hover {
+            background: var(--primary-hover);
+        }
+
+        /* 右侧步骤收集面板 */
+        .checklist-title-area {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .checklist-progress-num {
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--primary);
+            font-family: var(--font-title);
+        }
+
+        .progress-bar-bg {
+            background: #e2e8f0;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .progress-bar-fill {
+            background: var(--primary);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .checklist-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .checklist-item:last-child {
+            border-bottom: none;
+        }
+
+        .chk-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .chk-icon.pending {
+            border: 2px solid #cbd5e1;
+            color: var(--text-muted);
+        }
+
+        .chk-icon.active {
+            border: 2px solid var(--primary);
+            color: var(--primary);
+            background: var(--primary-glow);
+        }
+
+        .chk-icon.checked {
+            background: var(--success);
+            color: white;
+        }
+
+        .chk-content {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chk-name {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .chk-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        /* 快捷输入建议提示区 */
+        .template-reply-area {
+            background: #ffffff;
+            border: 1px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 14px;
+            margin-top: 10px;
+        }
+
+        .template-reply-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--warning);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .template-item {
+            font-size: 12px;
+            color: var(--text-muted);
+            padding: 6px 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .template-item:hover {
+            color: var(--primary);
+            text-decoration: underline;
+        }
+
+        /* 表格样式 */
+        .custom-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .custom-table th, .custom-table td {
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 15px;
+            text-align: left;
+        }
+
+        .custom-table th {
+            background: #f1f5f9;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .custom-table tr:hover td {
+            background: #f8fafc;
+        }
+
+        .badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge.pass { background: var(--success-glow); color: var(--success); border: 1px solid var(--success); }
+        .badge.warn { background: var(--warning-glow); color: var(--warning); border: 1px solid var(--warning); }
+        .badge.fail { background: var(--danger-glow); color: var(--danger); border: 1px solid var(--danger); }
+        .badge.testing { background: var(--primary-glow); color: var(--primary); border: 1px solid rgba(37, 99, 235, 0.2); }
+
+        /* SaaS 后台管理布局 */
+        .dashboard-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            background: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-card);
+        }
+
+        .sidebar {
+            width: 230px;
+            background: #0f172a; /* 侧边栏为深灰色对齐视频 */
+            border-right: 1px solid #1e293b;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            color: #94a3b8;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .sidebar-logo {
+            font-family: var(--font-title);
+            font-weight: 700;
+            font-size: 18px;
+            color: white;
+        }
+
+        .sidebar-menu {
+            list-style: none;
+            padding: 15px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex-grow: 1;
+        }
+
+        .menu-item {
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #94a3b8;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .menu-item:hover, .menu-item.active {
+            background: #1e293b;
+            color: white;
+        }
+
+        .menu-item.active {
+            color: #3b82f6;
+            background: rgba(59, 130, 246, 0.15);
+            font-weight: 600;
+        }
+
+        .sidebar-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 15px;
+            font-size: 12px;
+            color: #cbd5e1;
+        }
+
+        .sidebar-card-title {
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: white;
+        }
+
+        .sidebar-card-desc {
+            color: #94a3b8;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+
+        .sidebar-card-btn {
+            display: block;
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            text-align: center;
+            padding: 6px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+        }
+
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 24px;
+            background: #f8fafc;
+        }
+
+        /* 可视化 SOP 编辑器 (Page 8 Canvas Layout) */
+        .flow-editor-canvas {
+            position: relative;
+            width: 100%;
+            height: 520px;
+            background: radial-gradient(#cbd5e1 1.5px, transparent 1.5px);
+            background-size: 20px 20px;
+            background-color: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.03);
+        }
+
+        .canvas-workspace {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .flow-node-card {
+            position: absolute;
+            width: 280px;
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-left: 5px solid var(--text-muted);
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04);
+            padding: 14px;
+            cursor: move;
+            z-index: 10;
+            transition: none; /* Disable transitions for smooth dragging */
+        }
+
+        .flow-node-card:hover {
+            box-shadow: var(--shadow-hover);
+        }
+
+        .flow-node-card.definition { border-left-color: var(--text-muted); }
+        .flow-node-card.trigger { border-left-color: var(--primary); }
+        .flow-node-card.strategy { border-left-color: var(--success); }
+        .flow-node-card.constraint { border-left-color: var(--warning); }
+
+        .flow-node-card .card-title {
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 6px;
+        }
+
+        .flow-node-card .card-body {
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .flow-node-card .socket {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #cbd5e1;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            z-index: 20;
+        }
+
+        .flow-node-card .socket.input {
+            top: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .flow-node-card .socket.output {
+            bottom: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .flow-svg-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .canvas-toolbar {
+            position: absolute;
+            bottom: 15px;
+            left: 15px;
+            display: flex;
+            gap: 8px;
+            z-index: 50;
+        }
+
+        .pill-badge {
+            background: rgba(139, 92, 246, 0.08);
+            color: #7c3aed;
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        /* Tab 导航器样式 */
+        .tab-container {
+            display: flex;
+            border-bottom: 2px solid var(--border-color);
+            margin-bottom: 20px;
+            gap: 20px;
+        }
+
+        .tab-header {
+            padding: 10px 5px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .tab-header.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        /* 渠道网关集成 */
+        .channels-section {
+            margin-bottom: 25px;
+        }
+
+        .channels-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .channel-card {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            box-shadow: var(--shadow-card);
+        }
+
+        .channel-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .channel-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: white;
+            font-weight: bold;
+        }
+
+        /* 常用按钮 */
+        .btn {
+            background: #ffffff;
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
+
+        .btn:hover {
+            border-color: #cbd5e1;
+            background: #f8fafc;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            box-shadow: 0 2px 6px rgba(37, 99, 235, 0.15);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+        }
+
+        /* 手机沙盒测试浮动预览器 (浮动在黄粉暖色风景图上，复刻视频实际沙盒) */
+        .sandbox-scenic-container {
+            background: linear-gradient(135deg, #fef08a 0%, #cbd5e1 50%, #f472b6 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            height: 520px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            box-shadow: var(--shadow-card);
+        }
+
+        .sandbox-widget {
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.15);
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .sandbox-header {
+            padding: 14px 18px;
+            background: #ffffff;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sandbox-logo {
+            font-family: var(--font-title);
+            font-weight: 700;
+            font-size: 15px;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .action-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .status-badge {
+            background: var(--success-glow);
+            color: var(--success);
+            border: 1px solid var(--success);
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .test-case-detail {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 10px;
+            font-size: 13px;
+            box-shadow: var(--shadow-card);
+        }
+
+        .test-case-header {
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .test-case-meta {
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部演示导航栏 -->
+    <div class="demo-bar">
+        <div class="demo-title">
+            <span class="demo-logo">3Chat.ai</span>
+            <span class="demo-badge">SuiXian Builder</span>
+        </div>
+        <div class="view-selectors">
+            <button class="view-btn active" onclick="switchView(1)" id="btn-view-1">1. 行业选择</button>
+            <button class="view-btn" onclick="switchView(2)" id="btn-view-2">2. 描述逻辑 (Step 5)</button>
+            <button class="view-btn" onclick="switchView(3)" id="btn-view-3">3. 方案概览</button>
+            <button class="view-btn" onclick="switchView(4)" id="btn-view-4">4. 测试用例生成</button>
+            <button class="view-btn" onclick="switchView(5)" id="btn-view-5">5. 沙盒测试</button>
+            <button class="view-btn" onclick="switchView(6)" id="btn-view-6">6. 运行结果与回流报告</button>
+            <button class="view-btn" onclick="switchView(7)" id="btn-view-7">7. AI 技能表</button>
+            <button class="view-btn" onclick="switchView(8)" id="btn-view-8">8. SOP 编辑器</button>
+            <button class="view-btn" onclick="switchView(9)" id="btn-view-9">9. 全渠道集成</button>
+        </div>
+        <div>
+            <button class="btn btn-primary" onclick="alert('方案已部署上线！(演示环境已保存)')">发布</button>
+        </div>
+    </div>
+
+    <!-- 主工作空间 -->
+    <div class="workspace">
+
+        <!-- 页面一：行业与角色选择（搭建第一步） -->
+        <div class="page-container active" id="view-1">
+            <div class="flex-left">
+                <div class="chat-area">
+                    <div class="chat-messages">
+                        <div class="message bot">
+                            <div class="message-title">3Chat.ai Builder</div>
+                            欢迎来到 Agent Builder!<br>我会先帮你梳理一个可用的 3Chat Agent，再陪你一起测试、优化并发布。在开始之前，我会先用几个简短问题了解你的业务，以及你希望这个 Agent 帮你完成什么。
+                        </div>
+                        <div class="message bot">
+                            <div class="message-title">3Chat.ai Builder</div>
+                            你所在的行业是什么？先选一个最接近的行业，我会据此判断 Agent 更适合解决哪些问题。<br>
+                            <i>如果这些选项都不太匹配，也可以直接发消息告诉我们具体是做什么的。</i>
+
+                            <div class="radio-options">
+                                <div class="radio-option selected" onclick="selectRadio(this)">
+                                    <span class="radio-dot"></span>
+                                    <span>电商</span>
+                                </div>
+                                <div class="radio-option" onclick="selectRadio(this)">
+                                    <span class="radio-dot"></span>
+                                    <span>医疗健康</span>
+                                </div>
+                                <div class="radio-option" onclick="selectRadio(this)">
+                                    <span class="radio-dot"></span>
+                                    <span>科技</span>
+                                </div>
+                                <div class="radio-option" onclick="selectRadio(this)">
+                                    <span class="radio-dot"></span>
+                                    <span>本地生活服务</span>
+                                </div>
+                                <div class="radio-option" onclick="selectRadio(this)">
+                                    <span class="radio-dot"></span>
+                                    <span>教育培训</span>
+                                </div>
+                                <div class="radio-option" onclick="selectRadio(this)">
+                                    <span class="radio-dot"></span>
+                                    <span>零售与消费品</span>
+                                </div>
+                            </div>
+                            <div style="margin-top: 15px; display: flex; gap: 10px;">
+                                <button class="btn" style="padding: 4px 12px; font-size: 12px;" onclick="resetRadio()">清空</button>
+                                <button class="btn btn-primary" style="padding: 4px 12px; font-size: 12px;" onclick="goToNextStep(2)">确认</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-input-wrapper">
+                        <input type="text" class="chat-input" placeholder="输入消息..." value="电商">
+                        <button class="send-btn" onclick="goToNextStep(2)">➔</button>
+                    </div>
+                </div>
+            </div>
+            <div class="flex-right card">
+                <div class="checklist-title-area">
+                    <span style="font-weight:600;">信息收集进度</span>
+                    <span class="checklist-progress-num">0/5</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" style="width: 0%;"></div>
+                </div>
+                <div class="checklist-item">
+                    <span class="chk-icon active">1</span>
+                    <div class="chk-content">
+                        <span class="chk-name">行业</span>
+                        <span class="chk-desc">你的业务主要属于哪个行业？</span>
+                    </div>
+                </div>
+                <div class="checklist-item">
+                    <span class="chk-icon pending">2</span>
+                    <div class="chk-content">
+                        <span class="chk-name">角色定位</span>
+                        <span class="chk-desc">这个智能体在业务中主要承担什么角色？</span>
+                    </div>
+                </div>
+                <div class="checklist-item">
+                    <span class="chk-icon pending">3</span>
+                    <div class="chk-content">
+                        <span class="chk-name">产品/服务</span>
+                        <span class="chk-desc">智能体需要重点支持哪些产品或服务？</span>
+                    </div>
+                </div>
+                <div class="checklist-item">
+                    <span class="chk-icon pending">4</span>
+                    <div class="chk-content">
+                        <span class="chk-name">业务目标</span>
+                        <span class="chk-desc">希望用智能体实现什么目标？</span>
+                    </div>
+                </div>
+                <div class="checklist-item">
+                    <span class="chk-icon pending">5</span>
+                    <div class="chk-content">
+                        <span class="chk-name">核心工作流</span>
+                        <span class="chk-desc">描述你希望智能体执行的具体工作细节</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页面二：描述业务逻辑与待收发要素（搭建第五步） -->
+        <div class="page-container" id="view-2">
+            <div class="flex-left">
+                <div class="chat-area">
+                    <div class="chat-messages">
+                        <div class="message bot">
+                            <div class="message-title">3Chat.ai Builder</div>
+                            <strong>🌱 任务 3: 分期方案介绍时，什么情况继续讲，什么情况停下来转人工</strong><br>
+                            <strong>❓ 核心问题</strong><br>
+                            1. 客户一旦表示想分期，Agent 通常要先介绍哪些内容？<br>
+                            <i>比如：首付、月供、期数、申请条件。</i><br>
+                            2. 如果客户贷款资格明显不符合，比如未满 21 岁 / 无正式工作 / 无 KTP，Agent 是直接告知暂时办不了，还是推荐全款 / 其他机型继续聊？<br>
+                            3. 哪些分期相关问题，Agent 可以正常回答；哪些情况要交给客户经理？<br>
+                            <i>比如：普通分期说明由 Agent 处理；客户开始问具体审批、特殊资质、急着下单时转人工。</i>
+                        </div>
+                        <div class="template-reply-area">
+                            <div class="template-reply-title">💬 您现在可以这样回复我 (点击填入输入框)</div>
+                            <div class="template-item" onclick="fillInput('我们一般先按预算推荐机型，再问要不要分期。推荐主要看预算、想要的型号、成色和容量。预算不够就推荐低一档机型，或者建议分期买更高一档。')">• 我们一般先按预算推荐机型，再问要不要分期。</div>
+                            <div class="template-item" onclick="fillInput('分期会先讲首付、月供、期数和申请条件。如果年龄、工作、KTP 不符合，就建议客户看全款机型，不继续走分期。')">• 分期会先讲首付、月供、期数和申请条件。</div>
+                        </div>
+                    </div>
+                    <div class="chat-input-wrapper">
+                        <input type="text" class="chat-input" id="chat-input-2" placeholder="输入消息..." value="我们一般先按预算推荐机型，再问要不要分期。分期会先讲首付、月供、期数 and 申请条件。如果年龄、工作、KTP不符合，就建议客户看全款机型。">
+                        <button class="send-btn" onclick="goToNextStep(3)">➔</button>
+                    </div>
+                </div>
+            </div>
+            <div class="flex-right card">
+                <div class="checklist-title-area">
+                    <span style="font-weight:600;">信息收集进度</span>
+                    <span class="checklist-progress-num">4/5</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" style="width: 80%;"></div>
+                </div>
+                <div class="checklist-item">
+                    <span class="chk-icon checked">✓</span>
+                    <div class="chk-content">
+                        <span class="chk-name" style="color:var(--success);">行业</span>
+                        <span class="chk-desc">电商</span>
+                    </div>
+                </div>
+                <div class="checklist-item">
+                    <span class="chk-icon checked">✓</span>
+                    <div class="chk-content">
+                        <span class="chk-name" style="color:var(--success);">角色定位</span>
+                        <span class="chk-desc">售前咨询</span>
+                    </div>
+                </div>
+                <div class="checklist-item">
+                    <span class="chk-icon checked">✓</span>
+                    <div class="chk-content">
+                        <span class="chk-name" style="color:var(--success);">产品/服务</span>
+                        <span class="chk-desc">二手苹果手机，分期贷款</span>
+                    </div>
+                </div>
+                <div class="checklist-item">
+                    <span class="chk-icon checked">✓</span>
+                    <div class="chk-content">
+                        <span class="chk-name" style="color:var(--success);">业务目标</span>
+                        <span class="chk-desc">接待新客并判断购买意向，转人工</span>
+                    </div>
+                </div>
+                <div class="checklist-item">
+                    <span class="chk-icon active">5</span>
+                    <div class="chk-content">
+                        <span class="chk-name">核心工作流</span>
+                        <span class="chk-desc">当前待补充：分期审核和转人工逻辑</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页面三：初步生成方案概览页 -->
+        <div class="page-container" id="view-3">
+            <div class="flex-left card">
+                <div class="action-bar">
+                    <span class="status-badge">● 智能体已部署到沙盒</span>
+                    <span style="font-size: 13px; color:var(--text-muted);">部署时间：2026-05-24 16:44:17</span>
+                </div>
+                <h2>✅ 核心功能 (6个)</h2>
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">功能</th>
+                            <th>用途</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>🗂️ 画像收集</strong></td>
+                            <td>对话中自动记录客户预算、用途、意向机型等关键信息</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🔍 需求探询与机型推荐</strong></td>
+                            <td>先问预算，再了解电池偏好和用途，按痛点推荐合适机型</td>
+                        </tr>
+                        <tr>
+                            <td><strong>💳 分期方案介绍</strong></td>
+                            <td>仅在客户主动问到分期时，依据知识库介绍分期贷款方案</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🎯 高意向转化与资格确认</strong></td>
+                            <td>客户主动表明预定机型时，确认贷款资格（21岁、正式工作、KTP），满足后总结并转客户经理</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🤝 疑虑答疑</strong></td>
+                            <td>处理客户对成色、电池、价格、售后等方面的疑虑</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🔔 犹豫心理处理</strong></td>
+                            <td>对轻度犹豫的客户提供温和引导，推动继续沟通</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h2 style="margin-top: 20px;">📌 关键设计要点</h2>
+                <ul style="list-style-type: none; font-size: 14px; line-height: 1.8; padding-left: 10px;">
+                    <li>🔹 <strong style="color:var(--warning);">不主动提分期</strong>：只有客户主动咨询时才介绍分期方案。</li>
+                    <li>🔹 <strong>高意向判定标准</strong>：客户主动表明预定具体机型。</li>
+                    <li>🔹 <strong>贷款资格三要素</strong>：年满 21 岁、有正式工作、持有 KTP。</li>
+                    <li>🔹 <strong>低意向客户不转人工</strong>：由 AI 持续接待，自然推进。</li>
+                </ul>
+
+                <div style="background: #f8fafc; padding: 15px; border-radius: 8px; font-size: 13px; margin-top: 15px; line-height: 1.6; border: 1px solid var(--border-color);">
+                    <p style="font-weight: 600; margin-bottom: 6px;">已帮您将方案部署到 3Chat 平台。接下来您可以按下面的顺序操作：</p>
+                    <p>1. 🧪 <strong>沙盒测试</strong>：进入沙盒测试，先体验 AI 客服的实际对话效果。 <button class="btn btn-primary" style="padding: 2px 10px; font-size: 11px; margin-left: 10px;" onclick="goToNextStep(5)">进入沙盒</button></p>
+                    <p>2. 🚀 <strong>发布上线</strong>：如果沙盒测试效果符合预期，可以点击页面右上角的发布按钮，直接发布到线上。</p>
+                    <p>3. 🔗 <strong>接入渠道</strong>：进入渠道配置，将 AI 客服接入实际业务渠道。</p>
+                </div>
+            </div>
+            <div class="flex-right">
+                <div class="sandbox-scenic-container">
+                    <div class="sandbox-widget">
+                        <div class="sandbox-header">
+                            <span class="sandbox-logo">💬 3Chat Sandbox</span>
+                            <span class="badge testing">沙盒环境</span>
+                        </div>
+                        <div class="chat-messages" id="sandbox-chat-box-3">
+                            <div class="message bot">
+                                <div class="message-title">AI 客服 (SPARK手机客服)</div>
+                                您好，我是 SPARK 手机零售助手。请问您需要什么帮助？
+                            </div>
+                        </div>
+                        <div class="chat-input-wrapper">
+                            <input type="text" class="chat-input" id="sandbox-input-3" placeholder="输入测试消息...">
+                            <button class="send-btn" onclick="sendSandboxMessage3()">➔</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页面四：自测试集生成页 -->
+        <div class="page-container" id="view-4">
+            <div class="flex-left card">
+                <h2>🧪 自测试：AI 自动生成模拟测试集</h2>
+                <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 20px;">
+                    根据您的真实业务场景以及预置的行业 SOP，Builder 自动构建了 12 条边界测试场景用例，涵盖正常咨询、边界条件和攻击性测试。
+                </p>
+
+                <div class="test-case-detail">
+                    <div class="test-case-header">
+                        <span>TC-001 | 先给预算与用途，顺利拿到机型推荐</span>
+                        <span class="badge testing">待测试</span>
+                    </div>
+                    <div class="test-case-meta">技能目标: 需求探询与机型推荐 -> 画像收集 -> 需求探询与机型推荐</div>
+                    <p style="margin-bottom: 6px;"><strong>👤 用户画像：</strong>刚换工作不久，预算 2500-3000 元，主要用来拍照、社交和日常视频。配合度高，回答直接。</p>
+                    <p><strong>✅ 通过标准：</strong>首轮识别购机，预算给齐后推荐机型及简短理由。不主动引入分期。回复简短专业。</p>
+                </div>
+
+                <div class="test-case-detail">
+                    <div class="test-case-header">
+                        <span>TC-002 | 已有明确意向机型，继续了解并推进预定</span>
+                        <span class="badge testing">待测试</span>
+                    </div>
+                    <div class="test-case-meta">技能目标: 需求探询与机型推荐 -> 高意向转化与资格确认 -> 转人工</div>
+                    <p style="margin-bottom: 6px;"><strong>👤 用户画像：</strong>明确要买 iPhone XR，想咨询分期。年龄已满 21 岁，有正式工作且持有 KTP 身份证。</p>
+                    <p><strong>✅ 通过标准：</strong>确认其分期贷款资格，确认合格后自动总结并转交客户经理预定。</p>
+                </div>
+
+                <div class="test-case-detail">
+                    <div class="test-case-header">
+                        <span>TC-003 | 用户只问分期但不透露机型与预算</span>
+                        <span class="badge testing">待测试</span>
+                    </div>
+                    <div class="test-case-meta">技能目标: 分期方案介绍 -> 需求探询</div>
+                    <p style="margin-bottom: 6px;"><strong>👤 用户画像：</strong>一上来只追问能不能分期、首付和月供是多少，拒绝透露自己想买什么型号和预算。</p>
+                    <p><strong>✅ 通过标准：</strong>AI 必须保守性口头承诺支持分期，但不给出具体首付数字，引导用户先说预算或感兴趣的机型。</p>
+                </div>
+
+                <div style="text-align: center; margin-top: 15px;">
+                    <button class="btn btn-primary" onclick="goToNextStep(5)">开始进行测试</button>
+                </div>
+            </div>
+            <div class="flex-right card">
+                <div style="font-weight: 600; margin-bottom: 12px;">自测试集概览</div>
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                    <p>📊 测试案例总数: <strong>12 Cases</strong></p>
+                    <p>🎯 技能覆盖: 画像收集、需求探询、分期方案介绍、资格确认、疑虑答疑、转人工规则</p>
+                    <p>⏱️ 预计模拟时长: <strong>约 2 分钟</strong></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页面五：沙盒对话执行与流程跟踪页 -->
+        <div class="page-container" id="view-5">
+            <div class="flex-left card">
+                <h2>🧪 沙盒测试执行中</h2>
+                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">
+                    在沙盒环境中，支持多国语言对话，AI 在回答客户的同时会在后台分析调用的技能和画像收集状态。
+                </p>
+                <div style="background: #0f172a; padding: 15px; border-radius: 8px; font-size: 13px; line-height: 1.6; border: 1px solid #1e293b; color: #38bdf8;">
+                    <p style="font-weight: 600; color: #fbbf24; margin-bottom: 8px;">⚙️ AI 后台执行追踪 (SOP Trace Log)</p>
+                    <div id="execution-trace" style="font-family: monospace; white-space: pre-wrap; color: #e2e8f0; font-size: 12px; height: 120px; overflow-y: auto;">[系统初始化] 载入 SPARK 手机零售预置 SOP...
+[SOP 节点] 当前任务：需求探询与机型推荐
+[状态记录] 正在收集用户画像：待探询预算、机型偏好。</div>
+                </div>
+                <div style="margin-top: 15px; background: #f8fafc; border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; font-size: 13px;">
+                    <p style="font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                        📋 <span>已提取的画像要素 (Slot-Filling Variables)</span>
+                    </p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;" id="slot-variables-container">
+                        <div style="display:flex; justify-content:space-between; padding: 4px 8px; background:white; border-radius:4px; border:1px solid #e2e8f0;">
+                            <span style="color:#64748b;">购机预算</span>
+                            <strong id="slot-budget" style="color:#f59e0b;">未收集</strong>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding: 4px 8px; background:white; border-radius:4px; border:1px solid #e2e8f0;">
+                            <span style="color:#64748b;">购机用途</span>
+                            <strong id="slot-phone_usage" style="color:#f59e0b;">未收集</strong>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding: 4px 8px; background:white; border-radius:4px; border:1px solid #e2e8f0;">
+                            <span style="color:#64748b;">电池要求</span>
+                            <strong id="slot-battery_health" style="color:#f59e0b;">未收集</strong>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding: 4px 8px; background:white; border-radius:4px; border:1px solid #e2e8f0;">
+                            <span style="color:#64748b;">年龄</span>
+                            <strong id="slot-age" style="color:#f59e0b;">未收集</strong>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding: 4px 8px; background:white; border-radius:4px; border:1px solid #e2e8f0;">
+                            <span style="color:#64748b;">有无工作</span>
+                            <strong id="slot-job" style="color:#f59e0b;">未收集</strong>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; padding: 4px 8px; background:white; border-radius:4px; border:1px solid #e2e8f0;">
+                            <span style="color:#64748b;">KTP身份证</span>
+                            <strong id="slot-ktp" style="color:#f59e0b;">未收集</strong>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top: 20px; text-align: center; display: flex; justify-content: center; gap: 10px;">
+                    <button class="btn btn-primary" onclick="simulateSandboxChat()">模拟多轮对话</button>
+                    <button class="btn btn-primary" style="background:var(--success); border-color:var(--success); color: white;" onclick="runAllTests()">运行批量自动化测试集</button>
+                </div>
+            </div>
+            <div class="flex-right">
+                <div class="sandbox-scenic-container">
+                    <div class="sandbox-widget">
+                        <div class="sandbox-header">
+                            <span class="sandbox-logo">💬 3Chat Sandbox</span>
+                            <span class="badge testing">沙盒调试</span>
+                        </div>
+                        <div class="chat-messages" id="sandbox-chat-box" style="background: #f1f5f9;">
+                            <div class="message bot">
+                                <div class="message-title">AI 客服 (SPARK手机客服)</div>
+                                您好，我是 SPARK 手机零售助手。请问您需要什么帮助？
+                            </div>
+                        </div>
+                        <div class="chat-input-wrapper">
+                            <input type="text" class="chat-input" id="sandbox-input" placeholder="输入测试消息..." value="我想聊一下 iPhone">
+                            <button class="send-btn" onclick="sendSandboxMessage()">➔</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页面六：自测效果分析与优化建议报告页 -->
+        <div class="page-container" id="view-6">
+            <div class="flex-left card">
+                <h2>📊 自测试集运行结果及效果分析</h2>
+
+                <!-- Tab 导航栏，引入真实数据回流反馈 (Omission 3) -->
+                <div class="tab-container">
+                    <span class="tab-header active" id="tab-report-sim" onclick="switchReportTab('sim')">🤖 自动化模拟测试报告 (12 Cases)</span>
+                    <span class="tab-header" id="tab-report-live" onclick="switchReportTab('live')">📡 线上真实数据回流诊断 (Live Feedback)</span>
+                </div>
+
+                <!-- 模拟测试报告板块 -->
+                <div id="panel-report-sim">
+                    <div style="display: flex; gap: 20px; margin-bottom: 20px; align-items: center;">
+                        <div style="background:#f1f5f9; padding: 12px 20px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color);">
+                            <div style="font-size: 28px; font-weight:700; color:var(--warning);" id="report-pass-rate">50%</div>
+                            <div style="font-size: 11px; color:var(--text-muted); margin-top:2px;">测试通过率</div>
+                        </div>
+                        <div style="font-size:13px; line-height: 1.5;">
+                            运行状态：<strong id="report-status"><span style="color:var(--success);">运行完成</span></strong><br>
+                            本次测试运行结果：<span id="report-summary-text"><strong>12 Cases</strong> (6 PASS / 3 FAIL / 3 WARN)</span><br>
+                            <span id="report-time">运行时间：2026-05-26 05:53</span>
+                        </div>
+                    </div>
+
+                    <h3>Case 级总览 (点击行可展开对话审计详情)</h3>
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>场景名称</th>
+                                <th>结果</th>
+                                <th>失败项</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-cases-tbody"></tbody>
+                    </table>
+                </div>
+
+                <!-- 真实回流数据诊断板块 (Omission 3) -->
+                <div id="panel-report-live" style="display:none;">
+                    <div style="display: flex; gap: 20px; margin-bottom: 20px; align-items: center;">
+                        <div style="background:#e0f2fe; padding: 12px 20px; border-radius: 8px; text-align: center; border: 1px solid #bae6fd;">
+                            <div style="font-size: 28px; font-weight:700; color:#0369a1;">已监控</div>
+                            <div style="font-size: 11px; color:#0369a1; margin-top:2px;">线上消息回流</div>
+                        </div>
+                        <div style="font-size:13px; line-height: 1.5;">
+                            今日回流真实对话：<strong>1,420 轮</strong><br>
+                            异常/失败流自动检出：<strong style="color:var(--danger);">2 个缺陷事件</strong><br>
+                            接入渠道：WhatsApp Business, 微信客服
+                        </div>
+                    </div>
+
+                    <h3>📡 真实生产缺陷事件审计与优化建议</h3>
+                    <div style="background:#f8fafc; border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; font-size:13px; line-height: 1.6; margin-top: 10px;">
+                        <p style="font-weight:700; color:var(--danger); margin-bottom: 4px;">[真实对话缺陷 QA-284] - WhatsApp 渠道</p>
+                        <p style="background:#ffffff; padding: 8px; border-radius: 6px; border:1px solid var(--border-color); font-size:12px; margin-bottom: 8px;">
+                            💬 <strong>消费者：</strong>你们分期首付怎么算的？我才刚入职新工作 1 个月，可以做吗？<br>
+                            🤖 <strong>AI 客服：</strong>可以的！我们的分期首付低至 10% 起。请问您是否年满 21 岁并持有印尼 KTP 身份证？
+                        </p>
+                        <p><strong>⚠️ 问题诊断：</strong>AI 销售助手未校验工作年限，机械判定其拥有“固定工作”，绕过了稳定性审核限制，存在潜在坏账与财务违约风险。</p>
+                        <p style="margin-top: 6px; font-weight: 600; color: var(--primary);">💡 回流反哺优化建议：</p>
+                        <p style="font-size:12px; color:var(--text-muted);">自动在 [高意向转化与资格确认] 技能的执行策略中补充一项硬约束：必须询问并确认识商户贷款资质的“工作时长需满 3 个月”，否则建议看全款。</p>
+                        <button class="btn btn-primary" style="margin-top: 12px; padding: 4px 12px; font-size: 12px;" onclick="applyRealDataOptimizations()">采用生产数据反馈，自动迭代 Prompt</button>
+                    </div>
+                </div>
+            </div>
+            <div class="flex-right card">
+                <h2>⚙️ 自动缺陷归因与建议</h2>
+
+                <h3 style="font-size:14px; margin-top:10px;">本次测试归因分布</h3>
+                <table class="custom-table" style="font-size:12px;">
+                    <thead>
+                        <tr>
+                            <th>归因维度</th>
+                            <th>命中 CASES</th>
+                            <th>失败项</th>
+                        </tr>
+                    </thead>
+                    <tbody id="report-attribution-tbody">
+                        <!-- Dynamic attribution stats -->
+                    </tbody>
+                </table>
+
+                <h3 style="font-size:14px; margin-top:20px; color:var(--primary);">💡 优化建议</h3>
+                <div id="report-optimizations-container" style="background:#f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.5; max-height:220px; overflow-y:auto;">
+                    <!-- Dynamic recommendations -->
+                </div>
+
+                <button class="btn btn-primary" style="margin-top:15px; width:100%;" onclick="applyOptimizations()">确认采取优化建议，自动迭代 Agent</button>
+            </div>
+        </div>
+
+        <!-- 页面七：后台管理面板（AI 技能列表） -->
+        <div class="page-container" id="view-7">
+            <div class="dashboard-container">
+                <div class="sidebar">
+                    <div class="sidebar-header">
+                        <span class="sidebar-logo">🤖 3Chat Agent</span>
+                    </div>
+                    <ul class="sidebar-menu">
+                        <li class="menu-item">📊 效果表现</li>
+                        <li class="menu-item">💬 消息统计</li>
+                        <li class="menu-item" style="color:#64748b; font-size:11px; text-transform:uppercase; pointer-events:none; padding-top:10px;">训练与指导</li>
+                        <li class="menu-item">📚 知识库</li>
+                        <li class="menu-item">📝 指导</li>
+                        <li class="menu-item">📌 固定话术</li>
+                        <li class="menu-item active">⚙️ AI 技能</li>
+                        <li class="menu-item" style="color:#64748b; font-size:11px; text-transform:uppercase; pointer-events:none; padding-top:10px;">调试</li>
+                        <li class="menu-item">🧪 沙盒测试</li>
+                        <li class="menu-item">📂 测试集</li>
+                    </ul>
+                    <div class="sidebar-card">
+                        <div class="sidebar-card-title">3ChatClaw 🚀</div>
+                        <div class="sidebar-card-desc">商家本地运行 OpenClaw 插件，极速响应。</div>
+                        <button class="sidebar-card-btn" onclick="alert('即将跳转开通 3ChatClaw')">￥ 198/月 即刻启用</button>
+                    </div>
+                </div>
+                <div class="main-content">
+
+                    <!-- 行业虚拟知识库一键自动生成提示框 (Omission 1) -->
+                    <div id="kb-generation-banner" style="background: rgba(37, 99, 235, 0.05); border: 1px dashed var(--primary); padding: 14px 20px; border-radius: 8px; font-size: 13px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow-card);">
+                        <span>💡 <strong>开箱即用提示：</strong>您当前尚未上传真实商品库存表格。系统支持<strong>一键生成行业虚拟知识库</strong>以立即跑通测试。</span>
+                        <button class="btn btn-primary" style="padding: 6px 14px; font-size: 12px; white-space: nowrap;" id="btn-gen-kb" onclick="generateVirtualKB()">生成虚拟手机库</button>
+                    </div>
+
+                    <!-- 真实自定义产品库 (RAG 向量检索) -->
+                    <div class="card" style="margin-bottom: 25px; padding: 20px;">
+                        <h3 style="font-size:15px; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                            📚 <span>商家真实自定义产品库 (RAG 向量检索)</span>
+                        </h3>
+                        <p style="font-size:12px; color:var(--text-muted); margin-bottom:15px;">
+                            支持上传库存表格或常见问答 (.txt, .csv, .json)，系统将自动分块并在后台调用 Ollama/Dify 生成向量并存入 PostgreSQL。AI 销售助理回复时将基于向量余弦相似度匹配知识库。
+                        </p>
+                        <div style="display:flex; gap:20px; align-items:flex-start;">
+                            <div style="flex:1.2; background:#f8fafc; border:2px dashed #cbd5e1; border-radius:10px; padding:20px; text-align:center;">
+                                <p style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">选择您的商品数据文档</p>
+                                <input type="file" id="kb-file-input" style="display:none;" onchange="uploadCustomKnowledgeFile()">
+                                <button class="btn btn-primary" style="font-size:12px; padding:6px 14px;" onclick="document.getElementById('kb-file-input').click()">选择并上传文件</button>
+                                <div id="upload-progress-text" style="font-size:11px; margin-top:8px; color:var(--primary); font-weight:600; min-height: 15px;"></div>
+                            </div>
+                            <div style="flex:2.2;">
+                                <table class="custom-table" style="font-size:12px; margin-top:0; background:white; border: 1px solid var(--border-color); border-radius: 8px;">
+                                    <thead>
+                                        <tr>
+                                            <th>文件名</th>
+                                            <th>上传时间</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="custom-kb-tbody">
+                                        <tr><td colspan="3" style="text-align:center; color:var(--text-muted);">正在加载自定义文档列表...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+                        <div>
+                            <h2 style="font-size:20px;">AI 技能</h2>
+                            <p style="font-size:13px; color:var(--text-muted); margin-top:4px;">3Chat Agent 具备处理复杂任务的能力，融合 AI 技术与规则引擎，可依照触发指令自动开展多步业务流程，提供专业服务。</p>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn">教程中心</button>
+                            <button class="btn">详细教程</button>
+                            <button class="btn btn-primary" onclick="goToNextStep(8)">+ 创建任务</button>
+                        </div>
+                    </div>
+
+                    <table class="custom-table" style="background:#ffffff; border-radius:8px; border: 1px solid var(--border-color);">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>标题</th>
+                                <th>类型</th>
+                                <th>状态</th>
+                                <th>创建时间</th>
+                                <th>更新时间</th>
+                                <th>dataId</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="skills-table-body">
+                            <tr onclick="goToNextStep(8)" style="cursor:pointer;">
+                                <td>1</td>
+                                <td><strong>画像收集</strong></td>
+                                <td>画像收集</td>
+                                <td><span class="badge testing">测试中</span></td>
+                                <td>2026-05-24 16:44:17</td>
+                                <td>2026-05-24 16:49:45</td>
+                                <td><code>ejutx3aq2au8kj4a8fo281o6</code></td>
+                                <td style="color:var(--primary);">详情</td>
+                            </tr>
+                            <tr>
+                                <td>2</td>
+                                <td><strong>高意向转化与资格确认</strong></td>
+                                <td>自定义任务</td>
+                                <td><span class="badge testing">测试中</span></td>
+                                <td>2026-05-24 16:44:17</td>
+                                <td>2026-05-24 16:49:39</td>
+                                <td><code>12kfaju8tgk695afj6nfw7y</code></td>
+                                <td style="color:var(--primary);">详情</td>
+                            </tr>
+                            <tr onclick="goToNextStep(8)" style="cursor:pointer; background:rgba(37, 99, 235, 0.03);">
+                                <td>3</td>
+                                <td><strong>需求探询与机型推荐</strong></td>
+                                <td>自定义任务</td>
+                                <td><span class="badge testing">测试中</span></td>
+                                <td>2026-05-24 16:44:17</td>
+                                <td>2026-05-24 16:48:22</td>
+                                <td><code>g7985hgvk3lhe1ytyqy6nxlw0</code></td>
+                                <td style="color:var(--primary);">详情</td>
+                            </tr>
+                            <tr>
+                                <td>4</td>
+                                <td><strong>犹豫心理处理</strong></td>
+                                <td>自定义任务</td>
+                                <td><span class="badge testing">测试中</span></td>
+                                <td>2026-05-24 16:44:17</td>
+                                <td>2026-05-24 16:44:17</td>
+                                <td><code>f6nb7cl57y6lwotjsgw0j8kq</code></td>
+                                <td style="color:var(--primary);">详情</td>
+                            </tr>
+                            <tr>
+                                <td>5</td>
+                                <td><strong>疑虑答疑</strong></td>
+                                <td>自定义任务</td>
+                                <td><span class="badge testing">测试中</span></td>
+                                <td>2026-05-24 16:44:17</td>
+                                <td>2026-05-24 16:44:17</td>
+                                <td><code>e89d1a3c7b2a4e5f6d7c8b9a</code></td>
+                                <td style="color:var(--primary);">详情</td>
+                            </tr>
+                            <tr>
+                                <td>6</td>
+                                <td><strong>分期方案介绍</strong></td>
+                                <td>自定义任务</td>
+                                <td><span class="badge testing">测试中</span></td>
+                                <td>2026-05-24 16:44:17</td>
+                                <td>2026-05-24 16:44:17</td>
+                                <td><code>a1b2c3d4e5f67890abcdef12</code></td>
+                                <td style="color:var(--primary);">详情</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页面八：可视化 SOP 编辑器（技能详情，引入技能双向结构 Omission 2） -->
+        <div class="page-container" id="view-8">
+            <div class="flex-left card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <div>
+                        <h2 style="font-size:20px;" id="skill-detail-title">需求探询与机型推荐 (SOP 技能详情)</h2>
+                        <p style="font-size:12px; color:var(--text-muted); margin-top:2px;">SOP自定义流程决策树节点设计 (可拖拽连线)</p>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <button class="btn" onclick="goToNextStep(7)">取消</button>
+                        <button class="btn btn-primary" onclick="saveActiveSkill()">保存配置</button>
+                        <button class="btn" onclick="addNewNode()">+ 添加新分支</button>
+                        <button class="btn btn-primary" style="background:var(--success); border-color:var(--success); color: white;" onclick="alert('当前技能已在该智能体中上线！')">运行</button>
+                    </div>
+                </div>
+
+                <!-- Interactive flow editor canvas -->
+                <div class="flow-editor-canvas" id="flow-editor-canvas">
+                    <div class="canvas-workspace" id="canvas-workspace">
+                        <svg class="flow-svg-overlay" id="flow-svg-overlay"></svg>
+                        <!-- Nodes will be rendered dynamically here -->
+                    </div>
+                    <div class="canvas-toolbar">
+                        <button class="btn btn-primary" style="padding:4px 10px; font-size:11px;" onclick="addNewNode()">+ 增加节点</button>
+                        <button class="btn" style="padding:4px 10px; font-size:11px;" onclick="canvasNodes=[
+                            { id: 'node_1', title: '💡 任务定义', type: 'definition', left: 360, top: 30, body: '了解客户预算、使用需求和痛点，根据客户情况推荐合适的二手苹果手机型号。' },
+                            { id: 'node_2', title: '⚡ 触发调用条件', type: 'trigger', left: 100, top: 200, body: '当消费者消息提及或意图解析为“手机商品咨询”或“意向购买”时，且当前预算和产品槽位为空。' },
+                            { id: 'node_3', title: '📋 执行策略与动作', type: 'strategy', left: 620, top: 200, body: '若用途(phone_usage)为空，追问主要用途；当预算和用途齐备时，结合语义匹配推荐合适机型。' },
+                            { id: 'node_4', title: '🛡️ 规则围栏与红线', type: 'constraint', left: 360, top: 400, body: '严禁主动提及分期方案。若客户问到分期，首付最少10%，且必须核对资质三要素，不合格不转人工。' }
+                        ]; canvasConnections=[
+                            { from: 'node_1', to: 'node_2' },
+                            { from: 'node_1', to: 'node_3' },
+                            { from: 'node_2', to: 'node_4' },
+                            { from: 'node_3', to: 'node_4' }
+                        ]; renderCanvas();">重置布局</button>
+                    </div>
+                </div>
+            </div>
+            <div class="flex-right card">
+                <div style="font-weight:600; margin-bottom:10px;">SOP 编辑助手提示</div>
+                <p style="font-size:12px; color:var(--text-muted); line-height:1.6; margin-bottom: 12px;">
+                    🤖 <strong>可视化交互：</strong>您可以通过<strong>鼠标拖拽</strong>任意卡片节点进行排版，双击卡片可以直接编辑其规则条件或话术，修改后点击“保存配置”即可持久化落库。
+                </p>
+                <p style="font-size:12px; color:var(--text-muted); line-height:1.6;">
+                    <strong>双向结构：</strong>“触发条件”卡片定义了该技能在何种场景被执行，“执行策略”卡片定义了变量缺失追问与 RAG 检索细节。
+                </p>
+            </div>
+        </div>
+
+        <!-- 页面九：发布与多渠道集成页 -->
+        <div class="page-container" id="view-9">
+            <div class="dashboard-container">
+                <div class="sidebar">
+                    <div class="sidebar-header">
+                        <span class="sidebar-logo">🤖 3Chat Agent</span>
+                    </div>
+                    <ul class="sidebar-menu">
+                        <li class="menu-item">📊 效果表现</li>
+                        <li class="menu-item">💬 消息统计</li>
+                        <li class="menu-item" style="color:#64748b; font-size:11px; text-transform:uppercase; pointer-events:none; padding-top:10px;">训练与指导</li>
+                        <li class="menu-item">📚 知识库</li>
+                        <li class="menu-item">📝 指导</li>
+                        <li class="menu-item">📌 固定话术</li>
+                        <li class="menu-item active">⚙️ AI 技能</li>
+                        <li class="menu-item" style="color:#64748b; font-size:11px; text-transform:uppercase; pointer-events:none; padding-top:10px;">调试</li>
+                        <li class="menu-item">🧪 沙盒测试</li>
+                        <li class="menu-item">📂 测试集</li>
+                    </ul>
+                    <div class="sidebar-card">
+                        <div class="sidebar-card-title">3ChatClaw 🚀</div>
+                        <div class="sidebar-card-desc">商家本地运行 OpenClaw 插件，极速响应。</div>
+                        <button class="sidebar-card-btn" onclick="alert('即将跳转开通 3ChatClaw')">￥ 198/月 即刻启用</button>
+                    </div>
+                </div>
+                <div class="main-content">
+                    <div style="margin-bottom:20px;">
+                        <h2 style="font-size:20px;">接入外部渠道</h2>
+                        <p style="font-size:13px; color:var(--text-muted); margin-top:4px;">选择您想把 AI 客服接入的即时通讯、社媒平台或邮件客服渠道进行一键托管。</p>
+                    </div>
+
+                    <div class="channels-section">
+                        <h3 style="font-size:14px; border-left:3px solid var(--primary); padding-left:8px; margin-bottom:10px;">私域即时通讯</h3>
+                        <div class="channels-grid">
+                            <div class="channel-card" onclick="connectChannel('微信客服')">
+                                <div class="channel-icon" style="background:#07c160;">WX</div>
+                                <div style="font-size:14px; font-weight:600;">微信客服</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('微信公众号')">
+                                <div class="channel-icon" style="background:#07c160;">MP</div>
+                                <div style="font-size:14px; font-weight:600;">微信公众号</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('企业微信')">
+                                <div class="channel-icon" style="background:#1e80e6;">WE</div>
+                                <div style="font-size:14px; font-weight:600;">企业微信</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('WhatsApp')">
+                                <div class="channel-icon" style="background:#25d366;">WA</div>
+                                <div style="font-size:14px; font-weight:600;">WhatsApp</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('飞书')">
+                                <div class="channel-icon" style="background:#007aff;">FS</div>
+                                <div style="font-size:14px; font-weight:600;">飞书</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('钉钉')">
+                                <div class="channel-icon" style="background:#0089ff;">DD</div>
+                                <div style="font-size:14px; font-weight:600;">钉钉</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="channels-section">
+                        <h3 style="font-size:14px; border-left:3px solid var(--warning); padding-left:8px; margin-bottom:10px;">公域社交平台</h3>
+                        <div class="channels-grid">
+                            <div class="channel-card" onclick="connectChannel('小红书')">
+                                <div class="channel-icon" style="background:#ff2442;">XH</div>
+                                <div style="font-size:14px; font-weight:600;">小红书</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('抖音')">
+                                <div class="channel-icon" style="background:#000000; color: #ff007f;">DY</div>
+                                <div style="font-size:14px; font-weight:600;">抖音</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('TikTok')">
+                                <div class="channel-icon" style="background:#111111;">TK</div>
+                                <div style="font-size:14px; font-weight:600;">TikTok</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('Facebook')">
+                                <div class="channel-icon" style="background:#1877f2;">FB</div>
+                                <div style="font-size:14px; font-weight:600;">Facebook</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('Instagram')">
+                                <div class="channel-icon" style="background:linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);">IN</div>
+                                <div style="font-size:14px; font-weight:600;">Instagram</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('Telegram')">
+                                <div class="channel-icon" style="background:#0088cc;">TG</div>
+                                <div style="font-size:14px; font-weight:600;">Telegram</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('Discord')">
+                                <div class="channel-icon" style="background:#5865f2;">DC</div>
+                                <div style="font-size:14px; font-weight:600;">Discord</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="channels-section">
+                        <h3 style="font-size:14px; border-left:3px solid var(--success); padding-left:8px; margin-bottom:10px;">常用邮件 / 外部接口</h3>
+                        <div class="channels-grid">
+                            <div class="channel-card" onclick="connectChannel('网易邮箱')">
+                                <div class="channel-icon" style="background:#e60012;">WY</div>
+                                <div style="font-size:14px; font-weight:600;">网易邮箱</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('QQ邮箱')">
+                                <div class="channel-icon" style="background:#2b6bb8;">QQ</div>
+                                <div style="font-size:14px; font-weight:600;">QQ邮箱</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('飞书邮箱')">
+                                <div class="channel-icon" style="background:#007aff;">FE</div>
+                                <div style="font-size:14px; font-weight:600;">飞书邮箱</div>
+                            </div>
+                            <div class="channel-card" onclick="connectChannel('Gmail')">
+                                <div class="channel-icon" style="background:#ea4335;">GM</div>
+                                <div style="font-size:14px; font-weight:600;">Gmail</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Webhook simulation playground -->
+                    <div class="card" style="margin-top: 35px; margin-bottom: 25px; padding: 20px;">
+                        <h3 style="font-size:15px; margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+                            📡 <span>全渠道 Webhook 仿真控制台 (Real-time Message Gateway Tester)</span>
+                        </h3>
+                        <p style="font-size:12px; color:var(--text-muted); margin-bottom:15px;">
+                            支持通过真实的 Webhook 接口地址进行消息中转。您可在下方模拟真实微信客服或 WhatsApp 发送消息，查看签名校对、解密流、以及 AI 执行过程 Trace 响应。
+                        </p>
+                        <div style="display:flex; gap:20px; align-items:flex-start;">
+                            <div style="flex:1.2; display:flex; flex-direction:column; gap:12px;">
+                                <div>
+                                    <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block;">选择调试渠道</label>
+                                    <select id="sim-channel-select" class="chat-input" style="width:100%; height:36px; background:white; font-size:13px; margin-top:4px;">
+                                        <option value="企业微信">企业微信 (MsgType: text, XML 格式)</option>
+                                        <option value="WhatsApp">WhatsApp (JSON 格式)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block;">Webhook 真实接收 API 地址</label>
+                                    <input type="text" id="sim-webhook-url" class="chat-input" style="width:100%; font-size:11px; background:#f1f5f9; margin-top:4px;" readonly>
+                                </div>
+                                <div>
+                                    <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block;">模拟用户消息内容</label>
+                                    <input type="text" id="sim-user-text" class="chat-input" style="width:100%; font-size:13px; background:white; margin-top:4px;" value="你们的 iPhone XR 如果分期，月供怎么算？">
+                                </div>
+                                <button class="btn btn-primary" style="font-size:13px; width: 100%; margin-top: 6px;" onclick="triggerSimulateWebhook()">⚡ 触发 Webhook 仿真发送</button>
+                            </div>
+                            <div style="flex:2.2; width: 100%;">
+                                <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block;">Webhook 接口收发日志控制台 (Console Terminal)</label>
+                                <div id="sim-webhook-console" style="background:#0f172a; border-radius:8px; padding:15px; height:240px; overflow-y:auto; font-family:monospace; font-size:11px; line-height:1.5; color:#38bdf8; border:1px solid #1e293b; margin-top:4px; white-space:pre-wrap;">[Console] 等待触发 Webhook 模拟调试...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- JavaScript 代码控制 -->
+    <script>
+        // 页面切换控制
+        function switchView(viewIndex) {
+            // 隐藏所有页面
+            const pages = document.querySelectorAll('.page-container');
+            pages.forEach(p => p.classList.remove('active'));
+
+            // 取消所有按钮的active
+            const buttons = document.querySelectorAll('.view-btn');
+            buttons.forEach(b => b.classList.remove('active'));
+
+            // 激活当前页面和按钮
+            const activePage = document.getElementById('view-' + viewIndex);
+            if(activePage) activePage.classList.add('active');
+
+            const activeBtn = document.getElementById('btn-view-' + viewIndex);
+            if(activeBtn) activeBtn.classList.add('active');
+
+            // 如果切换到页面 7，则重新加载技能列表
+            if (viewIndex === 7) {
+                loadAndRenderSkills();
+            }
+        }
+
+        // 单选按钮控制
+        let selectedIndustry = "电商";
+        function selectRadio(element) {
+            const options = element.parentElement.querySelectorAll('.radio-option');
+            options.forEach(opt => opt.classList.remove('selected'));
+            element.classList.add('selected');
+            selectedIndustry = element.querySelector('span:not(.radio-dot)').innerText.trim();
+        }
+
+        function resetRadio() {
+            const options = document.querySelectorAll('.radio-option');
+            options.forEach(opt => opt.classList.remove('selected'));
+            selectedIndustry = "";
+        }
+
+        function fillInput(text) {
+            document.getElementById('chat-input-2').value = text;
+        }
+
+        function goToNextStep(viewIndex) {
+            if (viewIndex === 3) {
+                updateAgent();
+            }
+            switchView(viewIndex);
+        }
+
+        // 页面六：报告子 Tab 切换控制 (Omission 3)
+        function switchReportTab(tabKey) {
+            const headers = document.querySelectorAll('.tab-header');
+            headers.forEach(h => h.classList.remove('active'));
+
+            document.getElementById('tab-report-' + tabKey).classList.add('active');
+
+            if (tabKey === 'sim') {
+                document.getElementById('panel-report-sim').style.display = 'block';
+                document.getElementById('panel-report-live').style.display = 'none';
+            } else {
+                document.getElementById('panel-report-sim').style.display = 'none';
+                document.getElementById('panel-report-live').style.display = 'block';
+            }
+        }
+
+        // 行业虚拟知识库一键自动生成 (Omission 1)
+        function generateVirtualKB() {
+            const banner = document.getElementById('kb-generation-banner');
+            banner.innerHTML = `
+                <span style="color:var(--success);">✅ <strong>已自动生成虚拟手机产品知识库模板！</strong>（包含 iPhone XR, iPhone 8 等规格成色与印尼盾分期预算配对数据，并在后台自动绑定了「需求探询与推荐」和「分期方案介绍」技能节点）。</span>
+                <button class="btn" style="padding: 6px 14px; font-size: 12px; white-space: nowrap; border-color:var(--success); color:var(--success);" disabled>产品库就绪</button>
+            `;
+            alert('虚拟知识库生成成功！已自动加载行业商品标准数据，您可以在沙盒调试中直接体验 AI 的产品推荐和知识检索。');
+        }
+
+        // 生产真实回流数据一键调优 (Omission 3)
+        async function applyRealDataOptimizations() {
+            if (!activeAgentId) return;
+            try {
+                const res = await fetch(`/api/v1/builder/skills?agent_id=${activeAgentId}`);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    let skills = data.skills;
+                    skills.forEach(s => {
+                        if (s.title.includes('高意向') || s.title.includes('资格确认')) {
+                            s.execution_strategy.rules = s.execution_strategy.rules || [];
+                            if (!s.execution_strategy.rules.includes("申请分期的客户必须校验工作时长满 3 个月")) {
+                                s.execution_strategy.rules.push("申请分期的客户必须校验工作时长满 3 个月");
+                            }
+                            s.status = "已发布";
+                        }
+                    });
+
+                    const saveRes = await fetch('/api/v1/builder/skills', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ agent_id: activeAgentId, skills: skills })
+                    });
+                    const saveData = await saveRes.json();
+                    if (saveData.status === 'success') {
+                        alert('真实生产数据调优成功！已针对 QA-284 自动为 [高意向转化与资格确认] 技能的执行策略补充规则 1.4：「申请分期的客户必须校验工作时长满 3 个月」，智能客服已自动重新发布并打开 SOP 画布查看！');
+                        await loadAndRenderSkills();
+                        const idx = skills.findIndex(s => s.title.includes('高意向') || s.title.includes('资格确认'));
+                        if (idx !== -1) {
+                            editSkillAtIndex(idx);
+                        } else {
+                            switchView(8);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Real data optimization failed:", err);
+            }
+        }
+
+        // Global state variables
+        let activeAgentId = null;
+        let activeSessionId = null;
+        let currentSkills = [];
+        let activeSkillIndex = null;
+        let testRunPollingInterval = null;
+
+        // Initialize Agent Builder
+        async function initAgentBuilder() {
+            try {
+                // 1. Fetch default agent profile
+                const agentRes = await fetch('/api/v1/builder/agents/default');
+                const agentData = await agentRes.json();
+                if (agentData.status === 'success') {
+                    const agent = agentData.agent;
+                    activeAgentId = agent.agent_id;
+                    selectedIndustry = agent.industry || "电商";
+
+                    // Match visual selected state
+                    const radioOptions = document.querySelectorAll('.radio-option');
+                    radioOptions.forEach(opt => {
+                        const text = opt.querySelector('span:not(.radio-dot)').innerText.trim();
+                        if (text === selectedIndustry) {
+                            opt.classList.add('selected');
+                        } else {
+                            opt.classList.remove('selected');
+                        }
+                    });
+
+                    // 2. Load skills table list
+                    await loadAndRenderSkills();
+                    await loadCustomKnowledgeList();
+
+                    // Set default webhook simulator URL
+                    if (document.getElementById('sim-webhook-url')) {
+                        document.getElementById('sim-webhook-url').value = window.location.origin + '/api/v1/builder/webhook/wecom/' + activeAgentId;
+                    }
+
+                    // 3. Load default test cases to populate them in database
+                    const caseRes = await fetch(`/api/v1/builder/test_cases?agent_id=${activeAgentId}`);
+                    const caseData = await caseRes.json();
+                    if (caseData.status === 'success') {
+                        renderTestCasesList(caseData.cases);
+                    }
+                }
+            } catch (err) {
+                console.error("Agent initialization failed:", err);
+            }
+        }
+
+        // Render the test cases list on view-4 page
+        function renderTestCasesList(cases) {
+            const container = document.querySelector('#view-4 .flex-left');
+            if (!container) return;
+
+            let html = `
+                <h2>🧪 自测试：AI 自动生成模拟测试集</h2>
+                <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 20px;">
+                    根据您的真实业务场景以及预置的行业 SOP，Builder 自动构建了 12 条边界测试场景用例，涵盖正常咨询、边界条件和攻击性测试。
+                </p>
+            `;
+
+            cases.forEach(c => {
+                html += `
+                    <div class="test-case-detail">
+                        <div class="test-case-header">
+                            <span>${c.title}</span>
+                            <span class="badge testing">待测试</span>
+                        </div>
+                        <div class="test-case-meta">覆盖技能: ${c.target_skills}</div>
+                        <p style="margin-bottom: 6px;"><strong>👤 模拟画像：</strong>预算 ${c.persona.budget}，用途：${c.persona.usage}。性格：${c.persona.personality}。</p>
+                        <p><strong>✅ 通过标准：</strong>${c.criteria}</p>
+                    </div>
+                `;
+            });
+
+            html += `
+                <div style="text-align: center; margin-top: 15px;">
+                    <button class="btn btn-primary" onclick="goToNextStep(5)">开始进行测试</button>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        // Load & Render skills from database
+        async function loadAndRenderSkills() {
+            if (!activeAgentId) return;
+            try {
+                const res = await fetch(`/api/v1/builder/skills?agent_id=${activeAgentId}`);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    currentSkills = data.skills;
+                    const tbody = document.getElementById('skills-table-body');
+                    if (tbody) {
+                        let html = '';
+                        currentSkills.forEach((s, idx) => {
+                            const badgeClass = s.status === '已发布' ? 'pass' : 'testing';
+                            html += `
+                                <tr style="cursor:pointer;" onclick="editSkillAtIndex(${idx})">
+                                    <td>${idx + 1}</td>
+                                    <td><strong>${s.title}</strong></td>
+                                    <td>${s.type}</td>
+                                    <td><span class="badge ${badgeClass}">${s.status}</span></td>
+                                    <td>2026-06-04 12:00:00</td>
+                                    <td>2026-06-04 12:30:00</td>
+                                    <td><code>skill_${s.skill_id.substring(0, 8)}</code></td>
+                                    <td style="color:var(--primary);">详情</td>
+                                </tr>
+                            `;
+                        });
+                        tbody.innerHTML = html;
+                    }
+
+                    // Also update the summary table in view-3
+                    const tbodySummary = document.querySelector('#view-3 tbody');
+                    if (tbodySummary) {
+                        let html = '';
+                        currentSkills.forEach(s => {
+                            html += `
+                                <tr>
+                                    <td><strong>🗂️ ${s.title}</strong></td>
+                                    <td>${s.execution_strategy.steps || s.execution_strategy.prompt || '按SOP开展多步业务流程。'}</td>
+                                </tr>
+                            `;
+                        });
+                        tbodySummary.innerHTML = html;
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load skills:", err);
+            }
+        }
+
+        // Open visualization editor page for a skill
+        function editSkillAtIndex(index) {
+            activeSkillIndex = index;
+            const skill = currentSkills[index];
+            if (!skill) return;
+
+            document.getElementById('skill-detail-title').innerText = `${skill.title} (SOP 技能详情)`;
+
+            // If skill contains canvas data, load it. Otherwise, populate default layout.
+            if (skill.execution_strategy && skill.execution_strategy.canvas_nodes) {
+                canvasNodes = skill.execution_strategy.canvas_nodes;
+                canvasConnections = skill.execution_strategy.canvas_connections || [];
+            } else {
+                canvasNodes = [
+                    {
+                        id: 'node_1',
+                        title: '💡 任务定义',
+                        type: 'definition',
+                        left: 360,
+                        top: 30,
+                        body: skill.execution_strategy.steps || skill.execution_strategy.prompt || "了解客户偏好并提供匹配推荐。"
+                    },
+                    {
+                        id: 'node_2',
+                        title: '⚡ 触发调用条件',
+                        type: 'trigger',
+                        left: 100,
+                        top: 200,
+                        body: `当对话匹配规则: ${skill.activation_rules.trigger || 'always'}`
+                    },
+                    {
+                        id: 'node_3',
+                        title: '📋 执行策略与动作',
+                        type: 'strategy',
+                        left: 620,
+                        top: 200,
+                        body: (skill.execution_strategy.rules || []).join('\n') || "结合上下文开展业务推荐。"
+                    },
+                    {
+                        id: 'node_4',
+                        title: '🛡️ 规则围栏与红线',
+                        type: 'constraint',
+                        left: 360,
+                        top: 400,
+                        body: "遵循安全红线防卫规则，不抢跑报价，不主动提及分期。"
+                    }
+                ];
+                canvasConnections = [
+                    { from: 'node_1', to: 'node_2' },
+                    { from: 'node_1', to: 'node_3' },
+                    { from: 'node_2', to: 'node_4' },
+                    { from: 'node_3', to: 'node_4' }
+                ];
+            }
+
+            switchView(8);
+            setTimeout(renderCanvas, 150);
+        }
+
+        // Save active skill configuration
+        async function saveActiveSkill() {
+            if (activeSkillIndex === null || !activeAgentId) return;
+
+            const skill = currentSkills[activeSkillIndex];
+            if (!skill) return;
+
+            skill.execution_strategy = skill.execution_strategy || {};
+            skill.execution_strategy.canvas_nodes = canvasNodes;
+            skill.execution_strategy.canvas_connections = canvasConnections;
+
+            const defNode = canvasNodes.find(n => n.type === 'definition');
+            if (defNode) {
+                skill.execution_strategy.steps = defNode.body;
+            }
+
+            try {
+                const res = await fetch('/api/v1/builder/skills', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        agent_id: activeAgentId,
+                        skills: currentSkills
+                    })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    alert('✅ 技能 SOP 结构画布及连线已成功保存到 PostgreSQL 数据库中！');
+                    await loadAndRenderSkills();
+                    switchView(7);
+                }
+            } catch (err) {
+                console.error("Save skill failed:", err);
+                alert("保存技能失败。");
+            }
+        }
+
+        // Save agent settings
+        async function updateAgent() {
+            if (!activeAgentId) return;
+            const desc = document.getElementById('chat-input-2').value;
+            try {
+                const res = await fetch('/api/v1/builder/agents', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: "SPARK 手机客服",
+                        industry: selectedIndustry,
+                        role: "售前咨询与分期资格初步审核",
+                        description: desc,
+                        system_prompt: "您好！我是 SPARK 手机零售助手。请问有什么我可以帮您的？",
+                        constraints: {
+                            "strict_rules": [
+                                "严禁主动提及分期 (除非客户先提)",
+                                "贷款资格三要素: 年满21岁 + 固定工作 + 持有印尼KTP",
+                                "低意向客户绝不转交人工客服"
+                            ]
+                        }
+                    })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    console.log("Agent updated successfully:", data.agent);
+                }
+            } catch (err) {
+                console.error("Error updating agent:", err);
+            }
+        }
+
+        // Interactive Sandbox Chat
+        async function sendSandboxMessage() {
+            const input = document.getElementById('sandbox-input');
+            const val = input.value.trim();
+            if (!val) return;
+
+            const chatBox = document.getElementById('sandbox-chat-box');
+            const traceLogEl = document.getElementById('execution-trace');
+
+            // 1. Add user message
+            const uMsg = document.createElement('div');
+            uMsg.className = 'message user';
+            uMsg.innerHTML = '<div class="message-title">用户 (测试者)</div>' + val;
+            chatBox.appendChild(uMsg);
+
+            input.value = '';
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            // 2. Start sandbox session if not exists
+            if (!activeSessionId) {
+                try {
+                    const startRes = await fetch('/api/v1/builder/sandbox/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ agent_id: activeAgentId })
+                    });
+                    const startData = await startRes.json();
+                    if (startData.status === 'success') {
+                        activeSessionId = startData.session_id;
+                    } else {
+                        alert('启动沙盒会话失败。');
+                        return;
+                    }
+                } catch (err) {
+                    console.error("Error starting session:", err);
+                    return;
+                }
+            }
+
+            // Show typing indicator
+            const typingBubble = document.createElement('div');
+            typingBubble.className = 'message bot';
+            typingBubble.style.opacity = '0.6';
+            typingBubble.innerHTML = '<div class="message-title">AI 客服</div>正在思考回复...';
+            chatBox.appendChild(typingBubble);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            try {
+                // 3. Post message
+                const chatRes = await fetch('/api/v1/builder/sandbox/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: activeSessionId, content: val })
+                });
+                const chatData = await chatRes.json();
+
+                chatBox.removeChild(typingBubble);
+
+                if (chatData.status === 'success') {
+                    const reply = chatData.reply;
+                    const trace = chatData.execution_trace || {};
+                    const variables = chatData.variables || {};
+
+                    // 4. Collapsible trace box
+                    if (trace.current_node) {
+                        const epBox = document.createElement('div');
+                        epBox.className = 'execution-process-box';
+                        epBox.style.cursor = 'pointer';
+                        epBox.onclick = () => {
+                            const contentEl = epBox.querySelector('.ep-content');
+                            contentEl.style.display = contentEl.style.display === 'none' ? 'block' : 'none';
+                            const arrowEl = epBox.querySelector('.ep-arrow');
+                            arrowEl.innerText = contentEl.style.display === 'none' ? '⌄' : '⌃';
+                        };
+
+                        const slotsMatched = trace.slots_matched || {};
+                        const slotsHtml = Object.keys(slotsMatched).length > 0
+                            ? `<div style="margin-top:6px; color:#4b5563;">🔍 命中槽位: ${JSON.stringify(slotsMatched)}</div>`
+                            : '';
+
+                        epBox.innerHTML = `
+                            <div class="ep-header">
+                                <span>💡 AI 执行过程 (Node: ${trace.current_node})</span>
+                                <span class="ep-arrow">⌃</span>
+                            </div>
+                            <div class="ep-content" style="font-size:11px; margin-top:4px; line-height:1.4;">
+                                <div>⚡ 触发动作: ${trace.action_triggered || '推进'}</div>
+                                <div>💭 思考路径: ${trace.reason || '正在按SOP推进对话...'}</div>
+                                ${slotsHtml}
+                            </div>
+                        `;
+                        chatBox.appendChild(epBox);
+                    }
+
+                    // 5. Bot reply bubble
+                    const aMsg = document.createElement('div');
+                    aMsg.className = 'message bot';
+                    aMsg.innerHTML = '<div class="message-title">AI 客服 (SPARK手机客服)</div>' + reply;
+                    chatBox.appendChild(aMsg);
+                    chatBox.scrollTop = chatBox.scrollHeight;
+
+                    // 6. Update trace log
+                    let logMsg = `\n[用户输入] ${val}\n`;
+                    if (trace.current_node) {
+                        logMsg += `[SOP 节点] 当前跳转到: ${trace.current_node}\n`;
+                        logMsg += `[执行决策] 动作: ${trace.action_triggered || '推进'}\n`;
+                        logMsg += `[理性链Thought] ${trace.reason || ''}\n`;
+                    }
+                    traceLogEl.innerText += logMsg;
+                    traceLogEl.scrollTop = traceLogEl.scrollHeight;
+
+                    // 7. Update variables
+                    updateSlotUI(variables);
+                }
+            } catch (err) {
+                console.error("Sandbox chat failed:", err);
+                if (chatBox.contains(typingBubble)) chatBox.removeChild(typingBubble);
+                alert("消息发送失败。");
+            }
+        }
+
+        // Sandbox Chat for Page 3 widget
+        async function sendSandboxMessage3() {
+            const input = document.getElementById('sandbox-input-3');
+            const val = input.value.trim();
+            if (!val) return;
+
+            const chatBox = document.getElementById('sandbox-chat-box-3');
+
+            const uMsg = document.createElement('div');
+            uMsg.className = 'message user';
+            uMsg.innerHTML = '<div class="message-title">用户</div>' + val;
+            chatBox.appendChild(uMsg);
+
+            input.value = '';
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            if (!activeSessionId) {
+                try {
+                    const startRes = await fetch('/api/v1/builder/sandbox/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ agent_id: activeAgentId })
+                    });
+                    const startData = await startRes.json();
+                    if (startData.status === 'success') {
+                        activeSessionId = startData.session_id;
+                    }
+                } catch (err) {
+                    console.error(err);
+                    return;
+                }
+            }
+
+            const typingBubble = document.createElement('div');
+            typingBubble.className = 'message bot';
+            typingBubble.style.opacity = '0.6';
+            typingBubble.innerHTML = '<div class="message-title">AI 客服</div>正在思考回复...';
+            chatBox.appendChild(typingBubble);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            try {
+                const chatRes = await fetch('/api/v1/builder/sandbox/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: activeSessionId, content: val })
+                });
+                const chatData = await chatRes.json();
+
+                chatBox.removeChild(typingBubble);
+
+                if (chatData.status === 'success') {
+                    const reply = chatData.reply;
+                    const variables = chatData.variables || {};
+
+                    const aMsg = document.createElement('div');
+                    aMsg.className = 'message bot';
+                    aMsg.innerHTML = '<div class="message-title">AI 客服</div>' + reply;
+                    chatBox.appendChild(aMsg);
+                    chatBox.scrollTop = chatBox.scrollHeight;
+
+                    // Sync to Page 5 sandboxes if open, update variables
+                    const chatBox5 = document.getElementById('sandbox-chat-box');
+                    if (chatBox5) {
+                        const uMsg5 = document.createElement('div');
+                        uMsg5.className = 'message user';
+                        uMsg5.innerHTML = '<div class="message-title">用户 (测试者)</div>' + val;
+                        chatBox5.appendChild(uMsg5);
+
+                        const aMsg5 = document.createElement('div');
+                        aMsg5.className = 'message bot';
+                        aMsg5.innerHTML = '<div class="message-title">AI 客服</div>' + reply;
+                        chatBox5.appendChild(aMsg5);
+                        chatBox5.scrollTop = chatBox5.scrollHeight;
+                    }
+                    updateSlotUI(variables);
+                }
+            } catch (err) {
+                console.error(err);
+                if (chatBox.contains(typingBubble)) chatBox.removeChild(typingBubble);
+            }
+        }
+
+        // Update slot variables checklist on view-5
+        function updateSlotUI(variables) {
+            const slots = ['budget', 'phone_usage', 'battery_health', 'age', 'job', 'ktp'];
+            slots.forEach(slot => {
+                const el = document.getElementById('slot-' + slot);
+                if (el) {
+                    const val = variables[slot] || '未收集';
+                    el.innerText = val;
+                    if (val === '未收集') {
+                        el.style.color = '#f59e0b';
+                    } else {
+                        el.style.color = '#10b981';
+                    }
+                }
+            });
+        }
+
+        // Auto-Dialogue Simulator step-by-step
+        let preRecordedIndex = 0;
+        const preRecordedMessages = [
+            '我想聊一下 iPhone',
+            '300 万印尼盾左右',
+            '85% 以上吧',
+            '我觉得 XR 可以，想了解分期',
+            '有正式工作',
+            '有的'
+        ];
+        function simulateSandboxChat() {
+            if (preRecordedIndex < preRecordedMessages.length) {
+                const msg = preRecordedMessages[preRecordedIndex];
+                document.getElementById('sandbox-input').value = msg;
+                sendSandboxMessage();
+                preRecordedIndex++;
+            } else {
+                alert('已完成全部预设模拟对话。您可以继续手动输入其他消息进行自由测试！');
+            }
+        }
+
+        // Run automated tests concurrently
+        async function runAllTests() {
+            if (!activeAgentId) return;
+
+            switchView(6);
+
+            document.getElementById('report-pass-rate').innerText = '--%';
+            document.getElementById('report-status').innerHTML = '<span style="color:var(--primary);">● 正在运行自动化质检大模型审计中...</span>';
+            document.getElementById('report-summary-text').innerText = '正在并行启动 12 个对抗画像模拟人机对话...';
+            document.getElementById('report-cases-tbody').innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted);">正在加载对话流并评测中，请稍候...</td></tr>';
+            document.getElementById('report-attribution-tbody').innerHTML = '<tr><td colspan="3" style="text-align:center; color:var(--text-muted);">正在计算质检结果归因...</td></tr>';
+            document.getElementById('report-optimizations-container').innerHTML = '<p style="color:var(--text-muted);">正在分析审计日志并自动生成微调 Prompt 建议...</p>';
+
+            try {
+                const res = await fetch('/api/v1/builder/sandbox/run_tests', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ agent_id: activeAgentId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    if (testRunPollingInterval) clearInterval(testRunPollingInterval);
+                    testRunPollingInterval = setInterval(pollLatestTestRun, 1500);
+                } else {
+                    alert('启动自动化测试失败: ' + data.message);
+                }
+            } catch (err) {
+                console.error("Error starting tests:", err);
+                alert('启动测试出现错误！');
+            }
+        }
+
+        // Poll latest test run status
+        async function pollLatestTestRun() {
+            if (!activeAgentId) return;
+            try {
+                const res = await fetch(`/api/v1/builder/test_runs/latest?agent_id=${activeAgentId}`);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const status = data.test_status;
+                    if (status === 'completed') {
+                        clearInterval(testRunPollingInterval);
+                        testRunPollingInterval = null;
+                        renderTestReport(data);
+                    } else if (status === 'failed') {
+                        clearInterval(testRunPollingInterval);
+                        testRunPollingInterval = null;
+                        document.getElementById('report-status').innerHTML = `<span style="color:var(--danger);">● 评测失败: ${data.message || '运行中断'}</span>`;
+                    } else {
+                        document.getElementById('report-status').innerHTML = `<span style="color:var(--warning);">● 正在运行质检审计中...</span>`;
+                    }
+                }
+            } catch (err) {
+                console.error("Error polling tests:", err);
+            }
+        }
+
+        // Render test report dashboard
+        function renderTestReport(data) {
+            const passRateEl = document.getElementById('report-pass-rate');
+            const rate = Math.round(data.pass_rate);
+            passRateEl.innerText = rate + '%';
+            if (rate >= 80) {
+                passRateEl.style.color = 'var(--success)';
+            } else if (rate >= 50) {
+                passRateEl.style.color = 'var(--warning)';
+            } else {
+                passRateEl.style.color = 'var(--danger)';
+            }
+
+            document.getElementById('report-status').innerHTML = '<span style="color:var(--success);">● 运行完成</span>';
+            document.getElementById('report-summary-text').innerHTML = `
+                <strong>12 Cases</strong> (${data.pass_count} PASS / ${data.fail_count} FAIL / ${data.warn_count} WARN)
+            `;
+            document.getElementById('report-time').innerText = '运行时间：' + new Date(data.created_at).toLocaleString();
+
+            const cases = data.details.cases || [];
+            let casesHtml = '';
+            cases.forEach((c, idx) => {
+                const badgeClass = c.status.toLowerCase();
+                let rowStyle = '';
+                if (c.status === 'FAIL') {
+                    rowStyle = 'background: rgba(239, 68, 68, 0.02);';
+                } else if (c.status === 'WARN') {
+                    rowStyle = 'background: rgba(245, 158, 11, 0.02);';
+                }
+
+                casesHtml += `
+                    <tr style="${rowStyle}; cursor:pointer;" onclick="toggleTranscriptLog('${c.case_id}')">
+                        <td>${idx + 1}</td>
+                        <td>
+                            <strong>${c.title}</strong>
+                            <div id="transcript-${c.case_id}" style="display:none; margin-top:8px; padding:10px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; line-height:1.5;">
+                                <p style="color:#64748b; margin-bottom:6px;"><strong>大模型裁判审计判定原因：</strong><br>${c.reason}</p>
+                                <p style="font-weight:600; margin-bottom:4px; color:var(--primary);">💬 完整模拟对话记录：</p>
+                                <div style="max-height:180px; overflow-y:auto; border-top:1px solid #e2e8f0; padding-top:6px;">
+                                    ${c.transcript.map(t => {
+                                        const roleName = t.sender === 'customer' ? '👤 模拟客户' : '🤖 AI客服';
+                                        return `<div style="margin-bottom:4px;"><strong>${roleName}:</strong> ${t.content}</div>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge ${badgeClass}">${c.status}</span></td>
+                        <td>${c.status === 'FAIL' ? '❌ ' + (c.error_type === 'instruction_non_compliance' ? '指令未遵循' : '边界未定义') : '-'}</td>
+                    </tr>
+                `;
+            });
+            document.getElementById('report-cases-tbody').innerHTML = casesHtml;
+
+            let instCount = 0;
+            let bndCount = 0;
+            let instCases = [];
+            let bndCases = [];
+            cases.forEach(c => {
+                if (c.status === 'FAIL') {
+                    if (c.error_type === 'instruction_non_compliance') {
+                        instCount++;
+                        instCases.push(c.case_id.substring(0, 6));
+                    } else if (c.error_type === 'undefined_boundary') {
+                        bndCount++;
+                        bndCases.push(c.case_id.substring(0, 6));
+                    }
+                }
+            });
+
+            const attribHtml = `
+                <tr>
+                    <td>指令未遵循 (Instruction Non-compliance)</td>
+                    <td>${instCases.length > 0 ? instCases.join(', ') : '无'}</td>
+                    <td style="color:var(--danger); font-weight:600;">${instCount}</td>
+                </tr>
+                <tr>
+                    <td>边界未定义 (Undefined Boundary)</td>
+                    <td>${bndCases.length > 0 ? bndCases.join(', ') : '无'}</td>
+                    <td style="color:var(--danger); font-weight:600;">${bndCount}</td>
+                </tr>
+            `;
+            document.getElementById('report-attribution-tbody').innerHTML = attribHtml;
+
+            const recs = data.details.recommendations || [];
+            let recsHtml = '';
+            if (recs.length === 0) {
+                recsHtml = '<p style="color:var(--success); font-weight:600;">🎉 对抗测试集 100% 通过！未检出任何缺陷，无需调优。</p>';
+            } else {
+                recs.forEach((r, rIdx) => {
+                    recsHtml += `
+                        <div style="margin-bottom:12px; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
+                            <p><strong>${rIdx + 1}. 微调目标技能: 「${r.target_skill}」</strong></p>
+                            <p style="color:#ef4444; margin-top:2px;">⚠️ 审计缺陷：${r.warning}</p>
+                            <ul style="margin-top:4px; padding-left:15px; color:#475569;">
+                                ${r.rules.map(rule => `<li>${rule}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                });
+            }
+            document.getElementById('report-optimizations-container').innerHTML = recsHtml;
+        }
+
+        function toggleTranscriptLog(caseId) {
+            const el = document.getElementById('transcript-' + caseId);
+            if (el) {
+                el.style.display = el.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
+        // Persistence optimization loop
+        async function applyOptimizations() {
+            if (!activeAgentId) return;
+
+            const btn = document.querySelector('#view-6 button[onclick="applyOptimizations()"]');
+            const originalText = btn.innerText;
+            btn.innerText = "⏳ 正在应用自测试集反馈并合并优化 Prompt 中...";
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/v1/builder/optimize_prompt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ agent_id: activeAgentId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    alert(`💡 调优合并成功！\n${data.message}`);
+                    await loadAndRenderSkills();
+                    switchView(7);
+                } else {
+                    alert('调优失败：' + data.detail);
+                }
+            } catch (err) {
+                console.error("Optimization failed:", err);
+                alert("采用优化建议接口调用失败。");
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        // Visual integration gate
+        async function connectChannel(channelName) {
+            const key = prompt(`请输入您的 ${channelName} 渠道对接 API Key / Token:`);
+            if (key === null) return;
+            if (!key) {
+                alert("API Key 不能为空！");
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/v1/builder/channels', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        agent_id: activeAgentId,
+                        channels: [{ name: channelName, key: key, status: "connected" }]
+                    })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    alert(`✅ ${channelName} 渠道已成功绑定并启用！`);
+                }
+            } catch (err) {
+                console.error("Error connecting channel:", err);
+                alert("连接渠道出错。");
+            }
+        }
+
+        // Custom Document Ingestion (RAG)
+        async function loadCustomKnowledgeList() {
+            if (!activeAgentId) return;
+            try {
+                const res = await fetch(`/api/v1/builder/knowledge?agent_id=${activeAgentId}`);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const tbody = document.getElementById('custom-kb-tbody');
+                    if (tbody) {
+                        if (data.knowledge.length === 0) {
+                            tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:var(--text-muted);">暂未上传自定义产品目录，系统将默认采用基础商品库。</td></tr>`;
+                        } else {
+                            let html = '';
+                            data.knowledge.forEach(k => {
+                                html += `
+                                    <tr>
+                                        <td><strong>${k.filename}</strong> <span style="background:var(--success-glow); color:var(--success); padding:1px 6px; border-radius:4px; font-size:10px; font-weight:600; margin-left:6px;">向量就绪</span></td>
+                                        <td>${new Date(k.created_at).toLocaleString()}</td>
+                                        <td><button class="btn" style="padding:2px 8px; font-size:11px; color:var(--danger);" onclick="deleteKnowledgeDoc('${k.knowledge_id}')">删除</button></td>
+                                    </tr>
+                                `;
+                            });
+                            tbody.innerHTML = html;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load knowledge document list:", err);
+            }
+        }
+
+        async function uploadCustomKnowledgeFile() {
+            const fileInput = document.getElementById('kb-file-input');
+            if (fileInput.files.length === 0) return;
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('agent_id', activeAgentId);
+            formData.append('file', file);
+
+            const progText = document.getElementById('upload-progress-text');
+            progText.innerText = "⏳ 正在读取文件并调用 Embedding 模型进行向量化分块中...";
+
+            try {
+                const res = await fetch('/api/v1/builder/knowledge/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    progText.innerText = `✅ 成功切为 ${data.chunks_count} 个文本块并生成向量，已持久化落库！`;
+                    fileInput.value = '';
+                    await loadCustomKnowledgeList();
+                    setTimeout(() => { progText.innerText = ''; }, 4000);
+                } else {
+                    progText.innerText = `❌ 上传失败: ${data.detail || '未知错误'}`;
+                }
+            } catch (err) {
+                console.error("Failed to upload custom knowledge:", err);
+                progText.innerText = "❌ 网络或接口连接失败。";
+            }
+        }
+
+        async function deleteKnowledgeDoc(docId) {
+            if (!confirm("确定要删除该商品自定义文档吗？删除后将停止使用对应的自定义向量匹配数据。")) return;
+            try {
+                const res = await fetch(`/api/v1/builder/knowledge/${docId}`, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    alert("✅ 自定义商品文档及向量数据已删除！");
+                    await loadCustomKnowledgeList();
+                }
+            } catch (err) {
+                console.error(err);
+                alert("删除失败。");
+            }
+        }
+
+        // Webhook simulator trigger
+        async function triggerSimulateWebhook() {
+            if (!activeAgentId) return;
+            const channel = document.getElementById('sim-channel-select').value;
+            const content = document.getElementById('sim-user-text').value.trim();
+            if (!content) return;
+
+            const consoleEl = document.getElementById('sim-webhook-console');
+            consoleEl.innerHTML = `[Gateway] 🚀 正在向接收地址发送模拟 ${channel} Webhook 数据...\n`;
+
+            try {
+                const res = await fetch('/api/v1/builder/webhook/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        channel: channel,
+                        agent_id: activeAgentId,
+                        content: content
+                    })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    consoleEl.innerHTML += `[API URL] ${data.webhook_url}\n`;
+                    consoleEl.innerHTML += `\n[REQUEST PAYLOAD]\n${data.request_payload}\n`;
+                    consoleEl.innerHTML += `\n[RESPONSE PAYLOAD]\n${data.response_payload}\n`;
+                    consoleEl.innerHTML += `\n[PARSED REPLY] 🤖 AI 客客服回复:\n<span style="color:#10b981; font-weight:bold;">${data.reply}</span>\n`;
+                    consoleEl.scrollTop = consoleEl.scrollHeight;
+                } else {
+                    consoleEl.innerHTML += `\n[ERROR] 接口返回失败: ${data.message}`;
+                }
+            } catch (err) {
+                consoleEl.innerHTML += `\n[ERROR] 网络或服务器连接失败: ${err}`;
+            }
+        }
+
+        // Canvas node configurations
+        let canvasNodes = [
+            { id: 'node_1', title: '💡 任务定义', type: 'definition', left: 360, top: 30, body: '了解客户预算、使用需求和痛点，根据客户情况推荐合适的二手苹果手机型号。' },
+            { id: 'node_2', title: '⚡ 触发调用条件', type: 'trigger', left: 100, top: 200, body: '当消费者消息提及或意图解析为“手机商品咨询”或“意向购买”时，且当前预算和产品槽位为空。' },
+            { id: 'node_3', title: '📋 执行策略与动作', type: 'strategy', left: 620, top: 200, body: '若用途(phone_usage)为空，追问主要用途；当预算和用途齐备时，结合语义匹配推荐合适机型。' },
+            { id: 'node_4', title: '🛡️ 规则围栏与红线', type: 'constraint', left: 360, top: 400, body: '严禁主动提及分期方案。若客户问到分期，首付最少10%，且必须核对资质三要素，不合格不转人工。' }
+        ];
+
+        let canvasConnections = [
+            { from: 'node_1', to: 'node_2' },
+            { from: 'node_1', to: 'node_3' },
+            { from: 'node_2', to: 'node_4' },
+            { from: 'node_3', to: 'node_4' }
+        ];
+
+        let dragNodeId = null;
+        let dragStartX = 0;
+        let dragStartY = 0;
+
+        function renderCanvas() {
+            const workspace = document.getElementById('canvas-workspace');
+            if (!workspace) return;
+
+            const cards = workspace.querySelectorAll('.flow-node-card');
+            cards.forEach(c => c.remove());
+
+            canvasNodes.forEach(node => {
+                const card = document.createElement('div');
+                card.className = `flow-node-card ${node.type}`;
+                card.id = node.id;
+                card.style.left = node.left + 'px';
+                card.style.top = node.top + 'px';
+
+                let headerColor = 'var(--text-muted)';
+                if (node.type === 'trigger') headerColor = 'var(--primary)';
+                if (node.type === 'strategy') headerColor = 'var(--success)';
+                if (node.type === 'constraint') headerColor = 'var(--warning)';
+
+                card.innerHTML = `
+                    <div class="socket input"></div>
+                    <div class="card-title" style="color:${headerColor};">
+                        <strong>${node.title}</strong>
+                    </div>
+                    <div class="card-body" style="font-size:11px; line-height:1.5; white-space:pre-wrap;">${node.body}</div>
+                    <div class="socket output"></div>
+                    <button style="position:absolute; top:8px; right:8px; background:none; border:none; cursor:pointer; font-size:12px; color:#94a3b8;" onclick="deleteNode('${node.id}', event)">✕</button>
+                `;
+
+                card.addEventListener('mousedown', (e) => startDragNode(node.id, e));
+                card.addEventListener('dblclick', () => editNodeDetails(node.id));
+
+                workspace.appendChild(card);
+            });
+
+            drawConnections();
+        }
+
+        function startDragNode(nodeId, e) {
+            if (e.target.tagName === 'BUTTON') return;
+            dragNodeId = nodeId;
+            const node = canvasNodes.find(n => n.id === nodeId);
+            if (!node) return;
+
+            dragStartX = e.clientX - node.left;
+            dragStartY = e.clientY - node.top;
+
+            document.addEventListener('mousemove', dragNode);
+            document.addEventListener('mouseup', stopDragNode);
+        }
+
+        function dragNode(e) {
+            if (!dragNodeId) return;
+            const node = canvasNodes.find(n => n.id === dragNodeId);
+            if (!node) return;
+
+            node.left = e.clientX - dragStartX;
+            node.top = e.clientY - dragStartY;
+
+            const cardEl = document.getElementById(dragNodeId);
+            if (cardEl) {
+                cardEl.style.left = node.left + 'px';
+                cardEl.style.top = node.top + 'px';
+            }
+
+            drawConnections();
+        }
+
+        function stopDragNode() {
+            dragNodeId = null;
+            document.removeEventListener('mousemove', dragNode);
+            document.removeEventListener('mouseup', stopDragNode);
+        }
+
+        function drawConnections() {
+            const svgOverlay = document.getElementById('flow-svg-overlay');
+            if (!svgOverlay) return;
+
+            svgOverlay.innerHTML = '';
+
+            canvasConnections.forEach(conn => {
+                const fromNode = canvasNodes.find(n => n.id === conn.from);
+                const toNode = canvasNodes.find(n => n.id === conn.to);
+
+                if (fromNode && toNode) {
+                    const x1 = fromNode.left + 140;
+                    const cardElFrom = document.getElementById(conn.from);
+                    const h1 = cardElFrom ? cardElFrom.offsetHeight : 120;
+                    const y1 = fromNode.top + h1;
+
+                    const x2 = toNode.left + 140;
+                    const y2 = toNode.top;
+
+                    const controlPointOffset = Math.abs(y2 - y1) * 0.5;
+                    const pathData = `M ${x1} ${y1} C ${x1} ${y1 + controlPointOffset}, ${x2} ${y2 - controlPointOffset}, ${x2} ${y2}`;
+
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('d', pathData);
+                    path.setAttribute('stroke', '#cbd5e1');
+                    path.setAttribute('stroke-width', '2');
+                    path.setAttribute('fill', 'none');
+
+                    svgOverlay.appendChild(path);
+                }
+            });
+        }
+
+        function addNewNode() {
+            const newId = 'node_' + Date.now();
+            canvasNodes.push({
+                id: newId,
+                title: '🆕 自定义条件分支',
+                type: 'strategy',
+                left: 200 + Math.random() * 200,
+                top: 200 + Math.random() * 100,
+                body: '双击编辑此处以配置自定义 IF-THEN 判断策略。'
+            });
+
+            canvasConnections.push({ from: 'node_1', to: newId });
+            renderCanvas();
+        }
+
+        function deleteNode(nodeId, event) {
+            event.stopPropagation();
+            canvasNodes = canvasNodes.filter(n => n.id !== nodeId);
+            canvasConnections = canvasConnections.filter(c => c.from !== nodeId && c.to !== nodeId);
+            renderCanvas();
+        }
+
+        let activeEditNodeId = null;
+
+        function editNodeDetails(nodeId) {
+            const node = canvasNodes.find(n => n.id === nodeId);
+            if (!node) return;
+            activeEditNodeId = nodeId;
+
+            document.getElementById('modal-node-title').innerText = `编辑 SOP 节点: ${node.title}`;
+            document.getElementById('modal-input-title').value = node.title;
+            document.getElementById('modal-input-body').value = node.body;
+
+            document.getElementById('node-edit-modal').style.display = 'flex';
+        }
+
+        function closeNodeModal() {
+            document.getElementById('node-edit-modal').style.display = 'none';
+            activeEditNodeId = null;
+        }
+
+        function saveNodeModal() {
+            if (!activeEditNodeId) return;
+            const node = canvasNodes.find(n => n.id === activeEditNodeId);
+            if (node) {
+                node.title = document.getElementById('modal-input-title').value;
+                node.body = document.getElementById('modal-input-body').value;
+                renderCanvas();
+            }
+            closeNodeModal();
+        }
+
+        // Call initialization on DOM load
+        window.addEventListener('DOMContentLoaded', initAgentBuilder);
+
+        // Setup sim channel URL on dropdown switch
+        document.getElementById('sim-channel-select').addEventListener('change', (e) => {
+            const path = e.target.value === 'WhatsApp' ? 'whatsapp' : 'wecom';
+            document.getElementById('sim-webhook-url').value = window.location.origin + '/api/v1/builder/webhook/' + path + '/' + activeAgentId;
+        });
+</script>
+
+<!-- Node Editor Modal -->
+<div id="node-edit-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:9999; align-items:center; justify-content:center;">
+    <div class="card" style="width: 450px; background:white; padding:24px; border-radius:12px;">
+        <h2 id="modal-node-title" style="font-size:16px; margin-bottom:15px;">编辑 SOP 节点</h2>
+        <div style="margin-bottom:15px;">
+            <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:5px;">节点标题</label>
+            <input type="text" id="modal-input-title" class="chat-input" style="width:100%; background:white;">
+        </div>
+        <div style="margin-bottom:20px;">
+            <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:5px;">节点内容 / 规则</label>
+            <textarea id="modal-input-body" class="chat-input" style="width:100%; height:150px; background:white; font-family:var(--font-main); resize:none;"></textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+            <button class="btn" onclick="closeNodeModal()">取消</button>
+            <button class="btn btn-primary" onclick="saveNodeModal()">确认修改</button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

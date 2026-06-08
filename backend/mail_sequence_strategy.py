@@ -1075,17 +1075,15 @@ RE_ACTIVATION_SEQUENCE = MailSequenceStrategy(
     scenario=MailScenario.RE_ACTIVATION.value,
     scenario_label="old_customer_re_activation",
     objective=(
-        "Re-open dialogue with a previously engaged customer through a low-pressure "
-        "four-step sequence: relationship restart, relevant proof, process confidence, "
-        "then a reviewed commercial next step."
+        "通过轻量级问候、提供相关证明、建立流程信心以及提供经过人工审核的商业下一步，"
+        "分四步重新建立与过往客户的对话：关系重新连接、相关案例证明、流程信心确认，以及商业跟进。"
     ),
     applicable_trigger=(
-        "CRM or sales review confirms prior cooperation, inquiry, sampling, delivery, "
-        "or meaningful business conversation, with no effective recent business contact."
+        "CRM 或销售复核确认该客户过往曾有合作、询价、打样、交付或深入业务交流，"
+        "且近期没有活跃的业务往来记录。"
     ),
     isolation_boundary=(
-        "Mail-only strategy metadata. Do not write state to WeCom conversation tables, "
-        "do not require WeCom callbacks, and do not send real email."
+        "仅邮件侧策略元数据。不向企微会话表写入状态，不需要企微回调，默认关闭真实发送。"
     ),
     steps=(
         MailSequenceStepStrategy(
@@ -1094,40 +1092,38 @@ RE_ACTIVATION_SEQUENCE = MailSequenceStrategy(
             suite_step=1,
             step_key="re_activation_step_1_reconnect",
             objective=(
-                "Restart the relationship with a light greeting, acknowledge prior "
-                "cooperation, and invite a simple update without selling."
+                "通过轻量问候重新建立联系，确认过往合作，在不推销的情况下邀请客户简单更新近况。"
             ),
             recommended_snippet_types=(MailSnippetType.GREETINGS.value,),
             subject_template_hints=(
-                "Quick hello and a small update for your team",
-                "Checking in after our previous cooperation",
-                "Hope everything has been going smoothly on your side",
+                "好久不见 想跟您聊聊最近的项目动向",
+                "关于我们过往合作项目的后续跟进",
+                "希望您最近一切顺利，顺便向您问个好",
             ),
             cta_style=(
-                "Low-pressure reply invitation. Ask whether there is anything upcoming "
-                "the team should prepare for, without asking for an order or quote."
+                "低压力问候，邀请客户简单更新近况，不强推业务。"
             ),
             retrieval_filter_requirements=(
-                "scenario must equal re_activation.",
-                "sequence_step_hint should be 1 or null; prefer exact step match.",
-                "snippet_type must be greetings.",
-                "retrieval_enabled, publishable, allowed_for_generation and usable_for_reply must all be true.",
-                "useful_score must meet MAIL_FEWSHOT_MIN_USEFUL_SCORE, default 0.60.",
-                "desensitized_status must be desensitized when present in source_snapshot.",
-                "review_status must be approved when present in source_snapshot.",
-                "Do not require industry or product_line for Step 1 unless request-side CRM profile provides them.",
+                "scenario 必须为 re_activation。",
+                "sequence_step_hint 建议为 1 或空；优先精确步骤匹配。",
+                "snippet_type 必须为 greetings。",
+                "retrieval_enabled, publishable, allowed_for_generation 和 usable_for_reply 必须均为 true。",
+                "useful_score 必须满足 MAIL_FEWSHOT_MIN_USEFUL_SCORE（默认 0.60）。",
+                "当 source_snapshot 中存在 desensitized_status 时必须为 desensitized。",
+                "当 source_snapshot 中存在 review_status 时必须为 approved。",
+                "对于步骤 1，除非请求侧 CRM 画像明确提供，否则不需要行业或产品线限制。",
             ),
             forbidden_boundaries=(
-                "No price, discount, payment term, urgent delivery promise, or concrete SLA.",
-                "No strong promotional language or pressure to place an order.",
-                "No real customer name, project number, file name, phone, URL, or internal identifier from history.",
-                "No claim that the customer has an active need unless CRM or the user request provides it.",
+                "不能提及价格、折扣、账期、加急交期承诺或具体 SLA。",
+                "不要使用强推销的语气或催促下单的措辞。",
+                "不能出现历史邮件中的真实客户名、项目号、文件名称、电话、URL 或内部 ID。",
+                "除非 CRM 或用户请求明确给出，否则不要假设客户目前有特定需求。",
             ),
             exit_conditions=(
-                "Customer replies by email.",
-                "CRM stage changes to won, active opportunity, complaint, do-not-contact, or manual follow-up.",
-                "Sales manually seals the sequence.",
-                "Recipient or domain fails later anti-leakage checks.",
+                "客户通过邮件进行了回复。",
+                "CRM 阶段变更为赢单、进行中商机、投诉、勿扰或销售手动跟进。",
+                "销售手动封印（手动强中断）。",
+                "收件人或域名未通过安全防泄密校验。",
             ),
             data_structure_fields={
                 **COMMON_RE_ACTIVATION_FIELDS,
@@ -1143,40 +1139,38 @@ RE_ACTIVATION_SEQUENCE = MailSequenceStrategy(
             suite_step=2,
             step_key="re_activation_step_2_relevant_proof",
             objective=(
-                "Share a closely matched, desensitized peer project or capability proof "
-                "to remind the customer why the team is relevant."
+                "分享高度匹配且已脱敏的同行业成功服务案例，唤醒客户对我们专业度的记忆。"
             ),
             recommended_snippet_types=(MailSnippetType.EXAMPLE.value,),
             subject_template_hints=(
-                "A recent reference from a similar project",
-                "Sharing a relevant example for your next localization work",
-                "A quick case reference that may be useful for your team",
+                "为您分享一个我们近期完成的同行业案例",
+                "关于我们近期在您所在行业完成的项目参考",
+                "一个可供您团队参考的近期本地化案例",
             ),
             cta_style=(
-                "Interest-check CTA. Invite the recipient to ask for the anonymized "
-                "reference details or send similar files for review."
+                "分享一个同行业的合作案例，引出可类比的项目机会。"
             ),
             retrieval_filter_requirements=(
-                "scenario must equal re_activation.",
-                "sequence_step_hint should be 2 or null; prefer exact step match.",
-                "snippet_type must be example.",
-                "industry should strongly match when the CRM/request industry is known.",
-                "product_line should strongly match when the CRM/request product_line is known.",
-                "country may be used as a soft preference, not as a substitute for domain checks.",
-                "Do not use unknown industry examples before exhausting exact industry/product matches.",
-                "All Task 17 Few-Shot admission conditions still apply.",
+                "scenario 必须为 re_activation。",
+                "sequence_step_hint 建议为 2 或空；优先精确步骤匹配。",
+                "snippet_type 必须为 example。",
+                "当 CRM/请求行业已知时，行业字段应当强匹配。",
+                "当 CRM/请求产品线已知时，产品线字段应当强匹配。",
+                "国家字段可用作软相关性过滤，但不能代替域名安全校验。",
+                "在用尽精确行业/产品匹配前，不要使用未识别行业的案例。",
+                "所有 Task 17 Few-Shot 准入条件依然适用。",
             ),
             forbidden_boundaries=(
-                "No cross-industry proof when a known industry profile exists.",
-                "No real customer names, recognizable project details, unapproved metrics, or ROI claims.",
-                "No implication that the recipient endorsed or requested the example.",
-                "No price, discount, account term, or delivery commitment.",
+                "如果已知客户行业画像，不要提供跨行业的案例证明。",
+                "绝不能出现真实客户名、可识别的项目细节、未经核准的度量指标或投资回报率承诺。",
+                "不要暗示收件人认可该案例，或承诺其必然能达到完全相同的效果。",
+                "不能提及具体报价、折扣、账期或交付时间承诺。",
             ),
             exit_conditions=(
-                "Customer replies or asks for details.",
-                "CRM profile shows industry mismatch or missing consent for case sharing.",
-                "Customer is already assigned to manual opportunity follow-up.",
-                "Sales manually seals the sequence.",
+                "客户回复邮件、索取案例详情或发送文件。",
+                "CRM 画像显示行业不匹配或未获得客户分享许可。",
+                "客户已在 CRM 中被分配到人工销售跟进阶段。",
+                "销售手动封印了该邮件序列。",
             ),
             data_structure_fields={
                 **COMMON_RE_ACTIVATION_FIELDS,
@@ -1193,39 +1187,37 @@ RE_ACTIVATION_SEQUENCE = MailSequenceStrategy(
             suite_step=3,
             step_key="re_activation_step_3_process_confidence",
             objective=(
-                "Reduce hesitation by explaining the current service process, quality "
-                "checks, required inputs, and reasonable delivery boundaries."
+                "通过介绍当前的服务流程、质量把控机制、必要输入和合理的工期边界，建立客户的流程信心并降低顾虑。"
             ),
             recommended_snippet_types=(MailSnippetType.PROCESS.value, MailSnippetType.CONSTRAINT.value),
             subject_template_hints=(
-                "How we now handle translation, review and formatting projects",
-                "Our updated workflow for smoother project delivery",
-                "A quick note on process and quality control",
+                "向您简要介绍我们目前采用的多流程质量把控机制",
+                "为您整理的翻译与排版交付流程规范说明",
+                "关于我们如何保障复杂项目按时高质量交付的几点说明",
             ),
             cta_style=(
-                "Operational CTA. Ask whether the recipient wants the checklist, file "
-                "review, or a quick feasibility confirmation."
+                "展示标准服务流程与工期 SLA，给客户安全感。"
             ),
             retrieval_filter_requirements=(
-                "scenario must equal re_activation.",
-                "sequence_step_hint should be 3 or null; prefer exact step match.",
-                "snippet_type should be process or constraint.",
-                "product_line should match the current service interest when known.",
-                "industry is a weighting field; for medical or legal_finance, prefer exact matches.",
-                "constraint snippets must be approved and safe_for_fewshot before retrieval.",
-                "Delivery durations must come from later SLA rules, not from historical free text.",
+                "scenario 必须为 re_activation。",
+                "sequence_step_hint 建议为 3 或空；优先精确步骤匹配。",
+                "snippet_type 应当为 process 或 constraint。",
+                "当已知当前服务兴趣时，产品线必须匹配。",
+                "行业是加权字段；对于医疗医药或法律服务，优先匹配相同行业。",
+                "constraint 类型的切片在检索前必须已审核且 safe_for_fewshot 标记为 true。",
+                "交付工期必须来自后续的物理 SLA 规则，而非历史切片中的自由文本。",
             ),
             forbidden_boundaries=(
-                "No non-standard rush promise or fixed delivery date from historical emails.",
-                "No internal staffing, cost, vendor, margin, or unpublished quality-control detail.",
-                "No customer-sensitive file names or document contents.",
-                "No wording that bypasses future SLA calibration or manual review.",
+                "不能使用历史邮件中非标的加急承诺或固定交付日期。",
+                "不要暴露公司内部人员配备、底线成本、供应商选择、毛利及未公开的质控细节。",
+                "不要泄露任何带有敏感客户信息的文件名或内容。",
+                "不要使用任何试图绕过后续 SLA 校准或人工审核的措辞。",
             ),
             exit_conditions=(
-                "Customer sends files, asks for feasibility, or opens a concrete project discussion.",
-                "CRM marks active opportunity or manual follow-up.",
-                "Later SLA guardrail would need to lock the draft for approval.",
-                "Sales manually seals the sequence.",
+                "客户发送待评估文件、索取流程清单或开启具体的项目讨论。",
+                "CRM 中出现活跃商机或被标记为销售手动跟进。",
+                "后续 SLA 拦截器触发并将该草稿锁定到人工审批队列。",
+                "销售手动封印了该序列。",
             ),
             data_structure_fields={
                 **COMMON_RE_ACTIVATION_FIELDS,
@@ -1242,39 +1234,37 @@ RE_ACTIVATION_SEQUENCE = MailSequenceStrategy(
             suite_step=4,
             step_key="re_activation_step_4_reviewed_commercial_next_step",
             objective=(
-                "Offer a reviewed light commercial next step such as sample review, "
-                "trial, or quote conversation while preserving price and term guardrails."
+                "在遵循价格和条款安全门的前提下，向客户提供经过审核的轻量商业下一步动作，如样稿评估、试用或报价沟通。"
             ),
             recommended_snippet_types=(MailSnippetType.QUOTATION.value, MailSnippetType.CONSTRAINT.value),
             subject_template_hints=(
-                "A small next step reserved for returning clients",
-                "Would a sample review help for your next project?",
-                "Closing the loop with a practical option for your team",
+                "针对老客户回归我们为您准备的合作优选路径",
+                "近期是否有我们可协助的试译或样稿评估安排？",
+                "关于我们合作项目可行性方案及报价的初步探讨",
             ),
             cta_style=(
-                "Single explicit reply CTA. Ask the recipient to reply yes, send files, "
-                "or confirm whether they want a reviewed quote or sample arrangement."
+                "提供小批量试用样稿邀约，降低客户决策门槛。"
             ),
             retrieval_filter_requirements=(
-                "scenario must equal re_activation.",
-                "sequence_step_hint should be 4 or null; prefer exact step match.",
-                "snippet_type should be quotation or constraint.",
-                "product_line and customer_tier should match before using any commercial wording.",
-                "payment_risk high, prepaid_required, blocked, or unknown should force conservative wording or manual review.",
-                "Quotation snippets provide expression structure only; amounts and discounts come from later physical fields.",
-                "All safety-related source_snapshot fields must be affirmative before retrieval.",
+                "scenario 必须为 re_activation。",
+                "sequence_step_hint 建议为 4 或空；优先精确步骤匹配。",
+                "snippet_type 应当为 quotation 或 constraint。",
+                "在采用任何商业化措辞前，产品线和客户级别应当匹配。",
+                "对于高欠款风险（high, prepaid_required, blocked）或未识别状态，强制采用保守表达或进行人工复核。",
+                "quotation 类型的切片仅提供句式结构；具体金额与折扣由后续的物理字段填充。",
+                "检索前所有与安全相关的 source_snapshot 字段必须均已确认通过。",
             ),
             forbidden_boundaries=(
-                "No model-generated price, discount, payment term, account privilege, or bottom-line hint.",
-                "No promise of free service, sample, or trial unless supplied by approved config or human input.",
-                "No pressure language, scarcity claim, or auto-expiring privilege unless backed by business config.",
-                "No real sending until draft review and future safety gates pass.",
+                "绝对不能在邮件正文中由大模型自由生成底线价格、具体折扣或特权账期天数。",
+                "除非有已核准的配置或人工显式设定，否则不要在邮件中承诺免费试用、试译或特殊优惠额度。",
+                "不要使用强迫性促销语言、紧迫性宣传或虚假的到期限制措辞。",
+                "在通过草稿人工审核及三重物理安全门前，严禁启用真实发送。",
             ),
             exit_conditions=(
-                "Customer replies, accepts, declines, or asks not to be contacted.",
-                "CRM stage changes, manual seal is applied, or sequence status becomes interrupted or blocked.",
-                "A pending draft is locked or destroyed by future Task 25 rules.",
-                "Any price, SLA, payment, or recipient guardrail fails.",
+                "客户回复、接受、明确拒绝或退信/退阅。",
+                "CRM 中出现阶段变化、销售手动封印，或序列被安全拦截器中断。",
+                "该待发草稿被物理销毁或锁定（符合 Task 25 规则）。",
+                "任意价格、SLA、欠款风险或域名黑名单校验未通过。",
             ),
             data_structure_fields={
                 **COMMON_RE_ACTIVATION_FIELDS,
@@ -1293,17 +1283,15 @@ NEW_BUSINESS_PROMOTION_SEQUENCE = MailSequenceStrategy(
     scenario=MailScenario.NEW_BUSINESS_PROMOTION.value,
     scenario_label="new_business_promotion",
     objective=(
-        "Introduce a relevant new product line, service bundle, or capability upgrade "
-        "through a four-step sequence: light value introduction, matched proof, "
-        "service-package process, then a reviewed trial or quote conversation."
+        "通过轻量级价值引介、同业匹配证明、服务方案流程说明以及最后的试用/报价邀约，"
+        "分四步向客户推广相关的新业务线或新能力，以发掘增量业务机会。"
     ),
     applicable_trigger=(
-        "CRM, sales tagging, or manual review shows the customer has a related demand "
-        "profile but has not purchased the promoted product line or service bundle."
+        "CRM、销售标记或人工复核表明该客户存在相关业务需求，"
+        "且尚未采购过我们拟推广的新业务线或服务组合。"
     ),
     isolation_boundary=(
-        "Mail-only strategy metadata. Do not write state to WeCom conversation tables, "
-        "do not require WeCom callbacks, and do not send real email."
+        "仅邮件侧策略元数据。不向企微会话表写入状态，不需要企微回调，默认关闭真实发送。"
     ),
     steps=(
         MailSequenceStepStrategy(
@@ -1312,41 +1300,39 @@ NEW_BUSINESS_PROMOTION_SEQUENCE = MailSequenceStrategy(
             suite_step=1,
             step_key="new_business_promotion_step_1_value_intro",
             objective=(
-                "Open with a light, profile-aware introduction to the promoted service "
-                "and connect it to a plausible customer need without quoting or pushing."
+                "针对客户行业画像对所推广的新业务进行轻量引介，并将其与客户可能存在的痛点相结合，不急于报价或催促。"
             ),
             recommended_snippet_types=(MailSnippetType.GREETINGS.value, MailSnippetType.EXAMPLE.value),
             subject_template_hints=(
-                "A small service update that may fit your upcoming work",
-                "Sharing a new option for your localization projects",
-                "A quick note on a service bundle your team may find useful",
+                "向您介绍我们近期新增的本地化与多语种服务能力",
+                "分享一个或许契合贵司团队近期项目需求的新服务选项",
+                "关于我们新增服务组合对贵司项目效率提升的简明引介",
             ),
             cta_style=(
-                "Low-pressure interest check. Ask whether the recipient wants a short "
-                "overview, reference, or sample workflow for the promoted service."
+                "低门槛价值提示：用一两句话讲清新业务能为对方解决什么具体问题。"
             ),
             retrieval_filter_requirements=(
-                "scenario must equal new_business_promotion.",
-                "sequence_step_hint should be 1 or null; prefer exact step match.",
-                "snippet_type should be greetings or example.",
-                "target product_line should match the promoted service when known.",
-                "industry and country should be used as soft relevance filters when present.",
-                "retrieval_enabled, publishable, allowed_for_generation and usable_for_reply must all be true.",
-                "useful_score must meet MAIL_FEWSHOT_MIN_USEFUL_SCORE, default 0.60.",
-                "desensitized_status must be desensitized when present in source_snapshot.",
-                "review_status must be approved when present in source_snapshot.",
+                "scenario 必须为 new_business_promotion。",
+                "sequence_step_hint 建议为 1 或空；优先精确步骤匹配。",
+                "snippet_type 应当为 greetings 或 example。",
+                "拟推广的产品线应当匹配所推广的新服务（当已知时）。",
+                "当存在行业和国家画像时，应当作为软相关性过滤条件。",
+                "retrieval_enabled, publishable, allowed_for_generation 和 usable_for_reply 必须均为 true。",
+                "useful_score 必须满足 MAIL_FEWSHOT_MIN_USEFUL_SCORE（默认 0.60）。",
+                "当 source_snapshot 中存在 desensitized_status 时必须为 desensitized。",
+                "当 source_snapshot 中存在 review_status 时必须为 approved。",
             ),
             forbidden_boundaries=(
-                "No claim that the customer already requested, approved, or committed to the new service.",
-                "No price, discount, account term, fixed delivery promise, or urgent deadline.",
-                "No cold mass-mail wording when no customer profile or contact source exists.",
-                "No real customer name, project number, file name, phone, URL, or internal identifier from history.",
+                "不要声称客户已经请求、批准或承诺了该新服务。",
+                "不能提及具体报价、折扣、账期天数、固定交期或紧急时限要求。",
+                "在没有明确的客户画像或联系人来源时，不要使用冰冷死板的群发推广措辞。",
+                "绝对不能出现历史邮件中的真实客户名、项目号、文件名称、电话、URL 或内部 ID。",
             ),
             exit_conditions=(
-                "Customer replies, asks for details, or rejects the promotion.",
-                "CRM marks do-not-contact, complaint, active opportunity, or manual follow-up.",
-                "Customer profile is missing or contradicts the promoted service fit.",
-                "Recipient or domain fails later anti-leakage checks.",
+                "客户进行了回复、索取详情或明确拒绝该业务推广。",
+                "CRM 中被标记为勿扰、投诉、活跃商机，或转为销售手动跟进。",
+                "客户画像缺失或与所推广的服务不匹配。",
+                "收件人或域名未通过安全防泄密校验。",
             ),
             data_structure_fields={
                 **COMMON_NEW_BUSINESS_PROMOTION_FIELDS,
@@ -1363,40 +1349,38 @@ NEW_BUSINESS_PROMOTION_SEQUENCE = MailSequenceStrategy(
             suite_step=2,
             step_key="new_business_promotion_step_2_industry_proof",
             objective=(
-                "Use a strongly matched, desensitized industry or product-line example "
-                "to show why the new service is relevant to the recipient."
+                "使用高度匹配且已脱敏的同行业或同产品线案例，向收件人展示该新业务的实用价值与相关性。"
             ),
             recommended_snippet_types=(MailSnippetType.EXAMPLE.value,),
             subject_template_hints=(
-                "A relevant example for this service area",
-                "How a similar team used this service bundle",
-                "A short reference from a comparable project",
+                "为您分享一个我们近期在相同行业完成的服务案例",
+                "同行业团队如何利用我们这项新业务提升项目成效",
+                "一个可供贵司团队参考的同类产品线近期成功案例",
             ),
             cta_style=(
-                "Relevance-check CTA. Invite the recipient to ask for the anonymized "
-                "reference, compare a similar file, or confirm whether the use case fits."
+                "引用一两个行业案例，强化新业务的可靠性。"
             ),
             retrieval_filter_requirements=(
-                "scenario must equal new_business_promotion.",
-                "sequence_step_hint should be 2 or null; prefer exact step match.",
-                "snippet_type must be example.",
-                "industry should strongly match when the CRM/request industry is known.",
-                "product_line must match the promoted product line when known.",
-                "customer_tier may tune tone and depth, but must not create unsupported claims.",
-                "Do not use unknown industry or unrelated product examples before exhausting exact matches.",
-                "All Task 17 Few-Shot admission conditions still apply.",
+                "scenario 必须为 new_business_promotion。",
+                "sequence_step_hint 建议为 2 或空；优先精确步骤匹配。",
+                "snippet_type 必须为 example。",
+                "当 CRM/请求行业已知时，行业字段应当强匹配。",
+                "产品线必须匹配拟推广的新产品线（当已知时）。",
+                "客户级别可用于调整语气深度，但不能用于伪造未经证实的承诺。",
+                "在精确匹配用尽前，不要使用行业或产品线不相关的案例。",
+                "所有 Task 17 Few-Shot 准入条件依然适用。",
             ),
             forbidden_boundaries=(
-                "No obviously mismatched industry or product-line proof.",
-                "No real customer names, recognizable project details, unapproved metrics, or ROI claims.",
-                "No implication that the recipient endorsed the example or has the same result guaranteed.",
-                "No price, discount, account term, or delivery commitment.",
+                "不要提供行业或产品线明显不匹配的案例证明。",
+                "绝对不能出现真实客户名、可识别的项目细节、未经核准的度量指标或投资回报率承诺。",
+                "不要暗示收件人认可该案例，或承诺其必然能达到完全相同的效果。",
+                "不能提及具体报价、折扣、账期或交付时间承诺。",
             ),
             exit_conditions=(
-                "Customer replies, asks for the reference, or sends a sample file.",
-                "CRM profile shows industry/product mismatch or missing consent for case sharing.",
-                "Customer is already assigned to manual opportunity follow-up.",
-                "Sales manually seals the sequence.",
+                "客户回复、索取案例详情或发送试用样本文件。",
+                "CRM 画像显示行业或拟推广产品线不匹配，或未获得客户分享许可。",
+                "客户已在 CRM 中被分配到人工销售跟进阶段。",
+                "销售手动封印了该邮件序列。",
             ),
             data_structure_fields={
                 **COMMON_NEW_BUSINESS_PROMOTION_FIELDS,
@@ -1413,39 +1397,37 @@ NEW_BUSINESS_PROMOTION_SEQUENCE = MailSequenceStrategy(
             suite_step=3,
             step_key="new_business_promotion_step_3_service_package_process",
             objective=(
-                "Explain the service package, collaboration flow, required inputs, and "
-                "reasonable constraints so the customer can evaluate a small trial."
+                "向客户阐明该服务方案的流程、协作细节、必要输入及合理限制，以便客户对小批量测试进行评估。"
             ),
             recommended_snippet_types=(MailSnippetType.PROCESS.value, MailSnippetType.CONSTRAINT.value),
             subject_template_hints=(
-                "How this service package would work for your team",
-                "A simple workflow for trying this service",
-                "What we would need to review a first sample",
+                "关于这项新服务包在贵司项目中的具体协作流程",
+                "一个便于贵司快速开启小批量试用测试的简明工作流",
+                "我们在开展该项新服务前所需的分析及准备工作说明",
             ),
             cta_style=(
-                "Operational CTA. Ask whether the recipient wants a checklist, sample "
-                "review, scope confirmation, or a short feasibility check."
+                "邀请客户试用方案或小批量测试，作为决策前的低成本验证。"
             ),
             retrieval_filter_requirements=(
-                "scenario must equal new_business_promotion.",
-                "sequence_step_hint should be 3 or null; prefer exact step match.",
-                "snippet_type should be process or constraint.",
-                "product_line must match the promoted service package when known.",
-                "industry is a weighting field; for medical or legal_finance, prefer exact matches.",
-                "constraint snippets must be approved and safe_for_fewshot before retrieval.",
-                "Delivery durations must come from later SLA rules, not from historical free text.",
+                "scenario 必须为 new_business_promotion。",
+                "sequence_step_hint 建议为 3 或空；优先精确步骤匹配。",
+                "snippet_type 应当为 process 或 constraint。",
+                "产品线必须匹配拟推广的新产品线（当已知时）。",
+                "行业是加权字段；对于医疗医药或法律服务，优先匹配相同行业。",
+                "constraint 类型的切片在检索前必须已审核且 safe_for_fewshot 标记为 true。",
+                "交付工期必须来自后续的物理 SLA 规则，而非历史切片中的自由文本。",
             ),
             forbidden_boundaries=(
-                "No non-standard rush promise or fixed delivery date from historical emails.",
-                "No internal staffing, cost, vendor, margin, or unpublished quality-control detail.",
-                "No customer-sensitive file names or document contents.",
-                "No wording that bypasses future SLA calibration, scope confirmation, or manual review.",
+                "不能使用历史邮件中非标的加急承诺或固定交付日期。",
+                "不要暴露公司内部人员配备、底线成本、供应商选择、毛利及未公开的质控细节。",
+                "不要泄露任何带有敏感客户信息的文件名或内容。",
+                "不要使用任何试图绕过后续 SLA 校准、范围确认或人工审核的措辞。",
             ),
             exit_conditions=(
-                "Customer asks for a checklist, sends files, or opens a concrete trial discussion.",
-                "CRM marks active opportunity or manual follow-up.",
-                "Later SLA guardrail would need to lock the draft for approval.",
-                "Sales manually seals the sequence.",
+                "客户索取流程清单、发送试用样本文件或开启具体的合作测试讨论。",
+                "CRM 中出现活跃商机或被标记为销售手动跟进。",
+                "后续 SLA 拦截器触发并将该草稿锁定到人工审批队列。",
+                "销售手动封印了该序列。",
             ),
             data_structure_fields={
                 **COMMON_NEW_BUSINESS_PROMOTION_FIELDS,
@@ -1462,39 +1444,37 @@ NEW_BUSINESS_PROMOTION_SEQUENCE = MailSequenceStrategy(
             suite_step=4,
             step_key="new_business_promotion_step_4_reviewed_trial_or_quote",
             objective=(
-                "Offer a reviewed trial, sample review, or quote conversation for the "
-                "promoted service while preserving price, term, and sending guardrails."
+                "在价格、条款和发件安全门审查的前提下，为所推广的新业务提供试用、试译或报价机会。"
             ),
             recommended_snippet_types=(MailSnippetType.QUOTATION.value, MailSnippetType.CONSTRAINT.value),
             subject_template_hints=(
-                "Would a small trial help evaluate this service?",
-                "A practical next step for reviewing this service option",
-                "Checking whether a reviewed quote or sample would help",
+                "是否可以为您安排一个小型试用以评估这项新服务？",
+                "针对贵司近期项目的方案评估及初步报价说明",
+                "确认是否可以为贵司定制一份新服务试用方案与预算建议",
             ),
             cta_style=(
-                "Single explicit reply CTA. Ask the recipient to reply yes, send files, "
-                "or confirm whether they want a reviewed quote, sample, or trial scope."
+                "给出报价邀约，附带工期、账期、折扣等结构化商业条款（由后端占位符替换）。"
             ),
             retrieval_filter_requirements=(
-                "scenario must equal new_business_promotion.",
-                "sequence_step_hint should be 4 or null; prefer exact step match.",
-                "snippet_type should be quotation or constraint.",
-                "product_line and customer_tier should match before using any commercial wording.",
-                "payment_risk high, prepaid_required, blocked, or unknown should force conservative wording or manual review.",
-                "Quotation snippets provide expression structure only; amounts and discounts come from later physical fields.",
-                "All safety-related source_snapshot fields must be affirmative before retrieval.",
+                "scenario 必须为 new_business_promotion。",
+                "sequence_step_hint 建议为 4 或空；优先精确步骤匹配。",
+                "snippet_type 应当为 quotation 或 constraint。",
+                "在采用任何商业化措辞前，产品线和客户级别应当匹配。",
+                "对于高欠款风险（high, prepaid_required, blocked）或未识别状态，强制采用保守表达或进行人工复核。",
+                "quotation 类型的切片仅提供句式结构；具体金额与折扣由后续的物理字段填充。",
+                "检索前所有与安全相关的 source_snapshot 字段必须均已确认通过。",
             ),
             forbidden_boundaries=(
-                "No model-generated price, discount, payment term, account privilege, or bottom-line hint.",
-                "No promise of free trial, sample, bundle, or special offer unless supplied by approved config or human input.",
-                "No pressure language, scarcity claim, or auto-expiring privilege unless backed by business config.",
-                "No real sending until draft review and future safety gates pass.",
+                "绝对不能在邮件正文中由大模型自由生成底线价格、具体折扣或特权账期天数。",
+                "除非有已核准的配置或人工显式设定，否则不要在邮件中承诺免费试用、试译、打包优惠或特权。",
+                "不要使用强迫性促销语言、紧迫性宣传或虚假的到期限制措辞。",
+                "在通过草稿人工审核及三重物理安全门前，严禁启用真实发送。",
             ),
             exit_conditions=(
-                "Customer replies, accepts, declines, or asks not to be contacted.",
-                "CRM stage changes, manual seal is applied, or sequence status becomes interrupted or blocked.",
-                "A pending draft is locked or destroyed by future Task 25 rules.",
-                "Any price, SLA, payment, or recipient guardrail fails.",
+                "客户回复、接受、明确拒绝或退信/退阅。",
+                "CRM 中出现阶段变化、销售手动封印，或序列被安全拦截器中断。",
+                "该待发草稿被物理销毁或锁定（符合 Task 25 规则）。",
+                "任意价格、SLA、欠款风险或域名黑名单校验未通过。",
             ),
             data_structure_fields={
                 **COMMON_NEW_BUSINESS_PROMOTION_FIELDS,
@@ -1513,18 +1493,15 @@ NEW_CONTACT_INTRO_SEQUENCE = MailSequenceStrategy(
     scenario=MailScenario.NEW_CONTACT_INTRO.value,
     scenario_label="new_contact_intro",
     objective=(
-        "Establish trust with a newly assigned recipient or newly assigned seller "
-        "through a four-step sequence: transparent handover introduction, prior "
-        "cooperation context, role-relevant service path, then a reviewed next step."
+        "通过透明的交接介绍、过往合作背景确认、角色相关的服务路径阐述以及最后的务实下一步，"
+        "分四步在新指派的销售人员与客户新负责人之间建立信任，为后续的顺畅沟通打下基础。"
     ),
     applicable_trigger=(
-        "CRM, sales handover, or manual review shows the account has a new recipient, "
-        "new department owner, or new seller-owner relationship that needs a clean "
-        "email introduction before business follow-up."
+        "CRM、销售交接或人工复核确认该账户存在新对接人、新部门负责人，"
+        "或新指派的销售负责关系，需要在正式跟进业务前进行一次正式的邮件引介。"
     ),
     isolation_boundary=(
-        "Mail-only strategy metadata. Do not write state to WeCom conversation tables, "
-        "do not require WeCom callbacks, and do not send real email."
+        "仅邮件侧策略元数据。不向企微会话表写入状态，不需要企微回调，默认关闭真实发送。"
     ),
     steps=(
         MailSequenceStepStrategy(
@@ -1533,40 +1510,38 @@ NEW_CONTACT_INTRO_SEQUENCE = MailSequenceStrategy(
             suite_step=1,
             step_key="new_contact_intro_step_1_handover_intro",
             objective=(
-                "Introduce the current seller, explain the handover or contact reason, "
-                "and make the email feel accountable rather than promotional."
+                "介绍当前的销售对接人，说明交接背景或联系原因，使邮件显得认真负责而非推销性质。"
             ),
             recommended_snippet_types=(MailSnippetType.GREETINGS.value,),
             subject_template_hints=(
-                "A quick introduction as your new contact",
-                "Introducing myself for future project coordination",
-                "Following up after the account handover",
+                "您好！我是您本次项目合作的新对接人",
+                "关于贵司项目对接人变更及未来协作的沟通",
+                "SpeedAsia 翻译与本地化对接人交接说明",
             ),
             cta_style=(
-                "Permission-based reply CTA. Ask whether the recipient is the right "
-                "person for future coordination or whether another colleague should be copied."
+                "自我介绍新接手身份，询问对方是否还有其他同事需要抄送。"
             ),
             retrieval_filter_requirements=(
-                "scenario must equal new_contact_intro.",
-                "sequence_step_hint should be 1 or null; prefer exact step match.",
-                "snippet_type must be greetings.",
-                "handover_context should come from CRM, sales handover, or manual request, not model inference alone.",
-                "retrieval_enabled, publishable, allowed_for_generation and usable_for_reply must all be true.",
-                "useful_score must meet MAIL_FEWSHOT_MIN_USEFUL_SCORE, default 0.60.",
-                "desensitized_status must be desensitized when present in source_snapshot.",
-                "review_status must be approved when present in source_snapshot.",
+                "scenario 必须为 new_contact_intro。",
+                "sequence_step_hint 建议为 1 或空；优先精确步骤匹配。",
+                "snippet_type 必须为 greetings。",
+                "交接背景应当来自 CRM、销售交接或人工请求，而非模型凭空臆断。",
+                "retrieval_enabled, publishable, allowed_for_generation 和 usable_for_reply 必须均为 true。",
+                "useful_score 必须满足 MAIL_FEWSHOT_MIN_USEFUL_SCORE（默认 0.60）。",
+                "当 source_snapshot 中存在 desensitized_status 时必须为 desensitized。",
+                "当 source_snapshot 中存在 review_status 时必须为 approved。",
             ),
             forbidden_boundaries=(
-                "No claim of personal relationship, prior conversation, or customer approval unless provided by CRM or request.",
-                "No pressure to start a project, place an order, or provide files immediately.",
-                "No real previous contact name, department, phone, project number, or internal handover note unless approved.",
-                "No price, discount, payment term, or fixed delivery commitment.",
+                "不要虚构个人私交、过往聊天记录或客户已批准对接的假象。",
+                "不要催促客户立即提供项目、下单或发送文件。",
+                "不能在未经核准前透露前任对接人的真实姓名、部门、私人电话或内部交接备注。",
+                "不能提及具体价格、折扣、账期或固定交付承诺。",
             ),
             exit_conditions=(
-                "Recipient replies with the correct owner, rejection, or do-not-contact request.",
-                "CRM shows the recipient is not the right contact or has left the company.",
-                "Sales manually seals the sequence or assigns manual follow-up.",
-                "Recipient or domain fails later anti-leakage checks.",
+                "收件人回复了正确的对接负责人、明确拒绝或提出退阅要求。",
+                "CRM 中表明收件人已离职或联系邮箱失效。",
+                "销售手动封印了该序列，或标记为人工手动跟进。",
+                "收件人或域名未通过安全防泄密校验。",
             ),
             data_structure_fields={
                 **COMMON_NEW_CONTACT_INTRO_FIELDS,
@@ -1583,38 +1558,36 @@ NEW_CONTACT_INTRO_SEQUENCE = MailSequenceStrategy(
             suite_step=2,
             step_key="new_contact_intro_step_2_prior_context",
             objective=(
-                "Provide concise, desensitized prior cooperation or department context "
-                "so the new contact understands why the introduction is relevant."
+                "提供简明且脱敏的过往合作或部门对接背景，让新联系人明白此次引介的必要性与相关性。"
             ),
             recommended_snippet_types=(MailSnippetType.EXAMPLE.value, MailSnippetType.PROCESS.value),
             subject_template_hints=(
-                "A little background on how we have supported your team",
-                "Context for future translation and production requests",
-                "Sharing the relevant cooperation background",
+                "向您同步我们过往为贵司团队提供服务的一些背景",
+                "关于我们此前项目合作的历史概况与交付总结",
+                "为您整理的过往本地化项目合作参考信息",
             ),
             cta_style=(
-                "Context-check CTA. Ask whether this background matches the recipient's "
-                "current responsibilities or whether another team should be connected."
+                "请客户分享当前在进行的项目背景或近期需要协助的点。"
             ),
             retrieval_filter_requirements=(
-                "scenario must equal new_contact_intro.",
-                "sequence_step_hint should be 2 or null; prefer exact step match.",
-                "snippet_type should be example or process.",
-                "Known department, contact_role_hint, industry, and product_line should be used to avoid irrelevant history.",
-                "Do not use real names or identifiable project references from historical snippets.",
-                "All Task 17 Few-Shot admission conditions still apply.",
+                "scenario 必须为 new_contact_intro。",
+                "sequence_step_hint 建议为 2 或空；优先精确步骤匹配。",
+                "snippet_type 应当为 example 或 process。",
+                "应当使用已知部门、联系人角色、行业和产品线画像以过滤掉无关的历史信息。",
+                "绝不能在历史切片中使用真实人名或可识别的项目引用。",
+                "所有 Task 17 Few-Shot 准入条件依然适用。",
             ),
             forbidden_boundaries=(
-                "No disclosure of previous contact personal details, direct phone, mailbox, resignation, retirement, or internal notes.",
-                "No customer-sensitive project names, PO numbers, file names, or contract information.",
-                "No implication that the new recipient already agreed to own this work.",
-                "No unapproved claims about business volume, ranking, ROI, or strategic importance.",
+                "不要泄露前任对接人的私人信息、直呼电话、邮箱、离职/退休原因或任何内部负面备注。",
+                "绝对不能泄露任何客户敏感的项目名、PO单号、文件名称或具体的合同条款明细。",
+                "不要暗示新收件人已经同意承接这些工作。",
+                "不要发表关于业务量、客户评级、投资回报率或战略重要性的未经证实的断言。",
             ),
             exit_conditions=(
-                "Recipient confirms role fit, refers another contact, or says the context is irrelevant.",
-                "CRM profile shows department or contact mismatch.",
-                "Customer is already assigned to manual opportunity follow-up.",
-                "Sales manually seals the sequence.",
+                "收件人确认其职责范围、推荐了其他对接人，或指出背景信息不相关。",
+                "CRM 画像表明客户部门或联系职责不匹配。",
+                "客户已被分配到 CRM 的销售手动跟进状态。",
+                "销售手动封印了该序列。",
             ),
             data_structure_fields={
                 **COMMON_NEW_CONTACT_INTRO_FIELDS,
@@ -1631,39 +1604,37 @@ NEW_CONTACT_INTRO_SEQUENCE = MailSequenceStrategy(
             suite_step=3,
             step_key="new_contact_intro_step_3_service_path",
             objective=(
-                "Explain how future requests can be routed, reviewed, and scoped so "
-                "the new contact has a low-friction way to cooperate."
+                "说明未来的项目如何提交、审核和评估，为新联系人提供一种低摩擦的顺畅协作路径。"
             ),
             recommended_snippet_types=(MailSnippetType.PROCESS.value, MailSnippetType.CONSTRAINT.value),
             subject_template_hints=(
-                "A simple path for future translation or production requests",
-                "How we can support your team when a request comes up",
-                "A short coordination note for future projects",
+                "为您说明未来项目协作中的文件提交与交付路径",
+                "如果后续有项目需求，这是推荐的对接与处理流程",
+                "关于我们协作规范及沟通时限要求的简要说明",
             ),
             cta_style=(
-                "Operational CTA. Offer a checklist, routing path, or file review "
-                "option while asking the recipient to confirm the preferred workflow."
+                "介绍标准协作路径（接稿、审稿、交付、复盘），给客户专业感。"
             ),
             retrieval_filter_requirements=(
-                "scenario must equal new_contact_intro.",
-                "sequence_step_hint should be 3 or null; prefer exact step match.",
-                "snippet_type should be process or constraint.",
-                "product_line should match the likely service path when known.",
-                "contact_role_hint should shape the workflow wording but not create unsupported responsibilities.",
-                "constraint snippets must be approved and safe_for_fewshot before retrieval.",
-                "Delivery durations must come from later SLA rules, not from historical free text.",
+                "scenario 必须为 new_contact_intro。",
+                "sequence_step_hint 建议为 3 或空；优先精确步骤匹配。",
+                "snippet_type 应当为 process 或 constraint。",
+                "产品线应当匹配可能的服务兴趣领域（当已知时）。",
+                "收件人角色画像应当塑造工作流措辞，但不能创设未经确认的职责。",
+                "constraint 类型的切片在检索前必须已审核且 safe_for_fewshot 标记为 true。",
+                "交付工期必须来自后续的物理 SLA 规则，而非历史切片中的自由文本。",
             ),
             forbidden_boundaries=(
-                "No non-standard rush promise or fixed delivery date from historical emails.",
-                "No internal staffing, cost, vendor, margin, or unpublished quality-control detail.",
-                "No customer-sensitive file names, document contents, or prior commercial terms.",
-                "No wording that bypasses future SLA calibration, scope confirmation, or manual review.",
+                "不能使用历史邮件中非标的加急承诺或固定交付日期。",
+                "不要暴露公司内部人员配备、底线成本、供应商选择、毛利及未公开的质控细节。",
+                "不要泄露任何带有敏感客户信息的文件名、文档内容或过往商业条款。",
+                "不要使用任何试图绕过后续 SLA 校准、范围确认或人工审核的措辞。",
             ),
             exit_conditions=(
-                "Recipient asks for the checklist, sends files, or confirms a preferred routing path.",
-                "CRM marks active opportunity or manual follow-up.",
-                "Later SLA guardrail would need to lock the draft for approval.",
-                "Sales manually seals the sequence.",
+                "收件人索取流程清单、发送项目文件或确认了首选的对接协作路径。",
+                "CRM 中出现活跃商机或被标记为销售手动跟进。",
+                "后续 SLA 拦截器触发并将该草稿锁定到人工审批队列。",
+                "销售手动封印了该序列。",
             ),
             data_structure_fields={
                 **COMMON_NEW_CONTACT_INTRO_FIELDS,
@@ -1680,39 +1651,37 @@ NEW_CONTACT_INTRO_SEQUENCE = MailSequenceStrategy(
             suite_step=4,
             step_key="new_contact_intro_step_4_reviewed_next_step",
             objective=(
-                "Offer a reviewed practical next step such as a file check, sample "
-                "review, or quote conversation while preserving commercial guardrails."
+                "在遵循商业安全门的前提下，提供经过审核的务实下一步，如文件评估、样稿测试或报价沟通。"
             ),
             recommended_snippet_types=(MailSnippetType.QUOTATION.value, MailSnippetType.CONSTRAINT.value),
             subject_template_hints=(
-                "Would a small file review help your team get started?",
-                "A practical next step if a request comes up",
-                "Checking whether a reviewed quote or sample would help",
+                "确认是否可以为贵司近期的项目提供试用或报价参考？",
+                "如果近期有项目机会，我们为您准备的协作测试建议",
+                "关于我们首次对接合作的实操流程与预算建议",
             ),
             cta_style=(
-                "Single explicit reply CTA. Ask the recipient to reply yes, send files, "
-                "or confirm whether another colleague should handle quote or sample review."
+                "确认下一步协作切入点（试稿、会议、小项目），形成具体动作。"
             ),
             retrieval_filter_requirements=(
-                "scenario must equal new_contact_intro.",
-                "sequence_step_hint should be 4 or null; prefer exact step match.",
-                "snippet_type should be quotation or constraint.",
-                "contact_role_hint, product_line, and customer_tier should match before using commercial wording.",
-                "payment_risk high, prepaid_required, blocked, or unknown should force conservative wording or manual review.",
-                "Quotation snippets provide expression structure only; amounts and discounts come from later physical fields.",
-                "All safety-related source_snapshot fields must be affirmative before retrieval.",
+                "scenario 必须为 new_contact_intro。",
+                "sequence_step_hint 建议为 4 或空；优先精确步骤匹配。",
+                "snippet_type 应当为 quotation 或 constraint。",
+                "在采用任何商业化措辞前，联系人角色、产品线和客户级别应当匹配。",
+                "对于高欠款风险（high, prepaid_required, blocked）或未识别状态，强制采用保守表达或进行人工复核。",
+                "quotation 类型的切片仅提供句式结构；具体金额与折扣由后续的物理字段填充。",
+                "检索前所有与安全相关的 source_snapshot 字段必须均已确认通过。",
             ),
             forbidden_boundaries=(
-                "No model-generated price, discount, payment term, account privilege, or bottom-line hint.",
-                "No promise of free sample, special treatment, or prior-client privilege unless supplied by approved config or human input.",
-                "No pressure language, scarcity claim, or auto-expiring privilege unless backed by business config.",
-                "No real sending until draft review and future safety gates pass.",
+                "绝对不能在邮件正文中由大模型自由生成底线价格、具体折扣或特权账期天数。",
+                "除非有已核准的配置或人工显式设定，否则不要在邮件中承诺免费样稿、特殊待遇或过往特权限制。",
+                "不要使用强迫性促销语言、紧迫性宣传或虚假的到期限制措辞。",
+                "在通过草稿人工审核及三重物理安全门前，严禁启用真实发送。",
             ),
             exit_conditions=(
-                "Recipient replies, refers another owner, accepts, declines, or asks not to be contacted.",
-                "CRM stage changes, manual seal is applied, or sequence status becomes interrupted or blocked.",
-                "A pending draft is locked or destroyed by future Task 25 rules.",
-                "Any price, SLA, payment, or recipient guardrail fails.",
+                "收件人回复、推荐了其他负责人、接受、明确拒绝或退信/退阅。",
+                "CRM 中出现阶段变化、销售手动封印，或序列被安全拦截器中断。",
+                "该待发草稿被物理销毁或锁定（符合 Task 25 规则）。",
+                "任意价格、SLA、欠款风险或域名白名单校验未通过。",
             ),
             data_structure_fields={
                 **COMMON_NEW_CONTACT_INTRO_FIELDS,

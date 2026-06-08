@@ -359,8 +359,10 @@
                 </div>
                 <div class="flex flex-wrap gap-2">
                     <button id="mail-subtab-quality" type="button" onclick="switchMailWorkspaceTab('quality')" class="px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold" title="查看邮件质量诊断面板（含真接入演示区 + 占位静态卡片），不接入企微工作流。">质量诊断</button>
-                    <button id="mail-subtab-iteration" type="button" onclick="switchMailWorkspaceTab('iteration')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件迭代记录: 一次迭代跑 5 案例 × 4 步 = 20 封邮件并打分入库, 可对比多次迭代的草稿质量变化, 含每封邮件用到的真实大模型 prompt。">邮件迭代记录</button>
+                    <button id="mail-subtab-iteration" type="button" onclick="switchMailWorkspaceTab('iteration')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件迭代记录: 一次迭代跑当前 3 案例 × 4 步 = 12 封邮件并打分入库, 可对比多次迭代的草稿质量变化, 含每封邮件用到的真实大模型 prompt。">邮件迭代记录</button>
                     <button id="mail-subtab-goldlib" type="button" onclick="switchMailWorkspaceTab('goldlib')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="黄金范例库: 邮件草稿生成时由后端 RAG 从此库召回参考。当前 25 条种子由 backend/seed_mail_gold_candidates.py 从历史真实邮件脱敏后灌入。">黄金范例库</button>
+                    <button id="mail-subtab-contractcases" type="button" onclick="switchMailWorkspaceTab('contractcases')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件合同案例库: 只读读取 CRM usrContract 最近合同候选，与黄金范例库同级；当前只展示和分析，不脱敏、不入库。">合同案例库</button>
+                    <button id="mail-subtab-feedback" type="button" onclick="switchMailWorkspaceTab('feedback')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="反馈记录: 查询独立客户套装邮件页 /static/mail-suite.html 保存的真实反馈，一次保存一条数据库记录，并展开查看对应草稿模板和客户联系人画像。">反馈记录</button>
                     <button id="mail-subtab-config" type="button" onclick="switchMailWorkspaceTab('config')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="查看邮件全局配置面板的占位骨架（评审 Mock 用），不调用后端、不写库、不真实热加载。">邮件配置</button>
                     <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">返回企微实时智能</button>
                 </div>
@@ -379,17 +381,40 @@
                 <div class="mt-4 rounded-lg border border-emerald-200 bg-white p-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
-                            <button type="button" id="mql-demo-contacts-toggle" onclick="toggleMailDemoContactsCollapsed()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50" title="点击展开或折叠下方 5 个案例卡片区。">▼ 折叠</button>
-                            <div class="text-xs font-bold text-slate-800" title="5 个测试案例来自 CRM 真实联系人（脱敏后存入独立 mail_demo_contact 表，CRM 库本身只读）。点击案例卡片即自动填入下方表单。">真实测试案例切换（5 选 1，来自 CRM 真实联系人脱敏存档）</div>
+                            <button type="button" id="mql-demo-contacts-toggle" onclick="toggleMailDemoContactsCollapsed()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50" title="点击展开或折叠下方 3 个当前测试案例卡片区。">▼ 折叠</button>
+                            <div class="text-xs font-bold text-slate-800" title="当前显示和测试只使用 3 个产品指定客户编号；原 5 个旧案例保留在数据库中但不参与默认显示和迭代。点击案例卡片即自动填入下方表单。">真实测试案例切换（3 选 1：老客户其他业务介绍 / 老客户激活 / 新客户开发介绍）</div>
                         </div>
                         <div class="flex items-center gap-2">
                             <span id="mql-demo-contacts-status" class="text-[11px] text-slate-500">加载中……</span>
-                            <button type="button" onclick="reloadMailDemoContacts()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50" title="重新从后端 GET /api/v1/mail/demo-contacts 拉取 5 个案例。">刷新案例</button>
+                            <button type="button" onclick="reloadMailDemoContacts()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50" title="重新从后端 GET /api/v1/mail/demo-contacts 拉取当前 3 个案例。">刷新案例</button>
                         </div>
                     </div>
                     <div id="mql-demo-contacts-collapsible">
-                        <div id="mql-demo-contacts-grid" class="mt-3 grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-2"></div>
+                        <div id="mql-demo-contacts-grid" class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2"></div>
                         <div id="mql-demo-contact-detail" class="mt-3 hidden rounded border border-emerald-100 bg-emerald-50 p-3 text-[11px] text-slate-700"></div>
+                    </div>
+                </div>
+                <div class="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="mql-template-toggle" onclick="toggleMailSequenceTemplatesCollapsed()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100" title="展开或折叠三大场景四阶段脚本模板。">▶ 展开</button>
+                            <div class="text-xs font-bold text-indigo-950" title="显示三大邮件场景下 4 个阶段的脚本模板、目的、变量说明和发送日期。保存后写入后端 mail_sequence_template 表，并作为后续草稿 Prompt 输入。">三大场景全阶段脚本模板（可编辑保存）</div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <select id="mql-template-scenario" onchange="renderMailSequenceTemplates()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] text-slate-700" title="切换显示对应业务场景的四阶段模板。">
+                                <option value="new_business_promotion">老客户其他业务介绍</option>
+                                <option value="re_activation">老客户激活</option>
+                                <option value="new_contact_intro">新客户开发介绍</option>
+                            </select>
+                            <button type="button" onclick="loadMailSequenceTemplates()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] text-indigo-700 hover:bg-indigo-100" title="重新从后端 GET /api/v1/mail/sequence-templates 拉取模板。">刷新模板</button>
+                            <span id="mql-template-status" class="text-[11px] text-slate-500">未加载</span>
+                        </div>
+                    </div>
+                    <div id="mql-template-collapsible" class="hidden mt-3">
+                        <div class="rounded border border-indigo-100 bg-white p-3 text-[11px] text-slate-600">
+                            要求：4 封层层递进；覆盖翻译以外的多业务开发；使用客户行业、同行业经验和客户历史；语气亲和；结尾保留低压力转介绍。
+                        </div>
+                        <div id="mql-template-grid" class="mt-3 grid grid-cols-1 gap-3"></div>
                     </div>
                 </div>
                 <div class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-xs">
@@ -397,16 +422,16 @@
                         <span class="font-bold text-slate-700">客户编号</span>
                         <input id="mql-customer-key" class="rounded border border-slate-300 px-2 py-1 font-mono" value="CUST-DEMO-MULTI-DOMAIN">
                     </label>
-                    <label class="flex flex-col gap-1" title="本次草稿的目标收件人邮箱（API 字段名 contact_email）。后端会自动校验：是否在该客户的域名白名单内、是否命中竞对域名黑名单、是否在高敏感域列表。必填。">
+                    <label class="flex flex-col gap-1" title="本次草稿的目标收件人邮箱（API 字段名 contact_email）。可为空；为空时只生成草稿模板，不做收件域名校验、不补造邮箱、不真实发信。填写后后端会校验客户域名白名单、竞对域名黑名单和高敏感域列表。">
                         <span class="font-bold text-slate-700">收件人邮箱</span>
-                        <input id="mql-contact-email" class="rounded border border-slate-300 px-2 py-1 font-mono" value="buyer@customer-domain.mailmock.test">
+                        <input id="mql-contact-email" class="rounded border border-slate-300 px-2 py-1 font-mono" value="">
                     </label>
                     <label class="flex flex-col gap-1" title="三个业务场景选其一（API 字段名 scenario）。决定加载哪套 4 轮邮件序列策略，同时影响范例黄金库召回的过滤口径。">
                         <span class="font-bold text-slate-700">业务场景</span>
                         <select id="mql-scenario" class="rounded border border-slate-300 px-2 py-1">
-                            <option value="re_activation" title="客户 30 天以上无来往，用低压力问候重启关系。第 1 步破冰 / 第 2 步老案例 / 第 3 步标准流程 / 第 4 步临门样稿。">老客户唤醒（re_activation）</option>
-                            <option value="new_business_promotion" title="向老客户引入新产品或新服务线。第 1 步价值提示 / 第 2 步行业证据 / 第 3 步试用方案 / 第 4 步报价邀约。">新业务推广（new_business_promotion）</option>
-                            <option value="new_contact_intro" title="对方公司换了新对接人，需要重新自我介绍 + 交接背景 + 协作路径 + 下一步确认。">新接手联系人介绍（new_contact_intro）</option>
+                            <option value="re_activation" title="历史合作或沉默老客户重启关系。第 1 步问候 / 第 2 步行业经验 / 第 3 步协作流程 / 第 4 步方案评估或转介绍。">老客户激活（re_activation）</option>
+                            <option value="new_business_promotion" title="向老客户介绍翻译以外的其他业务。第 1 步价值提示 / 第 2 步行业证据 / 第 3 步多业务方案 / 第 4 步方案评估或转介绍。">老客户其他业务介绍（new_business_promotion）</option>
+                            <option value="new_contact_intro" title="新客户或新联系人开发介绍。第 1 步公司介绍 / 第 2 步行业经验 / 第 3 步协作路径 / 第 4 步下一步确认或转介绍。">新客户开发介绍（new_contact_intro）</option>
                         </select>
                     </label>
                     <label class="flex flex-col gap-1" title="4 轮邮件套装中的第几步（API 字段名 suite_step）。第 1 步破冰、第 2 步行业案例、第 3 步标准流程、第 4 步临门样稿。步数越大语气越主动，商业条款越具体，安全门越严格。套装总步数当前为 4（写死），未来由 mail_sequence_strategy.ALL_MAIL_SEQUENCE_STEPS 可配置。">
@@ -558,12 +583,12 @@
                 <div class="rounded-lg border border-indigo-200 bg-white p-5">
                     <div class="flex flex-wrap items-start justify-between gap-4">
                         <div>
-                            <h2 class="text-base font-bold text-slate-900" title="邮件 AI 回复迭代记录：每次跑 5 个真实测试案例 × 4 步邮件序列 = 20 封草稿, 全部串行真调后端 generate-draft, 每封打分入库, 含真实大模型 prompt。可对比多次迭代评估邮件质量提升。">邮件迭代记录（每次 5 案例 × 4 步 = 20 封草稿，含真实大模型 prompt）</h2>
-                            <p class="text-xs text-slate-500 mt-1">触发后串行真调后端 5-10 分钟跑完 20 封；过程中可刷新列表看实时进度。所有数据从后端 PG <code>mail_iteration_run / mail_iteration_draft</code> 真表查。</p>
+                            <h2 class="text-base font-bold text-slate-900" title="邮件 AI 回复迭代记录：每次跑当前 3 个真实测试案例 × 4 步邮件序列 = 12 封草稿, 全部串行真调后端 generate-draft, 每封打分入库, 含真实大模型 prompt。可对比多次迭代评估邮件质量提升。">邮件迭代记录（当前 3 案例 × 4 步 = 12 封草稿，含真实大模型 prompt）</h2>
+                            <p class="text-xs text-slate-500 mt-1">触发后串行真调后端跑当前 3 案例 × 4 步 = 12 封；过程中可刷新列表看实时进度。所有数据从后端 PG <code>mail_iteration_run / mail_iteration_draft</code> 真表查。</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-2">
                             <input id="mail-iter-trigger-label" type="text" placeholder="本次迭代标签（可选）" class="rounded border border-slate-300 px-2 py-1 text-xs w-48" title="可选标签，用于在列表里区分本次迭代的目的（例如 'v1.7.205 prompt 调整测试'）。">
-                            <button type="button" onclick="triggerMailIterationRun()" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700" title="触发一次新的邮件迭代: 5 案例 × 4 步 = 20 封真调后端生成。后台线程跑约 5-10 分钟, 立即返回 run_id, 前端可轮询查进度。">触发新迭代</button>
+                            <button type="button" onclick="triggerMailIterationRun()" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700" title="触发一次新的邮件迭代: 当前 3 案例 × 4 步 = 12 封真调后端生成。后台线程跑约 3-8 分钟, 立即返回 run_id, 前端可轮询查进度。">触发新迭代</button>
                             <button type="button" onclick="loadMailIterationList()" class="rounded border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50" title="刷新下方迭代列表（也用于轮询进度）。">刷新列表</button>
                             <span id="mail-iter-trigger-status" class="text-[11px] text-slate-500"></span>
                         </div>
@@ -571,7 +596,7 @@
                 </div>
 
                 <div id="mail-iter-list-container" class="rounded-lg border border-slate-200 bg-white p-4">
-                    <div class="text-xs font-bold text-slate-700 mb-3" title="历史迭代记录列表，按触发时间倒序。点击 [查看详情] 展开该次迭代的 20 封邮件明细。">历史迭代列表</div>
+                    <div class="text-xs font-bold text-slate-700 mb-3" title="历史迭代记录列表，按触发时间倒序。点击 [查看详情] 展开该次迭代的邮件明细。">历史迭代列表</div>
                     <div id="mail-iter-list-empty" class="text-xs text-slate-500 hidden">尚无迭代记录。点击上方【触发新迭代】开始第一次。</div>
                     <div class="overflow-x-auto">
                         <table id="mail-iter-list-table" class="w-full text-xs">
@@ -601,7 +626,7 @@
                         <button type="button" onclick="closeMailIterationDetail()" class="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50">收起详情</button>
                     </div>
                     <div id="mail-iter-detail-meta" class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]"></div>
-                    <div class="mt-3 text-xs font-bold text-slate-700">20 封草稿明细（按案例 × 步骤展开，点 [查看 prompt] 看真实大模型输入）</div>
+                    <div class="mt-3 text-xs font-bold text-slate-700">当前 3 案例 × 4 步草稿明细（按案例 × 步骤展开，点 [查看 prompt] 看真实大模型输入）</div>
                     <div id="mail-iter-detail-drafts" class="mt-2 space-y-2"></div>
                 </div>
             </section>
@@ -615,9 +640,9 @@
                         <div class="flex flex-wrap items-center gap-2">
                             <select id="mail-goldlib-filter-scenario" onchange="renderMailGoldLibrarySeeds()" class="rounded border border-slate-300 px-2 py-1 text-xs" title="按场景过滤">
                                 <option value="">全部场景</option>
-                                <option value="re_activation">老客户唤醒</option>
-                                <option value="new_business_promotion">新业务推广</option>
-                                <option value="new_contact_intro">新接手联系人介绍</option>
+                                <option value="re_activation">老客户激活</option>
+                                <option value="new_business_promotion">老客户其他业务介绍</option>
+                                <option value="new_contact_intro">新客户开发介绍</option>
                             </select>
                             <button type="button" onclick="loadMailGoldLibrarySeeds()" class="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50" title="重新从后端 GET /api/v1/mail/gold-fewshot-seeds 拉取最新种子列表。">刷新</button>
                             <span id="mail-goldlib-status" class="text-[11px] text-slate-500"></span>
@@ -653,6 +678,122 @@
                         <button type="button" onclick="closeMailGoldLibrarySeedDetail()" class="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50" title="按 Esc 也可关闭">关闭 ✕</button>
                     </div>
                     <div id="mail-goldlib-detail-body" class="p-4 text-xs text-slate-700 space-y-3"></div>
+                </div>
+            </section>
+            <section id="mail-contractcases-panel" class="hidden space-y-5">
+                <div class="rounded-lg border border-violet-300 bg-violet-50 p-5">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900" title="邮件合同案例库: 从 CRM usrContract 只读读取最近合同候选，用于判断哪些合同描述可进入后续邮件案例库。">邮件合同案例库（CRM只读，当前 <span id="mail-contractcases-count" class="font-mono">—</span> 条）</h2>
+                            <p class="text-xs text-slate-600 mt-1">当前先展示原始合同字段和自动分析，不脱敏、不入库、不区分三大邮件场景。后续真正入知识库前必须人工审核产品、行业、描述并完成脱敏。</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <input id="mail-contractcases-min-amount" type="number" value="5000" min="0" step="100" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs w-24" title="金额过滤：Money1+Money2+Money3，默认只看大于等于 5000 的合同。">
+                            <input id="mail-contractcases-business-type" type="text" placeholder="业务类型" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs w-24" title="可选：按 BusinessType 模糊筛选。">
+                            <input id="mail-contractcases-product" type="text" placeholder="产品关键词" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs w-28" title="可选：按 ProductNameAll 模糊筛选。">
+                            <input id="mail-contractcases-description" type="text" placeholder="描述关键词" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs w-28" title="可选：按 ContractDescription 模糊筛选。">
+                            <select id="mail-contractcases-order-by" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" title="排序时间字段。默认 InputTime，可理解为新增/录入时间。">
+                                <option value="InputTime" selected>按新增时间</option>
+                                <option value="ContractTime">按合同时间</option>
+                                <option value="StartTime">按开始时间</option>
+                                <option value="EndTime">按结束时间</option>
+                                <option value="ModifyTime">按修改时间</option>
+                            </select>
+                            <select id="mail-contractcases-limit" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" title="本次最多读取多少条。">
+                                <option value="100" selected>最近 100 条</option>
+                                <option value="200">最近 200 条</option>
+                                <option value="500">最近 500 条</option>
+                            </select>
+                            <button type="button" onclick="loadMailContractCaseCandidates()" class="rounded border border-violet-300 bg-white px-3 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-100" title="只读调用 GET /api/v1/mail/contract-case-candidates，不写 CRM，不写邮件知识库。">刷新</button>
+                            <span id="mail-contractcases-status" class="text-[11px] text-slate-500">未加载</span>
+                        </div>
+                    </div>
+                    <div id="mail-contractcases-analysis" class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 text-[11px] text-slate-700"></div>
+                </div>
+
+                <div class="rounded-lg border border-slate-200 bg-white p-4">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="bg-slate-50">
+                                <tr class="text-slate-600">
+                                    <th class="px-2 py-2 text-left">新增时间</th>
+                                    <th class="px-2 py-2 text-right">金额</th>
+                                    <th class="px-2 py-2 text-left">业务类型</th>
+                                    <th class="px-2 py-2 text-left">产品</th>
+                                    <th class="px-2 py-2 text-left">合同描述</th>
+                                    <th class="px-2 py-2 text-left">推断</th>
+                                    <th class="px-2 py-2 text-left">质量标记</th>
+                                    <th class="px-2 py-2 text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mail-contractcases-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="mail-contractcases-detail" class="hidden rounded-lg border border-violet-200 bg-violet-50 p-4">
+                    <div class="flex items-center justify-between gap-2">
+                        <div id="mail-contractcases-detail-title" class="text-sm font-bold text-violet-950">合同案例详情</div>
+                        <button type="button" onclick="closeMailContractCaseDetail()" class="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50">关闭</button>
+                    </div>
+                    <div id="mail-contractcases-detail-body" class="mt-3 text-xs text-slate-700 space-y-3"></div>
+                </div>
+            </section>
+            <section id="mail-feedback-panel" class="hidden space-y-5">
+                <div class="rounded-lg border border-cyan-300 bg-cyan-50 p-5">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900" title="反馈记录来自独立客户套装邮件页 /static/mail-suite.html。该页面每次保存反馈都会向后端 POST，一次保存就是数据库一条记录。">反馈记录（独立套装页，一次反馈一条记录）</h2>
+                            <p class="text-xs text-slate-600 mt-1">查询 <code>mail_customer_suite_feedback</code> 真表，展示完整反馈、对应邮件草稿/模板和客户联系人画像，便于核对套装页生成与人工反馈是否匹配。</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <input id="mail-feedback-filter-customer" type="text" placeholder="客户编号" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs w-36" title="按客户编号过滤，例如 KH15411-117。留空查询最近记录。">
+                            <select id="mail-feedback-filter-scenario" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" title="按邮件业务场景过滤。">
+                                <option value="">全部场景</option>
+                                <option value="new_business_promotion">老客户其他业务介绍</option>
+                                <option value="re_activation">老客户激活</option>
+                                <option value="new_contact_intro">新客户开发介绍</option>
+                            </select>
+                            <select id="mail-feedback-filter-step" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" title="按 4 轮套装第几封过滤。">
+                                <option value="">全部阶段</option>
+                                <option value="1">第 1 封</option>
+                                <option value="2">第 2 封</option>
+                                <option value="3">第 3 封</option>
+                                <option value="4">第 4 封</option>
+                            </select>
+                            <select id="mail-feedback-filter-limit" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" title="本次最多加载多少条。">
+                                <option value="50">最近 50 条</option>
+                                <option value="100" selected>最近 100 条</option>
+                                <option value="200">最近 200 条</option>
+                            </select>
+                            <button type="button" onclick="loadMailCustomerSuiteFeedbackRecords()" class="rounded border border-cyan-300 bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-100" title="重新从后端 GET /api/v1/mail/customer-suite-feedback 查询反馈记录。">刷新</button>
+                            <span id="mail-feedback-status" class="text-[11px] text-slate-500">未加载</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-white p-4">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="bg-slate-50">
+                                <tr class="text-slate-600">
+                                    <th class="px-2 py-2 text-left">保存时间</th>
+                                    <th class="px-2 py-2 text-left">客户 / 联系人</th>
+                                    <th class="px-2 py-2 text-left">场景阶段</th>
+                                    <th class="px-2 py-2 text-left">对应主题</th>
+                                    <th class="px-2 py-2 text-left">反馈摘要</th>
+                                    <th class="px-2 py-2 text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mail-feedback-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="mail-feedback-empty" class="hidden py-8 text-center text-xs text-slate-500">暂无反馈记录。请先在独立套装页填写并保存反馈。</div>
+                </div>
+                <div id="mail-feedback-detail" class="hidden rounded-lg border border-cyan-200 bg-cyan-50 p-4">
+                    <div class="flex items-center justify-between gap-2">
+                        <div id="mail-feedback-detail-title" class="text-sm font-bold text-cyan-950">反馈详情</div>
+                        <button type="button" onclick="closeMailCustomerSuiteFeedbackDetail()" class="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50">关闭</button>
+                    </div>
+                    <div id="mail-feedback-detail-body" class="mt-3 text-xs text-slate-700 space-y-3"></div>
                 </div>
             </section>
             <section id="mail-config-panel" class="hidden space-y-5">
@@ -1042,6 +1183,8 @@
         const API_BASE_STORAGE_KEY = 'qw_api_base_preferred';
         const LOCAL_API_TIMEOUT_MS = 3500;
         const REMOTE_API_TIMEOUT_MS = 15000;
+        let currentFrontendUser = '';
+        let currentFrontendRole = 'admin';
         let apiBaseCandidates = [];
         let apiBaseReadyPromise = null;
 
@@ -1053,8 +1196,12 @@
                     window.location.href = '/static/login.html';
                     return;
                 }
+                currentFrontendUser = data.username || '';
+                currentFrontendRole = data.role || 'admin';
                 const label = document.getElementById('auth-user-label');
-                if (label) label.textContent = data.username || '已登录';
+                if (label) label.textContent = currentFrontendUser || '已登录';
+                applyUserAccessMode();
+                return data;
             } catch (_) {}
         }
 
@@ -1223,19 +1370,19 @@
         const MAIL_SEQUENCE_CONFIG_SCENARIOS = [
             {
                 key: 're_activation',
-                label: '老客户唤醒',
+                label: '老客户激活',
                 subtitle: 'old_customer_re_activation',
                 objective: '重启关系、补充相关证明、建立流程信心，再进入复核后的商业下一步。'
             },
             {
                 key: 'new_business_promotion',
-                label: '新业务推广',
+                label: '老客户其他业务介绍',
                 subtitle: 'new_business_promotion',
-                objective: '轻量介绍价值、匹配行业证明、说明服务包流程，再进入复核后的试用或报价下一步。'
+                objective: '轻量介绍价值、匹配行业证明、说明服务包流程，再进入复核后的方案评估或报价沟通。'
             },
             {
                 key: 'new_contact_intro',
-                label: '新接手联系人介绍',
+                label: '新客户开发介绍',
                 subtitle: 'new_contact_intro',
                 objective: '透明交接介绍、补充既有合作背景、给出角色相关服务路径，再进入复核后的下一步。'
             }
@@ -1484,11 +1631,33 @@
         const defaultAnalysisContent = document.getElementById('analysis-content')?.innerHTML || '';
         const defaultAssistContent = document.getElementById('assist-content')?.innerHTML || '';
 
-        // === 邮件 AI 回复测试案例切换器（v1.7.203 加折叠 + 套装步数 + 批量生成） ===
+        // === 邮件 AI 回复测试案例切换器（当前 3 案例 + 套装步数 + 批量生成） ===
         let mailDemoContactCache = [];
         let mailDemoContactActiveIndex = null;
         let mailDemoSuiteTotalSteps = 4;  // 由 GET demo-contacts 的 suite_total_steps 字段动态填充，默认 4
         let mailDemoContactsCollapsed = false;
+        const MAIL_DEMO_CASE_LABELS = {
+            1: '老客户其他业务介绍',
+            2: '老客户激活',
+            3: '新客户开发介绍',
+        };
+        const MAIL_DEMO_CASE_LABEL_DETAILS = {
+            1: '客户编号 KH15411-117。老客户基础上介绍翻译以外的同传、多媒体本地化、排版印刷、活动物料等其他业务。',
+            2: '客户编号 KH02659-011。历史合作或沉默老客户激活，逐步恢复关系并引入可合作方向。',
+            3: '客户编号 KH13770-006。新客户/新联系人开发介绍，强调公司介绍、行业经验、服务范围和转介绍。',
+        };
+        let mailSequenceTemplatesCollapsed = true;
+        let mailSequenceTemplateCache = {};
+
+        function mailDemoCaseLabel(demoIndex, fallback) {
+            const idx = parseInt(demoIndex, 10);
+            return MAIL_DEMO_CASE_LABELS[idx] || fallback || '';
+        }
+
+        function mailDemoCaseLabelDetail(demoIndex, fallback) {
+            const idx = parseInt(demoIndex, 10);
+            return MAIL_DEMO_CASE_LABEL_DETAILS[idx] || fallback || '';
+        }
 
         function toggleMailDemoContactsCollapsed() {
             mailDemoContactsCollapsed = !mailDemoContactsCollapsed;
@@ -1496,6 +1665,150 @@
             const btn = document.getElementById('mql-demo-contacts-toggle');
             if (wrap) wrap.classList.toggle('hidden', mailDemoContactsCollapsed);
             if (btn) btn.textContent = mailDemoContactsCollapsed ? '▶ 展开' : '▼ 折叠';
+        }
+
+        function toggleMailSequenceTemplatesCollapsed() {
+            mailSequenceTemplatesCollapsed = !mailSequenceTemplatesCollapsed;
+            const wrap = document.getElementById('mql-template-collapsible');
+            const btn = document.getElementById('mql-template-toggle');
+            if (wrap) wrap.classList.toggle('hidden', mailSequenceTemplatesCollapsed);
+            if (btn) btn.textContent = mailSequenceTemplatesCollapsed ? '▶ 展开' : '▼ 折叠';
+            if (!mailSequenceTemplatesCollapsed && !Object.keys(mailSequenceTemplateCache || {}).length) {
+                loadMailSequenceTemplates();
+            }
+        }
+
+        async function loadMailSequenceTemplates() {
+            const statusEl = document.getElementById('mql-template-status');
+            if (statusEl) {
+                statusEl.textContent = '加载中……';
+                statusEl.className = 'text-[11px] text-slate-500';
+            }
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/sequence-templates`, { credentials: 'include' });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                mailSequenceTemplateCache = data.templates || {};
+                if (statusEl) {
+                    statusEl.textContent = `已加载 ${data.count || 0} 个阶段模板`;
+                    statusEl.className = 'text-[11px] text-emerald-700';
+                }
+                renderMailSequenceTemplates();
+            } catch (err) {
+                if (statusEl) {
+                    statusEl.textContent = `模板加载失败：${err.message}`;
+                    statusEl.className = 'text-[11px] text-red-600 font-bold';
+                }
+            }
+        }
+
+        function renderMailSequenceTemplates() {
+            const gridEl = document.getElementById('mql-template-grid');
+            const scenarioSel = document.getElementById('mql-template-scenario');
+            if (!gridEl || !scenarioSel) return;
+            const scenario = scenarioSel.value || 'new_business_promotion';
+            const templates = (mailSequenceTemplateCache && mailSequenceTemplateCache[scenario]) || [];
+            const esc = (v) => String(v == null ? '' : v)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+            if (!templates.length) {
+                gridEl.innerHTML = '<div class="rounded border border-slate-200 bg-white p-3 text-xs text-slate-500">暂无模板数据，请点击刷新模板。</div>';
+                return;
+            }
+            gridEl.innerHTML = templates
+                .sort((a, b) => (a.suite_step || 0) - (b.suite_step || 0))
+                .map(t => {
+                    const key = `${t.scenario}-${t.suite_step}`;
+                    const textareaClass = 'w-full rounded border border-slate-300 px-2 py-2 text-xs leading-relaxed resize-y';
+                    const textareaLimitStyle = 'height: 22rem; max-height: 22rem; overflow:auto;';
+                    const vars = Object.entries(t.variable_notes || {})
+                        .map(([name, desc]) => `<div><code>${esc(name)}</code>：${esc(desc)}</div>`)
+                        .join('');
+                    return `
+                        <div class="rounded-lg border border-indigo-200 bg-white p-3">
+                            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                                <div>
+                                    <div class="text-xs font-bold text-indigo-900">${esc(t.step_label_cn)}</div>
+                                    <div class="text-[10px] text-slate-500">${esc(t.scenario_label_cn)} · version ${esc(t.version_no)}</div>
+                                </div>
+                                <div class="text-[10px] text-slate-500">最后更新：${esc(t.updated_at || '—')}</div>
+                            </div>
+                            <div class="mt-3 overflow-x-auto">
+                                <div class="min-w-[980px]" style="display:grid; grid-template-columns:max-content minmax(280px,1fr) 88px max-content minmax(280px,1fr) 112px; align-items:center; gap:0.5rem;">
+                                    <span class="whitespace-nowrap text-[10px] font-bold text-slate-600">当前模板目的说明</span>
+                                    <input id="mql-template-purpose-${key}" type="text" value="${esc(t.purpose_cn)}" class="min-w-0 w-full rounded border border-slate-300 px-2 py-1.5 text-xs leading-5" />
+                                    <button type="button" onclick="saveMailSequenceTemplateField('${t.scenario}', ${t.suite_step}, 'purpose_cn')" class="whitespace-nowrap rounded bg-indigo-600 px-2 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700">保存目的</button>
+                                    <span class="whitespace-nowrap text-[10px] font-bold text-slate-600">发送日期 / 间隔说明</span>
+                                    <input id="mql-template-send-${key}" type="text" value="${esc(t.send_timing_cn)}" class="min-w-0 w-full rounded border border-slate-300 px-2 py-1.5 text-xs leading-5" />
+                                    <button type="button" onclick="saveMailSequenceTemplateField('${t.scenario}', ${t.suite_step}, 'send_timing_cn')" class="whitespace-nowrap rounded bg-indigo-600 px-2 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700">保存发送日期</button>
+                                </div>
+                            </div>
+                            <div class="mt-3 grid grid-cols-1 xl:grid-cols-3 gap-3 items-start">
+                                <div class="rounded border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-600">
+                                    <div class="font-bold text-slate-700 mb-1">变量说明</div>
+                                    <div class="grid grid-cols-1 gap-y-1">${vars}</div>
+                                </div>
+                                <label class="flex flex-col gap-1">
+                                    <span class="text-[10px] font-bold text-slate-600">生产脚本模板</span>
+                                    <textarea id="mql-template-script-${key}" rows="10" class="${textareaClass}" style="${textareaLimitStyle}">${esc(t.script_template)}</textarea>
+                                    <button type="button" onclick="saveMailSequenceTemplateField('${t.scenario}', ${t.suite_step}, 'script_template')" class="w-fit rounded bg-indigo-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-indigo-700">保存生产脚本</button>
+                                </label>
+                                <label class="flex flex-col gap-1">
+                                    <span class="text-[10px] font-bold text-slate-600">给 AI 的指令脚本</span>
+                                    <textarea id="mql-template-ai-${key}" rows="14" class="${textareaClass}" style="${textareaLimitStyle}">${esc(t.ai_instruction_script || '')}</textarea>
+                                    <button type="button" onclick="saveMailSequenceTemplateField('${t.scenario}', ${t.suite_step}, 'ai_instruction_script')" class="w-fit rounded bg-indigo-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-indigo-700">保存 AI 指令</button>
+                                </label>
+                            </div>
+                        </div>
+                    `;
+                })
+                .join('');
+        }
+
+        async function saveMailSequenceTemplateField(scenario, suiteStep, fieldName) {
+            const key = `${scenario}-${suiteStep}`;
+            const statusEl = document.getElementById('mql-template-status');
+            const idByField = {
+                purpose_cn: `mql-template-purpose-${key}`,
+                send_timing_cn: `mql-template-send-${key}`,
+                script_template: `mql-template-script-${key}`,
+                ai_instruction_script: `mql-template-ai-${key}`,
+            };
+            const el = document.getElementById(idByField[fieldName]);
+            if (!el) return;
+            const payload = { updated_by: 'admin' };
+            payload[fieldName] = el.value || '';
+            if (statusEl) {
+                statusEl.textContent = '保存中……';
+                statusEl.className = 'text-[11px] text-indigo-700 font-bold';
+            }
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/sequence-templates/${encodeURIComponent(scenario)}/${suiteStep}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    credentials: 'include',
+                });
+                const text = await resp.text();
+                let data;
+                try { data = JSON.parse(text); } catch (e) { data = { _raw: text }; }
+                if (!resp.ok) throw new Error(data.detail || text.slice(0, 120));
+                if (!mailSequenceTemplateCache[scenario]) mailSequenceTemplateCache[scenario] = [];
+                const idx = mailSequenceTemplateCache[scenario].findIndex(t => Number(t.suite_step) === Number(suiteStep));
+                if (idx >= 0) mailSequenceTemplateCache[scenario][idx] = data.template;
+                if (statusEl) {
+                    statusEl.textContent = `已保存 ${chineseScenarioName(scenario)} 第 ${suiteStep} 步 ${fieldName}`;
+                    statusEl.className = 'text-[11px] text-emerald-700 font-bold';
+                }
+                renderMailSequenceTemplates();
+            } catch (err) {
+                if (statusEl) {
+                    statusEl.textContent = `保存失败：${err.message}`;
+                    statusEl.className = 'text-[11px] text-red-600 font-bold';
+                }
+            }
         }
 
         async function loadMailDemoContacts() {
@@ -1523,7 +1836,7 @@
                     return;
                 }
                 if (statusEl) {
-                    statusEl.textContent = `已加载 ${contacts.length} 个案例 · 当前套装共 ${mailDemoSuiteTotalSteps} 步（数据源：${data.source || 'mail_demo_contact_table'}，只读）`;
+                    statusEl.textContent = `已加载 ${contacts.length} 个当前案例 · 当前套装共 ${mailDemoSuiteTotalSteps} 步（数据源：${data.source || 'crm_sql'}，CRM 原始未脱敏；原5个旧案例保留不显示）`;
                     statusEl.className = 'text-[11px] text-emerald-700';
                 }
                 renderMailDemoContactsGrid(contacts);
@@ -1563,18 +1876,22 @@
             if (!gridEl) return;
             gridEl.innerHTML = '';
             for (const c of contacts) {
+                const demoLabel = mailDemoCaseLabel(c.demo_index, c.demo_label);
+                const demoLabelDetail = mailDemoCaseLabelDetail(c.demo_index, c.demo_label_detail);
                 const card = document.createElement('button');
                 card.type = 'button';
                 card.dataset.demoIndex = c.demo_index;
                 card.className = 'rounded-lg border border-slate-200 bg-white p-3 text-left text-[11px] text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 transition';
-                card.title = `案例 ${c.demo_index}：${c.demo_label}\n${c.demo_label_detail || ''}\n点击后自动填入下方表单。`;
+                card.title = `案例 ${c.demo_index}：${demoLabel}\n${demoLabelDetail || ''}\n点击后自动填入下方表单。`;
                 card.innerHTML = `
                     <div class="flex items-center justify-between gap-2">
                         <span class="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">案例 ${c.demo_index}</span>
                         <span class="text-[10px] text-slate-400" title="客户级别 / 欠款风险等级 / 行业">${c.customer_tier || '—'} · ${c.payment_risk_level || '—'} · ${c.company_industry || '—'}</span>
                     </div>
-                    <div class="mt-2 font-bold text-slate-900">${c.demo_label}</div>
-                    <div class="mt-1 text-slate-600">${c.contact_name_masked || '—'} · ${c.company_name_masked || '—'}</div>
+                    <div class="mt-2 font-bold text-slate-900">${demoLabel}</div>
+                    <div class="mt-1 font-mono text-[10px] text-slate-500">${c.real_customer_key || c.customer_key || '—'}</div>
+                    <div class="mt-1 text-slate-600">${c.contact_name || c.contact_name_masked || '—'} · ${c.company_name || c.company_name_masked || '—'}</div>
+                    <div class="mt-1 text-[10px] text-slate-500 break-all">${c.contact_email || 'CRM 邮箱为空'}</div>
                     <div class="mt-1 text-[10px] text-slate-500">邮件序列：${chineseScenarioName(c.default_scenario)} · 共 ${mailDemoSuiteTotalSteps} 封</div>
                 `;
                 card.onclick = () => pickMailDemoContact(c.demo_index);
@@ -1584,9 +1901,9 @@
 
         function chineseScenarioName(scenario) {
             return ({
-                're_activation': '老客户唤醒',
-                'new_business_promotion': '新业务推广',
-                'new_contact_intro': '新接手联系人介绍',
+                're_activation': '老客户激活',
+                'new_business_promotion': '老客户其他业务介绍',
+                'new_contact_intro': '新客户开发介绍',
             })[scenario] || scenario;
         }
 
@@ -1607,7 +1924,7 @@
             // 填表
             const setVal = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = String(v); };
             setVal('mql-customer-key', c.customer_key);
-            setVal('mql-contact-email', c.contact_email);
+            setVal('mql-contact-email', c.draft_contact_email || c.contact_email || '');
             setVal('mql-scenario', c.default_scenario);
             setVal('mql-suite-step', c.default_suite_step);
             setVal('mql-seller-name', c.default_seller_name);
@@ -1619,22 +1936,35 @@
                 const flags = (c.high_risk_flags || []).join('、') || '无';
                 const snapshot = c.crm_profile_snapshot || {};
                 const fmt = (v) => (v == null || v === '') ? '—' : String(v);
-                const lifecycleTooltip = "CRM 内部规则算的生命周期阶段（基于 crmContactYeWuSetting 配置的时间窗 + 合同/商机数量阈值）。注意：该字段由 CRM 业务规则动态算出，可能与本案例的【维度标签】不同源 — 例如沉默老客户因 180+ 天无跟进，CRM 会把生命周期降级为「新联系人」，但案例维度仍标记为「沉默老客户」。";
+                const demoLabel = mailDemoCaseLabel(c.demo_index, c.demo_label);
+                const demoLabelDetail = mailDemoCaseLabelDetail(c.demo_index, c.demo_label_detail);
+                const lifecycleTooltip = "CRM 生命周期阶段按客户/公司销售合同计算：近1年有3个及以上合同=熟联系人；历史有过合同=老联系人；没有合同=新联系人。";
                 detailEl.innerHTML = `
-                    <div class="font-bold text-emerald-900 mb-2">案例 ${c.demo_index} · ${c.demo_label}</div>
-                    <div class="mb-2 text-slate-700">${c.demo_label_detail || ''}</div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <div><b>联系人（脱敏）：</b>${fmt(c.contact_name_masked)}</div>
-                        <div><b>公司（脱敏）：</b>${fmt(c.company_name_masked)}</div>
+                        <div class="font-bold text-emerald-900 mb-2">案例 ${c.demo_index} · ${demoLabel}</div>
+                        <div class="mb-2 text-slate-700">${demoLabelDetail || ''}</div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div><b>客户编号：</b><code>${fmt(c.real_customer_key || c.customer_key)}</code></div>
+                        <div><b>测试分组：</b>${fmt(c.display_group || 'current_3_cases')}</div>
+                        <div><b>CRM ContactId：</b><code>${fmt(snapshot.contact_id || c.real_customer_key)}</code></div>
+                        <div><b>CRM CustomerId：</b><code>${fmt(snapshot.customer_id)}</code></div>
+                        <div><b>联系人（CRM 原始）：</b>${fmt(c.contact_name || c.contact_name_masked)}</div>
+                        <div><b>公司（CRM 原始）：</b>${fmt(c.company_name || c.company_name_masked)}</div>
+                        <div><b>联系人邮箱（CRM 原始）：</b>${fmt(c.contact_email)}</div>
+                        <div><b>生成用邮箱：</b>${fmt(c.draft_contact_email || c.contact_email)}${c.contact_email ? '' : '（CRM 邮箱为空，仅生成草稿模板，不补造邮箱、不发信）'}</div>
+                        <div><b>联系人状态：</b>${fmt(snapshot.contact_status)}</div>
+                        <div><b>客户状态：</b>${fmt(snapshot.customer_status)}</div>
+                        <div><b>销售/负责人：</b>${fmt(snapshot.contact_staff_name || snapshot.contact_owner_name || c.default_seller_name)}</div>
+                        <div><b>客户负责人：</b>${fmt(snapshot.customer_owner_name)}</div>
                         <div><b>行业：</b>${fmt(c.company_industry)}</div>
                         <div><b>客户级别：</b>${fmt(c.customer_tier)}</div>
                         <div title="${lifecycleTooltip}"><b>CRM 生命周期阶段：</b>${fmt(c.customer_lifecycle_stage)} <span class="text-slate-400">(?)</span></div>
                         <div><b>欠款风险等级：</b>${fmt(c.payment_risk_level)}</div>
                         <div class="md:col-span-2"><b>高风险标记：</b>${flags}</div>
-                        <div class="md:col-span-2"><b>进行中商机摘要（脱敏）：</b>${fmt(snapshot.recent_opportunities_masked)}</div>
-                        <div class="md:col-span-2"><b>合同摘要（脱敏）：</b>${fmt(snapshot.ongoing_contracts_masked)}</div>
-                        <div class="md:col-span-2"><b>最近跟进（脱敏）：</b><pre class="whitespace-pre-wrap text-[10px] mt-1">${fmt(snapshot.contact_recent_followup_masked)}</pre></div>
+                        <div class="md:col-span-2"><b>商机摘要（CRM 原始，最近 3 条）：</b><pre class="whitespace-pre-wrap text-[10px] mt-1">${fmt(snapshot.recent_opportunities || snapshot.recent_opportunities_masked)}</pre></div>
+                        <div class="md:col-span-2"><b>合同摘要（CRM 原始，最近 3 条）：</b><pre class="whitespace-pre-wrap text-[10px] mt-1">${fmt(snapshot.ongoing_contracts || snapshot.ongoing_contracts_masked)}</pre></div>
+                        <div class="md:col-span-2"><b>最近跟进（CRM 原始，最近 5 条）：</b><pre class="whitespace-pre-wrap text-[10px] mt-1">${fmt(snapshot.contact_recent_followup || snapshot.contact_recent_followup_masked)}</pre></div>
                         <div class="md:col-span-2"><b>数据来源：</b>${fmt(c.source_note)}</div>
+                        <div class="md:col-span-2"><b>CRM 查询状态：</b>${fmt(c.crm_lookup_status)} · ${fmt(c.crm_profile_source)}</div>
                         <div class="md:col-span-2"><b>最后刷新：</b>${fmt(c.refreshed_at)}</div>
                     </div>
                 `;
@@ -1792,7 +2122,7 @@
                     return;
                 }
                 if (statusEl) {
-                    statusEl.textContent = `已触发 v${data.version_no}（${data.run_id.slice(0,8)}…）, 后台跑约 5-10 分钟, 请点击【刷新列表】查看进度`;
+                    statusEl.textContent = `已触发 v${data.version_no}（${data.run_id.slice(0,8)}…）, 后台跑当前 3 案例约 3-8 分钟, 请点击【刷新列表】查看进度`;
                     statusEl.className = 'text-[11px] text-emerald-700 font-bold';
                 }
                 if (labelInput) labelInput.value = '';
@@ -1900,6 +2230,7 @@
                         card.className = 'rounded border border-slate-200 bg-slate-50';
                         const statusColor = d.status === 'success' ? 'emerald' : d.status === 'failed' ? 'rose' : 'slate';
                         const score = d.quality_score != null ? d.quality_score.toFixed(1) : '—';
+                        const demoLabel = mailDemoCaseLabel(d.demo_index, d.demo_label);
                         const statusCn = ({success: '生成完成', failed: '失败', running: '运行中', pending: '排队中'})[d.status] || d.status;
                         const llmCn = ({success: '真返中文', fallback_template: '走兜底'})[d.llm_status] || (d.llm_status || '—');
                         const gateCn = ({passed: '通过'})[d.overall_outcome] || (d.overall_outcome || '—');
@@ -1907,7 +2238,7 @@
                             <summary class="cursor-pointer px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2 hover:bg-slate-100">
                                 <div>
                                     <span class="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">案例${d.demo_index}·第${d.suite_step}步</span>
-                                    <span class="ml-2 text-slate-700">${d.demo_label || ''}</span>
+                                    <span class="ml-2 text-slate-700">${demoLabel}</span>
                                 </div>
                                 <div class="flex items-center gap-2 text-[11px]">
                                     <span class="rounded bg-${statusColor}-100 px-1.5 py-0.5 text-${statusColor}-700" title="本封草稿生成的最终状态: 生成完成 / 失败 / 排队中 / 运行中">${statusCn}</span>
@@ -2001,9 +2332,9 @@
             if (!tbody) return;
             tbody.innerHTML = '';
             const scenarioCn = (s) => ({
-                're_activation': '老客户唤醒',
-                'new_business_promotion': '新业务推广',
-                'new_contact_intro': '新接手联系人介绍',
+                're_activation': '老客户激活',
+                'new_business_promotion': '老客户其他业务介绍',
+                'new_contact_intro': '新客户开发介绍',
             })[s] || s;
             const fragmentCn = (f) => ({
                 'example': '示例',
@@ -2055,9 +2386,9 @@
             if (body) {
                 const fmt = (v) => v == null || v === '' ? '—' : String(v);
                 const scenarioCn = (s) => ({
-                    're_activation': '老客户唤醒',
-                    'new_business_promotion': '新业务推广',
-                    'new_contact_intro': '新接手联系人介绍',
+                    're_activation': '老客户激活',
+                    'new_business_promotion': '老客户其他业务介绍',
+                    'new_contact_intro': '新客户开发介绍',
                 })[s] || s;
                 const fragmentCn = (f) => ({
                     'greetings': '问候开场',
@@ -2133,6 +2464,172 @@
                 if (wrap && !wrap.classList.contains('hidden')) closeMailGoldLibrarySeedDetail();
             }
         });
+
+        // ===== 邮件合同案例库（CRM usrContract 只读候选） =====
+        let mailContractCaseCache = [];
+        let mailContractCaseAnalysisCache = null;
+
+        function mailContractCaseCn(label) {
+            return ({
+                translation: '翻译',
+                interpretation: '口译/同传',
+                multimedia: '多媒体译制',
+                printing: '排版印刷',
+                exhibition: '会议活动',
+                gift: '礼品物料',
+                other: '待判断',
+                medical: '医疗',
+                legal: '法律/证照',
+                event: '活动会议',
+                training: '培训资料',
+                marketing: '市场物料',
+                manufacturing: '制造/设备',
+                unknown: '未知',
+            })[label] || (label || '—');
+        }
+
+        async function loadMailContractCaseCandidates() {
+            const status = document.getElementById('mail-contractcases-status');
+            if (status) {
+                status.textContent = '加载中……';
+                status.className = 'text-[11px] text-slate-500';
+            }
+            const params = new URLSearchParams();
+            params.set('limit', document.getElementById('mail-contractcases-limit')?.value || '100');
+            params.set('min_amount', document.getElementById('mail-contractcases-min-amount')?.value || '5000');
+            params.set('order_by', document.getElementById('mail-contractcases-order-by')?.value || 'InputTime');
+            const businessType = (document.getElementById('mail-contractcases-business-type')?.value || '').trim();
+            const product = (document.getElementById('mail-contractcases-product')?.value || '').trim();
+            const desc = (document.getElementById('mail-contractcases-description')?.value || '').trim();
+            if (businessType) params.set('business_type', businessType);
+            if (product) params.set('product_keyword', product);
+            if (desc) params.set('description_keyword', desc);
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/contract-case-candidates?${params.toString()}`, { credentials: 'include' });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                mailContractCaseCache = data.items || [];
+                mailContractCaseAnalysisCache = data.analysis || {};
+                const countEl = document.getElementById('mail-contractcases-count');
+                if (countEl) countEl.textContent = data.count || 0;
+                if (status) {
+                    status.textContent = `共 ${data.count || 0} 条；可初筛 ${data.ready_for_generation_count || 0} 条；${(data.field_notes || [])[0] || '只读'}`;
+                    status.className = 'text-[11px] text-emerald-700';
+                }
+                renderMailContractCaseCandidates();
+            } catch (err) {
+                mailContractCaseCache = [];
+                mailContractCaseAnalysisCache = null;
+                const countEl = document.getElementById('mail-contractcases-count');
+                if (countEl) countEl.textContent = '0';
+                if (status) {
+                    status.textContent = `加载失败：${err.message}（未展示旧数据）`;
+                    status.className = 'text-[11px] text-red-600 font-bold';
+                }
+                renderMailContractCaseCandidates();
+            }
+        }
+
+        function renderMailContractCaseAnalysis() {
+            const el = document.getElementById('mail-contractcases-analysis');
+            if (!el) return;
+            const a = mailContractCaseAnalysisCache || {};
+            const topPairs = (obj, limit = 5) => Object.entries(obj || {}).slice(0, limit).map(([k, v]) => `${mailContractCaseCn(k)} ${v}`).join('、') || '—';
+            el.innerHTML = `
+                <div class="rounded border border-violet-200 bg-white p-2" title="按产品/业务关键词自动推断，不作为最终分类。"><b>产品线分布：</b>${escapeHtml(topPairs(a.by_business_line))}</div>
+                <div class="rounded border border-violet-200 bg-white p-2" title="直接来自 usrContract.BusinessType。"><b>业务类型 Top：</b>${escapeHtml(topPairs(a.by_business_type_top10))}</div>
+                <div class="rounded border border-violet-200 bg-white p-2" title="按合同描述和产品名关键词粗推行业。"><b>行业线索：</b>${escapeHtml(topPairs(a.by_industry_inferred))}</div>
+                <div class="rounded border border-violet-200 bg-white p-2" title="用于判断哪些合同不适合直接入邮件案例库。"><b>质量标记：</b>${escapeHtml(topPairs(a.quality_flags))}</div>
+            `;
+        }
+
+        function renderMailContractCaseCandidates() {
+            renderMailContractCaseAnalysis();
+            const tbody = document.getElementById('mail-contractcases-tbody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (!mailContractCaseCache.length) {
+                tbody.innerHTML = '<tr><td colspan="8" class="px-2 py-5 text-center text-slate-500">暂无合同案例候选。请点击刷新，或放宽金额/关键词条件。</td></tr>';
+                return;
+            }
+            mailContractCaseCache.forEach((item, idx) => {
+                const flags = item.quality_flags && item.quality_flags.length ? item.quality_flags : ['可初筛'];
+                const flagHtml = flags.map(flag => {
+                    const cls = flag === '可初筛' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700';
+                    return `<span class="rounded px-1.5 py-0.5 text-[10px] ${cls}">${escapeHtml(flag)}</span>`;
+                }).join(' ');
+                const product = item.product_name_all || '—';
+                const desc = item.contract_description || '—';
+                const inferred = [
+                    mailContractCaseCn(item.business_line_inferred),
+                    item.language_pair_inferred ? `语种:${item.language_pair_inferred}` : '',
+                    item.industry_inferred ? `行业:${mailContractCaseCn(item.industry_inferred)}` : '',
+                ].filter(Boolean).join(' / ');
+                const tr = document.createElement('tr');
+                tr.className = 'border-t border-slate-100 hover:bg-slate-50';
+                tr.innerHTML = `
+                    <td class="px-2 py-2 font-mono text-[10px] text-slate-500">${escapeHtml(item.input_time || '—')}</td>
+                    <td class="px-2 py-2 text-right font-mono text-slate-700">${Number(item.total_money || 0).toLocaleString('zh-CN', {maximumFractionDigits: 2})}</td>
+                    <td class="px-2 py-2 text-slate-700">${escapeHtml(item.business_type || '—')}</td>
+                    <td class="px-2 py-2 text-slate-700 max-w-[220px] truncate" title="${escapeHtml(product)}">${escapeHtml(product)}</td>
+                    <td class="px-2 py-2 text-slate-700 max-w-[360px] truncate" title="${escapeHtml(desc)}">${escapeHtml(desc)}</td>
+                    <td class="px-2 py-2 text-slate-600">${escapeHtml(inferred || '—')}</td>
+                    <td class="px-2 py-2">${flagHtml}</td>
+                    <td class="px-2 py-2 text-center">
+                        <button type="button" onclick="openMailContractCaseDetail(${idx})" class="rounded border border-violet-300 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-800 hover:bg-violet-100">详情</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openMailContractCaseDetail(index) {
+            const item = mailContractCaseCache[index];
+            if (!item) return;
+            const wrap = document.getElementById('mail-contractcases-detail');
+            const title = document.getElementById('mail-contractcases-detail-title');
+            const body = document.getElementById('mail-contractcases-detail-body');
+            if (!wrap || !body) return;
+            wrap.classList.remove('hidden');
+            if (title) title.textContent = `合同案例详情 · ${item.contract_id || '未命名'}`;
+            const fmt = (v) => v == null || v === '' ? '—' : String(v);
+            body.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div class="rounded border border-violet-100 bg-white p-2"><b>合同号：</b><code>${escapeHtml(fmt(item.contract_id))}</code></div>
+                    <div class="rounded border border-violet-100 bg-white p-2"><b>客户：</b><code>${escapeHtml(fmt(item.customer_id))}</code></div>
+                    <div class="rounded border border-violet-100 bg-white p-2"><b>联系人：</b><code>${escapeHtml(fmt(item.contact_id))}</code></div>
+                    <div class="rounded border border-violet-100 bg-white p-2"><b>金额：</b>${Number(item.total_money || 0).toLocaleString('zh-CN', {maximumFractionDigits: 2})}</div>
+                    <div class="rounded border border-violet-100 bg-white p-2"><b>新增时间：</b>${escapeHtml(fmt(item.input_time))}</div>
+                    <div class="rounded border border-violet-100 bg-white p-2"><b>合同时间：</b>${escapeHtml(fmt(item.contract_time))}</div>
+                </div>
+                <div class="rounded border border-violet-100 bg-white p-3">
+                    <div class="font-bold text-slate-700 mb-1">原始字段</div>
+                    <div><b>业务类型：</b>${escapeHtml(fmt(item.business_type))}</div>
+                    <div><b>产品：</b>${escapeHtml(fmt(item.product_name_all))}</div>
+                    <div><b>合同描述：</b>${escapeHtml(fmt(item.contract_description))}</div>
+                </div>
+                <div class="rounded border border-violet-100 bg-white p-3">
+                    <div class="font-bold text-slate-700 mb-1">自动分析</div>
+                    <div><b>推断产品线：</b>${escapeHtml(mailContractCaseCn(item.business_line_inferred))}</div>
+                    <div><b>推断语种：</b>${escapeHtml(fmt(item.language_pair_inferred))}</div>
+                    <div><b>推断行业：</b>${escapeHtml(mailContractCaseCn(item.industry_inferred))}</div>
+                    <div><b>质量标记：</b>${escapeHtml((item.quality_flags || ['可初筛']).join('、'))}</div>
+                </div>
+                <div class="rounded border border-violet-100 bg-white p-3">
+                    <div class="font-bold text-slate-700 mb-1">拟作为案例的原始描述（未脱敏，暂不入库）</div>
+                    <div class="whitespace-pre-wrap leading-relaxed">${escapeHtml(fmt(item.case_text_raw))}</div>
+                </div>
+                <div class="rounded border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                    <b>入库建议：</b>${item.storage_suggestion?.ready_for_generation ? '字段基本可初筛，但仍需人工脱敏和确认。' : '暂不建议直接入库，需要补充/剔除或人工修正。'}<br>
+                    ${escapeHtml(item.storage_suggestion?.reason || '')}
+                </div>
+            `;
+            wrap.scrollIntoView({behavior: 'smooth', block: 'start'});
+        }
+
+        function closeMailContractCaseDetail() {
+            document.getElementById('mail-contractcases-detail')?.classList.add('hidden');
+        }
 
         let mailQualityInfoPanelCollapsed = true;
         function toggleMailQualityInfoPanel() {
@@ -2249,17 +2746,175 @@
             }
         }
 
+        let mailCustomerSuiteFeedbackRecords = [];
+
+        function mailFeedbackScenarioCn(value) {
+            const map = {
+                new_business_promotion: '老客户其他业务介绍',
+                re_activation: '老客户激活',
+                new_contact_intro: '新客户开发介绍',
+            };
+            return map[value] || value || '（空）';
+        }
+
+        async function loadMailCustomerSuiteFeedbackRecords() {
+            const statusEl = document.getElementById('mail-feedback-status');
+            const customerId = (document.getElementById('mail-feedback-filter-customer')?.value || '').trim();
+            const scenario = document.getElementById('mail-feedback-filter-scenario')?.value || '';
+            const suiteStep = document.getElementById('mail-feedback-filter-step')?.value || '';
+            const limit = document.getElementById('mail-feedback-filter-limit')?.value || '100';
+            const params = new URLSearchParams({ limit });
+            if (customerId) params.set('customer_id', customerId);
+            if (scenario) params.set('scenario', scenario);
+            if (suiteStep) params.set('suite_step', suiteStep);
+            if (statusEl) {
+                statusEl.textContent = '加载中...';
+                statusEl.className = 'text-[11px] text-slate-500';
+            }
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/customer-suite-feedback?${params.toString()}`, {
+                    credentials: 'include',
+                });
+                const text = await resp.text();
+                let data;
+                try { data = JSON.parse(text); } catch (e) { data = { _raw: text }; }
+                if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+                mailCustomerSuiteFeedbackRecords = Array.isArray(data.items) ? data.items : [];
+                renderMailCustomerSuiteFeedbackRecords();
+                if (statusEl) {
+                    statusEl.textContent = `已加载 ${mailCustomerSuiteFeedbackRecords.length} 条 · ${data.storage_policy || 'one_feedback_submit_one_row'}`;
+                    statusEl.className = 'text-[11px] text-emerald-700 font-bold';
+                }
+            } catch (err) {
+                mailCustomerSuiteFeedbackRecords = [];
+                renderMailCustomerSuiteFeedbackRecords();
+                if (statusEl) {
+                    statusEl.textContent = `加载失败：${err.message}`;
+                    statusEl.className = 'text-[11px] text-red-600 font-bold';
+                }
+            }
+        }
+
+        function renderMailCustomerSuiteFeedbackRecords() {
+            const tbody = document.getElementById('mail-feedback-tbody');
+            const empty = document.getElementById('mail-feedback-empty');
+            if (!tbody) return;
+            if (!mailCustomerSuiteFeedbackRecords.length) {
+                tbody.innerHTML = '';
+                if (empty) empty.classList.remove('hidden');
+                return;
+            }
+            if (empty) empty.classList.add('hidden');
+            tbody.innerHTML = mailCustomerSuiteFeedbackRecords.map((item, idx) => {
+                const contact = item.customer_contact_info || {};
+                const feedbackText = item.feedback_text || '';
+                const subject = item.final_subject || (item.draft_payload && item.draft_payload.final_subject) || '（无主题）';
+                return `
+                    <tr class="border-t border-slate-100 hover:bg-cyan-50/50">
+                        <td class="px-2 py-2 text-slate-500 whitespace-nowrap" title="${escapeHtml(item.feedback_id || '')}">${escapeHtml(item.created_at || '（无）')}</td>
+                        <td class="px-2 py-2">
+                            <div class="font-mono text-[11px] text-slate-900">${escapeHtml(item.customer_id || '（空）')}</div>
+                            <div class="text-slate-600">${escapeHtml(contact.company_name || item.company_name || '（公司空）')}</div>
+                            <div class="text-[10px] text-slate-500 break-all">${escapeHtml(contact.contact_name || '')} ${escapeHtml(contact.contact_email || item.contact_email || '')}</div>
+                        </td>
+                        <td class="px-2 py-2">
+                            <div><span class="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">${escapeHtml(mailFeedbackScenarioCn(item.scenario))}</span></div>
+                            <div class="mt-1 text-[10px] text-slate-500">${escapeHtml(item.step_label_cn || ('第 ' + item.suite_step + ' 封'))}</div>
+                        </td>
+                        <td class="px-2 py-2 max-w-[260px] truncate" title="${escapeHtml(subject)}">${escapeHtml(subject)}</td>
+                        <td class="px-2 py-2 max-w-[320px] truncate" title="${escapeHtml(feedbackText)}">${escapeHtml(feedbackText)}</td>
+                        <td class="px-2 py-2 text-center">
+                            <button type="button" onclick="openMailCustomerSuiteFeedbackDetail(${idx})" class="rounded border border-cyan-300 bg-white px-2 py-1 text-[11px] font-bold text-cyan-700 hover:bg-cyan-100" title="展开完整反馈、对应邮件正文、草稿 JSON 和客户画像。">查看详情</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function openMailCustomerSuiteFeedbackDetail(index) {
+            const item = mailCustomerSuiteFeedbackRecords[index];
+            if (!item) return;
+            const wrap = document.getElementById('mail-feedback-detail');
+            const title = document.getElementById('mail-feedback-detail-title');
+            const body = document.getElementById('mail-feedback-detail-body');
+            if (!wrap || !body) return;
+            const contact = item.customer_contact_info || {};
+            const draft = item.draft_payload || {};
+            const profile = item.customer_profile || {};
+            const subject = item.final_subject || draft.final_subject || '（无主题）';
+            const htmlBody = item.final_body_html || draft.final_body_html || '（正文为空）';
+            if (title) title.textContent = `反馈详情 · ${item.customer_id || ''} · ${mailFeedbackScenarioCn(item.scenario)} · 第 ${item.suite_step || '-'} 封`;
+            body.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div class="rounded border border-cyan-100 bg-white p-3">
+                        <div class="font-bold text-slate-700 mb-1">客户联系人</div>
+                        <div>客户编号：<code>${escapeHtml(item.customer_id || '')}</code></div>
+                        <div>公司：${escapeHtml(contact.company_name || item.company_name || '（空）')}</div>
+                        <div>联系人：${escapeHtml(contact.contact_name || '（空）')}</div>
+                        <div class="break-all">邮箱：${escapeHtml(contact.contact_email || item.contact_email || '（空）')}</div>
+                        <div>行业：${escapeHtml(contact.industry || '（空）')}</div>
+                        <div>销售：${escapeHtml(contact.seller_name || '（空）')}</div>
+                    </div>
+                    <div class="rounded border border-cyan-100 bg-white p-3">
+                        <div class="font-bold text-slate-700 mb-1">对应模板</div>
+                        <div>场景：${escapeHtml(mailFeedbackScenarioCn(item.scenario))}</div>
+                        <div>阶段：${escapeHtml(item.step_label_cn || ('第 ' + item.suite_step + ' 封'))}</div>
+                        <div>草稿编号：<code class="text-[10px] break-all">${escapeHtml(item.mail_uid || draft.mail_uid || '（空）')}</code></div>
+                        <div>保存时间：${escapeHtml(item.created_at || '（空）')}</div>
+                        <div>来源：${escapeHtml(item.feedback_source || '（空）')}</div>
+                    </div>
+                    <div class="rounded border border-cyan-100 bg-white p-3">
+                        <div class="font-bold text-slate-700 mb-1">记录状态</div>
+                        <div>反馈记录：<code class="text-[10px] break-all">${escapeHtml(item.feedback_id || '')}</code></div>
+                        <div>状态：${escapeHtml(item.feedback_status || '（空）')}</div>
+                        <div class="mt-1 text-[10px] text-slate-500">保存策略：每次点击保存反馈都会新增一条数据库记录。</div>
+                    </div>
+                </div>
+                <div class="rounded border border-cyan-100 bg-white p-3">
+                    <div class="font-bold text-slate-700 mb-1">完整反馈</div>
+                    <div class="whitespace-pre-wrap leading-relaxed">${escapeHtml(item.feedback_text || '（空）')}</div>
+                </div>
+                <div class="rounded border border-cyan-100 bg-white p-3">
+                    <div class="font-bold text-slate-700 mb-1">对应邮件主题</div>
+                    <div class="font-bold text-slate-900">${escapeHtml(subject)}</div>
+                </div>
+                <div class="rounded border border-cyan-100 bg-white p-3">
+                    <div class="font-bold text-slate-700 mb-1">对应邮件正文 HTML</div>
+                    <div class="prose prose-sm max-w-none text-slate-800 leading-relaxed">${htmlBody}</div>
+                </div>
+                <details class="rounded border border-cyan-100 bg-white p-3">
+                    <summary class="cursor-pointer font-bold text-slate-700">草稿 payload JSON</summary>
+                    <pre class="mt-2 max-h-80 overflow-auto rounded bg-slate-900 p-3 text-[10px] text-slate-100">${escapeHtml(JSON.stringify(draft, null, 2))}</pre>
+                </details>
+                <details class="rounded border border-cyan-100 bg-white p-3">
+                    <summary class="cursor-pointer font-bold text-slate-700">客户画像 JSON</summary>
+                    <pre class="mt-2 max-h-80 overflow-auto rounded bg-slate-900 p-3 text-[10px] text-slate-100">${escapeHtml(JSON.stringify(profile, null, 2))}</pre>
+                </details>
+            `;
+            wrap.classList.remove('hidden');
+            wrap.scrollIntoView({block: 'start'});
+        }
+
+        function closeMailCustomerSuiteFeedbackDetail() {
+            document.getElementById('mail-feedback-detail')?.classList.add('hidden');
+        }
+
         function switchMailWorkspaceTab(tab) {
-            const validTabs = ['quality', 'iteration', 'goldlib', 'config'];
-            const activeTab = validTabs.includes(tab) ? tab : 'quality';
+            const validTabs = ['quality', 'iteration', 'goldlib', 'contractcases', 'feedback', 'config'];
+            let activeTab = validTabs.includes(tab) ? tab : 'quality';
+            if (isMailQualityOnlyUser() && activeTab === 'config') activeTab = 'quality';
             const liveDemo = document.getElementById('mail-quality-live-demo');
             const qualityInfo = document.getElementById('mail-quality-panel-info');
             const iterationPanel = document.getElementById('mail-iteration-panel');
             const goldlibPanel = document.getElementById('mail-goldlib-panel');
+            const contractCasesPanel = document.getElementById('mail-contractcases-panel');
+            const feedbackPanel = document.getElementById('mail-feedback-panel');
             const configPanel = document.getElementById('mail-config-panel');
             const qualityBtn = document.getElementById('mail-subtab-quality');
             const iterationBtn = document.getElementById('mail-subtab-iteration');
             const goldlibBtn = document.getElementById('mail-subtab-goldlib');
+            const contractCasesBtn = document.getElementById('mail-subtab-contractcases');
+            const feedbackBtn = document.getElementById('mail-subtab-feedback');
             const configBtn = document.getElementById('mail-subtab-config');
             const activeClass = 'px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold';
             const inactiveClass = 'px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50';
@@ -2267,14 +2922,21 @@
             if (qualityInfo) qualityInfo.classList.toggle('hidden', activeTab !== 'quality');
             if (iterationPanel) iterationPanel.classList.toggle('hidden', activeTab !== 'iteration');
             if (goldlibPanel) goldlibPanel.classList.toggle('hidden', activeTab !== 'goldlib');
+            if (contractCasesPanel) contractCasesPanel.classList.toggle('hidden', activeTab !== 'contractcases');
+            if (feedbackPanel) feedbackPanel.classList.toggle('hidden', activeTab !== 'feedback');
             if (configPanel) configPanel.classList.toggle('hidden', activeTab !== 'config');
             if (qualityBtn) qualityBtn.className = activeTab === 'quality' ? activeClass : inactiveClass;
             if (iterationBtn) iterationBtn.className = activeTab === 'iteration' ? activeClass : inactiveClass;
             if (goldlibBtn) goldlibBtn.className = activeTab === 'goldlib' ? activeClass : inactiveClass;
+            if (contractCasesBtn) contractCasesBtn.className = activeTab === 'contractcases' ? activeClass : inactiveClass;
+            if (feedbackBtn) feedbackBtn.className = activeTab === 'feedback' ? activeClass : inactiveClass;
             if (configBtn) configBtn.className = activeTab === 'config' ? activeClass : inactiveClass;
             if (activeTab === 'config') renderMailConfigReviewOnlyMocks();
             if (activeTab === 'iteration' && typeof loadMailIterationList === 'function') loadMailIterationList();
             if (activeTab === 'goldlib' && typeof loadMailGoldLibrarySeeds === 'function') loadMailGoldLibrarySeeds();
+            if (activeTab === 'contractcases' && typeof loadMailContractCaseCandidates === 'function') loadMailContractCaseCandidates();
+            if (activeTab === 'feedback' && typeof loadMailCustomerSuiteFeedbackRecords === 'function') loadMailCustomerSuiteFeedbackRecords();
+            applyMailQualityOnlyVisibility();
         }
 
         function cloneMailSequenceStepDefaults() {
@@ -3977,12 +4639,61 @@
             return normalizeTooltipKey(el.getAttribute('placeholder') || '');
         }
 
+        function isMailQualityOnlyUser() {
+            return currentFrontendRole === 'mail_quality_only';
+        }
+
+        function applyMailQualityOnlyVisibility(limited = isMailQualityOnlyUser()) {
+            [
+                'main-tab-wecom',
+                'main-tab-analytics',
+                'main-tab-kb',
+                'main-tab-caselib-list',
+                'main-tab-caselib-cases',
+            ].forEach(id => document.getElementById(id)?.classList.toggle('hidden', limited));
+            document.getElementById('main-tab-mail-quality')?.classList.remove('hidden');
+
+            document.getElementById('mail-subtab-iteration')?.classList.remove('hidden');
+            document.getElementById('mail-subtab-goldlib')?.classList.remove('hidden');
+            document.getElementById('mail-subtab-contractcases')?.classList.remove('hidden');
+            document.getElementById('mail-subtab-feedback')?.classList.remove('hidden');
+            document.getElementById('mail-subtab-config')?.classList.toggle('hidden', limited);
+
+            document.querySelectorAll('button').forEach(btn => {
+                const text = (btn.textContent || '').replace(/\s+/g, '');
+                const isReturnWecom = text === '返回企微实时智能';
+                if (isReturnWecom) btn.classList.toggle('hidden', limited);
+            });
+        }
+
+        function applyUserAccessMode() {
+            const limited = isMailQualityOnlyUser();
+            applyMailQualityOnlyVisibility(limited);
+
+            if (limited) {
+                switchMailWorkspaceTab('quality');
+                document.getElementById('app-wecom')?.classList.add('hidden');
+                document.getElementById('app-analytics')?.classList.add('hidden');
+                document.getElementById('app-kb')?.classList.add('hidden');
+                document.getElementById('app-caselib')?.classList.add('hidden');
+                document.getElementById('app-mail-quality')?.classList.remove('hidden');
+                history.replaceState(null, '', `${window.location.pathname}#mail-quality`);
+                if (typeof loadMailDemoContacts === 'function') {
+                    setTimeout(() => loadMailDemoContacts(), 150);
+                }
+            }
+        }
+
         function switchMainApp(app, subTab) {
             // v1.7.186: 顶部"经典案例迭代优化"单按钮已拆成 ①迭代记录 / ②案例库 两个按钮,
             //          点这两个按钮会顺带把 sub-tab 切到对应的子页(list / cases)。
             //          subTab 是新加的可选参数, 不传时沿用 caselibState.subTab。
             const validApps = ['wecom', 'analytics', 'kb', 'caselib', 'mailQuality'];
-            const normalized = validApps.includes(app) ? app : 'wecom';
+            let normalized = validApps.includes(app) ? app : 'wecom';
+            if (isMailQualityOnlyUser() && normalized !== 'mailQuality') {
+                normalized = 'mailQuality';
+                subTab = 'quality';
+            }
             document.getElementById('app-wecom')?.classList.toggle('hidden', normalized !== 'wecom');
             document.getElementById('app-analytics')?.classList.toggle('hidden', normalized !== 'analytics');
             document.getElementById('app-kb')?.classList.toggle('hidden', normalized !== 'kb');
@@ -4033,13 +4744,14 @@
                 caselibSwitchSubTab(subTab || caselibState.subTab || 'list');
             } else if (normalized === 'mailQuality') {
                 history.replaceState(null, '', `${window.location.pathname}#mail-quality`);
-                // 进入邮件质量诊断时自动加载 5 个测试案例（mail_demo_contact 真接入）
+                // 进入邮件质量诊断时自动加载当前 3 个测试案例（mail_demo_contact / 当前客户编号覆盖视图）
                 if (typeof loadMailDemoContacts === 'function') {
                     setTimeout(() => loadMailDemoContacts(), 150);
                 }
             } else {
                 history.replaceState(null, '', window.location.pathname);
             }
+            applyUserAccessMode();
             applyTooltips();
         }
 
@@ -4056,6 +4768,138 @@
             detailFilter: {scenario: '', sort: 'scenario_turn'},
             savedTrainAiModel: '',    // 已保存的训练AI模型名
         };
+
+        const sidebarApiFullChainTip = (
+            '【企微侧边栏辅助接口外围链路】\n' +
+            '0. 请求入口：校验客户ID和销售ID，生成本次请求会话ID，并写入“已收到请求”日志。\n' +
+            '1. 会话同步：默认只调度企微存档异步同步；只有请求“读前同步”时才前台等待同步，超过配置时间则返回“存档同步超时”。\n' +
+            '2. 会话定位与截断：查找真实会话，加载最近消息和全量消息；锚点取最近客户消息，严格截断锚点后的销售回复，避免把未来人工回复泄露给 AI。\n' +
+            '3. 复用/去重：内容指纹缓存命中则直接复用内容；短期结果缓存命中则直接复用结果；同一请求正在运行时，后续请求等待主请求并复用主请求结果；强制刷新会绕过结果缓存但仍走并发合并。\n' +
+            '4. 强信号扫描：识别等待客户回复、报价/付款/发货/售后等业务信号，写入链路状态。\n' +
+            '5. LLM-1 摘要：首次、强制刷新、或旧摘要状态需要补齐时运行；已有可用摘要时跳过；无最近消息时跳过。\n' +
+            '6. CRM 与线程事实：用客户外部联系人 ID 查 CRM；可能成功、未找到、空画像或异常；同时写入会话业务事实，作为知识检索和生成上下文。\n' +
+            '7. 知识检索：有核心需求时构造检索特征和检索问题查私域知识库；无核心需求时跳过私域知识库。外部知识库由开关控制；生产可关闭，评测多版本可强制启用，单版本评测可关闭。\n' +
+            '8. 可输出点：主流程 LLM2 与训练AI有限时结果到位后即可返回；不在前台跑 LLM-1 评分/相似度。\n' +
+            '9. 尾段：结果转可存储结构、脱敏清理、轻量写调用记录、首次数据库提交、耗时字段回写；失败只影响诊断字段，不应触发评分等待。\n' +
+            '10. 返回后后台：后台评分线程补算相似分、AI质量分、原始回复分、训练AI分；无销售回复时保持“等待销售回复后再评分”；打开历史详情只提交后台补算，不同步等待。'
+        );
+        const llm2MainChainTip = (
+            '【链路1：主流程 LLM2 回复】\n' +
+            '输入：LLM-1 摘要 + 强信号 + CRM画像 + 会话业务事实 + 私域知识库/可选外部知识库证据。\n' +
+            '生成：使用当前 LLM2 配置和启用的回复风格；生产接口默认只取主模型首个风格；评测/迭代链路可跑多风格和外部知识库对比。\n' +
+            '校验：生成后执行销售辅助回复校验，产出风险提醒、校验结果和证据引用。\n' +
+            '特殊情况：已有可用回复且不强制刷新时可跳过；无摘要时跳过；LLM2 返回空则显示“无内容失败”；模型异常则显示“异常”；流式时先发状态，再逐段输出，完成后再落库。\n' +
+            '落库/返回：原始主流程回复保持不盲化；返回给侧边栏时会做盲评随机映射成第1行/第2行。'
+        );
+        const trainingAiChainTip = (
+            '【链路2：训练AI / model-chat 并行回复】\n' +
+            '触发：在 LLM2 生成阶段并行提交，复用同一份最终提示词；使用训练AI配置，默认按训练AI超时时间有限等待。\n' +
+            '结果：成功时返回“回复内容 / 模型 / 实际耗时”；停用、未配置、失败或超时时，第2行显示失败、超时或空值，不阻塞主流程无限等待。\n' +
+            '流式路径：训练AI 与流式 LLM2 并行，LLM2 完成后最多等训练AI有限时结果，再一并进入 done 帧和轻量落库。\n' +
+            '评分：训练AI质量分不在前台计算；后台补算成功后写入质量分、分项分和评分理由，未补算时显示“-”。\n' +
+            '盲评：返回给侧边栏时训练AI 与主流程 AI 一起随机映射到第1行/第2行回复；分析台仍按原始链路 1/2 展示。'
+        );
+        const sidebarLatencyTip = (
+            '【第一行：前台可输出点耗时】\n' +
+            '从 sidebar_assist 入口开始，到 AI 回复内容已经可以返回为止。\n' +
+            '包含：\n' +
+            '1. 请求解析：解析客户ID、销售ID、触发来源。\n' +
+            '2. 会话ID生成：生成本次请求要读取的会话ID。\n' +
+            '3. 企微存档同步：默认只调度异步同步；只有开启“读前同步”时才前台等待，超时则按存档同步超时结束。\n' +
+            '4. 会话定位与消息读取：定位真实会话、读取最近消息和全量消息。\n' +
+            '5. anchor 截断：取最近客户消息为触发锚点，截断锚点后的销售回复，防止未来人工回复泄露给 AI。\n' +
+            '6. 缓存与并发去重：命中内容缓存或短期缓存时直接返回；同一请求正在运行时，后发请求等待主请求结果。\n' +
+            '7. 强信号扫描：扫描报价、付款、发货、售后、等待客户等业务信号。\n' +
+            '8. LLM-1 摘要：首次、强制刷新、旧摘要需补齐时运行；已有可用摘要则跳过；无最近消息则跳过。\n' +
+            '9. CRM 客户画像与会话业务事实：查询 CRM，并写入会话业务事实。\n' +
+            '10. 知识检索：有核心需求时查私域知识库；无核心需求时跳过；外部知识库由开关和评测参数决定是否运行。\n' +
+            '11. LLM2 主回复：生成链路1回复；生产 API 已强制不跑前台评分。\n' +
+            '12. 训练AI并行回复：复用同一份提示词跑链路2，按训练AI超时时间有限等待。\n' +
+            '13. 结果组装：写入主回复、训练AI、链路状态、知识库、CRM 等返回字段。\n' +
+            '不包含：转可存储结构、脱敏清理、调用记录落库、数据库提交、耗时回写、成功日志、盲评映射、结果缓存写入、后台 LLM-1 评分/相似度补算。\n\n' +
+            '【第二行：轻量落库后墙钟耗时】\n' +
+            '从 sidebar_assist 入口开始，到轻量调用记录完成首次数据库提交为止。\n' +
+            '在第一行全部环节基础上，额外包含：\n' +
+            '1. 结果转可存储结构：把结果转成可入库 JSON。\n' +
+            '2. 脱敏清理：按 API 边界清理返回内容。\n' +
+            '3. 写轻量调用记录：写 ApiAssistInvocation 快照，只记录锚点、可见消息、实际销售回复快照、待评分状态，不跑评分。\n' +
+            '4. 首次数据库提交：提交轻量调用记录。\n' +
+            '不包含：耗时二阶段回写、成功日志、盲评映射、结果装饰、缓存写入、并发等待结果通知、HTTP 网络传输、后台评分补算。\n\n' +
+            '【两行差值】\n' +
+            '第二行 - 第一行 = 尾段轻量处理开销，主要用于判断卡顿是否发生在序列化、脱敏、轻量落库或首次数据库提交。'
+        );
+        function sidebarLatencyFmtMs(v) {
+            if (v === null || v === undefined || v === '') return null;
+            const n = Number(v);
+            if (!Number.isFinite(n)) return null;
+            return `${Math.round(n)}ms`;
+        }
+        function sidebarLatencyLine(label, value, note) {
+            const txt = sidebarLatencyFmtMs(value);
+            return txt ? `${label}: ${txt}${note ? ` (${note})` : ''}` : null;
+        }
+        function sidebarNodeTiming(row, key) {
+            const timings = ((row && row.stage_status && row.stage_status.node_timings_ms) || {});
+            const node = timings[key];
+            return node && node.total_ms !== undefined && node.total_ms !== null ? node.total_ms : null;
+        }
+        function sidebarNodePartTiming(row, key, part) {
+            const timings = ((row && row.stage_status && row.stage_status.node_timings_ms) || {});
+            const node = timings[key];
+            return node && node.parts_ms && node.parts_ms[part] !== undefined && node.parts_ms[part] !== null ? node.parts_ms[part] : null;
+        }
+        function buildSidebarLatencyRowTip(row, line1Latency, line2Latency) {
+            const t = (row && row.timings_ms && typeof row.timings_ms === 'object') ? row.timings_ms : {};
+            const lines = [
+                '【当前触发耗时实测拆分】',
+                '第一行 = 前台可输出点耗时；第二行 = 轻量落库后总墙钟耗时。'
+            ];
+            [
+                sidebarLatencyLine('第一行：前台可输出点耗时', line1Latency, '到 AI 回复可返回'),
+                sidebarLatencyLine('第二行：轻量落库后总耗时', line2Latency, '到轻量调用记录首次提交'),
+            ].filter(Boolean).forEach(x => lines.push(x));
+            const diff = (line1Latency != null && line2Latency != null) ? Math.max(Number(line2Latency) - Number(line1Latency), 0) : null;
+            const diffLine = sidebarLatencyLine('两行差值：尾段轻量处理', t.tail_ms != null ? t.tail_ms : diff, '第二行减第一行');
+            if (diffLine) lines.push(diffLine);
+
+            lines.push('', '【第一行包含的主链路环节】');
+            [
+                sidebarLatencyLine('请求解析', t.normalize_request_ms, '解析客户ID、销售ID、触发来源'),
+                sidebarLatencyLine('会话ID生成', t.build_session_id_ms, '生成本次请求会话ID'),
+                sidebarLatencyLine('企微存档同步', t.archive_sync_ms, '只有开启读前同步时前台等待'),
+                sidebarLatencyLine('定位会话并读取最近消息', t.load_recent_messages_ms, '查真实会话和最近消息'),
+                sidebarLatencyLine('读取全量会话消息', t.load_all_messages_ms, '用于锚点截断'),
+                sidebarLatencyLine('会话输入准备合计', sidebarNodeTiming(row, 'conversation_input'), '最近消息+全量消息'),
+                sidebarLatencyLine('强信号扫描', sidebarNodeTiming(row, 'fast_track') ?? t.fast_track_scan_ms, '报价/付款/发货/售后/等待客户等'),
+                sidebarLatencyLine('读取已有摘要', t.load_summary_ms, '读取历史 LLM-1 摘要'),
+                sidebarLatencyLine('LLM-1 摘要', sidebarNodeTiming(row, 'llm1') ?? t.llm1_analyze_ms, '首次/强刷/旧摘要补齐时运行'),
+                sidebarLatencyLine('重新读取摘要', t.reload_summary_ms, 'LLM-1 后重新读取摘要'),
+                sidebarLatencyLine('CRM 画像', sidebarNodeTiming(row, 'crm_profile') ?? t.crm_profile_ms, 'CRM + 会话业务事实'),
+                sidebarLatencyLine('知识检索总耗时', sidebarNodeTiming(row, 'knowledge') ?? t.knowledge_retrieve_ms, '私域/外部知识库按开关执行'),
+                sidebarLatencyLine('  私域知识库检索', sidebarNodePartTiming(row, 'knowledge', 'knowledge_v2_ms'), 'KB1'),
+                sidebarLatencyLine('  外部知识库检索', sidebarNodePartTiming(row, 'knowledge', 'knowledge_external_api_ms'), 'KB2，可能跳过'),
+            ].filter(Boolean).forEach(x => lines.push(x));
+
+            lines.push('', '【并行生成环节分别计时】');
+            [
+                sidebarLatencyLine('LLM2 主回复总耗时', sidebarNodeTiming(row, 'llm2'), '链路1'),
+                sidebarLatencyLine('  LLM2 主模型生成', sidebarNodePartTiming(row, 'llm2', 'llm2_ms') ?? sidebarNodePartTiming(row, 'llm2', 'llm2_generate_ms'), '主模型'),
+                sidebarLatencyLine('  LLM2 知识增强生成', sidebarNodePartTiming(row, 'llm2', 'llm2_knowledge_v2_ms'), '如有'),
+                sidebarLatencyLine('训练AI独立耗时', row && row.training_ai_latency_ms, '链路2，并行有限时等待'),
+            ].filter(Boolean).forEach(x => lines.push(x));
+
+            lines.push('', '【第二行额外包含的尾段】');
+            [
+                sidebarLatencyLine('结果转可存储结构', t.jsonable_ms, '转成可入库 JSON'),
+                sidebarLatencyLine('脱敏清理返回内容', t.sanitize_ms, '清理/脱敏返回内容'),
+                sidebarLatencyLine('写轻量调用记录', t.store_invocation_ms, '写 ApiAssistInvocation 快照，不跑评分'),
+                sidebarLatencyLine('首次数据库提交', t.first_db_commit_ms, '首次提交调用记录'),
+                sidebarLatencyLine('耗时字段二阶段回写', t.timings_repatch_ms, '只回写诊断字段，不计入第二行'),
+            ].filter(Boolean).forEach(x => lines.push(x));
+
+            lines.push('', '不包含：后台 LLM-1 评分/相似度补算、训练AI事后评分、HTTP 网络传输、浏览器渲染。');
+            return lines.join('\n');
+        }
 
         // 强制走当前 origin (localhost:8071)，绕过 localStorage 缓存的外部 api_base。
         // 经典案例迭代是本机特性，不能走 api.speedasia.net（那里没有这些表/端点）。
@@ -4808,7 +5652,7 @@
                     const y = runId.slice(6, 10);
                     const m = runId.slice(10, 12);
                     const d = runId.slice(12, 14);
-                    url = `/api/case_lib/daily_validation/${y}-${m}-${d}`;
+                    url = `/api/case_lib/daily_validation/${y}-${m}-${d}?view=api&limit=300`;
                 }
                 const res = await caselibFetch(url);
                 const data = await res.json();
@@ -5117,14 +5961,14 @@
                             <th class="px-2 py-2 text-left" style="width:50px; min-width:50px; max-width:50px; overflow:hidden;" title="销售场景代码 S01~S12。鼠标悬停每个单元格可看场景的完整业务定义">场景</th>
                             <th class="px-2 py-2 text-left" style="width:210px; min-width:210px; max-width:210px; overflow:hidden;" title="该案例在场景内的排名（1=场景内人工质量分最高，5=该场景最低）+ 案例标题">${caseColHeader}</th>
                             <th class="px-2 py-2 text-center" style="width:45px; min-width:45px; max-width:45px; overflow:hidden;" title="该案例内按时间顺序切出的对话轮次">${turnColHeader}</th>
-                            <th class="px-0.5 py-2 text-left" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="本轮对话的链路最终状态：真实成功 / 真实部分 / 干跑成功 / 异常回退 / HTTP错误 等">链路状态</th>
-                            <th class="px-0.5 py-2 text-left" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="本轮对话端到端 7 步链路总耗时（毫秒）">耗时</th>
+                            <th class="px-0.5 py-2 text-left" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;" title="${escapeHtml(sidebarApiFullChainTip)}">链路状态</th>
+                            <th class="px-0.5 py-2 text-left" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="${escapeHtml(sidebarLatencyTip)}">耗时</th>
                             <th class="px-2 py-2 text-left" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" title="步骤1：大模型1 抽取的当前主线话题。悬停看全文">第1步·主线话题</th>
                             <th class="px-2 py-2 text-left" style="width:130px; min-width:130px; max-width:130px; overflow:hidden; white-space:nowrap;" title="步骤4：知识检索的最终状态（命中 / 待人工复核 / 未启动 / 干跑占位）+ 命中知识条数。悬停单元格看知识库（当前）检索问题/证据/命中明细">第4步·知识检索</th>
                             <th class="px-2 py-2 text-left" style="width:90px; min-width:90px; max-width:90px; overflow:hidden;" title="本轮触发点之前的背景对话（最多15行）。悬停单元格看全部背景对话">背景</th>
                             <th class="px-2 py-2 text-left" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="步骤4：CRM 客户画像（联系人/公司/行业/等级/支付风险/生命周期）。悬停单元格看明细">客户画像</th>
                             <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="本轮真实输入给AI的原客户问；背景只包含客户问之前的15行，不包含本轮销售参考答案">原客户问</th>
-                            <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="步骤6：AI 回复建议(两行)。第1行 1 = 当前流程(大模型2)生成 (原 ai 路径)；第2行 2 = 另一条 model-chat 途径 (原 训练ai 路径, 与当前流程并行,10秒超时,无回值显示调用失败/超时)。各占一行,悬停看全文">第6步·AI生成回复（1/2）</th>
+                            <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(llm2MainChainTip + '\n\n' + trainingAiChainTip)}">第6步·AI生成回复（1/2）</th>
                             <th class="px-2 py-2 text-left" style="width:400px; min-width:400px; max-width:400px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(salesReplyHeaderTip)}">销售原始回复 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" style="width:92px; min-width:92px; max-width:92px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(aiHeaderTip)}">AI 质量分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
                             <th class="px-2 py-2 text-right" style="width:92px; min-width:92px; max-width:92px; overflow:hidden; white-space:nowrap;" title="${escapeHtml(mdHeaderTip)}">原始回复分 <span class="text-[10px] text-slate-400 align-top">ⓘ</span></th>
@@ -5406,6 +6250,8 @@
                     || (r.stage_status && r.stage_status.customer_question)
                     || '';
                 const advice = r.step6_sales_advice || '';
+                const aiReplyTitle = llm2MainChainTip + '\n\n【当前链路1回复】\n' + (advice || '（无）');
+                const trainingReplyTitle = trainingAiChainTip + '\n\n【当前链路2结果】\n' + (trainReplyTitle || '（无）');
                 const lastSalesReply =
                     (turn.sales_text || '')
                     || (r.stage_status && r.stage_status.caselib_split && r.stage_status.caselib_split.actual_sales_reply)
@@ -5467,10 +6313,11 @@
                     ? `${r.turn_no || turn.turn_no || '-'}<br/><span class="text-[9px] text-slate-400 font-normal">${turnTime}</span>`
                     : (r.turn_no || turn.turn_no || '-');
 
-                // 耗时第1行 (v1.7.193 重定义): 主链路耗时 (LLM1+知识+LLM2 全部跑完那一刻, pipeline_total_ms),
-                // 迭代模式回退原 latency_ms。第2行 api_total_ms = 含尾段 (序列化+落库+commit) 的真墙钟。
-                // 两行差值 = 尾段开销, 直接暴露 sidebar"几百秒超时"是否卡在落库阶段。
+                // 耗时第1行: 前台可输出点耗时 (LLM1+知识+LLM2+训练AI有限时结果, 不含评分补算)。
+                // 第2行 api_total_ms = 含尾段 (序列化+轻量落库+commit) 的真墙钟。
+                // 两行差值 = 尾段开销；LLM-1 评分/相似度已放入后台补算，不计入这两行主链路。
                 const line1Latency = (r.fetch_to_output_ms != null) ? r.fetch_to_output_ms : r.latency_ms;
+                const latencyTip = buildSidebarLatencyRowTip(r, line1Latency, r.api_total_ms);
 
                 const curlCmd = getReproductionCurl(r);
                 const escapedCurl = escapeHtml(curlCmd);
@@ -5480,17 +6327,17 @@
                     <td class="px-2 py-2 font-bold text-purple-700" style="width:50px; min-width:50px; max-width:50px; overflow:hidden;" title="${sameCaseAsPrev ? '' : escapeHtml(scTip)}">${sameCaseAsPrev ? '' : sc}</td>
                     <td class="px-2 py-2 truncate text-slate-700" style="width:210px; min-width:210px; max-width:210px; overflow:hidden;" title="${sameCaseAsPrev ? '' : escapeHtml(c.case_title || '')}">${sameCaseAsPrev ? '' : escapeHtml(title)}</td>
                     <td class="px-2 py-2 text-center font-mono text-[11px] text-purple-700" style="width:45px; min-width:45px; max-width:45px; overflow:hidden;" title="第 ${r.turn_no || turn.turn_no || '-'} 轮">${turnNoDisplay}</td>
-                    <td class="px-0.5 py-2 text-center" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="原始状态码：${r.quality_status || ''}">${escapeHtml(qstatus)}</span>${copyBtnHtml}</td>
-                    <td class="px-0.5 py-2 text-slate-500 whitespace-nowrap" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="第1行 = 主链路耗时 (LLM1+知识检索+LLM2+训练AI 全部跑完那一刻)&#10;第2行 = 全程墙钟 (含序列化+落库+commit 的真实耗时, 仅 API 触发轮次有值)&#10;两行差值 = 尾段开销, 用于排查 sidebar 看到的'几百秒超时'是否卡在主链路之后">
-                        <div>${line1Latency != null ? line1Latency + ' ms' : '-'}</div>
-                        ${r.api_total_ms != null ? `<div class="text-[10px] text-emerald-600" title="全程墙钟 (API 入口 → SUCCESS 日志, 含尾段)">${r.api_total_ms} ms</div>` : ''}
+                    <td class="px-0.5 py-2 text-center" style="width:75px; min-width:75px; max-width:75px; overflow:hidden;"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${qstatusCls}" title="${escapeHtml('原始状态码：' + (r.quality_status || '') + '\n\n' + sidebarApiFullChainTip)}">${escapeHtml(qstatus)}</span>${copyBtnHtml}</td>
+                    <td class="px-0.5 py-2 text-slate-500 whitespace-nowrap" style="width:80px; min-width:80px; max-width:80px; overflow:hidden;" title="${escapeHtml(latencyTip)}">
+                        <div title="${escapeHtml(latencyTip)}">${line1Latency != null ? line1Latency + ' ms' : '-'}</div>
+                        ${r.api_total_ms != null ? `<div class="text-[10px] text-emerald-600" title="${escapeHtml(latencyTip)}">${r.api_total_ms} ms</div>` : ''}
                     </td>
                     <td class="px-2 py-2 truncate text-slate-700 cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:160px; min-width:160px; max-width:160px; overflow:hidden;" ${stepClick('第1步·主线话题')} onmouseenter="caselibCellTip(event,'${r.result_id}','topic')" onmouseleave="caselibCellTipHide()">${escapeHtml(topic) || '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 text-slate-500 truncate cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition" style="width:130px; min-width:130px; max-width:130px; overflow:hidden;" ${stepClick('第4步·知识检索')} onmouseenter="caselibCellTip(event,'${r.result_id}','kb')" onmouseleave="caselibCellTipHide()">${kbCellText}</td>
                     <td class="px-2 py-2 text-slate-500 truncate cursor-help" style="width:90px; min-width:90px; max-width:90px; overflow:hidden;" onmouseenter="caselibCellTip(event,'${r.result_id}','bg')" onmouseleave="caselibCellTipHide()">${bgCount ? bgCount + ' 条' : '<span class="text-slate-400">（无）</span>'}</td>
                     <td class="px-2 py-2 text-slate-500 truncate cursor-help" style="width:100px; min-width:100px; max-width:100px; overflow:hidden;" title="${escapeHtml(tipCrm(r))}">${escapeHtml(crmLabel) || '<span class="text-slate-400">（无）</span>'}</td>
                     ${twoLineCell(customerQuestion, clickStep('原客户问'), 'text-slate-700')}
-                    ${aiTrainTextCell(advice, trainReplyText, advice, trainReplyTitle, clickStep('第6步·AI生成回复'), 'text-slate-700')}
+                    ${aiTrainTextCell(advice, trainReplyText, aiReplyTitle, trainingReplyTitle, clickStep('第6步·AI生成回复'), 'text-slate-700')}
                     ${twoLineCell(lastSalesReply, clickStep('销售原始回复'), 'text-slate-600')}
                     ${aiTrainScoreCell(aiTxt, trainScoreTxt, 'font-bold text-purple-700', aiTip, trainScoreTip)}
                     <td class="px-2 py-2 text-right text-sky-700 font-bold" style="width:92px; min-width:92px; max-width:92px; overflow:hidden;" title="${escapeHtml(mdTip)}">${mdTxt}</td>

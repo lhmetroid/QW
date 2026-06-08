@@ -2,6 +2,8 @@
 """
 客户画像接口 - 从 CRM 系统获取客户相关信息
 """
+import calendar
+from datetime import date, datetime, time, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +15,36 @@ from crm_database import get_crm_db
 
 
 router = APIRouter(prefix="/api", tags=["crm_profile"])
+
+
+def _subtract_months(value: datetime, months: int) -> datetime:
+    month = value.month - max(0, months)
+    year = value.year
+    while month <= 0:
+        month += 12
+        year -= 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return datetime(year, month, day, 0, 0, 0)
+
+
+def _resolve_crm_setting_time_range(time_from_value, time_to_value) -> tuple[datetime, datetime]:
+    if time_from_value == "RecentMonths":
+        try:
+            months = int(time_to_value)
+        except (TypeError, ValueError):
+            months = 6
+        now = datetime.now()
+        return _subtract_months(now, months), now
+
+    def as_datetime(value, *, end_of_day: bool = False) -> datetime:
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, date):
+            return datetime.combine(value, time.max if end_of_day else time.min)
+        parsed_date = date.fromisoformat(str(value)[:10])
+        return datetime.combine(parsed_date, time.max if end_of_day else time.min)
+
+    return as_datetime(time_from_value), as_datetime(time_to_value, end_of_day=True)
 
 
 class CRMProfileResponse(BaseModel):
@@ -236,136 +268,72 @@ def _get_method_display_name(method: str, msg_io: int) -> str:
 
 
 def _get_customer_lifecycle_stage(contact_id, db: Session) -> Optional[str]:
-    try:
-        config_query = text("""
-            SELECT TOP 1
-                TimeFrom, TimeTo, ContractTimeType, QuotationTimeType,
-                OldContractChecked, OldContractNumber, OldQuotationChecked, OldQuotationNumber, OldRelation,
-                NewContractChecked, NewContractNumber, NewQuotationChecked, NewQuotationNumberFrom, NewQuotationNumberTo, NewRelation,
-                QZContractChecked, QZQuotationChecked, QZQuotationNumberFrom, QZQuotationNumberTo, QZRelation
-            FROM crmContactYeWuSetting
-            WHERE ConditionType = 'Contact'
-        """)
+    """按当前业务口径计算客户生命周期。
 
-        config_result = db.execute(config_query).fetchone()
-        if not config_result:
+    规则：
+    - 熟联系人：客户/公司近 1 年有 3 个及以上销售合同。
+    - 老联系人：客户/公司历史上有过销售合同，不受 6 个月窗口限制。
+    - 新联系人：客户/公司没有过销售合同。
+
+    优先用 ContactId 找到 CustomerId 后按客户/公司维度统计；找不到 CustomerId 时退回 ContactId。
+    """
+    try:
+        if not contact_id:
             return None
 
-        time_from = config_result[0]
-        time_to = config_result[1]
-        contract_time_type = config_result[2]
-        quotation_time_type = config_result[3]
+        contact_row = db.execute(
+            text("""
+                SELECT TOP 1 CustomerId
+                FROM usrCustomerContact
+                WHERE Deleter IS NULL
+                  AND ContactId = :contact_id
+            """),
+            {"contact_id": contact_id},
+        ).fetchone()
+        customer_id = contact_row[0] if contact_row and contact_row[0] else None
+        one_year_ago = datetime.now().replace(microsecond=0) - timedelta(days=365)
 
-        old_contract_number = float(config_result[5]) if config_result[4] == "是" else -1
-        old_quotation_number = float(config_result[7]) if config_result[6] == "是" else -1
-        old_relation = config_result[8]
-
-        new_contract_number = float(config_result[10]) if config_result[9] == "是" else -1
-        new_quotation_from = float(config_result[12]) if config_result[11] == "是" else -1
-        new_quotation_to = float(config_result[13]) if config_result[11] == "是" else -1
-        new_relation = config_result[14]
-
-        qz_contract_checked = config_result[15]
-        qz_quotation_checked = config_result[16]
-        qz_quotation_from = float(config_result[17]) if config_result[16] == "是" else -1
-        qz_quotation_to = float(config_result[18]) if config_result[16] == "是" else -1
-        qz_relation = config_result[19]
-
-        if contract_time_type == "endtime":
-            contract_count_query = text("""
-                SELECT ISNULL(COUNT(DISTINCT a.ContractId), 0) as ContractCount
-                FROM usrContract a
-                WHERE a.Deleter IS NULL
-                  AND CONVERT(char(10), a.DeadLine, 21) >= CONVERT(char(10), :time_from, 121)
-                  AND CONVERT(char(10), a.DeadLine, 21) <= CONVERT(char(10), :time_to, 121)
-                  AND a.ContractType = '销售合同'
-                  AND a.ContactId = :contact_id
-            """)
+        if customer_id:
+            params = {"customer_id": customer_id, "one_year_ago": one_year_ago}
+            counts = db.execute(
+                text("""
+                    SELECT
+                        ISNULL(COUNT(DISTINCT ContractId), 0) AS total_contracts,
+                        ISNULL(COUNT(DISTINCT CASE
+                            WHEN COALESCE(ContractTime, StartTime, InputTime, DeadLine) >= :one_year_ago
+                            THEN ContractId
+                        END), 0) AS recent_contracts
+                    FROM usrContract
+                    WHERE Deleter IS NULL
+                      AND ContractType = '销售合同'
+                      AND CustomerId = :customer_id
+                """),
+                params,
+            ).fetchone()
         else:
-            contract_count_query = text("""
-                SELECT ISNULL(COUNT(DISTINCT a.ContractId), 0) as ContractCount
-                FROM usrContract a
-                WHERE a.Deleter IS NULL
-                  AND CONVERT(char(10), a.StartTime, 21) >= CONVERT(char(10), :time_from, 121)
-                  AND CONVERT(char(10), a.StartTime, 21) <= CONVERT(char(10), :time_to, 121)
-                  AND a.ContractType = '销售合同'
-                  AND a.ContactId = :contact_id
-            """)
+            params = {"contact_id": contact_id, "one_year_ago": one_year_ago}
+            counts = db.execute(
+                text("""
+                    SELECT
+                        ISNULL(COUNT(DISTINCT ContractId), 0) AS total_contracts,
+                        ISNULL(COUNT(DISTINCT CASE
+                            WHEN COALESCE(ContractTime, StartTime, InputTime, DeadLine) >= :one_year_ago
+                            THEN ContractId
+                        END), 0) AS recent_contracts
+                    FROM usrContract
+                    WHERE Deleter IS NULL
+                      AND ContractType = '销售合同'
+                      AND ContactId = :contact_id
+                """),
+                params,
+            ).fetchone()
 
-        if quotation_time_type == "endtime":
-            quotation_count_query = text("""
-                SELECT ISNULL(COUNT(DISTINCT a.QuotationId), 0) as QuotationCount
-                FROM usrQuotation a
-                WHERE a.Deleter IS NULL
-                  AND CONVERT(char(10), a.EndTime, 21) >= CONVERT(char(10), :time_from, 121)
-                  AND CONVERT(char(10), a.EndTime, 21) <= CONVERT(char(10), :time_to, 121)
-                  AND a.ContactId = :contact_id
-            """)
-        else:
-            quotation_count_query = text("""
-                SELECT ISNULL(COUNT(DISTINCT a.QuotationId), 0) as QuotationCount
-                FROM usrQuotation a
-                WHERE a.Deleter IS NULL
-                  AND CONVERT(char(10), a.QuotationTime, 21) >= CONVERT(char(10), :time_from, 121)
-                  AND CONVERT(char(10), a.QuotationTime, 21) <= CONVERT(char(10), :time_to, 121)
-                  AND a.ContactId = :contact_id
-            """)
-
-        params = {"time_from": time_from, "time_to": time_to, "contact_id": contact_id}
-
-        contract_result = db.execute(contract_count_query, params).fetchone()
-        contract_count = float(contract_result[0]) if contract_result else 0
-
-        quotation_result = db.execute(quotation_count_query, params).fetchone()
-        quotation_count = float(quotation_result[0]) if quotation_result else 0
-
-
-        old_contract_number=3
-        if old_contract_number != -1:
-            if old_quotation_number != -1:
-                if old_relation == "是":
-                    if contract_count >= old_contract_number and quotation_count >= old_quotation_number:
-                        return "熟联系人"
-                else:
-                    if contract_count >= old_contract_number or quotation_count >= old_quotation_number:
-                        return "熟联系人"
-            else:
-                if contract_count >= old_contract_number:
-                    return "熟联系人"
-        else:
-            if old_quotation_number != -1 and quotation_count >= old_quotation_number:
-                return "熟联系人"
-
-        if new_contract_number != -1:
-            if new_quotation_from != -1:
-                if new_relation == "是":
-                    if contract_count >= new_contract_number and new_quotation_from <= quotation_count <= new_quotation_to:
-                        return "老联系人"
-                else:
-                    if contract_count >= new_contract_number or (new_quotation_from <= quotation_count <= new_quotation_to):
-                        return "老联系人"
-            else:
-                if contract_count >= new_contract_number:
-                    return "老联系人"
-        else:
-            if new_quotation_from != -1 and new_quotation_from <= quotation_count <= new_quotation_to:
-                return "老联系人"
-
-        # if qz_contract_checked == "是" or qz_quotation_checked == "是":
-        #     if qz_contract_checked == "是" and qz_quotation_checked == "是":
-        #         if qz_relation == "是":
-        #             if contract_count >= 0 and qz_quotation_from <= quotation_count <= qz_quotation_to:
-        #                 return "新联系人"
-        #         else:
-        #             if contract_count >= 0 or (qz_quotation_from <= quotation_count <= qz_quotation_to):
-        #                 return "新联系人"
-        #     elif qz_contract_checked == "是":
-        #         if contract_count >= 0:
-        #             return "新联系人"
-        #     elif qz_quotation_checked == "是":
-        #         if qz_quotation_from <= quotation_count <= qz_quotation_to:
-        #             return "新联系人"
-
+        total_contracts = int(counts[0] or 0) if counts else 0
+        recent_contracts = int(counts[1] or 0) if counts else 0
+        if recent_contracts >= 3:
+            return "熟联系人"
+        if total_contracts > 0:
+            return "老联系人"
         return "新联系人"
 
     except Exception:

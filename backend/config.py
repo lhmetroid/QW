@@ -68,9 +68,9 @@ class Settings(BaseSettings):
 
     # 训练AI (train_ai) 配置：另一条 AI 回复途径，调用平台 model-chat 接口，与当前流程并行触发。
     TRAIN_AI_ENABLED: bool = True
-    TRAIN_AI_BASE_URL: str = "https://llm.cycleforce.cc"
+    TRAIN_AI_BASE_URL: str = "http://zjsphs.2288.org:11486"
     TRAIN_AI_API_KEY: str = ""
-    TRAIN_AI_MODEL: str = "unsloth-qwen2.5-task-45"
+    TRAIN_AI_MODEL: str = "unsloth-qwen2.5-task-60"
     TRAIN_AI_TIMEOUT_SECONDS: int = 10
     TRAIN_AI_MAX_TOKENS: int = 300
     TRAIN_AI_TEMPERATURE: float = 0.2
@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     LLM2_COMPARE_TIMEOUT_SECONDS: int = 100
     API_REPLY_SINGLE_MODEL_SINGLE_STYLE: bool = True
     API_REPLY_ENABLE_SCORING: bool = False
+    WECOM_FOLLOWUP_SCORING_WINDOW_ENABLED: bool = True
+    WECOM_FOLLOWUP_SCORING_WINDOW_START_HOUR_BJ: int = 20
+    WECOM_FOLLOWUP_SCORING_WINDOW_END_HOUR_BJ: int = 24
     LOG_LLM_PROMPTS: bool = True
     LOG_LLM_PROMPT_MAX_CHARS: int = 12000
     LOG_DESENSITIZE_ENABLED: bool = True
@@ -90,6 +93,7 @@ class Settings(BaseSettings):
     FRONTEND_AUTH_ENABLED: bool = True
     FRONTEND_AUTH_USERNAME: str = "admin"
     FRONTEND_AUTH_PASSWORD: str = "Qw@2026"
+    FRONTEND_AUTH_EXTRA_USERS: str = "hj:123456:mail_quality_only"
     FRONTEND_AUTH_SECRET: str = ""
     FRONTEND_AUTH_SESSION_SECONDS: int = 86400
 

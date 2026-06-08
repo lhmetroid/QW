@@ -40,9 +40,10 @@ def _load_mail_payment_risk_helpers() -> dict[str, Any]:
         "logger": _Logger(),
         "re": re,
         "sanitize_text": sanitize_text,
+        "Session": Any,
     }
     exec(source[start:end], namespace)
-    namespace["_mail_crm_profile_from_sql"] = lambda customer_key, contact_email: None
+    namespace["_mail_crm_profile_from_sql"] = lambda customer_key, contact_email: MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY.get(customer_key)
     return namespace
 
 

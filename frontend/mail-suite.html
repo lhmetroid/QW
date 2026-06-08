@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>客户套装邮件生成</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --line: #dbe3ef;
+      --text: #172033;
+      --muted: #64748b;
+      --brand: #4f46e5;
+      --good: #059669;
+      --warn: #b45309;
+      --bad: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.6 Arial, "Microsoft YaHei", sans-serif;
+    }
+    .appbar {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      background: #fff;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .brand {
+      font-weight: 900;
+      font-size: 16px;
+      color: #0f172a;
+    }
+    .brand small {
+      margin-left: 10px;
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 12px;
+    }
+    main {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 24px auto 48px;
+    }
+    .top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.25;
+    }
+    .sub {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 10px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-weight: 700;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px 18px;
+    }
+    .kv b {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+    code {
+      font-family: Consolas, monospace;
+      font-size: 12px;
+    }
+    .status {
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1d4ed8;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .status.error {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: var(--bad);
+    }
+    details.mail {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-top: 14px;
+      overflow: hidden;
+    }
+    details.mail summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      background: #f8fafc;
+      border-bottom: 1px solid var(--line);
+    }
+    summary::-webkit-details-marker { display: none; }
+    .step-title {
+      font-weight: 800;
+    }
+    .meta-line {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .mail-body {
+      padding: 14px;
+    }
+    .subject {
+      font-weight: 800;
+      font-size: 15px;
+      margin-bottom: 10px;
+    }
+    .body-html {
+      border: 1px solid #e2e8f0;
+      background: #fff;
+      border-radius: 6px;
+      padding: 12px;
+      min-height: 120px;
+    }
+    .body-html p {
+      margin: 0 0 10px;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    button {
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      color: #0f172a;
+      border-radius: 6px;
+      padding: 7px 10px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    button.primary {
+      background: var(--brand);
+      color: #fff;
+      border-color: var(--brand);
+    }
+    button:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+    textarea {
+      width: 100%;
+      min-height: 78px;
+      resize: vertical;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 8px;
+      font: inherit;
+    }
+    .feedback {
+      margin-top: 14px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 12px;
+    }
+    .feedback-status {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .feedback-status.ok { color: var(--good); font-weight: 700; }
+    .feedback-status.err { color: var(--bad); font-weight: 700; }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 12px/1.5 Consolas, monospace;
+    }
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #bfdbfe;
+      border-top-color: var(--brand);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      flex: 0 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 760px) {
+      main { width: calc(100vw - 20px); margin-top: 14px; }
+      .top { display: block; }
+      .badge { margin-top: 10px; }
+      .grid { grid-template-columns: 1fr; }
+      details.mail summary { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <header class="appbar">
+    <div class="brand">智能销售辅助工作台<small>邮件套装生成</small></div>
+    <div class="badge">免登录独立页</div>
+  </header>
+  <main>
+    <div class="top">
+      <div>
+        <h1>客户套装邮件生成</h1>
+        <div class="sub">根据 URL 参数 <code>id</code> 读取 CRM 客户画像，自动判断场景并生成 4 封套装草稿。</div>
+      </div>
+      <div id="page-badge" class="badge">等待客户编号</div>
+    </div>
+
+    <div id="status" class="status"><span class="spinner"></span><span id="status-text">正在读取参数...</span></div>
+
+    <section id="customer-panel" class="panel" hidden>
+      <h2 style="margin:0 0 10px;font-size:16px;">客户信息</h2>
+      <div id="customer-grid" class="grid"></div>
+    </section>
+
+    <section id="drafts-panel" hidden></section>
+  </main>
+
+  <script>
+    let suiteData = null;
+
+    const esc = (v) => String(v == null || v === '' ? '-' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+    function htmlToText(html) {
+      const div = document.createElement('div');
+      div.innerHTML = html || '';
+      return div.innerText.trim();
+    }
+
+    function setStatus(text, error) {
+      const el = document.getElementById('status');
+      const textEl = document.getElementById('status-text');
+      if (textEl) textEl.textContent = text;
+      el.className = error ? 'status error' : 'status';
+      const spinner = el.querySelector('.spinner');
+      if (spinner) spinner.style.display = error || text.includes('完成') ? 'none' : 'inline-block';
+    }
+
+    function field(label, value) {
+      return `<div class="kv"><b>${esc(label)}</b><span>${esc(value)}</span></div>`;
+    }
+
+    function maskText(value, options = {}) {
+      const text = String(value || '').trim();
+      if (!text) return '';
+      const keepStart = options.keepStart ?? 1;
+      const keepEnd = options.keepEnd ?? 1;
+      if (text.length <= keepStart + keepEnd + 1) {
+        return `${text.slice(0, 1)}***`;
+      }
+      return `${text.slice(0, keepStart)}***${text.slice(text.length - keepEnd)}`;
+    }
+
+    function maskCustomerId(value) {
+      const text = String(value || '').trim();
+      if (!text) return '';
+      const parts = text.split('-');
+      if (parts.length >= 2) {
+        return `${parts[0].slice(0, 2)}***-${parts[parts.length - 1]}`;
+      }
+      return maskText(text, { keepStart: 2, keepEnd: 2 });
+    }
+
+    function maskCompanyName(value) {
+      const text = String(value || '').trim();
+      if (!text) return '';
+      if (text.length <= 8) return maskText(text, { keepStart: 2, keepEnd: 1 });
+      return `${text.slice(0, 4)}***${text.slice(-4)}`;
+    }
+
+    function renderCustomer(data) {
+      const profile = data.customer_profile || {};
+      document.getElementById('page-badge').textContent = `客户 ${maskCustomerId(data.customer_id)}`;
+      document.getElementById('customer-grid').innerHTML = [
+        field('客户编号', maskCustomerId(data.customer_id)),
+        field('公司名称', maskCompanyName(profile.company_name)),
+        field('联系人', maskText(profile.crm_contact_name, { keepStart: 1, keepEnd: 0 })),
+        field('收件方式', '仅生成模板，不发邮件'),
+        field('自动判断场景', `${data.scenario_label} (${data.scenario})`),
+        field('判断依据', data.scenario_reason),
+        field('行业', profile.company_industry),
+        field('客户阶段', profile.customer_lifecycle_stage),
+        field('客户级别', profile.customer_tier),
+        field('欠款风险', profile.payment_risk_level),
+        field('已有业务', (profile.existing_business_lines || []).join('、')),
+        field('数据来源', profile.crm_profile_source),
+      ].join('');
+      document.getElementById('customer-panel').hidden = false;
+    }
+
+    function renderDrafts(data) {
+      const wrap = document.getElementById('drafts-panel');
+      wrap.hidden = false;
+      wrap.innerHTML = '';
+      for (const item of data.drafts || []) {
+        const draft = item.draft || {};
+        const review = draft.review_metadata || {};
+        const crmSignals = review.crm_profile_signals || {};
+        const details = document.createElement('details');
+        details.className = 'mail';
+        details.open = true;
+        details.innerHTML = `
+          <summary>
+            <div>
+              <div class="step-title">第 ${esc(item.suite_step)} 封 · ${esc(data.scenario_label)}</div>
+              <div class="meta-line">草稿编号 ${esc(draft.mail_uid)} · 大模型 ${esc(draft.llm_model_used)} · 安全门 ${esc((draft.safety_guardrail || {}).overall_outcome)} · ${esc(item.elapsed_ms)}ms</div>
+            </div>
+            <div class="meta-line">默认展开</div>
+          </summary>
+          <div class="mail-body">
+            <div class="subject">邮件主题：${esc(draft.final_subject)}</div>
+            <div id="body-${esc(item.suite_step)}" class="body-html">${draft.final_body_html || '（正文为空）'}</div>
+            <div class="panel" style="margin-top:10px;">
+              <div class="grid">
+                ${field('目标推广业务', crmSignals.target_product_line)}
+                ${field('已有业务线', (crmSignals.existing_business_lines || []).join('、'))}
+                ${field('下一步建议', review.suggested_next_step)}
+              </div>
+            </div>
+            <div class="actions">
+              <button type="button" onclick="copyMail(${esc(item.suite_step)})">复制正文</button>
+              <button type="button" onclick="copyMail(${esc(item.suite_step)}, true)">复制主题+正文</button>
+            </div>
+            <div class="feedback">
+              <div style="font-weight:800;margin-bottom:6px;">反馈</div>
+              <textarea id="feedback-${esc(item.suite_step)}" placeholder="填写这封邮件的问题、修改意见或是否可用。每次保存都会新建一条反馈记录。"></textarea>
+              <div class="actions">
+                <button id="save-${esc(item.suite_step)}" class="primary" type="button" onclick="saveFeedback(${esc(item.suite_step)})">保存反馈</button>
+                <span id="feedback-status-${esc(item.suite_step)}" class="feedback-status">尚未保存</span>
+              </div>
+            </div>
+          </div>
+        `;
+        wrap.appendChild(details);
+      }
+    }
+
+    async function copyMail(step, includeSubject) {
+      const item = (suiteData.drafts || []).find(x => Number(x.suite_step) === Number(step));
+      if (!item) return;
+      const draft = item.draft || {};
+      const text = includeSubject
+        ? `主题：${draft.final_subject || ''}\n\n${htmlToText(draft.final_body_html)}`
+        : htmlToText(draft.final_body_html);
+      await navigator.clipboard.writeText(text);
+      const el = document.getElementById(`feedback-status-${step}`);
+      if (el) {
+        el.textContent = '已复制';
+        el.className = 'feedback-status ok';
+      }
+    }
+
+    async function saveFeedback(step) {
+      const item = (suiteData.drafts || []).find(x => Number(x.suite_step) === Number(step));
+      if (!item) return;
+      const draft = item.draft || {};
+      const input = document.getElementById(`feedback-${step}`);
+      const btn = document.getElementById(`save-${step}`);
+      const status = document.getElementById(`feedback-status-${step}`);
+      const feedback = (input.value || '').trim();
+      if (!feedback) {
+        status.textContent = '请先填写反馈';
+        status.className = 'feedback-status err';
+        return;
+      }
+      btn.disabled = true;
+      status.textContent = '保存中...';
+      status.className = 'feedback-status';
+      try {
+        const resp = await fetch('/api/v1/mail/customer-suite-feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_id: suiteData.customer_id,
+            contact_email: (suiteData.customer_profile || {}).contact_email,
+            company_name: (suiteData.customer_profile || {}).company_name,
+            scenario: suiteData.scenario,
+            suite_step: Number(step),
+            mail_uid: draft.mail_uid,
+            final_subject: draft.final_subject,
+            final_body_html: draft.final_body_html,
+            feedback_text: feedback,
+            draft_payload: draft,
+            customer_profile: suiteData.customer_profile || {}
+          })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+        status.textContent = `已保存：${data.feedback_id}`;
+        status.className = 'feedback-status ok';
+        input.value = '';
+      } catch (err) {
+        status.textContent = `保存失败：${err.message}`;
+        status.className = 'feedback-status err';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function loadSuite() {
+      const params = new URLSearchParams(window.location.search);
+      const id = (params.get('id') || '').trim();
+      if (!id) {
+        setStatus('URL 缺少客户编号参数，例如 /static/mail-suite.html?id=KH23447-001', true);
+        return;
+      }
+      document.getElementById('page-badge').textContent = `客户 ${id}`;
+      setStatus(`正在读取 CRM 并生成 4 封套装邮件：${id}`);
+      try {
+        const resp = await fetch(`/api/v1/mail/customer-suite?id=${encodeURIComponent(id)}`);
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+        suiteData = data;
+        setStatus(`生成完成：${data.scenario_label} · 共 ${data.drafts.length} 封 · 真发开关关闭`);
+        renderCustomer(data);
+        renderDrafts(data);
+      } catch (err) {
+        setStatus(`加载失败：${err.message}`, true);
+      }
+    }
+
+    loadSuite();
+  </script>
+</body>
+</html>

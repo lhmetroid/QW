@@ -25,33 +25,6 @@ function Stop-PortListeners {
         [int]$TargetPort
     )
 
-    function Get-DescendantProcessIds {
-        param(
-            [Parameter(Mandatory = $true)]
-            [int]$ParentPid
-        )
-
-        $all = New-Object System.Collections.Generic.List[int]
-        $queue = New-Object System.Collections.Generic.Queue[int]
-        $queue.Enqueue($ParentPid)
-
-        while ($queue.Count -gt 0) {
-            $current = $queue.Dequeue()
-            $children = @(
-                Get-CimInstance Win32_Process -Filter "ParentProcessId = $current" -ErrorAction SilentlyContinue |
-                    Select-Object -ExpandProperty ProcessId
-            )
-            foreach ($child in $children) {
-                if (-not $all.Contains([int]$child)) {
-                    $all.Add([int]$child)
-                    $queue.Enqueue([int]$child)
-                }
-            }
-        }
-
-        return @($all)
-    }
-
     for ($attempt = 1; $attempt -le 5; $attempt++) {
         $listeners = @(
             Get-NetTCPConnection -LocalPort $TargetPort -State Listen -ErrorAction SilentlyContinue |
@@ -73,20 +46,12 @@ function Stop-PortListeners {
         }
 
         foreach ($listener in $listeners) {
-            $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)" -ErrorAction SilentlyContinue
-            $procName = if ($proc -and $proc.Name) { $proc.Name } else { "unknown" }
-            $commandLine = if ($proc -and $proc.CommandLine) { $proc.CommandLine } else { "" }
+            $proc = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
+            $procName = if ($proc -and $proc.ProcessName) { $proc.ProcessName } else { "unknown" }
 
             Write-Host "INFO: stopping process on port $TargetPort (PID=$($listener.OwningProcess), Name=$procName)"
-            if ($commandLine) {
-                Write-Host "INFO: command line: $commandLine"
-            }
 
             try {
-                $childPids = @(Get-DescendantProcessIds -ParentPid $listener.OwningProcess)
-                foreach ($childPid in $childPids) {
-                    Stop-Process -Id $childPid -Force -ErrorAction SilentlyContinue
-                }
                 Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
             }
             catch {
