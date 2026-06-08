@@ -1,5 +1,14 @@
 # TASK_HANDOFF
 
+## 2026-06-08 GitHub 推送阻断交接
+
+- 用户要求更新项目进展并提交本地修改到 GitHub。
+- 已更新 `项目进展.md`，新增 v1.7.240 邮件合同案例库只读入口记录。
+- 已完成本地提交：`dddfa74 feat: add mail contract case library`。
+- 推送 `git push origin main` 失败：GitHub 返回 403，当前凭据账号无 `lhmetroid/QW.git` 写权限。
+- 当前状态：本地 `main` 比 `origin/main` ahead；需要切换到有权限的 GitHub 凭据，或授予当前凭据对仓库的 push 权限，然后重新执行 `git push origin main`。
+- 未提交 `.env`；未提交 `.codex_pycache_v15/` 缓存目录。
+
 ## 2026-06-08 企微实时对话获取方式整理交接
 
 - 用户要求：整理获取企微实时对话方式，包括参数，输出 Markdown 文件。

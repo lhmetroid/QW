@@ -717,7 +717,6 @@
                             <thead class="bg-slate-50">
                                 <tr class="text-slate-600">
                                     <th class="px-2 py-2 text-left">新增时间</th>
-                                    <th class="px-2 py-2 text-right">金额</th>
                                     <th class="px-2 py-2 text-left">业务类型</th>
                                     <th class="px-2 py-2 text-left">产品</th>
                                     <th class="px-2 py-2 text-left">合同描述</th>
@@ -2549,7 +2548,7 @@
             if (!tbody) return;
             tbody.innerHTML = '';
             if (!mailContractCaseCache.length) {
-                tbody.innerHTML = '<tr><td colspan="8" class="px-2 py-5 text-center text-slate-500">暂无合同案例候选。请点击刷新，或放宽金额/关键词条件。</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="px-2 py-5 text-center text-slate-500">暂无合同案例候选。请点击刷新，或放宽金额/关键词条件。</td></tr>';
                 return;
             }
             mailContractCaseCache.forEach((item, idx) => {
@@ -2569,7 +2568,6 @@
                 tr.className = 'border-t border-slate-100 hover:bg-slate-50';
                 tr.innerHTML = `
                     <td class="px-2 py-2 font-mono text-[10px] text-slate-500">${escapeHtml(item.input_time || '—')}</td>
-                    <td class="px-2 py-2 text-right font-mono text-slate-700">${Number(item.total_money || 0).toLocaleString('zh-CN', {maximumFractionDigits: 2})}</td>
                     <td class="px-2 py-2 text-slate-700">${escapeHtml(item.business_type || '—')}</td>
                     <td class="px-2 py-2 text-slate-700 max-w-[220px] truncate" title="${escapeHtml(product)}">${escapeHtml(product)}</td>
                     <td class="px-2 py-2 text-slate-700 max-w-[360px] truncate" title="${escapeHtml(desc)}">${escapeHtml(desc)}</td>
