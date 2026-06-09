@@ -69,10 +69,10 @@ PRODUCT_CATALOG = """
 
 def extract_slots_from_message(content: str) -> dict:
     """
-    Use LLM1 to extract slot variables from the current customer message.
+    Use LLM1 to extract slot variables and planned intent from the current customer message.
     """
     prompt = f"""
-你是一个专用的B2B销售意图变量提取器。请分析下面的客户说话内容，提取出关于其购机偏好和分期资质的信息。
+你是一个专用的B2B销售意图与规划器。请分析下面的客户说话内容，提取出关于其购机偏好、分期资质以及检索规划。
 只允许输出合法的 JSON 对象，不要包含 markdown 代码块、解释或额外字符。
 
 变量列表及说明：
@@ -83,6 +83,8 @@ def extract_slots_from_message(content: str) -> dict:
 5. job: 用户提及的工作性质，可选值：'固定工作', '无固定工作', '在校学生', '失业/无业', null。注意：必须严格区分“有工作”与“固定工作”。除非客户明确说出是“固定工作”（或稳定工作、正式工作），否则工作性质（job）必须输出 null，绝对不能直接判定为“固定工作”。
 6. ktp: 用户是否持有印尼 KTP 身份证，可选值：'持有', '无', null。
 7. ask_installment: 用户是否提及、询问分期付款或贷款方案，可选值：true (提到), false (没提到)。
+8. planned_intent: 规划的目标意图主题，可选值: 'pricing' (价格/收费), 'product_recommendation' (推荐机型), 'installment_rules' (分期资格/规则), 'faq' (其他咨询), 'greeting' (问候语), 'other'。
+9. requires_knowledge_lookup: 是否需要检索自定义商品库/知识库以回答此问题，可选值: true, false。
 
 输入：
 "{content}"
@@ -95,7 +97,9 @@ JSON 输出格式样例：
   "age": null,
   "job": null,
   "ktp": null,
-  "ask_installment": false
+  "ask_installment": false,
+  "planned_intent": "product_recommendation",
+  "requires_knowledge_lookup": true
 }}
 """
     try:
@@ -113,15 +117,19 @@ JSON 输出格式样例：
         "age": None,
         "job": None,
         "ktp": None,
-        "ask_installment": False
+        "ask_installment": False,
+        "planned_intent": "other",
+        "requires_knowledge_lookup": True
     }
     content_lower = content.lower()
     if "分期" in content_lower or "贷款" in content_lower or "installment" in content_lower or "credit" in content_lower:
         fallback["ask_installment"] = True
+        fallback["planned_intent"] = "installment_rules"
     # Match basic numbers for budget
     budget_match = re.search(r"(\d+万|\d+元|\d+[-~]\d+)", content)
     if budget_match:
         fallback["budget"] = budget_match.group(1)
+        fallback["planned_intent"] = "product_recommendation"
     return fallback
 
 def run_sandbox_agentic_flow(db: Session, session: BuilderSandboxSession, user_content: str) -> tuple[str, dict]:
@@ -232,7 +240,13 @@ def run_sandbox_agentic_flow(db: Session, session: BuilderSandboxSession, user_c
         role_label = "客户" if msg.sender == "customer" else "AI客服"
         history_text += f"{role_label}: {msg.content}\n"
 
-    custom_context = get_custom_rag_context(db, session.agent_id, user_content)
+    # Query Custom Knowledge if planned
+    requires_lookup = extracted.get("requires_knowledge_lookup", True)
+    if requires_lookup is False or str(requires_lookup).lower() == "false":
+        custom_context = ""
+    else:
+        custom_context = get_custom_rag_context(db, session.agent_id, user_content)
+
     catalog_context = PRODUCT_CATALOG
     if custom_context:
         catalog_context = f"=== 商家自定义库存与规则库 ===\n{custom_context}\n\n=== 默认基础商品库 ===\n{PRODUCT_CATALOG}"
@@ -309,6 +323,30 @@ def run_sandbox_agentic_flow(db: Session, session: BuilderSandboxSession, user_c
         else:
             reply_text = "您好！我是 SPARK 手机零售助手。我们有成色非常棒的二手 iPhone 支持全款或分期购买。请问您目前的购机预算大概是多少呢？"
 
+    # 4. Reflective / Self-Correction Phase
+    reflection_triggered = False
+    reflection_reason = ""
+
+    # Rule A: Enforce installment mention blockage when installment is not triggered
+    if not vars_dict.get("installment_triggered"):
+        for term in ["分期", "贷款", "credit", "installment"]:
+            if term in reply_text:
+                logger.warning(f"Reflection: reply_text proactively mentioned installment term '{term}' but installment_triggered is False. Correcting.")
+                reply_text = "您好！我们有非常高性价比的二手 iPhone，支持银行卡转账或电子钱包全款支付，目前购买部分机型有配件赠品。请问您目前的购机预算大概是多少呢？"
+                reflection_triggered = True
+                reflection_reason = "检测到 AI 主动提及分期，已被物理拦截拦截并重置为全款引导话术。"
+                break
+
+    # Rule B: Verify pricing matches standard catalog bounds (e.g. iPhone XR is 300万)
+    xr_match = re.search(r"(xr|iphone\s*xr).*?(\d+)\s*万", reply_text, flags=re.IGNORECASE)
+    if xr_match:
+        price_val = int(xr_match.group(2))
+        if price_val != 300:
+            logger.warning(f"Reflection: Pricing mismatch for iPhone XR. AI generated {price_val}万, expected 300万. Correcting.")
+            reply_text = re.sub(r"(xr|iphone\s*xr).*?\d+\s*万", r"\1 售价 300 万", reply_text, flags=re.IGNORECASE)
+            reflection_triggered = True
+            reflection_reason = f"检测到价格幻觉（iPhone XR {price_val}万），自动校准价格为 300 万印尼盾。"
+
     # Post-process trace details
     trace = {
         "current_node": current_node,
@@ -316,5 +354,9 @@ def run_sandbox_agentic_flow(db: Session, session: BuilderSandboxSession, user_c
         "action_triggered": action_triggered,
         "reason": reasoning
     }
+    if reflection_triggered:
+        trace["reflection_triggered"] = True
+        trace["reflection_reason"] = reflection_reason
+        trace["planned_intent"] = extracted.get("planned_intent", "other")
 
     return reply_text, trace

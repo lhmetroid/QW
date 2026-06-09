@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import or_
 from config import settings
 from qywx_utils import QYWXUtils
-from database import SessionLocal, KnowledgeBase, IntentSummary, KnowledgeChunk, KnowledgeHitLog, PricingRule, ThreadBusinessFact
+from database import SessionLocal, KnowledgeBase, IntentSummary, KnowledgeChunk, KnowledgeHitLog, PricingRule, ThreadBusinessFact, MessageLog
 from embedding_service import EmbeddingService
 from logging_config import sanitize_text
 from knowledge_governance import validate_thread_state_consistency
@@ -780,7 +780,7 @@ class IntentEngine:
         for rule in cls.get_rules():
             if re.search(rule["pattern"], content, re.IGNORECASE):
                 found_signals.append(rule["name"])
-        
+
         if found_signals:
             signal_str = "、".join(found_signals)
             logger.info(f"检测到强信号: {signal_str}")
@@ -792,7 +792,7 @@ class IntentEngine:
                 f"<div class=\"highlight\">建议：客户表达了明确需求/风险点，请尽快跟进。</div>"
             )
             QYWXUtils.send_text_card(user_id, title, description)
-        
+
         return found_signals
 
     @classmethod
@@ -814,7 +814,7 @@ class IntentEngine:
                 raise RuntimeError("旧知识库为空，无法执行 retrieve_knowledge")
 
             vector = cls.get_embedding(query_text)
-                
+
             import math
             def cosine_sim(v1, v2):
                 if not v1 or not v2 or len(v1) != len(v2): return 0
@@ -828,7 +828,7 @@ class IntentEngine:
                 if r.embedding:
                     sim = cosine_sim(vector, r.embedding)
                     scored_docs.append((sim, r.content))
-                    
+
             scored_docs.sort(key=lambda x: x[0], reverse=True)
             return [doc[1] for doc in scored_docs[:top_k]]
         except Exception as e:
@@ -1324,6 +1324,103 @@ class IntentEngine:
         return f"{text} {' '.join(dict.fromkeys(augmented_terms))}".strip()
 
     @classmethod
+    def rewrite_query_v2(
+        cls,
+        db,
+        query_text: str,
+        session_id: str,
+    ) -> str:
+        """
+        根据会话的历史消息，使用大模型将当前查询改写为独立的、去指代消解的检索词。
+        """
+        if not getattr(settings, "ENABLE_QUERY_REWRITING", True) or not session_id:
+            return query_text
+
+        try:
+            # 仅在 WeCom 多轮对话（MessageLog）存在时进行改写
+            # 查找该会话最近的历史消息（包括客户和销售/AI）
+            history = db.query(MessageLog).filter(
+                MessageLog.user_id == session_id
+            ).order_by(MessageLog.id.desc()).limit(6).all()
+
+            # 如果历史消息不足 2 条（比如只有当前用户刚发的第一条消息，或者甚至没有消息记录），则无须改写
+            if len(history) < 2:
+                return query_text
+
+            # 组装对话历史
+            # 按时间正序排列
+            history_messages = list(reversed(history))
+
+            # 将对话格式化为文本段落
+            history_text_list = []
+            for msg in history_messages[:-1]: # 排除最后一条（通常是最新一条，也即当前 query）
+                role = "客户" if msg.sender_type in {"customer", "user"} else "销售/AI"
+                content = str(msg.content or "").strip()
+                if content:
+                    history_text_list.append(f"{role}: {content}")
+
+            # 如果历史文本为空，不进行改写
+            if not history_text_list:
+                return query_text
+
+            history_text = "\n".join(history_text_list)
+            current_query = query_text
+
+            # Prompt 设计：指导大模型改写
+            prompt = f"""你是一个高效的 RAG 检索 Query 改写器。
+请根据给出的【对话历史记录】，将客户的【最新提问】改写为一个去指代（Decontextualized）、独立的、适合在知识库中进行向量检索的标准查询句。
+例如：
+对话历史：
+客户: 我想买 iPhone XR
+销售: iPhone XR 95新价格为 300 万印尼盾。
+最新提问: 分期呢？
+改写后: iPhone XR 分期付款方案
+
+如果不需要改写（例如最新提问已经非常明确独立，或者最新提问与历史无关），直接返回原句。
+不要输出任何解释、旁白，绝对不要输出 markdown 格式，只返回改写后的独立检索词。
+
+【对话历史记录】:
+{history_text}
+
+【最新提问】: "{current_query}"
+
+改写后的检索词："""
+
+            # 调用大模型 (LLM1 或 LLM2) 进行改写。因为改写应当非常快速，我们使用配置的 LLM1（或 LLM2 如果配置）
+            # 我们使用 settings.LLM1_API_URL 或者 _stage1_llm_defaults 提供的接口
+            defaults = cls._stage1_llm_defaults()
+            url = defaults["api_url"].rstrip('/') + "/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {defaults['api_key']}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": defaults["model"],
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+                "max_tokens": 80
+            }
+
+            # 使用 requests.Session() 并禁用系统代理以防止拦截
+            session = requests.Session()
+            session.trust_env = settings.HTTP_TRUST_ENV
+            res = session.post(url, headers=headers, json=payload, timeout=5)
+
+            if res.status_code == 200:
+                rewritten_text = res.json()["choices"][0]["message"]["content"].strip()
+                # 剔除可能出现的包裹引号或 markdown
+                rewritten_text = re.sub(r'^["\'“]+|["\'”]+$', '', rewritten_text).strip()
+                if rewritten_text and len(rewritten_text) > 0 and rewritten_text != current_query:
+                    logger.info(f"Query rewrite success: '{current_query}' -> '{rewritten_text}' (session={session_id})")
+                    return rewritten_text
+            else:
+                logger.warning(f"Query rewrite API status={res.status_code}, falling back to original query")
+        except Exception as e:
+            logger.error(f"Query rewrite failed: {e}, falling back to original query")
+
+        return query_text
+
+    @classmethod
     def retrieve_knowledge_v2(
         cls,
         query_text: str,
@@ -1353,7 +1450,8 @@ class IntentEngine:
 
         db = SessionLocal()
         try:
-            normalized_query_text = cls._normalize_query_with_alias_hints(db, query_text)
+            rewritten_query = cls.rewrite_query_v2(db, query_text, session_id)
+            normalized_query_text = cls._normalize_query_with_alias_hints(db, rewritten_query)
             vector = cls.get_embedding(normalized_query_text)
             now = datetime.utcnow()
             thread_fact_model = None
@@ -1437,6 +1535,7 @@ class IntentEngine:
             query_terms = cls._query_terms(normalized_query_text)
             intent_profile = cls._query_intent_profile(normalized_query_text, features)
             thresholds = cls._commercial_thresholds(features)
+            filters_used["rewritten_query_text"] = rewritten_query if 'rewritten_query' in locals() else query_text
             filters_used["normalized_query_text"] = normalized_query_text
             filters_used["query_terms"] = query_terms
             filters_used["intent_profile"] = {
@@ -1560,6 +1659,68 @@ class IntentEngine:
                     ))
 
             scored.sort(key=lambda item: (item[0], -item[1], -item[2], -item[4], -item[5]))
+
+            # RRF (Reciprocal Rank Fusion) and Reranking (Cross-Encoder / Lexical)
+            from reranker import RerankerService
+
+            if len(scored) > 1:
+                candidates_data = []
+                for item in scored:
+                    chunk = item[14]
+                    candidates_data.append({
+                        "chunk_id": str(chunk.chunk_id),
+                        "semantic_score": item[2],
+                        "keyword_score": item[3],
+                        "bm25_score": item[7],
+                        "score": item[1],
+                        "item_tuple": item
+                    })
+
+                semantic_list = sorted(candidates_data, key=lambda x: x["semantic_score"], reverse=True)
+                keyword_list = sorted(candidates_data, key=lambda x: (x["bm25_score"], x["keyword_score"]), reverse=True)
+
+                k_val = getattr(settings, "KB_RRF_K_CONSTANT", 60)
+                fused_list = RerankerService.reciprocal_rank_fusion(semantic_list, keyword_list, k=k_val)
+
+                fused_scored = []
+                for fused_item in fused_list:
+                    cid = fused_item["chunk_id"]
+                    orig_item = next((x for x in candidates_data if x["chunk_id"] == cid), None)
+                    if orig_item:
+                        orig_tuple = list(orig_item["item_tuple"])
+                        orig_tuple[1] = fused_item["score"]
+                        fused_scored.append(tuple(orig_tuple))
+                scored = fused_scored
+
+            if getattr(settings, "RERANK_ENABLED", False) and scored:
+                candidates_to_rerank = []
+                for item in scored[:15]:
+                    chunk = item[14]
+                    candidates_to_rerank.append({
+                        "chunk_id": str(chunk.chunk_id),
+                        "title": chunk.title,
+                        "content": chunk.content,
+                        "score": item[1],
+                        "item_tuple": item
+                    })
+
+                reranked_docs = RerankerService.rerank_candidates(
+                    query=normalized_query_text,
+                    candidates=candidates_to_rerank,
+                    top_k=top_k
+                )
+
+                reranked_scored = []
+                for doc in reranked_docs:
+                    cid = doc["chunk_id"]
+                    orig_item = next((x for x in candidates_to_rerank if x["chunk_id"] == cid), None)
+                    if orig_item:
+                        orig_tuple = list(orig_item["item_tuple"])
+                        orig_tuple[1] = doc["score"]
+                        reranked_scored.append(tuple(orig_tuple))
+
+                reranked_scored.extend(scored[15:])
+                scored = reranked_scored
             hits = []
             score_by_chunk_id: dict[str, dict[str, Any]] = {}
             for _bucket, final_score, semantic_score, keyword_score, exact_phrase_score, intent_score, metadata_score, bm25_score, quality_score, effect_score, generation_score, followup_strategy_score, source_tags, chunk in scored:
@@ -3147,7 +3308,7 @@ class IntentEngine:
         summary = cls._run_llm1(user_id, context)
         if not summary:
             raise RuntimeError("LLM-1 未返回有效结构化摘要")
-        
+
         # 2. 存回数据库存证
         db = SessionLocal()
         try:
@@ -3173,12 +3334,12 @@ class IntentEngine:
             )
             db.add(summary_record)
             db.commit()
-            
+
         except Exception as e:
             logger.error(f"分析摘要入库失败: {e}")
         finally:
             db.close()
-        
+
         return summary
 
     @classmethod

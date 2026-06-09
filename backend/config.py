@@ -66,6 +66,18 @@ class Settings(BaseSettings):
     LLM2_MODEL: str = ""
     LLM2_TIMEOUT_SECONDS: int = 100
 
+    # Mail draft LLM provider. `deepseek` reuses LLM2_* by default.
+    MAIL_DRAFT_LLM_PROVIDER: str = "deepseek"
+    MAIL_DRAFT_LLM_TEMPERATURE: float = 0.55
+    MAIL_DRAFT_LLM_MAX_TOKENS: int = 1800
+    MAIL_DRAFT_OPENAI_API_URL: str = "https://api.openai.com/v1/chat/completions"
+    MAIL_DRAFT_OPENAI_API_KEY: str = ""
+    MAIL_DRAFT_OPENAI_MODEL: str = "gpt-4o-mini"
+    MAIL_DRAFT_OPENAI_TIMEOUT_SECONDS: int = 60
+    # Backward-compatible alias from the recording parser config. Do not log the key.
+    RECORDING_PARSE_OPENAI_VISION_API_URL: str = ""
+    RECORDING_PARSE_OPENAI_VISION_API_KEY: str = ""
+
     # 训练AI (train_ai) 配置：另一条 AI 回复途径，调用平台 model-chat 接口，与当前流程并行触发。
     TRAIN_AI_ENABLED: bool = True
     TRAIN_AI_BASE_URL: str = "http://zjsphs.2288.org:11486"
@@ -114,6 +126,9 @@ class Settings(BaseSettings):
     RERANK_ENABLED: bool = False
     RERANK_PROVIDER: str = ""
     RERANK_MODEL: str = ""
+    KB_RRF_K_CONSTANT: int = 60
+    ENABLE_QUERY_REWRITING: bool = True
+    AGENT_BUILDER_CHUNK_OVERLAP: int = 80
     PGVECTOR_REQUIRED: bool = False
     PGVECTOR_ENABLED: bool = False
     PGVECTOR_DIM: int = 1024

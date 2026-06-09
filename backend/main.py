@@ -66,7 +66,7 @@ from database import (
     EmailFragmentAsset, EmailEffectFeedback, ModelTrainingSample, ReplyChainSnapshot,
     ApiAssistInvocation, WecomTriggerRecord,
     CaseLibraryCase, CaseLibraryDialogueTurn, CaseIterationRun, CaseIterationResult,
-    MailSequenceTemplate, MailCustomerSuiteFeedback,
+    MailSequenceTemplate, MailCustomerSuiteFeedback, MailContractCase,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -136,7 +136,7 @@ def _get_cached_sidebar_content_result(session_id: str, recent_logs: list[Messag
     content_str = "||".join(parts)
     content_hash = hashlib.md5(content_str.encode("utf-8")).hexdigest()
     content_key = f"content_key::{session_id}::{content_hash}"
-    
+
     with SIDEBAR_CONTENT_CACHE_LOCK:
         cached = SIDEBAR_CONTENT_RESULT_CACHE.get(content_key)
         if not cached:
@@ -158,7 +158,7 @@ def _remember_sidebar_content_result(session_id: str, recent_logs: list[MessageL
     content_str = "||".join(parts)
     content_hash = hashlib.md5(content_str.encode("utf-8")).hexdigest()
     content_key = f"content_key::{session_id}::{content_hash}"
-    
+
     with SIDEBAR_CONTENT_CACHE_LOCK:
         expired_keys = [
             k
@@ -857,7 +857,7 @@ async def startup_event():
     #         except Exception as e:
     #             logger.error(f"企微会话存档自动轮询异常: {e}")
     #         await asyncio.sleep(900)
-    # 
+    #
     # asyncio.create_task(background_poll_worker())
 
 
@@ -933,7 +933,7 @@ def _run_api_invocation_rescore_backfill() -> dict:
             MessageLog.id > ApiAssistInvocation.anchor_message_id,
             MessageLog.is_mock.is_(False),
         )
-        
+
         items = db.query(ApiAssistInvocation).filter(
             ApiAssistInvocation.triggered_at >= API_RESCORE_BACKFILL_FROM_UTC,
             ApiAssistInvocation.anchor_message_id.isnot(None),
@@ -4892,7 +4892,11 @@ def _mail_prompt_fact(value: str | None, limit: int = 150) -> str:
 def _mail_gold_style_brief(profile: "MailDraftIntentProfile") -> str:
     fragment_type = sanitize_text(profile.recommended_snippet_types[0] if profile.recommended_snippet_types else "")
     if profile.suite_step == 1:
-        return "学黄金库写法：短承接+一个具体业务机会+2-3项服务，不写长案例。"
+        return (
+            "学 docx 优秀邮件写法：短承接+一个基于已给事实的业务切口+一个可准备的轻量参考方向"
+            "（如 before/after、类似资料优化方向或行业沟通场景），再给低压力下一步；"
+            "没有明示材料时只能写“可以准备/可整理”，不得写“我们已整理/近期注意到”。"
+        )
     if profile.suite_step == 2:
         return "学黄金库写法：场景痛点->我们做法->客户可迁移价值；案例必须脱敏且不能是当前联系人本人历史。"
     if profile.suite_step == 3:
@@ -4908,8 +4912,9 @@ def _mail_service_focus_brief(profile: "MailDraftIntentProfile") -> str:
     scenario = sanitize_text(profile.scenario)
     if scenario == "new_business_promotion":
         return (
-            "具体业务聚焦：会议同传/设备租赁、现场流程支持、多媒体字幕/配音、培训课件本地化、"
-            "宣传物料排版印刷、活动物料制作；按客户行业选2-3项写。"
+            "具体业务聚焦：这是老客户介绍其他业务，不要围绕笔译展开。"
+            "优先主推非笔译业务：多媒体字幕/配音、会议同传与设备、现场流程支持、培训课件本地化、"
+            "宣传物料排版印刷、活动物料制作；笔译只能作为既有合作背景一笔带过。"
         )
     if scenario == "re_activation":
         return "具体业务聚焦：从旧合作自然延展到近期资料评估、会议/培训支持、视频或物料本地化、排版印刷。"
@@ -4930,8 +4935,19 @@ def _mail_sanitize_generated_mail_paragraph(value: str | None) -> str:
         return ""
     replacements = [
         (r"(?:客户|对方|业务方)(?:反馈|表示|直言)[“\"'][^”\"']{0,80}[”\"']", "客户后续反馈稳定"),
+        (
+            r"(?:近期|最近)?(?:我们)?(?:注意到|了解到|看到|关注到)贵司[^。；;]{0,80}(?:活动|会议|项目|拓展|交流|培训|合规)[^。；;]*",
+            "结合贵司所在行业的国际化沟通场景",
+        ),
+        (
+            r"(?:我们)?(?:已|已经)?(?:整理|准备|制作)了?(?:一个|一份|一些)?(?:简短)?(?:参考|示例|资料|对比|优化方向)",
+            "如后续有需要，我们可以按实际资料准备一份简短参考",
+        ),
+        (r"(?:小批量|少量|一段|一小段)?\s*(?:试译|样稿|打样)(?:样稿|试译)?", "小范围资料评估"),
         (r"(?:免费|无偿)\s*(?:提供|安排|支持)?\s*(?:样稿|试译|打样|评估|修改|服务)", "安排小范围资料评估"),
         (r"(?:提供|安排)?\s*(?:免费|无偿)\s*(?:样稿|试译|打样|评估|修改|服务)", "安排小范围资料评估"),
+        (r"\b(?:free|no\s+cost|complimentary)\s+(?:sample|trial|test|refinement|review|service)\b", "small reference review"),
+        (r"(?:将在|可在|能在|最快|通常可在)?\s*\d+(?:-\d+)?\s*(?:小时|个?工作日|天|周)(?:内)?(?:完成|交付|返回|确认)?", "会按资料量确认排期"),
         (r"(?:最终|后续)?客户(?:对交付质量)?(?:非常)?满意", "交付反馈稳定"),
         (r"(?:评估|确认)[^。；;，,]{0,16}(?:报价|费用|价格)", "给出评估意见"),
     ]
@@ -4987,9 +5003,9 @@ def _mail_contract_case_business_line(business_type: str | None, product_name: s
     rules = [
         ("interpretation", ("口译", "同传", "交传", "耳机", "主机", "导览")),
         ("multimedia", ("字幕", "听写", "配音", "视频", "多媒体", "译制")),
-        ("printing", ("设计", "印刷", "制版", "排版", "易拉宝", "海报", "画册")),
         ("exhibition", ("展会", "搭建", "活动")),
         ("gift", ("礼品", "充电宝", "保温杯")),
+        ("printing", ("设计", "印刷", "制版", "排版", "易拉宝", "海报", "画册")),
         ("translation", ("笔译", "英译", "中译", "日译", "德译", "法译", "西班牙", "翻译")),
     ]
     for label, tokens in rules:
@@ -5044,17 +5060,379 @@ def _mail_contract_case_quality_flags(description: str | None, product_name: str
     return flags
 
 
+def _desensitize_company_name(name: str | None) -> str:
+    if not name:
+        return "某知名企业"
+    name = str(name).strip()
+
+    # Exact/substring mappings for specific companies from candidates
+    if "爱通" in name:
+        return "某国际物流企业"
+    if "思源" in name:
+        return "某上市电力设备巨头"
+    if "欧莱雅" in name or "l'oreal" in name.lower():
+        return "某知名美妆巨头"
+    if "3m" in name or "3m" in name.lower():
+        return "某跨国制造集团"
+    if "南德" in name or "tuv" in name or "tüv" in name:
+        return "某跨国检测认证机构"
+    if "英飞凌" in name:
+        return "某知名半导体厂商"
+    if "联博汇智" in name:
+        return "某外资投资管理公司"
+    if "欧瑞康" in name:
+        return "某先进工业集团"
+    if "海德堡" in name:
+        return "某知名印刷设备企业"
+    if "allspring" in name.lower():
+        return "某外资投资管理公司"
+    if "chagee" in name.lower() or "霸王茶姬" in name:
+        return "某知名新式茶饮巨头"
+    if "博柏利" in name or "burberry" in name.lower():
+        return "某知名奢侈品巨头"
+    if "拜耳" in name or "bayer" in name.lower():
+        return "某知名医药巨头"
+    if "碧迪" in name or "bd " in name.lower() or "bd医" in name.lower():
+        return "某知名医疗器械巨头"
+    if "东陶" in name or "toto" in name.lower():
+        return "某知名卫浴品牌"
+    if "高仪" in name or "grohe" in name.lower():
+        return "某知名卫浴建材企业"
+    if any(k in name.lower() for k in ["渣打", "星展", "华侨永亨", "icici", "爱西爱西爱", "scb", "dbs", "ocbc"]):
+        return "某知名外资银行"
+    if "蒙特" in name or "munters" in name.lower():
+        return "某知名空气处理设备厂商"
+    if "康沛甫" in name or "kpf" in name.lower():
+        return "某知名建筑设计事务所"
+    if "科思创" in name or "covestro" in name.lower():
+        return "某知名化工材料巨头"
+    if "地中海邮轮" in name or "msc" in name.lower():
+        return "某知名国际邮轮公司"
+    if "东电电子" in name or "tel" in name.lower():
+        return "某知名半导体设备巨头"
+    if "贝亲" in name or "pigeon" in name.lower():
+        return "某知名母婴品牌"
+    if "罗兰贝格" in name or "roland berger" in name.lower():
+        return "某知名管理咨询公司"
+    if "加急" in name or "紧急" in name:
+        return "某特急项目企业"
+    if "亨特" in name or "hunter" in name.lower():
+        return "某知名遮阳窗饰企业"
+    if "德尔肯" in name or "dörken" in name.lower() or "dorken" in name.lower():
+        return "某知名防腐涂料厂商"
+    if "必维" in name or "bureau veritas" in name.lower():
+        return "某知名检测认证巨头"
+    if "精瑞" in name:
+        return "某知名模具制造企业"
+    if "俄通" in name:
+        return "某中俄贸易设备服务商"
+    if "隽捷" in name:
+        return "某知名商贸企业"
+    if "沙多玛" in name or "sartomer" in name.lower():
+        return "某知名特殊化学品企业"
+    if "兴和" in name or "kowa" in name.lower():
+        return "某知名医药咨询公司"
+    if "爱对" in name or "爱德华" in name or "edwards" in name.lower():
+        return "某知名医疗器械巨头"
+
+    # Fallback keyword rules
+    if any(k in name for k in ["物流", "货运", "空运", "海运", "lcl"]):
+        return "某国际物流企业"
+    if any(k in name for k in ["电气", "电力", "电能", "电网"]):
+        return "某上市电力设备巨头"
+    if any(k in name for k in ["美妆", "化妆品", "护肤", "日化"]):
+        return "某知名美妆巨头"
+    if any(k in name for k in ["半导体", "芯片", "微电子"]):
+        return "某知名半导体厂商"
+    if any(k in name for k in ["投资", "基金", "证券", "资产管理", "资本"]):
+        return "某外资投资管理公司"
+    if any(k in name for k in ["制造", "机械", "工业", "工程"]):
+        return "某知名制造集团"
+    if any(k in name for k in ["医药", "医疗", "生物", "药业", "健康"]):
+        return "某知名医药企业"
+    if any(k in name for k in ["检测", "认证", "标准"]):
+        return "某跨国检测认证机构"
+    if any(k in name for k in ["印刷", "包装", "设计"]):
+        return "某知名包装印刷商"
+    if any(k in name for k in ["科技", "软件", "信息", "网络"]):
+        return "某科技创新企业"
+
+    return "某知名企业"
+
+
+def _generate_mail_case_text(company_name: str | None, business_type: str | None, product_name: str | None, contract_description: str | None) -> str:
+    company = _desensitize_company_name(company_name)
+    biz_line = _mail_contract_case_business_line(business_type, product_name)
+    desc = (contract_description or "").strip()
+    prod = (product_name or "").strip()
+
+    text_val = f"{desc} {prod}".lower()
+
+    # 1. Very specific pattern matches (tailored dynamically to contract details)
+    # TCC商品战略会议
+    if any(k in text_val for k in ["战略会议", "住设", "tcc"]):
+        return f"曾为{company}的商品战略会议提供高水平日语现场口译，保障会议圆满成功。"
+
+    # 播客项目
+    if "播客" in text_val or "podcast" in text_val:
+        return f"曾为{company}播客项目音频提供听写与配音剪辑，助力海外多媒体宣发落地。"
+
+    # 患者日
+    if "患者" in text_val or "患者日" in text_val:
+        return f"曾为{company}患者日活动提供流畅的同声传译与设备租赁，彰显人文关怀与专业度。"
+
+    # 年报/CSR
+    if any(k in text_val for k in ["年报", "年度报告", "年度社会责任报告", "csr"]):
+        years = [y for y in ["2023", "2024", "2025", "26", "2026"] if y in text_val]
+        if years:
+            year_str = "与".join(years) if len(years) > 1 else years[0]
+            return f"曾协助{company}翻译{year_str}年度报告，用语专业严谨，完全契合信息披露标准。"
+        return f"曾协助{company}翻译年度社会责任报告，术语严谨规范，助力全球化形象传播。"
+
+    # 毕马威/审计报告
+    if any(k in text_val for k in ["毕马威", "审计报告", "合审字", "合伙人审计"]):
+        if "毕马威" in text_val:
+            return f"曾协助{company}完成毕马威审计报告翻译，财务术语无缝校验，保障合规披露。"
+        return f"曾协助{company}翻译权威财务审计报告，严谨复核术语，助力企业年度合规审计。"
+
+    # 德国工商登记
+    if "工商登记" in text_val or "登记文件" in text_val:
+        return f"曾协助{company}翻译德国工商登记官方文件，格式严整译文精准，确保外资合规准入。"
+
+    # 京东/修丽可/白皮书
+    if any(k in text_val for k in ["修丽可", "京东", "趋势洞察", "白皮书"]):
+        if "修丽可" in text_val or "京东" in text_val:
+            return f"曾协助{company}翻译京东修丽可抗衰护肤白皮书，深具时尚审美与行业洞察力。"
+        return f"曾协助{company}翻译行业白皮书，文风流畅极具行业前瞻性，助力公信力传播。"
+
+    # Avansee General手册
+    if "avansee" in text_val:
+        return f"曾协助{company}进行Avansee医药手册双语翻译及排版印刷，术语精准画质精良。"
+
+    # Lelabo全球品牌总裁/Deborah Royer专访
+    if any(k in text_val for k in ["deborah", "lelabo", "专访"]):
+        return f"曾为{company}的Lelabo总裁全球专访提供精细听译与音视频剪辑，还原品牌人文理念。"
+
+    # 英飞凌深圳WBG宽禁带论坛
+    if "wbg" in text_val or "宽禁带" in text_val:
+        return f"曾为{company}深圳WBG论坛提供高精度同传设备租赁及搭建，现场响应敏捷保障顺畅。"
+
+    # AATS年会
+    if "aats" in text_val:
+        return f"曾为{company}AATS年会提供多语种视频高清录制与摄像制作服务，影音质量行业顶尖。"
+
+    # 亚细亚号易拉宝
+    if "亚细亚" in text_val:
+        return f"曾为{company}亚细亚号邮轮定制设计并印刷易拉宝，画面精美大方，有力宣传航线形象。"
+
+    # 亦庄活动
+    if "亦庄" in text_val:
+        return f"曾为{company}北京亦庄重要商务活动提供高精度同传设备租赁及技术保障，零故障交付。"
+
+    # 济南创新中心
+    if "济南" in text_val:
+        return f"曾为{company}济南创新中心开幕及媒体采访提供同传/导览设备与多语种现场交传。"
+
+    # 柳州/临沂
+    if "柳州" in text_val or "临沂" in text_val:
+        return f"曾为{company}柳州与临沂学术会议提供整套导览同传设备租赁及技术保障，完美交付。"
+
+    # 洛杉矶
+    if "洛杉矶" in text_val:
+        return f"曾为{company}美国洛杉矶商务活动提供专业英语现场口译及陪同，保障跨国对接。"
+
+    # 沈阳活动
+    if "沈阳" in text_val:
+        if biz_line == "gift" or any(k in text_val for k in ["杯", "礼品"]):
+            return f"曾为{company}沈阳活动定制专属高端保温杯，印有品牌标识，拉近客情关系。"
+        return f"曾为{company}沈阳活动提供高标准展台搭建及宣发物料制作，彰显地方品牌影响力。"
+
+    # 品胜充电宝/移动电源
+    if any(k in text_val for k in ["品胜", "ts-d331", "d331"]):
+        return f"曾为{company}定制品胜高品质自带线移动电源，设计大方功能实用，有效维护客情。"
+
+    # 思与行杂志/期刊
+    if "思与行" in text_val:
+        return f"曾为{company}精心印刷《思与行》高档杂志期刊200本，纸张讲究，极具人文艺术感。"
+
+    # Token包装盒
+    if "token" in text_val:
+        return f"曾为{company}精制硬件Token外包装盒印刷与礼盒设计，外观典雅，提升用户开户体验。"
+
+    # 锅炉图纸
+    if "锅炉" in text_val or "锅炉图纸" in text_val:
+        return f"曾协助{company}翻译德语特种锅炉图纸，并完成复杂CAD工程排版，确保施工高合规。"
+
+    # IADST
+    if "iadst" in text_val:
+        return f"曾协助{company}翻译IADST核心技术文件，译文符合跨国认证标准，术语极其严谨。"
+
+    # 瑞典语
+    if "瑞典" in text_val:
+        return f"曾协助{company}完成瑞典语视频的听写、配字幕与后期汉化，翻译地道效果出众。"
+
+    # 音响系统
+    if any(k in text_val for k in ["音响系统", "音箱", "调音台", "无线麦克风"]):
+        return f"曾为{company}提供同传设备与专业音响系统租赁，配有高品质话筒功放，音质清亮。"
+
+    # 网页/后台
+    if any(k in text_val for k in ["网页", "后台", "网站"]):
+        return f"曾协助{company}翻译并排版官方网站及后台系统，提供地道本地化文风，保障海外体验。"
+
+    # 报价/报价单
+    if "报价" in text_val:
+        if "德" in text_val:
+            return f"曾协助{company}翻译德文核心商务与报价文件，译文严谨规范，助力拓展欧洲业务。"
+        return f"曾协助{company}翻译并排版多份核心文件与报价单，格式精准交付快，助力商务竞标。"
+
+    # 联单
+    if "联单" in text_val:
+        warehouse = "仓储"
+        if "西安" in text_val:
+            warehouse = "西安仓库"
+        elif "成都" in text_val:
+            warehouse = "成都仓库"
+        elif "河北" in text_val:
+            warehouse = "河北分拨"
+        return f"曾为{company}定制印制{warehouse}多联单票据物料，版面规范，保障物流流转合规。"
+
+    # 说明书/样本/手册
+    if any(k in text_val for k in ["说明书", "使用说明"]):
+        return f"曾为{company}排版印刷多款产品使用说明书，配图精细、排版严整，提升用户体验。"
+    if "样本" in text_val:
+        return f"曾为{company}高精印制多款产品样本宣传册，版面设计新颖纸张扎实，提升宣发质感。"
+    if "手册" in text_val:
+        return f"曾为{company}翻译并精印双语产品手册，色彩还原度高，极大提升了品牌市场好感度。"
+    if "易拉宝" in text_val:
+        return f"曾为{company}定制商务易拉宝及宣发海报，画面高清设计考究，显著提升活动宣发形象。"
+    if "风扇" in text_val:
+        return f"曾为{company}定制高质USB电风扇礼品，印有专属品牌标示，深得员工与客户喜爱。"
+    if "保温杯" in text_val:
+        return f"曾为{company}定制高档激光刻印保温杯周边礼品，工艺考究，传递企业绿色品牌文化。"
+    if "充电宝" in text_val or "移动电源" in text_val:
+        return f"曾为{company}定制高品质移动电源周边礼品，外形精美抗震耐用，彰显企业诚挚心意。"
+    if "环保袋" in text_val:
+        return f"曾为{company}设计并印制环保布袋宣发礼品，材质低碳环保，极大提升品牌亲和力。"
+    if "画册" in text_val or "宣传册" in text_val:
+        return f"曾为{company}设计并印制高精双语产品画册宣传册，纸张精良，提升产品市场宣发质感。"
+
+    # 2. Industry-adapted fallbacks based on company profile and business line
+    cleaned = desc if desc and desc not in {"翻译", "笔译", "口译", "无"} else prod
+    for kw in ["翻译", "笔译", "口译", "排版", "输入排版", "设计", "印刷", "运输费", "运输", "补差价", "听写", "听译", "听写听译", "摄像制作", "视频剪辑", "配字幕", "英语", "日语", "德语", "俄语", "德译中", "英译中", "日译中", "中译英", "中译日", "英译日", "彩色制版", "黑白制版", "制版", "红外线辐射板", "同传耳机", "音频扩展器", "同传主机", "同传设备租赁", "导览主机", "导览耳机", "直播技术", "音响系统", "中英", "日翻中", "翻译制版", "说明书"]:
+        cleaned = cleaned.replace(kw, "")
+    cleaned = cleaned.replace("（", "").replace("）", "").replace("(", "").replace(")", "").replace(";", "").replace("；", "")
+    cleaned = cleaned.strip()
+
+    # Clean original company name from topic to prevent leaks
+    if company_name:
+        orig_clean = company_name.strip()
+        for suffix in ["有限公司", "股份公司", "（中国）", "(中国)", "上海分公司", "北京分公司", "分公司", "办事处", "中国"]:
+            orig_clean = orig_clean.replace(suffix, "")
+        orig_clean = orig_clean.strip()
+        if len(orig_clean) >= 2:
+            cleaned = cleaned.replace(orig_clean, "")
+            # Remove all substrings of length >= 2
+            for length in range(len(orig_clean), 1, -1):
+                for start in range(len(orig_clean) - length + 1):
+                    sub = orig_clean[start:start+length]
+                    if len(sub) >= 2:
+                        cleaned = cleaned.replace(sub, "")
+
+    cleaned = cleaned.strip()
+    topic = cleaned if len(cleaned) >= 2 else "日常业务"
+    if len(topic) > 10:
+        topic = topic[:10] + "等"
+
+    if biz_line == "translation":
+        if "某知名美妆巨头" in company:
+            return f"曾协助{company}翻译日常业务与产品宣发资料，语感细腻，契合高端美妆品牌调性。"
+        if "卫浴" in company:
+            return f"曾协助{company}翻译卫浴产品与工程技术文档，术语准确，助力全球产品线同步。"
+        if any(k in company for k in ["医药", "医疗", "健康"]):
+            return f"曾协助{company}翻译医药研发与医疗器械合规资料，术语严谨，保障医学合规。"
+        if any(k in company for k in ["制造", "工业", "模具", "设备", "电力"]):
+            return f"曾协助{company}翻译工业制造与设备操作手册，图文排版严整，符合工业标准。"
+        if "银行" in company:
+            return f"曾协助{company}翻译跨国金融与日常业务合规文件，格式精准严密，保障合规沟通。"
+        if "检测认证" in company:
+            return f"曾协助{company}翻译检测标准与认证技术文件，术语权威精确，满足多国市场准入。"
+        if topic != "日常业务":
+            return f"曾协助{company}翻译{topic}资料，译文完全对齐行业标准，助力跨国业务稳健落地。"
+        return f"曾协助{company}翻译日常业务与国际交流资料，译文标准规范，助力全球化业务拓展。"
+
+    elif biz_line == "interpretation":
+        if "某知名美妆巨头" in company:
+            return f"曾为{company}提供专访与时尚发布会现场口译支持，口译员形象专业，表达流畅。"
+        if "卫浴" in company:
+            return f"曾为{company}提供技术交流与经销商会议现场日语口译，沟通顺畅，深受好评。"
+        if any(k in company for k in ["医药", "医疗", "健康"]):
+            return f"曾为{company}跨国医疗研讨会与现场交流提供医学专业口译，保障学术交流严谨。"
+        if any(k in company for k in ["制造", "工业", "模具", "设备", "电力"]):
+            return f"曾为{company}的技术研讨与工厂现场考察提供专业工程口译，沟通高效，促成合作。"
+        if "银行" in company:
+            return f"曾为{company}跨国金融对接与高端会议提供高规格现场翻译，术语地道，严谨可靠。"
+        if "检测认证" in company:
+            return f"曾为{company}的标准审核与认证评估提供多语种现场口译支持，保障流程合规顺畅。"
+        return f"曾为{company}提供高水平现场口译与交传支持，专业译员精准沟通，保障外事对接顺畅。"
+
+    elif biz_line == "printing":
+        if "某知名美妆巨头" in company:
+            return f"曾为{company}精美印刷彩色美妆宣发画册与柜台折页，色彩绚丽逼真，凸显轻奢质感。"
+        if "卫浴" in company:
+            return f"曾为{company}设计并印刷高精卫浴商品画册，纸张考究版面严整，提升终端销售体验。"
+        if any(k in company for k in ["制造", "工业", "模具", "电力"]):
+            return f"曾为{company}印刷工业产品手册与物料单据，图表清晰色彩准确，版面严谨扎实。"
+        if "银行" in company:
+            return f"曾为{company}设计印制高档金融理财手册及宣发物料，质感典雅专业，契合银行品牌。"
+        if "检测认证" in company:
+            return f"曾为{company}印刷行业认证标准手册与会务宣传品，版式美观印刷规范，传递专业形象。"
+        if topic != "日常业务":
+            return f"曾为{company}精心制作{topic}的高精彩色排版与高质量印刷，提升品牌视觉效果。"
+        return f"曾为{company}精心制作彩色排版制版与高精画册印刷，细节清晰色彩饱满，呈现完美品牌视觉。"
+
+    elif biz_line == "multimedia":
+        if "某知名美妆巨头" in company:
+            return f"曾协助{company}完成产品大片音视频高清录制与后期配音字幕，完美呈现轻奢品牌质感。"
+        if any(k in company for k in ["医药", "医疗", "健康"]):
+            return f"曾协助{company}录制医学讲座及学术视频，听写配音严谨精准，助力医疗健康知识传播。"
+        if any(k in company for k in ["制造", "工业", "模具", "设备", "电力"]):
+            return f"曾协助{company}进行设备操作教学视频的录制剪辑与多语配音字幕，步骤清晰，保障安全规范。"
+        if topic != "日常业务":
+            return f"曾协助{company}完成{topic}音视频的高清录制与剪辑字幕，视听品质行业领先。"
+        return f"曾为{company}提供专业多媒体听译、视频录制剪辑与中外双语配音字幕，视听体验卓越。"
+
+    elif biz_line == "exhibition":
+        return f"曾为{company}大型活动及展会提供高标准的展台搭建与宣发物料设计印刷一站式打包。"
+
+    elif biz_line == "gift":
+        if "某知名美妆巨头" in company:
+            return f"曾为{company}定制精美品牌Logo礼品，设计优雅做工考究，深受高端会员与员工好评。"
+        if "银行" in company:
+            return f"曾为{company}定制高端定制款商务礼品，配有精美礼盒包装，契合贵宾高雅品位。"
+        if topic != "日常业务":
+            return f"曾为{company}专属设计印制{topic}礼品，外观精美且品牌质感出众，有效拉近客情关系。"
+        return f"曾为{company}定制印有品牌标识的高质实用周边礼品，材质安全做工精良，有效提升客情温度。"
+
+    else:
+        return f"曾为{company}专属定制高标准商务服务，响应敏捷且品质卓越，赢得客户长期信赖。"
+
+
 def _mail_contract_case_to_candidate(row: Any) -> dict[str, Any]:
     m = row._mapping
     product_name = sanitize_text(m.get("ProductNameAll"))
     business_type = sanitize_text(m.get("BusinessType"))
     description = sanitize_text(m.get("ContractDescription"))
     amount = float(m.get("TotalMoney") or 0)
+    company_name = sanitize_text(m.get("CompanyName")) if "CompanyName" in m else None
+
     business_line = _mail_contract_case_business_line(business_type, product_name)
     language_pair = _mail_contract_case_language_pair(product_name)
     industry_hint = _mail_contract_case_industry_hint(description, product_name)
     flags = _mail_contract_case_quality_flags(description, product_name, business_type)
     amount_bucket = "gt_50000" if amount >= 50000 else "gt_20000" if amount >= 20000 else "gt_10000" if amount >= 10000 else "gt_5000" if amount >= 5000 else "lt_5000"
+
+    mail_case_text = _generate_mail_case_text(company_name, business_type, product_name, description)
+
     return {
         "contract_id": sanitize_text(m.get("ContractId")),
         "customer_id": sanitize_text(m.get("CustomerId")),
@@ -5064,6 +5442,7 @@ def _mail_contract_case_to_candidate(row: Any) -> dict[str, Any]:
         "product_name_all": product_name,
         "business_type": business_type,
         "contract_description": description,
+        "company_name": company_name,
         "input_time": m.get("InputTime").isoformat(timespec="seconds") if getattr(m.get("InputTime"), "isoformat", None) else sanitize_text(m.get("InputTime")),
         "contract_time": m.get("ContractTime").isoformat(timespec="seconds") if getattr(m.get("ContractTime"), "isoformat", None) else sanitize_text(m.get("ContractTime")),
         "start_time": m.get("StartTime").isoformat(timespec="seconds") if getattr(m.get("StartTime"), "isoformat", None) else sanitize_text(m.get("StartTime")),
@@ -5072,6 +5451,7 @@ def _mail_contract_case_to_candidate(row: Any) -> dict[str, Any]:
         "language_pair_inferred": language_pair,
         "industry_inferred": industry_hint,
         "quality_flags": flags,
+        "mail_case_text": mail_case_text,
         "case_text_raw": "；".join(
             item for item in [
                 f"业务类型：{business_type}" if business_type else "",
@@ -5183,30 +5563,30 @@ _MAIL_PAYMENT_RISK_CN = {
 # 邮件序列推荐"下一步动作"的中文版本，按 (scenario, suite_step) 元组查表。
 # 这是给销售/运营审稿看的，覆盖 mail_sequence_strategy.py 里 cta_style 字段的英文表述。
 _MAIL_CTA_CN_BY_STEP: dict[tuple[str, int], str] = {
-    ("re_activation", 1): "低压力问候，承接历史合作，轻量询问近期是否有翻译、本地化、同传或物料需求。",
-    ("re_activation", 2): "补充同行业经验和客户历史合作关联，说明我们能支持的多业务范围。",
-    ("re_activation", 3): "说明多业务协作流程、质量控制和资料准备方式，让客户感觉推进成本低。",
-    ("re_activation", 4): "收口到样稿评估、资料清单或方案沟通，并礼貌请求转介绍。",
+    ("re_activation", 1): "像关系维护一样重启联系，承接真实历史合作，轻量询问近期是否有资料、会议、培训或跨境沟通需求。",
+    ("re_activation", 2): "补充脱敏同行业经验和历史合作可迁移背景，强调稳定配合、术语理解和沟通效率。",
+    ("re_activation", 3): "说明低门槛协作路径、资料输入和服务组合，让客户感觉推进成本低。",
+    ("re_activation", 4): "收口到服务清单、资料评估方向或相关团队确认，不承诺未审核服务，不直接索要联系人。",
     ("new_business_promotion", 1): (
-        "作为 4 封套装的开场邮件，先用老客户历史合作建立亲和信任，再明确介绍翻译以外的同传/会议支持、多媒体本地化、"
-        "排版印刷、活动物料、海外内容适配等可落地业务线；必须结合客户行业、CRM 历史和知识库/同行业案例，形成有理有据的低压力价值提示。"
+        "作为 4 封套装的开场邮件，先用老客户历史合作建立亲和信任，再从行业国际化沟通、会议培训、双语展示、"
+        "多媒体内容或品牌英文表达中选1个具体业务切口；不写成服务清单群发。"
     ),
     ("new_business_promotion", 2): (
         "作为 4 封套装的第 2 封，承接第 1 封的多业务破冰，重点用客户行业、CRM 历史合作和知识库/同行业案例证明"
-        "SpeedAsia 的多业务组合有实际落地经验；本封不急于讲完整方案流程，也不进入报价收口。"
+        "SpeedAsia 的业务沟通支持有实际落地经验；本封不急于讲完整方案流程，也不进入报价收口。"
     ),
-    ("new_business_promotion", 3): "给出多业务协作方案和分工流程，避免只围绕翻译单一业务。",
-    ("new_business_promotion", 4): "以方案评估、预算沟通或对接人推荐收口，不承诺免费服务或未审核优惠。",
-    ("new_contact_intro", 1): "新联系人首次触达，先做简洁公司介绍、服务范围和低压力确认。",
-    ("new_contact_intro", 2): "同步与该客户或同行业客户的合作背景，让新联系人快速建立信任。",
-    ("new_contact_intro", 3): "说明后续项目协作路径和多业务入口，让新联系人知道如何开始。",
-    ("new_contact_intro", 4): "收口到小项目评估、资料清单或正确对接人确认，并礼貌请求转介绍。",
+    ("new_business_promotion", 3): "给出资料输入、服务组合和协作流程，避免只围绕翻译单一业务。",
+    ("new_business_promotion", 4): "以服务清单、资料评估方向或相关团队确认收口，不承诺免费服务或未审核优惠。",
+    ("new_contact_intro", 1): "新联系人首次触达，先说具体业务场景和可解决问题，再确认是否为相关团队。",
+    ("new_contact_intro", 2): "用脱敏同行业经验或相邻部门可迁移合作建立信任，不把当前联系人历史当案例。",
+    ("new_contact_intro", 3): "说明资料输入、项目启动路径和多业务入口，让新联系人知道如何低门槛开始。",
+    ("new_contact_intro", 4): "收口到服务范围清单、资料评估方向或负责团队确认，请对方判断是否适合转发。",
 }
 
 _MAIL_SCENARIO_DEFAULT_SUBJECT = {
     "re_activation": "好久不见 想跟您聊聊最近的项目动向",
-    "new_business_promotion": "向您介绍我们新增的本地化服务能力",
-    "new_contact_intro": "您好 我是您本次项目的新对接人",
+    "new_business_promotion": "关于近期国际化沟通支持的一个想法",
+    "new_contact_intro": "关于贵司内容与会议支持的对接确认",
 }
 
 MAIL_CURRENT_DEMO_CASES: tuple[dict[str, Any], ...] = (
@@ -5214,7 +5594,7 @@ MAIL_CURRENT_DEMO_CASES: tuple[dict[str, Any], ...] = (
         "demo_index": 1,
         "real_customer_key": "KH15411-117",
         "demo_label": "老客户其他业务介绍",
-        "demo_label_detail": "老客户基础上介绍翻译以外的其他业务，邮件要使用历史合作信任、客户行业和同行业经验，推进同传、多媒体本地化、排版印刷、活动物料等多业务机会。",
+        "demo_label_detail": "老客户基础上从行业国际化沟通、会议培训、双语展示、多媒体内容和品牌英文表达切入，不能写成翻译服务清单群发。",
         "default_scenario": "new_business_promotion",
         "default_suite_step": 1,
     },
@@ -5230,7 +5610,7 @@ MAIL_CURRENT_DEMO_CASES: tuple[dict[str, Any], ...] = (
         "demo_index": 3,
         "real_customer_key": "KH13770-006",
         "demo_label": "新客户开发介绍",
-        "demo_label_detail": "新客户或新联系人建立信任，邮件要先做简洁公司介绍，再说明服务范围、行业经验、协作方式与下一步低门槛动作。",
+        "demo_label_detail": "新客户或新联系人建立信任，邮件要先说具体业务场景和可解决问题，再确认相关团队，不直接索要联系人。",
         "default_scenario": "new_contact_intro",
         "default_suite_step": 1,
     },
@@ -5498,34 +5878,80 @@ _MAIL_COMMERCIAL_SCENARIO_PROFILES: dict[str, dict[str, str]] = {
     "new_business_promotion": {
         "scenario_name": "老客户其他业务介绍",
         "relationship": "老客户已有合作或业务沟通基础",
-        "main_goal": "在不只重复翻译业务的前提下，逐步开发同传/会议支持、多媒体本地化、排版印刷、活动物料、海外内容适配等翻译以外业务机会",
+        "main_goal": "在不只重复翻译业务的前提下，把客户重新带回行业沟通、国际化支持、内容呈现、会议培训和跨部门多语资料协作等更高价值场景",
         "tone": "亲和、专业、克制，像熟悉客户背景的销售经理，不像群发广告",
         "history_rule": "必须承接 CRM 中真实存在的历史合作、合同、商机、最近跟进或客户活跃度；没有事实时只做保守业务场景承接",
-        "case_rule": "优先使用客户行业和知识库/黄金范例库中的同行业、同业务类型或相近场景案例，证明多业务组合有实际落地经验",
-        "intro_rule": "不需要重新做完整公司介绍，只需在必要时轻量说明 SpeedAsia 不只支持翻译，也能协调多业务内容服务",
+        "case_rule": "优先使用客户行业和知识库/黄金范例库中的同行业、同业务类型或相近场景案例，证明我们能解决业务沟通问题，而不只是提供翻译产能",
+        "intro_rule": "不需要重新做完整公司介绍；联系理由要从行业变化、客户岗位或现有合作延伸切入，不要写成服务清单群发",
         "referral_targets": "市场、培训、活动、采购、海外内容或品牌传播相关同事",
     },
     "re_activation": {
         "scenario_name": "老客户激活",
         "relationship": "曾经合作、近期沉默或长期未触达、需要恢复联系和关系重启的老客户",
-        "main_goal": "先恢复联系、恢复关系和信任，再从历史合作自然延展到翻译、本地化、同传会议、多媒体内容、排版印刷和活动物料等可重新启动的业务机会",
+        "main_goal": "先像正常商务关系维护一样恢复联系，再说明 SpeedAsia 现在能更成熟地支持技术资料、会议沟通、培训内容、多媒体和跨境沟通等需求",
         "tone": "温和、熟悉、低压力，重点像关系维护而不是冷启动销售",
         "history_rule": "必须使用真实历史合作、合同、最近跟进或沉默状态；不能虚构曾经合作内容。高频活跃老客户要更亲和，长期沉默客户要更克制",
-        "case_rule": "使用同行业经验或历史合作相近案例唤醒客户兴趣，强调类似客户如何重新梳理资料、活动、多媒体或多语内容需求",
+        "case_rule": "使用同行业经验或历史合作相近案例唤醒客户兴趣，强调供应商理解业务背景、术语、配合度和沟通效率，而不是只做文字翻译",
         "intro_rule": "不做新客户式公司介绍，只需提醒 SpeedAsia 当前可支持的业务范围比过去更完整",
         "referral_targets": "目前负责翻译、本地化、培训、市场物料、活动或海外内容的同事",
     },
     "new_contact_intro": {
         "scenario_name": "新客户开发介绍",
         "relationship": "新客户、新联系人或新接手的对接人",
-        "main_goal": "先建立可信身份和服务范围认知，再用行业经验和低门槛协作路径让对方知道如何开始或转给正确负责人",
+        "main_goal": "先建立可信身份和业务场景价值，再用行业经验、现有体系合作或低门槛协作路径，让对方愿意判断负责人或转给正确同事",
         "tone": "礼貌、清晰、专业，不假设已建立熟人关系",
         "history_rule": "不能假设已有合作。若 CRM 有真实历史，只能谨慎写“系统显示有相关合作/沟通背景”；没有历史时以公司介绍、行业经验和正确对接确认为主",
-        "case_rule": "用同行业经验建立可信度，案例必须保守表达，不得虚构客户名、成果数字或项目事实",
-        "intro_rule": "第 1 封必须达到商业介绍标准：写清 SpeedAsia 身份，结合客户行业列出 3 项差异化服务组合，并确认正确负责人；不能只写一句公司介绍",
+        "case_rule": "用同行业经验或同集团/相邻部门的可迁移合作建立可信度，案例必须保守表达，不得虚构客户名、成果数字或项目事实",
+        "intro_rule": "第 1 封必须达到商业介绍标准：先说业务场景和可解决的问题，再确认谁负责；不能直接要联系人，不能只写一句公司介绍",
         "referral_targets": "负责市场、培训、活动、采购、品牌传播、海外内容或本地化项目的同事",
     },
 }
+
+_MAIL_AI_COMMUNICATION_PLAYBOOK = (
+    "【沟通过程萃取规则】\n"
+    "1. 不要把邮件写成“Translation Service/合作机会/服务介绍”式群发；标题和正文都要更像行业交流、关系重连或一个具体业务想法。\n"
+    "2. 老客户多业务开发优先用“行业感 + 轻商务 + 不施压”：例如国际化沟通、行业活动、双语展示、海外访客、技术材料、品牌英文内容优化；translation 不作核心词。\n"
+    "3. 老客户激活不要反复提旧报价或催单；写成“最近整理过去沟通，想重新保持联系”，再说明能力升级和更成熟的企业沟通支持。\n"
+    "4. 不同岗位切口不同：采购看稳定、响应、配合度；技术/项目看术语理解和跨国沟通效率；HR/培训看培训材料、多语言内部沟通；市场/品牌看英文内容质感、展会资料、社媒/官网表达；海外窗口看总部沟通和多语言资料。\n"
+    "5. 请求转介绍时不要直接问“给我联系人/负责人是谁”；先说业务场景，再问“一般由市场部、医学教育、培训或相关团队负责吗？”或“哪位同事更适合对接”。\n"
+    "6. 如果已有同集团、同部门或相邻产品线合作，要写成“在现有合作基础上做延伸支持/配合衔接”，不要写“拓展业务”。\n"
+    "7. 英文内容/品牌内容场景要写成 refining content、brand-aligned voice、tone consistency、before vs. after reference；中文写“英文内容优化/品牌语气一致性/国际化表达”，不是简单翻译。\n"
+    "8. 每封只给一个轻下一步：看一个简短示例、确认资料类型、判断负责人、推荐同事或小范围资料评估；不得承诺免费样稿、免费试译或无依据周期。"
+)
+
+_MAIL_AI_PROMPT_PLAYBOOK_BRIEF = (
+    "沟通规则：行业感+轻商务；先给一个客户愿意读的具体观察，再给一个轻参考或可转发理由。"
+    "按岗位选切口，采购看稳定，技术/项目看术语沟通，市场/品牌看英文内容；"
+    "老客户不追旧报价；转介绍问哪类团队负责，不直接要联系人；禁微信、免费承诺、无依据周期。"
+)
+
+
+def _mail_ai_role_based_focus_brief(profile: dict[str, str], scenario_key: str, step_no: int) -> str:
+    """根据沟通过程给 AI 一段岗位/部门切口，避免所有客户都写展会活动。"""
+    if scenario_key == "new_business_promotion":
+        return (
+            "【切口选择】不要所有客户都推展会/活动。若客户像轨交、工业、医疗或制造类客户，"
+            "可从国际化沟通、技术材料、海外合作、双语展示、培训视频、会议支持、品牌内容优化中选1-2个最贴合的切口。"
+        )
+    if scenario_key == "re_activation":
+        return (
+            "【关系重启】写成成熟供应商重新保持联系：认可过去沟通，说明这几年能力升级，"
+            "把话题放在技术资料、多语言内容、会议沟通、培训材料或跨境沟通支持，不要像追旧报价。"
+        )
+    if scenario_key == "new_contact_intro":
+        return (
+            "【负责人确认】先说业务场景再问负责人：可问这类会议/培训/市场内容/海外资料一般由哪个团队负责，"
+            "不要直接索要联系人；若已有相邻部门合作，要用“延伸支持/配合衔接”。"
+        )
+    return ""
+
+
+def _mail_ai_subject_guidance(scenario_key: str) -> str:
+    if scenario_key == "re_activation":
+        return "主题建议：重新联系、保持联系、近期业务沟通支持；避免 follow-up/quotation/checking in/合作机会。"
+    if scenario_key == "new_contact_intro":
+        return "主题建议：围绕某个业务场景或负责人确认，例如内容/会议/培训支持沟通；避免直接写服务介绍。"
+    return "主题建议：围绕国际化沟通、行业活动、双语展示或内容支持；避免 Translation Service/Service Introduction/Cooperation Opportunity。"
 
 _MAIL_COMMERCIAL_STEP_PROFILES: dict[int, dict[str, str]] = {
     1: {
@@ -5600,6 +6026,8 @@ def _mail_commercial_sequence_script(scenario: str, suite_step: int) -> str:
     step = _MAIL_COMMERCIAL_STEP_PROFILES[step_no]
     step_path = "4封递进：1建立关系/说明来意，2用案例证据增强可信度，3给协作路径，4做评估或转介绍收口。"
     intro_requirement = profile["intro_rule"]
+    role_focus = _mail_ai_role_based_focus_brief(profile, scenario_key, step_no)
+    subject_guidance = _mail_ai_subject_guidance(scenario_key)
     new_contact_first_rule = (
         "\n【新联系人第1封专项】\n"
         "若本封是新联系人第1封，正文必须像正式商业介绍邮件：说明销售身份和联系原因；"
@@ -5615,6 +6043,9 @@ def _mail_commercial_sequence_script(scenario: str, suite_step: int) -> str:
         "先用联系人姓名、公司名、行业、生命周期、CRM历史/商机/最近跟进，再用检索案例。"
         "当前客户事实只用于关系承接和需求判断，不得把当前联系人本人往来包装成案例再推给本人。"
         "案例只写脱敏外部案例或其他部门可迁移场景，按“场景-做法-价值”表达，不得泄露客户名称、金额、项目号、底价、内部成本。\n\n"
+        f"{_MAIL_AI_COMMUNICATION_PLAYBOOK}\n\n"
+        f"{role_focus}\n"
+        f"{subject_guidance}\n\n"
         "【变量映射】\n"
         "{customer_name}=称呼；{company_name}/{industry}=公司与行业背景；{history}=当前客户事实，只承接不当案例；"
         "{peer_case}=脱敏外部案例或黄金范例；{business_lines}=本封选2-3项具体服务；"
@@ -5624,9 +6055,9 @@ def _mail_commercial_sequence_script(scenario: str, suite_step: int) -> str:
         f"案例规则：{profile['case_rule']}。公司介绍规则：{intro_requirement}\n\n"
         "【正文结构，建议 4 段】\n"
         "1. 称呼并承接客户画像或真实触点，说明为什么联系。\n"
-        f"2. 围绕本阶段重点展开，不泛泛宣传：{step['focus']}。\n"
+        f"2. 围绕本阶段重点展开，不泛泛宣传：{step['focus']}。根据客户岗位选择切口，不要所有人都写展会/活动。\n"
         "3. 使用知识库/同行业案例或可迁移经验，明确与客户行业或可能需求的关联。\n"
-        f"4. 低压力 CTA：引导回复、提供资料、确认方向，或推荐{profile['referral_targets']}。\n\n"
+        f"4. 低压力 CTA：引导回复、提供资料、确认方向，或推荐{profile['referral_targets']}；先问谁负责这类项目，不要直接索要联系人。\n\n"
         "【阶段排他规则】\n"
         "第1封只破冰和打开一个具体业务方向；第2封才写脱敏外部案例；第3封只写资料、服务清单和协作流程；第4封只做评估项、负责人确认或转介绍收口。\n\n"
         f"{new_contact_first_rule}"
@@ -5643,8 +6074,10 @@ def _mail_commercial_sequence_ai_instruction(scenario: str, suite_step: int) -> 
     step_no = int(suite_step)
     profile = _MAIL_COMMERCIAL_SCENARIO_PROFILES[scenario_key]
     step = _MAIL_COMMERCIAL_STEP_PROFILES[step_no]
+    role_focus = _mail_ai_role_based_focus_brief(profile, scenario_key, step_no)
+    subject_guidance = _mail_ai_subject_guidance(scenario_key)
     new_contact_first_rule = (
-        "\n9. 新联系人第1封必须写出商业介绍的实质内容：身份+来意、客户行业相关的3项差异化服务组合、正确负责人确认或转介绍；不能只写简单公司介绍。"
+        "\n11. 新联系人第1封必须写出商业介绍的实质内容：身份+来意、客户行业相关的3项差异化服务组合、正确负责人确认或转介绍；不能只写简单公司介绍。"
         if scenario_key == "new_contact_intro" and step_no == 1 else ""
     )
     return (
@@ -5655,9 +6088,11 @@ def _mail_commercial_sequence_ai_instruction(scenario: str, suite_step: int) -> 
         f"3. 历史规则：{profile['history_rule']}。当前客户本人历史只能用于开场承接或说明熟悉背景，不能写成案例证明推回本人。\n"
         f"4. 案例规则：{profile['case_rule']}。案例必须来自脱敏外部案例或其他部门可迁移场景，写成“场景-做法-价值”，不能复制原文，不能写成当前客户历史。\n"
         f"5. 场景区分：{profile['intro_rule']} 总目标：{profile['main_goal']}。\n"
-        "6. 正文3-4段且阶段排他：第1封破冰，第2封案例，第3封流程清单，第4封评估/负责人收口；不要四封都写能力介绍。\n"
-        f"7. 禁止：{step['avoid']}；不得出现价格、折扣、账期、底价、无依据工期、免费服务、未审核优惠、内部编号。\n"
-        f"8. 至少自然覆盖翻译以外2类业务；结尾可推荐给{profile['referral_targets']}。{new_contact_first_rule}"
+        f"6. 沟通规则：{role_focus} {_MAIL_AI_PROMPT_PLAYBOOK_BRIEF}\n"
+        f"7. 标题规则：{subject_guidance}\n"
+        "8. 正文3-4段且阶段排他：第1封破冰，第2封案例，第3封流程清单，第4封评估/负责人收口；不要四封都写能力介绍。\n"
+        f"9. 禁止：{step['avoid']}；不得出现价格、折扣、账期、底价、无依据工期、免费服务、未审核优惠、内部编号；不得写微信跟进语或微信式口语。\n"
+        f"10. 至少自然覆盖翻译以外2类业务；结尾可推荐给{profile['referral_targets']}，但必须先问这类项目通常由哪个团队/同事负责，不要直接索要联系人。{new_contact_first_rule}"
     )
 
 
@@ -5676,18 +6111,18 @@ def _mail_commercial_sequence_template_payload(scenario: str, suite_step: int) -
 
 _MAIL_SEQUENCE_TEMPLATE_DEFAULT_VERSION = 30
 _MAIL_SEQUENCE_TEMPLATE_TARGETED_VERSIONS: dict[tuple[str, int], int] = {
-    ("new_business_promotion", 1): 44,
-    ("new_business_promotion", 2): 44,
-    ("new_business_promotion", 3): 44,
-    ("new_business_promotion", 4): 44,
-    ("re_activation", 1): 44,
-    ("re_activation", 2): 44,
-    ("re_activation", 3): 44,
-    ("re_activation", 4): 44,
-    ("new_contact_intro", 1): 44,
-    ("new_contact_intro", 2): 44,
-    ("new_contact_intro", 3): 44,
-    ("new_contact_intro", 4): 44,
+    ("new_business_promotion", 1): 46,
+    ("new_business_promotion", 2): 46,
+    ("new_business_promotion", 3): 46,
+    ("new_business_promotion", 4): 46,
+    ("re_activation", 1): 46,
+    ("re_activation", 2): 46,
+    ("re_activation", 3): 46,
+    ("re_activation", 4): 46,
+    ("new_contact_intro", 1): 46,
+    ("new_contact_intro", 2): 46,
+    ("new_contact_intro", 3): 46,
+    ("new_contact_intro", 4): 46,
 }
 
 
@@ -5847,28 +6282,158 @@ def _mail_subject_from_intent_profile(profile: MailDraftIntentProfile) -> str:
     )
 
 _MAIL_DRAFT_LLM_SYSTEM_PROMPT = (
-    "你是 SpeedAsia 资深B2B销售邮件起草人。优先使用联系人、公司、行业画像、CRM事实和检索案例；"
-    "缺事实则保守写。禁价格/折扣/账期/无依据工期/免费服务/内部编号/虚构。"
-    "禁编造数字、客户反馈引语、客户名或未给出的交付细节。只输出JSON：{\"subject\":\"自然简洁\",\"paragraphs\":[\"3-5段\"]}。"
+    "你是 SpeedAsia 资深B2B销售邮件起草人。目标是写出自然、具体、值得客户转发的商务邮件，"
+    "不是合规摘要或服务清单。优先用联系人、公司、行业、CRM事实和检索案例；缺事实时保守表达。"
+    "硬性安全线：禁价格/折扣/账期/免费承诺/内部编号/虚构数字/冒充客户反馈。"
+    "称呼必须单独成段，正文按逻辑自然分段。"
+    "只输出JSON：{\"subject\":\"\",\"paragraphs\":[\"称呼段\",\"正文自然段\"]}。"
 )
+
+_MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE: str | None = None
+
+
+def _mail_draft_chat_url(api_url: str) -> str:
+    base = (api_url or "").rstrip("/")
+    if not base:
+        return ""
+    if base.endswith("/chat/completions"):
+        return base
+    return base + "/chat/completions"
+
+
+def _mail_draft_llm_provider() -> str:
+    provider = (_MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE or getattr(settings, "MAIL_DRAFT_LLM_PROVIDER", "") or "deepseek").strip().lower()
+    if provider in {"chatgpt", "gpt", "openai"}:
+        return "openai"
+    return "deepseek"
+
+
+def _mail_draft_llm_config(provider: str | None = None) -> dict[str, Any]:
+    provider_key = (provider or _mail_draft_llm_provider()).strip().lower()
+    if provider_key == "openai":
+        api_url = (
+            getattr(settings, "MAIL_DRAFT_OPENAI_API_URL", "")
+            or getattr(settings, "RECORDING_PARSE_OPENAI_VISION_API_URL", "")
+            or "https://api.openai.com/v1/chat/completions"
+        )
+        api_key = getattr(settings, "MAIL_DRAFT_OPENAI_API_KEY", "") or getattr(settings, "RECORDING_PARSE_OPENAI_VISION_API_KEY", "")
+        model = getattr(settings, "MAIL_DRAFT_OPENAI_MODEL", "") or "gpt-4o-mini"
+        timeout = int(getattr(settings, "MAIL_DRAFT_OPENAI_TIMEOUT_SECONDS", 60) or 60)
+    else:
+        provider_key = "deepseek"
+        api_url = getattr(settings, "LLM2_API_URL", "")
+        api_key = getattr(settings, "LLM2_API_KEY", "")
+        model = getattr(settings, "LLM2_MODEL", "")
+        timeout = int(getattr(settings, "LLM2_TIMEOUT_SECONDS", 100) or 100)
+    return {
+        "provider": provider_key,
+        "api_url": _mail_draft_chat_url(api_url),
+        "api_key": api_key or "",
+        "model": model or "",
+        "timeout_seconds": timeout,
+        "temperature": float(getattr(settings, "MAIL_DRAFT_LLM_TEMPERATURE", 0.2) or 0.2),
+        "max_tokens": int(getattr(settings, "MAIL_DRAFT_LLM_MAX_TOKENS", 1200) or 1200),
+    }
+
+
+def _mail_draft_llm_public_config() -> dict[str, Any]:
+    active = _mail_draft_llm_provider()
+    providers = []
+    for provider in ("deepseek", "openai"):
+        cfg = _mail_draft_llm_config(provider)
+        providers.append({
+            "provider": provider,
+            "label": "DeepSeek API" if provider == "deepseek" else "ChatGPT / OpenAI API",
+            "configured": bool(cfg["api_url"] and cfg["api_key"] and cfg["model"]),
+            "api_url": cfg["api_url"],
+            "model": cfg["model"],
+            "active": provider == active,
+        })
+    return {
+        "version": "mail_draft_llm_config.v1",
+        "active_provider": active,
+        "runtime_override": _MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE,
+        "providers": providers,
+        "real_sending_enabled": False,
+        "wecom_impact": "none",
+    }
+
+
+class MailDraftLlmConfigUpdateRequest(BaseModel):
+    provider: str
+
+
+@app.get("/api/v1/mail/draft-llm-config")
+def get_mail_draft_llm_config():
+    return _mail_draft_llm_public_config()
+
+
+@app.put("/api/v1/mail/draft-llm-config")
+def update_mail_draft_llm_config(payload: MailDraftLlmConfigUpdateRequest):
+    global _MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE
+    provider = sanitize_text(payload.provider).strip().lower()
+    if provider in {"chatgpt", "gpt"}:
+        provider = "openai"
+    if provider not in {"deepseek", "openai"}:
+        raise HTTPException(status_code=422, detail="provider must be deepseek or openai")
+    cfg = _mail_draft_llm_config(provider)
+    if not (cfg["api_url"] and cfg["api_key"] and cfg["model"]):
+        raise HTTPException(status_code=422, detail=f"{provider} 邮件草稿 LLM 未配置完整，不能切换")
+    _MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE = provider
+    return _mail_draft_llm_public_config()
+
+
+@app.post("/api/v1/mail/draft-llm-config/test")
+def test_mail_draft_llm_config(payload: MailDraftLlmConfigUpdateRequest):
+    provider = sanitize_text(payload.provider).strip().lower()
+    if provider in {"chatgpt", "gpt"}:
+        provider = "openai"
+    if provider not in {"deepseek", "openai"}:
+        raise HTTPException(status_code=422, detail="provider must be deepseek or openai")
+    cfg = _mail_draft_llm_config(provider)
+    if not (cfg["api_url"] and cfg["api_key"] and cfg["model"]):
+        return {
+            "status": "not_configured",
+            "provider": provider,
+            "model": cfg["model"],
+            "configured": False,
+            "message": f"{provider} 邮件草稿 LLM 未配置完整",
+        }
+    original = _MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE
+    try:
+        globals()["_MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE"] = provider
+        test_prompt = (
+            "只输出JSON，不要markdown。"
+            "{\"subject\":\"测试邮件主题\",\"paragraphs\":[\"测试您好，\",\"这是一条邮件模型连通性测试。\"]}"
+        )
+        result = _call_llm2_json_for_mail_draft(test_prompt, timeout_seconds=min(cfg["timeout_seconds"], 30))
+        return {
+            "status": "success" if result.get("parsed") else "error",
+            "provider": provider,
+            "model": result.get("model") or cfg["model"],
+            "configured": True,
+            "error": result.get("error"),
+            "parsed_keys": sorted((result.get("parsed") or {}).keys()),
+        }
+    finally:
+        globals()["_MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE"] = original
 
 
 def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> dict:
-    """直接调 LLM-2（默认 DeepSeek）拿 JSON 响应。
+    """调邮件草稿 LLM provider（默认 DeepSeek，可切 OpenAI/ChatGPT）拿 JSON 响应。
 
     返回 {parsed: dict | None, raw_text: str, error: str | None, model: str}.
-    用 LLM-2 而不是 LLM-1 是因为 LLM-1 上游 (zjsphs) 当前不稳, 邮件草稿生成切到 DeepSeek
-    （v1.7.206）。后续如需切回 LLM-1 把本函数体改成调 IntentEngine.run_llm1_json_prompt 即可。
     """
     import requests as _rq
 
-    api_url = (getattr(settings, "LLM2_API_URL", "") or "").rstrip("/")
-    api_key = getattr(settings, "LLM2_API_KEY", "") or ""
-    model = getattr(settings, "LLM2_MODEL", "") or ""
+    cfg = _mail_draft_llm_config()
+    api_url = cfg["api_url"]
+    api_key = cfg["api_key"]
+    model = cfg["model"]
+    provider = cfg["provider"]
     if not api_url or not api_key or not model:
-        return {"parsed": None, "raw_text": "", "error": "LLM2 环境变量未配置完整", "model": model}
+        return {"parsed": None, "raw_text": "", "error": f"{provider} 邮件草稿 LLM 环境变量未配置完整", "model": model}
 
-    url = api_url + "/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -5876,17 +6441,17 @@ def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> di
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2,
-        "max_tokens": 1200,
+        "temperature": cfg["temperature"],
+        "max_tokens": cfg["max_tokens"],
         "response_format": {"type": "json_object"},
     }
     raw_text = ""
     try:
         session = _rq.Session()
         session.trust_env = False
-        resp = session.post(url, json=payload, headers=headers, timeout=timeout_seconds)
+        resp = session.post(api_url, json=payload, headers=headers, timeout=timeout_seconds or cfg["timeout_seconds"])
         if resp.status_code != 200:
-            return {"parsed": None, "raw_text": "", "error": f"HTTP {resp.status_code}: {resp.text[:200]}", "model": model}
+            return {"parsed": None, "raw_text": "", "error": f"{provider} HTTP {resp.status_code}: {resp.text[:200]}", "model": f"{provider}:{model}"}
         data = resp.json()
         raw_text = data["choices"][0]["message"]["content"] if "choices" in data else ""
         # v1.7.207 注释掉 markdown 代码块剥离兜底 — 让 LLM2 返带 ```json``` 包装的非法 JSON 直接解析失败暴露问题.
@@ -5897,15 +6462,15 @@ def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> di
         #   if cleaned.endswith("```"):       cleaned = cleaned[:-3]
         #   cleaned = cleaned.strip()
         parsed = json.loads(raw_text.strip())
-        return {"parsed": parsed, "raw_text": raw_text, "error": None, "model": model}
+        return {"parsed": parsed, "raw_text": raw_text, "error": None, "model": f"{provider}:{model}"}
     except json.JSONDecodeError as exc:
         # v1.7.208 保留：JSON 解析失败 return error dict 上去，上层 _llm_generate_mail_intro_paragraphs
         # 立即 raise HTTPException 503 暴露给前端。这不是兜底假数据 — error 字段明示失败，parsed=None。
         # 属于用户允许保留的"异常跳过 + return 失败信号给调用方"模式。
-        return {"parsed": None, "raw_text": raw_text, "error": f"JSON 解析失败（已禁用 markdown 剥离兜底）: {exc}", "model": model}
+        return {"parsed": None, "raw_text": raw_text, "error": f"JSON 解析失败（已禁用 markdown 剥离兜底）: {exc}", "model": f"{provider}:{model}"}
     except Exception as exc:
         # v1.7.208 保留：未知异常同上 — return error dict 给上层立刻 raise。不假装成功，不返 placeholder。
-        return {"parsed": None, "raw_text": "", "error": f"LLM2 调用异常: {sanitize_text(str(exc))[:200]}", "model": model}
+        return {"parsed": None, "raw_text": "", "error": f"{provider} 调用异常: {sanitize_text(str(exc))[:200]}", "model": f"{provider}:{model}"}
 
 
 def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict:
@@ -5916,47 +6481,71 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
       让上层 _assemble_mail_draft_from_intent_profile 假装"已识别为兜底"。
     - 成功路径返 {status: 'success', model, subject, paragraphs, error: None, prompt}。
     """
-    fewshot_reference = _mail_prompt_fact(profile.admitted_fewshot_content, 120)
-    fewshot_title = _mail_prompt_fact(profile.admitted_fewshot_title, 80)
+    fewshot_reference = _mail_prompt_fact(profile.admitted_fewshot_content, 80)
+    fewshot_title = _mail_prompt_fact(profile.admitted_fewshot_title, 50)
     scenario_cn = _MAIL_SCENARIO_CHINESE.get(profile.scenario, profile.scenario_label)
     stage_rule = {
-        1: "只破冰和说明来意，选1个具体新业务方向+2项服务；不写案例证明、方案流程或收口。",
-        2: "只做脱敏外部案例证明，按场景痛点/做法/价值写；不重复第1封能力介绍。",
-        3: "只写执行路径：客户给什么资料、我们做什么、如何交付；不再讲案例。",
-        4: "只做低压力收口：服务清单/评估项/正确负责人；不再铺陈能力。",
+        1: (
+            "破冰+来意：像 docx 优秀邮件一样，写1个基于已给CRM/行业事实的具体业务切口，"
+            "可写“如果后续有这类需求，我们可以准备一个简短参考/优化方向/类似场景做法”，再给低压力下一步；"
+            "没有材料证据时不得写“我们整理了/我们注意到贵司近期有”。"
+            "不要写成长案例或完整方案。"
+        ),
+        2: "以脱敏外部案例为主：痛点-做法-价值；不把当前客户历史当案例。",
+        3: "以执行路径为主：资料输入、服务组合、协作动作；可简短呼应前文案例但不重复展开。",
+        4: "低压力收口：服务清单/评估项/负责人确认；不直接要联系人。",
     }.get(int(profile.suite_step), "按当前阶段目标推进。")
     scenario_rule = {
-        "new_business_promotion": "老客户多业务开发：基于合作信任，介绍会议支持、多媒体、排版印刷、活动物料、海外内容适配。",
-        "re_activation": "老客户激活：先恢复联系和信任，再从历史合作延展新机会。",
-        "new_contact_intro": "新联系人介绍：不假设熟人关系；第1封要像正式商业介绍邮件，写清SpeedAsia身份、行业相关服务组合和正确负责人确认。",
+        "new_business_promotion": (
+            "老客户其他业务介绍：笔译只能作为已合作背景一笔带过，正文主推非笔译业务，"
+            "例如多媒体本地化、会议同传与设备、培训课件、排版印刷、活动物料。"
+        ),
+        "re_activation": "老客户激活：像关系维护一样重新联系，说明能力更成熟；不提旧报价、不催单。",
+        "new_contact_intro": "新联系人介绍：先说业务场景和可解决问题，再确认相关团队。",
     }.get(profile.scenario, "按当前场景写作。")
     if profile.scenario == "new_contact_intro" and int(profile.suite_step) == 1:
         stage_rule = (
-            "只做首次商业介绍：1段建立身份与来意，1段结合客户行业写3项差异化服务组合，"
-            "1段说明如何低门槛开始或确认正确负责人；不写案例证明、报价或完整方案。"
+            "首次商业介绍：1段建立身份与来意，1段结合客户行业写3项差异化服务组合，"
+            "1段给一个轻参考或可评估方向，并确认正确负责人；不写报价或完整方案。"
         )
     crm_history = "；".join(
         part
         for part in [
-            f"商机：{_mail_prompt_fact(profile.recent_opportunities, 85)}",
-            f"历史：{_mail_prompt_fact(profile.ongoing_contracts, 85)}",
-            f"跟进：{_mail_prompt_fact(profile.contact_recent_followup, 85)}",
+            f"商机：{_mail_prompt_fact(profile.recent_opportunities, 55)}",
+            f"历史：{_mail_prompt_fact(profile.ongoing_contracts, 55)}",
+            f"跟进：{_mail_prompt_fact(profile.contact_recent_followup, 55)}",
         ]
         if "无明确记录" not in part
     ) or "无明确历史记录，需保守承接。"
+    crm_history = _mail_prompt_fact(crm_history, 150)
     user_prompt_lines = [
         f"任务：写{scenario_cn}第{profile.suite_step}/4封。{stage_rule}",
         f"场景：{scenario_rule}",
-        "个性信息必须优先使用并写进正文：",
         f"1. 联系人/称呼：{_mail_prompt_fact(profile.recipient_name, 40)}；公司：{_mail_prompt_fact(profile.company_name, 80)}。",
         f"2. 画像：行业={_mail_prompt_fact(profile.company_industry, 40)}；生命周期={_mail_prompt_fact(profile.customer_lifecycle_stage, 60)}。",
-        f"3. 当前客户CRM事实：{crm_history}。只能用于关系承接/判断需求，禁止写成案例证明推回给本人；可说“贵司其他团队如有类似场景”。",
-        f"4. 黄金范例：{fewshot_title}；{fewshot_reference}。只学表达结构，禁止照抄。",
-        f"案例边界：第2封才可写脱敏外部案例；不得把当前联系人与我们的笔译/同传/患者日往来写成“案例”。检索范例若不是案例，只写可迁移经验。",
+        f"3. CRM事实：{crm_history}。只承接关系/判断需求，禁止写成案例推回本人。",
+        f"4. 黄金范例：{fewshot_title}；{fewshot_reference}。只学结构，禁止照抄。",
+        (
+            "事实边界：只能写上面明确给出的公司、行业、CRM历史、商机、跟进、黄金范例。"
+            "严禁编造“近期注意到/了解到/看到贵司有多场活动、会议、项目、法律合规拓展”等事实；"
+            "严禁写“我们已整理/已准备/已制作某参考材料”，除非上文事实明确存在。"
+            "如果只是销售建议，必须写成“可以准备/可整理/可以按实际资料做一个简短参考”。"
+        ),
+        (
+            "案例边界：第1封可写轻量参考/类似场景/可分享示例，但不要写成长案例；"
+            "第2封再展开脱敏外部案例。当前联系人往来不能当案例；非案例范例只写可迁移经验。"
+        ),
+        f"{_MAIL_AI_PROMPT_PLAYBOOK_BRIEF} {_mail_ai_subject_guidance(profile.scenario)}",
+        "转介绍规则：问“这类项目通常由哪个团队负责”，请其判断是否转发；不得写请告知联系人/电话/邮箱。",
         f"{_mail_gold_style_brief(profile)} {_mail_service_focus_brief(profile)}",
-        f"本步目标：{_mail_prompt_fact(profile.sequence_template_purpose or profile.objective, 90)}",
-        f"CTA：{_mail_prompt_fact(profile.cta_style, 70)}；非本人负责则请转介绍市场/培训/活动/采购/海外内容同事。",
-        "标准：3-5段；具体=服务项/资料输入/流程动作/案例已有事实，不等于编数字；禁内部编号、项目号、金额、价格、折扣、账期、免费服务、客户反馈引语。",
+        f"本步目标：{_mail_prompt_fact(profile.sequence_template_purpose or profile.objective, 60)}",
+        f"CTA：{_mail_prompt_fact(profile.cta_style, 50)}；非本人负责则请其转发给相关团队。",
+        (
+            "标准：称呼单独一段；正文按逻辑自然分段，不强制4段；"
+            "要像真实销售邮件，有基于事实的具体切口、可准备的轻量参考、客户可转发理由和一个明确但低压力的下一步；"
+            "老客户其他业务介绍必须把非笔译服务写成主线，不能继续围绕笔译/翻译展开；"
+            "禁内部编号、项目号、金额、价格、免费承诺、客户反馈引语。"
+        ),
         "",
         "立即输出JSON，不要markdown。",
     ]
@@ -6005,6 +6594,40 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
     }
 
 
+def _mail_normalize_body_paragraphs(raw_paragraphs: list[str]) -> list[str]:
+    """Normalize generated email body layout without forcing a fixed paragraph count."""
+    normalized: list[str] = []
+    greeting_pattern = re.compile(
+        r"^\s*(?P<greeting>(?:(?:Hi|Hello)\s+[\w\u4e00-\u9fff（）()·.\- ]{1,40}|(?:[\w\u4e00-\u9fff（）()·.\- ，,]{1,40})?(?:您好|你好|早上好|下午好|晚上好|Hi|Hello))[，,！!：:]?)\s*(?P<rest>.*)$",
+        re.IGNORECASE,
+    )
+    for raw in raw_paragraphs or []:
+        text_value = re.sub(r"\s+", " ", sanitize_text(raw or "")).strip()
+        if not text_value:
+            continue
+        if not normalized:
+            match = greeting_pattern.match(text_value)
+            if match:
+                greeting = match.group("greeting").strip()
+                rest = match.group("rest").strip()
+                if greeting and rest:
+                    normalized.append(greeting)
+                    normalized.append(rest)
+                    continue
+                if greeting:
+                    normalized.append(greeting)
+                    continue
+        normalized.append(text_value)
+    compact: list[str] = []
+    for item in normalized:
+        if compact and re.fullmatch(r"[，,！!。.:：\s]+", item):
+            compact[-1] = (compact[-1].rstrip("，,！!。.:： ") + item.strip()).strip()
+            continue
+        if item and (not compact or compact[-1] != item):
+            compact.append(item)
+    return compact[:8]
+
+
 def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) -> MailDraftAssembledContent:
     llm_result = _llm_generate_mail_intro_paragraphs(profile)
     terms = profile.commercial_terms
@@ -6044,7 +6667,8 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
     subject_text = llm_result["subject"]
     if not subject_text:
         raise HTTPException(status_code=502, detail="大模型 LLM2 返回的 JSON 缺少 subject 字段")
-    paragraphs = [html.escape(p) for p in llm_result["paragraphs"]]
+    body_paragraphs = _mail_normalize_body_paragraphs(llm_result["paragraphs"])
+    paragraphs = [html.escape(p) for p in body_paragraphs]
 
     # 邮件正文只含: LLM 生成的段落 + 销售签名档。审稿辅助信息走独立字段 review_metadata, 不夹在邮件正文里。
     paragraphs.append(html.escape(profile.seller_signature).replace("\n", "<br>"))
@@ -13140,7 +13764,7 @@ def _update_env_file_variable(key: str, value: str) -> bool:
     try:
         with open(env_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
-        
+
         found = False
         new_lines = []
         for line in lines:
@@ -13151,13 +13775,13 @@ def _update_env_file_variable(key: str, value: str) -> bool:
                 found = True
             else:
                 new_lines.append(line)
-        
+
         if not found:
             ending = "\r\n" if (new_lines and new_lines[-1].endswith("\r\n")) else "\n"
             if new_lines and not new_lines[-1].endswith(ending):
                 new_lines.append(ending)
             new_lines.append(f"{key}={value}{ending}")
-            
+
         with open(env_path, "w", encoding="utf-8") as f:
             f.writelines(new_lines)
         return True
@@ -14042,6 +14666,105 @@ def _commit_kb_excel_import_raw(
         "created": created,
         "skipped": parsed["skipped"],
         "failed": failed,
+    }
+
+@app.get("/api/v1/mail/contract-case-candidates")
+def list_mail_contract_case_candidates(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=100, ge=1, le=500),
+    min_amount: float = Query(default=5000, ge=0),
+    business_type: str | None = Query(default=None),
+    product_keyword: str | None = Query(default=None),
+    description_keyword: str | None = Query(default=None),
+    order_by: str = Query(default="InputTime"),
+    db: Session = Depends(get_db),
+):
+    """从本地 PostgreSQL 读取邮件合同案例库候选，不再动态查询远程 CRM。"""
+    from collections import Counter
+
+    safe_order_columns = {
+        "InputTime": MailContractCase.input_time,
+        "ContractTime": MailContractCase.contract_time,
+        "StartTime": MailContractCase.start_time,
+        "EndTime": MailContractCase.end_time,
+    }
+    order_col = safe_order_columns.get(order_by, MailContractCase.input_time)
+    safe_limit = max(1, min(int(limit or 100), 500))
+
+    query = db.query(MailContractCase).filter(
+        MailContractCase.total_money >= min_amount
+    )
+
+    if business_type and business_type.strip():
+        query = query.filter(MailContractCase.business_type.ilike(f"%{business_type.strip()}%"))
+    if product_keyword and product_keyword.strip():
+        query = query.filter(MailContractCase.product_name_all.ilike(f"%{product_keyword.strip()}%"))
+    if description_keyword and description_keyword.strip():
+        query = query.filter(MailContractCase.contract_description.ilike(f"%{description_keyword.strip()}%"))
+
+    import math
+    total_count = query.count()
+    rows = query.order_by(order_col.desc(), MailContractCase.contract_id.desc()).offset((page - 1) * safe_limit).limit(safe_limit).all()
+
+    items = [_local_contract_case_to_dict(row) for row in rows]
+    business_line_counts = Counter(item.get("business_line_inferred") or "unknown" for item in items)
+    business_type_counts = Counter(item.get("business_type") or "缺业务类型" for item in items)
+    industry_counts = Counter(item.get("industry_inferred") or "unknown" for item in items)
+    quality_flag_counts: Counter[str] = Counter()
+    for item in items:
+        flags = item.get("quality_flags") or ["可初筛"]
+        quality_flag_counts.update(flags)
+
+    ready_count = sum(1 for item in items if (item.get("storage_suggestion") or {}).get("ready_for_generation"))
+    return {
+        "version": "mail_contract_case_candidates.v2",
+        "source": "PostgreSQL local mail_contract_case cache",
+        "read_only": True,
+        "ingested_to_knowledge": True,
+        "desensitized": False,
+        "filters": {
+            "page": page,
+            "limit": safe_limit,
+            "min_amount": float(min_amount or 0),
+            "business_type": business_type,
+            "product_keyword": product_keyword,
+            "description_keyword": description_keyword,
+            "order_by": order_by,
+            "contact_id_blank_used": False,
+        },
+        "field_notes": [
+            "ContactId='' 只作为排查参考；当前默认不按 ContactId 过滤，直接读取 PostgreSQL 缓存表。",
+            "时间字段默认使用 order_by 倒序；InputTime 可理解为新增/录入时间。",
+            "金额过滤使用 Money1+Money2+Money3，默认只展示合计金额 >= 5000 的销售合同。",
+            "当前先展示原始合同字段 and 自动推断，不脱敏、已本地缓存；真实进入邮件知识库前必须人工审核和脱敏。",
+        ],
+        "total": total_count,
+        "page": page,
+        "pages": math.ceil(total_count / safe_limit) if safe_limit > 0 else 1,
+        "limit": safe_limit,
+        "count": len(items),
+        "ready_for_generation_count": ready_count,
+        "items": items,
+        "analysis": {
+            "by_business_line": dict(business_line_counts.most_common()),
+            "by_business_type_top10": dict(business_type_counts.most_common(10)),
+            "by_industry_inferred": dict(industry_counts.most_common()),
+            "quality_flags": dict(quality_flag_counts.most_common()),
+            "irrelevant_or_low_quality_signals": [
+                "描述过短：如仅写日期、翻译、报价、排版，难以作为商业案例。",
+                "可能是补差价/尾款：更像结算记录，不适合直接做案例。",
+                "产品线待人工判断：产品或业务类型无法映射到翻译、口译、多媒体、印刷、活动、礼品等邮件可介绍业务线。",
+                "缺业务类型/缺产品：字段不足，入库前需要人工补全或剔除。",
+            ],
+            "recommended_ingestion_rule": {
+                "amount_min": 5000,
+                "require_description": True,
+                "exclude_flags": ["描述过短", "可能是补差价/尾款", "缺产品"],
+                "store_as": "mail_contract_case_library",
+                "scene_required": False,
+                "must_desensitize_before_generation": True,
+            },
+        },
     }
 
 def _run_excel_import_job(report: Any, payload_data: dict) -> dict:
@@ -15395,132 +16118,48 @@ def list_mail_gold_fewshot_seeds(db: Session = Depends(get_db)):
     }
 
 
-@app.get("/api/v1/mail/contract-case-candidates")
-def list_mail_contract_case_candidates(
-    limit: int = Query(default=100, ge=1, le=500),
-    min_amount: float = Query(default=5000, ge=0),
-    business_type: str | None = Query(default=None),
-    product_keyword: str | None = Query(default=None),
-    description_keyword: str | None = Query(default=None),
-    order_by: str = Query(default="InputTime"),
-):
-    """只读读取 CRM usrContract，生成邮件合同案例库候选。
-
-    当前接口只做页面可见的候选分析，不脱敏、不写入邮件知识库、不触发邮件生成。
-    """
-    from collections import Counter
-    from sqlalchemy import text
-
-    from crm_database import CRMSessionLocal
-
-    def _optional_query_str(value: Any) -> str:
-        return value.strip() if isinstance(value, str) else ""
-
-    safe_order_columns = {
-        "InputTime": "InputTime",
-        "ContractTime": "ContractTime",
-        "StartTime": "StartTime",
-        "EndTime": "EndTime",
-        "ModifyTime": "ModifyTime",
-    }
-    order_column = safe_order_columns.get(order_by, "InputTime")
-    safe_limit = max(1, min(int(limit or 100), 500))
-    clauses = [
-        "ContractId LIKE '%XS%'",
-        "Deleter IS NULL",
-        "(ISNULL(Money1,0)+ISNULL(Money2,0)+ISNULL(Money3,0)) >= :min_amount",
-    ]
-    params: dict[str, Any] = {"min_amount": float(min_amount or 0)}
-    business_type_value = _optional_query_str(business_type)
-    product_keyword_value = _optional_query_str(product_keyword)
-    description_keyword_value = _optional_query_str(description_keyword)
-    if business_type_value:
-        clauses.append("ISNULL(BusinessType,'') LIKE :business_type")
-        params["business_type"] = f"%{business_type_value}%"
-    if product_keyword_value:
-        clauses.append("ISNULL(ProductNameAll,'') LIKE :product_keyword")
-        params["product_keyword"] = f"%{product_keyword_value}%"
-    if description_keyword_value:
-        clauses.append("ISNULL(ContractDescription,'') LIKE :description_keyword")
-        params["description_keyword"] = f"%{description_keyword_value}%"
-
-    sql = text(f"""
-        SELECT TOP ({safe_limit})
-            ContractId,
-            CustomerId,
-            ContactId,
-            (ISNULL(Money1,0)+ISNULL(Money2,0)+ISNULL(Money3,0)) AS TotalMoney,
-            ProductNameAll,
-            BusinessType,
-            ContractDescription,
-            InputTime,
-            ContractTime,
-            StartTime,
-            EndTime
-        FROM usrContract
-        WHERE {" AND ".join(clauses)}
-        ORDER BY {order_column} DESC, ContractId DESC
-    """)
-
-    crm_db = CRMSessionLocal()
-    try:
-        rows = crm_db.execute(sql, params).fetchall()
-    finally:
-        crm_db.close()
-
-    items = [_mail_contract_case_to_candidate(row) for row in rows]
-    business_line_counts = Counter(item.get("business_line_inferred") or "unknown" for item in items)
-    business_type_counts = Counter(item.get("business_type") or "缺业务类型" for item in items)
-    industry_counts = Counter(item.get("industry_inferred") or "unknown" for item in items)
-    quality_flag_counts: Counter[str] = Counter()
-    for item in items:
-        flags = item.get("quality_flags") or ["可初筛"]
-        quality_flag_counts.update(flags)
-
-    ready_count = sum(1 for item in items if (item.get("storage_suggestion") or {}).get("ready_for_generation"))
+def _local_contract_case_to_dict(item: MailContractCase) -> dict[str, Any]:
+    flags = item.quality_flags or []
+    if not isinstance(flags, list):
+        flags = [flags]
     return {
-        "version": "mail_contract_case_candidates.v1",
-        "source": "CRM usrContract read-only",
-        "read_only": True,
-        "ingested_to_knowledge": False,
-        "desensitized": False,
-        "filters": {
-            "limit": safe_limit,
-            "min_amount": float(min_amount or 0),
-            "business_type": business_type_value,
-            "product_keyword": product_keyword_value,
-            "description_keyword": description_keyword_value,
-            "order_by": order_column,
-            "contact_id_blank_used": False,
-        },
-        "field_notes": [
-            "ContactId='' 只作为排查参考；当前默认不按 ContactId 过滤，直接读取 usrContract 原表。",
-            f"时间字段默认使用 {order_column} 倒序；InputTime 可理解为新增/录入时间。",
-            "金额过滤使用 Money1+Money2+Money3，默认只展示合计金额 >= 5000 的销售合同。",
-            "当前先展示原始合同字段和自动推断，不脱敏、不入库；真实进入邮件知识库前必须人工审核和脱敏。",
-        ],
-        "count": len(items),
-        "ready_for_generation_count": ready_count,
-        "items": items,
-        "analysis": {
-            "by_business_line": dict(business_line_counts.most_common()),
-            "by_business_type_top10": dict(business_type_counts.most_common(10)),
-            "by_industry_inferred": dict(industry_counts.most_common()),
-            "quality_flags": dict(quality_flag_counts.most_common()),
-            "irrelevant_or_low_quality_signals": [
-                "描述过短：如仅写日期、翻译、报价、排版，难以作为商业案例。",
-                "可能是补差价/尾款：更像结算记录，不适合直接做案例。",
-                "产品线待人工判断：产品或业务类型无法映射到翻译、口译、多媒体、印刷、活动、礼品等邮件可介绍业务线。",
-                "缺业务类型/缺产品：字段不足，入库前需要人工补全或剔除。",
-            ],
-            "recommended_ingestion_rule": {
-                "amount_min": 5000,
-                "require_description": True,
-                "exclude_flags": ["描述过短", "可能是补差价/尾款", "缺产品"],
-                "store_as": "mail_contract_case_library",
-                "scene_required": False,
-                "must_desensitize_before_generation": True,
-            },
+        "contract_id": item.contract_id,
+        "customer_id": item.customer_id,
+        "contact_id": item.contact_id,
+        "total_money": float(item.total_money or 0),
+        "amount_bucket": item.amount_bucket,
+        "product_name_all": item.product_name_all,
+        "business_type": item.business_type,
+        "contract_description": item.contract_description,
+        "company_name": item.company_name,
+        "input_time": item.input_time.isoformat(timespec="seconds") if item.input_time else None,
+        "contract_time": item.contract_time.isoformat(timespec="seconds") if item.contract_time else None,
+        "start_time": item.start_time.isoformat(timespec="seconds") if item.start_time else None,
+        "end_time": item.end_time.isoformat(timespec="seconds") if item.end_time else None,
+        "business_line_inferred": item.business_line_inferred,
+        "language_pair_inferred": item.language_pair_inferred,
+        "industry_inferred": item.industry_inferred,
+        "quality_flags": flags,
+        "mail_case_text": item.mail_case_text,
+        "case_text_raw": "；".join(
+            part for part in [
+                f"业务类型：{item.business_type}" if item.business_type else "",
+                f"产品：{item.product_name_all}" if item.product_name_all else "",
+                f"描述：{item.contract_description}" if item.contract_description else "",
+                f"行业线索：{item.industry_inferred}" if item.industry_inferred and item.industry_inferred != "unknown" else "",
+            ]
+            if part
+        ),
+        "storage_suggestion": {
+            "target": "mail_contract_case_library",
+            "ready_for_generation": bool(
+                float(item.total_money or 0) >= 5000
+                and item.contract_description
+                and len(item.contract_description) >= 4
+                and "可能是补差价/尾款" not in flags
+            ),
+            "needs_review": True,
+            "reason": "当前接口只读展示原始合同案例候选，未脱敏、未入库；入库前需人工确认产品/行业/描述是否可作为案例。",
         },
     }
 
@@ -15531,10 +16170,12 @@ def list_mail_iterations(limit: int = Query(default=50, ge=1, le=200), db: Sessi
     rows = db.query(MailIterationRun).order_by(
         MailIterationRun.triggered_at.desc()
     ).limit(limit).all()
+    items = [_serialize_mail_iteration_run_row(r) for r in rows]
     return {
         "version": "mail_iteration.v1",
         "count": len(rows),
-        "items": [_serialize_mail_iteration_run_row(r) for r in rows],
+        "items": items,
+        "iterations": items,
     }
 
 
@@ -15547,10 +16188,14 @@ def get_mail_iteration_detail(run_id: str, db: Session = Depends(get_db)):
     drafts = db.query(MailIterationDraft).filter(
         MailIterationDraft.run_id == run_id
     ).order_by(MailIterationDraft.demo_index, MailIterationDraft.suite_step).all()
+    run_payload = _serialize_mail_iteration_run_row(run_row)
+    draft_payloads = [_serialize_mail_iteration_draft_row(d) for d in drafts]
     return {
         "version": "mail_iteration_detail.v1",
-        "run": _serialize_mail_iteration_run_row(run_row),
-        "drafts": [_serialize_mail_iteration_draft_row(d) for d in drafts],
+        "run": run_payload,
+        "iteration": run_payload,
+        "drafts": draft_payloads,
+        "items": draft_payloads,
     }
 
 
@@ -17305,7 +17950,7 @@ def _refresh_api_invocation_quality(
             ApiAssistInvocation.quality_score.isnot(None),
             ApiAssistInvocation.invocation_id != item.invocation_id
         ).order_by(ApiAssistInvocation.triggered_at.desc()).first()
-        
+
         if existing_scored and existing_scored.result_payload:
             stored_scores = existing_scored.result_payload.get("reply_scores_v2")
             if isinstance(stored_scores, dict) and stored_scores.get("ai_candidates"):

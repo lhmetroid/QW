@@ -52,6 +52,17 @@ class PricingRule:
     pass
 
 
+class MockApp:
+    def get(self, *args: Any, **kwargs: Any) -> Any:
+        return lambda f: f
+    def post(self, *args: Any, **kwargs: Any) -> Any:
+        return lambda f: f
+    def put(self, *args: Any, **kwargs: Any) -> Any:
+        return lambda f: f
+    def delete(self, *args: Any, **kwargs: Any) -> Any:
+        return lambda f: f
+
+
 class _Logger:
     def info(self, *_args: Any, **_kwargs: Any) -> None:
         return None
@@ -103,6 +114,7 @@ def _load_mail_review_api_helpers() -> dict[str, Any]:
         "should_cutoff_event_physically_stop_sequence": should_cutoff_event_physically_stop_sequence,
         "uuid": uuid,
         "_evaluate_and_calibrate_mail_delivery_sla_guardrail": _evaluate_and_calibrate_mail_delivery_sla_guardrail,
+        "app": MockApp(),
     }
     exec(source[model_start:model_end], namespace)
     exec(source[draft_helper_start:draft_helper_end], namespace)
@@ -112,9 +124,8 @@ def _load_mail_review_api_helpers() -> dict[str, Any]:
     namespace["_active_mail_pricing_rules_by_line"] = lambda _db, business_line=None, limit=50: []
     namespace["_recall_kb_term_phrase"] = lambda _db, function_fragment, keyword_any=(), business_line=None: ("", "mock_phrase")
     namespace["_mail_fewshot_min_score"] = lambda: 0.60
-    namespace["_mail_generate_draft_fewshot"] = (
-        lambda _db, scenario, function_fragments, min_score: None
-    )
+    namespace["_mail_generate_draft_fewshot"] = lambda _db, **kwargs: None
+
     namespace["_get_mail_sequence_template_for_prompt"] = lambda _db, scenario, suite_step: {
         "template_id": "mock_id",
         "scenario": scenario,

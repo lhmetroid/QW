@@ -2053,6 +2053,40 @@ class MailCustomerSuiteFeedback(Base):
     )
 
 
+class MailContractCase(Base):
+    """邮件本地合同案例表：缓存/灌库 CRM 中的所有符合标准的合同案例，减少动态查询开销"""
+    __tablename__ = "mail_contract_case"
+
+    id = Column(Integer, primary_key=True, index=True)
+    contract_id = Column(String(120), unique=True, index=True, nullable=False)
+    customer_id = Column(String(120), index=True)
+    contact_id = Column(String(120), index=True)
+    total_money = Column(Numeric(12, 2))
+    amount_bucket = Column(String(80))
+    product_name_all = Column(String(500))
+    business_type = Column(String(120))
+    contract_description = Column(Text)
+    company_name = Column(String(500))
+    input_time = Column(DateTime)
+    contract_time = Column(DateTime)
+    start_time = Column(DateTime)
+    end_time = Column(DateTime)
+    business_line_inferred = Column(String(255))
+    language_pair_inferred = Column(Text)
+    industry_inferred = Column(String(255))
+    quality_flags = Column(JSON)
+    mail_case_text = Column(Text)
+    ingested_to_knowledge = Column(Boolean, default=False)
+    desensitized = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_mcc_customer_created", "customer_id", "created_at"),
+        Index("idx_mcc_business_line", "business_line_inferred"),
+    )
+
+
 # 初始化数据库连接
 _engine_kwargs = {
 

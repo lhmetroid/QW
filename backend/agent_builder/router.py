@@ -15,6 +15,7 @@ from agent_builder.models import (
     BuilderKnowledge, BuilderKnowledgeChunk
 )
 from embedding_service import EmbeddingService
+from config import settings
 
 router = APIRouter(prefix="/api/v1/builder", tags=["Agent Builder"])
 
@@ -416,26 +417,43 @@ def upload_knowledge(
     db.add(knowledge)
     db.commit()
 
-    # Split content into chunks
+    # Split content into chunks with sliding-window overlap
     paragraphs = [p.strip() for p in re.split(r'\n+', content) if p.strip()]
+    overlap_size = getattr(settings, "AGENT_BUILDER_CHUNK_OVERLAP", 80)
+    chunk_max_size = 300
+
     chunks = []
-    current_chunk = []
+    current_chunk_paragraphs = []
     current_len = 0
+
     for p in paragraphs:
-        if current_len + len(p) > 300:
-            if current_chunk:
-                chunks.append("\n".join(current_chunk))
-                current_chunk = [p]
-                current_len = len(p)
+        if current_len + (1 if current_len > 0 else 0) + len(p) > chunk_max_size:
+            if current_chunk_paragraphs:
+                chunk_text = "\n".join(current_chunk_paragraphs)
+                chunks.append(chunk_text)
+
+                # Compute overlap paragraphs
+                overlap_paragraphs = []
+                overlap_len = 0
+                for op in reversed(current_chunk_paragraphs):
+                    if overlap_len + (1 if overlap_len > 0 else 0) + len(op) <= overlap_size:
+                        overlap_paragraphs.insert(0, op)
+                        overlap_len += len(op) + 1
+                    else:
+                        break
+
+                current_chunk_paragraphs = overlap_paragraphs + [p]
+                current_len = sum(len(x) for x in current_chunk_paragraphs) + len(current_chunk_paragraphs) - 1
             else:
                 chunks.append(p)
-                current_chunk = []
+                current_chunk_paragraphs = []
                 current_len = 0
         else:
-            current_chunk.append(p)
-            current_len += len(p) + 1
-    if current_chunk:
-        chunks.append("\n".join(current_chunk))
+            current_chunk_paragraphs.append(p)
+            current_len += (1 if current_len > 0 else 0) + len(p)
+
+    if current_chunk_paragraphs:
+        chunks.append("\n".join(current_chunk_paragraphs))
 
     # Index chunks with embedding vectors
     indexed_count = 0
