@@ -446,3 +446,12 @@
 - 后端 `/api/v1/mail/contract-case-candidates` 收敛为单一路由，保留 `page`、`limit`、`total`、`pages`、`analysis` 等字段，避免重复路由返回结构不一致。
 - 明确当前下拉“最近 100/200/500 条”只是每页大小，后端单页上限仍是 500；分页后可以查看筛选后的全量合同，不再只能看前 500 条。
 - 验证：`python mail_contract_case_candidates_checks.py` 通过；`backend/main.py` 与 `backend/database.py` AST 通过；抽取 `frontend/index.html` 内联 JS 后 `node --check` 通过；定向 `git diff --check -- backend/main.py frontend/index.html` 通过。
+
+## 2026-06-10 CRM 快捷页与企微可发回复输出修复
+
+- 已查明 `KH23447-001` 误显示“广州锴信商务咨询有限公司”的根因：邮件快捷页 CRM 查询在空邮箱情况下仍把 `c.Email=''` 放入 OR 条件，误命中其他空邮箱联系人。
+- 已按用户要求收紧为客户编号唯一查询：有 `customer_key` 时只匹配 CRM 编号字段，不再用邮箱或公司名参与 OR；只读验证返回“蒙特空气处理设备（北京）有限公司上海办事处”。
+- 已修复知识库 V2 RRF/reranker tuple 下标错误，线上 `tuple index out of range` 已消失，`api.speedasia.net` 真实侧边栏调用返回 `status=success`、`knowledge_status=ok`、`crm_status=success`。
+- 已增强企微回复最终清洗：`reply_reference1/2` 只保留可直接发送给客户的正文，剥离 `【摘要档案】`、`【线程推进状态】`、`【当前回复焦点】`、参考回复说明和 JSON 块。
+- 线上真实会话复测：两条回复均为纯中文可发文本，无 JSON、无内部分析块、无中文乱码。
+- 验证：`backend/intent_engine.py`、`backend/main.py` AST 通过；定向 `git diff --check` 通过；本地清洗小测通过；`python -m unittest backend.optimizations_checks` 通过。

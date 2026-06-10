@@ -639,3 +639,14 @@
 - 已完成后端收口：`backend/main.py` 删除重复的旧版合同案例路由，只保留支持 `page + limit + total + pages + analysis` 的分页接口。
 - 当前口径：`5000` 是金额下限，过滤字段为 `Money1 + Money2 + Money3 >= 5000`；下拉的 100/200/500 是“每页条数”，不是全局筛选上限。单页最大 500，但可通过分页查看筛选后的全量 10,799 条缓存数据。
 - 验证：合同案例接口专项测试通过；后端 AST 通过；前端内联 JS 抽取后 node 语法检查通过；定向 diff-check 通过。`python -m py_compile` 仍因当前 Windows `backend/__pycache__` 权限拒绝失败，已用 AST 检查补足。
+
+## 2026-06-10 CRM 快捷页与企微侧边栏输出交接
+
+- 用户要求明确排查 `KH23447-001` 为什么显示成“广州锴信商务咨询有限公司”，并强调邮件快捷页不涉及发送，不需要邮箱，客户编号是唯一查询条件。
+- 根因已确认：旧 SQL 在 `contact_email` 为空时仍使用 `LOWER(ISNULL(c.Email,'')) = :contact_email`，导致空邮箱联系人被误命中。
+- 已修复 `backend/main.py` 的 `_mail_crm_profile_from_sql()`：存在 `customer_key` 时只走 CRM 编号字段匹配；只有没有客户编号且有邮箱时才按邮箱查。
+- 只读验证 `KH23447-001` 已返回“蒙特空气处理设备（北京）有限公司上海办事处”。未写 CRM、未启用真实发信。
+- 已修复 `backend/intent_engine.py` 知识库 V2 tuple 下标错误，线上侧边栏调用恢复成功。
+- 已增强最终可发回复清洗，避免侧边栏把 `【摘要档案】`、`【线程推进状态】`、`【当前回复焦点】`、参考回复标题、JSON 或解释性文字展示/复制给销售。
+- 线上真实会话复测结果：`status=success`、`knowledge_status=ok`、`crm_status=success`；`reply_reference1/2` 为纯中文可发回复，无 JSON、无内部块、无乱码。
+- 当前仍有未提交本地缓存 `.codex_pycache_v15/`，不要加入 Git。

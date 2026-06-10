@@ -3916,17 +3916,19 @@ def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> 
                 )).fetchall()
                 if row and row[0]
             }
-            key_conditions = [
-                "LOWER(ISNULL(c.Email, '')) = :contact_email",
-                "CAST(c.CustomerId AS NVARCHAR(120)) = :customer_key",
-                "LOWER(ISNULL(d.CompanyName, '')) = :customer_key_lower",
-            ]
-            for col in ("ContactId", "CustomerCode", "CustomerNo", "CustomerNumber", "ContactNo", "NewContactId"):
-                if col in contact_cols:
-                    key_conditions.append(f"LOWER(ISNULL(CAST(c.{col} AS NVARCHAR(120)), '')) = :customer_key_lower")
-            for col in ("CustomerCode", "CustomerNo", "CustomerNumber", "CustomerName", "NewCustomerId"):
-                if col in customer_cols:
-                    key_conditions.append(f"LOWER(ISNULL(CAST(d.{col} AS NVARCHAR(120)), '')) = :customer_key_lower")
+            key_conditions = []
+            if normalized_customer_key:
+                key_conditions.append("CAST(c.CustomerId AS NVARCHAR(120)) = :customer_key")
+                for col in ("ContactId", "CustomerCode", "CustomerNo", "CustomerNumber", "ContactNo", "NewContactId"):
+                    if col in contact_cols:
+                        key_conditions.append(f"LOWER(ISNULL(CAST(c.{col} AS NVARCHAR(120)), '')) = :customer_key_lower")
+                for col in ("CustomerCode", "CustomerNo", "CustomerNumber", "CustomerName", "NewCustomerId"):
+                    if col in customer_cols:
+                        key_conditions.append(f"LOWER(ISNULL(CAST(d.{col} AS NVARCHAR(120)), '')) = :customer_key_lower")
+            elif normalized_contact_email:
+                key_conditions.append("LOWER(ISNULL(c.Email, '')) = :contact_email")
+            if not key_conditions:
+                return None
             row = crm_db.execute(
                 text(
                     f"""
@@ -19260,8 +19262,8 @@ def _apply_blind_eval_pair(payload: dict) -> dict:
     p = dict(payload)
     ta = p.get("training_ai") if isinstance(p.get("training_ai"), dict) else {}
     texts = {
-        "ai": str(p.get("reply_reference") or "").strip(),
-        "train_ai": str((ta or {}).get("reply") or "").strip(),
+        "ai": IntentEngine.clean_sendable_reply(p.get("reply_reference")),
+        "train_ai": IntentEngine.clean_sendable_reply((ta or {}).get("reply")),
     }
     statuses = {
         "ai": ("success" if texts["ai"] else (str((p.get("stage_status") or {}).get("llm2") or "") or "failed")),

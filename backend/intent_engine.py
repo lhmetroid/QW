@@ -1666,7 +1666,7 @@ class IntentEngine:
             if len(scored) > 1:
                 candidates_data = []
                 for item in scored:
-                    chunk = item[14]
+                    chunk = item[13]
                     candidates_data.append({
                         "chunk_id": str(chunk.chunk_id),
                         "semantic_score": item[2],
@@ -1695,7 +1695,7 @@ class IntentEngine:
             if getattr(settings, "RERANK_ENABLED", False) and scored:
                 candidates_to_rerank = []
                 for item in scored[:15]:
-                    chunk = item[14]
+                    chunk = item[13]
                     candidates_to_rerank.append({
                         "chunk_id": str(chunk.chunk_id),
                         "title": chunk.title,
@@ -2359,11 +2359,20 @@ class IntentEngine:
         # 去掉 markdown 代码块
         s = re.sub(r"```.*?```", "", s, flags=re.S)
         s = s.replace("```", "")
+        explicit_reply_match = re.search(
+            r"(?:^|\n)\s*(?:参考回复|可发回复|回复参考|企微回复参考)"
+            r"(?:（[^）]*）|\([^)]*\))?\s*[：:]\s*(.+?)\s*$",
+            s,
+            flags=re.S,
+        )
+        if explicit_reply_match:
+            s = explicit_reply_match.group(1).strip()
         # 元注释多为正文之后追加的开发说明(如 【说明】xxx、说明:xxx)，
         # 这类标记一旦出现，其后(含标记本身)整体都是非正文，直接截断丢弃。
         cut_patterns = [
             r"【[^】]*(?:说明|备注|后续|风格|思路|提示|分析|推进)[^】]*】",
-            r"(?m)^\s*(?:说明|备注|后续推进说明|后续推进|本次回复风格要求|风格要求|跟进思路说明|思路)[：:]",
+            r"【[^】]*(?:摘要档案|线程推进状态|当前回复焦点|客户画像|参考知识库|调用信息|回复任务)[^】]*】",
+            r"(?m)^\s*(?:说明|备注|后续推进说明|后续推进|本次回复风格要求|风格要求|跟进思路说明|思路|当前回复焦点)[：:]",
         ]
         cut_idx = len(s)
         for pat in cut_patterns:
@@ -2379,6 +2388,8 @@ class IntentEngine:
         )
         # 收敛多余空白
         s = re.sub(r"\n{2,}", "\n", s).strip()
+        s = re.sub(r"^(?:参考回复|可发回复|回复参考|企微回复参考)\s*[：:]\s*", "", s).strip()
+        s = s.strip("\"'“”‘’ \t\r\n")
         return s
 
     @staticmethod
