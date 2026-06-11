@@ -822,7 +822,68 @@
                         <button type="button" onclick="document.getElementById('mail-config-hot-reload')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-emerald-200 hover:bg-emerald-50" title="跳到【邮件配置热加载范围】分区：限定热加载作用域，明确排除企微范围。">热加载范围</button>
                     </div>
                 </div>
-                <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+
+                <!-- 2x2 Unified LLM Parameters Control Panel (WeCom / Mail Settings) -->
+                <div class="rounded-lg border border-indigo-200 bg-white p-5 space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                            <div class="text-[11px] font-bold tracking-wide text-indigo-700">大模型核心参数控制面板</div>
+                            <h2 class="mt-1 text-base font-bold text-slate-900">2x2 微信与邮件独立配置控制台</h2>
+                            <p class="mt-1 text-xs text-slate-500">分别配置企微实时助手 (WeCom) 和邮件智能回复 (Mail) 的人设指令 (System Prompt) 与温度值 (Temperature)。保存后即时生效。</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span id="runtime-llm-settings-status" class="hidden text-xs font-bold px-2 py-1 rounded bg-slate-100 text-slate-600">加载中...</span>
+                            <button type="button" onclick="saveRuntimeLlmSettings()" class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-sm transition-colors">
+                                保存配置（立即生效）
+                            </button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
+                        <!-- Left Column: WeChat Config -->
+                        <div class="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                            <div class="flex items-center justify-between border-b pb-2">
+                                <span class="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                                    <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                                    企微实时助手配置 (WeCom)
+                                </span>
+                                <span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">动态加载</span>
+                            </div>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">温度值 (Temperature)</label>
+                                    <input id="wecom-temperature-input" type="number" min="0" max="2" step="0.1" class="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-100" placeholder="默认 0.7">
+                                    <p class="mt-1 text-[10px] text-slate-500">推荐范围 0.2 ~ 0.8。数值越低输出越稳定，越高越具创造性。</p>
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">人设指令 (System Prompt)</label>
+                                    <textarea id="wecom-system-prompt-input" rows="6" class="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-100 font-sans leading-relaxed" placeholder="微信回复人设/规则提示词"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Right Column: Email Config -->
+                        <div class="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                            <div class="flex items-center justify-between border-b pb-2">
+                                <span class="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                                    <span class="h-2 w-2 rounded-full bg-indigo-500"></span>
+                                    邮件智能回复配置 (Mail)
+                                </span>
+                                <span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">动态加载</span>
+                            </div>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">温度值 (Temperature)</label>
+                                    <input id="mail-temperature-input" type="number" min="0" max="2" step="0.1" class="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-100" placeholder="默认 0.7">
+                                    <p class="mt-1 text-[10px] text-slate-500">对齐官方推荐温度，例如 0.7 能够实现出色的口吻亲和力与回复生成。</p>
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">人设指令 (System Prompt)</label>
+                                    <textarea id="mail-system-prompt-input" rows="6" class="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-100 font-sans leading-relaxed" placeholder="邮件回复人设/规则提示词"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
                     <section id="mail-config-sequence" class="rounded-lg border border-indigo-200 bg-white p-5">
                         <div class="flex flex-wrap items-start justify-between gap-3">
                             <div>
@@ -1760,12 +1821,12 @@
                                     <div class="grid grid-cols-1 gap-y-1">${vars}</div>
                                 </div>
                                 <label class="flex flex-col gap-1">
-                                    <span class="text-[10px] font-bold text-slate-600">生产脚本模板</span>
+                                    <span class="text-[10px] font-bold text-slate-600">结构脚本</span>
                                     <textarea id="mql-template-script-${key}" rows="10" class="${textareaClass}" style="${textareaLimitStyle}">${esc(t.script_template)}</textarea>
                                     <button type="button" onclick="saveMailSequenceTemplateField('${t.scenario}', ${t.suite_step}, 'script_template')" class="w-fit rounded bg-indigo-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-indigo-700">保存生产脚本</button>
                                 </label>
                                 <label class="flex flex-col gap-1">
-                                    <span class="text-[10px] font-bold text-slate-600">给 AI 的指令脚本</span>
+                                    <span class="text-[10px] font-bold text-slate-600">AI指令</span>
                                     <textarea id="mql-template-ai-${key}" rows="14" class="${textareaClass}" style="${textareaLimitStyle}">${esc(t.ai_instruction_script || '')}</textarea>
                                     <button type="button" onclick="saveMailSequenceTemplateField('${t.scenario}', ${t.suite_step}, 'ai_instruction_script')" class="w-fit rounded bg-indigo-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-indigo-700">保存 AI 指令</button>
                                 </label>
@@ -2991,12 +3052,98 @@
             if (contractCasesBtn) contractCasesBtn.className = activeTab === 'contractcases' ? activeClass : inactiveClass;
             if (feedbackBtn) feedbackBtn.className = activeTab === 'feedback' ? activeClass : inactiveClass;
             if (configBtn) configBtn.className = activeTab === 'config' ? activeClass : inactiveClass;
-            if (activeTab === 'config') renderMailConfigReviewOnlyMocks();
+            if (activeTab === 'config') {
+                renderMailConfigReviewOnlyMocks();
+                loadRuntimeLlmSettings();
+            }
             if (activeTab === 'iteration' && typeof loadMailIterationList === 'function') loadMailIterationList();
             if (activeTab === 'goldlib' && typeof loadMailGoldLibrarySeeds === 'function') loadMailGoldLibrarySeeds();
             if (activeTab === 'contractcases' && typeof loadMailContractCaseCandidates === 'function') loadMailContractCaseCandidates();
             if (activeTab === 'feedback' && typeof loadMailCustomerSuiteFeedbackRecords === 'function') loadMailCustomerSuiteFeedbackRecords();
             applyMailQualityOnlyVisibility();
+        }
+
+
+        async function loadRuntimeLlmSettings() {
+            const statusBadge = document.getElementById('runtime-llm-settings-status');
+            if (statusBadge) {
+                statusBadge.textContent = '正在加载最新参数...';
+                statusBadge.className = 'text-xs font-bold px-2 py-1 rounded bg-amber-50 text-amber-700 animate-pulse';
+            }
+            try {
+                const res = await fetch('/api/v1/system/runtime-llm-settings');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                document.getElementById('wecom-temperature-input').value = data.wecom_temperature ?? 0.7;
+                document.getElementById('wecom-system-prompt-input').value = data.wecom_system_prompt ?? '';
+                document.getElementById('mail-temperature-input').value = data.mail_temperature ?? 0.7;
+                document.getElementById('mail-system-prompt-input').value = data.mail_system_prompt ?? '';
+
+                if (statusBadge) {
+                    statusBadge.textContent = '加载成功';
+                    statusBadge.className = 'text-xs font-bold px-2 py-1 rounded bg-emerald-50 text-emerald-700';
+                    setTimeout(() => { statusBadge.className = 'hidden'; }, 2000);
+                }
+            } catch (err) {
+                console.error('Failed to load runtime LLM settings:', err);
+                if (statusBadge) {
+                    statusBadge.textContent = '加载失败: ' + err.message;
+                    statusBadge.className = 'text-xs font-bold px-2 py-1 rounded bg-rose-50 text-rose-700';
+                }
+            }
+        }
+
+        async function saveRuntimeLlmSettings() {
+            const statusBadge = document.getElementById('runtime-llm-settings-status');
+            if (statusBadge) {
+                statusBadge.textContent = '正在保存并热加载...';
+                statusBadge.className = 'text-xs font-bold px-2 py-1 rounded bg-amber-50 text-amber-700 animate-pulse';
+            }
+            const wecomTemp = parseFloat(document.getElementById('wecom-temperature-input').value);
+            const wecomPrompt = document.getElementById('wecom-system-prompt-input').value;
+            const mailTemp = parseFloat(document.getElementById('mail-temperature-input').value);
+            const mailPrompt = document.getElementById('mail-system-prompt-input').value;
+
+            if (isNaN(wecomTemp) || wecomTemp < 0 || wecomTemp > 2) {
+                alert('微信温度值必须是 0.0 ~ 2.0 之间的数字');
+                if (statusBadge) statusBadge.className = 'hidden';
+                return;
+            }
+            if (isNaN(mailTemp) || mailTemp < 0 || mailTemp > 2) {
+                alert('邮件温度值必须是 0.0 ~ 2.0 之间的数字');
+                if (statusBadge) statusBadge.className = 'hidden';
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/v1/system/runtime-llm-settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        wecom_system_prompt: wecomPrompt,
+                        wecom_temperature: wecomTemp,
+                        mail_system_prompt: mailPrompt,
+                        mail_temperature: mailTemp
+                    })
+                });
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.detail || `HTTP ${res.status}`);
+                }
+                const data = await res.json();
+                if (statusBadge) {
+                    statusBadge.textContent = '保存成功！已立即生效';
+                    statusBadge.className = 'text-xs font-bold px-2 py-1 rounded bg-emerald-50 text-emerald-700';
+                    setTimeout(() => { statusBadge.className = 'hidden'; }, 3000);
+                }
+            } catch (err) {
+                console.error('Failed to save runtime LLM settings:', err);
+                if (statusBadge) {
+                    statusBadge.textContent = '保存失败: ' + err.message;
+                    statusBadge.className = 'text-xs font-bold px-2 py-1 rounded bg-rose-50 text-rose-700';
+                }
+            }
         }
 
         function cloneMailSequenceStepDefaults() {

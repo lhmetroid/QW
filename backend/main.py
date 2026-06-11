@@ -1310,6 +1310,16 @@ class MailSequenceInterruptResponse(BaseModel):
     operation_log_entry: MailSequenceInterruptOperationLogEntry
     audit_preview: dict[str, Any]
 
+class RuntimeLlmSettings(BaseModel):
+    wecom_system_prompt: str | None = None
+    wecom_temperature: float | None = None
+    mail_system_prompt: str | None = None
+    mail_temperature: float | None = None
+
+    class Config:
+        extra = "forbid"
+
+
 class MailSequenceTemplateUpdateRequest(BaseModel):
     purpose_cn: str | None = None
     send_timing_cn: str | None = None
@@ -1387,6 +1397,7 @@ class MailDraftIntentProfile(BaseModel):
     admitted_fewshot_score: float | None = None
     admitted_fewshot_title: str | None = None
     admitted_fewshot_content: str | None = None
+    admitted_fewshot_examples: list[dict[str, Any]] = []
     commercial_terms: MailDraftCommercialTerms
 
 class MailDraftAssembledContent(BaseModel):
@@ -3236,6 +3247,26 @@ def _mail_generate_draft_fewshot(
     function_fragments: tuple[str, ...],
     min_score: Decimal,
 ) -> dict | None:
+    items = _mail_generate_draft_fewshot_candidates(
+        db,
+        scenario=scenario,
+        suite_step=suite_step,
+        function_fragments=function_fragments,
+        min_score=min_score,
+        limit=1,
+    )
+    return items[0] if items else None
+
+
+def _mail_generate_draft_fewshot_candidates(
+    db: Session,
+    *,
+    scenario: str,
+    suite_step: int,
+    function_fragments: tuple[str, ...],
+    min_score: Decimal,
+    limit: int = 3,
+) -> list[dict]:
     effective_fragments = set(function_fragments)
     if int(suite_step) == 2:
         effective_fragments.update({"example", "process"})
@@ -3270,9 +3301,12 @@ def _mail_generate_draft_fewshot(
     ]
     if preferred:
         candidates = preferred + [item for item in candidates if item not in preferred]
+    admitted_items = []
     for item in candidates:
         if _mail_fewshot_admission_status(item, min_score)[0]:
-            return _mail_fewshot_to_dict(item, min_score)
+            admitted_items.append(_mail_fewshot_to_dict(item, min_score))
+            if len(admitted_items) >= max(int(limit), 1):
+                return admitted_items
 
     # v1.7.207 按用户要求注释掉 Few-Shot 第二轮宽松查询 — 严格查询没命中直接返 None,
     # 不再假装"假装命中"塞一条 scenario 匹配但 function_fragment 不匹配的种子.
@@ -3294,7 +3328,7 @@ def _mail_generate_draft_fewshot(
     #   for item in relaxed_items:
     #       if _mail_fewshot_admission_status(item, min_score)[0]:
     #           return _mail_fewshot_to_dict(item, min_score)
-    return None
+    return admitted_items
 
 
 def _mail_fewshot_rank(item: EmailFragmentAsset, suite_step: int) -> tuple:
@@ -4946,15 +4980,36 @@ def _mail_sanitize_generated_mail_paragraph(value: str | None) -> str:
             "如后续有需要，我们可以按实际资料准备一份简短参考",
         ),
         (r"(?:小批量|少量|一段|一小段)?\s*(?:试译|样稿|打样)(?:样稿|试译)?", "小范围资料评估"),
+        (r"(?:小批量|小范围|少量)\s*(?:测试|试用)", "小范围资料评估"),
+        (r"(?:同传设备|设备|服务)\s*试用", "相关方案评估"),
         (r"(?:免费|无偿)\s*(?:提供|安排|支持)?\s*(?:样稿|试译|打样|评估|修改|服务)", "安排小范围资料评估"),
         (r"(?:提供|安排)?\s*(?:免费|无偿)\s*(?:样稿|试译|打样|评估|修改|服务)", "安排小范围资料评估"),
         (r"\b(?:free|no\s+cost|complimentary)\s+(?:sample|trial|test|refinement|review|service)\b", "small reference review"),
         (r"(?:将在|可在|能在|最快|通常可在)?\s*\d+(?:-\d+)?\s*(?:小时|个?工作日|天|周)(?:内)?(?:完成|交付|返回|确认)?", "会按资料量确认排期"),
         (r"(?:最终|后续)?客户(?:对交付质量)?(?:非常)?满意", "交付反馈稳定"),
         (r"(?:评估|确认)[^。；;，,]{0,16}(?:报价|费用|价格)", "给出评估意见"),
+        (r"不涉及具体报价", "不进入具体商务条款"),
+        (r"法律及医疗行业", "医疗及专业服务场景"),
+        (r"法律行业", "专业资料场景"),
+        (r"法律交流", "国际业务交流"),
+        (r"法律沟通", "国际业务沟通"),
+        (r"英文法务培训", "英文培训资料"),
+        (r"法务培训", "培训资料"),
+        (r"医疗及法律相关客户", "医疗及专业服务客户"),
+        (r"法律及医疗等行业客户", "医疗及专业服务客户"),
+        (r"法律及技术信息", "医学及技术信息"),
     ]
     for pattern, replacement in replacements:
         text_value = re.sub(pattern, replacement, text_value, flags=re.IGNORECASE)
+    text_value = text_value.replace("国际国际业务", "国际业务")
+    text_value = text_value.replace("销售小范围资料评估", "销售测试")
+    text_value = text_value.replace("同传设备小范围资料评估", "同传设备配置评估")
+    text_value = text_value.replace("小批量先行小范围资料评估", "先做小范围资料评估")
+    text_value = text_value.replace("操作建议和预估时间", "操作建议和流程安排")
+    text_value = text_value.replace(
+        "结合贵司所在行业的国际化沟通场景。",
+        "结合贵司所在行业的国际化沟通场景，我们可以围绕会议、多媒体内容和对外资料提供更完整的支持。",
+    )
     text_value = re.sub(r"\s+", " ", text_value).strip()
     return text_value
 
@@ -5479,6 +5534,7 @@ def _build_mail_draft_intent_profile(
     admitted_fewshot: dict | None,
     commercial_terms: MailDraftCommercialTerms,
     sequence_template: dict[str, Any] | None = None,
+    admitted_fewshots: list[dict] | None = None,
 ) -> MailDraftIntentProfile:
     customer_key = (payload.customer_key or "").strip()
     contact_email = (payload.contact_email or "").strip()
@@ -5535,6 +5591,7 @@ def _build_mail_draft_intent_profile(
         admitted_fewshot_score=(admitted_fewshot or {}).get("useful_score"),
         admitted_fewshot_title=sanitize_text((admitted_fewshot or {}).get("title")),
         admitted_fewshot_content=_mail_sanitize_fewshot_reference_for_draft((admitted_fewshot or {}).get("content")),
+        admitted_fewshot_examples=admitted_fewshots or ([admitted_fewshot] if admitted_fewshot else []),
         commercial_terms=commercial_terms,
     )
 
@@ -6021,7 +6078,92 @@ def _mail_commercial_sequence_send_timing(scenario: str, suite_step: int) -> str
     return f"{step['timing']} 场景策略：{profile['relationship']}，语气要求：{profile['tone']}。"
 
 
+_MAIL_NEW_BUSINESS_PROMOTION_SCRIPT_OVERRIDES: dict[int, str] = {
+    1: (
+        "【结构脚本】\n"
+        "第1封：轻破冰。承接 {company_name} 的 {history}，把联系理由放到“行业交流/国际化沟通支持”，不要像推销服务。\n\n"
+        "【正文路径】\n"
+        "1. {customer_name} 单独称呼。\n"
+        "2. 用 {history} 里真实合作事实自然承接，只表达“之前有合作基础”，不写“最近整理/回想/上次聊到”。\n"
+        "3. 把主话题写成 {industry} 的国际化沟通、行业活动、双语资料或对外展示支持；不要把笔译写成核心卖点。\n"
+        "4. 从 {business_lines} 里只选一个主切口，轻轻说明可配合的方向，不堆服务清单。\n"
+        "5. 结尾低压力：问后续如果有相关活动/资料/对外沟通，是否可以提供一个简短参考或请对方判断是否转给相关团队。\n\n"
+        "【可用变量】\n"
+        "{customer_name}；{company_name}；{industry}；{history}；"
+        "{business_lines}=笔译/本地化、会议同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品中选1个；"
+        "{peer_case}；{seller_name}；{referral_request}。"
+    ),
+    2: (
+        "【结构脚本】\n"
+        "第2封：证据增强。用 {peer_case} 或同类型优秀邮件段落，证明我们理解行业沟通场景，不写成当前客户自己的历史。\n\n"
+        "【正文路径】\n"
+        "1. {customer_name} 单独称呼。\n"
+        "2. 先承接 {industry} 的国际化沟通、活动执行或双语资料场景，再引入参考，不要直接说“我们有很多案例”。\n"
+        "3. 从 {peer_case} 中只提炼“场景-做法-可借鉴点”，不编造公司名、年份、项目细节或客户反馈。\n"
+        "4. 结尾低压力：问是否值得整理一个简短参考清单，或请对方判断是否适合转给相关团队。\n\n"
+        "【可用变量】\n"
+        "{customer_name}；{company_name}；{industry}；{history}；"
+        "{business_lines}=笔译/本地化、会议同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品中选1个；"
+        "{peer_case}；{seller_name}；{referral_request}。"
+    ),
+    3: (
+        "【结构脚本】\n"
+        "第3封：协作路径。说明如果后续有行业活动、海外交流、双语资料或对外展示，可以从一个小场景开始。\n\n"
+        "【正文路径】\n"
+        "1. {customer_name} 单独称呼。\n"
+        "2. 基于 {industry} 和 {history}，提出“先从一个资料/会议/活动/视频内容场景梳理”的低门槛方式。\n"
+        "3. 从 {business_lines} 里选择 2-3 个相关组合，例如会议同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品等；不要全部罗列。\n"
+        "4. 结尾低压力：请对方给一个场景或资料类型，我们判断适合的配合方式，不谈价格和排期。\n\n"
+        "【可用变量】\n"
+        "{customer_name}；{company_name}；{industry}；{history}；"
+        "{business_lines}=同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品等按场景组合；"
+        "{seller_name}；{referral_request}。"
+    ),
+    4: (
+        "【结构脚本】\n"
+        "第4封：低压力收口。不要催单，只把这套邮件收束到“保持联系/后续有相关场景可再交流”。\n\n"
+        "【正文路径】\n"
+        "1. {customer_name} 单独称呼。\n"
+        "2. 简短承认对方当前未必有明确需求，说明前几封只是同步一个国际化沟通/活动支持方向。\n"
+        "3. 用 {business_lines} 概括可整理的服务范围，但不要写成报价、方案包或强推服务清单。\n"
+        "4. 结尾用 {referral_request}，表达后续有行业活动、双语资料、对外展示或相关项目时可以再配合；不直接索要电话、邮箱或具体联系人。\n\n"
+        "【可用变量】\n"
+        "{customer_name}；{company_name}；{industry}；{history}；"
+        "{business_lines}=笔译/本地化、会议同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品中整理服务范围；"
+        "{seller_name}；{referral_request}。"
+    ),
+}
+
+
+_MAIL_NEW_BUSINESS_PROMOTION_AI_INSTRUCTION_OVERRIDES: dict[int, str] = {
+    1: (
+        "第1封只做轻破冰。风格按 docx 标准：行业感、轻商务、不施压。"
+        "必须用 {history} 中真实事实切入，但不要把笔译写成核心卖点；主话题写成 {industry} 的国际化沟通、行业活动、双语资料或对外展示支持。"
+        "只选 {business_lines} 中一个主切口。不要写最近整理、上次聊到、感谢一直以来。结尾只给低压力参考或团队判断请求。"
+    ),
+    2: (
+        "第2封只做参考增强。风格按 docx 标准：先讲行业场景，再给参考，不要像群发销售。"
+        "优先使用 {peer_case}，但只提炼场景、做法、可借鉴点，不得把外部案例写成当前客户历史。"
+        "不要写有家客户、某客户、主办方反馈、客户反馈、去年、最近、这两天。结尾问是否值得整理简短参考清单。"
+    ),
+    3: (
+        "第3封只说明下一步怎么开始，不再讲案例。风格按 docx 标准：具体但不压迫。"
+        "从 {industry}、{history} 和 {business_lines} 里选 2-3 个合适组合，说明可先看哪类资料、会议、活动或视频内容场景。"
+        "不得写价格、免费、试译、工期承诺。"
+    ),
+    4: (
+        "第4封只做低压力收口，不催单，不复述所有能力。"
+        "用保持联系的语气收束到服务范围清单、资料评估或请对方判断转给相关团队。不得直接索要电话、邮箱、联系人。"
+    ),
+}
+
+
 def _mail_commercial_sequence_script(scenario: str, suite_step: int) -> str:
+    scenario_key = sanitize_text(scenario).strip()
+    step_no = int(suite_step)
+    if scenario_key == "new_business_promotion" and step_no in _MAIL_NEW_BUSINESS_PROMOTION_SCRIPT_OVERRIDES:
+        return _MAIL_NEW_BUSINESS_PROMOTION_SCRIPT_OVERRIDES[step_no]
+
     scenario_key = sanitize_text(scenario).strip()
     step_no = int(suite_step)
     profile = _MAIL_COMMERCIAL_SCENARIO_PROFILES[scenario_key]
@@ -6074,6 +6216,11 @@ def _mail_commercial_sequence_script(scenario: str, suite_step: int) -> str:
 def _mail_commercial_sequence_ai_instruction(scenario: str, suite_step: int) -> str:
     scenario_key = sanitize_text(scenario).strip()
     step_no = int(suite_step)
+    if scenario_key == "new_business_promotion" and step_no in _MAIL_NEW_BUSINESS_PROMOTION_AI_INSTRUCTION_OVERRIDES:
+        return _MAIL_NEW_BUSINESS_PROMOTION_AI_INSTRUCTION_OVERRIDES[step_no]
+
+    scenario_key = sanitize_text(scenario).strip()
+    step_no = int(suite_step)
     profile = _MAIL_COMMERCIAL_SCENARIO_PROFILES[scenario_key]
     step = _MAIL_COMMERCIAL_STEP_PROFILES[step_no]
     role_focus = _mail_ai_role_based_focus_brief(profile, scenario_key, step_no)
@@ -6113,10 +6260,10 @@ def _mail_commercial_sequence_template_payload(scenario: str, suite_step: int) -
 
 _MAIL_SEQUENCE_TEMPLATE_DEFAULT_VERSION = 30
 _MAIL_SEQUENCE_TEMPLATE_TARGETED_VERSIONS: dict[tuple[str, int], int] = {
-    ("new_business_promotion", 1): 46,
-    ("new_business_promotion", 2): 46,
-    ("new_business_promotion", 3): 46,
-    ("new_business_promotion", 4): 46,
+    ("new_business_promotion", 1): 52,
+    ("new_business_promotion", 2): 52,
+    ("new_business_promotion", 3): 52,
+    ("new_business_promotion", 4): 52,
     ("re_activation", 1): 46,
     ("re_activation", 2): 46,
     ("re_activation", 3): 46,
@@ -6283,12 +6430,43 @@ def _mail_subject_from_intent_profile(profile: MailDraftIntentProfile) -> str:
         ),
     )
 
+def _load_runtime_settings_with_defaults() -> dict[str, Any]:
+    import os, json
+    from intent_engine import IntentEngine
+
+    # Get defaults
+    try:
+        default_wecom_prompt = IntentEngine.get_ai_settings().get("SYSTEM_PROMPT_LLM2") or ""
+    except Exception:
+        default_wecom_prompt = ""
+
+    default_wecom_temp = 0.7
+    default_mail_prompt = _MAIL_DRAFT_LLM_SYSTEM_PROMPT
+    default_mail_temp = 0.3
+
+    path = os.path.join(os.path.dirname(__file__), "runtime_llm_settings.json")
+    data = {}
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            pass
+    if not isinstance(data, dict):
+        data = {}
+
+    return {
+        "wecom_system_prompt": data.get("wecom_system_prompt") or default_wecom_prompt,
+        "wecom_temperature": data.get("wecom_temperature") if data.get("wecom_temperature") is not None else default_wecom_temp,
+        "mail_system_prompt": data.get("mail_system_prompt") or default_mail_prompt,
+        "mail_temperature": data.get("mail_temperature") if data.get("mail_temperature") is not None else default_mail_temp,
+    }
+
+
 _MAIL_DRAFT_LLM_SYSTEM_PROMPT = (
-    "你是 SpeedAsia 资深B2B销售邮件起草人。目标是写出自然、具体、值得客户转发的商务邮件，"
-    "不是合规摘要或服务清单。优先用联系人、公司、行业、CRM事实和检索案例；缺事实时保守表达。"
-    "硬性安全线：禁价格/折扣/账期/免费承诺/内部编号/虚构数字/冒充客户反馈。"
-    "称呼必须单独成段，正文按逻辑自然分段。"
-    "只输出JSON：{\"subject\":\"\",\"paragraphs\":[\"称呼段\",\"正文自然段\"]}。"
+    "你是 SpeedAsia 的资深销售。写给客户的邮件要像真人发出的轻商务邮件：自然、具体、克制。\n"
+    "不要写成营销文、服务清单、合规摘要或 AI 总结。\n"
+    "只输出 JSON，不要 Markdown：{\"subject\":\"\",\"paragraphs\":[\"称呼段\",\"正文段1\",\"正文段2\"]}"
 )
 
 _MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE: str | None = None
@@ -6298,7 +6476,7 @@ def _mail_draft_chat_url(api_url: str) -> str:
     base = (api_url or "").rstrip("/")
     if not base:
         return ""
-    if base.endswith("/chat/completions"):
+    if base.endswith("/chat/completions") or base.endswith("/v1/messages"):
         return base
     return base + "/chat/completions"
 
@@ -6307,6 +6485,8 @@ def _mail_draft_llm_provider() -> str:
     provider = (_MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE or getattr(settings, "MAIL_DRAFT_LLM_PROVIDER", "") or "deepseek").strip().lower()
     if provider in {"chatgpt", "gpt", "openai"}:
         return "openai"
+    if provider in {"anthropic", "claude"}:
+        return "anthropic"
     return "deepseek"
 
 
@@ -6321,31 +6501,50 @@ def _mail_draft_llm_config(provider: str | None = None) -> dict[str, Any]:
         api_key = getattr(settings, "MAIL_DRAFT_OPENAI_API_KEY", "") or getattr(settings, "RECORDING_PARSE_OPENAI_VISION_API_KEY", "")
         model = getattr(settings, "MAIL_DRAFT_OPENAI_MODEL", "") or "gpt-4o-mini"
         timeout = int(getattr(settings, "MAIL_DRAFT_OPENAI_TIMEOUT_SECONDS", 60) or 60)
+    elif provider_key == "anthropic":
+        api_url = getattr(settings, "MAIL_DRAFT_ANTHROPIC_API_URL", "") or "https://api.anthropic.com/v1/messages"
+        api_key = getattr(settings, "MAIL_DRAFT_ANTHROPIC_API_KEY", "")
+        model = getattr(settings, "MAIL_DRAFT_ANTHROPIC_MODEL", "") or "claude-3-5-sonnet-20241022"
+        timeout = int(getattr(settings, "MAIL_DRAFT_ANTHROPIC_TIMEOUT_SECONDS", 60) or 60)
     else:
         provider_key = "deepseek"
         api_url = getattr(settings, "LLM2_API_URL", "")
         api_key = getattr(settings, "LLM2_API_KEY", "")
         model = getattr(settings, "LLM2_MODEL", "")
         timeout = int(getattr(settings, "LLM2_TIMEOUT_SECONDS", 100) or 100)
+    runtime_settings = _load_runtime_settings_with_defaults()
+    dyn_temp = runtime_settings.get("mail_temperature")
+    if dyn_temp is not None:
+        try:
+            temperature = float(dyn_temp)
+        except ValueError:
+            temperature = float(getattr(settings, "MAIL_DRAFT_LLM_TEMPERATURE", 0.7) or 0.7)
+    else:
+        temperature = float(getattr(settings, "MAIL_DRAFT_LLM_TEMPERATURE", 0.7) or 0.7)
+
     return {
         "provider": provider_key,
         "api_url": _mail_draft_chat_url(api_url),
         "api_key": api_key or "",
         "model": model or "",
         "timeout_seconds": timeout,
-        "temperature": float(getattr(settings, "MAIL_DRAFT_LLM_TEMPERATURE", 0.2) or 0.2),
-        "max_tokens": int(getattr(settings, "MAIL_DRAFT_LLM_MAX_TOKENS", 1200) or 1200),
+        "temperature": temperature,
+        "max_tokens": int(getattr(settings, "MAIL_DRAFT_LLM_MAX_TOKENS", 1800) or 1800),
     }
 
 
 def _mail_draft_llm_public_config() -> dict[str, Any]:
     active = _mail_draft_llm_provider()
     providers = []
-    for provider in ("deepseek", "openai"):
+    for provider in ("deepseek", "openai", "anthropic"):
         cfg = _mail_draft_llm_config(provider)
         providers.append({
             "provider": provider,
-            "label": "DeepSeek API" if provider == "deepseek" else "ChatGPT / OpenAI API",
+            "label": (
+                "DeepSeek API" if provider == "deepseek"
+                else "ChatGPT / OpenAI API" if provider == "openai"
+                else "Claude / Anthropic API"
+            ),
             "configured": bool(cfg["api_url"] and cfg["api_key"] and cfg["model"]),
             "api_url": cfg["api_url"],
             "model": cfg["model"],
@@ -6376,8 +6575,10 @@ def update_mail_draft_llm_config(payload: MailDraftLlmConfigUpdateRequest):
     provider = sanitize_text(payload.provider).strip().lower()
     if provider in {"chatgpt", "gpt"}:
         provider = "openai"
-    if provider not in {"deepseek", "openai"}:
-        raise HTTPException(status_code=422, detail="provider must be deepseek or openai")
+    if provider in {"claude"}:
+        provider = "anthropic"
+    if provider not in {"deepseek", "openai", "anthropic"}:
+        raise HTTPException(status_code=422, detail="provider must be deepseek, openai, or anthropic")
     cfg = _mail_draft_llm_config(provider)
     if not (cfg["api_url"] and cfg["api_key"] and cfg["model"]):
         raise HTTPException(status_code=422, detail=f"{provider} 邮件草稿 LLM 未配置完整，不能切换")
@@ -6390,8 +6591,10 @@ def test_mail_draft_llm_config(payload: MailDraftLlmConfigUpdateRequest):
     provider = sanitize_text(payload.provider).strip().lower()
     if provider in {"chatgpt", "gpt"}:
         provider = "openai"
-    if provider not in {"deepseek", "openai"}:
-        raise HTTPException(status_code=422, detail="provider must be deepseek or openai")
+    if provider in {"claude"}:
+        provider = "anthropic"
+    if provider not in {"deepseek", "openai", "anthropic"}:
+        raise HTTPException(status_code=422, detail="provider must be deepseek, openai, or anthropic")
     cfg = _mail_draft_llm_config(provider)
     if not (cfg["api_url"] and cfg["api_key"] and cfg["model"]):
         return {
@@ -6406,7 +6609,7 @@ def test_mail_draft_llm_config(payload: MailDraftLlmConfigUpdateRequest):
         globals()["_MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE"] = provider
         test_prompt = (
             "只输出JSON，不要markdown。"
-            "{\"subject\":\"测试邮件主题\",\"paragraphs\":[\"测试您好，\",\"这是一条邮件模型连通性测试。\"]}"
+            '{"subject":"测试邮件主题","paragraphs":["测试您好，","这是一条邮件模型连通性测试。"]}'
         )
         result = _call_llm2_json_for_mail_draft(test_prompt, timeout_seconds=min(cfg["timeout_seconds"], 30))
         return {
@@ -6422,9 +6625,9 @@ def test_mail_draft_llm_config(payload: MailDraftLlmConfigUpdateRequest):
 
 
 def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> dict:
-    """调邮件草稿 LLM provider（默认 DeepSeek，可切 OpenAI/ChatGPT）拿 JSON 响应。
+    """Call mail draft LLM provider (default DeepSeek, can switch to OpenAI/ChatGPT/Claude) for JSON response.
 
-    返回 {parsed: dict | None, raw_text: str, error: str | None, model: str}.
+    Returns {parsed: dict | None, raw_text: str, error: str | None, model: str}.
     """
     import requests as _rq
 
@@ -6436,17 +6639,36 @@ def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> di
     if not api_url or not api_key or not model:
         return {"parsed": None, "raw_text": "", "error": f"{provider} 邮件草稿 LLM 环境变量未配置完整", "model": model}
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": cfg["temperature"],
-        "max_tokens": cfg["max_tokens"],
-        "response_format": {"type": "json_object"},
-    }
+    # If it is Anthropic native API:
+    if provider == "anthropic" and ("api.anthropic.com" in api_url or "/v1/messages" in api_url):
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": cfg["temperature"],
+            "max_tokens": cfg["max_tokens"],
+        }
+    else:
+        # Standard OpenAI API call
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": cfg["temperature"],
+            "max_tokens": cfg["max_tokens"],
+        }
+        # Do not force response_format JSON if it's Claude model or Anthropic provider,
+        # as standard proxy APIs might fail or reject JSON schema formatting parameters
+        if not ("claude" in model.lower() or "anthropic" in provider):
+            payload["response_format"] = {"type": "json_object"}
+
     raw_text = ""
     try:
         session = _rq.Session()
@@ -6455,24 +6677,218 @@ def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> di
         if resp.status_code != 200:
             return {"parsed": None, "raw_text": "", "error": f"{provider} HTTP {resp.status_code}: {resp.text[:200]}", "model": f"{provider}:{model}"}
         data = resp.json()
-        raw_text = data["choices"][0]["message"]["content"] if "choices" in data else ""
-        # v1.7.207 注释掉 markdown 代码块剥离兜底 — 让 LLM2 返带 ```json``` 包装的非法 JSON 直接解析失败暴露问题.
-        # 旧逻辑（已注释）:
-        #   cleaned = raw_text.strip()
-        #   if cleaned.startswith("```json"): cleaned = cleaned[7:]
-        #   if cleaned.startswith("```"):     cleaned = cleaned[3:]
-        #   if cleaned.endswith("```"):       cleaned = cleaned[:-3]
-        #   cleaned = cleaned.strip()
-        parsed = json.loads(raw_text.strip())
+
+        # Parse text field depending on response structure
+        if provider == "anthropic" and "content" in data:
+            raw_text = data["content"][0]["text"] if data["content"] else ""
+        elif "choices" in data:
+            raw_text = data["choices"][0]["message"]["content"] if "choices" in data else ""
+        else:
+            # Fallback if proxy behaves differently
+            raw_text = data.get("content") or ""
+
+        # Safely strip potential markdown blocks from raw response text
+        cleaned = raw_text.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        if cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+
+        parsed = json.loads(cleaned)
         return {"parsed": parsed, "raw_text": raw_text, "error": None, "model": f"{provider}:{model}"}
     except json.JSONDecodeError as exc:
-        # v1.7.208 保留：JSON 解析失败 return error dict 上去，上层 _llm_generate_mail_intro_paragraphs
-        # 立即 raise HTTPException 503 暴露给前端。这不是兜底假数据 — error 字段明示失败，parsed=None。
-        # 属于用户允许保留的"异常跳过 + return 失败信号给调用方"模式。
-        return {"parsed": None, "raw_text": raw_text, "error": f"JSON 解析失败（已禁用 markdown 剥离兜底）: {exc}", "model": f"{provider}:{model}"}
+        return {"parsed": None, "raw_text": raw_text, "error": f"JSON 解析失败: {exc}. 原始输出: {raw_text[:200]}", "model": f"{provider}:{model}"}
     except Exception as exc:
-        # v1.7.208 保留：未知异常同上 — return error dict 给上层立刻 raise。不假装成功，不返 placeholder。
         return {"parsed": None, "raw_text": "", "error": f"{provider} 调用异常: {sanitize_text(str(exc))[:200]}", "model": f"{provider}:{model}"}
+
+
+def _mail_generation_industry_for_prompt(profile: MailDraftIntentProfile) -> str:
+    company_raw = sanitize_text(profile.company_name or "")
+    company = company_raw.lower()
+    raw_industry = sanitize_text(profile.company_industry or "")
+    medical_company_tokens = ("爱德华", "edwards", "医疗", "medical", "医药", "生物", "生命科学", "器械")
+    if any(token in company_raw for token in medical_company_tokens) or any(token in company for token in medical_company_tokens):
+        return "医疗器械/生命科学客户（法律/合同仅作资料类型线索）"
+    industrial_company_tokens = ("设备", "空气处理", "制造", "工业", "机械", "工程", "电气", "半导体", "材料", "化工")
+    if any(token in company_raw for token in industrial_company_tokens) or any(token in company for token in industrial_company_tokens):
+        return "工业设备/制造客户（法律/合同仅作资料类型线索）"
+    if raw_industry in {"legal", "法律服务", "法律资料"}:
+        return "客户行业未确认；法律/合同仅作资料类型线索"
+    return raw_industry or "客户行业未明确，按客户公司名和历史合作保守判断"
+
+
+def _mail_prompt_template_text(value: str | None, limit: int = 1200) -> str:
+    text_value = sanitize_text(value or "")
+    if not text_value:
+        return "无前台模板内容。"
+    return text_value[:limit]
+
+
+def _mail_prompt_variable_value(value: str | None, limit: int = 240) -> str:
+    text_value = _mail_prompt_fact(value, limit)
+    if text_value in {"无明确记录", "unknown", "None"}:
+        return "无明确记录"
+    return text_value
+
+
+def _mail_prompt_template_variable_map(
+    profile: MailDraftIntentProfile,
+    *,
+    industry: str,
+    crm_history: str,
+    fewshot_title: str,
+    fewshot_content: str,
+    service_focus: str,
+) -> list[str]:
+    return [
+        f"{{customer_name}} = {_mail_prompt_variable_value(profile.recipient_name, 60)}",
+        f"{{company_name}} = {_mail_prompt_variable_value(profile.company_name, 100)}",
+        f"{{industry}} = {_mail_prompt_variable_value(industry, 80)}",
+        f"{{history}} = {_mail_prompt_variable_value(crm_history, 120)}",
+        f"{{peer_case}} = {fewshot_title or '无命中'}",
+        f"{{business_lines}} = {service_focus.rstrip('。')}",
+        f"{{seller_name}} = {_mail_prompt_variable_value(profile.seller_name, 40)}",
+        "{referral_request} = 请对方判断是否转给相关团队，不直接索要电话或邮箱",
+    ]
+
+
+def _mail_prompt_fewshot_examples(profile: MailDraftIntentProfile, limit: int = 3) -> list[str]:
+    examples = []
+    for item in (profile.admitted_fewshot_examples or [])[:max(int(limit), 1)]:
+        title = _mail_prompt_fact(sanitize_text(item.get("title") if isinstance(item, dict) else ""), 80)
+        content = _mail_sanitize_fewshot_reference_for_draft(item.get("content") if isinstance(item, dict) else "") or ""
+        content = _mail_prompt_fact(content, 110)
+        score = item.get("useful_score") if isinstance(item, dict) else None
+        label = title if title != "无明确记录" else "未命名优秀邮件段落"
+        body = content if content != "无明确记录" else "无可用内容"
+        score_text = f"；分数：{score}" if score is not None else ""
+        examples.append(f"{len(examples) + 1}）{label}{score_text}\n{body}")
+    return examples
+
+
+def _mail_generation_stage_brief(profile: MailDraftIntentProfile) -> str:
+    scenario = sanitize_text(profile.scenario)
+    step_no = int(profile.suite_step)
+    if scenario == "new_business_promotion":
+        return {
+            1: "第1封：破冰。承接已有合作，只提出一个自然的非笔译业务切口。",
+            2: "第2封：补一个同类型参考，不写成当前客户自己的历史。",
+            3: "第3封：说明如果要推进，可以从什么资料/场景开始。",
+            4: "第4封：低压力收口，请对方判断是否需要服务清单或转给相关团队。",
+        }.get(step_no, "按当前阶段写。")
+    if scenario == "re_activation":
+        return {
+            1: "第1封：像老朋友一样重新保持联系，不催单。",
+            2: "第2封：用相近行业经验唤醒需求。",
+            3: "第3封：给一个很轻的协作路径。",
+            4: "第4封：礼貌收口，确认是否需要资料评估或转给相关同事。",
+        }.get(step_no, "按当前阶段写。")
+    if scenario == "new_contact_intro":
+        return {
+            1: "第1封：说明身份和来意，确认是否找对负责人。",
+            2: "第2封：补充可信经验。",
+            3: "第3封：说明项目怎么开始。",
+            4: "第4封：低压力确认负责人或转介绍。",
+        }.get(step_no, "按当前阶段写。")
+    return "按当前阶段写。"
+
+
+def _mail_generation_opening_hint(profile: MailDraftIntentProfile) -> str:
+    scenario = sanitize_text(profile.scenario)
+    step_no = int(profile.suite_step)
+    if scenario == "new_business_promotion":
+        return {
+            1: "从真实历史合作事实开头，顺势提出一个非笔译业务切口。",
+            2: "从同类型优秀段落或可迁移场景切入，但不要写成当前客户自己的历史。",
+            3: "从一个很小的资料、会议、活动或内容场景开始梳理。",
+            4: "低压力同步服务范围，请对方判断是否需要清单、资料评估或转给相关团队。",
+        }.get(step_no, "")
+    return ""
+
+
+def _mail_prompt_short_purpose(profile: MailDraftIntentProfile) -> str:
+    purpose = sanitize_text(profile.sequence_template_purpose)
+    default_markers = ("4 封套装", "必须服务于总目标", "商用邮件标准")
+    if not purpose or any(marker in purpose for marker in default_markers):
+        return _mail_generation_stage_brief(profile)
+    return _mail_prompt_fact(purpose, 70)
+
+
+def _mail_prompt_short_timing(profile: MailDraftIntentProfile) -> str:
+    timing = sanitize_text(profile.sequence_template_send_timing)
+    if not timing:
+        return ""
+    match = re.search(r"第\s*\d+\s*天发送(?:：[^。；;]*)?", timing)
+    if match:
+        return match.group(0).strip()
+    return _mail_prompt_fact(timing, 55)
+
+
+def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile) -> str:
+    fewshot_title = _mail_prompt_fact(profile.admitted_fewshot_title, 60)
+    fewshot_content = _mail_prompt_fact(profile.admitted_fewshot_content, 260)
+    crm_history = "；".join(
+        part
+        for part in [
+            f"商机：{_mail_prompt_fact(profile.recent_opportunities, 70)}",
+            f"历史：{_mail_prompt_fact(profile.ongoing_contracts, 70)}",
+            f"跟进：{_mail_prompt_fact(profile.contact_recent_followup, 70)}",
+        ]
+        if "无明确记录" not in part
+    ) or "无明确历史记录。"
+    crm_history = re.sub(r"负责人：[^｜；;，,。]+[｜；;，,]?", "", crm_history)
+    crm_history = re.sub(r"销售：[^，,；;。]+[，,；;]?", "", crm_history)
+    crm_history = re.sub(r"(?:QQ|微信|企微|电话)[，,；;]?", "", crm_history, flags=re.IGNORECASE)
+    crm_history = re.sub(r"销售询问[^；;。]*负责人信息", "有相关部门协作线索", crm_history)
+    crm_history = re.sub(r"[；;]?\s*跟进：.*$", "", crm_history)
+    crm_history = re.sub(r"-{3,}", "", crm_history).strip("；; ，,")
+    crm_history = crm_history.replace("近期商机记录", "已有商机记录")
+    crm_history = crm_history.replace("近期时间", "历史时间")
+    scenario_cn = _MAIL_SCENARIO_CHINESE.get(profile.scenario, profile.scenario_label)
+    industry = _mail_generation_industry_for_prompt(profile)
+    service_focus = (
+        "选1个主切口：笔译/本地化、会议同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品。"
+        if profile.scenario == "new_business_promotion"
+        else "只选1个最贴合客户背景的服务切口。"
+    )
+    template_script = _mail_prompt_template_text(profile.sequence_template_script, 900)
+    template_ai_instruction = _mail_prompt_template_text(profile.sequence_template_ai_instruction, 500)
+    variable_map = _mail_prompt_template_variable_map(
+        profile,
+        industry=industry,
+        crm_history=crm_history,
+        fewshot_title=fewshot_title if fewshot_title != "无明确记录" else "",
+        fewshot_content=fewshot_content if fewshot_content != "无明确记录" else "",
+        service_focus=service_focus,
+    )
+    fewshot_examples = _mail_prompt_fewshot_examples(profile, limit=3)
+    user_prompt = "\n".join([
+        f"任务：{scenario_cn}第{profile.suite_step}/4封。",
+        f"目标：{_mail_prompt_short_purpose(profile)}",
+        f"节奏：{_mail_prompt_short_timing(profile)}",
+        "",
+        "结构脚本：",
+        template_script,
+        "",
+        "AI指令：",
+        template_ai_instruction,
+        "",
+        "变量取值：",
+        *variable_map,
+        "",
+        "相关优秀同类型邮件段落供参考或运用（只参考节奏、场景和表达方式，不得把外部案例写成当前客户自己的历史）：",
+        *(fewshot_examples or ["无命中。"]),
+        "",
+        "边界：按结构脚本和AI指令写；每封只选一个主切口；CRM事实只做背景；禁价格/报价/折扣/账期/免费/试译/样稿/工期承诺/内部编号；不得直接索要电话、邮箱、联系人；不得把资料类型写成客户行业。",
+        "",
+        "输出：只输出JSON，paragraphs第一段必须只是称呼。",
+    ])
+    runtime_settings = _load_runtime_settings_with_defaults()
+    system_prompt = runtime_settings.get("mail_system_prompt") or _MAIL_DRAFT_LLM_SYSTEM_PROMPT
+    return system_prompt + "\n\n" + user_prompt
 
 
 def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict:
@@ -6483,76 +6899,7 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
       让上层 _assemble_mail_draft_from_intent_profile 假装"已识别为兜底"。
     - 成功路径返 {status: 'success', model, subject, paragraphs, error: None, prompt}。
     """
-    fewshot_reference = _mail_prompt_fact(profile.admitted_fewshot_content, 80)
-    fewshot_title = _mail_prompt_fact(profile.admitted_fewshot_title, 50)
-    scenario_cn = _MAIL_SCENARIO_CHINESE.get(profile.scenario, profile.scenario_label)
-    stage_rule = {
-        1: (
-            "破冰+来意：像 docx 优秀邮件一样，写1个基于已给CRM/行业事实的具体业务切口，"
-            "可写“如果后续有这类需求，我们可以准备一个简短参考/优化方向/类似场景做法”，再给低压力下一步；"
-            "没有材料证据时不得写“我们整理了/我们注意到贵司近期有”。"
-            "不要写成长案例或完整方案。"
-        ),
-        2: "以脱敏外部案例为主：痛点-做法-价值；不把当前客户历史当案例。",
-        3: "以执行路径为主：资料输入、服务组合、协作动作；可简短呼应前文案例但不重复展开。",
-        4: "低压力收口：服务清单/评估项/负责人确认；不直接要联系人。",
-    }.get(int(profile.suite_step), "按当前阶段目标推进。")
-    scenario_rule = {
-        "new_business_promotion": (
-            "老客户其他业务介绍：笔译只能作为已合作背景一笔带过，正文主推非笔译业务，"
-            "例如多媒体本地化、会议同传与设备、培训课件、排版印刷、活动物料。"
-        ),
-        "re_activation": "老客户激活：像关系维护一样重新联系，说明能力更成熟；不提旧报价、不催单。",
-        "new_contact_intro": "新联系人介绍：先说业务场景和可解决问题，再确认相关团队。",
-    }.get(profile.scenario, "按当前场景写作。")
-    if profile.scenario == "new_contact_intro" and int(profile.suite_step) == 1:
-        stage_rule = (
-            "首次商业介绍：1段建立身份与来意，1段结合客户行业写3项差异化服务组合，"
-            "1段给一个轻参考或可评估方向，并确认正确负责人；不写报价或完整方案。"
-        )
-    crm_history = "；".join(
-        part
-        for part in [
-            f"商机：{_mail_prompt_fact(profile.recent_opportunities, 55)}",
-            f"历史：{_mail_prompt_fact(profile.ongoing_contracts, 55)}",
-            f"跟进：{_mail_prompt_fact(profile.contact_recent_followup, 55)}",
-        ]
-        if "无明确记录" not in part
-    ) or "无明确历史记录，需保守承接。"
-    crm_history = _mail_prompt_fact(crm_history, 150)
-    user_prompt_lines = [
-        f"任务：写{scenario_cn}第{profile.suite_step}/4封。{stage_rule}",
-        f"场景：{scenario_rule}",
-        f"1. 联系人/称呼：{_mail_prompt_fact(profile.recipient_name, 40)}；公司：{_mail_prompt_fact(profile.company_name, 80)}。",
-        f"2. 画像：行业={_mail_prompt_fact(profile.company_industry, 40)}；生命周期={_mail_prompt_fact(profile.customer_lifecycle_stage, 60)}。",
-        f"3. CRM事实：{crm_history}。只承接关系/判断需求，禁止写成案例推回本人。",
-        f"4. 黄金范例：{fewshot_title}；{fewshot_reference}。只学结构，禁止照抄。",
-        (
-            "事实边界：只能写上面明确给出的公司、行业、CRM历史、商机、跟进、黄金范例。"
-            "严禁编造“近期注意到/了解到/看到贵司有多场活动、会议、项目、法律合规拓展”等事实；"
-            "严禁写“我们已整理/已准备/已制作某参考材料”，除非上文事实明确存在。"
-            "如果只是销售建议，必须写成“可以准备/可整理/可以按实际资料做一个简短参考”。"
-        ),
-        (
-            "案例边界：第1封可写轻量参考/类似场景/可分享示例，但不要写成长案例；"
-            "第2封再展开脱敏外部案例。当前联系人往来不能当案例；非案例范例只写可迁移经验。"
-        ),
-        f"{_MAIL_AI_PROMPT_PLAYBOOK_BRIEF} {_mail_ai_subject_guidance(profile.scenario)}",
-        "转介绍规则：问“这类项目通常由哪个团队负责”，请其判断是否转发；不得写请告知联系人/电话/邮箱。",
-        f"{_mail_gold_style_brief(profile)} {_mail_service_focus_brief(profile)}",
-        f"本步目标：{_mail_prompt_fact(profile.sequence_template_purpose or profile.objective, 60)}",
-        f"CTA：{_mail_prompt_fact(profile.cta_style, 50)}；非本人负责则请其转发给相关团队。",
-        (
-            "标准：称呼单独一段；正文按逻辑自然分段，不强制4段；"
-            "要像真实销售邮件，有基于事实的具体切口、可准备的轻量参考、客户可转发理由和一个明确但低压力的下一步；"
-            "老客户其他业务介绍必须把非笔译服务写成主线，不能继续围绕笔译/翻译展开；"
-            "禁内部编号、项目号、金额、价格、免费承诺、客户反馈引语。"
-        ),
-        "",
-        "立即输出JSON，不要markdown。",
-    ]
-    user_prompt = "\n".join(user_prompt_lines)
-    full_prompt = _MAIL_DRAFT_LLM_SYSTEM_PROMPT + "\n\n" + user_prompt
+    full_prompt = _build_mail_draft_llm_full_prompt(profile)
 
     llm_resp = _call_llm2_json_for_mail_draft(full_prompt, timeout_seconds=35)
     model_name = llm_resp.get("model") or "llm2"
@@ -6716,13 +7063,15 @@ def _build_mail_generate_draft_response(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     min_score = _mail_fewshot_min_score()
-    fewshot = _mail_generate_draft_fewshot(
+    fewshot_examples = _mail_generate_draft_fewshot_candidates(
         db,
         scenario=payload.scenario,
         suite_step=int(payload.suite_step),
         function_fragments=tuple(step.recommended_snippet_types),
         min_score=min_score,
+        limit=3,
     )
+    fewshot = fewshot_examples[0] if fewshot_examples else None
     commercial_terms = _resolve_mail_commercial_terms(db, suite_step=int(payload.suite_step))
     sequence_template = _get_mail_sequence_template_for_prompt(db, payload.scenario, int(payload.suite_step))
     intent_profile = _build_mail_draft_intent_profile(
@@ -6730,6 +7079,7 @@ def _build_mail_generate_draft_response(
         step=step,
         interval=interval,
         admitted_fewshot=fewshot,
+        admitted_fewshots=fewshot_examples,
         commercial_terms=commercial_terms,
         sequence_template=sequence_template,
     )
@@ -13051,6 +13401,11 @@ def _train_ai_config() -> dict:
         "api_key": _runtime_setting("TRAIN_AI_API_KEY", settings.TRAIN_AI_API_KEY),
         "model": model,
         "timeout_seconds": _runtime_int_setting("TRAIN_AI_TIMEOUT_SECONDS", settings.TRAIN_AI_TIMEOUT_SECONDS, 10),
+        "model_list_timeout_seconds": _runtime_int_setting(
+            "TRAIN_AI_MODEL_LIST_TIMEOUT_SECONDS",
+            getattr(settings, "TRAIN_AI_MODEL_LIST_TIMEOUT_SECONDS", 2),
+            2,
+        ),
         "max_tokens": _runtime_int_setting("TRAIN_AI_MAX_TOKENS", settings.TRAIN_AI_MAX_TOKENS, 300),
     }
 
@@ -13071,7 +13426,7 @@ def _train_ai_list_models() -> list[dict]:
         last_error = ""
         for protocol, url, request_headers in attempts:
             try:
-                resp = session.get(url, headers=request_headers, timeout=15)
+                resp = session.get(url, headers=request_headers, timeout=max(1, int(cfg.get("model_list_timeout_seconds") or 2)))
                 if resp.status_code == 404:
                     last_error = f"{protocol}:404"
                     continue
@@ -13117,7 +13472,32 @@ def _train_ai_chat(messages: list[dict], *, temperature: float | None = None, ma
     reply(回复文本)/status(success|timeout|failed|disabled)/latency_ms(实际费时)/model/error。
     超时按 TRAIN_AI_TIMEOUT_SECONDS(默认10s)，超时即返回 status=timeout 且 reply 为空，由上层走空值下一步。"""
     cfg = _train_ai_config()
-    out = {"reply": "", "status": "disabled", "latency_ms": None, "model": cfg["model"], "error": ""}
+    prompt_messages = [
+        {
+            "role": sanitize_text((item or {}).get("role")) or "user",
+            "content": str((item or {}).get("content") or ""),
+        }
+        for item in (messages or [])
+        if isinstance(item, dict)
+    ]
+    final_prompt = "\n\n".join(item["content"] for item in prompt_messages if item.get("content"))
+    prompt_trace = {
+        "provider": "train_ai",
+        "model": cfg["model"],
+        "messages": prompt_messages,
+        "final_prompt": final_prompt,
+        "final_prompt_chars": len(final_prompt),
+        "message_count": len(prompt_messages),
+        "stored_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+    }
+    out = {
+        "reply": "",
+        "status": "disabled",
+        "latency_ms": None,
+        "model": cfg["model"],
+        "error": "",
+        "prompt_trace": prompt_trace,
+    }
     if not cfg["enabled"] or not cfg["base_url"] or not cfg["model"]:
         out["error"] = "训练AI未启用或未配置"
         return out
@@ -13715,11 +14095,38 @@ async def get_system_config_check():
     return _system_config_check()
 
 
+@app.get("/api/v1/system/runtime-llm-settings")
+def get_runtime_llm_settings():
+    return _load_runtime_settings_with_defaults()
+
+
+@app.put("/api/v1/system/runtime-llm-settings")
+def update_runtime_llm_settings(payload: RuntimeLlmSettings):
+    import os, json
+    existing = _load_runtime_settings_with_defaults()
+    if payload.wecom_system_prompt is not None:
+        existing["wecom_system_prompt"] = payload.wecom_system_prompt
+    if payload.wecom_temperature is not None:
+        existing["wecom_temperature"] = payload.wecom_temperature
+    if payload.mail_system_prompt is not None:
+        existing["mail_system_prompt"] = payload.mail_system_prompt
+    if payload.mail_temperature is not None:
+        existing["mail_temperature"] = payload.mail_temperature
+
+    path = os.path.join(os.path.dirname(__file__), "runtime_llm_settings.json")
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(existing, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"保存 runtime_llm_settings.json 失败: {e}")
+    return {"status": "success", "settings": existing}
+
+
 _TRAIN_AI_MODELS_CACHE = {"at_epoch": 0.0, "items": None}
 _TRAIN_AI_MODELS_CACHE_TTL_SECONDS = 300  # 5 分钟; 模型列表很少变, 没必要每次刷新都打外部接口
 
 @app.get("/api/train_ai/models")
-async def get_train_ai_models():
+async def get_train_ai_models(refresh: bool = Query(default=False)):
     """训练AI 可选模型列表(供下拉选择)，并标出当前选中的模型。"""
     cfg = _train_ai_config()
     try:
@@ -13732,6 +14139,8 @@ async def get_train_ai_models():
         cached = _TRAIN_AI_MODELS_CACHE
         if cached["items"] is not None and (now_epoch - cached["at_epoch"]) < _TRAIN_AI_MODELS_CACHE_TTL_SECONDS:
             items = cached["items"]
+        elif not refresh:
+            items = [{"model_name": cfg["model"]}] if cfg.get("model") else []
         else:
             items = await asyncio.to_thread(_train_ai_list_models)
             _TRAIN_AI_MODELS_CACHE["items"] = items
@@ -13741,6 +14150,8 @@ async def get_train_ai_models():
             "enabled": cfg["enabled"],
             "current_model": cfg["model"],
             "timeout_seconds": cfg["timeout_seconds"],
+            "model_list_refreshed": bool(refresh),
+            "model_list_source": "cache" if cached["items"] is not None else ("remote" if refresh else "configured"),
             "total": len(items),
             "items": items,
         }
@@ -13890,6 +14301,52 @@ async def get_archive_sync_status(chat_date: str | None = Query(default=None), d
         "generated_at": datetime.utcnow().isoformat(),
         "diagnostics": diagnostics,
     }
+
+@app.get("/api/system/db_lock_status")
+async def get_db_lock_status(db: Session = Depends(get_db)):
+    """只读数据库锁/慢会话诊断；不主动终止连接。"""
+    try:
+        active_rows = db.execute(text("""
+            SELECT pid, state, wait_event_type, wait_event,
+                   EXTRACT(EPOCH FROM (now() - query_start))::int AS age_seconds,
+                   left(query, 220) AS query
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND state <> 'idle'
+            ORDER BY query_start NULLS LAST
+            LIMIT 30
+        """)).mappings().all()
+        blocked_rows = db.execute(text("""
+            SELECT a.pid, a.state, a.wait_event_type, a.wait_event,
+                   EXTRACT(EPOCH FROM (now() - a.query_start))::int AS age_seconds,
+                   left(a.query, 220) AS query,
+                   pg_blocking_pids(a.pid) AS blockers
+            FROM pg_stat_activity a
+            WHERE cardinality(pg_blocking_pids(a.pid)) > 0
+            ORDER BY a.query_start NULLS LAST
+            LIMIT 30
+        """)).mappings().all()
+        table_rows = db.execute(text("""
+            SELECT relname, n_live_tup, n_dead_tup, last_autovacuum, last_autoanalyze
+            FROM pg_stat_user_tables
+            WHERE relname IN ('message_logs', 'api_assist_invocation', 'intent_summaries', 'case_iteration_run')
+            ORDER BY relname
+        """)).mappings().all()
+        return {
+            "status": "success",
+            "active": [dict(row) for row in active_rows],
+            "blocked": [dict(row) for row in blocked_rows],
+            "tables": [dict(row) for row in table_rows],
+            "timeouts": {
+                "statement_timeout_ms": getattr(settings, "DATABASE_STATEMENT_TIMEOUT_MS", None),
+                "idle_in_transaction_timeout_ms": getattr(settings, "DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS", None),
+                "lock_timeout_ms": getattr(settings, "DATABASE_LOCK_TIMEOUT_MS", None),
+            },
+            "auto_terminate_enabled": False,
+            "note": "当前接口只诊断不杀连接；防锁死依赖 PostgreSQL session timeout 自动生效。",
+        }
+    except Exception as exc:
+        return {"status": "error", "error": sanitize_text(str(exc))[:500]}
 
 @app.post("/api/kb/documents/{document_id}/publish")
 async def publish_kb_document(
@@ -15759,13 +16216,15 @@ def _run_one_mail_iteration_draft(
         step = get_mail_sequence_step(payload.scenario, int(payload.suite_step))
         interval = get_mail_sequence_step_interval(payload.scenario, int(payload.suite_step))
         min_score = _mail_fewshot_min_score()
-        fewshot = _mail_generate_draft_fewshot(
+        fewshot_examples = _mail_generate_draft_fewshot_candidates(
             db,
             scenario=payload.scenario,
             suite_step=int(payload.suite_step),
             function_fragments=tuple(step.recommended_snippet_types),
             min_score=min_score,
+            limit=3,
         )
+        fewshot = fewshot_examples[0] if fewshot_examples else None
         commercial_terms = _resolve_mail_commercial_terms(db, suite_step=int(payload.suite_step))
         sequence_template = _get_mail_sequence_template_for_prompt(db, payload.scenario, int(payload.suite_step))
         intent_profile = _build_mail_draft_intent_profile(
@@ -15773,6 +16232,7 @@ def _run_one_mail_iteration_draft(
             step=step,
             interval=interval,
             admitted_fewshot=fewshot,
+            admitted_fewshots=fewshot_examples,
             commercial_terms=commercial_terms,
             sequence_template=sequence_template,
         )
@@ -15934,6 +16394,8 @@ def trigger_mail_iteration_run(payload: MailIterationRunRequest, db: Session = D
     last = db.query(MailIterationRun).order_by(MailIterationRun.version_no.desc()).first()
     next_version = (last.version_no + 1) if last else 1
 
+    runtime_settings = _load_runtime_settings_with_defaults()
+    sys_prompt = runtime_settings.get("mail_system_prompt") or _MAIL_DRAFT_LLM_SYSTEM_PROMPT
     run_row = MailIterationRun(
         version_no=next_version,
         run_label=(payload.run_label or f"邮件迭代 v{next_version}").strip(),
@@ -15944,7 +16406,7 @@ def trigger_mail_iteration_run(payload: MailIterationRunRequest, db: Session = D
         pipeline_snapshot={
             "llm_model": getattr(settings, "LLM1_MODEL", "") or "llm1",
             "llm_url": getattr(settings, "LLM1_API_URL", "") or "",
-            "system_prompt_first_120_chars": _MAIL_DRAFT_LLM_SYSTEM_PROMPT[:120],
+            "system_prompt_first_120_chars": sys_prompt[:120],
             "demo_contact_count": demo_count,
             "demo_contact_scope": "current_3_cases",
             "current_case_customer_keys": [item["real_customer_key"] for item in MAIL_CURRENT_DEMO_CASES],
@@ -16818,7 +17280,7 @@ def _build_api_session_marks(db: Session, *, day_start: datetime, day_end: datet
 @app.get("/api/sessions")
 async def get_sessions(chat_date: str | None = Query(default=None), db: Session = Depends(get_db)):
     """获取真实会话列表；模拟数据不会进入日常运行视图。"""
-    from sqlalchemy import func, cast, Integer, text
+    from sqlalchemy import text
     total_started = perf_counter()
     timings_ms: dict[str, float] = {}
 
@@ -16827,18 +17289,28 @@ async def get_sessions(chat_date: str | None = Query(default=None), db: Session 
     timings_ms["parse_filter_date_ms"] = round((perf_counter() - stage_started) * 1000, 2)
 
     stage_started = perf_counter()
-    results = db.query(
-        MessageLog.user_id,
-        func.max(MessageLog.timestamp).label("last_msg"),
-        func.max(cast(MessageLog.is_mock, Integer)).label("is_mock_int")
-    ).filter(MessageLog.is_mock.is_(False))
+    params: dict[str, Any] = {}
+    where_parts = ["is_mock IS FALSE"]
     if date_range:
         day_start, day_end = date_range
-        results = results.filter(
-            MessageLog.timestamp >= day_start,
-            MessageLog.timestamp < day_end,
-        )
-    results = results.group_by(MessageLog.user_id).order_by(text("last_msg DESC")).all()
+        where_parts.append("timestamp >= :day_start")
+        where_parts.append("timestamp < :day_end")
+        params.update({"day_start": day_start, "day_end": day_end})
+    where_sql = " AND ".join(where_parts)
+    # DISTINCT ON 直接取每个会话最新一条，避免 GROUP BY 全表聚合拖慢会话列表。
+    rows = db.execute(text(f"""
+        SELECT user_id, last_msg
+        FROM (
+            SELECT DISTINCT ON (user_id)
+                   user_id,
+                   timestamp AS last_msg
+            FROM message_logs
+            WHERE {where_sql}
+            ORDER BY user_id, timestamp DESC
+        ) latest
+        ORDER BY last_msg DESC NULLS LAST
+        LIMIT 500
+    """), params).fetchall()
     timings_ms["query_sessions_ms"] = round((perf_counter() - stage_started) * 1000, 2)
 
     session_marks: dict[str, dict] = {}
@@ -16868,10 +17340,10 @@ async def get_sessions(chat_date: str | None = Query(default=None), db: Session 
     payload = {
         "sessions": [
             {
-                "user_id": r.user_id,
-                "last_msg": r.last_msg,
-                "is_mock": bool(r.is_mock_int),
-                **(session_marks.get(str(r.user_id)) or {
+                "user_id": r[0],
+                "last_msg": r[1],
+                "is_mock": False,
+                **(session_marks.get(str(r[0])) or {
                     "has_api_invocation": False,
                     "api_invocation_count": 0,
                     "api_last_triggered_at": None,
@@ -18457,6 +18929,7 @@ def _generate_reply_style_candidates(
     # 训练AI(train_ai)：与当前流程并行触发(不串行,不影响主回复输出速度)。
     # 复用主模型(知识库1+首个风格)的同一份生成 prompt，单独调用 model-chat 接口，自带 10s 超时。
     train_ai_future = None
+    train_ai_prompt_trace = None
     train_ai_cfg = _train_ai_config()
     if train_ai_cfg["enabled"] and styles:
         try:
@@ -18467,7 +18940,17 @@ def _generate_reply_style_candidates(
                 reply_style=styles[0],
                 label="TRAIN_AI",
             )
-            _train_messages = [{"role": "user", "content": _train_prompt_spec.get("final_prompt") or ""}]
+            _train_final_prompt = _train_prompt_spec.get("final_prompt") or ""
+            train_ai_prompt_trace = {
+                "provider": "train_ai",
+                "model": train_ai_cfg["model"],
+                "messages": [{"role": "user", "content": _train_final_prompt}],
+                "final_prompt": _train_final_prompt,
+                "final_prompt_chars": len(_train_final_prompt),
+                "message_count": 1 if _train_final_prompt else 0,
+                "stored_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            }
+            _train_messages = [{"role": "user", "content": _train_final_prompt}]
             train_ai_future = REPLY_CHAIN_EXECUTOR.submit(_train_ai_chat, _train_messages)
         except Exception as exc:
             logger.warning("训练AI prompt 构建失败，跳过本次训练AI生成: %s", exc)
@@ -18686,7 +19169,8 @@ def _generate_reply_style_candidates(
             training_ai = train_ai_future.result(timeout=train_ai_cfg["timeout_seconds"] + 1)
         except Exception as exc:
             training_ai = {"reply": "", "status": "timeout", "latency_ms": None,
-                           "model": train_ai_cfg["model"], "error": sanitize_text(str(exc))[:200]}
+                           "model": train_ai_cfg["model"], "error": sanitize_text(str(exc))[:200],
+                           "prompt_trace": train_ai_prompt_trace}
         if isinstance(training_ai, dict):
             stage_parts_ms["train_ai_ms"] = training_ai.get("latency_ms")
 
@@ -22361,9 +22845,19 @@ async def sidebar_assist(
 
                     # 训练AI(另一条途径)与流式 LLM-2 并行触发,复用同一份 prompt,自带 10s 超时
                     _train_future = None
+                    _train_prompt_trace = None
                     try:
                         _train_prompt = (_req_spec.get("final_prompt") if isinstance(_req_spec, dict) else "") or ""
                         if _train_prompt:
+                            _train_prompt_trace = {
+                                "provider": "train_ai",
+                                "model": _train_ai_config().get("model"),
+                                "messages": [{"role": "user", "content": _train_prompt}],
+                                "final_prompt": _train_prompt,
+                                "final_prompt_chars": len(_train_prompt),
+                                "message_count": 1,
+                                "stored_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                            }
                             _train_future = REPLY_CHAIN_EXECUTOR.submit(
                                 _train_ai_chat, [{"role": "user", "content": _train_prompt}]
                             )
@@ -22399,7 +22893,8 @@ async def sidebar_assist(
                             _training_ai = _train_future.result(timeout=_tcfg["timeout_seconds"] + 1)
                         except Exception as _texc:
                             _training_ai = {"reply": "", "status": "timeout", "latency_ms": None,
-                                            "model": _tcfg["model"], "error": sanitize_text(str(_texc))[:200]}
+                                            "model": _tcfg["model"], "error": sanitize_text(str(_texc))[:200],
+                                            "prompt_trace": _train_prompt_trace}
 
                     # 盲评映射:与非流式一致,随机把 ai/训练AI 回复分到 reply_reference1/2
                     _blind_map = _build_blind_eval_map()
@@ -25565,7 +26060,10 @@ def _get_daily_validation_stats(db: Session, day_start: datetime, day_end: datet
 
 
 @app.get("/api/case_lib/iterations")
-async def caselib_list_iterations(limit: int = Query(default=50, ge=1, le=500)):
+async def caselib_list_iterations(
+    limit: int = Query(default=50, ge=1, le=500),
+    include_daily_stats: bool = Query(default=False),
+):
     db = SessionLocal()
     try:
         rows = db.query(CaseIterationRun).order_by(
@@ -25585,7 +26083,10 @@ async def caselib_list_iterations(limit: int = Query(default=50, ge=1, le=500)):
             day_start_bj = datetime(curr.year, curr.month, curr.day)
             day_end_bj = day_start_bj + timedelta(days=1)
 
-            count, avg_score, avg_latency = _get_daily_validation_stats(db, day_start_bj, day_end_bj)
+            if include_daily_stats:
+                count, avg_score, avg_latency = _get_daily_validation_stats(db, day_start_bj, day_end_bj)
+            else:
+                count, avg_score, avg_latency = 0, None, None
 
             daily_rows.append({
                 "run_id": f"daily_{date_str.replace('-', '')}",
@@ -25606,7 +26107,7 @@ async def caselib_list_iterations(limit: int = Query(default=50, ge=1, le=500)):
                 "min_quality_score": None,
                 "max_quality_score": None,
                 "avg_latency_ms": avg_latency,
-                "improvement_analysis": "日常真实会话统计",
+                "improvement_analysis": "日常真实会话统计" if include_daily_stats else "日常真实会话入口；列表页默认不实时统计，避免首屏卡顿",
                 "ai_next_step_plan": "",
                 "analysis_codex": "",
                 "analysis_antigravity": "",

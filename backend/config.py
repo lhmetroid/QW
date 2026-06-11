@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     DB_USER: str = ""
     DB_PASSWORD: str = ""
     DATABASE_CONNECT_TIMEOUT_SECONDS: int = 15
+    DATABASE_STATEMENT_TIMEOUT_MS: int = 20000
+    DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: int = 60000
+    DATABASE_LOCK_TIMEOUT_MS: int = 5000
 
     # LLM-1 configuration: structured extraction.
     LLM1_API_URL: str = ""
@@ -74,6 +77,10 @@ class Settings(BaseSettings):
     MAIL_DRAFT_OPENAI_API_KEY: str = ""
     MAIL_DRAFT_OPENAI_MODEL: str = "gpt-4o-mini"
     MAIL_DRAFT_OPENAI_TIMEOUT_SECONDS: int = 60
+    MAIL_DRAFT_ANTHROPIC_API_URL: str = "https://api.anthropic.com/v1/messages"
+    MAIL_DRAFT_ANTHROPIC_API_KEY: str = ""
+    MAIL_DRAFT_ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
+    MAIL_DRAFT_ANTHROPIC_TIMEOUT_SECONDS: int = 60
     # Backward-compatible alias from the recording parser config. Do not log the key.
     RECORDING_PARSE_OPENAI_VISION_API_URL: str = ""
     RECORDING_PARSE_OPENAI_VISION_API_KEY: str = ""
@@ -84,6 +91,7 @@ class Settings(BaseSettings):
     TRAIN_AI_API_KEY: str = ""
     TRAIN_AI_MODEL: str = "unsloth-qwen2.5-task-60"
     TRAIN_AI_TIMEOUT_SECONDS: int = 10
+    TRAIN_AI_MODEL_LIST_TIMEOUT_SECONDS: int = 2
     TRAIN_AI_MAX_TOKENS: int = 300
     TRAIN_AI_TEMPERATURE: float = 0.2
 

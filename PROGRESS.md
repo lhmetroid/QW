@@ -1,5 +1,74 @@
 # PROGRESS
 
+## 2026-06-11 后台卡顿根因与防锁死机制
+
+- 已定位当前卡顿主因不是端口：`/api/train_ai/models` 首次请求会连续探测外部训练 AI 模型地址，旧逻辑每个探测 15 秒，失败时可拖住 45 秒以上；`/api/case_lib/iterations` 还会做逐日统计；`/api/sessions` 会查 `message_logs` 聚合。
+- 2026-06-11 17:10 继续定位：`/api/train_ai/models` 与 `/api/case_lib/iterations` 同一秒返回且耗时相同，说明不是两个接口各自独立卡住，而是 `async` 接口内同步逐日统计阻塞 FastAPI 事件循环，导致模型列表接口即使自身完成也要排队返回。
+- 已将 `/api/case_lib/iterations` 改为列表页默认轻量模式：默认不再逐日实时统计；只有显式 `include_daily_stats=true` 才计算每日质量/耗时统计。
+- 已将 `/api/train_ai/models` 改为默认不外连模型服务，只返回当前配置模型；只有显式 `refresh=true` 才拉远端模型列表。
+- 已给 PostgreSQL 普通业务连接加防锁死参数：`statement_timeout=20s`、`idle_in_transaction_session_timeout=1min`、`lock_timeout=5s`。后续一键启动加载配置后，新连接会自动带这些参数，避免普通请求或闲置事务长期卡住。
+- 已把训练 AI 模型列表探测超时降为 `TRAIN_AI_MODEL_LIST_TIMEOUT_SECONDS=2`，避免首页反复等待外部 `zjsphs.2288.org:11486` 不可达。
+- 已优化 `/api/sessions` 查询：从 `GROUP BY user_id + max(timestamp)` 改为 PostgreSQL `DISTINCT ON (user_id)` 快路径，直接取每个会话最新消息，最多返回 500 条。
+- 已新增只读诊断接口 `/api/system/db_lock_status`，可查看 active/blocked 数据库会话、核心表统计和当前超时参数；接口不主动杀连接。
+- 验证：`backend/main.py`、`backend/config.py`、`backend/database.py` AST 通过；`/api/sessions` 核心 SQL 本地实测 500 条约 788ms；新连接 `show statement_timeout/idle_in_transaction_session_timeout/lock_timeout` 分别为 `20s/1min/5s`；定向 `git diff --check` 通过。需要重启后端后生效。
+
+## 2026-06-11 案例1最终 Prompt v51 压缩与前台模板可见性修正
+
+- 已按用户 6 点反馈继续修正案例 1：Step1 最终 prompt 从约 2000 字压到 1898 字；目标/节奏不再塞入长套装说明，改为短目标与短发送节奏。
+- 2026-06-11 13:50 继续修正变量表达误解：最终 prompt 不再使用 `客户称呼：Michelle Li；模板：{customer_name}` 这类重复格式，改为类似微信 LLM2 脚本预览的 `{customer_name} = Michelle Li` 变量取值块；Step1 当前为 1818 字。
+- 已把最终 prompt 分区改为 `结构脚本`、`AI指令`、`变量取值`，去掉 `最终Prompt-结构脚本` / `最终Prompt-AI指令` 这种容易让人工误解的命名。
+- 已将案例 1 `new_business_promotion` 4 个模板目标版本升至 v51，并触发数据库更新；数据库核对 steps 1-4 均为 `version_no=51`。
+- 已把 Step1/2/3/4 的结构脚本变量说明改为显式列出业务范围：笔译/本地化、会议同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品，前台人工看脚本时不再只看到抽象 `{business_lines}`。
+- 已移除残留的通用硬编码提示：`之前 SpeedAsia 和贵司配合过笔译及患者日同传设备相关支持`、`常见医疗活动场景参考` 不再作为通用脚本/阶段提示。
+- 已将前台字段名统一为 `最终Prompt-结构脚本` 与 `最终Prompt-AI指令`，避免再用“生产脚本/给 AI 的指令脚本”造成两个脚本像两套逻辑的误解；最终 prompt 仍同时带入两者。
+- 已将知识库/Few-shot 从单条扩展为 Top3，最终 prompt 明确写为“相关优秀同类型邮件段落供参考或运用”，并保留不得把外部案例写成当前客户历史的边界。
+- 已刷新 `logs/mail-case1-final-prompts-v27-preview.md`；文件名仍沿用旧名，但内容为当前 v51 最终 prompt 预览。
+- 验证：`python scratch\preview_mail_case1_final_prompts.py`、`backend/main.py` AST、数据库 v51 查询、旧硬编码文本 grep、定向 `git diff --check` 均通过。本轮未调用 LLM，未真实发信。
+
+## 2026-06-11 邮件生成链路审计与前台模板打通
+
+- 已确认旧问题：邮件质量诊断页右侧“生产脚本模板 / 给 AI 的指令脚本”此前没有进入最终 `_build_mail_draft_llm_full_prompt()` 主体，导致人工调前台模板不稳定影响最终 AI 输出。
+- 已修复：最终 prompt 现在明确包含前台保存到数据库的 `sequence_template_script` 与 `sequence_template_ai_instruction`，并标注“必须作为本次写作主规则”；通用规则只作为兜底。
+- 已修复变量链路：最终 prompt 中新增 `{customer_name}`、`{company_name}`、`{industry}`、`{history}`、`{peer_case}`、`{business_lines}`、`{seller_name}`、`{referral_request}` 的变量值映射，前台仍保留通配符形式，模型拿到的是“模板通配符 + 替换值”。
+- 已修复行业误判：去掉案例 1 按客户名硬编码覆盖历史/Few-shot 的逻辑；行业改为可信度判定，医疗/医药/生命科学公司优先标为医疗器械/生命科学，设备/制造/工业公司优先标为工业设备/制造；`legal` 只作为法律/合同资料线索，不再直接写成客户属于法律行业。
+- 已补知识库链路：最终 prompt 现在显示 Few-shot 命中标题、分数和内容摘要，并明确只参考节奏/场景/表达方式，不得照抄或把外部案例写成当前客户历史。
+- 已重新输出案例 1 四封最终 prompt 到 `logs/mail-case1-final-prompts-v27-preview.md`，可看到 `最终Prompt-结构脚本`、`最终Prompt-AI指令`、变量映射、CRM画像和知识库/Few-shot 命中均进入最终 prompt。
+- 验证：`backend/main.py` AST 通过；前台模板哨兵文本测试通过（临时 `FRONT_TEMPLATE_SENTINEL` / `FRONT_AI_SENTINEL` 会进入最终 prompt）；行业纠偏小测通过；定向 `git diff --check` 通过。本轮未真实发信。
+
+## 2026-06-10 案例1邮件 Prompt 简化与最终 Prompt 预览
+
+- 已将邮件草稿 LLM prompt 从多规则堆叠改为短结构：角色、任务、背景、写法要求、不要写、输出格式。
+- 已从最终 prompt 中移除会诱导模型乱写的内部负责人/销售跟进渠道/范例正文，只保留客户公司、行业场景、商机/历史合作事实和范例标题风格。
+- 已固定案例 1 客户行业场景为“医疗器械/生命科学相关客户”，避免再把法律/合同资料类型误写成客户行业。
+- 已输出案例 1 四封变量替换后的最终 AI prompt 到 `logs/mail-case1-final-prompts-v27-preview.md`；本轮未调用 LLM、未生成 V27、未真实发信。
+
+## 2026-06-10 邮件 V25/V26 案例1 DeepSeek 与 ChatGPT 对比测试
+
+- **测试范围**：只跑案例 1 `new_business_promotion` 的 4 封 Sequence，不跑案例 2/3。
+- **V25 DeepSeek**：run_id `1526ed09-58b3-4054-ab05-0c5dab64992b`，4/4 成功，模型 `deepseek:deepseek-chat`，平均分 97.00。
+- **V26 ChatGPT/OpenAI**：run_id `51ada09e-5afd-436d-883d-fb35562fdc76`，4/4 成功，模型 `openai:gpt-4.1`，平均分 96.00。
+- **docx 标准靠拢**：按 `other/邮件AI案例1.docx` 的“行业感 + 轻商务 + 不施压”检查，四封递进为破冰、案例证明、协作路径、低压力收口。
+- **出口修正**：补强 `backend/main.py` 邮件出口清洗，避免 `小批量测试/试用`、`法律行业/法务培训`、`不涉及具体报价`、孤立行业场景句等不自然或不稳妥表达；已同步清洗 V25/V26 已落库 8 封。
+- **复查**：V25/V26 共 8 封禁用词与旧口径检查 0 命中；分析记录见 `logs/mail-v25-v26-analysis.md`。
+
+## 2026-06-10 implementation_plan 复核与案例1四模板补齐
+
+- **运行时 LLM 配置复核**：已确认 `backend/main.py` 存在 `/api/v1/system/runtime-llm-settings` GET/PUT、`RuntimeLlmSettings`、`_load_runtime_settings_with_defaults()`，并且邮件生成读取动态 `mail_system_prompt` / `mail_temperature`；`backend/intent_engine.py` 已读取动态 `wecom_system_prompt` / `wecom_temperature`。
+- **前端 2x2 面板复核**：已确认 `frontend/index.html` 邮件配置台新增企微/邮件 System Prompt 与 Temperature 的 2x2 控制台，进入配置页会加载设置，保存会 PUT 到后端。
+- **案例 1 四模板补齐**：在 `backend/main.py` 只为 `new_business_promotion` steps 1-4 新增专属 `script_template` 与 `ai_instruction_script` 覆盖，形成破冰、案例证明、方案路径、低压力收口四封递进；案例 2 `re_activation` 与案例 3 `new_contact_intro` 保持 version 46 和原逻辑不变。
+- **目标版本确认**：`_MAIL_SEQUENCE_TEMPLATE_TARGETED_VERSIONS` 中仅 `new_business_promotion` steps 1-4 为 `48`，其余两个场景仍为 `46`。
+- **验证结果**：AST 解析通过；`backend.mail_review_api_interface_checks` 通过；前端内联 JS `node --check` 通过；runtime settings PUT/读取逻辑通过 scratch 隔离测试；定向 `git diff --check` 通过。`python -m py_compile backend\main.py backend\config.py backend\intent_engine.py` 仍因既有 `backend/__pycache__` pyc rename 权限拒绝失败，已用 AST 解析补足语法验证。
+
+## 2026-06-10 Claude 3.5 Sonnet 接入与 Prompt 优化、新业务模板瘦身
+
+- **Claude 3.5 Sonnet 接入配置**：在 `backend/config.py` 中新增 `MAIL_DRAFT_ANTHROPIC_*` 系列配置项，预留 API Key 空间。在 `backend/main.py` 的 provider 映射及测试端点中增加对 `anthropic` 与 `claude` 别名的支持。
+- **B2B 销售人设 System Prompt 重构**：修改 `_MAIL_DRAFT_LLM_SYSTEM_PROMPT` 为资深 B2B 销售人设（温和、专业、克制、轻商务），指导模型融入 CRM 事实并严禁主动做出价格、工期或条款承诺，限定输出为 JSON。
+- **Claude API 及 Markdown 剥离适配**：在 `_call_llm2_json_for_mail_draft` 中对 Anthropic 原生 API 的 Header 与 Payload 进行了适配。增加了对代理中可能返回的 ```json ``` 标记的安全剥离，确保 JSON 解析高鲁棒性。
+- **新业务模板瘦身（v47）**：对 `new_business_promotion` 第 1 封邮件模版及 AI 指令做了“瘦身”，去除了冗余合规性提示，使其仅专注于“邮件切口与目标”。将 Targeted Version 提升到 `47` 以触发数据库模板自动覆盖升级。
+- **编译与 47 项测试通过**：
+  - 编译与语法检测：`python -m py_compile backend/main.py backend/config.py` 通过，AST 检查无错。
+  - 测试：运行全量 47 个 `mail_*_checks.py` 的测试用例以及 `backend/mail_review_api_interface_checks.py` 100% 成功（OK）。
+
 ## 2026-06-09 邮件合同案例库全量回灌入库
 
 - **数据库与同步脚本**：在 `backend/database.py` 中定义了本地 `MailContractCase` 表模型，创建了 `backend/sync_crm_contracts_to_local.py` 增量/全量同步脚本，支持清空重建、CRM 只读读取、本地 PostgreSQL 批量灌库与更新。
@@ -455,3 +524,10 @@
 - 已增强企微回复最终清洗：`reply_reference1/2` 只保留可直接发送给客户的正文，剥离 `【摘要档案】`、`【线程推进状态】`、`【当前回复焦点】`、参考回复说明和 JSON 块。
 - 线上真实会话复测：两条回复均为纯中文可发文本，无 JSON、无内部分析块、无中文乱码。
 - 验证：`backend/intent_engine.py`、`backend/main.py` AST 通过；定向 `git diff --check` 通过；本地清洗小测通过；`python -m unittest backend.optimizations_checks` 通过。
+
+## 2026-06-11 训练 AI Prompt 单据记录
+
+- 已按用户要求补齐训练 AI prompt 的单据级记录：训练 AI 调用会在结果 JSON 中保存 `prompt_trace`，包含 `final_prompt`、`messages`、`model`、`provider`、字符数和记录时间。
+- 保存位置沿用既有 JSON 字段，不新增表结构：`intent_summaries.training_ai.prompt_trace` 与 `api_assist_invocation.result_payload.training_ai.prompt_trace`。
+- 覆盖正常返回和外层等待超时两条路径；即使训练 AI 接口超时，只要本地 prompt 已构建，也会随 `training_ai` 单据记录保存。
+- 验证：`backend/main.py` AST 解析通过；定向 `git diff --check` 通过。

@@ -167,10 +167,34 @@ class IntentEngine:
 
     @classmethod
     def get_prompt2(cls):
+        import os, json
+        path = os.path.join(os.path.dirname(__file__), "runtime_llm_settings.json")
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict) and data.get("wecom_system_prompt"):
+                        return data["wecom_system_prompt"]
+            except Exception:
+                pass
         prompt = cls.get_ai_settings().get("SYSTEM_PROMPT_LLM2")
         if not prompt:
             raise RuntimeError("ai_settings.json 缺少 SYSTEM_PROMPT_LLM2")
         return prompt
+
+    @classmethod
+    def get_wecom_temperature(cls) -> float:
+        import os, json
+        path = os.path.join(os.path.dirname(__file__), "runtime_llm_settings.json")
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict) and data.get("wecom_temperature") is not None:
+                        return float(data["wecom_temperature"])
+            except Exception:
+                pass
+        return 0.7
 
     @classmethod
     def get_reply_style_options(cls, enabled_only: bool = True) -> list[dict]:
@@ -3121,7 +3145,7 @@ class IntentEngine:
                 "messages": [
                     {"role": "user", "content": final_prompt}
                 ],
-                "temperature": 0.7,
+                "temperature": cls.get_wecom_temperature(),
                 # 遇到开发用元注释开头标记即停，防止把说明/思路/代码块发给客户(不增耗时,反而省)
                 "stop": ["【跟进思路说明", "【说明", "【后续", "【本次回复风格", "```"],
             }
@@ -3256,7 +3280,7 @@ class IntentEngine:
         payload = {
             "model": model,
             "messages": [{"role": "user", "content": final_prompt}],
-            "temperature": 0.7,
+            "temperature": cls.get_wecom_temperature(),
             "stream": True,
             # 遇到开发用元注释开头标记即停，防止把说明/思路/代码块发给客户(不增耗时,反而省)
             "stop": ["【跟进思路说明", "【说明", "【后续", "【本次回复风格", "```"],

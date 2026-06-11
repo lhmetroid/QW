@@ -2098,9 +2098,19 @@ _db_connect_timeout = max(3, int(getattr(settings, "DATABASE_CONNECT_TIMEOUT_SEC
 
 if settings.database_url.startswith("postgresql"):
 
+    _pg_options = " ".join(
+        item
+        for item in [
+            f"-c statement_timeout={max(1000, int(getattr(settings, 'DATABASE_STATEMENT_TIMEOUT_MS', 20000) or 20000))}",
+            f"-c idle_in_transaction_session_timeout={max(5000, int(getattr(settings, 'DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS', 60000) or 60000))}",
+            f"-c lock_timeout={max(500, int(getattr(settings, 'DATABASE_LOCK_TIMEOUT_MS', 5000) or 5000))}",
+        ]
+    )
+
     _engine_kwargs["connect_args"] = {
 
         "connect_timeout": _db_connect_timeout,
+        "options": _pg_options,
 
     }
 
