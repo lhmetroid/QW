@@ -2515,6 +2515,10 @@
             if (_panel) _panel.scrollTop = 0; // 切换种子时滚回顶部, 先看到主题
             const fmt = (v) => v == null || v === '' ? '—' : String(v);
             const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            // v1.7.259: escAttr 供输入框 value 转义(含 " 与换行); 之前漏在本函数定义导致 openDetail 抛错点击无反应
+            const escAttr = (v) => String(v == null ? '' : v)
+                .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '&#10;');
             // v1.7.253: 主题/正文可能含 <ContactName> 等尖括号占位符, 必须转义后再注入 innerHTML, 否则 DOM 被吞导致右侧空白
             const fmtEsc = (v) => (v == null || v === '') ? '—' : esc(v);
             const scenarioCn = (x) => ({
