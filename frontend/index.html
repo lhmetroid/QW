@@ -650,10 +650,12 @@
                     </div>
                 </div>
 
-                <!-- v1.7.250: 左表格 + 右侧详情并排; 点击某行即在右侧展示对应信息, 不再用弹窗 -->
+                <!-- v1.7.251: 左表格 + 右侧详情并排; 点击某行即在右侧展示对应信息, 不再用弹窗。
+                     注意: 本项目 tailwind.css 为裁剪构建, lg:flex-row / lg:w-[44%] 等类不在产物里,
+                     故布局用内联 style 保证生效, 不依赖未编译的工具类。 -->
                 <div class="rounded-lg border border-slate-200 bg-white p-4">
-                    <div class="flex flex-col lg:flex-row gap-4">
-                        <div class="flex-1 min-w-0 overflow-x-auto">
+                    <div style="display:flex; gap:1rem; align-items:flex-start; flex-wrap:wrap;">
+                        <div style="flex:1 1 520px; min-width:0; overflow-x:auto;">
                             <table class="w-full text-xs">
                                 <thead class="bg-slate-50">
                                     <tr class="text-slate-600">
@@ -670,9 +672,9 @@
                             </table>
                         </div>
                         <!-- 右侧详情面板: 点击左侧任意行后在此显示主题/正文/点评 -->
-                        <div id="mail-goldlib-detail" class="lg:w-[44%] lg:shrink-0 lg:border-l border-slate-200 lg:pl-4">
+                        <div id="mail-goldlib-detail" style="flex:1 1 380px; min-width:300px; border-left:1px solid #e2e8f0; padding-left:1rem; align-self:stretch;">
                             <div id="mail-goldlib-detail-body" class="text-xs text-slate-700 space-y-3">
-                                <div class="text-slate-400 text-center py-10">点击左侧任意一行查看主题、正文与点评</div>
+                                <div style="text-align:center; padding:2.5rem 0; color:#94a3b8;">点击左侧任意一行查看主题、正文与点评</div>
                             </div>
                         </div>
                     </div>
@@ -2509,7 +2511,7 @@
                 </div>
                 <div>
                     <div class="font-bold text-slate-700 mb-1">正文（${isSegment ? '本段切片内容' : '完整内容'}，已脱敏）</div>
-                    <div class="rounded border border-slate-200 bg-white p-3 text-xs leading-relaxed whitespace-pre-wrap max-h-[50vh] overflow-y-auto">${fmt(s.content)}</div>
+                    <div class="rounded border border-slate-200 bg-white p-3 text-xs leading-relaxed whitespace-pre-wrap" style="max-height:50vh; overflow-y:auto;">${fmt(s.content)}</div>
                 </div>
                 <div class="rounded border border-amber-300 bg-amber-50 p-3 space-y-2">
                     <div class="font-bold text-amber-900">人工点评</div>
@@ -2581,7 +2583,7 @@
         function closeMailGoldLibrarySeedDetail() {
             mailGoldLibrarySelectedId = null;
             const body = document.getElementById('mail-goldlib-detail-body');
-            if (body) body.innerHTML = '<div class="text-slate-400 text-center py-10">点击左侧任意一行查看主题、正文与点评</div>';
+            if (body) body.innerHTML = '<div style="text-align:center; padding:2.5rem 0; color:#94a3b8;">点击左侧任意一行查看主题、正文与点评</div>';
         }
 
         // ===== 邮件合同案例库（CRM usrContract 只读候选） =====
