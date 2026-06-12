@@ -2087,6 +2087,23 @@ class MailContractCase(Base):
     )
 
 
+class MailGoldSeedReview(Base):
+    """黄金范例库人工点评表：记录对每条黄金种子的认可/不认可 + 点评内容。
+
+    每条种子(fragment_id)只保留一行最新评审, 再次操作覆盖。
+    """
+    __tablename__ = "mail_gold_seed_review"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fragment_id = Column(String(64), unique=True, index=True, nullable=False)
+    source_ref = Column(String(255), nullable=True)
+    review_status = Column(String(20), nullable=False)  # approved / rejected
+    review_comment = Column(Text, nullable=True)
+    reviewer = Column(String(120), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+
 # 初始化数据库连接
 _engine_kwargs = {
 

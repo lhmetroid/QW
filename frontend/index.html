@@ -650,34 +650,32 @@
                     </div>
                 </div>
 
+                <!-- v1.7.250: 左表格 + 右侧详情并排; 点击某行即在右侧展示对应信息, 不再用弹窗 -->
                 <div class="rounded-lg border border-slate-200 bg-white p-4">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs">
-                            <thead class="bg-slate-50">
-                                <tr class="text-slate-600">
-                                    <th class="px-2 py-2 text-left" title="按 useful_score 排名">排名</th>
-                                    <th class="px-2 py-2 text-left">种子编号</th>
-                                    <th class="px-2 py-2 text-left">业务场景</th>
-                                    <th class="px-2 py-2 text-left">切片类型</th>
-                                    <th class="px-2 py-2 text-center" title="0.00 - 1.00, 越高越优质, ≥ 0.60 才能进黄金库">有用度分</th>
-                                    <th class="px-2 py-2 text-center">脱敏状态</th>
-                                    <th class="px-2 py-2 text-left">主题（来自原邮件）</th>
-                                    <th class="px-2 py-2 text-center">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody id="mail-goldlib-tbody"></tbody>
-                        </table>
+                    <div class="flex flex-col lg:flex-row gap-4">
+                        <div class="flex-1 min-w-0 overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead class="bg-slate-50">
+                                    <tr class="text-slate-600">
+                                        <th class="px-2 py-2 text-left" title="按 useful_score 排名">排名</th>
+                                        <th class="px-2 py-2 text-left">业务场景</th>
+                                        <th class="px-2 py-2 text-left">切片类型</th>
+                                        <th class="px-2 py-2 text-center" title="0.00 - 1.00, 越高越优质, ≥ 0.60 才能进黄金库">有用度分</th>
+                                        <th class="px-2 py-2 text-center">脱敏状态</th>
+                                        <th class="px-2 py-2 text-left">主题（来自原邮件）</th>
+                                        <th class="px-2 py-2 text-center" title="人工评审结果, 鼠标悬停可看点评内容">状态</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mail-goldlib-tbody"></tbody>
+                            </table>
+                        </div>
+                        <!-- 右侧详情面板: 点击左侧任意行后在此显示主题/正文/点评 -->
+                        <div id="mail-goldlib-detail" class="lg:w-[44%] lg:shrink-0 lg:border-l border-slate-200 lg:pl-4">
+                            <div id="mail-goldlib-detail-body" class="text-xs text-slate-700 space-y-3">
+                                <div class="text-slate-400 text-center py-10">点击左侧任意一行查看主题、正文与点评</div>
+                            </div>
+                        </div>
                     </div>
-                </div>
-
-                <!-- v1.7.209: 黄金种子详情从原来"页面下方"改为"右侧固定抽屉", 不再挤掉表格视野 -->
-                <div id="mail-goldlib-detail-backdrop" class="hidden fixed inset-0 bg-black/30 z-[59]" onclick="closeMailGoldLibrarySeedDetail()"></div>
-                <div id="mail-goldlib-detail" class="hidden fixed top-0 right-0 h-screen w-full md:w-[560px] lg:w-[640px] bg-amber-50 border-l-2 border-amber-300 shadow-2xl z-[60] overflow-y-auto">
-                    <div class="sticky top-0 z-10 bg-amber-100/95 backdrop-blur border-b border-amber-300 px-4 py-3 flex items-center justify-between gap-2">
-                        <div class="text-sm font-bold text-amber-900" id="mail-goldlib-detail-title">种子详情</div>
-                        <button type="button" onclick="closeMailGoldLibrarySeedDetail()" class="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50" title="按 Esc 也可关闭">关闭 ✕</button>
-                    </div>
-                    <div id="mail-goldlib-detail-body" class="p-4 text-xs text-slate-700 space-y-3"></div>
                 </div>
             </section>
             <section id="mail-contractcases-panel" class="hidden space-y-5">
@@ -2415,125 +2413,176 @@
             })[f] || (f || '—');
             const list = filter ? mailGoldLibraryCache.filter(s => s.scenario_label === filter) : mailGoldLibraryCache;
             if (!list.length) {
-                tbody.innerHTML = `<tr><td colspan="8" class="px-2 py-4 text-center text-slate-500">${mailGoldLibraryCache.length === 0 ? '尚未灌入种子（请跑 python backend/seed_mail_gold_candidates.py）' : '当前筛选条件下无匹配种子'}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="px-2 py-4 text-center text-slate-500">${mailGoldLibraryCache.length === 0 ? '尚未灌入种子（请跑 python backend/seed_mail_gold_candidates.py）' : '当前筛选条件下无匹配种子'}</td></tr>`;
                 return;
             }
+            // 人工评审状态徽标(认可/不认可), title 浮动显示点评内容
+            const reviewBadge = (s) => {
+                const cmt = (s.review_comment || '').replace(/"/g, '&quot;');
+                if (s.review_status === 'approved') return `<span title="点评：${cmt || '无'}" class="rounded bg-emerald-100 text-emerald-700 px-1.5 py-0.5 text-[10px] font-bold cursor-help">认可</span>`;
+                if (s.review_status === 'rejected') return `<span title="点评：${cmt || '无'}" class="rounded bg-rose-100 text-rose-700 px-1.5 py-0.5 text-[10px] font-bold cursor-help">不认可</span>`;
+                return '<span class="text-slate-300 text-[10px]">未评审</span>';
+            };
             for (const s of list) {
                 const tr = document.createElement('tr');
-                tr.className = 'border-t border-slate-100 hover:bg-slate-50';
+                tr.className = 'border-t border-slate-100 hover:bg-amber-50 cursor-pointer';
+                tr.dataset.fragmentId = s.fragment_id;
+                tr.onclick = () => openMailGoldLibrarySeedDetail(s.fragment_id);
                 const score = s.useful_score != null ? s.useful_score.toFixed(2) : '—';
                 const scoreClass = (s.useful_score || 0) >= 0.9 ? 'text-emerald-700 font-bold' : (s.useful_score || 0) >= 0.7 ? 'text-amber-700' : 'text-slate-600';
                 const desensitized = s.desensitized_status === 'desensitized' ? '<span class="rounded bg-emerald-100 text-emerald-700 px-1.5 py-0.5 text-[10px]">已脱敏</span>' : '<span class="rounded bg-amber-100 text-amber-700 px-1.5 py-0.5 text-[10px]">未脱敏</span>';
                 tr.innerHTML = `
                     <td class="px-2 py-2 font-mono text-slate-500">#${s.candidate_rank || '—'}</td>
-                    <td class="px-2 py-2 font-mono text-[10px] text-slate-600">${s.source_ref || '—'}</td>
                     <td class="px-2 py-2"><span class="rounded bg-indigo-100 text-indigo-700 px-1.5 py-0.5 text-[10px]">${scenarioCn(s.scenario_label)}</span></td>
                     <td class="px-2 py-2 text-slate-700">${fragmentCn(s.function_fragment)}</td>
                     <td class="px-2 py-2 text-center font-mono ${scoreClass}">${score}</td>
                     <td class="px-2 py-2 text-center">${desensitized}</td>
                     <td class="px-2 py-2 text-slate-700">${(s.title || '').slice(0, 50)}${(s.title || '').length > 50 ? '…' : ''}</td>
-                    <td class="px-2 py-2 text-center">
-                        <button type="button" onclick="openMailGoldLibrarySeedDetail('${s.fragment_id}')" class="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100">查看正文</button>
-                    </td>
+                    <td class="px-2 py-2 text-center">${reviewBadge(s)}</td>
                 `;
                 tbody.appendChild(tr);
             }
+            // 重新渲染后保持当前选中行高亮
+            if (mailGoldLibrarySelectedId) highlightMailGoldLibraryRow(mailGoldLibrarySelectedId);
         }
 
+        let mailGoldLibrarySelectedId = null;
+        function highlightMailGoldLibraryRow(fragmentId) {
+            const tbody = document.getElementById('mail-goldlib-tbody');
+            if (!tbody) return;
+            tbody.querySelectorAll('tr[data-fragment-id]').forEach(tr => {
+                if (tr.dataset.fragmentId === fragmentId) tr.classList.add('bg-amber-100');
+                else tr.classList.remove('bg-amber-100');
+            });
+        }
+
+        // v1.7.250: 详情改为右侧并排面板。顺序: 主题/正文靠上 → 点评框+认可/不认可 → 其他信息靠后。
         function openMailGoldLibrarySeedDetail(fragmentId) {
             const s = mailGoldLibraryCache.find(x => x.fragment_id === fragmentId);
             if (!s) return;
-            const wrap = document.getElementById('mail-goldlib-detail');
-            const backdrop = document.getElementById('mail-goldlib-detail-backdrop');
-            const title = document.getElementById('mail-goldlib-detail-title');
+            mailGoldLibrarySelectedId = fragmentId;
+            highlightMailGoldLibraryRow(fragmentId);
             const body = document.getElementById('mail-goldlib-detail-body');
-            if (!wrap) return;
-            wrap.classList.remove('hidden');
-            if (backdrop) backdrop.classList.remove('hidden');
-            // v1.7.209: 右侧抽屉打开时锁滚动条防止 body 被滚穿
-            document.body.style.overflow = 'hidden';
-            if (title) title.textContent = `种子详情 · ${s.source_ref || s.fragment_id}`;
-            if (body) {
-                const fmt = (v) => v == null || v === '' ? '—' : String(v);
-                const scenarioCn = (s) => ({
-                    're_activation': '老客户激活',
-                    'new_business_promotion': '老客户其他业务介绍',
-                    'new_contact_intro': '新客户开发介绍',
-                })[s] || s;
-                const fragmentCn = (f) => ({
-                    'greetings': '问候开场',
-                    'example': '案例示范',
-                    'process': '流程说明',
-                    'constraint': '交付约束',
-                    'quotation': '报价邀约',
-                })[f] || (f || '—');
-                // v1.7.219: 提取切片元信息 (来自 source_snapshot)
-                const segMeta = s.segment_metadata || {};
-                const isSegment = segMeta.segment_no != null;
-                const segMetaHtml = isSegment ? `
-                    <div class="rounded border border-cyan-200 bg-cyan-50 p-2 text-[11px] space-y-1">
-                        <div class="font-bold text-cyan-900">📐 切片元信息 (v1.7.219 按段切片)</div>
-                        <div class="grid grid-cols-2 gap-1 mt-1">
-                            <div><b>本段序号：</b>第 ${segMeta.segment_no} 段 / 共 ${fmt(segMeta.segment_total)} 段</div>
-                            <div><b>本段字符数：</b>${fmt(segMeta.segment_char_count)}</div>
-                            <div><b>原邮件起始字符：</b>${fmt(segMeta.segment_start_char)}</div>
-                            <div><b>原邮件结束字符：</b>${fmt(segMeta.segment_end_char)}</div>
-                            <div><b>原始推断类(KG)：</b><code>${fmt(segMeta.kg_fragment_inferred)}</code></div>
-                            <div><b>映射后类(MSS)：</b><code>${fmt(segMeta.function_fragment_mapped)}</code></div>
-                        </div>
-                        <div class="pt-1 border-t border-cyan-200"><b>父邮件 ID：</b><code class="text-[10px]">${fmt(segMeta.parent_candidate_id)}</code></div>
-                        <div><b>切片方法：</b><code class="text-[10px]">${fmt(segMeta.split_method)}</code></div>
-                        <div><b>项目符号清洗：</b>${segMeta.bullet_cleaned ? '是 (? → •)' : '否'}</div>
+            if (!body) return;
+            const fmt = (v) => v == null || v === '' ? '—' : String(v);
+            const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const scenarioCn = (x) => ({
+                're_activation': '老客户激活',
+                'new_business_promotion': '老客户其他业务介绍',
+                'new_contact_intro': '新客户开发介绍',
+            })[x] || x;
+            const fragmentCn = (f) => ({
+                'greetings': '问候开场',
+                'example': '案例示范',
+                'process': '流程说明',
+                'constraint': '交付约束',
+                'quotation': '报价邀约',
+            })[f] || (f || '—');
+            // v1.7.219: 提取切片元信息 (来自 source_snapshot)
+            const segMeta = s.segment_metadata || {};
+            const isSegment = segMeta.segment_no != null;
+            const segMetaHtml = isSegment ? `
+                <div class="rounded border border-cyan-200 bg-cyan-50 p-2 text-[11px] space-y-1">
+                    <div class="font-bold text-cyan-900">📐 切片元信息 (v1.7.219 按段切片)</div>
+                    <div class="grid grid-cols-2 gap-1 mt-1">
+                        <div><b>本段序号：</b>第 ${segMeta.segment_no} 段 / 共 ${fmt(segMeta.segment_total)} 段</div>
+                        <div><b>本段字符数：</b>${fmt(segMeta.segment_char_count)}</div>
+                        <div><b>原邮件起始字符：</b>${fmt(segMeta.segment_start_char)}</div>
+                        <div><b>原邮件结束字符：</b>${fmt(segMeta.segment_end_char)}</div>
+                        <div><b>原始推断类(KG)：</b><code>${fmt(segMeta.kg_fragment_inferred)}</code></div>
+                        <div><b>映射后类(MSS)：</b><code>${fmt(segMeta.function_fragment_mapped)}</code></div>
                     </div>
-                ` : '';
+                    <div class="pt-1 border-t border-cyan-200"><b>父邮件 ID：</b><code class="text-[10px]">${fmt(segMeta.parent_candidate_id)}</code></div>
+                    <div><b>切片方法：</b><code class="text-[10px]">${fmt(segMeta.split_method)}</code></div>
+                    <div><b>项目符号清洗：</b>${segMeta.bullet_cleaned ? '是 (? → •)' : '否'}</div>
+                </div>
+            ` : '';
 
-                body.innerHTML = `
-                    <div class="grid grid-cols-1 gap-2">
-                        <div><b>种子编号：</b><code class="text-[10px] break-all">${fmt(s.source_ref)}</code></div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div><b>业务场景：</b><span class="rounded bg-indigo-100 text-indigo-700 px-1.5 py-0.5 text-[10px]">${fmt(scenarioCn(s.scenario_label))}</span></div>
-                            <div><b>切片类型：</b><span class="rounded bg-emerald-100 text-emerald-700 px-1.5 py-0.5 text-[10px]">${fmt(fragmentCn(s.function_fragment))}</span></div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div><b>有用度：</b>${s.useful_score != null ? s.useful_score.toFixed(4) : '—'}（门槛 0.60）</div>
-                            <div><b>语言风格：</b>${fmt(s.language_style)}</div>
-                        </div>
-                        <div><b>脱敏状态：</b>${fmt(s.desensitized_status)}（脱敏字段：${(s.desensitized_fields || []).join('、') || '无'}）</div>
-                        <div><b>评分来源：</b><code class="text-[10px] break-all">${fmt(s.score_source)}</code></div>
+            const reviewedHint = s.review_status
+                ? `<div class="text-[10px] ${s.review_status === 'approved' ? 'text-emerald-600' : 'text-rose-600'} mt-1">当前：${s.review_status === 'approved' ? '认可' : '不认可'}${s.review_updated_at ? '（' + fmt(s.review_updated_at) + '）' : ''}</div>`
+                : '';
+
+            body.innerHTML = `
+                <div>
+                    <div class="font-bold text-slate-700 mb-1">主题（来自原邮件，已脱敏 + 项目符号清洗）</div>
+                    <div class="rounded border border-slate-200 bg-white p-2 text-xs">${fmt(s.title)}</div>
+                </div>
+                <div>
+                    <div class="font-bold text-slate-700 mb-1">正文（${isSegment ? '本段切片内容' : '完整内容'}，已脱敏）</div>
+                    <div class="rounded border border-slate-200 bg-white p-3 text-xs leading-relaxed whitespace-pre-wrap max-h-[50vh] overflow-y-auto">${fmt(s.content)}</div>
+                </div>
+                <div class="rounded border border-amber-300 bg-amber-50 p-3 space-y-2">
+                    <div class="font-bold text-amber-900">人工点评</div>
+                    <textarea id="mail-goldlib-review-comment" rows="3" class="w-full rounded border border-slate-300 px-2 py-1.5 text-xs" placeholder="填写点评意见（可选）">${esc(s.review_comment || '')}</textarea>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="saveMailGoldSeedReview('${s.fragment_id}', 'approved')" class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700">认可</button>
+                        <button type="button" onclick="saveMailGoldSeedReview('${s.fragment_id}', 'rejected')" class="rounded bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700">不认可</button>
+                        <span id="mail-goldlib-review-status" class="text-[11px] text-slate-500"></span>
                     </div>
-                    ${segMetaHtml}
-                    <div>
-                        <div class="font-bold text-slate-700 mb-1">主题（来自原邮件，已脱敏 + 项目符号清洗）</div>
-                        <div class="rounded border border-slate-200 bg-white p-2 text-xs">${fmt(s.title)}</div>
+                    ${reviewedHint}
+                </div>
+                <div class="grid grid-cols-1 gap-2 border-t border-amber-200 pt-3">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div><b>业务场景：</b><span class="rounded bg-indigo-100 text-indigo-700 px-1.5 py-0.5 text-[10px]">${fmt(scenarioCn(s.scenario_label))}</span></div>
+                        <div><b>切片类型：</b><span class="rounded bg-emerald-100 text-emerald-700 px-1.5 py-0.5 text-[10px]">${fmt(fragmentCn(s.function_fragment))}</span></div>
                     </div>
-                    <div>
-                        <div class="font-bold text-slate-700 mb-1">正文（${isSegment ? '本段切片内容' : '完整内容'}，已脱敏）</div>
-                        <div class="rounded border border-slate-200 bg-white p-3 text-xs leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto">${fmt(s.content)}</div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div><b>有用度：</b>${s.useful_score != null ? s.useful_score.toFixed(4) : '—'}（门槛 0.60）</div>
+                        <div><b>语言风格：</b>${fmt(s.language_style)}</div>
                     </div>
-                    <div class="text-[10px] text-slate-500 border-t border-amber-200 pt-2">
-                        数据源：<code>${fmt(s.seed_source_file)}</code><br/>
-                        入库时间：${fmt(s.created_at)}<br/>
-                        最后更新：${fmt(s.updated_at)}
-                    </div>
-                `;
+                    <div><b>脱敏状态：</b>${fmt(s.desensitized_status)}（脱敏字段：${(s.desensitized_fields || []).join('、') || '无'}）</div>
+                    <div><b>评分来源：</b><code class="text-[10px] break-all">${fmt(s.score_source)}</code></div>
+                </div>
+                ${segMetaHtml}
+                <div class="text-[10px] text-slate-500 border-t border-amber-200 pt-2">
+                    数据源：<code>${fmt(s.seed_source_file)}</code><br/>
+                    入库时间：${fmt(s.created_at)}<br/>
+                    最后更新：${fmt(s.updated_at)}
+                </div>
+            `;
+        }
+
+        // v1.7.250: 保存认可/不认可 + 点评到后端 mail_gold_seed_review 表
+        async function saveMailGoldSeedReview(fragmentId, reviewStatus) {
+            const s = mailGoldLibraryCache.find(x => x.fragment_id === fragmentId);
+            if (!s) return;
+            const comment = (document.getElementById('mail-goldlib-review-comment')?.value || '').trim();
+            const statusEl = document.getElementById('mail-goldlib-review-status');
+            if (statusEl) { statusEl.textContent = '保存中……'; statusEl.className = 'text-[11px] text-slate-500'; }
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/gold-seed-review`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        fragment_id: fragmentId,
+                        review_status: reviewStatus,
+                        review_comment: comment,
+                        source_ref: s.source_ref || null,
+                    }),
+                });
+                if (!resp.ok) {
+                    let msg = `HTTP ${resp.status}`;
+                    try { const e = await resp.json(); if (e.detail) msg = e.detail; } catch (_) {}
+                    throw new Error(msg);
+                }
+                const data = await resp.json();
+                // 本地缓存同步, 列表状态列与详情立即刷新
+                s.review_status = data.review_status;
+                s.review_comment = data.review_comment;
+                s.review_updated_at = data.review_updated_at;
+                renderMailGoldLibrarySeeds();
+                if (statusEl) { statusEl.textContent = `已保存（${reviewStatus === 'approved' ? '认可' : '不认可'}）`; statusEl.className = 'text-[11px] text-emerald-700 font-bold'; }
+            } catch (err) {
+                if (statusEl) { statusEl.textContent = `保存失败：${err.message}`; statusEl.className = 'text-[11px] text-red-600 font-bold'; }
             }
         }
 
         function closeMailGoldLibrarySeedDetail() {
-            const wrap = document.getElementById('mail-goldlib-detail');
-            const backdrop = document.getElementById('mail-goldlib-detail-backdrop');
-            if (wrap) wrap.classList.add('hidden');
-            if (backdrop) backdrop.classList.add('hidden');
-            document.body.style.overflow = '';
+            mailGoldLibrarySelectedId = null;
+            const body = document.getElementById('mail-goldlib-detail-body');
+            if (body) body.innerHTML = '<div class="text-slate-400 text-center py-10">点击左侧任意一行查看主题、正文与点评</div>';
         }
-
-        // v1.7.209: Esc 键关闭右侧种子详情抽屉
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') {
-                const wrap = document.getElementById('mail-goldlib-detail');
-                if (wrap && !wrap.classList.contains('hidden')) closeMailGoldLibrarySeedDetail();
-            }
-        });
 
         // ===== 邮件合同案例库（CRM usrContract 只读候选） =====
         let mailContractCaseCache = [];

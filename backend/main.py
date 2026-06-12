@@ -67,6 +67,7 @@ from database import (
     ApiAssistInvocation, WecomTriggerRecord,
     CaseLibraryCase, CaseLibraryDialogueTurn, CaseIterationRun, CaseIterationResult,
     MailSequenceTemplate, MailCustomerSuiteFeedback, MailContractCase,
+    MailGoldSeedReview,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -16508,8 +16509,15 @@ def list_mail_gold_fewshot_seeds(db: Session = Depends(get_db)):
         EmailFragmentAsset.source_type.in_(MAIL_FEWSHOT_SOURCE_TYPES)
     ).order_by(EmailFragmentAsset.source_ref).all()
 
+    # 人工评审(认可/不认可+点评)按 fragment_id 索引, 一条种子一行最新
+    review_map = {
+        str(rv.fragment_id): rv
+        for rv in db.query(MailGoldSeedReview).all()
+    }
+
     items = []
     for r in rows:
+        review = review_map.get(str(r.fragment_id))
         snapshot = r.source_snapshot or {}
         # v1.7.219: 拍平切片元信息供前端展示
         segment_metadata = None
@@ -16553,6 +16561,9 @@ def list_mail_gold_fewshot_seeds(db: Session = Depends(get_db)):
             "score_source": snapshot.get("score_source"),
             "seed_source_file": snapshot.get("seed_source_file"),
             "segment_metadata": segment_metadata,
+            "review_status": review.review_status if review else None,
+            "review_comment": review.review_comment if review else None,
+            "review_updated_at": review.updated_at.isoformat() if review and review.updated_at else None,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "updated_at": r.updated_at.isoformat() if r.updated_at else None,
         })
@@ -16579,6 +16590,60 @@ def list_mail_gold_fewshot_seeds(db: Session = Depends(get_db)):
             "mail_gold_seed": "docs/mail_gold_candidates/latest_mail_gold_candidates.json（脱敏后入库）",
             "mail_pricing_constraint_seed": "knowledge_chunk 表 chunk_type IN ('constraint','rule' AND knowledge_type='pricing')",
         },
+    }
+
+
+class MailGoldSeedReviewRequest(BaseModel):
+    fragment_id: str
+    review_status: str  # approved / rejected
+    review_comment: str | None = None
+    source_ref: str | None = None
+    reviewer: str | None = None
+
+
+@app.post("/api/v1/mail/gold-seed-review")
+def save_mail_gold_seed_review(payload: MailGoldSeedReviewRequest, db: Session = Depends(get_db)):
+    """保存黄金种子的人工评审(认可/不认可 + 点评)。一条种子一行, 再次提交覆盖最新。"""
+    status = (payload.review_status or "").strip()
+    if status not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="review_status 必须是 approved 或 rejected")
+    fragment_id = (payload.fragment_id or "").strip()
+    if not fragment_id:
+        raise HTTPException(status_code=400, detail="fragment_id 不能为空")
+
+    # 校验种子存在
+    seed = db.query(EmailFragmentAsset).filter(
+        EmailFragmentAsset.fragment_id == fragment_id
+    ).first()
+    if not seed:
+        raise HTTPException(status_code=404, detail="未找到对应黄金种子")
+
+    review = db.query(MailGoldSeedReview).filter(
+        MailGoldSeedReview.fragment_id == fragment_id
+    ).first()
+    comment = (payload.review_comment or "").strip() or None
+    if review:
+        review.review_status = status
+        review.review_comment = comment
+        review.source_ref = payload.source_ref or seed.source_ref
+        review.reviewer = payload.reviewer or review.reviewer
+    else:
+        review = MailGoldSeedReview(
+            fragment_id=fragment_id,
+            source_ref=payload.source_ref or seed.source_ref,
+            review_status=status,
+            review_comment=comment,
+            reviewer=payload.reviewer,
+        )
+        db.add(review)
+    db.commit()
+    db.refresh(review)
+    return {
+        "status": "success",
+        "fragment_id": fragment_id,
+        "review_status": review.review_status,
+        "review_comment": review.review_comment,
+        "review_updated_at": review.updated_at.isoformat() if review.updated_at else None,
     }
 
 
