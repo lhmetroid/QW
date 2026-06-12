@@ -671,8 +671,8 @@
                                 <tbody id="mail-goldlib-tbody"></tbody>
                             </table>
                         </div>
-                        <!-- 右侧详情面板: 点击左侧任意行后在此显示主题/正文/点评 -->
-                        <div id="mail-goldlib-detail" style="flex:1 1 380px; min-width:300px; border-left:1px solid #e2e8f0; padding-left:1rem; align-self:stretch;">
+                        <!-- 右侧详情面板: sticky 固定, 点下方行也能在视野内看到, 并独立滚动(v1.7.255) -->
+                        <div id="mail-goldlib-detail" style="flex:1 1 380px; min-width:300px; border-left:1px solid #e2e8f0; padding-left:1rem; align-self:flex-start; position:sticky; top:8px; max-height:calc(100vh - 16px); overflow-y:auto;">
                             <div id="mail-goldlib-detail-body" class="text-xs text-slate-700 space-y-3">
                                 <div style="text-align:center; padding:2.5rem 0; color:#94a3b8;">点击左侧任意一行查看主题、正文与点评</div>
                             </div>
@@ -2507,6 +2507,8 @@
             highlightMailGoldLibraryRow(fragmentId);
             const body = document.getElementById('mail-goldlib-detail-body');
             if (!body) return;
+            const _panel = document.getElementById('mail-goldlib-detail');
+            if (_panel) _panel.scrollTop = 0; // 切换种子时滚回顶部, 先看到主题
             const fmt = (v) => v == null || v === '' ? '—' : String(v);
             const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             // v1.7.253: 主题/正文可能含 <ContactName> 等尖括号占位符, 必须转义后再注入 innerHTML, 否则 DOM 被吞导致右侧空白
