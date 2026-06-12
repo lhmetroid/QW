@@ -2364,6 +2364,12 @@
 
         // ===== 黄金范例库（v1.7.206） =====
         let mailGoldLibraryCache = [];
+        // v1.7.257: 评审状态元数据(认可/不认可/需修改), 列表徽标与详情共用
+        const REVIEW_META = {
+            approved:       { label: '认可',   cls: 'bg-emerald-100 text-emerald-700' },
+            rejected:       { label: '不认可', cls: 'bg-rose-100 text-rose-700' },
+            needs_revision: { label: '需修改', cls: 'bg-amber-100 text-amber-700' },
+        };
 
         async function loadMailGoldLibrarySeeds() {
             const status = document.getElementById('mail-goldlib-status');
@@ -2423,13 +2429,11 @@
                 .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
                 .replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '&#10;');
             const reviewBadge = (s) => {
-                if (s.review_status !== 'approved' && s.review_status !== 'rejected')
-                    return '<span class="text-slate-300" style="font-size:10px;">未评审</span>';
+                const meta = REVIEW_META[s.review_status];
+                if (!meta) return '<span class="text-slate-300" style="font-size:10px;">未评审</span>';
                 const cmt = s.review_comment ? s.review_comment : '无点评';
                 const hover = `data-comment="点评：${escAttr(cmt)}" onmouseenter="showGoldReviewTip(event,this.dataset.comment)" onmousemove="moveGoldReviewTip(event)" onmouseleave="hideGoldReviewTip()"`;
-                const cls = s.review_status === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700';
-                const label = s.review_status === 'approved' ? '认可' : '不认可';
-                return `<span ${hover} class="rounded ${cls} px-1.5 py-0.5 font-bold" style="cursor:help;font-size:10px;">${label}</span>`;
+                return `<span ${hover} class="rounded ${meta.cls} px-1.5 py-0.5 font-bold" style="cursor:help;font-size:10px;">${meta.label}</span>`;
             };
             for (const s of list) {
                 const tr = document.createElement('tr');
@@ -2545,25 +2549,31 @@
                 </div>
             ` : '';
 
-            const reviewedHint = s.review_status
-                ? `<div class="text-[10px] ${s.review_status === 'approved' ? 'text-emerald-600' : 'text-rose-600'} mt-1">当前：${s.review_status === 'approved' ? '认可' : '不认可'}${s.review_updated_at ? '（' + fmt(s.review_updated_at) + '）' : ''}</div>`
+            const _meta = REVIEW_META[s.review_status];
+            const reviewedHint = _meta
+                ? `<div class="text-[10px] mt-1">当前评审：<span class="rounded ${_meta.cls} px-1 py-0.5 font-bold">${_meta.label}</span>${s.review_updated_at ? ' （' + fmt(s.review_updated_at) + '）' : ''}</div>`
                 : '';
 
             body.innerHTML = `
                 <div>
-                    <div class="font-bold text-slate-700 mb-1">主题（来自原邮件，已脱敏 + 项目符号清洗）</div>
-                    <div class="rounded border border-slate-200 bg-white p-2 text-xs">${fmtEsc(s.title)}</div>
+                    <div class="font-bold text-slate-700 mb-1">主题（可编辑）</div>
+                    <input id="mail-goldlib-edit-title" class="w-full rounded border border-slate-300 px-2 py-1 text-xs" value="${escAttr(s.title)}">
                 </div>
                 <div>
-                    <div class="font-bold text-slate-700 mb-1">正文（${isSegment ? '本段切片内容' : '完整内容'}，已脱敏）</div>
-                    <div class="rounded border border-slate-200 bg-white p-3 text-xs leading-relaxed whitespace-pre-wrap" style="max-height:30vh; overflow-y:auto;">${fmtEsc(s.content)}</div>
+                    <div class="font-bold text-slate-700 mb-1">正文（${isSegment ? '本段切片内容' : '完整内容'}，已脱敏，可编辑）</div>
+                    <textarea id="mail-goldlib-edit-content" rows="12" class="w-full rounded border border-slate-300 px-2 py-1.5 text-xs leading-relaxed" style="max-height:34vh; overflow-y:auto;">${esc(s.content)}</textarea>
+                    <div class="flex items-center gap-2 mt-1">
+                        <button type="button" onclick="saveMailGoldSeedContent('${s.fragment_id}')" class="rounded bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700">保存修改</button>
+                        <span id="mail-goldlib-edit-status" class="text-[11px] text-slate-500"></span>
+                    </div>
                 </div>
                 <div class="rounded border border-amber-300 bg-amber-50 p-3 space-y-2">
                     <div class="font-bold text-amber-900">人工点评</div>
                     <textarea id="mail-goldlib-review-comment" rows="3" class="w-full rounded border border-slate-300 px-2 py-1.5 text-xs" placeholder="填写点评意见（可选）">${esc(s.review_comment || '')}</textarea>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
                         <button type="button" onclick="saveMailGoldSeedReview('${s.fragment_id}', 'approved')" class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700">认可</button>
                         <button type="button" onclick="saveMailGoldSeedReview('${s.fragment_id}', 'rejected')" class="rounded bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700">不认可</button>
+                        <button type="button" onclick="saveMailGoldSeedReview('${s.fragment_id}', 'needs_revision')" class="rounded bg-amber-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-600">需修改</button>
                         <span id="mail-goldlib-review-status" class="text-[11px] text-slate-500"></span>
                     </div>
                     ${reviewedHint}
@@ -2619,9 +2629,41 @@
                 s.review_comment = data.review_comment;
                 s.review_updated_at = data.review_updated_at;
                 renderMailGoldLibrarySeeds();
-                if (statusEl) { statusEl.textContent = `已保存（${reviewStatus === 'approved' ? '认可' : '不认可'}）`; statusEl.className = 'text-[11px] text-emerald-700 font-bold'; }
+                if (statusEl) { statusEl.textContent = `已保存（${(REVIEW_META[reviewStatus] || {}).label || reviewStatus}）`; statusEl.className = 'text-[11px] text-emerald-700 font-bold'; }
             } catch (err) {
                 if (statusEl) { statusEl.textContent = `保存失败：${err.message}`; statusEl.className = 'text-[11px] text-red-600 font-bold'; }
+            }
+        }
+
+        // v1.7.257: 保存对主题/正文的人工修改到 email_fragment_asset
+        async function saveMailGoldSeedContent(fragmentId) {
+            const s = mailGoldLibraryCache.find(x => x.fragment_id === fragmentId);
+            if (!s) return;
+            const title = document.getElementById('mail-goldlib-edit-title')?.value ?? '';
+            const content = document.getElementById('mail-goldlib-edit-content')?.value ?? '';
+            const el = document.getElementById('mail-goldlib-edit-status');
+            if (el) { el.textContent = '保存中……'; el.className = 'text-[11px] text-slate-500'; }
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/gold-seed-content`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ fragment_id: fragmentId, title, content }),
+                });
+                if (!resp.ok) {
+                    let msg = `HTTP ${resp.status}`;
+                    try { const e = await resp.json(); if (e.detail) msg = e.detail; } catch (_) {}
+                    throw new Error(msg);
+                }
+                const data = await resp.json();
+                s.title = data.title; s.content = data.content; s.updated_at = data.updated_at;
+                renderMailGoldLibrarySeeds(); // 列表主题列同步
+                if (el) {
+                    el.textContent = (data.changed && data.changed.length) ? `已保存（${data.changed.join('、')}）` : '无改动';
+                    el.className = 'text-[11px] text-emerald-700 font-bold';
+                }
+            } catch (err) {
+                if (el) { el.textContent = `保存失败：${err.message}`; el.className = 'text-[11px] text-red-600 font-bold'; }
             }
         }
 

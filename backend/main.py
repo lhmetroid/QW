@@ -102,6 +102,7 @@ from mail_crm_mock_data import (
     MAIL_CRM_MOCK_PROFILE_BY_CUSTOMER_KEY,
     build_mail_crm_mock_catalog,
 )
+from wecom_advance_completion import process_advance_completion
 
 FRONTEND_AUTH_COOKIE_NAME = "qw_frontend_auth"
 FRONTEND_AUTH_DEFAULT_ROLE = "admin"
@@ -16605,8 +16606,8 @@ class MailGoldSeedReviewRequest(BaseModel):
 def save_mail_gold_seed_review(payload: MailGoldSeedReviewRequest, db: Session = Depends(get_db)):
     """保存黄金种子的人工评审(认可/不认可 + 点评)。一条种子一行, 再次提交覆盖最新。"""
     status = (payload.review_status or "").strip()
-    if status not in ("approved", "rejected"):
-        raise HTTPException(status_code=400, detail="review_status 必须是 approved 或 rejected")
+    if status not in ("approved", "rejected", "needs_revision"):
+        raise HTTPException(status_code=400, detail="review_status 必须是 approved / rejected / needs_revision")
     fragment_id = (payload.fragment_id or "").strip()
     if not fragment_id:
         raise HTTPException(status_code=400, detail="fragment_id 不能为空")
@@ -16644,6 +16645,55 @@ def save_mail_gold_seed_review(payload: MailGoldSeedReviewRequest, db: Session =
         "review_status": review.review_status,
         "review_comment": review.review_comment,
         "review_updated_at": review.updated_at.isoformat() if review.updated_at else None,
+    }
+
+
+class MailGoldSeedContentRequest(BaseModel):
+    fragment_id: str
+    title: str | None = None
+    content: str | None = None
+
+
+@app.post("/api/v1/mail/gold-seed-content")
+def save_mail_gold_seed_content(payload: MailGoldSeedContentRequest, db: Session = Depends(get_db)):
+    """保存对黄金种子主题/正文的人工修改。空字段不更新。"""
+    fragment_id = (payload.fragment_id or "").strip()
+    if not fragment_id:
+        raise HTTPException(status_code=400, detail="fragment_id 不能为空")
+    seed = db.query(EmailFragmentAsset).filter(
+        EmailFragmentAsset.fragment_id == fragment_id
+    ).first()
+    if not seed:
+        raise HTTPException(status_code=404, detail="未找到对应黄金种子")
+
+    changed = []
+    if payload.title is not None:
+        new_title = payload.title.strip()
+        if not new_title:
+            raise HTTPException(status_code=400, detail="主题不能为空")
+        if new_title != (seed.title or ""):
+            seed.title = new_title[:255]
+            changed.append("title")
+    if payload.content is not None:
+        if payload.content != (seed.content or ""):
+            seed.content = payload.content
+            changed.append("content")
+    if changed:
+        # 标记人工编辑过, 便于后续追溯
+        snap = dict(seed.source_snapshot or {})
+        snap["manual_edited"] = True
+        snap["manual_edited_fields"] = sorted(set((snap.get("manual_edited_fields") or []) + changed))
+        seed.source_snapshot = snap
+        seed.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(seed)
+    return {
+        "status": "success",
+        "fragment_id": fragment_id,
+        "changed": changed,
+        "title": seed.title,
+        "content": seed.content,
+        "updated_at": seed.updated_at.isoformat() if seed.updated_at else None,
     }
 
 
@@ -20002,6 +20052,134 @@ def _apply_sales_advice_output_fields(target: dict, raw_content: str | None, *, 
     # target["followup_rationale"] = sections.get("followup_rationale")
 
 
+def _wecom_advance_context_turns(recent_logs: list[MessageLog]) -> list[dict]:
+    turns: list[dict] = []
+    for item in _recent_logs_chronological(recent_logs)[-12:]:
+        content = str(getattr(item, "content", "") or "").strip()
+        if not content:
+            continue
+        role = "销售" if str(getattr(item, "sender_type", "") or "").strip() == "sales" else "客户"
+        turns.append({"role": role, "content": content})
+    return turns
+
+
+def _call_wecom_advance_completion(
+    *,
+    candidate_id: str,
+    customer_message: str,
+    context_turns: list[dict],
+    draft: str | None,
+) -> tuple[str, dict]:
+    draft_text = IntentEngine.clean_sendable_reply(draft)
+    meta = {
+        "candidate_id": candidate_id,
+        "enabled": bool(settings.WECOM_ADVANCE_COMPLETION_ENABLED),
+        "status": "skipped_disabled",
+        "acted": False,
+        "reason": "",
+        "redline_ok": None,
+        "provider": "",
+        "draft_chars": len(draft_text),
+        "reply_chars": len(draft_text),
+    }
+    if not settings.WECOM_ADVANCE_COMPLETION_ENABLED:
+        return draft_text, meta
+    if not draft_text:
+        meta["status"] = "skipped_empty_draft"
+        return draft_text, meta
+
+    provider = str(settings.WECOM_ADVANCE_COMPLETION_PROVIDER or "hybrid").strip() or "hybrid"
+    try:
+        data = process_advance_completion(
+            customer_message=str(customer_message or ""),
+            context_turns=context_turns or [],
+            draft=draft_text,
+            provider=provider,
+        )
+        reply = IntentEngine.clean_sendable_reply(data.get("final")) if isinstance(data, dict) else ""
+        redline_ok = bool(data.get("redline_ok")) if isinstance(data, dict) else False
+        if reply and redline_ok:
+            meta.update({
+                "status": "done",
+                "acted": bool(data.get("acted")),
+                "reason": str(data.get("reason") or ""),
+                "redline_ok": True,
+                "provider": str(data.get("provider") or provider),
+                "reply_chars": len(reply),
+            })
+            return reply, meta
+        meta.update({
+            "status": "fallback_original",
+            "acted": False,
+            "reason": str(data.get("reason") or "empty_or_redline_failed") if isinstance(data, dict) else "invalid_response",
+            "redline_ok": redline_ok,
+            "provider": str(data.get("provider") or provider) if isinstance(data, dict) else provider,
+        })
+    except Exception as exc:
+        meta.update({
+            "status": "error_fallback_original",
+            "error": sanitize_text(str(exc))[:200],
+            "provider": provider,
+        })
+        logger.warning("企微推进补全失败 candidate=%s error=%s", candidate_id, exc)
+    return draft_text, meta
+
+
+def _apply_wecom_advance_completion_to_result(
+    result: dict,
+    *,
+    customer_message: str,
+    recent_logs: list[MessageLog],
+) -> dict:
+    context_turns = _wecom_advance_context_turns(recent_logs)
+    meta = {
+        "enabled": bool(settings.WECOM_ADVANCE_COMPLETION_ENABLED),
+        "local_model": str(settings.WECOM_ADVANCE_COMPLETION_LOCAL_MODEL or ""),
+        "ollama_chat_url_configured": bool(str(settings.WECOM_ADVANCE_COMPLETION_OLLAMA_CHAT_URL or "").strip()),
+        "provider_configured": str(settings.WECOM_ADVANCE_COMPLETION_PROVIDER or "hybrid"),
+        "candidates": [],
+    }
+
+    if result.get("reply_reference"):
+        reply, item_meta = _call_wecom_advance_completion(
+            candidate_id="llm2",
+            customer_message=customer_message,
+            context_turns=context_turns,
+            draft=result.get("reply_reference"),
+        )
+        result["reply_reference"] = reply
+        result["sales_advice"] = reply
+        result["sales_advice_v2"] = reply
+        meta["candidates"].append(item_meta)
+
+    training_ai = result.get("training_ai")
+    if isinstance(training_ai, dict) and training_ai.get("reply"):
+        reply, item_meta = _call_wecom_advance_completion(
+            candidate_id="train_ai",
+            customer_message=customer_message,
+            context_turns=context_turns,
+            draft=training_ai.get("reply"),
+        )
+        training_ai = dict(training_ai)
+        training_ai["reply"] = reply
+        result["training_ai"] = training_ai
+        meta["candidates"].append(item_meta)
+
+    statuses = [str(item.get("status") or "") for item in meta["candidates"]]
+    if not statuses:
+        meta["status"] = "skipped_no_candidates"
+    elif all(status == "skipped_disabled" for status in statuses):
+        meta["status"] = "skipped_disabled"
+    elif any(item.get("status") == "done" for item in meta["candidates"]):
+        meta["status"] = "done"
+    elif any(status.startswith("error") for status in statuses):
+        meta["status"] = "error_fallback_original"
+    else:
+        meta["status"] = "skipped_or_fallback"
+    result["advance_completion"] = meta
+    return meta
+
+
 def _stage_is_in_progress(stage: str | None) -> bool:
     return str(stage or "").strip() in {"queued", "running"}
 
@@ -23312,6 +23490,22 @@ async def sidebar_assist(
 
         result["crm_status"] = (crm_context or {}).get("crm_profile_status", "unknown")
         result["knowledge_status"] = knowledge_status
+
+        stage_started = perf_counter()
+        advance_completion_meta = await asyncio.to_thread(
+            _apply_wecom_advance_completion_to_result,
+            result,
+            customer_message=(anchor_message.content if anchor_message else ""),
+            recent_logs=recent_logs,
+        )
+        mark_timing("advance_completion_ms", stage_started)
+        stage_status["advance_completion"] = advance_completion_meta.get("status")
+        _set_node_timing(
+            stage_status,
+            "advance_completion",
+            total_ms=timings_ms.get("advance_completion_ms"),
+            status=advance_completion_meta.get("status") or "unknown",
+        )
 
         # v1.7.193 计时改造 (盲区排查):
         # 旧逻辑 total_ms 在主链路结束就截止, jsonable/sanitize/to_thread 存库/db.commit 全部不在统计内,
