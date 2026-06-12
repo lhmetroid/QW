@@ -17465,7 +17465,7 @@ async def get_sessions(chat_date: str | None = Query(default=None), db: Session 
                     "api_avg_quality_score": None,
                 }),
             }
-            for r in results
+            for r in rows
         ],
         "filter_date": chat_date or None,
         "stats": stats_payload if date_range else None,
