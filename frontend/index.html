@@ -2418,12 +2418,18 @@
                 tbody.innerHTML = `<tr><td colspan="7" class="px-2 py-4 text-center text-slate-500">${mailGoldLibraryCache.length === 0 ? '尚未灌入种子（请跑 python backend/seed_mail_gold_candidates.py）' : '当前筛选条件下无匹配种子'}</td></tr>`;
                 return;
             }
-            // 人工评审状态徽标(认可/不认可), title 浮动显示点评内容
+            // 人工评审状态徽标(认可/不认可)。点评用挂到 body 的浮层显示, 不会被表格 overflow 裁剪。
+            const escAttr = (v) => String(v == null ? '' : v)
+                .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '&#10;');
             const reviewBadge = (s) => {
-                const cmt = (s.review_comment || '').replace(/"/g, '&quot;');
-                if (s.review_status === 'approved') return `<span title="点评：${cmt || '无'}" class="rounded bg-emerald-100 text-emerald-700 px-1.5 py-0.5 text-[10px] font-bold cursor-help">认可</span>`;
-                if (s.review_status === 'rejected') return `<span title="点评：${cmt || '无'}" class="rounded bg-rose-100 text-rose-700 px-1.5 py-0.5 text-[10px] font-bold cursor-help">不认可</span>`;
-                return '<span class="text-slate-300 text-[10px]">未评审</span>';
+                if (s.review_status !== 'approved' && s.review_status !== 'rejected')
+                    return '<span class="text-slate-300" style="font-size:10px;">未评审</span>';
+                const cmt = s.review_comment ? s.review_comment : '无点评';
+                const hover = `data-comment="点评：${escAttr(cmt)}" onmouseenter="showGoldReviewTip(event,this.dataset.comment)" onmousemove="moveGoldReviewTip(event)" onmouseleave="hideGoldReviewTip()"`;
+                const cls = s.review_status === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700';
+                const label = s.review_status === 'approved' ? '认可' : '不认可';
+                return `<span ${hover} class="rounded ${cls} px-1.5 py-0.5 font-bold" style="cursor:help;font-size:10px;">${label}</span>`;
             };
             for (const s of list) {
                 const tr = document.createElement('tr');
@@ -2458,8 +2464,43 @@
             });
         }
 
+        // v1.7.252: 状态列点评浮层挂在 body 上(position:fixed), 不受表格 overflow 裁剪, 永不被遮挡。
+        function _goldReviewTipEl() {
+            let tip = document.getElementById('mail-goldlib-tip');
+            if (!tip) {
+                tip = document.createElement('div');
+                tip.id = 'mail-goldlib-tip';
+                tip.style.cssText = 'position:fixed;z-index:99999;max-width:360px;padding:6px 9px;background:#1f2937;color:#fff;font-size:12px;line-height:1.5;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.28);pointer-events:none;white-space:pre-wrap;word-break:break-word;display:none;';
+                document.body.appendChild(tip);
+            }
+            return tip;
+        }
+        function showGoldReviewTip(ev, text) {
+            const tip = _goldReviewTipEl();
+            tip.textContent = text || '';
+            tip.style.display = 'block';
+            moveGoldReviewTip(ev);
+        }
+        function moveGoldReviewTip(ev) {
+            const tip = document.getElementById('mail-goldlib-tip');
+            if (!tip || tip.style.display === 'none') return;
+            let x = ev.clientX + 14, y = ev.clientY + 16;
+            const w = tip.offsetWidth, h = tip.offsetHeight;
+            if (x + w > window.innerWidth - 8) x = window.innerWidth - w - 8;
+            if (y + h > window.innerHeight - 8) y = ev.clientY - h - 12;
+            if (x < 8) x = 8;
+            if (y < 8) y = 8;
+            tip.style.left = x + 'px';
+            tip.style.top = y + 'px';
+        }
+        function hideGoldReviewTip() {
+            const tip = document.getElementById('mail-goldlib-tip');
+            if (tip) tip.style.display = 'none';
+        }
+
         // v1.7.250: 详情改为右侧并排面板。顺序: 主题/正文靠上 → 点评框+认可/不认可 → 其他信息靠后。
         function openMailGoldLibrarySeedDetail(fragmentId) {
+            hideGoldReviewTip();
             const s = mailGoldLibraryCache.find(x => x.fragment_id === fragmentId);
             if (!s) return;
             mailGoldLibrarySelectedId = fragmentId;
@@ -2511,7 +2552,7 @@
                 </div>
                 <div>
                     <div class="font-bold text-slate-700 mb-1">正文（${isSegment ? '本段切片内容' : '完整内容'}，已脱敏）</div>
-                    <div class="rounded border border-slate-200 bg-white p-3 text-xs leading-relaxed whitespace-pre-wrap" style="max-height:50vh; overflow-y:auto;">${fmt(s.content)}</div>
+                    <div class="rounded border border-slate-200 bg-white p-3 text-xs leading-relaxed whitespace-pre-wrap" style="max-height:30vh; overflow-y:auto;">${fmt(s.content)}</div>
                 </div>
                 <div class="rounded border border-amber-300 bg-amber-50 p-3 space-y-2">
                     <div class="font-bold text-amber-900">人工点评</div>
