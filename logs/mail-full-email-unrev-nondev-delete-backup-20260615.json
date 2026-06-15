@@ -1,0 +1,1134 @@
+[
+  {
+    "fragment_id": "7e45d28e-0430-4c35-92f0-8c520dc822cc",
+    "source_ref": "mail_gold_v2_1005_scn_2017",
+    "title": "翻译费用",
+    "content": "Dear [客户称呼]\n\n很高兴今天再次拜访您这边。\n\n刚回到公司我系统拉了一下跟公司同事合作的明细，有26笔业务往来，总计RMB31,331.00\n\n以下是订单明细，你这边看一下，希望明年能有更多的合作，谢谢！\n\nBest Regards\n\n薛琳 [发件人] 销售部\n\n上海嘉赛信息科技发展有限公司 ( 事必达 )\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n[URL] [URL] [EMAIL]\n中国上海徐汇区肇嘉浜路 1065 号飞雕国际大厦 1409 室\n\n关于我们\n\n上海历史最悠久的翻译公司\n\n多道质控流程，业内最强大句库和专业术语数据库\n\n领先的多媒体本地化团队助您在客户中提升影响力\n\n业内顶级交替传译同声传译，服务于各种高端会议",
+    "scenario_label": "new_business_promotion",
+    "intent_label": "new_business_promotion",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "new_business_promotion",
+      "email_stage": "whole_email_scenario_2017",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1005,
+      "parent_subject": "2017年翻译费用",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户其他业务介绍",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:13:01Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "mask_real_customers_brands_banks_dept",
+          "no_time_removal",
+          "no_reflow"
+        ],
+        "round2_desensitize_at": "2026-06-15T09:18:12Z",
+        "round2_scope": "unreviewed_full_email_desensitize_only_min_diff"
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、覆盖多业务线，可用于业务拓展。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、多媒体译制。",
+        "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、多媒体译制",
+        "promo_score": 4,
+        "promo_signal_hits": {
+          "service_intro": [
+            "服务",
+            "业务"
+          ],
+          "language_services": [
+            "翻译",
+            "本地化"
+          ],
+          "extended_services": [
+            "会议"
+          ],
+          "case_or_proof": [
+            "合作",
+            "客户"
+          ],
+          "sales_cta": []
+        },
+        "non_promo_hits": [
+          "订单"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "cdd6dd01-1541-4253-899e-39d742d22093",
+    "source_ref": "mail_gold_v2_1011_scn_2018",
+    "title": "27April ING Event",
+    "content": "Dear [客户称呼]\n\n附件是会议同传的合同版本，请确认一下！\n\n如果有任何的疑问，麻烦及时联系我们。\n\n期待您的早日回复\n\n谢谢！\n\nBest Regards\n\n薛琳 [发件人] 销售部\n\n上海嘉赛信息科技发展有限公司 ( 事必达 )\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n[URL] [URL] [EMAIL]\n中国上海徐汇区肇嘉浜路 1065 号飞雕国际大厦 1409 室\n\n关于我们\n\n上海历史悠久的翻译公司\n\n多道质控流程，业内最强大句库和专业术语数据库\n\n专业的多媒体本地化团队助您在客户中提升影响力\n\n业内资深交替传译同声传译，服务于各种高端会议",
+    "scenario_label": "new_business_promotion",
+    "intent_label": "new_business_promotion",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "new_business_promotion",
+      "email_stage": "whole_email_scenario_2018",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1011,
+      "parent_subject": "27April ING Event",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户其他业务介绍",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:13:01Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "mask_real_customers_brands_banks_dept",
+          "no_time_removal",
+          "no_reflow"
+        ],
+        "round2_desensitize_at": "2026-06-15T09:38:13Z",
+        "round2_scope": "unreviewed_full_email_desensitize_only_min_diff"
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、包含低压力联系或转介绍动作、覆盖多业务线，可用于业务拓展。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、多媒体译制。",
+        "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、多媒体译制",
+        "promo_score": 5,
+        "promo_signal_hits": {
+          "service_intro": [
+            "服务"
+          ],
+          "language_services": [
+            "翻译",
+            "同传",
+            "本地化"
+          ],
+          "extended_services": [
+            "会议"
+          ],
+          "case_or_proof": [
+            "客户"
+          ],
+          "sales_cta": [
+            "联系",
+            "期待"
+          ]
+        },
+        "non_promo_hits": [
+          "附件",
+          "合同",
+          "确认"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "合同/同传排期确认件"
+    ]
+  },
+  {
+    "fragment_id": "e2a0a1f5-1c76-4862-907d-9c10f90daea9",
+    "source_ref": "mail_gold_v2_1016_scn_2017",
+    "title": "三联单",
+    "content": "王小姐，早上好\n\n三联单昨天已安排快递送出，预计今日就可以收到，谢谢。\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年先进企业。\n\n- ---- Forwarded Message received on [PHONE]:\n20:\n53 -----\n\nFrom: [EMAIL]\n\nCC: [EMAIL]\n\nTo: [EMAIL]\n\n回复: Re: 事必达快递发送通知，快递单号为[PHONE]:\n22:\n45\n\n何小姐 您好.\n\n三联单大概哪天交货?\n\n请确认后回复.\n\n谢谢\n\nAMYC技术管理课 王紫嫣\n天田米亚基贸易(上海)有限公司\n上海市徐汇区虹漕路421号64栋6楼\n电话:\n[PHONE]*0\n传真:\n[PHONE]\n邮箱：\n[EMAIL]\n\n邮编:\n200233\n\n发件人： 何小姐\n\n发送时间： [PHONE]:\n26\n\n收件人： 王紫嫣 ; SC冲津科长\n\n主题： Re: 回复: 事必达快递发送通知，快递单号为[PHONE]\n\n王小姐\n\n邮件收到，时间确认好告知您，谢谢。\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年先进企业。\n\n- ---- Original Message received on [PHONE]:\n46:\n02 -----\n\nFrom: [EMAIL]\n\nCC: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\n回复: 事必达快递发送通知，快递单号为[PHONE]:\n48:\n22\n\n何小姐 您好.\n\n样本没有问题,请按这次的来订做.\n\n请告知交货期.\n\n麻烦了.\n\n谢谢.\n\nAMYC技术管理课 王紫嫣\n天田米亚基贸易(上海)有限公司\n上海市徐汇区虹漕路421号64栋6楼\n电话:\n[PHONE]*0\n传真:\n[PHONE]\n邮箱：\n[EMAIL]\n\n邮编:\n200233\n\n发件人： [发件人]\n\n发送时间： [PHONE]:\n48\n\n收件人： zywang\n\n主题： 事必达快递发送通知，快递单号为[PHONE]\n\n亲\n\n您的快递已寄出，麻烦您安排查收，您可点击下方按钮直接查询派送进程，谢谢啦：\n）\n\n快递进程查询\n\n快递公司： 中通快递\n发件时间： [PHONE]\n快递单号： [PHONE]\n寄送物品： 打样\n备注：\n\n收货人： 王紫嫣\n收货地址： 虹漕路421号64幢6楼,\n收货人手机 ：\n收货人电话： 64856111\n\n欢迎使用网上订单处理系统[URL]\n\n[发件人]\n销售部\n上海嘉赛信息科技发展有限公司\n地址：\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室\n电话：\n[PHONE]\n邮箱： [EMAIL]\n网上订单平台： [URL]\n官网： [URL]\n\n欢迎观看演示视频： 我们的历史 质量控制流程介绍 翻译印刷一体化服务介绍 网上订单平台演示\n\n查询更多成功案例 查询优质译员\n\n推荐使用谷歌浏览器登陆我们的SPEED网上订单系统， 官方下载谷歌浏览器",
+    "scenario_label": "new_business_promotion",
+    "intent_label": "new_business_promotion",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "new_business_promotion",
+      "email_stage": "whole_email_scenario_2017",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1016,
+      "parent_subject": "三联单",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户其他业务介绍",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:13:01Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "remove_time_or_festival_info",
+          "desensitize_person_and_company_names",
+          "normalize_paragraphs_and_bullets",
+          "remove_promo_free_gift_trial_language"
+        ]
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、包含低压力联系或转介绍动作、覆盖多业务线，可用于业务拓展。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、设计印刷/物料、多媒体译制、商务礼品。 注意：仍含需复核词 电话, 邮箱。",
+        "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、设计印刷/物料、多媒体译制、商务礼品",
+        "promo_score": 5,
+        "promo_signal_hits": {
+          "service_intro": [
+            "服务",
+            "提供"
+          ],
+          "language_services": [
+            "翻译",
+            "笔译",
+            "口译",
+            "字幕"
+          ],
+          "extended_services": [
+            "设计",
+            "印刷",
+            "礼品"
+          ],
+          "case_or_proof": [
+            "案例",
+            "客户",
+            "成功"
+          ],
+          "sales_cta": [
+            "欢迎",
+            "推荐"
+          ]
+        },
+        "non_promo_hits": [
+          "订单",
+          "确认",
+          "下载"
+        ],
+        "risk_hits": [
+          "电话",
+          "邮箱"
+        ],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "正文多段引用线程(往来邮件)",
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "a67845a8-bc6f-4448-a42e-0e675bcebc23",
+    "source_ref": "mail_gold_v2_1018_scn_2019",
+    "title": "关于翻译费支付-上海嘉赛",
+    "content": "Dear [客户称呼]\n\n去年我们份和份有几笔翻译的项目，因为项目周期比较长了，我们内部已经提前支付译员的费用了，但是我们还没有收到贵司的付款\n\n所以财务催促我好几次了，麻烦您帮忙跟贵司财务确认一下是否下周中旬左右可以帮我们安排一下，谢谢！\n\n以下是具体的项目内容及发票号码。\n\n项目内容发票金额发票号码开票日期\n\n001-ACC_MYACC_SIEMENS_GB01.docx\n\n002-GOF_MYEMB_SIEMENS_GB01.docx\n\n003-INC_MYTAIL_SIEMENS_GB01.docx\n\n004-RIB_MYREW_SIEMENS_GB01.docx\n\n005-SVO_MYUNW_SIEMENS_GB01.docx\n\n006SVT_MYUNCOR3_SIEMENS_GB01.docx\n\n007TUB_MYCORE_SIEMENS_GB01.docx\n\nRMB21,[PHONE]\n\nRIB_MILEPLUS_SIEMENS_GB01.docRMB6,[PHONE]\n\n储纸架说明书.docx/退纸架说明书.docxRMB[PHONE]\n\n以上，麻烦您帮忙尽快回复我一下，谢谢！\n\nBest Regards\n\n薛琳 [发件人] 销售部\n\n上海嘉赛信息科技发展有限公司(事必达)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\n[URL] [URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室\n\n关于我们\n\n精于笔译、口译、印刷、多媒体译制、网站本地化\n\n上线使用，业内先进的翻译预处理系统\n\n专业的多媒体本地化团队助您在客户中提升影响力\n\n全新体验: 快捷下单 文件传输 查询进度 定制译员",
+    "scenario_label": "new_business_promotion",
+    "intent_label": "new_business_promotion",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "new_business_promotion",
+      "email_stage": "whole_email_scenario_2019",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1018,
+      "parent_subject": "关于翻译费支付-上海嘉赛",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户其他业务介绍",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:13:01Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "mask_real_customers_brands_banks_dept",
+          "no_time_removal",
+          "no_reflow"
+        ],
+        "round2_desensitize_at": "2026-06-15T09:38:13Z",
+        "round2_scope": "unreviewed_full_email_desensitize_only_min_diff"
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、覆盖多业务线，可用于业务拓展。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、设计印刷/物料、多媒体译制、商务礼品。",
+        "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、设计印刷/物料、多媒体译制、商务礼品",
+        "promo_score": 3,
+        "promo_signal_hits": {
+          "service_intro": [],
+          "language_services": [
+            "翻译",
+            "笔译",
+            "口译",
+            "本地化"
+          ],
+          "extended_services": [
+            "印刷"
+          ],
+          "case_or_proof": [
+            "客户"
+          ],
+          "sales_cta": []
+        },
+        "non_promo_hits": [
+          "开票",
+          "发票",
+          "付款",
+          "确认"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "be55a5e8-b8da-4c36-9af7-92cf6e498bab",
+    "source_ref": "mail_gold_v2_1043_scn_2019",
+    "title": "继续为您提供多业务支持",
+    "content": "Dear [客户称呼]！\n\n非常感谢您长期以来对我公司的支持！\n\n以下列出了贵方近期委托我方提供的翻译服务的对帐明细清单供您确认核对。\n\n如无问题,烦请回复,我们会将发票快递给您,谢谢!\n\n序号合同编号服务日期服务内容合同总金额未付款金额发票号码\n\n开票日期\n\n开票金额\n\n1XS[PHONE]～[PHONE]西安王府井贷款还款计划安排4,609.004,[PHONE]XS[PHONE]～[PHONE]关于西安王府井贷款还款计划安排[PHONE]XS[PHONE]～[PHONE]份借款协议中译英[PHONE]XS[PHONE]～[PHONE]撤证申请书.docx[PHONE]XS[PHONE]～[PHONE]亿贷款合同补充协议.[PHONE]\n\n上述金额合计：\n5,895.00\n\n再次感谢您的合作！\n\nBest Regards\n\n[发件人] 销售部\n\n上海嘉赛信息科技发展有限公司(事必达)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\n[URL] [URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室",
+    "scenario_label": "re_activation",
+    "intent_label": "re_activation",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "re_activation",
+      "email_stage": "whole_email_scenario_2019",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1043,
+      "parent_subject": "Translation job list of Jan 2019",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户唤醒",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:13:01Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "remove_time_or_festival_info",
+          "desensitize_person_and_company_names",
+          "normalize_paragraphs_and_bullets",
+          "remove_promo_free_gift_trial_language"
+        ]
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书。适合老客户重新激活时承接历史合作并补充新服务；推荐方向：语言服务。",
+        "recommendation": "适合老客户重新激活时承接历史合作并补充新服务；推荐方向：语言服务",
+        "promo_score": 3,
+        "promo_signal_hits": {
+          "service_intro": [
+            "服务",
+            "支持",
+            "提供",
+            "业务"
+          ],
+          "language_services": [
+            "翻译"
+          ],
+          "extended_services": [],
+          "case_or_proof": [
+            "合作",
+            "客户",
+            "长期"
+          ],
+          "sales_cta": []
+        },
+        "non_promo_hits": [
+          "开票",
+          "发票",
+          "付款",
+          "合同",
+          "确认"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "d5c9c93d-a777-4e52-8ec0-b3069a90c0d3",
+    "source_ref": "mail_gold_v2_1044_scn_2020",
+    "title": "继续为您提供多业务支持",
+    "content": "Hi [客户称呼]！\n\n请查收附件的11-的对账单,是否全部都要走预付款,麻烦回复,谢谢.\n\nBest Regards\n\n[发件人] 销售部\n\n上海嘉赛信息科技发展有限公司(事必达)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\n[URL] [URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室",
+    "scenario_label": "re_activation",
+    "intent_label": "re_activation",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "re_activation",
+      "email_stage": "whole_email_scenario_2020",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1044,
+      "parent_subject": "SPEED TECH Job list of Nov & Dec 2019",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户唤醒",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:13:01Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "remove_time_or_festival_info",
+          "desensitize_person_and_company_names",
+          "normalize_paragraphs_and_bullets",
+          "remove_promo_free_gift_trial_language"
+        ]
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书。适合老客户重新激活时承接历史合作并补充新服务；推荐方向：综合服务介绍。",
+        "recommendation": "适合老客户重新激活时承接历史合作并补充新服务；推荐方向：综合服务介绍",
+        "promo_score": 2,
+        "promo_signal_hits": {
+          "service_intro": [
+            "支持",
+            "提供",
+            "业务"
+          ],
+          "language_services": [],
+          "extended_services": [],
+          "case_or_proof": [
+            "客户"
+          ],
+          "sales_cta": []
+        },
+        "non_promo_hits": [
+          "请查收",
+          "附件",
+          "付款"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "d509a4f2-c6bd-4395-babd-e0df2be649dc",
+    "source_ref": "mail_gold_v2_1045_scn_2020",
+    "title": "继续为您提供多业务支持",
+    "content": "Dear [客户称呼]\n\n以下列出了今年10-贵部门合作的翻译翻译清单供您确认核对,请安排出具PO,收到PO后会安排快递将发票寄到天津付款中心。\n\n序号合同编号服务日期服务内容合同总金额未付款金额联系人\n\n1XS[PHONE]～[PHONE]中国危机沟通办法 - 0626.docx[PHONE]Christine Wang\n\n2XS[PHONE]～[PHONE]Global trade faces a USD3.4 trillion financing gap.docx[PHONE]Heidi Jiang\n\n上述金额合计：\n1,163.00\n\n再次感谢您的合作！\n\n祝！\n\nBest Regards\n\n[发件人] 销售部\n\n上海嘉赛信息科技发展有限公司(事必达)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\n[URL] [URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室",
+    "scenario_label": "re_activation",
+    "intent_label": "re_activation",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "re_activation",
+      "email_stage": "whole_email_scenario_2020",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1045,
+      "parent_subject": "Translation service list of Oct-Dec ,2020 from Speed Tech",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户唤醒",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:15:30Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "remove_time_or_festival_info",
+          "desensitize_person_and_company_names",
+          "normalize_paragraphs_and_bullets",
+          "remove_promo_free_gift_trial_language"
+        ]
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、包含低压力联系或转介绍动作。适合老客户重新激活时承接历史合作并补充新服务；推荐方向：语言服务。",
+        "recommendation": "适合老客户重新激活时承接历史合作并补充新服务；推荐方向：语言服务",
+        "promo_score": 4,
+        "promo_signal_hits": {
+          "service_intro": [
+            "服务",
+            "支持",
+            "提供",
+            "业务"
+          ],
+          "language_services": [
+            "翻译"
+          ],
+          "extended_services": [],
+          "case_or_proof": [
+            "合作",
+            "客户"
+          ],
+          "sales_cta": [
+            "联系"
+          ]
+        },
+        "non_promo_hits": [
+          "发票",
+          "付款",
+          "合同",
+          "PO",
+          "确认"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "f6b53b45-2418-4e2e-97e6-56ea022d0f1c",
+    "source_ref": "mail_gold_v2_1055_scn_2018",
+    "title": "翻译费用付款查询--363元",
+    "content": "Hi [客户称呼]\n\n节日快乐~~ 有个付款的事情，请帮忙催促告知下付款日期。 财务在催了，谢谢。\n\nBest Regards\n\n[发件人] 销售部\n\n上海嘉赛信息科技发展有限公司(事必达)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\n[URL] [URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室\n\n关于我们\n\n以综合服务能力取胜\n\n满足客户日趋精细的需求\n\n专业的多媒体本地化团队助您在客户中提升影响力\n\n大数据精准匹配，质量不断提升，科技提升效率\n\n持续积累，积少成多，缩短磨合期，提升翻译效率",
+    "scenario_label": "re_activation",
+    "intent_label": "re_activation",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "re_activation",
+      "email_stage": "whole_email_scenario_2018",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1055,
+      "parent_subject": "翻译费用付款查询--363元",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户唤醒",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:13:01Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "remove_time_or_festival_info",
+          "desensitize_person_and_company_names",
+          "normalize_paragraphs_and_bullets",
+          "remove_promo_free_gift_trial_language"
+        ]
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书。适合老客户重新激活时承接历史合作并补充新服务；推荐方向：语言服务、多媒体译制。",
+        "recommendation": "适合老客户重新激活时承接历史合作并补充新服务；推荐方向：语言服务、多媒体译制",
+        "promo_score": 3,
+        "promo_signal_hits": {
+          "service_intro": [
+            "服务",
+            "能力"
+          ],
+          "language_services": [
+            "翻译",
+            "本地化"
+          ],
+          "extended_services": [],
+          "case_or_proof": [
+            "客户"
+          ],
+          "sales_cta": []
+        },
+        "non_promo_hits": [
+          "付款"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "518360e1-8173-40d6-ba04-285f195d7ad0",
+    "source_ref": "mail_gold_v2_1061_scn_2018",
+    "title": "与您分享可参考的综合服务场景",
+    "content": "Dear [客户称呼]\n\n非常感谢您长期以来对我公司的支持！\n\n以下列出了贵方近期委托我方提供的翻译等服务的对帐明细清单供您确认核对。\n\n序号合同编号服务日期服务内容合同总金额未付款金额发票号码\n\n开票日期\n\n开票金额\n\n1XS[PHONE]～[PHONE]SHANGHAI-#85950-v1-R__Liu__Olivella.docx1,494.001,494.00\n\n上述金额合计：\n1,494.00\n\n再次感谢您的合作！\n\nBest Regards\n\n[发件人] 销售部\n\n上海嘉赛信息科技发展有限公司(事必达)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\n[URL] [URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室\n\n关于我们\n\n上海历史悠久的翻译公司\n\n多道质控流程，业内最强大句库和专业术语数据库\n\n专业的多媒体本地化团队助您在客户中提升影响力\n\n业内资深交替传译同声传译，服务于各种高端会议",
+    "scenario_label": "new_business_promotion",
+    "intent_label": "new_business_promotion",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "new_business_promotion",
+      "email_stage": "whole_email_scenario_2018",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1061,
+      "parent_subject": "Job list from Speed Tech of Sept 2018",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户其他业务介绍",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:13:01Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "remove_time_or_festival_info",
+          "desensitize_person_and_company_names",
+          "normalize_paragraphs_and_bullets",
+          "remove_promo_free_gift_trial_language"
+        ]
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、覆盖多业务线，可用于业务拓展。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、多媒体译制。",
+        "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、多媒体译制",
+        "promo_score": 4,
+        "promo_signal_hits": {
+          "service_intro": [
+            "服务",
+            "支持",
+            "提供"
+          ],
+          "language_services": [
+            "翻译",
+            "本地化"
+          ],
+          "extended_services": [
+            "会议"
+          ],
+          "case_or_proof": [
+            "合作",
+            "客户",
+            "长期"
+          ],
+          "sales_cta": []
+        },
+        "non_promo_hits": [
+          "开票",
+          "发票",
+          "付款",
+          "合同",
+          "确认"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "3edecdb8-8901-445a-95e5-eb6869cfcb20",
+    "source_ref": "mail_gold_v2_1064_scn_2018",
+    "title": "事必达翻译（关于happybaby翻译费用）",
+    "content": "Yijing！\n非常感谢您长期以来对我公司的支持！\n以下列出了贵方在17年委托我方提供的翻译服务的对帐明细清单供您确认核对。\n由于时间已较长，麻烦这周内能否安排付款呢？\n序号合同编号服务日期服务内容合同总金额未付款金额发票号码开票日期开票金额1 XS[PHONE]～[PHONE] happybaby奶粉包装.zip [PHONE]上述金额合计：\n924.00再次感谢您的合作！\n[发件人] 销售部上海嘉赛信息科技发展有限公司(事必达) Phone: [PHONE],[PHONE] Fax: [PHONE]中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室",
+    "scenario_label": "re_activation",
+    "intent_label": "re_activation",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "re_activation",
+      "email_stage": "whole_email_scenario_2018",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1064,
+      "parent_subject": "事必达翻译（关于happybaby翻译费用）",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户唤醒",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:13:01Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "remove_time_or_festival_info",
+          "desensitize_person_and_company_names",
+          "normalize_paragraphs_and_bullets",
+          "remove_promo_free_gift_trial_language"
+        ]
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书。适合老客户重新激活时承接历史合作并补充新服务；推荐方向：语言服务。",
+        "recommendation": "适合老客户重新激活时承接历史合作并补充新服务；推荐方向：语言服务",
+        "promo_score": 3,
+        "promo_signal_hits": {
+          "service_intro": [
+            "服务",
+            "支持",
+            "提供"
+          ],
+          "language_services": [
+            "翻译"
+          ],
+          "extended_services": [],
+          "case_or_proof": [
+            "合作",
+            "长期"
+          ],
+          "sales_cta": []
+        },
+        "non_promo_hits": [
+          "开票",
+          "发票",
+          "付款",
+          "合同",
+          "确认"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "3cfd45df-aeae-442c-b3b8-9d5584013944",
+    "source_ref": "mail_gold_v2_1086_scn_2018",
+    "title": "翻译制作服务结算单",
+    "content": "田小姐，您好\n\n以下是我们尚未结算的服务清单，请查收\n\n序号合同编号服务日期服务内容合同总金额未付款金额\n\n1XS[PHONE]～[PHONE]h06_SCREEN_history_160329\n\n日译中1,097.001,[PHONE]XS[PHONE]～[PHONE]History/2P 宣传资料\n\n制版/修改[PHONE]XS[PHONE]～[PHONE]SAL8600E_J_Fix\n\n日译中[PHONE]XS[PHONE]～[PHONE]SAL8600E_J_Fix\n\n制版[PHONE]\n\n上述金额合计：\n2,393.00\n\n若有任何问题请再与我联系。\n\n非常感谢！\n\nBest Regards\n\n[发件人] 销售部\n\n上海嘉赛信息科技发展有限公司(事必达)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\n[URL] [URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室\n\n关于我们\n\n精于笔译、口译、印刷、多媒体译制、网站本地化\n\n译员专业对口，翻译风格统一\n\n翻译印刷一体化，省时、省心、省力 消除中间环节\n\n专业的多媒体本地化团队助您在客户中提升影响力",
+    "scenario_label": "new_business_promotion",
+    "intent_label": "new_business_promotion",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "new_business_promotion",
+      "email_stage": "whole_email_scenario_2018",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1086,
+      "parent_subject": "翻译制作服务结算单",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户其他业务介绍",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:13:01Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "remove_time_or_festival_info",
+          "desensitize_person_and_company_names",
+          "normalize_paragraphs_and_bullets",
+          "remove_promo_free_gift_trial_language"
+        ]
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、包含低压力联系或转介绍动作、覆盖多业务线，可用于业务拓展。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、设计印刷/物料、多媒体译制。",
+        "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、设计印刷/物料、多媒体译制",
+        "promo_score": 5,
+        "promo_signal_hits": {
+          "service_intro": [
+            "服务"
+          ],
+          "language_services": [
+            "翻译",
+            "笔译",
+            "口译",
+            "本地化"
+          ],
+          "extended_services": [
+            "印刷"
+          ],
+          "case_or_proof": [
+            "客户"
+          ],
+          "sales_cta": [
+            "联系"
+          ]
+        },
+        "non_promo_hits": [
+          "请查收",
+          "付款",
+          "合同",
+          "修改"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "c92d3f02-f428-4051-9c7e-5487b79b6199",
+    "source_ref": "mail_gold_v2_1087_scn_2018",
+    "title": "关于翻译服务费支付",
+    "content": "Dear [客户称呼]，我是上海事必达[发件人]，我们每年年底都为您公司提供年报的翻译服务。\n我们在对账时发现，您委托我们提供的翻译服务费用和Angus Lee委托我们提供的翻译服务费用，我们都没有收到。\n\n具体账单如下：\n序号合同编号服务日期服务内容合同总金额未付款金额1 XS[PHONE]～[PHONE] Translation quotation required 22,[PHONE],214.00 2 XS[PHONE]～[PHONE],306.00 1,306.00 3 XS[PHONE]～[PHONE] BCM Policy/002- BCM Standard / 003-BCM minimum standard for vendors – Group/ 004-IRRM - L2 - Principles for Managing IT Risk/ 005-Information_Security_Principles_-_DB_Group/ 006-Information Security Risk Management Framework - DB Group/ 007-Vendor Risk Management and__ Intra-Group Outsourcing Principles - China addendum v[PHONE])/ 008-Crisis_Management_Standards_-_DB_Group_[PHONE](A total of 8 documents)/009-DB IT Risk MCS v1.4 for CN Translate/010-DB IT Risk Management... 25,[PHONE],944.00上述金额合计： 49,464.00烦请您帮忙查一下，您公司的付款进程。\n\n等待您的回复，谢谢！",
+    "scenario_label": "new_contact_intro",
+    "intent_label": "new_contact_intro",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "new_contact_intro",
+      "email_stage": "whole_email_scenario_2018",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1087,
+      "parent_subject": "关于翻译服务费支付",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "新客户开发介绍",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:15:30Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "remove_time_or_festival_info",
+          "desensitize_person_and_company_names",
+          "normalize_paragraphs_and_bullets",
+          "remove_promo_free_gift_trial_language"
+        ]
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书。适合新联系人首次介绍时建立服务认知；推荐方向：语言服务。",
+        "recommendation": "适合新联系人首次介绍时建立服务认知；推荐方向：语言服务",
+        "promo_score": 3,
+        "promo_signal_hits": {
+          "service_intro": [
+            "服务",
+            "提供"
+          ],
+          "language_services": [
+            "翻译"
+          ],
+          "extended_services": [],
+          "case_or_proof": [
+            "客户"
+          ],
+          "sales_cta": []
+        },
+        "non_promo_hits": [
+          "付款",
+          "合同",
+          "PO"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "359c16d0-f228-4b39-af89-4f43e48a7201",
+    "source_ref": "mail_gold_v2_1182_scn_2022",
+    "title": "未清算账单报备-----上海嘉赛",
+    "content": "Dear\n\n附件为截止到目前未结算清单，因发票需要开我司新抬头，故报备给您。\n\n实在抱歉，添麻烦了。\n\nBest Regards\n\n孙焕 销售部\n\n上海嘉赛科技有限公司(事必达)\n\nPhone: [PHONE], [PHONE]\n\n[URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室\n\n关于我们\n\n专业的翻译、印刷、多媒体服务供应商\n\n专业的多媒体本地化团队助您在客户中提升影响力\n\n专业服务世界500强，累计印刷五百万册\n\n资深交替传译同声传译，服务于各种高端会议",
+    "scenario_label": "new_business_promotion",
+    "intent_label": "new_business_promotion",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "new_business_promotion",
+      "email_stage": "whole_email_scenario_2022",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 1182,
+      "parent_subject": "未清算账单报备-----上海嘉赛",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户其他业务介绍",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、覆盖多业务线，可用于业务拓展。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、设计印刷/物料、多媒体译制。",
+        "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、设计印刷/物料、多媒体译制",
+        "promo_score": 4,
+        "promo_signal_hits": {
+          "service_intro": [
+            "服务",
+            "供应商"
+          ],
+          "language_services": [
+            "翻译",
+            "本地化"
+          ],
+          "extended_services": [
+            "印刷",
+            "会议"
+          ],
+          "case_or_proof": [
+            "客户",
+            "世界500强"
+          ],
+          "sales_cta": []
+        },
+        "non_promo_hits": [
+          "附件",
+          "发票"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "f3d583fe-9e81-4438-a852-032d5ef8d348",
+    "source_ref": "mail_gold_v2_857_scn_2023",
+    "title": "翻译费用付款日期查询，请问财务有回复哇",
+    "content": "Dear [客户称呼]\n\n~~多多保重哦。\n\n麻烦还请协助催下这笔付款，谢谢。\n\n附件PO：\n[PHONE]元\n\n发票是寄出的， 同时寄出的其余费用已收到，请协助查询下此笔的付款日期，谢谢\n\nBest Regards\n\n[发件人] 销售部\n\n上海嘉赛科技有限公司(事必达)\n\nPhone: [PHONE],[PHONE]\n\n[URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室",
+    "scenario_label": "re_activation",
+    "intent_label": "re_activation",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "re_activation",
+      "email_stage": "whole_email_scenario_2023",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 857,
+      "parent_subject": "翻译费用付款日期查询，请问财务有回复哇",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户唤醒",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:13:02Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "remove_time_or_festival_info",
+          "desensitize_person_and_company_names",
+          "normalize_paragraphs_and_bullets",
+          "remove_promo_free_gift_trial_language"
+        ]
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书。适合老客户重新激活时承接历史合作并补充新服务；推荐方向：语言服务。",
+        "recommendation": "适合老客户重新激活时承接历史合作并补充新服务；推荐方向：语言服务",
+        "promo_score": 2,
+        "promo_signal_hits": {
+          "service_intro": [],
+          "language_services": [
+            "翻译"
+          ],
+          "extended_services": [],
+          "case_or_proof": [
+            "客户"
+          ],
+          "sales_cta": []
+        },
+        "non_promo_hits": [
+          "附件",
+          "发票",
+          "付款",
+          "PO"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  },
+  {
+    "fragment_id": "7815a973-a00a-48cd-bff7-3a4ed246d790",
+    "source_ref": "mail_gold_v2_963_scn_2022",
+    "title": "翻译费用",
+    "content": "Dear [客户称呼]\n\n~~虎年大吉，以下是的合作清单，发票将快递至上海办公室，麻烦安排付款，非常感谢。\n\n序号合同编号服务日期服务内容合同总金额联系人\n\n1XS[PHONE]～[PHONE]DD translation - Global Total Return Bond3,190.00杨秋实\n\n2XS[PHONE]～[PHONE]DD Translation - Robeco Euro Credit Bonds.3,101.00杨秋实\n\n上述金额合计：\n6,291.00\n\nBest Regards\n\n[发件人] 销售部\n\n上海嘉赛信息科技发展有限公司(事必达)\n\nPhone: [PHONE],[PHONE]\n\n[URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室",
+    "scenario_label": "re_activation",
+    "intent_label": "re_activation",
+    "useful_score": 0.8,
+    "source_snapshot": {
+      "scenario": "re_activation",
+      "email_stage": "whole_email_scenario_2022",
+      "score_source": "sop_scenario",
+      "useful_score": 0.8,
+      "candidate_rank": 963,
+      "parent_subject": "1月翻译费用",
+      "angle_normalized": true,
+      "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+      "scenario_label_cn": "老客户唤醒",
+      "content_normalized": true,
+      "desensitized_fields": [
+        "email",
+        "url",
+        "phone",
+        "name"
+      ],
+      "desensitized_status": "desensitized",
+      "seed_loader_version": "sop_scenario_v2",
+      "manual_cleanup": {
+        "cleaned_at": "2026-06-15T02:13:02Z",
+        "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+        "review_status_before": null,
+        "review_comment_before": null,
+        "rules": [
+          "remove_time_or_festival_info",
+          "desensitize_person_and_company_names",
+          "normalize_paragraphs_and_bullets",
+          "remove_promo_free_gift_trial_language"
+        ]
+      },
+      "promo_analysis": {
+        "is_promotional": true,
+        "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、包含低压力联系或转介绍动作。适合老客户重新激活时承接历史合作并补充新服务；推荐方向：语言服务。",
+        "recommendation": "适合老客户重新激活时承接历史合作并补充新服务；推荐方向：语言服务",
+        "promo_score": 4,
+        "promo_signal_hits": {
+          "service_intro": [
+            "服务"
+          ],
+          "language_services": [
+            "翻译"
+          ],
+          "extended_services": [],
+          "case_or_proof": [
+            "合作",
+            "客户"
+          ],
+          "sales_cta": [
+            "联系"
+          ]
+        },
+        "non_promo_hits": [
+          "发票",
+          "付款",
+          "合同"
+        ],
+        "risk_hits": [],
+        "analyzed_at": "2026-06-15T03:15:11Z",
+        "analysis_version": "full_email_promo_reason_v1"
+      }
+    },
+    "reasons": [
+      "结算/对账/付款/费用明细(交易)"
+    ]
+  }
+]
