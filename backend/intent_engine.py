@@ -2441,6 +2441,15 @@ class IntentEngine:
             "",
             s,
         )
+        # 模型有时无视提示,在正文最前面自加策略标签(如 【直接回应】【模板·直接回应·简短确认】
+        # 【始终在线·Contextual Response】【直接回应客户最后一句】)。这类前缀不是可发正文,
+        # 且不含上面 cut_patterns 的关键词,会漏网；这里逐个剥掉开头的短【...】标签(限长以免误删正文)。
+        s = s.strip()
+        while True:
+            m = re.match(r"^【[^】]{0,40}】[\s：:，,。.!！~\-]*", s)
+            if not m:
+                break
+            s = s[m.end():].lstrip()
         # 收敛多余空白
         s = re.sub(r"\n{2,}", "\n", s).strip()
         s = re.sub(r"^(?:参考回复|可发回复|回复参考|企微回复参考)\s*[：:]\s*", "", s).strip()
