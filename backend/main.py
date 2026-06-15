@@ -3269,6 +3269,7 @@ def _mail_generate_draft_fewshot_candidates(
     min_score: Decimal,
     limit: int = 3,
 ) -> list[dict]:
+    scenario_key = sanitize_text(scenario).strip()
     effective_fragments = set(function_fragments)
     if int(suite_step) == 2:
         effective_fragments.update({"example", "process"})
@@ -3297,6 +3298,17 @@ def _mail_generate_draft_fewshot_candidates(
         key=lambda item: _mail_fewshot_rank(item, int(suite_step)),
         reverse=True,
     )
+    approved_full_email_items = _mail_approved_full_email_gold_seed_rows(
+        db,
+        scenario=scenario_key,
+        min_score=min_score,
+        limit=max(int(limit), 1),
+    )
+    if approved_full_email_items:
+        seen_ids = {str(item.fragment_id) for item in approved_full_email_items}
+        candidates = approved_full_email_items + [
+            item for item in candidates if str(item.fragment_id) not in seen_ids
+        ]
     preferred = [
         item for item in candidates
         if _mail_fewshot_sequence_step_hint(item) in {0, int(suite_step)}
@@ -3331,6 +3343,41 @@ def _mail_generate_draft_fewshot_candidates(
     #       if _mail_fewshot_admission_status(item, min_score)[0]:
     #           return _mail_fewshot_to_dict(item, min_score)
     return admitted_items
+
+
+def _mail_approved_full_email_gold_seed_rows(
+    db: Session,
+    *,
+    scenario: str,
+    min_score: Decimal,
+    limit: int = 3,
+) -> list[EmailFragmentAsset]:
+    """Return full-email seeds explicitly approved by the operator.
+
+    The review table stores fragment_id as text while EmailFragmentAsset uses UUID,
+    so this intentionally maps in Python instead of joining with an implicit cast.
+    """
+    approved_ids = {
+        sanitize_text(str(row.fragment_id)).strip()
+        for row in db.query(MailGoldSeedReview).filter(
+            MailGoldSeedReview.review_status == "approved"
+        ).all()
+        if sanitize_text(str(row.fragment_id)).strip()
+    }
+    if not approved_ids:
+        return []
+    rows = db.query(EmailFragmentAsset).filter(
+        EmailFragmentAsset.source_type == "mail_gold_seed",
+        EmailFragmentAsset.scenario_label == sanitize_text(scenario).strip(),
+        EmailFragmentAsset.function_fragment == "full_email",
+        EmailFragmentAsset.status.in_(sorted(MAIL_FEWSHOT_READY_STATUSES)),
+        EmailFragmentAsset.useful_score >= min_score,
+    ).order_by(
+        EmailFragmentAsset.useful_score.desc(),
+        EmailFragmentAsset.updated_at.desc(),
+    ).limit(2000).all()
+    approved = [row for row in rows if str(row.fragment_id) in approved_ids]
+    return approved[:max(int(limit), 1)]
 
 
 def _mail_fewshot_rank(item: EmailFragmentAsset, suite_step: int) -> tuple:
@@ -6083,13 +6130,13 @@ def _mail_commercial_sequence_send_timing(scenario: str, suite_step: int) -> str
 _MAIL_NEW_BUSINESS_PROMOTION_SCRIPT_OVERRIDES: dict[int, str] = {
     1: (
         "【结构脚本】\n"
-        "第1封：轻破冰。承接 {company_name} 的 {history}，把联系理由放到“行业交流/国际化沟通支持”，不要像推销服务。\n\n"
+        "第1封：按人工认可黄金邮件写轻破冰。承接 {company_name} 的 {history}，像熟悉业务的销售写给客户，而不是系统生成的销售模板。\n\n"
         "【正文路径】\n"
         "1. {customer_name} 单独称呼。\n"
-        "2. 用 {history} 里真实合作事实自然承接，只表达“之前有合作基础”，不写“最近整理/回想/上次聊到”。\n"
-        "3. 把主话题写成 {industry} 的国际化沟通、行业活动、双语资料或对外展示支持；不要把笔译写成核心卖点。\n"
-        "4. 从 {business_lines} 里只选一个主切口，轻轻说明可配合的方向，不堆服务清单。\n"
-        "5. 结尾低压力：问后续如果有相关活动/资料/对外沟通，是否可以提供一个简短参考或请对方判断是否转给相关团队。\n\n"
+        "2. 用 {history} 里真实合作事实自然承接，只表达“我们对贵司业务有基础了解”，不写“最近整理/回想/上次聊到”。\n"
+        "3. 只选一个主切口：行业活动、双语资料、会议沟通、对外展示、商务礼品或多媒体内容，写出客户为什么可能用得上。\n"
+        "4. 借鉴人工认可 full_email 的写法：先具体场景，再轻量说明 SpeedAsia 可如何省心、省力或减少多供应商沟通，不堆服务清单。\n"
+        "5. 结尾低压力：只问后续如有相关场景，是否方便留作备选，或请对方判断是否转给相关团队。\n\n"
         "【可用变量】\n"
         "{customer_name}；{company_name}；{industry}；{history}；"
         "{business_lines}=笔译/本地化、会议同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品中选1个；"
@@ -6097,12 +6144,12 @@ _MAIL_NEW_BUSINESS_PROMOTION_SCRIPT_OVERRIDES: dict[int, str] = {
     ),
     2: (
         "【结构脚本】\n"
-        "第2封：证据增强。用 {peer_case} 或同类型优秀邮件段落，证明我们理解行业沟通场景，不写成当前客户自己的历史。\n\n"
+        "第2封：按人工认可黄金邮件写证据增强。用 {peer_case} 或 approved full_email 的表达方式，补一个可借鉴的业务场景，不写成当前客户自己的历史。\n\n"
         "【正文路径】\n"
         "1. {customer_name} 单独称呼。\n"
-        "2. 先承接 {industry} 的国际化沟通、活动执行或双语资料场景，再引入参考，不要直接说“我们有很多案例”。\n"
-        "3. 从 {peer_case} 中只提炼“场景-做法-可借鉴点”，不编造公司名、年份、项目细节或客户反馈。\n"
-        "4. 结尾低压力：问是否值得整理一个简短参考清单，或请对方判断是否适合转给相关团队。\n\n"
+        "2. 先承接 {industry} 的国际化沟通、活动执行、双语资料或市场物料场景，再引入参考，不要直接说“我们有很多案例”。\n"
+        "3. 从 {peer_case} 中只提炼“客户场景-一站式做法-可借鉴点”，可以有省时、省心、省力的表达，但不得编造公司名、年份、项目细节或客户反馈。\n"
+        "4. 结尾低压力：问是否值得整理一个简短参考方向，或请对方判断是否适合转给相关团队。\n\n"
         "【可用变量】\n"
         "{customer_name}；{company_name}；{industry}；{history}；"
         "{business_lines}=笔译/本地化、会议同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品中选1个；"
@@ -6110,12 +6157,12 @@ _MAIL_NEW_BUSINESS_PROMOTION_SCRIPT_OVERRIDES: dict[int, str] = {
     ),
     3: (
         "【结构脚本】\n"
-        "第3封：协作路径。说明如果后续有行业活动、海外交流、双语资料或对外展示，可以从一个小场景开始。\n\n"
+        "第3封：按人工认可黄金邮件写协作路径。不要像流程制度，写成销售在帮客户把一个真实场景拆小、降低推进成本。\n\n"
         "【正文路径】\n"
         "1. {customer_name} 单独称呼。\n"
-        "2. 基于 {industry} 和 {history}，提出“先从一个资料/会议/活动/视频内容场景梳理”的低门槛方式。\n"
-        "3. 从 {business_lines} 里选择 2-3 个相关组合，例如会议同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品等；不要全部罗列。\n"
-        "4. 结尾低压力：请对方给一个场景或资料类型，我们判断适合的配合方式，不谈价格和排期。\n\n"
+        "2. 基于 {industry} 和 {history}，提出“先从一份资料、一次会议、一个活动或一类视频内容开始看”的低门槛方式。\n"
+        "3. 从 {business_lines} 里选择 2-3 个相关组合，写成一站式配合路径，例如翻译+排版、会议同传+设备、多媒体译制+字幕审校、活动物料+商务礼品；不要全部罗列。\n"
+        "4. 结尾低压力：请对方给一个场景或资料类型，我们先判断适合的配合方式，不谈价格和排期。\n\n"
         "【可用变量】\n"
         "{customer_name}；{company_name}；{industry}；{history}；"
         "{business_lines}=同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品等按场景组合；"
@@ -6123,11 +6170,11 @@ _MAIL_NEW_BUSINESS_PROMOTION_SCRIPT_OVERRIDES: dict[int, str] = {
     ),
     4: (
         "【结构脚本】\n"
-        "第4封：低压力收口。不要催单，只把这套邮件收束到“保持联系/后续有相关场景可再交流”。\n\n"
+        "第4封：按人工认可黄金邮件写低压力收口。不要催单，只像销售自然收个尾，把后续联系理由留住。\n\n"
         "【正文路径】\n"
         "1. {customer_name} 单独称呼。\n"
-        "2. 简短承认对方当前未必有明确需求，说明前几封只是同步一个国际化沟通/活动支持方向。\n"
-        "3. 用 {business_lines} 概括可整理的服务范围，但不要写成报价、方案包或强推服务清单。\n"
+        "2. 简短承认对方当前未必有明确需求，说明前几封只是同步一个国际化沟通/活动支持方向，后续有类似场景时可作为备选。\n"
+        "3. 用 {business_lines} 概括可整理的服务范围，写成“供您内部判断/转发时更方便”的轻材料，不写成报价、方案包或强推服务清单。\n"
         "4. 结尾用 {referral_request}，表达后续有行业活动、双语资料、对外展示或相关项目时可以再配合；不直接索要电话、邮箱或具体联系人。\n\n"
         "【可用变量】\n"
         "{customer_name}；{company_name}；{industry}；{history}；"
@@ -6139,22 +6186,22 @@ _MAIL_NEW_BUSINESS_PROMOTION_SCRIPT_OVERRIDES: dict[int, str] = {
 
 _MAIL_NEW_BUSINESS_PROMOTION_AI_INSTRUCTION_OVERRIDES: dict[int, str] = {
     1: (
-        "第1封只做轻破冰。风格按 docx 标准：行业感、轻商务、不施压。"
+        "第1封只做轻破冰。风格按人工认可黄金邮件标准：像人写的亲和商务邮件，有具体场景，不像规则摘要。"
         "必须用 {history} 中真实事实切入，但不要把笔译写成核心卖点；主话题写成 {industry} 的国际化沟通、行业活动、双语资料或对外展示支持。"
         "只选 {business_lines} 中一个主切口。不要写最近整理、上次聊到、感谢一直以来。结尾只给低压力参考或团队判断请求。"
     ),
     2: (
-        "第2封只做参考增强。风格按 docx 标准：先讲行业场景，再给参考，不要像群发销售。"
+        "第2封只做参考增强。风格按人工认可黄金邮件标准：先讲客户可能遇到的行业场景，再给参考，不要像群发销售。"
         "优先使用 {peer_case}，但只提炼场景、做法、可借鉴点，不得把外部案例写成当前客户历史。"
-        "不要写有家客户、某客户、主办方反馈、客户反馈、去年、最近、这两天。结尾问是否值得整理简短参考清单。"
+        "不要写有家客户、某客户、主办方反馈、客户反馈、去年、最近、这两天。结尾问是否值得整理简短参考方向。"
     ),
     3: (
-        "第3封只说明下一步怎么开始，不再讲案例。风格按 docx 标准：具体但不压迫。"
+        "第3封只说明下一步怎么开始，不再讲案例。风格按人工认可黄金邮件标准：具体、亲和、不压迫。"
         "从 {industry}、{history} 和 {business_lines} 里选 2-3 个合适组合，说明可先看哪类资料、会议、活动或视频内容场景。"
         "不得写价格、免费、试译、工期承诺。"
     ),
     4: (
-        "第4封只做低压力收口，不催单，不复述所有能力。"
+        "第4封只做低压力收口，不催单，不复述所有能力。风格按人工认可黄金邮件标准：自然收尾，保留后续联系理由。"
         "用保持联系的语气收束到服务范围清单、资料评估或请对方判断转给相关团队。不得直接索要电话、邮箱、联系人。"
     ),
 }
@@ -6262,10 +6309,10 @@ def _mail_commercial_sequence_template_payload(scenario: str, suite_step: int) -
 
 _MAIL_SEQUENCE_TEMPLATE_DEFAULT_VERSION = 30
 _MAIL_SEQUENCE_TEMPLATE_TARGETED_VERSIONS: dict[tuple[str, int], int] = {
-    ("new_business_promotion", 1): 52,
-    ("new_business_promotion", 2): 52,
-    ("new_business_promotion", 3): 52,
-    ("new_business_promotion", 4): 52,
+    ("new_business_promotion", 1): 53,
+    ("new_business_promotion", 2): 53,
+    ("new_business_promotion", 3): 53,
+    ("new_business_promotion", 4): 53,
     ("re_activation", 1): 46,
     ("re_activation", 2): 46,
     ("re_activation", 3): 46,
@@ -6760,15 +6807,36 @@ def _mail_prompt_template_variable_map(
 def _mail_prompt_fewshot_examples(profile: MailDraftIntentProfile, limit: int = 3) -> list[str]:
     examples = []
     for item in (profile.admitted_fewshot_examples or [])[:max(int(limit), 1)]:
-        title = _mail_prompt_fact(sanitize_text(item.get("title") if isinstance(item, dict) else ""), 80)
+        function_fragment = sanitize_text(item.get("function_fragment") if isinstance(item, dict) else "")
+        review_status = sanitize_text(item.get("review_status") if isinstance(item, dict) else "")
+        is_approved_full_email = function_fragment == "full_email" and review_status == "approved"
+        title = _mail_prompt_fact(sanitize_text(item.get("title") if isinstance(item, dict) else ""), 90)
         content = _mail_sanitize_fewshot_reference_for_draft(item.get("content") if isinstance(item, dict) else "") or ""
-        content = _mail_prompt_fact(content, 110)
+        content = _mail_prompt_fact(content, 260 if is_approved_full_email else 130)
         score = item.get("useful_score") if isinstance(item, dict) else None
         label = title if title != "无明确记录" else "未命名优秀邮件段落"
         body = content if content != "无明确记录" else "无可用内容"
         score_text = f"；分数：{score}" if score is not None else ""
-        examples.append(f"{len(examples) + 1}）{label}{score_text}\n{body}")
+        approved_text = "；人工认可完整邮件" if is_approved_full_email else ""
+        examples.append(f"{len(examples) + 1}）{label}{score_text}{approved_text}\n{body}")
     return examples
+
+
+def _mail_prompt_approved_gold_style_standard(profile: MailDraftIntentProfile) -> str:
+    full_email_titles = [
+        sanitize_text(item.get("title") or "")
+        for item in (profile.admitted_fewshot_examples or [])
+        if isinstance(item, dict)
+        and sanitize_text(item.get("function_fragment") or "") == "full_email"
+        and sanitize_text(item.get("review_status") or "") == "approved"
+    ]
+    title_hint = "；".join(title for title in full_email_titles[:2] if title)
+    return (
+        "人工认可黄金邮件标准：像销售本人写给熟客户或潜在联系人，不像规则摘要。"
+        "写法要有自然称呼、一个具体业务场景、少量可信经验、轻商务语气和低压力下一步；"
+        "可以借鉴 approved full_email 的亲和、具体、可转发感，但不要照抄夸张数字、客户原话、微信/领礼品等不适合本次客户的内容。"
+        f"{' 当前参考主题：' + title_hint if title_hint else ''}"
+    )
 
 
 def _mail_generation_stage_brief(profile: MailDraftIntentProfile) -> str:
@@ -6867,6 +6935,7 @@ def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile) -> str:
         service_focus=service_focus,
     )
     fewshot_examples = _mail_prompt_fewshot_examples(profile, limit=3)
+    approved_gold_style_standard = _mail_prompt_approved_gold_style_standard(profile)
     user_prompt = "\n".join([
         f"任务：{scenario_cn}第{profile.suite_step}/4封。",
         f"目标：{_mail_prompt_short_purpose(profile)}",
@@ -6881,12 +6950,14 @@ def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile) -> str:
         "变量取值：",
         *variable_map,
         "",
-        "相关优秀同类型邮件段落供参考或运用（只参考节奏、场景和表达方式，不得把外部案例写成当前客户自己的历史）：",
+        approved_gold_style_standard,
+        "",
+        "相关优秀同类型邮件供参考或运用（优先学习人工认可 full_email 的语气、节奏和场景表达；只参考表达方式，不得把外部案例写成当前客户自己的历史）：",
         *(fewshot_examples or ["无命中。"]),
         "",
-        "边界：按结构脚本和AI指令写；每封只选一个主切口；CRM事实只做背景；禁价格/报价/折扣/账期/免费/试译/样稿/工期承诺/内部编号；不得直接索要电话、邮箱、联系人；不得把资料类型写成客户行业。",
+        "边界：按结构脚本和AI指令写；每封只选一个主切口；CRM事实只做背景；禁价格/报价/折扣/账期/免费/试译/样稿/工期承诺/内部编号；不得直接索要电话、邮箱、联系人；不得把资料类型写成客户行业；不要写成条款清单或系统说明。",
         "",
-        "输出：只输出JSON，paragraphs第一段必须只是称呼。",
+        "输出：只输出JSON，paragraphs第一段必须只是称呼；正文要像人写的亲和商务邮件。",
     ])
     runtime_settings = _load_runtime_settings_with_defaults()
     system_prompt = runtime_settings.get("mail_system_prompt") or _MAIL_DRAFT_LLM_SYSTEM_PROMPT
@@ -16079,98 +16150,175 @@ _MAIL_FALLBACK_TEMPLATE_MARKERS = [
 ]
 
 
+_MAIL_GOLD_HUMAN_STYLE_TERMS = (
+    "您好", "供您参考", "如果您", "也欢迎", "随时", "方便", "希望", "期待", "辛苦",
+    "省时", "省心", "省力", "一站式", "低压力", "相关团队", "推荐", "转给", "判断",
+    "场景", "活动", "资料", "会议", "物料", "多媒体", "排版", "印刷", "同传",
+)
+
+_MAIL_GOLD_BUSINESS_STYLE_TERMS = (
+    "同传设备", "会议同传", "现场语言支持", "多语种", "国际交流", "国际化沟通",
+    "对外展示", "行业活动", "展会活动", "展台搭建", "展会物料", "活动物料",
+    "商务礼品", "双语资料", "产品资料", "医学文档", "产品说明书", "法规合规",
+    "翻译物料", "翻译", "笔译", "本地化", "排版印刷", "视频译制", "字幕",
+    "一站式方式", "一站式配合", "减少多方", "统一协调", "服务范围", "成功案例",
+    "案例分享", "供您内部判断", "备选参考", "转发给相关", "相关同事",
+)
+
+_MAIL_ROBOTIC_OR_PUSHY_TERMS = (
+    "硬性要求", "变量取值", "结构脚本", "AI指令", "必须使用", "本步目标", "草稿样例",
+    "立即回复", "尽快下单", "限时优惠", "强烈建议", "务必今天", "报价如下",
+)
+
+
+def _mail_plain_text_from_html(value: str | None) -> str:
+    text_value = re.sub(r"<br\s*/?>", "\n", value or "", flags=re.IGNORECASE)
+    text_value = re.sub(r"</p\s*>", "\n", text_value, flags=re.IGNORECASE)
+    text_value = re.sub(r"<[^>]+>", "", text_value)
+    text_value = html.unescape(text_value)
+    return re.sub(r"\s+", " ", text_value).strip()
+
+
+def _mail_gold_similarity_terms(value: str) -> set[str]:
+    text_value = sanitize_text(value)
+    terms = {
+        term
+        for term in (*_MAIL_GOLD_HUMAN_STYLE_TERMS, *_MAIL_GOLD_BUSINESS_STYLE_TERMS)
+        if term in text_value
+    }
+    return {term for term in terms if len(term) >= 2}
+
+
+def _mail_best_approved_gold_similarity(
+    db: Session | None,
+    *,
+    scenario: str,
+    body_text: str,
+) -> dict:
+    if db is None or not body_text:
+        return {"score": 0, "best_source_ref": None, "best_title": None, "overlap_terms": []}
+    generated_terms = _mail_gold_similarity_terms(body_text)
+    if not generated_terms:
+        return {"score": 0, "best_source_ref": None, "best_title": None, "overlap_terms": []}
+    rows = _mail_approved_full_email_gold_seed_rows(
+        db,
+        scenario=scenario,
+        min_score=Decimal("0.6000"),
+        limit=20,
+    )
+    best_score = 0.0
+    best_row = None
+    best_overlap: set[str] = set()
+    for row in rows:
+        gold_terms = _mail_gold_similarity_terms(f"{row.title}\n{row.content}")
+        if not gold_terms:
+            continue
+        overlap = generated_terms & gold_terms
+        score = len(overlap) / max(1, min(len(generated_terms), len(gold_terms)))
+        if score > best_score:
+            best_score = score
+            best_row = row
+            best_overlap = overlap
+    return {
+        "score": round(min(best_score, 1.0), 4),
+        "best_source_ref": best_row.source_ref if best_row else None,
+        "best_title": best_row.title if best_row else None,
+        "overlap_terms": sorted(best_overlap, key=lambda item: (-len(item), item))[:12],
+    }
+
+
 def _score_mail_iteration_draft(
     *,
+    db: Session | None = None,
+    scenario: str = "",
     response_data: dict,
     elapsed_ms: int,
     final_subject: str,
     final_body_html: str,
 ) -> dict:
-    """规则版评分（0-100），返回 {score, breakdown, notes}。
-
-    v1.7.206 重价：LLM 真调用 50 分（之前 30）+ 新增"不含 fallback 模板痕迹"15 分 + 新增
-    "不含英文邮件正文"10 分。fallback 模板的草稿天花板 ≈ 30 分（LLM 真调用 0 + 模板痕迹 0 +
-    可能含英文 cta_style → 0 + 范例命中 10 + 主题 5 + 正文段落 5 + 安全门 5 = 25-30），
-    符合"几乎不可用"的真实评价。
-    """
-    breakdown = {}
+    """V34 评分：以人工认可黄金邮件为标准，看亲和度与相似度。"""
+    breakdown: dict[str, Any] = {"score_method": "approved_gold_human_likeness_v1"}
     notes_parts = []
-
-    # 维度 1：LLM 真调用成功 50 分（提高权重 — 不调通邮件本质上不可用）
-    if (response_data.get("llm_status") or "") == "success":
-        breakdown["llm_success"] = 50
-    else:
-        breakdown["llm_success"] = 0
-        notes_parts.append("大模型未真调用成功（走兜底模板，邮件不可用）")
-
-    # 维度 2：邮件正文不含 fallback 模板痕迹 15 分（新增 — fallback 模板含 meta 字眼 必须扣）
-    body_text = re.sub(r"<[^>]+>", "", final_body_html or "")
-    fallback_markers_hit = [m for m in _MAIL_FALLBACK_TEMPLATE_MARKERS if m in body_text]
-    if not fallback_markers_hit:
-        breakdown["no_fallback_marker"] = 15
-    else:
-        breakdown["no_fallback_marker"] = 0
-        notes_parts.append(f"正文含兜底模板痕迹：{fallback_markers_hit}")
-
-    # 维度 3：邮件正文不含英文邮件正文 10 分（新增 — fallback 的 cta_style 是英文）
-    en_word_count = len(re.findall(r"\b[A-Za-z]{4,}\b", body_text))
-    if en_word_count == 0:
-        breakdown["language_purity"] = 10
-    elif en_word_count <= 2:
-        breakdown["language_purity"] = 6
-    else:
-        breakdown["language_purity"] = 0
-        notes_parts.append(f"正文含 {en_word_count} 个英文词（≥4 字符），疑似中英混杂")
-
-    # 维度 4：命中范例 10 分
-    if response_data.get("retrieved_fewshot_id"):
-        breakdown["fewshot_hit"] = 10
-    else:
-        breakdown["fewshot_hit"] = 0
-        notes_parts.append("范例未命中")
-
-    # 维度 5：主题中文 + 长度 6-80 字符 5 分
-    subject = (final_subject or "").strip()
-    has_chinese_subject = bool(re.search(r"[一-鿿]", subject))
-    if has_chinese_subject and 6 <= len(subject) <= 80:
-        breakdown["subject_quality"] = 5
-    elif has_chinese_subject:
-        breakdown["subject_quality"] = 3
-        notes_parts.append("主题中文但长度不在 6-80 区间")
-    else:
-        breakdown["subject_quality"] = 0
-        notes_parts.append("主题非中文或为空")
-
-    # 维度 6：正文长度 ≥ 80 字符 + 段落 ≥ 3 段 5 分（合并为正文形态）
-    body_len = len(body_text.strip())
+    body_text = _mail_plain_text_from_html(final_body_html)
     paragraph_count = len(re.findall(r"<p[^>]*>", final_body_html or ""))
-    if body_len >= 80 and paragraph_count >= 3:
-        breakdown["body_shape"] = 5
-    elif body_len >= 50 and paragraph_count >= 2:
-        breakdown["body_shape"] = 3
-    else:
-        breakdown["body_shape"] = 0
-        notes_parts.append(f"正文形态弱（长度 {body_len} 段落 {paragraph_count}）")
+    fallback_markers_hit = [m for m in _MAIL_FALLBACK_TEMPLATE_MARKERS if m in body_text]
 
-    # 维度 7：安全门通过 5 分
+    affinity_score = 0
+    if re.search(r"(您好|Dear|Hi)\s*[\u4e00-\u9fffA-Za-z\[\] ]{0,30}", body_text):
+        affinity_score += 7
+    if any(term in body_text for term in ("供您参考", "如果您", "也欢迎", "方便", "随时", "希望")):
+        affinity_score += 8
+    if any(term in body_text for term in ("省时", "省心", "省力", "一站式", "减少", "统一协调", "备选")):
+        affinity_score += 7
+    if paragraph_count >= 3 and 120 <= len(body_text) <= 1200:
+        affinity_score += 5
+    if not any(term in body_text for term in _MAIL_ROBOTIC_OR_PUSHY_TERMS):
+        affinity_score += 3
+    else:
+        notes_parts.append("存在系统化或强推表达")
+    breakdown["human_affinity"] = min(30, affinity_score)
+
+    similarity = _mail_best_approved_gold_similarity(db, scenario=scenario, body_text=body_text)
+    similarity_score = min(30, int(round(similarity["score"] * 30)))
+    if similarity_score < 12:
+        notes_parts.append("与人工认可 full_email 的词汇/场景重合偏低")
+    breakdown["approved_gold_similarity"] = similarity_score
+    breakdown["matched_gold_source_ref"] = similarity.get("best_source_ref")
+    breakdown["matched_gold_title"] = similarity.get("best_title")
+    breakdown["matched_gold_overlap_terms"] = similarity.get("overlap_terms") or []
+
+    scenario_score = 0
+    if any(term in body_text for term in ("行业", "活动", "会议", "资料", "对外", "市场", "培训", "展会", "视频")):
+        scenario_score += 7
+    if any(term in body_text for term in ("同传", "多媒体", "排版", "印刷", "商务礼品", "展台", "本地化")):
+        scenario_score += 7
+    if response_data.get("retrieved_fewshot_id"):
+        scenario_score += 4
+    if re.search(r"贵司|贵公司|合作|业务", body_text):
+        scenario_score += 2
+    breakdown["scenario_specificity"] = min(20, scenario_score)
+
+    cta_score = 0
+    if any(term in body_text for term in ("如果", "后续", "方便", "需要", "相关团队", "同事", "转给", "推荐")):
+        cta_score += 7
+    if not re.search(r"电话|邮箱|联系人.{0,4}(?:给我|提供|发我)", body_text):
+        cta_score += 3
+    else:
+        notes_parts.append("结尾仍有直接索要联系人倾向")
+    breakdown["low_pressure_next_step"] = min(10, cta_score)
+
+    cleanliness_score = 10
+    if fallback_markers_hit:
+        cleanliness_score -= 4
+        notes_parts.append(f"正文含兜底模板痕迹：{fallback_markers_hit}")
+    if re.search(r"\{[^}]+\}|unknown|None|变量|字段", body_text, flags=re.IGNORECASE):
+        cleanliness_score -= 3
+        notes_parts.append("正文残留变量或字段痕迹")
     sg = response_data.get("safety_guardrail") or {}
     overall = sg.get("overall_outcome") or ""
-    if overall == "passed":
-        breakdown["safety_outcome"] = 5
+    if overall.startswith("red_card"):
+        cleanliness_score -= 5
+        notes_parts.append(f"安全门红牌：{overall}")
     elif overall.startswith("yellow_card"):
-        breakdown["safety_outcome"] = 3
+        cleanliness_score -= 2
         notes_parts.append(f"安全门黄牌：{overall}")
-    elif overall.startswith("red_card"):
-        breakdown["safety_outcome"] = 0
-        notes_parts.append(f"安全门红牌硬阻断：{overall}")
-    else:
-        breakdown["safety_outcome"] = 1
+    breakdown["cleanliness_and_safety"] = max(0, cleanliness_score)
 
-    score = sum(breakdown.values())
+    score = sum(
+        int(v)
+        for k, v in breakdown.items()
+        if k in {
+            "human_affinity",
+            "approved_gold_similarity",
+            "scenario_specificity",
+            "low_pressure_next_step",
+            "cleanliness_and_safety",
+        }
+    )
     return {
         "score": score,
         "breakdown": breakdown,
-        "notes": "；".join(notes_parts) or "全维度通过",
+        "notes": "；".join(notes_parts) or "按人工认可黄金邮件标准：亲和、具体、低压力且与 approved full_email 风格接近",
     }
 
 
@@ -16245,6 +16393,8 @@ def _run_one_mail_iteration_draft(
 
         elapsed_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
         quality = _score_mail_iteration_draft(
+            db=db,
+            scenario=payload.scenario,
             response_data=response_dict,
             elapsed_ms=elapsed_ms,
             final_subject=response.final_subject,
@@ -16562,6 +16712,16 @@ def list_mail_gold_fewshot_seeds(db: Session = Depends(get_db)):
             "score_source": snapshot.get("score_source"),
             "seed_source_file": snapshot.get("seed_source_file"),
             "segment_metadata": segment_metadata,
+            "selection_reason": (
+                (snapshot.get("promo_analysis") or {}).get("selection_reason")
+                if r.function_fragment == "full_email"
+                else ""
+            ),
+            "promo_analysis": (
+                snapshot.get("promo_analysis")
+                if r.function_fragment == "full_email"
+                else None
+            ),
             "review_status": review.review_status if review else None,
             "review_comment": review.review_comment if review else None,
             "review_updated_at": review.updated_at.isoformat() if review and review.updated_at else None,
@@ -18153,6 +18313,34 @@ def _message_fact_dict(item: MessageLog) -> dict:
 
 def _recent_logs_chronological(recent_logs: list[MessageLog]) -> list[MessageLog]:
     return list(reversed(recent_logs or []))
+
+# 跨天回退条数：当天聊天记录不足这个数量时,按原有逻辑取触发点之前最近 N 条。
+SIDEBAR_DIALOG_TAIL_COUNT = 10
+
+def _select_dialog_window(visible_messages: list[MessageLog], anchor_message: MessageLog) -> list[MessageLog]:
+    """选取喂给生成流程的聊天记录,返回倒序(最新在前)。
+
+    规则(按北京时间):
+    - 锚点(客户最新消息)所在【当天】的消息全部给,即使当天超过 N 条;
+    - 当天消息不足 N 条(需要跨天才能凑够背景)时,回退原有逻辑:取触发点之前最近 N 条。
+
+    MessageLog.timestamp 由 archive_service 写入,是"北京-naive"时间(见 v1.7.192 说明),
+    所以直接用 .date() 比较即是按北京日历日切分,无需再做时区换算。
+    """
+    tail = list(reversed(visible_messages[-SIDEBAR_DIALOG_TAIL_COUNT:]))
+    anchor_ts = getattr(anchor_message, "timestamp", None)
+    if not anchor_ts:
+        return tail
+    anchor_day = anchor_ts.date()
+    same_day = [
+        m for m in visible_messages
+        if getattr(m, "timestamp", None) and m.timestamp.date() == anchor_day
+    ]
+    # same_day 始终是 visible_messages 的尾部连续段(锚点在当天,当天消息都排在最后),
+    # 当它比"最近 N 条"更长时,说明当天就超过 N 条,按需求把当天全部给出。
+    if len(same_day) > len(tail):
+        return list(reversed(same_day))
+    return tail
 
 def _message_fact_dicts(logs: list[MessageLog]) -> list[dict]:
     return [_message_fact_dict(item) for item in (logs or [])]
@@ -22696,7 +22884,8 @@ async def sidebar_assist(
         anchor_message = _find_latest_customer_anchor(all_messages)
         if anchor_message:
             visible_messages = _visible_messages_until_anchor(all_messages, anchor_message.id)
-            recent_logs = list(reversed(visible_messages[-10:]))
+            # 按北京时间给当天全部聊天记录(当天超过 N 条也给);跨天则回退最近 N 条原有逻辑。
+            recent_logs = _select_dialog_window(visible_messages, anchor_message)
         else:
             recent_logs = []
         _set_node_timing(

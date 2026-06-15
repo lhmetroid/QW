@@ -248,6 +248,10 @@ class IntentEngine:
             "crm_contact_name",
             "company_name",
             "company_industry",
+            "business",
+            "scale",
+            "category",
+            "company_property",
             "recent_opportunities",
             "recent_quote_summary",
             "ongoing_contracts",
@@ -256,6 +260,28 @@ class IntentEngine:
             "customer_tier",
             "payment_risk_level",
             "high_risk_flags",
+            "crm_profile_prompt_text",
+            "contact_id",
+            "customer_id",
+            "duty",
+            "division",
+            "contact_type",
+            "relationship_level",
+            "account_time",
+            "account_period_source",
+            "contract_count",
+            "contract_total_money",
+            "last_contract_time",
+            "first_contract_time",
+            "uninvoiced_money",
+            "cooperated_products",
+            "quotation_count",
+            "last_quotation_time",
+            "avg_success_rate",
+            "recent_quote_products",
+            "followup_count",
+            "last_followup_time",
+            "recent_followups",
         ]
         sanitized = {}
         for key in allowed_keys:
@@ -465,6 +491,11 @@ class IntentEngine:
                     "只承接客户已经明确说出的事实。"
                 )
 
+        same_day_note = (
+            "\n\n【优先理解当日沟通内容】请优先读懂并承接今天(北京时间当天)与该客户的最新沟通内容与进展，"
+            "以当天对话为主线来推进；更早的历史只作背景参考，不要被旧话题带偏、也不要重复更早的旧追问。"
+        )
+
         final_prompt = prompt2
         if (
             "{{summary_json}}" in final_prompt
@@ -478,13 +509,13 @@ class IntentEngine:
             final_prompt = final_prompt.replace("{{crm_context_json}}", crm_str)
             final_prompt = final_prompt.replace("{{thread_context_json}}", thread_fact_str)
             final_prompt = final_prompt.replace("{{reply_style_prompt}}", style_prompt or "默认微信风格：微信口语化、简洁、自然。")
-            final_prompt = f"{final_prompt}{focus_note}"
+            final_prompt = f"{final_prompt}{same_day_note}{focus_note}"
         else:
             final_prompt = (
                 f"{prompt2}\n\n会话摘要档案：{summary_str}\n\n线程推进状态：{thread_fact_str}"
                 f"\n\n本次回复风格要求：{style_prompt or '默认微信风格：微信口语化、简洁、自然。'}"
                 f"\n\n内部 CRM 客户标签：{crm_str}\n\n参考知识库匹配：\n{knowledge_context or '无相关参考'}"
-                f"{focus_note}"
+                f"{same_day_note}{focus_note}"
             )
 
         return {
@@ -2921,9 +2952,9 @@ class IntentEngine:
             db.close()
 
     @classmethod
-    def get_crm_context(cls, external_userid: str, strict: bool = False) -> dict:
-        """从 CRM 数据库拉取最新商机、合同、跟进和生命周期信息"""
-        empty_profile = {
+    def _empty_crm_context(cls, external_userid: str | None) -> dict:
+        """Return the backward-compatible empty WeCom CRM context."""
+        return {
             "crm_external_userid": external_userid or None,
             "crm_contact_name": None,
             "company_name": None,
@@ -2936,8 +2967,135 @@ class IntentEngine:
             "customer_tier": None,
             "payment_risk_level": None,
             "high_risk_flags": [],
-            "crm_profile_status": "empty"
+            "crm_profile_status": "empty",
         }
+
+    @classmethod
+    def _legacy_crm_context(cls, external_userid: str) -> dict:
+        from crm_database import CRMSessionLocal
+        from crm_profile import fetch_crm_profile
+
+        db = CRMSessionLocal()
+        try:
+            profile_model = fetch_crm_profile(external_userid, db)
+        finally:
+            db.close()
+
+        data = profile_model.model_dump()
+        return {
+            "crm_external_userid": data.get("crm_external_userid") or external_userid,
+            "crm_contact_name": data.get("crm_contact_name"),
+            "company_name": data.get("company_name"),
+            "company_industry": data.get("company_industry"),
+            "recent_opportunities": data.get("recent_opportunities"),
+            "recent_quote_summary": data.get("recent_quote_summary"),
+            "ongoing_contracts": data.get("ongoing_contracts"),
+            "contact_recent_followup": data.get("contact_recent_followup"),
+            "customer_lifecycle_stage": data.get("customer_lifecycle_stage"),
+            "customer_tier": data.get("customer_tier"),
+            "payment_risk_level": data.get("payment_risk_level"),
+            "high_risk_flags": data.get("high_risk_flags") or [],
+            "crm_profile_status": "success",
+            "crm_profile_source": "legacy_crm_profile",
+        }
+
+    @staticmethod
+    def _summarize_recent_followups(recent_followups: Any) -> str | None:
+        if not isinstance(recent_followups, list) or not recent_followups:
+            return None
+        items: list[str] = []
+        for item in recent_followups[:3]:
+            if not isinstance(item, dict):
+                continue
+            time_text = str(item.get("time") or "")[:10]
+            remark = str(item.get("remark") or "").strip()
+            if remark:
+                items.append(f"{time_text}：{remark}" if time_text else remark)
+        return "\n".join(items) if items else None
+
+    @staticmethod
+    def _summarize_quote_profile(profile_data: dict) -> str | None:
+        parts: list[str] = []
+        if profile_data.get("quotation_count"):
+            parts.append(f"累计报价{profile_data.get('quotation_count')}次")
+        if profile_data.get("last_quotation_time"):
+            parts.append(f"最近报价{str(profile_data.get('last_quotation_time'))[:10]}")
+        if profile_data.get("avg_success_rate") is not None:
+            try:
+                parts.append(f"平均成功率约{float(profile_data.get('avg_success_rate')):.0f}%")
+            except Exception:
+                pass
+        products = profile_data.get("recent_quote_products")
+        if isinstance(products, list) and products:
+            parts.append("最近报价产品：" + "、".join(map(str, products[:5])))
+        return "；".join(parts) if parts else None
+
+    @staticmethod
+    def _summarize_contract_profile(profile_data: dict) -> str | None:
+        if not profile_data.get("contract_count"):
+            return None
+        parts = [f"成交{profile_data.get('contract_count')}单"]
+        if profile_data.get("contract_total_money") not in (None, ""):
+            try:
+                parts.append(f"历史成交约{float(profile_data.get('contract_total_money')):,.0f}元")
+            except Exception:
+                pass
+        if profile_data.get("last_contract_time"):
+            parts.append(f"最近成交{str(profile_data.get('last_contract_time'))[:10]}")
+        products = profile_data.get("cooperated_products")
+        if isinstance(products, list) and products:
+            parts.append("合作产品：" + "、".join(map(str, products[:6])))
+        return "；".join(parts)
+
+    @staticmethod
+    def _tier_from_relationship(relationship_level: str | None) -> str | None:
+        if relationship_level == "熟客":
+            return "key"
+        if relationship_level == "有往来":
+            return "returning"
+        if relationship_level:
+            return "new"
+        return None
+
+    @classmethod
+    def _build_aggregated_crm_context(cls, external_userid: str, realtime_profile: dict, legacy: dict | None = None) -> dict:
+        data = realtime_profile.get("data") if isinstance(realtime_profile.get("data"), dict) else {}
+        legacy = legacy or {}
+        recent_quote_summary = legacy.get("recent_quote_summary") or legacy.get("recent_opportunities") or cls._summarize_quote_profile(data)
+        contact_recent_followup = legacy.get("contact_recent_followup") or cls._summarize_recent_followups(data.get("recent_followups"))
+        relationship_level = data.get("relationship_level")
+        customer_tier = legacy.get("customer_tier") or cls._tier_from_relationship(relationship_level)
+        context = {
+            "crm_external_userid": legacy.get("crm_external_userid") or external_userid,
+            "crm_contact_name": data.get("contact_name") or legacy.get("crm_contact_name"),
+            "company_name": data.get("company_name") or legacy.get("company_name"),
+            "company_industry": data.get("business") or legacy.get("company_industry"),
+            "recent_opportunities": legacy.get("recent_opportunities"),
+            "recent_quote_summary": recent_quote_summary,
+            "ongoing_contracts": legacy.get("ongoing_contracts") or cls._summarize_contract_profile(data),
+            "contact_recent_followup": contact_recent_followup,
+            "customer_lifecycle_stage": legacy.get("customer_lifecycle_stage") or relationship_level,
+            "customer_tier": customer_tier,
+            "payment_risk_level": legacy.get("payment_risk_level"),
+            "high_risk_flags": legacy.get("high_risk_flags") or [],
+            "crm_profile_status": "success",
+            "crm_profile_source": "crm_realtime_aggregator",
+            "crm_profile_schema_version": "crm_realtime_aggregator.v1",
+            "crm_profile_cached": bool(realtime_profile.get("cached")),
+            "crm_profile_computed_date": realtime_profile.get("computed_date"),
+            "crm_profile_text": realtime_profile.get("text") or "",
+            "crm_profile_model_text": realtime_profile.get("model_text") or realtime_profile.get("text") or "",
+            "crm_profile_prompt_text": realtime_profile.get("text") or realtime_profile.get("model_text") or "",
+            "crm_profile_data": data,
+        }
+        for key, value in data.items():
+            context.setdefault(key, value)
+        return context
+
+    @classmethod
+    def get_crm_context(cls, external_userid: str, strict: bool = False) -> dict:
+        """从 CRM 数据库拉取最新商机、合同、跟进和生命周期信息"""
+        empty_profile = cls._empty_crm_context(external_userid)
 
         if not external_userid:
             if strict:
@@ -2945,32 +3103,24 @@ class IntentEngine:
             empty_profile["crm_profile_error"] = "external_userid 为空"
             return empty_profile
 
+        legacy_context: dict | None = None
         try:
-            from crm_database import CRMSessionLocal
-            from crm_profile import fetch_crm_profile
-
-            db = CRMSessionLocal()
             try:
-                profile_model = fetch_crm_profile(external_userid, db)
-            finally:
-                db.close()
+                legacy_context = cls._legacy_crm_context(external_userid)
+            except HTTPException as legacy_exc:
+                if legacy_exc.status_code != 404:
+                    logger.warning("旧 CRM 画像补充失败: %s", legacy_exc.detail)
+            except Exception as legacy_exc:
+                logger.warning("旧 CRM 画像补充失败: %s", legacy_exc)
 
-            data = profile_model.model_dump()
-            return {
-                "crm_external_userid": data.get("crm_external_userid") or external_userid,
-                "crm_contact_name": data.get("crm_contact_name"),
-                "company_name": data.get("company_name"),
-                "company_industry": data.get("company_industry"),
-                "recent_opportunities": data.get("recent_opportunities"),
-                "recent_quote_summary": data.get("recent_quote_summary"),
-                "ongoing_contracts": data.get("ongoing_contracts"),
-                "contact_recent_followup": data.get("contact_recent_followup"),
-                "customer_lifecycle_stage": data.get("customer_lifecycle_stage"),
-                "customer_tier": data.get("customer_tier"),
-                "payment_risk_level": data.get("payment_risk_level"),
-                "high_risk_flags": data.get("high_risk_flags") or [],
-                "crm_profile_status": "success"
-            }
+            from crm_profile_aggregator import get_realtime_profile
+
+            realtime_profile = get_realtime_profile(external_userid=external_userid)
+            if realtime_profile.get("found"):
+                return cls._build_aggregated_crm_context(external_userid, realtime_profile, legacy_context)
+            if legacy_context:
+                return legacy_context
+            raise HTTPException(status_code=404, detail=f"未找到 external_userid: {external_userid} 的客户信息")
 
         except HTTPException as e:
             if strict:

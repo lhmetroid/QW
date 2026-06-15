@@ -1,5 +1,13 @@
 # PROGRESS
 
+## 2026-06-15 企微聊天记录按北京时间当天给全 + 生成回复优先理解当日沟通
+
+- 仅改企微/微信链路，不涉及邮件。
+- 第1点(聊天记录窗口)：原实时侧边栏生成链路喂给流程的对话是"锚点(客户最新消息)之前可见消息的最近 10 条"(`backend/main.py` `visible_messages[-10:]`，注释里历史口径写的是 15 但实际取 10)。新增 `_select_dialog_window()`：按北京时间，锚点所在【当天】的消息全部给(当天超过 N 条也给)；当天不足 N 条需跨天时回退原有逻辑(取触发点之前最近 N 条，常量 `SIDEBAR_DIALOG_TAIL_COUNT=10`)。`MessageLog.timestamp` 为北京-naive，直接 `.date()` 比较即按北京日历日切分。调用点由 `recent_logs = list(reversed(visible_messages[-10:]))` 改为 `recent_logs = _select_dialog_window(visible_messages, anchor_message)`。该 `recent_logs` 是后续 LLM-1 分析、thread fact、LLM-2 生成的共同输入，改一处全链路一致。
+- 第2点(生成回复要求)：在 LLM-2 回复生成 prompt 构造 `IntentEngine.build_sales_assist_request`(`backend/intent_engine.py`)追加 `same_day_note`：要求"优先理解并承接今天(北京时间当天)与客户的最新沟通内容与进展，以当天对话为主线推进，更早历史仅作背景，不被旧话题带偏/不重复旧追问"。模板占位与拼接两个分支都已追加，对所有调用 `build_sales_assist_request` 的生成路径生效。
+- 第3点(API 客户原话字段，仅答疑无需改动)：本次回复锚定的客户原话字段是 `anchor_message_text`(配套 `anchor_message_id`/`anchor_message_time`)，写入于 `backend/main.py:18826`，持久化在 `api_assist_invocation` 表，经历史/分析接口回传；实时 `/assist` 响应中对应 `thread_business_fact.merged_facts.latest_customer_message`。实时响应暂无顶层"客户原话"字段，如需可再补。
+- 验证：对 `backend/main.py` 与 `backend/intent_engine.py` 做 AST 解析通过。
+
 ## 2026-06-12 企微客户画像聚合接入
 
 - 已按用户要求只修改企微/微信画像链路，不涉及邮件生成、邮件 CRM 或邮件安全门。
@@ -566,6 +574,14 @@
 - 人工复核清单见 `logs/mail-full-email-promo-selection-reason-20260615.md`；机器明细见 `logs/mail-full-email-promo-analysis-apply-20260615.json`。
 - 验证：`backend/main.py` 与分析脚本 `py_compile` 通过；前端内联 JS 语法检查通过；接口函数抽查 `full_email` 1363/1363 均有选择理由、其他切片 0；定向 `git diff --check` 通过。
 
+## 2026-06-15 邮件黄金库疑似非宣传 full_email 删除
+
+- 已按用户确认删除上一轮识别出的 77 封疑似非宣传 `full_email` 黄金库记录。
+- 删除范围严格限定为 `source_type=mail_gold_seed` 且 `function_fragment=full_email` 的 77 个 `fragment_id`；同步删除对应 `mail_gold_seed_review` 人工评审记录 1 条。
+- 删除前已导出完整备份：`logs/mail-full-email-non-promo-delete-backup-20260615.json`。
+- 删除后验证：77 个目标编号在 `email_fragment_asset` 剩余 0，在 `mail_gold_seed_review` 剩余 0；黄金库 `full_email` 从 1363 降为 1286，剩余非宣传标记 0。
+- 记录见 `logs/mail-full-email-non-promo-delete-20260615.md`，apply 明细见 `logs/mail-full-email-non-promo-delete-apply-20260615.json`。
+
 ## 2026-06-15 客户画像聚合口径修正（首次成交时间 + 未开票额）
 
 - 用户核对企微客户详情发现两处口径问题，以顾佩蓉/赫斯基注塑系统（上海）KH00469 为样本只读核查后确认并修复 `backend/crm_profile_aggregator.py`（同步 `other/crm_profile_aggregator_standalone.py`）。
@@ -573,3 +589,11 @@
 - 未开票额：原为公司全量 `SUM(UnInvoicedMoney)`=60,727.95，含已回款/已销账但未开票（如国外付款历史不开票）。改为只计 `IsReceived=0`（仍有应收）的未开票=54,272.90，并保留 `uninvoiced_money_raw` 全量值备查。
 - 画像文本新增"首次成交 YYYY-MM-DD"展示；未开票额展示沿用修正后口径。
 - 验证：两模块 AST 解析通过；`aggregate_profile(contact_id='KH00469-040')` 实跑得首次成交=2020-02-27(联系人级)、未开票=54,273、raw=60,728，与逐合同核对一致。
+
+## 2026-06-15 邮件黄金库 full_email #301-#400 复查清理
+
+- 已按 `logs/mail-full-email-review-cleanup-20260615.md` 的问题口径，对黄金范例库前端编号 `#301-#400` 的 `full_email` 做逐条复查。
+- 当前库内现存 47 条，另 53 个编号此前已不存在；现存 47 条均已写库清理。
+- 清理内容包括：删除时间/节日/相对日期，脱敏客户名/联系人/项目名，删除电话邮箱地址/订单下载/评价/报价 PO 等事务内容，软化不可验证数字和夸张表述，修复段落与破损标题。
+- 9 条清理后正文不足，不再作为生成素材：已关闭 `publishable`、`allowed_for_generation`、`usable_for_reply`，保留给人工复核。
+- 最终 postcheck：`changed_count=0`、`residual_count=0`；记录见 `logs/mail-full-email-rank-301-400-cleanup-20260615.md`。
