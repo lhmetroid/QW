@@ -1,0 +1,296 @@
+{
+  "mode": "dry_run",
+  "scope": "unreviewed full_email · desensitize-only",
+  "offset": 0,
+  "limit": 50,
+  "batch_range": [
+    "mail_gold_v2_1000_scn_2017",
+    "mail_gold_v2_1009_scn_2019"
+  ],
+  "batch_count": 50,
+  "changed_count": 0,
+  "residual_count": 21,
+  "need_human_confirm_count": 21,
+  "need_human_confirm": [
+    {
+      "source_ref": "mail_gold_v2_1002_scn_2017",
+      "reasons": [
+        "suspect_cn_corp:上海分公司,公众股份有限公司,客户有限公司,客户染料化工有限公司,德国裕宝联合银行"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1002_scn_2018",
+      "reasons": [
+        "suspect_en_brand:Jojo"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1002_scn_2019",
+      "reasons": [
+        "suspect_en_brand:Lillian"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1002_scn_2021",
+      "reasons": [
+        "suspect_en_brand:May"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1003_scn_2017",
+      "reasons": [
+        "suspect_cn_corp:有限公司",
+        "suspect_en_brand:EMD,ESCOREZ,FSD,GHS,IPD,Life"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1004_scn_2017",
+      "reasons": [
+        "suspect_en_brand:Jennifer"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1004_scn_2019",
+      "reasons": [
+        "suspect_cn_corp:轨道交通客户有限公司"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1004_scn_2020",
+      "reasons": [
+        "suspect_cn_corp:短语译法实现所有公司",
+        "suspect_en_brand:Chris"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1004_scn_2022",
+      "reasons": [
+        "suspect_cn_corp:我们能很从容的从公司"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1005_scn_2019",
+      "reasons": [
+        "suspect_en_brand:Bair"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1005_scn_2022",
+      "reasons": [
+        "suspect_en_brand:Jessica,Zhu"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1006_scn_2017",
+      "reasons": [
+        "suspect_en_brand:Opdorp,Sas,Truckwasstraat"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1006_scn_2018",
+      "reasons": [
+        "suspect_en_brand:Carol"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1006_scn_2019",
+      "reasons": [
+        "suspect_cn_corp:前我们合作的化工公司,译印刷服务本地化公司"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1006_scn_2021",
+      "reasons": [
+        "suspect_cn_corp:市场份额第一的公司"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1006_scn_2022",
+      "reasons": [
+        "suspect_en_brand:Sherry"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1007_scn_2017",
+      "reasons": [
+        "suspect_en_brand:Vimmi"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1007_scn_2020",
+      "reasons": [
+        "suspect_en_brand:Clare"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1007_scn_2021",
+      "reasons": [
+        "suspect_en_brand:Orianna"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1008_scn_2018",
+      "reasons": [
+        "suspect_en_brand:Amanda"
+      ],
+      "is_dev_email": true
+    },
+    {
+      "source_ref": "mail_gold_v2_1009_scn_2019",
+      "reasons": [
+        "suspect_cn_corp:以下关于我们的公司,我们自己也制作了公司,有限公司,材料客户企业管理公司,材料客户旗下的子公司"
+      ],
+      "is_dev_email": true
+    }
+  ],
+  "residual": [
+    {
+      "source_ref": "mail_gold_v2_1002_scn_2017",
+      "flags": [
+        "suspect_cn_corp:上海分公司,公众股份有限公司,客户有限公司,客户染料化工有限公司,德国裕宝联合银行"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1002_scn_2018",
+      "flags": [
+        "suspect_en_brand:Jojo"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1002_scn_2019",
+      "flags": [
+        "suspect_en_brand:Lillian"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1002_scn_2021",
+      "flags": [
+        "suspect_en_brand:May"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1003_scn_2017",
+      "flags": [
+        "suspect_cn_corp:有限公司",
+        "suspect_en_brand:EMD,ESCOREZ,FSD,GHS,IPD,Life"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1004_scn_2017",
+      "flags": [
+        "suspect_en_brand:Jennifer"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1004_scn_2019",
+      "flags": [
+        "suspect_cn_corp:轨道交通客户有限公司"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1004_scn_2020",
+      "flags": [
+        "suspect_cn_corp:短语译法实现所有公司",
+        "suspect_en_brand:Chris"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1004_scn_2022",
+      "flags": [
+        "suspect_cn_corp:我们能很从容的从公司"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1005_scn_2019",
+      "flags": [
+        "suspect_en_brand:Bair"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1005_scn_2022",
+      "flags": [
+        "suspect_en_brand:Jessica,Zhu"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1006_scn_2017",
+      "flags": [
+        "suspect_en_brand:Opdorp,Sas,Truckwasstraat"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1006_scn_2018",
+      "flags": [
+        "suspect_en_brand:Carol"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1006_scn_2019",
+      "flags": [
+        "suspect_cn_corp:前我们合作的化工公司,译印刷服务本地化公司"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1006_scn_2021",
+      "flags": [
+        "suspect_cn_corp:市场份额第一的公司"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1006_scn_2022",
+      "flags": [
+        "suspect_en_brand:Sherry"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1007_scn_2017",
+      "flags": [
+        "suspect_en_brand:Vimmi"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1007_scn_2020",
+      "flags": [
+        "suspect_en_brand:Clare"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1007_scn_2021",
+      "flags": [
+        "suspect_en_brand:Orianna"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1008_scn_2018",
+      "flags": [
+        "suspect_en_brand:Amanda"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1009_scn_2019",
+      "flags": [
+        "suspect_cn_corp:以下关于我们的公司,我们自己也制作了公司,有限公司,材料客户企业管理公司,材料客户旗下的子公司"
+      ]
+    }
+  ],
+  "changed": []
+}
