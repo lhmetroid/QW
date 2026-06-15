@@ -1,0 +1,5569 @@
+{
+  "mode": "apply",
+  "offset": 50,
+  "processed": 1059,
+  "changed": 613,
+  "group_stats": [
+    {
+      "group": 50,
+      "range": "mail_gold_v2_1009_scn_2020~mail_gold_v2_1018_scn_2021",
+      "count": 50,
+      "changed": 36
+    },
+    {
+      "group": 100,
+      "range": "mail_gold_v2_1019_scn_2017~mail_gold_v2_1027_scn_2021",
+      "count": 50,
+      "changed": 27
+    },
+    {
+      "group": 150,
+      "range": "mail_gold_v2_1027_scn_2022~mail_gold_v2_1037_scn_2019",
+      "count": 50,
+      "changed": 25
+    },
+    {
+      "group": 200,
+      "range": "mail_gold_v2_1037_scn_2020~mail_gold_v2_1047_scn_2020",
+      "count": 50,
+      "changed": 24
+    },
+    {
+      "group": 250,
+      "range": "mail_gold_v2_1047_scn_2021~mail_gold_v2_1056_scn_2022",
+      "count": 50,
+      "changed": 34
+    },
+    {
+      "group": 300,
+      "range": "mail_gold_v2_1057_scn_2017~mail_gold_v2_1071_scn_2022",
+      "count": 50,
+      "changed": 27
+    },
+    {
+      "group": 350,
+      "range": "mail_gold_v2_1072_scn_2018~mail_gold_v2_1089_scn_2018",
+      "count": 50,
+      "changed": 28
+    },
+    {
+      "group": 400,
+      "range": "mail_gold_v2_1089_scn_2021~mail_gold_v2_1107_scn_2022",
+      "count": 50,
+      "changed": 28
+    },
+    {
+      "group": 450,
+      "range": "mail_gold_v2_1108_scn_2018~mail_gold_v2_1131_scn_2018",
+      "count": 50,
+      "changed": 34
+    },
+    {
+      "group": 500,
+      "range": "mail_gold_v2_1131_scn_2022~mail_gold_v2_1156_scn_2018",
+      "count": 50,
+      "changed": 42
+    },
+    {
+      "group": 550,
+      "range": "mail_gold_v2_1156_scn_2022~mail_gold_v2_1181_scn_2018",
+      "count": 50,
+      "changed": 42
+    },
+    {
+      "group": 600,
+      "range": "mail_gold_v2_1181_scn_2022~mail_gold_v2_374_scn_2025",
+      "count": 50,
+      "changed": 16
+    },
+    {
+      "group": 650,
+      "range": "mail_gold_v2_376_scn_2025~mail_gold_v2_525_scn_2024",
+      "count": 50,
+      "changed": 15
+    },
+    {
+      "group": 700,
+      "range": "mail_gold_v2_535_scn_2024~mail_gold_v2_599_scn_2024",
+      "count": 50,
+      "changed": 16
+    },
+    {
+      "group": 750,
+      "range": "mail_gold_v2_600_scn_2024~mail_gold_v2_659_scn_2024",
+      "count": 50,
+      "changed": 23
+    },
+    {
+      "group": 800,
+      "range": "mail_gold_v2_660_scn_2024~mail_gold_v2_722_scn_2024",
+      "count": 50,
+      "changed": 36
+    },
+    {
+      "group": 850,
+      "range": "mail_gold_v2_723_scn_2024~mail_gold_v2_776_scn_2024",
+      "count": 50,
+      "changed": 46
+    },
+    {
+      "group": 900,
+      "range": "mail_gold_v2_777_scn_2024~mail_gold_v2_826_scn_2024",
+      "count": 50,
+      "changed": 32
+    },
+    {
+      "group": 950,
+      "range": "mail_gold_v2_828_scn_2023~mail_gold_v2_883_scn_2023",
+      "count": 50,
+      "changed": 17
+    },
+    {
+      "group": 1000,
+      "range": "mail_gold_v2_884_scn_2023~mail_gold_v2_933_scn_2023",
+      "count": 50,
+      "changed": 37
+    },
+    {
+      "group": 1050,
+      "range": "mail_gold_v2_935_scn_2023~mail_gold_v2_989_scn_2022",
+      "count": 50,
+      "changed": 24
+    },
+    {
+      "group": 1100,
+      "range": "mail_gold_v2_990_scn_2022~mail_gold_v2_999_scn_2022",
+      "count": 9,
+      "changed": 4
+    }
+  ],
+  "need_human_count": 650,
+  "need_human": [
+    {
+      "source_ref": "mail_gold_v2_1009_scn_2020",
+      "flags": [
+        "suspect_en_brand:Carol"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1010_scn_2019",
+      "flags": [
+        "suspect_cn_corp:力机车研究所有限公司,巴迪牵引系统有限公司,庞巴迪运输集团,阿尔斯通公司",
+        "suspect_en_brand:DCS,EMC,EMU,IATP,MRE,SCIL"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1010_scn_2021",
+      "flags": [
+        "suspect_en_brand:Holly,Message,Year"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1010_scn_2022",
+      "flags": [
+        "suspect_cn_corp:辉瑞制药公司",
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,PRESTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1011_scn_2017",
+      "flags": [
+        "suspect_cn_corp:及我司的公司",
+        "suspect_en_brand:Sheng"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1011_scn_2018",
+      "flags": [
+        "suspect_en_brand:ING"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1011_scn_2019",
+      "flags": [
+        "suspect_en_brand:Investment,Urgent"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1011_scn_2021",
+      "flags": [
+        "suspect_en_brand:Automation,Hospital,Houston,Impact,Kiestra,Lab"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1012_scn_2017",
+      "flags": [
+        "suspect_cn_corp:海德堡公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1012_scn_2018",
+      "flags": [
+        "suspect_cn_corp:也制作了很多一些公司,金属给农业银行",
+        "suspect_en_brand:Ambassador,Annual,Antwerpen,Armophe,Cellasto,Family"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1012_scn_2020",
+      "flags": [
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,PRESTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1012_scn_2021",
+      "flags": [
+        "suspect_en_brand:Covestro,Device,Durable,Hardware,Housings,LLC"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1013_scn_2019",
+      "flags": [
+        "suspect_en_brand:Audit,Realisation"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1013_scn_2020",
+      "flags": [
+        "suspect_cn_corp:为庞巴迪运输集团,力机车研究所有限公司,庞巴迪公司",
+        "suspect_en_brand:DCS,EMC,EMU,MRE,SDH,SWITCH"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1013_scn_2021",
+      "flags": [
+        "suspect_en_brand:Sheng"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1013_scn_2022",
+      "flags": [
+        "suspect_en_brand:Sherry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1014_scn_2019",
+      "flags": [
+        "suspect_en_brand:Request"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1014_scn_2020",
+      "flags": [
+        "suspect_cn_corp:以下是我们为其他银行,以下是我们的公司,批发银行,美国银行,美洲银行",
+        "suspect_en_brand:Abridged,Anti,Beijing,CRS,Carbon,Chow"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1014_scn_2022",
+      "flags": [
+        "suspect_cn_corp:体的视频译制服务公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1015_scn_2020",
+      "flags": [
+        "suspect_cn_corp:汽车电子有限公司,通用公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1015_scn_2021",
+      "flags": [
+        "suspect_en_brand:Apptec,Medical,Microport,WuXi"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1015_scn_2022",
+      "flags": [
+        "suspect_cn_corp:荷兰飞利浦公司,通讯公司",
+        "suspect_en_brand:RIM,Star"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1016_scn_2017",
+      "flags": [
+        "suspect_cn_corp:快递公司",
+        "suspect_en_brand:BCC,Forwarded,Message,Original"
+      ],
+      "non_dev": [
+        "正文引用线程块"
+      ]
+    },
+    {
+      "source_ref": "mail_gold_v2_1016_scn_2018",
+      "flags": [
+        "suspect_cn_corp:力机车研究所有限公司,巴迪牵引系统有限公司,庞巴迪运输集团,阿尔斯通公司",
+        "suspect_en_brand:ALSTOM,ATP,DCS,EMC,EMU,GIS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1016_scn_2021",
+      "flags": [
+        "suspect_cn_corp:同传更是涵盖了公司,是目前环境下很多公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1017_scn_2017",
+      "flags": [
+        "suspect_en_brand:Trasnslation"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1017_scn_2018",
+      "flags": [
+        "suspect_cn_corp:投资有限公司,杭州杭氧股份,氢氧站设计规范和公司,液空公司,盈德气体集团",
+        "suspect_en_brand:Call,Center"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1017_scn_2020",
+      "flags": [
+        "suspect_cn_corp:普电子元器件有限公司,贸易有限公司,邦迪管路系统有限公司",
+        "suspect_en_brand:DevDB"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1017_scn_2021",
+      "flags": [
+        "suspect_cn_corp:译印刷服务一地化公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1017_scn_2022",
+      "flags": [
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,NHL,PRESTO,Sanofi"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1018_scn_2017",
+      "flags": [
+        "suspect_cn_corp:中国有限公司,公司公司,工程有限公司,开关有限公司,股份有限公司",
+        "suspect_en_brand:CDC,Dynacomp,EPS,GTT,Limited,LuranaS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1018_scn_2021",
+      "flags": [
+        "suspect_cn_corp:包装等子集团,博世集团,苏州等各地公司",
+        "suspect_en_brand:Sheng"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1019_scn_2017",
+      "flags": [
+        "suspect_en_brand:Elina,Guo"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1019_scn_2018",
+      "flags": [
+        "suspect_en_brand:Diagram,Electrical"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1019_scn_2020",
+      "flags": [
+        "suspect_cn_corp:为必和必拓公司,关于公司,关于化工公司,氢氧站设计规范和公司,液空公司",
+        "suspect_en_brand:Ambassador,Annual,Antwerpen,Armophe,Cellasto,ChinaEvent"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1019_scn_2021",
+      "flags": [
+        "suspect_cn_corp:内有公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1020_scn_2019",
+      "flags": [
+        "suspect_cn_corp:上海明天广场有限公司",
+        "suspect_en_brand:Simon,Tang"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1021_scn_2020",
+      "flags": [
+        "suspect_cn_corp:是各大公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1022_scn_2020",
+      "flags": [
+        "suspect_en_brand:JiaSai"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1022_scn_2021",
+      "flags": [
+        "suspect_en_brand:Jane"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1022_scn_2022",
+      "flags": [
+        "suspect_cn_corp:金属给农业银行",
+        "suspect_en_brand:Ambassador,Annual,Antwerpen,Armophe,Cellasto,Family"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1023_scn_2020",
+      "flags": [
+        "suspect_en_brand:RAMS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1024_scn_2017",
+      "flags": [
+        "suspect_en_brand:Trasnslation"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1024_scn_2018",
+      "flags": [
+        "suspect_cn_corp:制作了主营业务的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1024_scn_2020",
+      "flags": [
+        "suspect_en_brand:CHEN,Simon"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1024_scn_2022",
+      "flags": [
+        "suspect_en_brand:Edison"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1025_scn_2017",
+      "flags": [
+        "suspect_cn_corp:上海农业生产资料公司,与东南亚实业有限公司,中国农业生产资料集团,利华益集团",
+        "suspect_en_brand:Form,Huang,Lynn,PTHF,TDS,THF"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1025_scn_2019",
+      "flags": [
+        "suspect_en_brand:EAD,EED,EUS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1025_scn_2020",
+      "flags": [
+        "suspect_en_brand:Rev"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1025_scn_2021",
+      "flags": [
+        "suspect_en_brand:RADO,Tissot"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1025_scn_2022",
+      "flags": [
+        "suspect_cn_corp:夏普等许多公司,我们曾经为以下公司,普电子元器件有限公司,贸易有限公司,邦迪管路系统有限公司",
+        "suspect_en_brand:DevDB"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1026_scn_2017",
+      "flags": [
+        "suspect_cn_corp:花期银行",
+        "suspect_en_brand:Call,Center,Trasnslation"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1026_scn_2019",
+      "flags": [
+        "suspect_en_brand:Document,TGTS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1026_scn_2020",
+      "flags": [
+        "suspect_en_brand:Standard,Sustainability"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1026_scn_2022",
+      "flags": [
+        "suspect_cn_corp:中国水利水电集团公司,中国电力工程有限公司,中国电工集团,天津电力建设公司,电力集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1027_scn_2017",
+      "flags": [
+        "suspect_en_brand:And,Asia,Attached,BCC,Below,Boulevard"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1027_scn_2020",
+      "flags": [
+        "suspect_en_brand:Henkel,Promotion,WeChat"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1027_scn_2021",
+      "flags": [
+        "suspect_en_brand:Limited,REF,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1028_scn_2019",
+      "flags": [
+        "suspect_en_brand:CEST,LFL,PCI,Pink,SFK,SRRC"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1028_scn_2020",
+      "flags": [
+        "suspect_en_brand:Assurance,Safety"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1029_scn_2021",
+      "flags": [
+        "suspect_cn_corp:为庞巴迪运输集团,力机车研究所有限公司,号研究设计院有限公司",
+        "suspect_en_brand:ATCS,BCE,CTCS,DCS,DMI,EMC"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1029_scn_2022",
+      "flags": [
+        "suspect_cn_corp:惠生集团",
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1030_scn_2018",
+      "flags": [
+        "suspect_cn_corp:并将我们的公司,建筑公司",
+        "suspect_en_brand:Beijing,DMDS,GIS,GSE,KOCHI,Lecture"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1030_scn_2019",
+      "flags": [
+        "suspect_en_brand:Press,Tortue"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1031_scn_2018",
+      "flags": [
+        "suspect_cn_corp:我们的一个详细的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1031_scn_2020",
+      "flags": [
+        "suspect_cn_corp:同传更是涵盖了公司,是目前环境下很多公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1031_scn_2022",
+      "flags": [
+        "suspect_en_brand:DTX,GMP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1032_scn_2017",
+      "flags": [
+        "suspect_cn_corp:附件是公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1032_scn_2019",
+      "flags": [
+        "suspect_cn_corp:成为我们药明康德集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1032_scn_2020",
+      "flags": [
+        "suspect_cn_corp:市场份额第一的公司,辉凌等公司",
+        "suspect_en_brand:Sheng"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1033_scn_2020",
+      "flags": [
+        "suspect_cn_corp:为葛兰素史克公司,医药保健品进出口公司",
+        "suspect_en_brand:ACCESS,ADAPTIV,AIRIS,AIRISmat,APERTO,ARZNEIMITTEL"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1033_scn_2021",
+      "flags": [
+        "suspect_cn_corp:附件附上我司的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1034_scn_2018",
+      "flags": [
+        "suspect_cn_corp:年底了很多公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1034_scn_2022",
+      "flags": [
+        "suspect_en_brand:GMP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1035_scn_2021",
+      "flags": [
+        "suspect_en_brand:MAMMUT,Video"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1035_scn_2022",
+      "flags": [
+        "suspect_cn_corp:我特此挑选一些公司",
+        "suspect_en_brand:ASME"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1036_scn_2018",
+      "flags": [
+        "suspect_en_brand:HHC,Operations,Security"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1036_scn_2022",
+      "flags": [
+        "suspect_cn_corp:我们曾经服务过的公司,辉恩建筑设计咨询公司,阿姆斯壮建筑制品公司,香港金门建筑有限公司",
+        "suspect_en_brand:KOCHI"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1037_scn_2018",
+      "flags": [
+        "suspect_cn_corp:希望能把我公司",
+        "suspect_en_brand:CeBIT,FMC,IMLCON,PTSuperCom"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1037_scn_2019",
+      "flags": [
+        "suspect_en_brand:ANZ,APAC,Braun,DEVELOP,Feb,LCS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1037_scn_2020",
+      "flags": [
+        "suspect_cn_corp:公众股份有限公司,德国裕宝联合银行,意大利西雅那银行股份,我们为其它银行,我们为美国银行"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1037_scn_2022",
+      "flags": [
+        "suspect_cn_corp:们长期服务的化工公司,司与中环水务重庆公司,氢氧站设计规范和公司,燕化永乐农药有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1038_scn_2019",
+      "flags": [
+        "suspect_en_brand:ANZ,Braun,DEVELOP,Earhart,JAN,LCS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1038_scn_2020",
+      "flags": [
+        "suspect_cn_corp:更好突出公司",
+        "suspect_en_brand:CIBS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1038_scn_2021",
+      "flags": [
+        "suspect_cn_corp:附件附上我司的公司",
+        "suspect_en_brand:Articles,Bidding,Contracts,Documents,Feasibility,Labor"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1039_scn_2018",
+      "flags": [
+        "suspect_cn_corp:住友集团,椿本集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1039_scn_2020",
+      "flags": [
+        "suspect_en_brand:Antwort,Doerken,Limit"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1039_scn_2022",
+      "flags": [
+        "suspect_en_brand:Anne,BCE,DCS,EMC,MRE,SDH"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1040_scn_2017",
+      "flags": [
+        "suspect_cn_corp:如下是我司银行"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1040_scn_2020",
+      "flags": [
+        "suspect_cn_corp:金属给农业银行",
+        "suspect_en_brand:Ambassador,Annual,Antwerpen,Armophe,Cellasto,Family"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1040_scn_2021",
+      "flags": [
+        "suspect_cn_corp:星展银行,的翻译印刷服务的公司,美国银行,美洲银行"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1041_scn_2017",
+      "flags": [
+        "suspect_en_brand:ACT,AGREEMENT,AND,Academy,Action,Appendix"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1041_scn_2018",
+      "flags": [
+        "suspect_cn_corp:关于公司,关于化工公司,蓝星公司,金属给农业银行",
+        "suspect_en_brand:Ambassador,Annual,Antwerpen,Armophe,Cellasto,ChinaEvent"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1041_scn_2019",
+      "flags": [
+        "suspect_en_brand:Antwort,Doerken,MKS,Offer,Property"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1041_scn_2020",
+      "flags": [
+        "suspect_en_brand:Kalmar,Seehafen,Wismar"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1041_scn_2021",
+      "flags": [
+        "suspect_en_brand:AAMI,TIR"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1042_scn_2019",
+      "flags": [
+        "suspect_en_brand:Anti,FINAL,Factsheet,Reflective"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1042_scn_2021",
+      "flags": [
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1042_scn_2022",
+      "flags": [
+        "suspect_en_brand:Air,GCE,Products"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1043_scn_2018",
+      "flags": [
+        "suspect_en_brand:Acrobat,Crosfield,FTP,PageMaker"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1043_scn_2019",
+      "flags": [
+        "suspect_cn_corp:谢您长期以来对我公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1043_scn_2021",
+      "flags": [
+        "suspect_en_brand:Evie"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1044_scn_2017",
+      "flags": [
+        "suspect_en_brand:Jojo,Trasnslation"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1044_scn_2018",
+      "flags": [
+        "suspect_cn_corp:一些小公司,由于公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1044_scn_2022",
+      "flags": [
+        "suspect_cn_corp:上海国际纸业有限公司,投资有限公司,纸业有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1045_scn_2017",
+      "flags": [
+        "suspect_en_brand:Jojo"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1045_scn_2018",
+      "flags": [
+        "suspect_en_brand:Technologies,Uster"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1045_scn_2020",
+      "flags": [
+        "suspect_en_brand:Christine,Global,Heidi,Jiang,Wang"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1045_scn_2022",
+      "flags": [
+        "suspect_cn_corp:英飞凌科技公司",
+        "suspect_en_brand:Battery,ICs,Management"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1046_scn_2017",
+      "flags": [
+        "suspect_cn_corp:大众汽车股份公司集团,重庆电力公司",
+        "suspect_en_brand:ACAS,ACCR,Cabling,Camera,EMD,EMSD"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1046_scn_2018",
+      "flags": [
+        "suspect_cn_corp:德国艾森曼公司,激光雕刻的公司,艾森曼公司",
+        "suspect_en_brand:EmailType,Group,Iphone,LinkType,MainQueueId,Mansion"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1046_scn_2022",
+      "flags": [
+        "suspect_en_brand:Pharmaceuical,Pharmaceutical"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1047_scn_2017",
+      "flags": [
+        "suspect_en_brand:Jojo"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1047_scn_2018",
+      "flags": [
+        "suspect_cn_corp:雅保公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1047_scn_2020",
+      "flags": [
+        "suspect_cn_corp:件附上我司最新的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1047_scn_2021",
+      "flags": [
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1047_scn_2022",
+      "flags": [
+        "suspect_cn_corp:上海凯士比泵有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1048_scn_2017",
+      "flags": [
+        "suspect_en_brand:Beijing,DMDS,GIS,KOCHI,Lecture,Specifications"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1048_scn_2020",
+      "flags": [
+        "suspect_en_brand:Articulate,Storyline"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1048_scn_2021",
+      "flags": [
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1048_scn_2022",
+      "flags": [
+        "suspect_en_brand:Limited,LuranaS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1049_scn_2017",
+      "flags": [
+        "suspect_cn_corp:瑞典银行",
+        "suspect_en_brand:AOL,CeBIT,Contec,Eicon,Entrust,Gennux"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1049_scn_2018",
+      "flags": [
+        "suspect_en_brand:Sheng"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1049_scn_2019",
+      "flags": [
+        "suspect_en_brand:Area,Congratulate,Employee,Ethernet,FLAMEX,Intranet"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1049_scn_2020",
+      "flags": [
+        "suspect_cn_corp:不但对公司,不是一般小公司,生物医学科技有限公司,贝朗集团,通报公司",
+        "suspect_en_brand:Audio,HACCP,Microphone,Processor,SLD,Sound"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1049_scn_2021",
+      "flags": [
+        "suspect_cn_corp:耐克森公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1049_scn_2022",
+      "flags": [
+        "suspect_cn_corp:荷兰飞利浦公司,通讯公司",
+        "suspect_en_brand:RIM,Star"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1050_scn_2017",
+      "flags": [
+        "suspect_cn_corp:合作长达十年的公司,西澳大利亚银行",
+        "suspect_en_brand:CeBIT,GIS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1050_scn_2018",
+      "flags": [
+        "suspect_cn_corp:菱重工与上柴合资公司,随信附上我司公司",
+        "suspect_en_brand:Sheng"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1050_scn_2019",
+      "flags": [
+        "suspect_en_brand:Area,Automation,Congratulate,Employee,Ethernet,FLAMEX"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1050_scn_2020",
+      "flags": [
+        "suspect_en_brand:Articulate,Storyline"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1050_scn_2022",
+      "flags": [
+        "suspect_cn_corp:相信很多公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1051_scn_2020",
+      "flags": [
+        "suspect_cn_corp:我们为很多公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1052_scn_2017",
+      "flags": [
+        "suspect_en_brand:CPU,Deluxe,DeviceNet,FLASH,FRENIC,Life"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1052_scn_2020",
+      "flags": [
+        "suspect_en_brand:Laksen,Link,Mike,Pls,Subtitled"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1052_scn_2022",
+      "flags": [
+        "suspect_en_brand:GMP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1053_scn_2017",
+      "flags": [
+        "suspect_cn_corp:中国有限公司,公司公司,工程有限公司,开关有限公司",
+        "suspect_en_brand:Acrobat,Akala,CDC,CeBIT,Crosfield,Dewar"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1053_scn_2021",
+      "flags": [
+        "suspect_cn_corp:中国银联美洲银行,们长期服务的医药公司,先灵葆雅制药有限公司,公众股份有限公司,医疗器材有限公司",
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,NHL,PRESTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1054_scn_2017",
+      "flags": [
+        "suspect_cn_corp:日本兴业银行,日本古河电工集团,日本日联银行股份,日本阿童木集团,日立信息系统公司",
+        "suspect_en_brand:CEC,Departme,JSOX,NKK"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1054_scn_2021",
+      "flags": [
+        "suspect_cn_corp:是你们集团",
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1054_scn_2022",
+      "flags": [
+        "suspect_cn_corp:上海豪丝化工有限公司,堡南美资料翻译及公司,我特此挑选一些公司,澳大利亚狮王啤酒公司,美国开利公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1055_scn_2017",
+      "flags": [
+        "suspect_cn_corp:分成功案例及附件公司,汽车电子有限公司,通用公司",
+        "suspect_en_brand:Add,CKD,Commonwealth,Tel"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1055_scn_2021",
+      "flags": [
+        "suspect_cn_corp:中国有限公司,公司中国惠普有限公司,美国英特尔公司",
+        "suspect_en_brand:Jhonson"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1055_scn_2022",
+      "flags": [
+        "suspect_en_brand:GMP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1056_scn_2017",
+      "flags": [
+        "suspect_cn_corp:分成功案例及附件公司,汽车电子有限公司,通用公司",
+        "suspect_en_brand:Add,CKD,Commonwealth,Tel"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1056_scn_2021",
+      "flags": [
+        "suspect_cn_corp:美国国家银行协会公司",
+        "suspect_en_brand:DMG,Limited,LuranaS,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1056_scn_2022",
+      "flags": [
+        "suspect_en_brand:GMP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1057_scn_2017",
+      "flags": [
+        "suspect_cn_corp:上海航天机电汽车股份,上海航空股份有限公司,上飞集团,中国东方航空公司,中国国际航空股份",
+        "suspect_en_brand:ATS,CTCS,Chen"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1057_scn_2019",
+      "flags": [
+        "suspect_en_brand:WSG"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1057_scn_2021",
+      "flags": [
+        "suspect_cn_corp:目前公司",
+        "suspect_en_brand:Limited,REF,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1057_scn_2022",
+      "flags": [
+        "suspect_cn_corp:中国水利水电集团公司,中国电力工程有限公司,中国电工集团,天津电力建设公司,电力集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1058_scn_2019",
+      "flags": [
+        "suspect_cn_corp:就还剩下公司",
+        "suspect_en_brand:Copper,Voice"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1058_scn_2021",
+      "flags": [
+        "suspect_cn_corp:目前公司",
+        "suspect_en_brand:Limited,REF,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1059_scn_2018",
+      "flags": [
+        "suspect_cn_corp:国际酒店集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1059_scn_2021",
+      "flags": [
+        "suspect_cn_corp:您现在的公司",
+        "suspect_en_brand:Chen,Glroia"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1059_scn_2022",
+      "flags": [
+        "suspect_cn_corp:中国有限公司,公司中国惠普有限公司,数据库系统管理的公司,美国英特尔公司",
+        "suspect_en_brand:Jhonson"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1060_scn_2018",
+      "flags": [
+        "suspect_en_brand:DAS,Tiffny"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1060_scn_2019",
+      "flags": [
+        "suspect_en_brand:Presentation,Zhibing"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1060_scn_2021",
+      "flags": [
+        "suspect_cn_corp:上药集团,们长期服务的化工公司,司与中环水务重庆公司,燕化永乐农药有限公司,特变电工股份有限公司",
+        "suspect_en_brand:KOCHI"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1061_scn_2018",
+      "flags": [
+        "suspect_cn_corp:谢您长期以来对我公司",
+        "suspect_en_brand:SHANGHAI"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1061_scn_2019",
+      "flags": [
+        "suspect_en_brand:Program,SHIFT,Transformation,Yanggu"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1061_scn_2021",
+      "flags": [
+        "suspect_cn_corp:目前公司",
+        "suspect_en_brand:Limited,REF,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1062_scn_2021",
+      "flags": [
+        "suspect_cn_corp:们近斯为电子电气公司,股份有限公司",
+        "suspect_en_brand:NHL"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1062_scn_2022",
+      "flags": [
+        "suspect_cn_corp:们长期服务的咨询公司,美国国家银行协会公司",
+        "suspect_en_brand:Flora"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1063_scn_2018",
+      "flags": [
+        "suspect_en_brand:Pls"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1063_scn_2022",
+      "flags": [
+        "suspect_cn_corp:但不巧您都不在公司",
+        "suspect_en_brand:RIM,Star"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1064_scn_2018",
+      "flags": [
+        "suspect_cn_corp:谢您长期以来对我公司",
+        "suspect_en_brand:Yijing"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1064_scn_2021",
+      "flags": [
+        "suspect_cn_corp:股份有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1065_scn_2018",
+      "flags": [
+        "suspect_en_brand:Lisa"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1065_scn_2022",
+      "flags": [
+        "suspect_cn_corp:和三菱重工等许多公司,近期为三一集团",
+        "suspect_en_brand:KOCHI"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1066_scn_2022",
+      "flags": [
+        "suspect_cn_corp:们长期服务的建筑公司,骏地建筑设计有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1067_scn_2021",
+      "flags": [
+        "suspect_cn_corp:们长期服务的咨询公司,美国国家银行协会公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1067_scn_2022",
+      "flags": [
+        "suspect_en_brand:LuranaS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1068_scn_2021",
+      "flags": [
+        "suspect_cn_corp:东方海外集团,加拿大赫斯基集团,澳大利亚狮王啤酒公司,美国利宝集团,美国玛斯柯照明公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1068_scn_2022",
+      "flags": [
+        "suspect_en_brand:Sherry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1069_scn_2021",
+      "flags": [
+        "suspect_cn_corp:夏普等许多公司,我们曾经为以下公司,普电子元器件有限公司,贸易有限公司,邦迪管路系统有限公司",
+        "suspect_en_brand:DevDB,Edison"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1070_scn_2021",
+      "flags": [
+        "suspect_cn_corp:为巴黎百富勤银行,巴黎百富勤银行,系统的公司,股份有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1071_scn_2021",
+      "flags": [
+        "suspect_cn_corp:我们曾经为以下公司,普电子元器件有限公司",
+        "suspect_en_brand:Sherry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1071_scn_2022",
+      "flags": [
+        "suspect_cn_corp:江森自控汽车内饰集团,汽车电子有限公司,通用公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1072_scn_2021",
+      "flags": [
+        "suspect_cn_corp:们近斯为电子电器公司,贸易有限公司",
+        "suspect_en_brand:DevDB"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1072_scn_2022",
+      "flags": [
+        "suspect_cn_corp:供应链部门归于公司,卡琳罗纳啤酒制造公司,很多公司,生物工程有限公司,粮油有限公司",
+        "suspect_en_brand:Heinz,LAB,Nestle,Unilever"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1073_scn_2018",
+      "flags": [
+        "suspect_cn_corp:印刷是公司,同时也是公司",
+        "suspect_en_brand:EmailType,LinkType,MainQueueId,ProductName"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1073_scn_2021",
+      "flags": [
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,PRESTO,Sherry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1073_scn_2022",
+      "flags": [
+        "suspect_en_brand:Sherry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1074_scn_2018",
+      "flags": [
+        "suspect_en_brand:Coffee,Everpure,Much,Water"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1074_scn_2021",
+      "flags": [
+        "suspect_cn_corp:瑞典银行,股份有限公司",
+        "suspect_en_brand:CeBIT,Sherry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1074_scn_2022",
+      "flags": [
+        "suspect_cn_corp:近些年很多外企公司",
+        "suspect_en_brand:Elz"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1075_scn_2021",
+      "flags": [
+        "suspect_cn_corp:瑞典银行",
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,PRESTO,Sherry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1075_scn_2022",
+      "flags": [
+        "suspect_cn_corp:们长期服务的建筑公司,骏地建筑设计有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1076_scn_2018",
+      "flags": [
+        "suspect_en_brand:AMOUNT"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1076_scn_2021",
+      "flags": [
+        "suspect_cn_corp:普电子元器件有限公司",
+        "suspect_en_brand:FCG"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1076_scn_2022",
+      "flags": [
+        "suspect_en_brand:Air,Products"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1077_scn_2018",
+      "flags": [
+        "suspect_cn_corp:百胜集团",
+        "suspect_en_brand:Christine"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1077_scn_2021",
+      "flags": [
+        "suspect_en_brand:Sherry,Ultrason"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1078_scn_2022",
+      "flags": [
+        "suspect_en_brand:Sherry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1079_scn_2018",
+      "flags": [
+        "suspect_en_brand:Golden"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1079_scn_2021",
+      "flags": [
+        "suspect_cn_corp:巴迪牵引系统有限公司,庞巴迪运输集团,阿尔斯通公司",
+        "suspect_en_brand:Chen,DCS,EMC,Jessie,MRE,SDH"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1080_scn_2018",
+      "flags": [
+        "suspect_en_brand:Grace"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1080_scn_2021",
+      "flags": [
+        "suspect_cn_corp:上海凯士比泵有限公司",
+        "suspect_en_brand:Sherry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1080_scn_2022",
+      "flags": [
+        "suspect_en_brand:Articles,Bidding,Contracts,Documents,Feasibility,Labor"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1081_scn_2018",
+      "flags": [
+        "suspect_cn_corp:百胜集团",
+        "suspect_en_brand:Miya"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1081_scn_2021",
+      "flags": [
+        "suspect_cn_corp:江森自控汽车内饰集团,汽车电子有限公司,通用公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1081_scn_2022",
+      "flags": [
+        "suspect_cn_corp:我们曾经为以下公司,普电子元器件有限公司,贸易有限公司",
+        "suspect_en_brand:DevDB"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1082_scn_2018",
+      "flags": [
+        "suspect_cn_corp:新誉集团",
+        "suspect_en_brand:APG,Munza,PSD,PowerFlex"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1082_scn_2021",
+      "flags": [
+        "suspect_cn_corp:上海摩丁空调有限公司,们近斯为空调系统公司,供服务的空调系统公司,空调有限公司,贝洱汽车空调有限公司",
+        "suspect_en_brand:Emerson,Limited,LuranaS,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1083_scn_2018",
+      "flags": [
+        "suspect_cn_corp:排外派人员到他们公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1083_scn_2021",
+      "flags": [
+        "suspect_cn_corp:以会场所用的各个公司,以及各个公司",
+        "suspect_en_brand:Limited,LuranaS,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1083_scn_2022",
+      "flags": [
+        "suspect_cn_corp:感谢您在中对敝公司,洛德公司",
+        "suspect_en_brand:Sitecore"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1084_scn_2018",
+      "flags": [
+        "suspect_cn_corp:百胜集团",
+        "suspect_en_brand:Sophia"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1084_scn_2021",
+      "flags": [
+        "suspect_cn_corp:辉瑞制药公司",
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,PRESTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1084_scn_2022",
+      "flags": [
+        "suspect_en_brand:Sophia"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1085_scn_2021",
+      "flags": [
+        "suspect_cn_corp:中国水利水电集团公司,中国电力工程有限公司,天津电力建设公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1086_scn_2018",
+      "flags": [
+        "suspect_en_brand:History"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1086_scn_2021",
+      "flags": [
+        "suspect_cn_corp:北京公司",
+        "suspect_en_brand:AMP,Appliances,Asia,Automotive,Chinas,Communications"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1087_scn_2018",
+      "flags": [
+        "suspect_en_brand:BCM,Framework,Group,IRRM,Intra,MCS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1087_scn_2021",
+      "flags": [
+        "suspect_en_brand:Jojo"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1087_scn_2022",
+      "flags": [
+        "suspect_en_brand:Happy"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1088_scn_2018",
+      "flags": [
+        "suspect_cn_corp:人工成本也是很多公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1088_scn_2021",
+      "flags": [
+        "suspect_cn_corp:上海通用企业集团,为您整理的近期我公司,简单的公司,通讯公司,附件中是我公司",
+        "suspect_en_brand:Allen"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1088_scn_2022",
+      "flags": [
+        "suspect_en_brand:Citizenship,Dong,Geri,Global,Human,Mercury"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1089_scn_2018",
+      "flags": [
+        "suspect_cn_corp:详细的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1089_scn_2021",
+      "flags": [
+        "suspect_cn_corp:不过现在很多公司",
+        "suspect_en_brand:Allen"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1090_scn_2021",
+      "flags": [
+        "suspect_cn_corp:巴黎百富勤银行",
+        "suspect_en_brand:Allen"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1090_scn_2022",
+      "flags": [
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,NHL,PRESTO,Sanofi"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1091_scn_2018",
+      "flags": [
+        "suspect_cn_corp:理各部门的消费和公司",
+        "suspect_en_brand:RCC"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1091_scn_2021",
+      "flags": [
+        "suspect_cn_corp:我们为三菱集团",
+        "suspect_en_brand:Allen"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1093_scn_2018",
+      "flags": [
+        "suspect_cn_corp:万豪集团,国际酒店集团,年开始为您酒店集团,我们与很多酒店集团,洲际酒店集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1093_scn_2021",
+      "flags": [
+        "suspect_cn_corp:附件是我们最新的公司",
+        "suspect_en_brand:Allen"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1093_scn_2022",
+      "flags": [
+        "suspect_cn_corp:医药保健品进出口公司",
+        "suspect_en_brand:ADAPTIV,AIRIS,AIRISmat,APERTO,ARZNEIMITTEL,CIBA"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1094_scn_2018",
+      "flags": [
+        "suspect_en_brand:Plus"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1094_scn_2021",
+      "flags": [
+        "suspect_en_brand:Allen"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1094_scn_2022",
+      "flags": [
+        "suspect_en_brand:Articles,Bidding,Contracts,Documents,Feasibility,Labor"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1095_scn_2021",
+      "flags": [
+        "suspect_cn_corp:投资有限公司,杭州杭氧股份,氢氧站设计规范和公司,液空公司,盈德气体集团",
+        "suspect_en_brand:Call,Center"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1095_scn_2022",
+      "flags": [
+        "suspect_en_brand:Rain"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1096_scn_2021",
+      "flags": [
+        "suspect_en_brand:Allen"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1096_scn_2022",
+      "flags": [
+        "suspect_en_brand:Rain"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1097_scn_2021",
+      "flags": [
+        "suspect_en_brand:Chloe,Edison"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1097_scn_2022",
+      "flags": [
+        "suspect_cn_corp:供应商公司,资注册一个新的子公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1099_scn_2021",
+      "flags": [
+        "suspect_en_brand:CSS,Edison,Faix,Finishes,Lisa,Louis"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1099_scn_2022",
+      "flags": [
+        "suspect_en_brand:Rain"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1100_scn_2021",
+      "flags": [
+        "suspect_cn_corp:太平洋财产保险公司,批发银行,汉诺威再保险股份公司,美亚保险公司,美国利保互助保险公司",
+        "suspect_en_brand:Liberty,Manager,Operations"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1101_scn_2021",
+      "flags": [
+        "suspect_cn_corp:三菱集团,上海凯士比泵有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1101_scn_2022",
+      "flags": [
+        "suspect_en_brand:GMP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1102_scn_2021",
+      "flags": [
+        "suspect_cn_corp:品代码管理办法及公司,服务理念以及公司,进驻上海的大部分集团",
+        "suspect_en_brand:AIRISmat,APERTO,Edison,PRESTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1102_scn_2022",
+      "flags": [
+        "suspect_en_brand:Rain"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1103_scn_2021",
+      "flags": [
+        "suspect_cn_corp:们长期服务的化工公司,司与中环水务重庆公司,我特别挑选一些公司,氢氧站设计规范和公司,液空公司",
+        "suspect_en_brand:Edison,Equipment,FMC,ProtoCastTM,Somos"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1103_scn_2022",
+      "flags": [
+        "suspect_en_brand:Rain"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1104_scn_2021",
+      "flags": [
+        "suspect_cn_corp:上海摩丁空调有限公司,们近斯为空调系统公司,供服务的空调系统公司,空调有限公司,贝洱汽车空调有限公司",
+        "suspect_en_brand:Call,Center,Emerson,Johnson,Lotus,Notes"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1104_scn_2022",
+      "flags": [
+        "suspect_en_brand:GMP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1105_scn_2018",
+      "flags": [
+        "suspect_en_brand:PPT"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1105_scn_2021",
+      "flags": [
+        "suspect_en_brand:Edison"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1105_scn_2022",
+      "flags": [
+        "suspect_cn_corp:周末整理了公司",
+        "suspect_en_brand:ANDiS,CoV,FAST,GCE,RNA,SARS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1106_scn_2018",
+      "flags": [
+        "suspect_cn_corp:您好像还没进公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1106_scn_2021",
+      "flags": [
+        "suspect_cn_corp:长期的翻译服务的公司",
+        "suspect_en_brand:Edison,Limited,LuranaS,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1106_scn_2022",
+      "flags": [
+        "suspect_cn_corp:我们是如何全员从公司",
+        "suspect_en_brand:Rain"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1107_scn_2018",
+      "flags": [
+        "suspect_en_brand:There"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1107_scn_2021",
+      "flags": [
+        "suspect_en_brand:Beaky,Edison"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1107_scn_2022",
+      "flags": [
+        "suspect_cn_corp:荷兰飞利浦公司,通讯公司",
+        "suspect_en_brand:Chen,RIM,Rain,Star"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1108_scn_2021",
+      "flags": [
+        "suspect_cn_corp:们长期服务的建筑公司",
+        "suspect_en_brand:Edison"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1108_scn_2022",
+      "flags": [
+        "suspect_cn_corp:我们曾经服务过的公司",
+        "suspect_en_brand:DONNE,NAOMI"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1109_scn_2021",
+      "flags": [
+        "suspect_en_brand:Edison"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1109_scn_2022",
+      "flags": [
+        "suspect_cn_corp:我们是如何全员从公司",
+        "suspect_en_brand:Rain"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1110_scn_2021",
+      "flags": [
+        "suspect_cn_corp:不过现在很多公司",
+        "suspect_en_brand:Edison"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1111_scn_2021",
+      "flags": [
+        "suspect_cn_corp:不过现在很多公司,可提供公司",
+        "suspect_en_brand:Edison"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1111_scn_2022",
+      "flags": [
+        "suspect_cn_corp:我对公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1112_scn_2021",
+      "flags": [
+        "suspect_cn_corp:附件是公司",
+        "suspect_en_brand:Edison"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1112_scn_2022",
+      "flags": [
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1114_scn_2021",
+      "flags": [
+        "suspect_en_brand:Droupal,StoryLine"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1115_scn_2022",
+      "flags": [
+        "suspect_cn_corp:下面是公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1117_scn_2022",
+      "flags": [
+        "suspect_en_brand:Jane"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1118_scn_2022",
+      "flags": [
+        "suspect_cn_corp:特变电工股份有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1120_scn_2022",
+      "flags": [
+        "suspect_en_brand:Articles,Bidding,Contracts,Coronus,Documents,Eval"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1121_scn_2022",
+      "flags": [
+        "suspect_cn_corp:法维莱公司,近期我们帮法维莱公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1124_scn_2018",
+      "flags": [
+        "suspect_cn_corp:国际酒店集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1124_scn_2022",
+      "flags": [
+        "suspect_en_brand:Avy"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1126_scn_2022",
+      "flags": [
+        "suspect_cn_corp:中国建设银行,人民币银行,美元银行"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1127_scn_2018",
+      "flags": [
+        "suspect_en_brand:Ariel,Xia"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1128_scn_2022",
+      "flags": [
+        "suspect_en_brand:Acrylic,Asia,ESHQ,Efficiency,Energy,Freya"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1129_scn_2018",
+      "flags": [
+        "suspect_cn_corp:中国惠普有限公司,中国有限公司,法国阿尔斯通集团,福禄克集团",
+        "suspect_en_brand:BETACAM,CeBIT,FMC,IBM,Jhonson,PREMIERE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1132_scn_2018",
+      "flags": [
+        "suspect_cn_corp:三一重工等许多公司,中国有限公司,公司公司,工程有限公司,开关有限公司",
+        "suspect_en_brand:CDC,CPU,CeBIT,DeviceNet,Dynacomp,EPS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1132_scn_2022",
+      "flags": [
+        "suspect_en_brand:Clare"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1133_scn_2022",
+      "flags": [
+        "suspect_cn_corp:氢氧站设计规范和公司,液空公司,蓝星公司",
+        "suspect_en_brand:Equipment,FMC,Oscar,ProtoCastTM,QuickCastTM,Somos"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1134_scn_2022",
+      "flags": [
+        "suspect_en_brand:Sharon"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1135_scn_2022",
+      "flags": [
+        "suspect_cn_corp:上市公司,上海银行,公众股份有限公司,关于个人银行,合作条款根据星展银行",
+        "suspect_en_brand:DBS,DIGOS,GCRT,Vol,WorldLink"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1136_scn_2022",
+      "flags": [
+        "suspect_cn_corp:们正好帮开利空调公司,开利公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1137_scn_2022",
+      "flags": [
+        "suspect_cn_corp:姚丹先生在之前的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1139_scn_2022",
+      "flags": [
+        "suspect_cn_corp:很多日企公司",
+        "suspect_en_brand:Jessica,Sanofi"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1140_scn_2018",
+      "flags": [
+        "suspect_cn_corp:瑞典银行"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1140_scn_2022",
+      "flags": [
+        "suspect_en_brand:Blanche"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1141_scn_2018",
+      "flags": [
+        "suspect_cn_corp:国际酒店集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1142_scn_2022",
+      "flags": [
+        "suspect_en_brand:Steven"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1143_scn_2022",
+      "flags": [
+        "suspect_en_brand:Wendy"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1144_scn_2022",
+      "flags": [
+        "suspect_cn_corp:比如他们公司,蛮多公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1145_scn_2022",
+      "flags": [
+        "suspect_en_brand:James,Support"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1146_scn_2018",
+      "flags": [
+        "suspect_cn_corp:中国惠普有限公司,中国有限公司,法国阿尔斯通集团,福禄克集团",
+        "suspect_en_brand:BETACAM,CeBIT,FMC,IBM,Jhonson,PREMIERE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1147_scn_2018",
+      "flags": [
+        "suspect_cn_corp:下面很多子公司,我司与森松集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1149_scn_2022",
+      "flags": [
+        "suspect_cn_corp:了一家价位超低的公司,若您能向公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1150_scn_2022",
+      "flags": [
+        "suspect_cn_corp:因为公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1151_scn_2022",
+      "flags": [
+        "suspect_cn_corp:们近期帮很多医药公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1152_scn_2022",
+      "flags": [
+        "suspect_cn_corp:上汽集团,通用公司",
+        "suspect_en_brand:Cally"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1153_scn_2018",
+      "flags": [
+        "suspect_cn_corp:国际酒店集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1154_scn_2018",
+      "flags": [
+        "suspect_cn_corp:下面的多个子公司,有过合作也与森松集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1154_scn_2022",
+      "flags": [
+        "suspect_cn_corp:会加上公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1155_scn_2018",
+      "flags": [
+        "suspect_cn_corp:中国有限公司,工程有限公司,开关有限公司",
+        "suspect_en_brand:Acrobat,Crosfield,FTP,Limited,LuranaS,PageMaker"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1155_scn_2022",
+      "flags": [
+        "suspect_en_brand:GCE,RNA,Viral"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1156_scn_2018",
+      "flags": [
+        "suspect_cn_corp:国际酒店集团",
+        "suspect_en_brand:LuranaS,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1156_scn_2022",
+      "flags": [
+        "suspect_cn_corp:以下是关于日企公司,住电新材料等旗下公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1157_scn_2018",
+      "flags": [
+        "suspect_en_brand:EPC,MSE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1157_scn_2022",
+      "flags": [
+        "suspect_en_brand:GCE,RNA,Viral"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1158_scn_2022",
+      "flags": [
+        "suspect_en_brand:Jane"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1159_scn_2022",
+      "flags": [
+        "suspect_cn_corp:因各自公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1160_scn_2022",
+      "flags": [
+        "suspect_cn_corp:我是上海嘉賽翻譯公司,的專業公司,醫療器械有限公司",
+        "suspect_en_brand:Jean"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1161_scn_2022",
+      "flags": [
+        "suspect_cn_corp:东方海外集团,美国利宝集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1162_scn_2022",
+      "flags": [
+        "suspect_en_brand:GCE,RNA,Viral"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1163_scn_2018",
+      "flags": [
+        "suspect_cn_corp:中信重工机械股份,广西柳工集团,日本三菱集团",
+        "suspect_en_brand:CPU,Deluxe,DeviceNet,FLASH,FRENIC,Life"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1163_scn_2022",
+      "flags": [
+        "suspect_cn_corp:东方海外集团,加拿大赫斯基集团,澳大利亚狮王啤酒公司,美国利宝集团,美国玛斯柯照明公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1164_scn_2022",
+      "flags": [
+        "suspect_cn_corp:也有专门真对咱们公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1167_scn_2018",
+      "flags": [
+        "suspect_cn_corp:他们公司,必达翻译印刷服务公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1168_scn_2022",
+      "flags": [
+        "suspect_en_brand:IBM,Laku,NEC,Sun"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1170_scn_2022",
+      "flags": [
+        "suspect_cn_corp:户线上员工会议等公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1172_scn_2022",
+      "flags": [
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,PRESTO,Sanofi"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1175_scn_2022",
+      "flags": [
+        "suspect_en_brand:Lena"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1176_scn_2018",
+      "flags": [
+        "suspect_en_brand:Acrobat,LuranaS,PageMaker"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1176_scn_2022",
+      "flags": [
+        "suspect_cn_corp:瑞典银行"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1177_scn_2018",
+      "flags": [
+        "suspect_cn_corp:电梯有限公司",
+        "suspect_en_brand:CPU,DeviceNet,FLASH,PLC,Tcmini"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1177_scn_2022",
+      "flags": [
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,NHL,PRESTO,Sanofi"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1178_scn_2022",
+      "flags": [
+        "suspect_en_brand:GCE,Lisa,RNA,Viral"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1179_scn_2018",
+      "flags": [
+        "suspect_en_brand:Ariba"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1179_scn_2022",
+      "flags": [
+        "suspect_cn_corp:前段时间必维集团,对他们公司,市场份额第一的公司",
+        "suspect_en_brand:RNA,Viral"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1180_scn_2018",
+      "flags": [
+        "suspect_en_brand:Jojo"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1180_scn_2022",
+      "flags": [
+        "suspect_cn_corp:希望能把我公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1181_scn_2018",
+      "flags": [
+        "suspect_en_brand:MEADOW,Process,RFP,Scope,System"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1181_scn_2022",
+      "flags": [
+        "suspect_en_brand:AMOUNT,Acrylic,Asia,ESHQ,Efficiency,Energy"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1182_scn_2018",
+      "flags": [
+        "suspect_en_brand:Jojo"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1183_scn_2022",
+      "flags": [
+        "suspect_cn_corp:苦您再帮更改为原公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1185_scn_2018",
+      "flags": [
+        "suspect_en_brand:Assistant,Choice,First,Top"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1186_scn_2022",
+      "flags": [
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,NHL,PRESTO,Sanofi"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1187_scn_2022",
+      "flags": [
+        "suspect_cn_corp:我们能很从容的从公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1188_scn_2022",
+      "flags": [
+        "suspect_cn_corp:安智银行,我们与安智银行,批发银行,美国银行,美洲银行",
+        "suspect_en_brand:Aiden"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1194_scn_2022",
+      "flags": [
+        "suspect_cn_corp:通用公司,长期的翻译服务的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1195_scn_2022",
+      "flags": [
+        "suspect_cn_corp:期服务的酒店管理公司",
+        "suspect_en_brand:Brand,Edison,Protection"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1196_scn_2022",
+      "flags": [
+        "suspect_en_brand:Edison"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1197_scn_2022",
+      "flags": [
+        "suspect_en_brand:Betty"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_1198_scn_2022",
+      "flags": [
+        "suspect_en_brand:Edison"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_286_scn_2026",
+      "flags": [
+        "suspect_en_brand:LNnT"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_292_scn_2026",
+      "flags": [
+        "suspect_cn_corp:务也可以支持咱们公司,烦您帮忙把附件的公司,附件里的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_296_scn_2026",
+      "flags": [
+        "suspect_cn_corp:企业管理有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_299_scn_2026",
+      "flags": [
+        "suspect_cn_corp:附上公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_300_scn_2026",
+      "flags": [
+        "suspect_en_brand:MSDS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_302_scn_2026",
+      "flags": [
+        "suspect_en_brand:Ultrason"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_308_scn_2026",
+      "flags": [
+        "suspect_en_brand:MSDS,SDS,TDS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_314_scn_2026",
+      "flags": [
+        "suspect_en_brand:CTA,ECletter,ICF,SOP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_331_scn_2025",
+      "flags": [
+        "suspect_en_brand:Data,FINANCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_340_scn_2025",
+      "flags": [
+        "suspect_en_brand:AVA"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_349_scn_2025",
+      "flags": [
+        "suspect_en_brand:Monica"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_358_scn_2025",
+      "flags": [
+        "suspect_cn_corp:合同模板和公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_442_scn_2025",
+      "flags": [
+        "suspect_en_brand:MBCC"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_461_scn_2025",
+      "flags": [
+        "suspect_en_brand:Scotch,Seal,Weld"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_465_scn_2025",
+      "flags": [
+        "suspect_cn_corp:水科技集团",
+        "suspect_en_brand:TOTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_469_scn_2025",
+      "flags": [
+        "suspect_cn_corp:科技有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_482_scn_2025",
+      "flags": [
+        "suspect_en_brand:SpeedAsiaSpeedAsia"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_491_scn_2025",
+      "flags": [
+        "suspect_en_brand:Peggy"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_495_scn_2024",
+      "flags": [
+        "suspect_en_brand:Nicole"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_504_scn_2024",
+      "flags": [
+        "suspect_cn_corp:他们公司,刚刚跟您沟通公司,年底了很多公司",
+        "suspect_en_brand:CMYK"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_507_scn_2024",
+      "flags": [
+        "suspect_cn_corp:庞巴迪运输集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_509_scn_2024",
+      "flags": [
+        "suspect_en_brand:ANDiS,CoV,FAST,GCE,RNA,SARS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_512_scn_2024",
+      "flags": [
+        "suspect_en_brand:Clare"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_513_scn_2024",
+      "flags": [
+        "suspect_cn_corp:他们公司,年底了很多公司",
+        "suspect_en_brand:CMYK"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_514_scn_2024",
+      "flags": [
+        "suspect_en_brand:Emily,LuranaS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_515_scn_2024",
+      "flags": [
+        "suspect_en_brand:Danny,Wang"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_516_scn_2024",
+      "flags": [
+        "suspect_cn_corp:不过现在很多公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_519_scn_2024",
+      "flags": [
+        "suspect_en_brand:Asia,ECM,GCE,Inorganic,Management,Materia"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_535_scn_2024",
+      "flags": [
+        "suspect_en_brand:AAD,AdMD,Emily,Fiona,HCBG,MSD"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_536_scn_2024",
+      "flags": [
+        "suspect_en_brand:AAD,AdMD,HCBG,MSD,TEBG"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_539_scn_2024",
+      "flags": [
+        "suspect_en_brand:AAD,AdMD,Emily,HCBG,MSD,Maggie"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_540_scn_2024",
+      "flags": [
+        "suspect_en_brand:AAD,AdMD,Clara,HCBG,Kiwi,MSD"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_542_scn_2024",
+      "flags": [
+        "suspect_cn_corp:更好突出公司",
+        "suspect_en_brand:CIBS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_544_scn_2024",
+      "flags": [
+        "suspect_en_brand:AAD,AASD,AdMD,EMD,HCBG,MSD"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_547_scn_2024",
+      "flags": [
+        "suspect_en_brand:MSSD,Rita"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_548_scn_2024",
+      "flags": [
+        "suspect_en_brand:SIG,Sheng"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_551_scn_2024",
+      "flags": [
+        "suspect_cn_corp:并随信附上我司公司,建设银行,瑞银等银行"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_563_scn_2024",
+      "flags": [
+        "suspect_cn_corp:我整理了公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_569_scn_2024",
+      "flags": [
+        "suspect_cn_corp:旗下各关联公司",
+        "suspect_en_brand:KES,KGS,Molex"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_572_scn_2024",
+      "flags": [
+        "suspect_en_brand:Bingo,HANGYAN,Ling,Pharmaceuical,Pharmaceutical"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_573_scn_2024",
+      "flags": [
+        "suspect_en_brand:GCE,HANGYAN"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_574_scn_2024",
+      "flags": [
+        "suspect_en_brand:Hou"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_575_scn_2024",
+      "flags": [
+        "suspect_cn_corp:科技公司",
+        "suspect_en_brand:HANGYAN,Mona"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_577_scn_2024",
+      "flags": [
+        "suspect_en_brand:CTA,ECletter,ICF,SOP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_578_scn_2024",
+      "flags": [
+        "suspect_cn_corp:医药公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_585_scn_2024",
+      "flags": [
+        "suspect_en_brand:CBME"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_586_scn_2024",
+      "flags": [
+        "suspect_cn_corp:企业文化的现代化公司",
+        "suspect_en_brand:CBME"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_595_scn_2024",
+      "flags": [
+        "suspect_cn_corp:与药明康德集团",
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,PRESTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_597_scn_2024",
+      "flags": [
+        "suspect_cn_corp:并与关联公司,我司是药明康德集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_599_scn_2024",
+      "flags": [
+        "suspect_cn_corp:公众股份有限公司,德国裕宝联合银行,意大利西雅那银行股份,我这边主要负责的银行,新加坡大华银行"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_604_scn_2024",
+      "flags": [
+        "suspect_en_brand:Dragon,Wishes,Year"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_605_scn_2024",
+      "flags": [
+        "suspect_en_brand:Notebook"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_613_scn_2024",
+      "flags": [
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_615_scn_2024",
+      "flags": [
+        "suspect_en_brand:ECCO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_616_scn_2024",
+      "flags": [
+        "suspect_en_brand:GCE,RNA,Viral"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_618_scn_2024",
+      "flags": [
+        "suspect_en_brand:Business,Covestro,Hunstsman,Process,Site,Wang"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_619_scn_2024",
+      "flags": [
+        "suspect_cn_corp:中经集团,外经集团,如中国中车集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_620_scn_2024",
+      "flags": [
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_622_scn_2024",
+      "flags": [
+        "suspect_en_brand:Industry,Judy,Large,Operation,Zhang"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_623_scn_2024",
+      "flags": [
+        "suspect_en_brand:Bruberrry,EsteeLauder,OREAL"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_624_scn_2024",
+      "flags": [
+        "suspect_en_brand:ANDiS,CoV,FAST,GCE,RNA,SARS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_625_scn_2024",
+      "flags": [
+        "suspect_en_brand:Dept,HSE,Purchasing,SGC"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_626_scn_2024",
+      "flags": [
+        "suspect_en_brand:ASPMaker"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_627_scn_2024",
+      "flags": [
+        "suspect_cn_corp:中国建设银行,作为荷兰安智银行,华侨银行,合作历史和银行,我们与安智银行"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_629_scn_2024",
+      "flags": [
+        "suspect_cn_corp:诸多公司,随着近些年艺康集团",
+        "suspect_en_brand:Ecolab,Global,INSTITUTIONAL,KOCH,MKT,Peter"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_630_scn_2024",
+      "flags": [
+        "suspect_cn_corp:投资有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_631_scn_2024",
+      "flags": [
+        "suspect_cn_corp:们近期为电子电器公司,股份有限公司,贸易有限公司",
+        "suspect_en_brand:DevDB,Laura,Liu"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_632_scn_2024",
+      "flags": [
+        "suspect_cn_corp:特变电工股份有限公司",
+        "suspect_en_brand:KOCHI"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_633_scn_2024",
+      "flags": [
+        "suspect_cn_corp:今越来越多的广告公司,公关公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_636_scn_2024",
+      "flags": [
+        "suspect_en_brand:ILC"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_640_scn_2024",
+      "flags": [
+        "suspect_cn_corp:浙江海正药业股份",
+        "suspect_en_brand:III"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_642_scn_2024",
+      "flags": [
+        "suspect_en_brand:Jerry,Louisa,Luo"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_643_scn_2024",
+      "flags": [
+        "suspect_en_brand:Jerry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_644_scn_2024",
+      "flags": [
+        "suspect_cn_corp:他们公司",
+        "suspect_en_brand:Jerry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_645_scn_2024",
+      "flags": [
+        "suspect_en_brand:CTA,ECletter,ICF,SOP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_646_scn_2024",
+      "flags": [
+        "suspect_cn_corp:中经集团,外经集团,如中车集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_647_scn_2024",
+      "flags": [
+        "suspect_cn_corp:拜托您推荐给公司",
+        "suspect_en_brand:Purchasing"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_649_scn_2024",
+      "flags": [
+        "suspect_cn_corp:关于贵方所在的银行,批发银行,美国银行,美洲银行"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_652_scn_2024",
+      "flags": [
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_653_scn_2024",
+      "flags": [
+        "suspect_cn_corp:数据库系统管理的公司",
+        "suspect_en_brand:ANDiS,CoV,FAST,GCE,RNA,SARS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_654_scn_2024",
+      "flags": [
+        "suspect_cn_corp:他们公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_659_scn_2024",
+      "flags": [
+        "suspect_en_brand:CTA,ECletter,ICF,Pharmaceutical,SOP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_662_scn_2024",
+      "flags": [
+        "suspect_cn_corp:他们公司,年底了很多公司",
+        "suspect_en_brand:CMYK,Caffery"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_663_scn_2024",
+      "flags": [
+        "suspect_cn_corp:我附上了公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_665_scn_2024",
+      "flags": [
+        "suspect_cn_corp:年底了很多公司",
+        "suspect_en_brand:CMYK"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_666_scn_2024",
+      "flags": [
+        "suspect_en_brand:MRI"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_667_scn_2024",
+      "flags": [
+        "suspect_en_brand:Annual,INSPIRIS,Patient"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_668_scn_2024",
+      "flags": [
+        "suspect_en_brand:Social,WrapUp"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_678_scn_2024",
+      "flags": [
+        "suspect_en_brand:Annual,Burden,Customer,Deck,EOCVC,Elite"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_681_scn_2024",
+      "flags": [
+        "suspect_cn_corp:新加坡大华银行"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_682_scn_2024",
+      "flags": [
+        "suspect_en_brand:Acrylic,Asia,ESHQ,Efficiency,Energy,MUSC"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_684_scn_2024",
+      "flags": [
+        "suspect_cn_corp:年底了很多公司",
+        "suspect_en_brand:CMYK"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_685_scn_2024",
+      "flags": [
+        "suspect_en_brand:GBT"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_686_scn_2024",
+      "flags": [
+        "suspect_cn_corp:给您做个简单的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_687_scn_2024",
+      "flags": [
+        "suspect_cn_corp:许多公司",
+        "suspect_en_brand:Life,Sport"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_691_scn_2024",
+      "flags": [
+        "suspect_cn_corp:他们公司,年底了很多公司",
+        "suspect_en_brand:CMYK"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_693_scn_2024",
+      "flags": [
+        "suspect_cn_corp:助力爱德华公司",
+        "suspect_en_brand:Sanofi"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_694_scn_2024",
+      "flags": [
+        "suspect_en_brand:THV"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_695_scn_2024",
+      "flags": [
+        "suspect_en_brand:DTX"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_699_scn_2024",
+      "flags": [
+        "suspect_cn_corp:我们有丰富的银行,批发银行,美国银行,美洲银行"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_703_scn_2024",
+      "flags": [
+        "suspect_cn_corp:美国利宝集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_704_scn_2024",
+      "flags": [
+        "suspect_en_brand:Mona"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_705_scn_2024",
+      "flags": [
+        "suspect_en_brand:DTX,Pharmaceutical,Systems"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_707_scn_2024",
+      "flags": [
+        "suspect_cn_corp:太平洋造船集团,股份有限公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_708_scn_2024",
+      "flags": [
+        "suspect_cn_corp:美国利宝集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_710_scn_2024",
+      "flags": [
+        "suspect_cn_corp:堡南美资料翻译及公司",
+        "suspect_en_brand:DHL,FedEx,TNT,UPS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_711_scn_2024",
+      "flags": [
+        "suspect_cn_corp:在处理银行",
+        "suspect_en_brand:Carol"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_712_scn_2024",
+      "flags": [
+        "suspect_en_brand:Capital,Mgmt"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_714_scn_2024",
+      "flags": [
+        "suspect_cn_corp:浙江海正药业股份",
+        "suspect_en_brand:ARZNEIMITTEL,CIBA,DTX,FORTEKOR,III,Pharmaceutical"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_715_scn_2024",
+      "flags": [
+        "suspect_cn_corp:许多公司",
+        "suspect_en_brand:Category,Creation,Life,OCT,Product,Sport"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_718_scn_2024",
+      "flags": [
+        "suspect_cn_corp:中国水利电力北京公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_719_scn_2024",
+      "flags": [
+        "suspect_cn_corp:以会场所用的各个公司,以及各个公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_721_scn_2024",
+      "flags": [
+        "suspect_en_brand:Banking,Consumer,GTO,Management,Sam,Transaction"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_722_scn_2024",
+      "flags": [
+        "suspect_cn_corp:他们公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_723_scn_2024",
+      "flags": [
+        "suspect_cn_corp:号恒生银行,恒生银行,有关公司,有关恒生银行,津斯坦雷科技有限公司",
+        "suspect_en_brand:Ceracon,NDA,Northvolt"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_724_scn_2024",
+      "flags": [
+        "suspect_cn_corp:上海凯士比泵有限公司",
+        "suspect_en_brand:Chen,Traslation"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_725_scn_2024",
+      "flags": [
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_726_scn_2024",
+      "flags": [
+        "suspect_en_brand:Asia,ECM,Inorganic,Management,Materia,OMS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_731_scn_2024",
+      "flags": [
+        "suspect_cn_corp:瑞表公司",
+        "suspect_en_brand:CMYK"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_732_scn_2024",
+      "flags": [
+        "suspect_cn_corp:阿联酋航空公司",
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_733_scn_2024",
+      "flags": [
+        "suspect_cn_corp:给艾地盟公司,贸易有限公司",
+        "suspect_en_brand:ADM,Archer,Business,Cert,Certificate,Daniels"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_734_scn_2024",
+      "flags": [
+        "suspect_cn_corp:博雅公共关系有限公司",
+        "suspect_en_brand:Affairs,Communications,Drivers,Express,GCE,Initiative"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_735_scn_2024",
+      "flags": [
+        "suspect_en_brand:Additional,Admin,Brueckner,CONTENTS,COOL,FOREIGN"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_736_scn_2024",
+      "flags": [
+        "suspect_cn_corp:伊利公司,大拓公司",
+        "suspect_en_brand:Ambient,Annual,BOC,Bank,Business,Check"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_737_scn_2024",
+      "flags": [
+        "suspect_en_brand:AirChina,Business,Communications,Empowerment,Entry,Entwicklungssystematik"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_738_scn_2024",
+      "flags": [
+        "suspect_cn_corp:展示设计有限公司",
+        "suspect_en_brand:Division,First,GCE,MDNA,OHUI,ReFa"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_739_scn_2024",
+      "flags": [
+        "suspect_cn_corp:东方汇理银行,们不但为东方汇理银行",
+        "suspect_en_brand:Appendixes,BCP,Back,Banking,Board,Business"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_740_scn_2024",
+      "flags": [
+        "suspect_en_brand:Annex,Audit,BSENISO,Dossier,GCE,MCCP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_741_scn_2024",
+      "flags": [
+        "suspect_cn_corp:华海医信公司",
+        "suspect_en_brand:Burette,Flyer,GCE,GEC,Letter,Med"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_742_scn_2024",
+      "flags": [
+        "suspect_cn_corp:乐中国粘合剂有限公司",
+        "suspect_en_brand:Admin,Assessment,Competencies,Customer,GCE,Handling"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_743_scn_2024",
+      "flags": [
+        "suspect_cn_corp:商贸有限公司",
+        "suspect_en_brand:AGREEMENT,Amendment,CARRAGEENAN,CMC,CONFIDENTIAL,Consulting"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_745_scn_2024",
+      "flags": [
+        "suspect_cn_corp:力电容器有限责任公司,桂林电力电容器公司",
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_746_scn_2024",
+      "flags": [
+        "suspect_cn_corp:津斯坦雷科技有限公司",
+        "suspect_en_brand:GCE,NDA,NMP,Northvolt"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_747_scn_2024",
+      "flags": [
+        "suspect_cn_corp:上海豪丝化工有限公司,堡南美资料翻译及公司,我特此挑选一些公司,澳大利亚狮王啤酒公司,美国开利公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_748_scn_2024",
+      "flags": [
+        "suspect_en_brand:Limited,LuranaS,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_749_scn_2024",
+      "flags": [
+        "suspect_cn_corp:中国水利电力北京公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_751_scn_2024",
+      "flags": [
+        "suspect_cn_corp:中国银联美洲银行,们长期提供服务的银行,公众股份有限公司,德国裕宝联合银行,我们为其它银行",
+        "suspect_en_brand:Articles,Bidding,CeBIT,Contracts,Documents,Feasibility"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_753_scn_2024",
+      "flags": [
+        "suspect_cn_corp:动物保健有限公司",
+        "suspect_en_brand:APAC,Allist,Articles,Asia,Association,Elanco"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_754_scn_2024",
+      "flags": [
+        "suspect_cn_corp:集团公司",
+        "suspect_en_brand:AboutLUMIMA,Airport,Akulon,Application,Arnitel,Automotive"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_755_scn_2024",
+      "flags": [
+        "suspect_en_brand:Chicago,Coatings,Communications,Emulsion,Executive,Flexible"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_756_scn_2024",
+      "flags": [
+        "suspect_en_brand:Chinese,GCE,Specifications,Web"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_757_scn_2024",
+      "flags": [
+        "suspect_cn_corp:信托人代表其附属公司,关于公司,新能能源有限公司,梅赛公司,梅赛尼斯的公司",
+        "suspect_en_brand:CARD,Chinese,Customer,EMERGENCY,English,FOR"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_758_scn_2024",
+      "flags": [
+        "suspect_cn_corp:们不但为摩根大通银行,摩根北京总公司,摩根大通银行",
+        "suspect_en_brand:BJD,Cui,GCE,Tiange"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_759_scn_2024",
+      "flags": [
+        "suspect_en_brand:AIROS,Abranet,Airos,Business,Case,Champions"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_760_scn_2024",
+      "flags": [
+        "suspect_en_brand:GCE,Sample,SpecialistQuestions"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_761_scn_2024",
+      "flags": [
+        "suspect_cn_corp:目前公司,科技公司",
+        "suspect_en_brand:Limited,Mona,REF,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_762_scn_2024",
+      "flags": [
+        "suspect_cn_corp:为上海邦达展览公司,刷展商杜塞尔多夫公司,姆斯会议服务有限公司,打响公司",
+        "suspect_en_brand:ChenRao,Jessie"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_763_scn_2024",
+      "flags": [
+        "suspect_cn_corp:现在更多的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_764_scn_2024",
+      "flags": [
+        "suspect_cn_corp:诊断技术有限公司",
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_765_scn_2024",
+      "flags": [
+        "suspect_en_brand:Cindy,FAQ,GCE,Guidelines,Installation,Primary"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_766_scn_2024",
+      "flags": [
+        "suspect_en_brand:Alignment,Automati,Communications,Discrete,Flexible,GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_767_scn_2024",
+      "flags": [
+        "suspect_en_brand:ADM,BIOPHARMA,Competition,Criminal,Dawn,Documents"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_768_scn_2024",
+      "flags": [
+        "suspect_cn_corp:上海电气集团,上海电气集团股份,士比核电泵阀有限公司,是上海电气公司,集优股份",
+        "suspect_en_brand:Certificate,Company,Excerpt,GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_769_scn_2024",
+      "flags": [
+        "suspect_cn_corp:上海高士线业有限公司",
+        "suspect_en_brand:Eco,EcoB,Flame,GCE,Sustainability"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_770_scn_2024",
+      "flags": [
+        "suspect_cn_corp:中国石油润滑油公司,氢氧站设计规范和公司,液空公司,蓝星公司",
+        "suspect_en_brand:Equipment,FMC,ProtoCastTM,QuickCastTM,Somos"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_772_scn_2024",
+      "flags": [
+        "suspect_cn_corp:们近斯为电子电器公司,股份有限公司,贸易有限公司",
+        "suspect_en_brand:DevDB"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_773_scn_2024",
+      "flags": [
+        "suspect_cn_corp:上海摩丁空调有限公司,们近斯为电子电器公司,们近斯为空调系统公司,供服务的空调系统公司,空调有限公司",
+        "suspect_en_brand:DevDB,Emerson"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_774_scn_2024",
+      "flags": [
+        "suspect_cn_corp:卡机器人科技有限公司",
+        "suspect_en_brand:GCE,JAKA,Lens,Minicab,VPS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_775_scn_2024",
+      "flags": [
+        "suspect_cn_corp:海凯利泰医疗科技股份",
+        "suspect_en_brand:Bisorb,COA,GCE,MSDS,PMP,PQC"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_776_scn_2024",
+      "flags": [
+        "suspect_cn_corp:临顶电子技术有限公司",
+        "suspect_en_brand:GCE,Liebert,PEX"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_777_scn_2024",
+      "flags": [
+        "suspect_cn_corp:菱洋工程咨询有限公司",
+        "suspect_en_brand:Alu,Battery,Book,Data,GCE,METEC"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_778_scn_2024",
+      "flags": [
+        "suspect_cn_corp:上药信谊药厂有限公司",
+        "suspect_en_brand:CDA,Distribution,Fig,GCE,GMS,Omeros"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_779_scn_2024",
+      "flags": [
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_780_scn_2024",
+      "flags": [
+        "suspect_en_brand:APPLICATIONS,EAST,EMISSION,FIDIC,FREEWAY,GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_781_scn_2024",
+      "flags": [
+        "suspect_cn_corp:压力容器制造有限公司",
+        "suspect_en_brand:Code,GCE,Master,SPS,Standart"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_782_scn_2024",
+      "flags": [
+        "suspect_cn_corp:炫创企业策划有限公司",
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_783_scn_2024",
+      "flags": [
+        "suspect_en_brand:Limited,LuranaS,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_784_scn_2024",
+      "flags": [
+        "suspect_en_brand:CEN,GCE,Part,SFE,TBT,VERSION"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_785_scn_2024",
+      "flags": [
+        "suspect_cn_corp:世泰科公司",
+        "suspect_en_brand:AdditionalTranslationLeadershipFeedback,Assistant,Broske,Clevios,Dept,Executive"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_786_scn_2024",
+      "flags": [
+        "suspect_cn_corp:为巴黎百富勤银行,巴黎百富勤银行,我们曾经为以下公司,普电子元器件有限公司,系统的公司",
+        "suspect_en_brand:DevDB,Ltd,Mansion,REF,REX,TIF"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_787_scn_2024",
+      "flags": [
+        "suspect_en_brand:Add,Call,Center,Global,Haircare,MAC"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_790_scn_2024",
+      "flags": [
+        "suspect_cn_corp:我们曾经为以下公司,普电子元器件有限公司,贸易有限公司,邦迪管路系统有限公司",
+        "suspect_en_brand:DevDB,REF,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_791_scn_2024",
+      "flags": [
+        "suspect_en_brand:Rosy"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_792_scn_2024",
+      "flags": [
+        "suspect_cn_corp:可口可乐公司,澳大利亚狮王啤酒公司,荷兰飞利浦公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_795_scn_2024",
+      "flags": [
+        "suspect_cn_corp:供应链部门归于公司,卡琳罗纳啤酒制造公司,生物工程有限公司,粮油有限公司",
+        "suspect_en_brand:Heinz,LAB,Unilever"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_796_scn_2024",
+      "flags": [
+        "suspect_cn_corp:们长期服务的建筑公司",
+        "suspect_en_brand:Mansion,Tel"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_797_scn_2024",
+      "flags": [
+        "suspect_en_brand:Agency,April,Aurag,Canxing,GCE,Licensing"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_798_scn_2024",
+      "flags": [
+        "suspect_cn_corp:尤其是公司",
+        "suspect_en_brand:Asian,Asset,Bio,Book,Chinese,ESCo"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_799_scn_2024",
+      "flags": [
+        "suspect_cn_corp:管理服务有限公司",
+        "suspect_en_brand:Comes,Confidential,Documents,Expereince,GCE,HSE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_800_scn_2024",
+      "flags": [
+        "suspect_cn_corp:文件是给公司",
+        "suspect_en_brand:AMP,Asia,Automotive,Booking,CABLE,COMFORT"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_801_scn_2024",
+      "flags": [
+        "suspect_cn_corp:为爱德华公司,其实爱德华公司",
+        "suspect_en_brand:FDA,Ultra"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_803_scn_2024",
+      "flags": [
+        "suspect_en_brand:AHL,Chengjiu,Chinese,Consecutive,Earthwise,Final"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_804_scn_2024",
+      "flags": [
+        "suspect_cn_corp:成立子公司,投资有限公司",
+        "suspect_en_brand:Bai,Business,COMP,Class,Classification,Compliance"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_805_scn_2024",
+      "flags": [
+        "suspect_cn_corp:投资有限公司",
+        "suspect_en_brand:ACTION,AMOUNT,Cleaning,Commitment,Deck,Division"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_806_scn_2024",
+      "flags": [
+        "suspect_cn_corp:住友电工季刊和公司",
+        "suspect_en_brand:Customer,LuranaS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_807_scn_2024",
+      "flags": [
+        "suspect_en_brand:Asia,CAD,COATINO,Campus,Chinese,Contents"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_808_scn_2024",
+      "flags": [
+        "suspect_cn_corp:中化商务有限公司,但为中化商务有限公司",
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_810_scn_2024",
+      "flags": [
+        "suspect_cn_corp:我们整个公司,现在公司",
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_817_scn_2024",
+      "flags": [
+        "suspect_en_brand:EPCM,Emily,Firmenich,MBA,Scope,Statuts"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_818_scn_2024",
+      "flags": [
+        "suspect_cn_corp:允许我简单介绍下公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_819_scn_2024",
+      "flags": [
+        "suspect_en_brand:Advanced"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_820_scn_2024",
+      "flags": [
+        "suspect_en_brand:Affairs,Manager,Regulatory,Scientific"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_824_scn_2024",
+      "flags": [
+        "suspect_cn_corp:以会场所用的各个公司,以及各个公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_825_scn_2024",
+      "flags": [
+        "suspect_cn_corp:和嘉吉公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_826_scn_2024",
+      "flags": [
+        "suspect_en_brand:OCT"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_828_scn_2023",
+      "flags": [
+        "suspect_en_brand:Are,Healthcare,Hydrogen,Peroxide,Steam,Sterilization"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_829_scn_2023",
+      "flags": [
+        "suspect_cn_corp:帮助提升公司,招聘会和公司,播放着公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_830_scn_2023",
+      "flags": [
+        "suspect_en_brand:Jessica"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_832_scn_2023",
+      "flags": [
+        "suspect_cn_corp:翻译了战略方针及公司",
+        "suspect_en_brand:ANDiS,CoV,FAST,GCE,Jacy,RNA"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_833_scn_2023",
+      "flags": [
+        "suspect_cn_corp:国药集团,这对许多公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_834_scn_2023",
+      "flags": [
+        "suspect_en_brand:AirTech,Video,Year"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_835_scn_2023",
+      "flags": [
+        "suspect_en_brand:Scotty"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_837_scn_2023",
+      "flags": [
+        "suspect_en_brand:JIASAI"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_838_scn_2023",
+      "flags": [
+        "suspect_en_brand:Sheng"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_839_scn_2023",
+      "flags": [
+        "suspect_en_brand:Action,Agenda,Background,CST,Climate,March"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_841_scn_2023",
+      "flags": [
+        "suspect_cn_corp:附上我司的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_842_scn_2023",
+      "flags": [
+        "suspect_en_brand:INVISTA"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_843_scn_2023",
+      "flags": [
+        "suspect_cn_corp:最新版公司,最新版的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_844_scn_2023",
+      "flags": [
+        "suspect_en_brand:Sheng"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_846_scn_2023",
+      "flags": [
+        "suspect_en_brand:Sheng"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_851_scn_2023",
+      "flags": [
+        "suspect_cn_corp:采用公司",
+        "suspect_en_brand:BehaviorsFinal,Competencies,LEAD"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_852_scn_2023",
+      "flags": [
+        "suspect_cn_corp:水科技集团",
+        "suspect_en_brand:Asia,Brief,Chinese,DTP,Our,Packaged"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_853_scn_2023",
+      "flags": [
+        "suspect_cn_corp:以下是整理的公司",
+        "suspect_en_brand:ALLAND,Asia,Brief,Chinese,DTP,Our"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_854_scn_2023",
+      "flags": [
+        "suspect_en_brand:Pringting"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_855_scn_2023",
+      "flags": [
+        "suspect_cn_corp:以下是整理的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_859_scn_2023",
+      "flags": [
+        "suspect_cn_corp:水科技集团,翻译印刷公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_864_scn_2023",
+      "flags": [
+        "suspect_cn_corp:附件附上了我司的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_869_scn_2023",
+      "flags": [
+        "suspect_cn_corp:日本古河电工集团,日立信息系统公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_870_scn_2023",
+      "flags": [
+        "suspect_cn_corp:附件附上我司的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_872_scn_2023",
+      "flags": [
+        "suspect_en_brand:Vivian"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_873_scn_2023",
+      "flags": [
+        "suspect_en_brand:TOTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_876_scn_2023",
+      "flags": [
+        "suspect_cn_corp:瑞典银行,银行信息和公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_877_scn_2023",
+      "flags": [
+        "suspect_en_brand:NEC"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_878_scn_2023",
+      "flags": [
+        "suspect_en_brand:AMOUNT,Guaiba"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_880_scn_2023",
+      "flags": [
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,HVT,JAPAC,PRESTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_883_scn_2023",
+      "flags": [
+        "suspect_cn_corp:神州数码等公司,额第一的翻译服务公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_886_scn_2023",
+      "flags": [
+        "suspect_en_brand:Sanofi"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_887_scn_2023",
+      "flags": [
+        "suspect_cn_corp:力机车研究所有限公司,庞巴迪公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_888_scn_2023",
+      "flags": [
+        "suspect_cn_corp:瑞典银行,蓝星公司",
+        "suspect_en_brand:Jojo,Lily,Wang"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_889_scn_2023",
+      "flags": [
+        "suspect_en_brand:Rain,Ultrason"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_890_scn_2023",
+      "flags": [
+        "suspect_cn_corp:我在公司",
+        "suspect_en_brand:Call,Center,Dafne,Rita,Ultrason,Xie"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_892_scn_2023",
+      "flags": [
+        "suspect_en_brand:Call,Center"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_893_scn_2023",
+      "flags": [
+        "suspect_cn_corp:以下为公司,住友电工季刊和公司",
+        "suspect_en_brand:LuranaS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_894_scn_2023",
+      "flags": [
+        "suspect_cn_corp:住友电工季刊和公司",
+        "suspect_en_brand:LuranaS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_895_scn_2023",
+      "flags": [
+        "suspect_en_brand:Ashley"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_896_scn_2023",
+      "flags": [
+        "suspect_cn_corp:案例公司",
+        "suspect_en_brand:Estane,TPU"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_897_scn_2023",
+      "flags": [
+        "suspect_en_brand:Life,Sport"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_898_scn_2023",
+      "flags": [
+        "suspect_en_brand:HHC,Operations,Security"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_903_scn_2023",
+      "flags": [
+        "suspect_cn_corp:案例公司",
+        "suspect_en_brand:Estane,TPU"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_905_scn_2023",
+      "flags": [
+        "suspect_en_brand:DEP,DFS,DRFM"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_906_scn_2023",
+      "flags": [
+        "suspect_cn_corp:附件是公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_907_scn_2023",
+      "flags": [
+        "suspect_cn_corp:附件是公司",
+        "suspect_en_brand:CDM"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_908_scn_2023",
+      "flags": [
+        "suspect_cn_corp:附件是公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_909_scn_2023",
+      "flags": [
+        "suspect_cn_corp:附件是公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_910_scn_2023",
+      "flags": [
+        "suspect_cn_corp:中国水利水电集团公司,中国电力工程有限公司,天津电力建设公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_911_scn_2023",
+      "flags": [
+        "suspect_cn_corp:们近斯为电子电器公司,贸易有限公司",
+        "suspect_en_brand:DevDB"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_912_scn_2023",
+      "flags": [
+        "suspect_en_brand:Grace"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_913_scn_2023",
+      "flags": [
+        "suspect_cn_corp:中国石油润滑油公司,氢氧站设计规范和公司,液空公司,蓝星公司",
+        "suspect_en_brand:Equipment,FMC,ProtoCastTM,QuickCastTM,Somos"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_914_scn_2023",
+      "flags": [
+        "suspect_cn_corp:先灵葆雅制药有限公司,医疗器材有限公司,奈科明制药有限公司,海施贵宝制药有限公司,辉瑞制药有限公司",
+        "suspect_en_brand:NHL"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_915_scn_2023",
+      "flags": [
+        "suspect_cn_corp:许多公司",
+        "suspect_en_brand:Category,Creation,Life,OCT,Product,Sport"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_916_scn_2023",
+      "flags": [
+        "suspect_cn_corp:传媒公司,语言网页的制作的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_917_scn_2023",
+      "flags": [
+        "suspect_cn_corp:上海豪丝化工有限公司,其中长期合作航运公司,我特此挑选一些公司,澳大利亚狮王啤酒公司,特南美资料翻译及公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_918_scn_2023",
+      "flags": [
+        "suspect_cn_corp:精雕集团",
+        "suspect_en_brand:AMOUNT"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_919_scn_2023",
+      "flags": [
+        "suspect_cn_corp:太平洋财产保险公司,批发银行,汉诺威再保险股份公司,美亚保险公司,美国利保互助保险公司",
+        "suspect_en_brand:Liberty,Manager,Operations,Rachel"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_921_scn_2023",
+      "flags": [
+        "suspect_cn_corp:丹纳公司",
+        "suspect_en_brand:Group,MORE,Mansion,Not,Office,Room"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_922_scn_2023",
+      "flags": [
+        "suspect_cn_corp:们长期服务的建筑公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_923_scn_2023",
+      "flags": [
+        "suspect_cn_corp:卡斯柯信号有限公司,合作的轨交方面的公司,巴迪牵引系统有限公司,斯通交通电气有限公司,斯通交通设备有限公司",
+        "suspect_en_brand:ALSTOM,DCS,EMC,Engineering,Equipment,France"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_924_scn_2023",
+      "flags": [
+        "suspect_cn_corp:度瑞迪实验室有限公司,影响力的翻译服务公司,辉瑞制药公司,采用公司",
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,Lia,NHL,PRESTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_925_scn_2023",
+      "flags": [
+        "suspect_cn_corp:度瑞迪实验室有限公司,影响力的翻译服务公司,辉瑞制药公司,采用公司",
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,Acute,CMC,Chronic"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_926_scn_2023",
+      "flags": [
+        "suspect_en_brand:June"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_927_scn_2023",
+      "flags": [
+        "suspect_cn_corp:普电子元器件有限公司,附件是公司,陆家嘴集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_928_scn_2023",
+      "flags": [
+        "suspect_cn_corp:和您分享一下公司,西澳大利亚银行",
+        "suspect_en_brand:CeBIT,Masdar,SEMICON"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_929_scn_2023",
+      "flags": [
+        "suspect_cn_corp:住友电工季刊和公司",
+        "suspect_en_brand:LuranaS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_930_scn_2023",
+      "flags": [
+        "suspect_cn_corp:一直没有给您发送公司",
+        "suspect_en_brand:Lydia"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_931_scn_2023",
+      "flags": [
+        "suspect_cn_corp:上港集团,法完全展现我们的公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_933_scn_2023",
+      "flags": [
+        "suspect_cn_corp:普电子元器件有限公司,贸易有限公司,邦迪管路系统有限公司",
+        "suspect_en_brand:DevDB,REF,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_935_scn_2023",
+      "flags": [
+        "suspect_cn_corp:务的评价我已经和公司",
+        "suspect_en_brand:Yvette"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_936_scn_2023",
+      "flags": [
+        "suspect_cn_corp:中国水利电力北京公司,民生银行,贝加尔矿业公司",
+        "suspect_en_brand:Anny"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_937_scn_2023",
+      "flags": [
+        "suspect_cn_corp:度瑞迪实验室有限公司,附件中是我公司",
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,NHL,PRESTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_938_scn_2023",
+      "flags": [
+        "suspect_cn_corp:展中结合公司",
+        "suspect_en_brand:Anny,Call,Center"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_939_scn_2023",
+      "flags": [
+        "suspect_cn_corp:上海凯士比泵有限公司",
+        "suspect_en_brand:Anny,Life"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_940_scn_2023",
+      "flags": [
+        "suspect_cn_corp:度瑞迪实验室有限公司",
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,Anny,NHL,PRESTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_941_scn_2023",
+      "flags": [
+        "suspect_cn_corp:巴黎百富勤银行",
+        "suspect_en_brand:Anny"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_942_scn_2023",
+      "flags": [
+        "suspect_cn_corp:度瑞迪实验室有限公司,附件中是我公司",
+        "suspect_en_brand:AIRIS,AIRISmat,APERTO,NHL,PRESTO"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_943_scn_2023",
+      "flags": [
+        "suspect_en_brand:Anny"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_944_scn_2023",
+      "flags": [
+        "suspect_cn_corp:日本兴业银行,日本古河电工集团,日本日联银行股份,日本阿童木集团,日立信息系统公司",
+        "suspect_en_brand:CEC,Limited,LuranaS,REX,TIF,XML"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_945_scn_2023",
+      "flags": [
+        "suspect_cn_corp:文件译稿除发送至公司",
+        "suspect_en_brand:Echo,Mansion,TRANSLATION,Tel"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_947_scn_2022",
+      "flags": [
+        "suspect_en_brand:Plus,Translucency,Unlock,Zirkonia"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_948_scn_2022",
+      "flags": [
+        "suspect_cn_corp:住电新材料等旗下公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_950_scn_2022",
+      "flags": [
+        "suspect_en_brand:Audrey"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_953_scn_2022",
+      "flags": [
+        "suspect_en_brand:AIAL,ALSTOM,BNP,DBS,Microport,PHILLIPS"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_954_scn_2022",
+      "flags": [
+        "suspect_en_brand:BAEYR,UPM"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_955_scn_2022",
+      "flags": [
+        "suspect_en_brand:GPD"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_956_scn_2022",
+      "flags": [
+        "suspect_en_brand:Apptec,Medical,Microport,WuXi"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_957_scn_2022",
+      "flags": [
+        "suspect_en_brand:Sheng"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_959_scn_2022",
+      "flags": [
+        "suspect_en_brand:GMP,GSP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_961_scn_2022",
+      "flags": [
+        "suspect_en_brand:Apptec,Medical,Microport,Sheng,WuXi"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_963_scn_2022",
+      "flags": [
+        "suspect_en_brand:Bonds,Credit,Euro,Global,Return,Robeco"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_973_scn_2022",
+      "flags": [
+        "suspect_cn_corp:德力西集团,正泰集团",
+        "suspect_en_brand:SOP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_975_scn_2022",
+      "flags": [
+        "suspect_en_brand:NTN"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_976_scn_2022",
+      "flags": [
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_977_scn_2022",
+      "flags": [
+        "suspect_cn_corp:姚经理在沙迪克公司"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_981_scn_2022",
+      "flags": [
+        "suspect_cn_corp:中国电工集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_983_scn_2022",
+      "flags": [
+        "suspect_en_brand:GCE"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_984_scn_2022",
+      "flags": [
+        "suspect_cn_corp:中国电工集团"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_985_scn_2022",
+      "flags": [
+        "suspect_en_brand:FDA,HACCP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_987_scn_2022",
+      "flags": [
+        "suspect_en_brand:Sherry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_988_scn_2022",
+      "flags": [
+        "suspect_en_brand:GMP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_990_scn_2022",
+      "flags": [
+        "suspect_en_brand:GMP"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_991_scn_2022",
+      "flags": [
+        "suspect_en_brand:Air,GCE,Products"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_992_scn_2022",
+      "flags": [
+        "suspect_en_brand:Bailey"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_995_scn_2022",
+      "flags": [
+        "suspect_cn_corp:期服务的酒店管理公司",
+        "suspect_en_brand:Brand,Protection,Shirley"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_996_scn_2022",
+      "flags": [
+        "suspect_cn_corp:供应链部门归于公司,卡琳罗纳啤酒制造公司,很多公司,生物工程有限公司,的翻译印刷服务的公司",
+        "suspect_en_brand:Flavors,Frito,Gina,Heinz,IBP,LAB"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_997_scn_2022",
+      "flags": [
+        "suspect_en_brand:Happy,Sherry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_998_scn_2022",
+      "flags": [
+        "suspect_en_brand:Sherry"
+      ],
+      "non_dev": []
+    },
+    {
+      "source_ref": "mail_gold_v2_999_scn_2022",
+      "flags": [
+        "suspect_en_brand:Jessica"
+      ],
+      "non_dev": []
+    }
+  ],
+  "cn_freq": [
+    [
+      "贸易有限公司",
+      11
+    ],
+    [
+      "普电子元器件有限公司",
+      10
+    ],
+    [
+      "氢氧站设计规范和公司",
+      8
+    ],
+    [
+      "中国有限公司",
+      8
+    ],
+    [
+      "股份有限公司",
+      8
+    ],
+    [
+      "他们公司",
+      8
+    ],
+    [
+      "通用公司",
+      7
+    ],
+    [
+      "液空公司",
+      7
+    ],
+    [
+      "附件是公司",
+      7
+    ],
+    [
+      "年底了很多公司",
+      7
+    ],
+    [
+      "瑞典银行",
+      7
+    ],
+    [
+      "批发银行",
+      6
+    ],
+    [
+      "投资有限公司",
+      6
+    ],
+    [
+      "我们曾经为以下公司",
+      6
+    ],
+    [
+      "澳大利亚狮王啤酒公司",
+      6
+    ],
+    [
+      "国际酒店集团",
+      6
+    ],
+    [
+      "力机车研究所有限公司",
+      5
+    ],
+    [
+      "美国银行",
+      5
+    ],
+    [
+      "美洲银行",
+      5
+    ],
+    [
+      "汽车电子有限公司",
+      5
+    ],
+    [
+      "邦迪管路系统有限公司",
+      5
+    ],
+    [
+      "公众股份有限公司",
+      5
+    ],
+    [
+      "蓝星公司",
+      5
+    ],
+    [
+      "上海凯士比泵有限公司",
+      5
+    ],
+    [
+      "们长期服务的建筑公司",
+      5
+    ],
+    [
+      "美国利宝集团",
+      5
+    ],
+    [
+      "度瑞迪实验室有限公司",
+      5
+    ],
+    [
+      "巴迪牵引系统有限公司",
+      4
+    ],
+    [
+      "庞巴迪运输集团",
+      4
+    ],
+    [
+      "辉瑞制药公司",
+      4
+    ],
+    [
+      "金属给农业银行",
+      4
+    ],
+    [
+      "荷兰飞利浦公司",
+      4
+    ],
+    [
+      "通讯公司",
+      4
+    ],
+    [
+      "工程有限公司",
+      4
+    ],
+    [
+      "开关有限公司",
+      4
+    ],
+    [
+      "中国水利水电集团公司",
+      4
+    ],
+    [
+      "中国电力工程有限公司",
+      4
+    ],
+    [
+      "中国电工集团",
+      4
+    ],
+    [
+      "天津电力建设公司",
+      4
+    ],
+    [
+      "我特此挑选一些公司",
+      4
+    ],
+    [
+      "目前公司",
+      4
+    ],
+    [
+      "巴黎百富勤银行",
+      4
+    ],
+    [
+      "们近斯为电子电器公司",
+      4
+    ],
+    [
+      "不过现在很多公司",
+      4
+    ],
+    [
+      "住友电工季刊和公司",
+      4
+    ],
+    [
+      "阿尔斯通公司",
+      3
+    ],
+    [
+      "公司公司",
+      3
+    ],
+    [
+      "关于公司",
+      3
+    ],
+    [
+      "附件附上我司的公司",
+      3
+    ],
+    [
+      "德国裕宝联合银行",
+      3
+    ],
+    [
+      "们长期服务的化工公司",
+      3
+    ],
+    [
+      "司与中环水务重庆公司",
+      3
+    ],
+    [
+      "谢您长期以来对我公司",
+      3
+    ],
+    [
+      "日本古河电工集团",
+      3
+    ],
+    [
+      "日立信息系统公司",
+      3
+    ],
+    [
+      "上海豪丝化工有限公司",
+      3
+    ],
+    [
+      "堡南美资料翻译及公司",
+      3
+    ],
+    [
+      "美国国家银行协会公司",
+      3
+    ],
+    [
+      "特变电工股份有限公司",
+      3
+    ],
+    [
+      "东方海外集团",
+      3
+    ],
+    [
+      "供应链部门归于公司",
+      3
+    ],
+    [
+      "卡琳罗纳啤酒制造公司",
+      3
+    ],
+    [
+      "生物工程有限公司",
+      3
+    ],
+    [
+      "百胜集团",
+      3
+    ],
+    [
+      "上海摩丁空调有限公司",
+      3
+    ],
+    [
+      "们近斯为空调系统公司",
+      3
+    ],
+    [
+      "供服务的空调系统公司",
+      3
+    ],
+    [
+      "空调有限公司",
+      3
+    ],
+    [
+      "以会场所用的各个公司",
+      3
+    ],
+    [
+      "以及各个公司",
+      3
+    ],
+    [
+      "附件中是我公司",
+      3
+    ],
+    [
+      "水科技集团",
+      3
+    ],
+    [
+      "许多公司",
+      3
+    ],
+    [
+      "中国水利电力北京公司",
+      3
+    ],
+    [
+      "采用公司",
+      3
+    ],
+    [
+      "为庞巴迪运输集团",
+      2
+    ],
+    [
+      "庞巴迪公司",
+      2
+    ],
+    [
+      "同传更是涵盖了公司",
+      2
+    ],
+    [
+      "是目前环境下很多公司",
+      2
+    ],
+    [
+      "杭州杭氧股份",
+      2
+    ]
+  ],
+  "en_freq": [
+    [
+      "GCE",
+      56
+    ],
+    [
+      "AIRISmat",
+      21
+    ],
+    [
+      "APERTO",
+      21
+    ],
+    [
+      "AIRIS",
+      20
+    ],
+    [
+      "PRESTO",
+      18
+    ],
+    [
+      "LuranaS",
+      18
+    ],
+    [
+      "Edison",
+      17
+    ],
+    [
+      "TIF",
+      16
+    ],
+    [
+      "Limited",
+      15
+    ],
+    [
+      "REX",
+      15
+    ],
+    [
+      "XML",
+      15
+    ],
+    [
+      "Sherry",
+      13
+    ],
+    [
+      "Sheng",
+      12
+    ],
+    [
+      "DevDB",
+      12
+    ],
+    [
+      "Asia",
+      12
+    ],
+    [
+      "NHL",
+      11
+    ],
+    [
+      "RNA",
+      11
+    ],
+    [
+      "GMP",
+      10
+    ],
+    [
+      "CeBIT",
+      10
+    ],
+    [
+      "Rain",
+      9
+    ],
+    [
+      "Annual",
+      8
+    ],
+    [
+      "Call",
+      8
+    ],
+    [
+      "Center",
+      8
+    ],
+    [
+      "Sanofi",
+      8
+    ],
+    [
+      "REF",
+      8
+    ],
+    [
+      "DCS",
+      7
+    ],
+    [
+      "EMC",
+      7
+    ],
+    [
+      "FMC",
+      7
+    ],
+    [
+      "Documents",
+      7
+    ],
+    [
+      "Jojo",
+      7
+    ],
+    [
+      "Life",
+      7
+    ],
+    [
+      "Allen",
+      7
+    ],
+    [
+      "CMYK",
+      7
+    ],
+    [
+      "Business",
+      7
+    ],
+    [
+      "Chinese",
+      7
+    ],
+    [
+      "KOCHI",
+      6
+    ],
+    [
+      "Articles",
+      6
+    ],
+    [
+      "Viral",
+      6
+    ],
+    [
+      "Anny",
+      6
+    ],
+    [
+      "Ambassador",
+      5
+    ],
+    [
+      "Antwerpen",
+      5
+    ],
+    [
+      "Armophe",
+      5
+    ],
+    [
+      "Cellasto",
+      5
+    ],
+    [
+      "Bidding",
+      5
+    ],
+    [
+      "Contracts",
+      5
+    ],
+    [
+      "Global",
+      5
+    ],
+    [
+      "Mansion",
+      5
+    ],
+    [
+      "Pharmaceutical",
+      5
+    ],
+    [
+      "Chen",
+      5
+    ],
+    [
+      "AMOUNT",
+      5
+    ],
+    [
+      "Communications",
+      5
+    ],
+    [
+      "Equipment",
+      5
+    ],
+    [
+      "ANDiS",
+      5
+    ],
+    [
+      "CoV",
+      5
+    ],
+    [
+      "FAST",
+      5
+    ],
+    [
+      "SOP",
+      5
+    ],
+    [
+      "AAD",
+      5
+    ],
+    [
+      "AdMD",
+      5
+    ],
+    [
+      "HCBG",
+      5
+    ],
+    [
+      "MSD",
+      5
+    ],
+    [
+      "MRE",
+      4
+    ],
+    [
+      "Microport",
+      4
+    ],
+    [
+      "RIM",
+      4
+    ],
+    [
+      "Star",
+      4
+    ],
+    [
+      "GIS",
+      4
+    ],
+    [
+      "Trasnslation",
+      4
+    ],
+    [
+      "DTX",
+      4
+    ],
+    [
+      "Operations",
+      4
+    ],
+    [
+      "Feasibility",
+      4
+    ],
+    [
+      "Acrobat",
+      4
+    ],
+    [
+      "Wang",
+      4
+    ],
+    [
+      "Management",
+      4
+    ],
+    [
+      "CPU",
+      4
+    ],
+    [
+      "DeviceNet",
+      4
+    ],
+    [
+      "Tel",
+      4
+    ],
+    [
+      "Jhonson",
+      4
+    ],
+    [
+      "Ultrason",
+      4
+    ],
+    [
+      "ProtoCastTM",
+      4
+    ],
+    [
+      "Somos",
+      4
+    ],
+    [
+      "SARS",
+      4
+    ]
+  ]
+}
