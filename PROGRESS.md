@@ -1,5 +1,13 @@
 # PROGRESS
 
+## 2026-06-12 企微客户画像聚合接入
+
+- 已按用户要求只修改企微/微信画像链路，不涉及邮件生成、邮件 CRM 或邮件安全门。
+- 新增 `backend/crm_profile_aggregator.py`，复用现有 `crm_database.CRMSessionLocal` 只读查询 CRM，不新增第二套 CRM 密码配置；按天进程内缓存，输出 JSON-safe 的完整结构化画像。
+- 已将 `IntentEngine.get_crm_context()` 改为优先使用新聚合画像，并保留旧 `fetch_crm_profile` 作为补充和 fallback；输出继续兼容旧字段，同时新增 `crm_profile_text`、`crm_profile_prompt_text`、`crm_profile_data`、`crm_profile_schema_version`、合同/报价/跟进/账期等完整字段。
+- 按用户明确要求“不要隐藏”，企微 prompt 使用的 `crm_profile_prompt_text` 保留历史成交额、未开票额等金额事实，不再使用屏蔽金额版作为唯一输入。
+- 验证：`python -m py_compile backend\intent_engine.py backend\crm_profile_aggregator.py backend\config.py backend\wecom_advance_completion.py` 通过；定向 `git diff --check` 通过；不连数据库的聚合上下文构造测试确认旧字段、新字段与金额 prompt 文本均正常。
+
 ## 2026-06-11 后台卡顿根因与防锁死机制
 
 - 已定位当前卡顿主因不是端口：`/api/train_ai/models` 首次请求会连续探测外部训练 AI 模型地址，旧逻辑每个探测 15 秒，失败时可拖住 45 秒以上；`/api/case_lib/iterations` 还会做逐日统计；`/api/sessions` 会查 `message_logs` 聚合。
@@ -531,3 +539,37 @@
 - 保存位置沿用既有 JSON 字段，不新增表结构：`intent_summaries.training_ai.prompt_trace` 与 `api_assist_invocation.result_payload.training_ai.prompt_trace`。
 - 覆盖正常返回和外层等待超时两条路径；即使训练 AI 接口超时，只要本地 prompt 已构建，也会随 `training_ai` 单据记录保存。
 - 验证：`backend/main.py` AST 解析通过；定向 `git diff --check` 通过。
+
+## 2026-06-12 邮件黄金库认可模板标准迭代
+
+- 已按用户要求把新业务推广四封邮件脚本从 v52 升到 v53，生成 prompt 改为优先学习邮件黄金库中人工认可的 `full_email` 模板，不再按旧评分逻辑评估。
+- 新评分方法为 `approved_gold_human_likeness_v1`，重点看“像真人销售写的亲和度”和“与 approved full_email 的业务/亲和表达相似度”。
+- V34 首轮跑通 4/4，但发现 approved full_email 被旧过滤漏掉，平均分 64.25，只能说明脚本方向有效，不能作为最终黄金库验证。
+- 已修复 approved full_email 取样：以 `MailGoldSeedReview.review_status=approved` 为准，修正 `fragment_id` 字符串匹配，并扩大同场景 full_email 取样范围。
+- 修正版自动递增为 V35，OpenAI GPT-4.1 四封 4/4 成功，平均分 82.50，四封均命中人工认可黄金库来源；第 3 封仍略偏“建议说明”，后续可继续打磨。
+- 验证记录见 `logs/mail-v34-v35-approved-gold-human-like-analysis.md`；验证命令包括 `python -m py_compile backend/main.py`、`git diff --check -- backend/main.py` 和 case1 四步真实 LLM 迭代脚本。
+
+## 2026-06-15 邮件黄金范例库 full_email 人工点评清理
+
+- 已按用户要求先汇总 `full_email + needs_revision` 的人工点评问题：时间/节日信息 31 条、未脱敏 24 条、格式分段 6 条、乱码异常 4 条、主题问题 1 条、其他短点评 10 条。
+- 新增 `scratch/cleanup_mail_full_email_reviews.py`，对 `full_email` 且状态为 `needs_revision` 或未评审的黄金库资产执行复查与修正。
+- 本次处理范围：`needs_revision` 65 条、未评审 1253 条，合计 1318 条；不处理 approved/rejected，不自动把任何条目标为 approved。
+- 已写库清理：去除年份/节日/日期/工作日交稿等时效句，替换人名/客户公司名，规范分段和项目符号，删除乱码/孤立标点，并删除微信/二维码/加微信等私域联系方式。
+- 最终验证：再次 dry-run `changed_count=0`、`residual_count=0`，目标范围内微信残留 0；报告见 `logs/mail-full-email-review-cleanup-20260615.md`。
+
+## 2026-06-15 邮件黄金库 full_email 选择理由展示与宣传属性分析
+
+- 已在邮件质量诊断 -> 黄金范例库详情右侧“保存修改”下方、“人工点评”上方新增“选择理由：XXX”展示。
+- 后端 `/api/v1/mail/gold-fewshot-seeds` 仅对 `function_fragment=full_email` 返回 `selection_reason` 与 `promo_analysis`，其他切片类型返回空值，不影响显示。
+- 新增 `scratch/analyze_mail_full_email_promo_reason.py`，分析 1363 封 `full_email` 是否属于宣传/推广型邮件，并把选择理由写入 `source_snapshot.promo_analysis`。
+- 结果：1286 封判断为宣传/推广型，77 封疑似事务/交付/报价/PO/付款/文件沟通等非宣传邮件，需人工最终判断。
+- 人工复核清单见 `logs/mail-full-email-promo-selection-reason-20260615.md`；机器明细见 `logs/mail-full-email-promo-analysis-apply-20260615.json`。
+- 验证：`backend/main.py` 与分析脚本 `py_compile` 通过；前端内联 JS 语法检查通过；接口函数抽查 `full_email` 1363/1363 均有选择理由、其他切片 0；定向 `git diff --check` 通过。
+
+## 2026-06-15 客户画像聚合口径修正（首次成交时间 + 未开票额）
+
+- 用户核对企微客户详情发现两处口径问题，以顾佩蓉/赫斯基注塑系统（上海）KH00469 为样本只读核查后确认并修复 `backend/crm_profile_aggregator.py`（同步 `other/crm_profile_aggregator_standalone.py`）。
+- 首次成交时间：原按公司级 `MIN(ContractTime)` 取到 2002-06-11（实为合同 XS050124-059 在 2005 年录入时手工误填、ERP 尚未上线的脏数据）。改为先按联系人(ContactId)取首单、查不到再回退公司级，新增 `first_contract_time_source` 标注来源；顾佩蓉修正为 2020-02-27。
+- 未开票额：原为公司全量 `SUM(UnInvoicedMoney)`=60,727.95，含已回款/已销账但未开票（如国外付款历史不开票）。改为只计 `IsReceived=0`（仍有应收）的未开票=54,272.90，并保留 `uninvoiced_money_raw` 全量值备查。
+- 画像文本新增"首次成交 YYYY-MM-DD"展示；未开票额展示沿用修正后口径。
+- 验证：两模块 AST 解析通过；`aggregate_profile(contact_id='KH00469-040')` 实跑得首次成交=2020-02-27(联系人级)、未开票=54,273、raw=60,728，与逐合同核对一致。
