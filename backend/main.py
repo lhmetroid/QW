@@ -20084,6 +20084,10 @@ def _api_invocation_result_payload(item: ApiAssistInvocation) -> dict:
     payload["api_triggered_at"] = item.triggered_at
     payload["user_id"] = item.session_id
     payload["has_api_invocation"] = True
+    # 本次回复锚定的客户原话(顶层直出),从持久化列回填,实时响应与历史视图口径一致
+    payload["anchor_message_id"] = item.anchor_message_id
+    payload["anchor_message_time"] = item.anchor_message_time.isoformat() if item.anchor_message_time else None
+    payload["anchor_message_text"] = sanitize_text(item.anchor_message_text or "") if item.anchor_message_text else None
     payload.setdefault("stage_status", item.stage_status or {})
     llm_runtime = dict(payload.get("llm_runtime") or {})
     current_runtime = _llm_runtime_config()
@@ -23525,6 +23529,10 @@ async def sidebar_assist(
             "session_id": session_id,
             "requested_session_id": requested_session_id,
             "latest_dialog_count": len(recent_logs),
+            # 本次回复锚定的客户原话(顶层直出,免去前端再从 thread_business_fact 里翻找)
+            "anchor_message_id": int(anchor_message.id) if anchor_message else None,
+            "anchor_message_time": anchor_message.timestamp.isoformat() if (anchor_message and anchor_message.timestamp) else None,
+            "anchor_message_text": sanitize_text(anchor_message.content or "") if anchor_message else None,
             "fast_track": fast_track_signals,
             "archive_sync": archive_sync if request.sync_archive_before_read else {"status": "skipped_by_request"},
             "has_v1": False,

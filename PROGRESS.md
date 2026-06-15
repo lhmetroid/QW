@@ -5,7 +5,7 @@
 - 仅改企微/微信链路，不涉及邮件。
 - 第1点(聊天记录窗口)：原实时侧边栏生成链路喂给流程的对话是"锚点(客户最新消息)之前可见消息的最近 10 条"(`backend/main.py` `visible_messages[-10:]`，注释里历史口径写的是 15 但实际取 10)。新增 `_select_dialog_window()`：按北京时间，锚点所在【当天】的消息全部给(当天超过 N 条也给)；当天不足 N 条需跨天时回退原有逻辑(取触发点之前最近 N 条，常量 `SIDEBAR_DIALOG_TAIL_COUNT=10`)。`MessageLog.timestamp` 为北京-naive，直接 `.date()` 比较即按北京日历日切分。调用点由 `recent_logs = list(reversed(visible_messages[-10:]))` 改为 `recent_logs = _select_dialog_window(visible_messages, anchor_message)`。该 `recent_logs` 是后续 LLM-1 分析、thread fact、LLM-2 生成的共同输入，改一处全链路一致。
 - 第2点(生成回复要求)：在 LLM-2 回复生成 prompt 构造 `IntentEngine.build_sales_assist_request`(`backend/intent_engine.py`)追加 `same_day_note`：要求"优先理解并承接今天(北京时间当天)与客户的最新沟通内容与进展，以当天对话为主线推进，更早历史仅作背景，不被旧话题带偏/不重复旧追问"。模板占位与拼接两个分支都已追加，对所有调用 `build_sales_assist_request` 的生成路径生效。
-- 第3点(API 客户原话字段，仅答疑无需改动)：本次回复锚定的客户原话字段是 `anchor_message_text`(配套 `anchor_message_id`/`anchor_message_time`)，写入于 `backend/main.py:18826`，持久化在 `api_assist_invocation` 表，经历史/分析接口回传；实时 `/assist` 响应中对应 `thread_business_fact.merged_facts.latest_customer_message`。实时响应暂无顶层"客户原话"字段，如需可再补。
+- 第3点(API 客户原话字段)：本次回复锚定的客户原话字段是 `anchor_message_text`(配套 `anchor_message_id`/`anchor_message_time`)，写入于 `backend/main.py:18826`，持久化在 `api_assist_invocation` 表。按用户要求给实时 `/assist` 响应补了**顶层 `anchor_message_text`**：在 `_api_invocation_result_payload` 从持久化列回填(实时响应实际走该函数，非 `result` 字典)，并在 `result` 字典里也加了一份(覆盖 `api_invocation` 为空的回退路径)；缓存/复用路径返回的是已带该字段的 `final_result`。`_sanitize_api_sidebar_result_payload` 为黑名单式(只剥离对比模型字段)，不影响新字段。
 - 验证：对 `backend/main.py` 与 `backend/intent_engine.py` 做 AST 解析通过。
 
 ## 2026-06-12 企微客户画像聚合接入
