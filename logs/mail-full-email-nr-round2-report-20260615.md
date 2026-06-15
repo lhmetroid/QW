@@ -73,7 +73,26 @@ python -m py_compile scratch/clean_needs_revision_round2.py
 python scratch/clean_needs_revision_round2.py --report logs/mail-full-email-nr-round2-postcheck-20260615.json   # 复跑应 changed_count=0
 ```
 
-## 六、下一步（人工配合）
-1. 复核上表 2 条存疑实体（TripleS / APT）是否需进一步泛化。
+## 六、批二：needs_revision 第 51–81 条（已完成，全部 81 条收口）
+
+按同脚本 `--limit 81` 续处理第 51–81 条（`mail_gold_v2_213`~`mail_gold_v2_500`，含 scn_2026/2025/2024 来源）。
+
+- **补脱新一批真实客户/品牌**：三井物产、西门子(及自动化与驱动集团)、通用电气(及水处理)、中兴通讯、摩托罗拉、欧姆龙、渣打/渤海银行、南德意志(TÜV)、阿克苏诺贝尔、舒万诺、捷赛、东芝、Dow、BAYER、HKQAA → 行业泛化。
+- **新增称呼规则**：`<英文名>，您好/你好`（非 Dear 开头的客户落款，如 v2_407 "Sude，您好呀"）→ `[客户称呼]，您好`。
+- **结果**：批二实际变更 **27** 条（4 条前序已清洗）；postcheck 全 81 条幂等复跑 `changed_count=0`；安全核查批二长度比最小 0.95、均值 1.00，无过删（v2_344 本就是 114 字短邮件）。
+
+### 全部 81 条需人工确认汇总（不确定，记录编号）
+
+| 编号 | 是否开发类 | 存疑点 |
+|---|---|---|
+| `mail_gold_v2_142_mail_promo_recovered` | 是 | 项目清单含 `TripleS`、阿巴扬锂矿专名 |
+| `mail_gold_v2_148_mail_promo_recovered` | 是 | 开头 `APT~~APT~~` 含义不明 |
+| `mail_gold_v2_260_scn_2026` | 是 | 正文残留人名 `Sheng`（疑客户/译员，含义不明） |
+| `mail_gold_v2_498_scn_2024` | 是 | 案例清单型(92 行)，含 自动化系统/电子元器件 等专名难穷尽脱敏 |
+
+> 合计：81 条 needs_revision full_email 全部完成清洗（批一 42 + 批二 27 = **实际改 69 条**，12 条前序已清洗无需改），4 条记录交人工确认；评审状态一律保留 `needs_revision`。
+
+## 七、下一步（人工配合）
+1. 复核上表 4 条存疑实体（TripleS / APT / Sheng / 498 清单）是否需进一步泛化或删除。
 2. 已满足的 needs_revision 由人工改判 `approved` 后，再放开 `allowed_for_generation` 进 RAG。
-3. 其余 needs_revision 第 51–81 条（共 31 条）下一批按同脚本 `--limit` 续处理。
+3. rejected 28 条中标出的非开发/操作类（026/030/029/124/387/409/416/421/434/474/475/477 等）保持 rejected。

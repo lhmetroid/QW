@@ -1,0 +1,73 @@
+{
+  "mode": "dry_run",
+  "scope": "needs_revision + full_email + mail_gold_seed",
+  "target_count": 81,
+  "changed_count": 0,
+  "residual_count": 4,
+  "need_human_confirm_count": 4,
+  "need_human_confirm": [
+    {
+      "source_ref": "mail_gold_v2_142_mail_promo_recovered",
+      "reasons": [
+        "suspect_en_brand:TripleS"
+      ],
+      "is_dev_email": true,
+      "comment": "吴磊 市场部"
+    },
+    {
+      "source_ref": "mail_gold_v2_148_mail_promo_recovered",
+      "reasons": [
+        "suspect_en_brand:APT"
+      ],
+      "is_dev_email": true,
+      "comment": "Alice\n不知道对于新的一年"
+    },
+    {
+      "source_ref": "mail_gold_v2_260_scn_2026",
+      "reasons": [
+        "suspect_en_brand:Sheng"
+      ],
+      "is_dev_email": true,
+      "comment": "脱敏"
+    },
+    {
+      "source_ref": "mail_gold_v2_498_scn_2024",
+      "reasons": [
+        "suspect_cn_corp:户自动化系统有限公司,普电子元器件有限公司,自动化客户等许多公司"
+      ],
+      "is_dev_email": true,
+      "comment": "丁璇小姐"
+    }
+  ],
+  "residual": [
+    {
+      "source_ref": "mail_gold_v2_142_mail_promo_recovered",
+      "flags": [
+        "suspect_en_brand:TripleS"
+      ],
+      "title": "[发件人]感谢您的支持，祝您万事顺心！"
+    },
+    {
+      "source_ref": "mail_gold_v2_148_mail_promo_recovered",
+      "flags": [
+        "suspect_en_brand:APT"
+      ],
+      "title": "SPEED动力启动，精彩一周由你主宰！"
+    },
+    {
+      "source_ref": "mail_gold_v2_260_scn_2026",
+      "flags": [
+        "suspect_en_brand:Sheng"
+      ],
+      "title": "From [发件人] Sheng of SPEED"
+    },
+    {
+      "source_ref": "mail_gold_v2_498_scn_2024",
+      "flags": [
+        "suspect_cn_corp:户自动化系统有限公司,普电子元器件有限公司,自动化客户等许多公司"
+      ],
+      "title": "关于通讯行业我们的成功案例，请查阅"
+    }
+  ],
+  "changed": []
+}
