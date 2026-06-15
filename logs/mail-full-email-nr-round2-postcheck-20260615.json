@@ -1,0 +1,43 @@
+{
+  "mode": "dry_run",
+  "scope": "needs_revision + full_email + mail_gold_seed",
+  "target_count": 50,
+  "changed_count": 0,
+  "residual_count": 2,
+  "need_human_confirm_count": 2,
+  "need_human_confirm": [
+    {
+      "source_ref": "mail_gold_v2_142_mail_promo_recovered",
+      "reasons": [
+        "suspect_en_brand:TripleS"
+      ],
+      "is_dev_email": true,
+      "comment": "吴磊 市场部"
+    },
+    {
+      "source_ref": "mail_gold_v2_148_mail_promo_recovered",
+      "reasons": [
+        "suspect_en_brand:APT"
+      ],
+      "is_dev_email": true,
+      "comment": "Alice\n不知道对于新的一年"
+    }
+  ],
+  "residual": [
+    {
+      "source_ref": "mail_gold_v2_142_mail_promo_recovered",
+      "flags": [
+        "suspect_en_brand:TripleS"
+      ],
+      "title": "[发件人]感谢您的支持，祝您万事顺心！"
+    },
+    {
+      "source_ref": "mail_gold_v2_148_mail_promo_recovered",
+      "flags": [
+        "suspect_en_brand:APT"
+      ],
+      "title": "SPEED动力启动，精彩一周由你主宰！"
+    }
+  ],
+  "changed": []
+}
