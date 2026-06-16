@@ -261,10 +261,21 @@
   // ---------- 7. 启动 ----------
   document.getElementById('btn-refresh').onclick = function () { fetchAssist(true); };
 
-  resolveExternalUseridViaWecom(function () {
-    fetchAssist(false);
-    openStream();
-  });
+  // 若在企微内打开但 URL 没带 userid,先走 OAuth 入口换取。
+  // oauth_entry 换到 userid 后会跳回 sidebar.html?userid=...;失败时跳回带 _oauth=1,
+  // 故这里以"有无 _oauth 标记"防重定向死循环。
+  function ensureUseridThenStart() {
+    var inWecom = /wxwork|MicroMessenger/i.test(navigator.userAgent);
+    if (!state.userid && inWecom && !getQuery('_oauth')) {
+      window.location.replace(ORIGIN + '/api/wecom/oauth_entry');
+      return;
+    }
+    resolveExternalUseridViaWecom(function () {
+      fetchAssist(false);
+      openStream();
+    });
+  }
+  ensureUseridThenStart();
 
   // 页面被切走再切回时,EventSource 可能已被回收,补一次重连 + 拉取
   document.addEventListener('visibilitychange', function () {

@@ -23006,6 +23006,43 @@ async def wecom_session_join_check(
         db.close()
 
 
+@app.get("/api/wecom/oauth_entry")
+async def wecom_oauth_entry(
+    http_request: Request,
+    code: str | None = Query(None, description="企微 OAuth 回跳的授权码"),
+    state: str | None = Query(None),
+):
+    """侧边栏应用主页入口:走企微 OAuth(snsapi_base 静默授权)换出当前销售 userid,
+    再 302 跳到 sidebar.html?userid=xxx。企微后台「应用主页」直接填本端点即可。
+
+    流程: 无 code -> 跳企微 authorize(redirect 回本端点) -> 带 code 回来 -> 换 userid -> 跳 sidebar.html
+    """
+    # 对外根地址:优先用配置(确保 https 与可信域名一致),否则回退请求 base_url
+    base = (settings.WECOM_PUBLIC_BASE_URL or str(http_request.base_url)).rstrip("/")
+    self_url = f"{base}/api/wecom/oauth_entry"
+    sidebar_url = f"{base}/static/sidebar.html"
+
+    if not code:
+        if not settings.CORP_ID or not settings.AGENT_ID:
+            return RedirectResponse(f"{sidebar_url}?_oauth=1")  # 未配置则直接进页面(可 URL 手填 userid 调试)
+        authorize_url = (
+            "https://open.weixin.qq.com/connect/oauth2/authorize"
+            f"?appid={settings.CORP_ID}"
+            f"&redirect_uri={quote(self_url, safe='')}"
+            "&response_type=code&scope=snsapi_base"
+            f"&state={quote(state or 'sidebar', safe='')}"
+            f"&agentid={settings.AGENT_ID}#wechat_redirect"
+        )
+        return RedirectResponse(authorize_url)
+
+    userid = QYWXUtils.get_login_userid(code)
+    if not userid:
+        logger.warning("OAuth 入口未能换到 userid,降级进入侧边栏(可手填)。code=%s", code)
+        return RedirectResponse(f"{sidebar_url}?_oauth=1")  # 带标记防止页面再次自跳成死循环
+    logger.info("OAuth 入口换得 userid=%s,跳转侧边栏。", userid)
+    return RedirectResponse(f"{sidebar_url}?userid={quote(userid, safe='')}")
+
+
 @app.get("/api/wecom/jssdk_signature")
 async def wecom_jssdk_signature(
     url: str = Query(..., description="调用 JSSDK 的完整页面 URL(含 query,不含 #hash)"),

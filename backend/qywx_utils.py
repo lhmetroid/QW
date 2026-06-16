@@ -91,6 +91,35 @@ class QYWXUtils:
             cls._agent_ticket_expire_at = expire_at
         return ticket
 
+    @classmethod
+    def get_login_userid(cls, code: str):
+        """用 OAuth code 换当前登录成员 userid(scope=snsapi_base 静默授权)。
+
+        企微在应用内打开时返回内部成员 userid;若为外部联系人访问则返回 external_userid。
+        本场景(侧边栏由销售本人打开)取 userid。token 过期自动强刷重试一次。
+        """
+        if not code:
+            return None
+        for attempt in range(2):
+            token = cls.get_access_token(force_refresh=(attempt == 1))
+            if not token:
+                return None
+            url = "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo"
+            try:
+                resp = requests.get(url, params={"access_token": token, "code": code}, timeout=10)
+                data = resp.json()
+            except Exception as e:
+                logger.error(f"OAuth 换 userid 异常: {e}")
+                return None
+            errcode = data.get("errcode")
+            if errcode == 0:
+                return data.get("userid") or data.get("UserId") or None
+            if errcode in (42001, 40014) and attempt == 0:
+                continue
+            logger.error(f"OAuth 换 userid 失败: {data}")
+            return None
+        return None
+
     @staticmethod
     def build_jssdk_signature(ticket: str, url: str, noncestr: str, timestamp: str) -> str:
         """企微 JSSDK 签名: sha1(jsapi_ticket + noncestr + timestamp + url) 按字典序拼接。"""

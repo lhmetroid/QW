@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     WECOM_ADVANCE_COMPLETION_OLLAMA_CHAT_URL: str = "http://127.0.0.1:11434/api/chat"
     WECOM_ADVANCE_COMPLETION_LOCAL_MODEL: str = "unsloth-qwen2.5-task-62:latest"
     WECOM_ADVANCE_COMPLETION_TIMEOUT_SECONDS: int = 70
+    # 侧边栏/OAuth 对外公网根地址(如 https://api.speedasia.net),用于构造 OAuth redirect_uri。
+    # 必须与企微「可信域名/网页授权回调域名」一致。留空则回退用请求 base_url(反代下可能取到 http,不可靠)。
+    WECOM_PUBLIC_BASE_URL: str = ""
 
     # PostgreSQL configuration.
     DATABASE_URL: str | None = None
