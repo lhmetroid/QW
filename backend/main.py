@@ -22926,6 +22926,89 @@ async def wecom_sidebar_stream(
     )
 
 
+@app.get("/api/wecom/session_updates")
+async def wecom_session_updates(
+    userid: str = Query(..., description="销售成员 userid"),
+    external_userid: str = Query(..., description="客户 external_userid"),
+    since_id: int = Query(0, description="上次拿到的最大消息 id;首次传 0"),
+    wait: int = Query(25, ge=0, le=55, description="长轮询挂起秒数;0=立即返回(短轮询)"),
+):
+    """增量拉取接口(长轮询):给第三方侧边栏程序订阅"当前会话有没有新消息"。
+
+    用法(对方循环调用):
+        1. 首次 since_id=0 调一次,拿到 last_id 和已有消息;
+        2. 之后带上一次的 last_id 再调;无新消息时本接口最多挂起 wait 秒再返回;
+        3. 一旦 has_new=true,对方据此刷新 -> 调 POST /api/wecom/sidebar_assist 取最新 AI 建议。
+
+    相比 SSE(/api/wecom/stream):无状态、穿透任何代理、断了下次带 since_id 接着拉,最稳;
+    SSE 适合能保持长连接的环境,二者对方任选其一即可。
+    """
+    sales_userid = (userid or "").strip()
+    ext_userid = (external_userid or "").strip()
+    if not sales_userid or not ext_userid:
+        raise HTTPException(status_code=400, detail="userid 和 external_userid 不能为空")
+
+    session_id = build_single_session_id(sales_userid, ext_userid)
+    candidate_ids = _archive_session_candidates(session_id)
+
+    def query_new(after_id: int):
+        db = SessionLocal()
+        try:
+            rows = db.query(MessageLog).filter(
+                MessageLog.user_id.in_(candidate_ids),
+                MessageLog.id > after_id,
+                MessageLog.is_mock.is_(False),
+            ).order_by(MessageLog.id.asc()).limit(100).all()
+            messages = [
+                {
+                    "id": m.id,
+                    "content": m.content,
+                    "sender_type": m.sender_type,
+                    "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+                }
+                for m in rows
+            ]
+            last_id = rows[-1].id if rows else after_id
+            return messages, last_id
+        finally:
+            db.close()
+
+    # 第一次直查:已有新消息则立即返回,不必挂起
+    messages, last_id = await asyncio.to_thread(query_new, since_id)
+    if messages or wait <= 0:
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "has_new": bool(messages),
+            "messages": messages,
+            "last_id": last_id,
+        }
+
+    # 长轮询:订阅 broker,有新消息或超时即醒;醒来后回查 DB 拿带 id 的准确结果
+    queue = SIDEBAR_BROKER.subscribe(session_id)
+    try:
+        await asyncio.wait_for(queue.get(), timeout=wait)
+    except asyncio.TimeoutError:
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "has_new": False,
+            "messages": [],
+            "last_id": since_id,
+        }
+    finally:
+        SIDEBAR_BROKER.unsubscribe(session_id, queue)
+
+    messages, last_id = await asyncio.to_thread(query_new, since_id)
+    return {
+        "status": "success",
+        "session_id": session_id,
+        "has_new": bool(messages),
+        "messages": messages,
+        "last_id": last_id,
+    }
+
+
 @app.get("/api/wecom/session_join_check")
 async def wecom_session_join_check(
     userid: str = Query(..., description="销售成员 userid"),
