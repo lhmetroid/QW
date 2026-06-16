@@ -23006,6 +23006,48 @@ async def wecom_session_join_check(
         db.close()
 
 
+@app.get("/api/wecom/jssdk_signature")
+async def wecom_jssdk_signature(
+    url: str = Query(..., description="调用 JSSDK 的完整页面 URL(含 query,不含 #hash)"),
+):
+    """企微 JSSDK 签名:供侧边栏 H5 调用 wx.config + wx.agentConfig。
+
+    wx.config 用企业身份 jsapi_ticket;wx.agentConfig(getCurExternalContact 必需)用应用身份 ticket。
+    两者 noncestr/timestamp 各自独立。前端拿 url=location.href.split('#')[0] 传入。
+    """
+    page_url = (url or "").strip()
+    if not page_url:
+        raise HTTPException(status_code=400, detail="url 不能为空")
+
+    corp_ticket = QYWXUtils.get_jsapi_ticket()
+    agent_ticket = QYWXUtils.get_agent_ticket()
+    if not corp_ticket or not agent_ticket:
+        return {
+            "status": "error",
+            "msg": "JSSDK 票据获取失败,请检查 CORP_SECRET / CORP_ID / AGENT_ID 配置与服务器出网。",
+            "corp_ticket_ok": bool(corp_ticket),
+            "agent_ticket_ok": bool(agent_ticket),
+        }
+
+    noncestr = uuid.uuid4().hex
+    timestamp = str(int(datetime.now().timestamp()))
+    return {
+        "status": "success",
+        "corpid": settings.CORP_ID,
+        "agentid": settings.AGENT_ID,
+        "config": {
+            "nonceStr": noncestr,
+            "timestamp": timestamp,
+            "signature": QYWXUtils.build_jssdk_signature(corp_ticket, page_url, noncestr, timestamp),
+        },
+        "agentConfig": {
+            "nonceStr": noncestr,
+            "timestamp": timestamp,
+            "signature": QYWXUtils.build_jssdk_signature(agent_ticket, page_url, noncestr, timestamp),
+        },
+    }
+
+
 @app.post("/api/wecom/sidebar_assist")
 async def sidebar_assist(
     request: SidebarAssistRequest,

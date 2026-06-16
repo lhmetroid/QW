@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>智能回复助手</title>
+  <!-- 企微 JSSDK(仅在企业微信内生效;普通浏览器加载失败也不影响 URL 参数调试模式) -->
+  <script src="https://res.wx.qq.com/open/js/jweixin-1.2.0.js"></script>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f4f5f7; color: #1f2329; font-size: 14px; line-height: 1.5;
+    }
+    .topbar {
+      position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; background: #fff; border-bottom: 1px solid #eaecf0;
+    }
+    .topbar .title { font-weight: 600; font-size: 14px; }
+    .conn { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #8a9099; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #c9cdd4; }
+    .dot.live { background: #00b42a; box-shadow: 0 0 0 3px rgba(0,180,42,.15); }
+    .dot.connecting { background: #ff7d00; }
+    .dot.error { background: #f53f3f; }
+    .wrap { padding: 10px; }
+    .card { background: #fff; border-radius: 10px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+    .card h3 { margin: 0 0 8px; font-size: 12px; color: #8a9099; font-weight: 600; letter-spacing: .5px; }
+    .advice { font-size: 15px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; color: #1f2329; }
+    .copy-btn {
+      margin-top: 10px; width: 100%; padding: 9px; border: none; border-radius: 8px;
+      background: #165dff; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer;
+    }
+    .copy-btn:active { background: #0e42d2; }
+    .signals { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag { padding: 3px 8px; border-radius: 6px; font-size: 12px; background: #e8f3ff; color: #165dff; }
+    .tag.risk { background: #ffece8; color: #f53f3f; font-weight: 600; }
+    .kv { display: flex; gap: 8px; padding: 3px 0; font-size: 13px; }
+    .kv .k { color: #8a9099; min-width: 64px; flex-shrink: 0; }
+    .kv .v { color: #1f2329; word-break: break-word; }
+    .meta { font-size: 11px; color: #a9aeb8; padding: 4px 2px 0; }
+    .refresh {
+      padding: 4px 10px; border: 1px solid #dcdfe6; border-radius: 6px; background: #fff;
+      font-size: 12px; color: #4e5969; cursor: pointer;
+    }
+    .refresh:active { background: #f2f3f5; }
+    .empty, .err { text-align: center; color: #8a9099; padding: 24px 12px; font-size: 13px; }
+    .err { color: #f53f3f; }
+    .loading { text-align: center; color: #8a9099; padding: 16px; font-size: 13px; }
+    .pulse { animation: pulse 1s ease-in-out 2; }
+    @keyframes pulse { 0%,100%{ background:#fff; } 50%{ background:#fffbe6; } }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="title">智能回复助手</span>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <button class="refresh" id="btn-refresh">重新生成</button>
+      <span class="conn"><span class="dot" id="conn-dot"></span><span id="conn-text">未连接</span></span>
+    </div>
+  </div>
+  <div class="wrap" id="content">
+    <div class="loading">正在初始化…</div>
+  </div>
+  <div class="meta" id="meta"></div>
+
+<script>
+(function () {
+  'use strict';
+  var ORIGIN = window.location.origin;
+
+  // ---------- 1. 解析当前会话身份 (userid / external_userid) ----------
+  // 优先级: URL 参数 > 企微 wx.invoke(getCurExternalContact)。
+  // userid(当前销售)需通过企微 OAuth 网页授权注入到 URL(?userid=),详见对接说明。
+  function getQuery(name) {
+    var m = new RegExp('[?&]' + name + '=([^&]+)').exec(window.location.search);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  var state = {
+    userid: getQuery('userid'),
+    externalUserid: getQuery('external_userid'),
+    es: null,
+    lastFetchTs: 0,
+    refreshTimer: null,
+  };
+
+  // ---------- 2. 连接状态指示 ----------
+  function setConn(kind, text) {
+    var dot = document.getElementById('conn-dot');
+    dot.className = 'dot' + (kind ? ' ' + kind : '');
+    document.getElementById('conn-text').textContent = text;
+  }
+
+  // ---------- 3. 渲染 sidebar_assist 结果 ----------
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
+
+  function render(data) {
+    var c = document.getElementById('content');
+    if (!data || data.status === 'error') {
+      c.innerHTML = '<div class="err">' + esc((data && data.msg) || '获取失败') + '</div>';
+      return;
+    }
+    var html = '';
+
+    // 高危/强信号警告
+    var signals = data.fast_track || [];
+    if (signals.length) {
+      html += '<div class="card"><h3>需求信号</h3><div class="signals">' +
+        signals.map(function (s) { return '<span class="tag risk">' + esc(s) + '</span>'; }).join('') +
+        '</div></div>';
+    }
+
+    // 核心: AI 话术参考 (盲评开启时是 reply_reference1/2,否则 sales_advice_v2)
+    var advice = data.sales_advice_v2 || data.reply_reference1 || data.reply_reference || '';
+    if (advice) {
+      html += '<div class="card" id="advice-card"><h3>AI 回复参考</h3>' +
+        '<div class="advice" id="advice-text">' + esc(advice) + '</div>' +
+        '<button class="copy-btn" id="btn-copy">复制话术</button></div>';
+      if (data.reply_reference2) {
+        html += '<div class="card"><h3>备选回复</h3><div class="advice">' + esc(data.reply_reference2) + '</div></div>';
+      }
+    } else if (data.has_v2 === false) {
+      html += '<div class="card"><div class="empty">尚未生成话术,点击右上角"重新生成"</div></div>';
+    }
+
+    // 跟进指引
+    if (data.todo_items || data.to_be_confirmed || data.core_demand) {
+      html += '<div class="card"><h3>跟进要点</h3>';
+      if (data.core_demand) html += kv('核心诉求', data.core_demand);
+      if (data.todo_items) html += kv('建议去做', data.todo_items);
+      if (data.to_be_confirmed) html += kv('待确认', data.to_be_confirmed);
+      if (data.risks) html += kv('风险', data.risks);
+      html += '</div>';
+    }
+
+    // CRM 画像
+    var crm = data.crm_info;
+    if (crm && (crm.crm_contact_name || crm.company_name)) {
+      html += '<div class="card"><h3>客户画像 (CRM)</h3>';
+      if (crm.crm_contact_name) html += kv('联系人', crm.crm_contact_name);
+      if (crm.company_name) html += kv('公司', crm.company_name);
+      if (crm.customer_lifecycle_stage) html += kv('阶段', crm.customer_lifecycle_stage);
+      if (crm.recent_opportunities) html += kv('近期商机', crm.recent_opportunities);
+      if (crm.ongoing_contracts) html += kv('在执行合同', crm.ongoing_contracts);
+      if (crm.contact_recent_followup) html += kv('最近跟进', crm.contact_recent_followup);
+      html += '</div>';
+    }
+
+    if (!html) html = '<div class="empty">暂无可展示内容</div>';
+    c.innerHTML = html;
+
+    var copyBtn = document.getElementById('btn-copy');
+    if (copyBtn) copyBtn.onclick = function () { copyText(advice); };
+
+    document.getElementById('meta').textContent =
+      '会话轮数 ' + (data.latest_dialog_count || 0) + ' · 更新于 ' + new Date().toLocaleTimeString();
+  }
+
+  function kv(k, v) { return '<div class="kv"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></div>'; }
+
+  function copyText(text) {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(flashCopied, fallbackCopy.bind(null, text));
+    } else { fallbackCopy(text); }
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); flashCopied(); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+  function flashCopied() {
+    var b = document.getElementById('btn-copy');
+    if (!b) return;
+    var t = b.textContent; b.textContent = '已复制 ✓';
+    setTimeout(function () { b.textContent = t; }, 1200);
+  }
+
+  // ---------- 4. 拉取 sidebar_assist ----------
+  function fetchAssist(forceRefresh) {
+    if (!state.userid || !state.externalUserid) {
+      document.getElementById('content').innerHTML =
+        '<div class="err">缺少会话身份参数 (userid / external_userid)。<br>请从企业微信侧边栏打开,或在 URL 追加 ?userid=&external_userid= 调试。</div>';
+      return;
+    }
+    state.lastFetchTs = Date.now();
+    if (!forceRefresh) document.getElementById('content').innerHTML = '<div class="loading">正在分析最新对话…</div>';
+    fetch(ORIGIN + '/api/wecom/sidebar_assist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userid: state.userid,
+        external_userid: state.externalUserid,
+        force_refresh: !!forceRefresh,
+      }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(render)
+      .catch(function (e) {
+        document.getElementById('content').innerHTML = '<div class="err">网络异常: ' + esc(e.message) + '</div>';
+      });
+  }
+
+  // ---------- 5. SSE 长连接: 消息一到自动重新拉取 ----------
+  function openStream() {
+    if (!state.userid || !state.externalUserid) return;
+    if (state.es) { state.es.close(); }
+    setConn('connecting', '连接中');
+    var url = ORIGIN + '/api/wecom/stream?userid=' + encodeURIComponent(state.userid) +
+      '&external_userid=' + encodeURIComponent(state.externalUserid);
+    var es = new EventSource(url);
+    state.es = es;
+
+    es.addEventListener('ready', function () { setConn('live', '实时已连接'); });
+    es.addEventListener('message', function () {
+      // 新消息到达 → 防抖 800ms 后重新拉取 AI 建议,并给卡片一个呼吸高亮
+      setConn('live', '收到新消息');
+      var card = document.getElementById('advice-card');
+      if (card) { card.classList.remove('pulse'); void card.offsetWidth; card.classList.add('pulse'); }
+      if (state.refreshTimer) clearTimeout(state.refreshTimer);
+      state.refreshTimer = setTimeout(function () { fetchAssist(false); }, 800);
+    });
+    // EventSource 自带断线自动重连;这里只更新状态提示
+    es.onerror = function () { setConn('connecting', '重连中'); };
+  }
+
+  // ---------- 6. 企微环境: 通过 wx.agentConfig 拿当前 external_userid ----------
+  function resolveExternalUseridViaWecom(cb) {
+    if (state.externalUserid) { cb(); return; }   // URL 已带,跳过
+    if (typeof wx === 'undefined') { cb(); return; }
+    var pageUrl = location.href.split('#')[0];
+    fetch(ORIGIN + '/api/wecom/jssdk_signature?url=' + encodeURIComponent(pageUrl))
+      .then(function (r) { return r.json(); })
+      .then(function (sig) {
+        if (sig.status !== 'success') { cb(); return; }
+        wx.config({
+          beta: true, debug: false, appId: sig.corpid,
+          timestamp: sig.config.timestamp, nonceStr: sig.config.nonceStr, signature: sig.config.signature,
+          jsApiList: ['getCurExternalContact', 'getContext'],
+        });
+        wx.ready(function () {
+          wx.agentConfig({
+            corpid: sig.corpid, agentid: sig.agentid,
+            timestamp: sig.agentConfig.timestamp, nonceStr: sig.agentConfig.nonceStr, signature: sig.agentConfig.signature,
+            jsApiList: ['getCurExternalContact'],
+            success: function () {
+              wx.invoke('getCurExternalContact', {}, function (res) {
+                if (res && res.err_msg === 'getCurExternalContact:ok') { state.externalUserid = res.userId; }
+                cb();
+              });
+            },
+            fail: function () { cb(); },
+          });
+        });
+        wx.error(function () { cb(); });
+      })
+      .catch(function () { cb(); });
+  }
+
+  // ---------- 7. 启动 ----------
+  document.getElementById('btn-refresh').onclick = function () { fetchAssist(true); };
+
+  resolveExternalUseridViaWecom(function () {
+    fetchAssist(false);
+    openStream();
+  });
+
+  // 页面被切走再切回时,EventSource 可能已被回收,补一次重连 + 拉取
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') {
+      if (!state.es || state.es.readyState === 2) openStream();
+      if (Date.now() - state.lastFetchTs > 5000) fetchAssist(false);
+    }
+  });
+})();
+</script>
+</body>
+</html>
