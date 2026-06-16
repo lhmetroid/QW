@@ -825,6 +825,67 @@ if os.environ.get("SKIP_DB_PATCH") != "1":
 import asyncio
 from archive_service import ArchiveService
 
+
+class SidebarBroker:
+    """侧边栏 SSE 推送总线:按 session_id 维护订阅队列。
+
+    新消息钩子在企微同步的工作线程中触发,通过 call_soon_threadsafe 把事件
+    安全投递到各订阅者的 asyncio 队列,再由 SSE 生成器异步下发到侧边栏。
+    """
+
+    def __init__(self) -> None:
+        self._subscribers: dict[str, set[asyncio.Queue]] = {}
+        self._lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+
+    def subscribe(self, session_id: str) -> asyncio.Queue:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+        with self._lock:
+            self._subscribers.setdefault(session_id, set()).add(queue)
+        return queue
+
+    def unsubscribe(self, session_id: str, queue: asyncio.Queue) -> None:
+        with self._lock:
+            subs = self._subscribers.get(session_id)
+            if subs:
+                subs.discard(queue)
+                if not subs:
+                    self._subscribers.pop(session_id, None)
+
+    def on_new_messages(self, messages: list[dict]) -> None:
+        """ArchiveService 新消息钩子(在工作线程调用)。"""
+        if not self._loop:
+            return
+        for msg in messages:
+            session_id = msg.get("session_id")
+            if not session_id:
+                continue
+            with self._lock:
+                queues = list(self._subscribers.get(session_id, ()))
+            if not queues:
+                continue
+            for queue in queues:
+                self._loop.call_soon_threadsafe(self._safe_put, queue, msg)
+
+    @staticmethod
+    def _safe_put(queue: asyncio.Queue, item: dict) -> None:
+        try:
+            queue.put_nowait(item)
+        except asyncio.QueueFull:
+            # 慢消费者:丢弃最旧一条再放,保证侧边栏拿到最新消息
+            try:
+                queue.get_nowait()
+                queue.put_nowait(item)
+            except Exception:
+                pass
+
+
+SIDEBAR_BROKER = SidebarBroker()
+
+
 @app.on_event("shutdown")
 async def shutdown_event():
     stop_scheduler()
@@ -833,6 +894,14 @@ async def shutdown_event():
 @app.on_event("startup")
 async def startup_event():
     archive_status = ArchiveService.config_status()
+
+    # SSE 推送总线:绑定主事件循环并注册新消息钩子。
+    # 不受 ENABLE_ARCHIVE_POLLING 限制——无论消息由回调还是常驻 worker 拉到,
+    # 只要落库就能推给订阅当前会话的侧边栏。
+    SIDEBAR_BROKER.bind_loop(asyncio.get_running_loop())
+    ArchiveService.register_new_message_hook(SIDEBAR_BROKER.on_new_messages)
+    logger.info("侧边栏 SSE 推送总线已就绪。")
+
     if not settings.ENABLE_ARCHIVE_POLLING:
         logger.info("企微会话存档自动轮询未启用；知识库后台正常启动。")
         return
@@ -846,21 +915,43 @@ async def startup_event():
     # from kb_evaluation_worker import start_kb_evaluation_thread
     # start_kb_evaluation_thread()
 
-    # 2026-05-29: 现有轮询收取企微消息已注释关闭，下一步改为回调形式收取消息避免延时。
-    logger.info("企微会话存档自动轮询已停用，下一步切换为回调事件流触发。")
-    # logger.info("启动企微会话存档 15 分钟异步轮询任务")
-    # async def background_poll_worker():
-    #     while True:
-    #         try:
-    #             # 使用 to_thread 将底层 C-SDK 同步阻塞 推到独立线程池
-    #             result = await asyncio.to_thread(ArchiveService.sync_today_data)
-    #             if result.get("status") != "success":
-    #                 logger.warning("企微会话存档轮询未成功: %s", result.get("msg"))
-    #         except Exception as e:
-    #             logger.error(f"企微会话存档自动轮询异常: {e}")
-    #         await asyncio.sleep(900)
-    #
-    # asyncio.create_task(background_poll_worker())
+    # 2026-06-16: 重新启用常驻增量拉取 worker 作为主力取数链路。
+    # 背景:企微单应用只能配一个接收消息 URL,该 URL 被老 C# CRM(.ashx)占用,
+    # 回调(callback.py)实际未必生效;只靠回调会出现"两头落空、消息没人拉"。
+    # 常驻 worker 不依赖企微回调配置,是最稳的兜底;回调若生效则作为加速补充。
+    # 二者都调用同一个 sync_today_data,内部有进程锁/线程锁,并发重入安全。
+    poll_interval = max(1.0, float(settings.ARCHIVE_POLL_INTERVAL_SECONDS))
+    logger.info("启动企微会话存档常驻增量拉取 worker,间隔 %.1fs", poll_interval)
+
+    async def background_poll_worker():
+        consecutive_errors = 0
+        while True:
+            try:
+                # 使用 to_thread 将底层 C-SDK 同步阻塞推到独立线程,避免卡住事件循环
+                result = await asyncio.to_thread(ArchiveService.sync_today_data)
+                status = result.get("status")
+                if status == "success":
+                    consecutive_errors = 0
+                    if result.get("inserted_count"):
+                        logger.info(
+                            "常驻 worker 拉取新增 %s 条 (seq=%s)",
+                            result.get("inserted_count"), result.get("current_seq"),
+                        )
+                elif status == "skipped":
+                    consecutive_errors = 0  # 被回调触发的同步占用,属正常
+                else:
+                    consecutive_errors += 1
+                    logger.warning("常驻 worker 拉取未成功: %s", result.get("msg"))
+            except Exception as e:
+                consecutive_errors += 1
+                logger.error("常驻 worker 拉取异常: %s", e)
+            # 连续失败时指数退避,最长 60s,避免在限频/网络故障时打爆腾讯接口
+            sleep_seconds = poll_interval
+            if consecutive_errors:
+                sleep_seconds = min(60.0, poll_interval * (2 ** min(consecutive_errors, 5)))
+            await asyncio.sleep(sleep_seconds)
+
+    asyncio.create_task(background_poll_worker())
 
 
 # === 30 分钟后台补算 API 调用的"原始回复分 + 相似分" ===
@@ -22782,6 +22873,138 @@ class SessionArchiveSyncRequest(BaseModel):
     userid: str | None = None
     external_userid: str | None = None
     limit: int = 100
+
+
+@app.get("/api/wecom/stream")
+async def wecom_sidebar_stream(
+    userid: str = Query(..., description="当前操作侧边栏的销售成员 userid"),
+    external_userid: str = Query(..., description="当前聊天客户的 external_userid"),
+):
+    """侧边栏 SSE 长连接:订阅 (userid, external_userid) 会话的新消息,服务端实时推送。
+
+    侧边栏前端用法(EventSource):
+        const es = new EventSource(`/api/wecom/stream?userid=${u}&external_userid=${e}`);
+        es.onmessage = (ev) => { const msg = JSON.parse(ev.data); /* 触发刷新或追加 */ };
+
+    收到推送后,侧边栏可据此重新调用 /api/wecom/sidebar_assist 拉取最新 AI 建议,
+    实现"消息一到 → 自动联动"而不再依赖人工点击刷新。
+    """
+    sales_userid = (userid or "").strip()
+    ext_userid = (external_userid or "").strip()
+    if not sales_userid or not ext_userid:
+        raise HTTPException(status_code=400, detail="userid 和 external_userid 不能为空")
+
+    session_id = build_single_session_id(sales_userid, ext_userid)
+    queue = SIDEBAR_BROKER.subscribe(session_id)
+    logger.info("侧边栏 SSE 订阅建立 session_id=%s", session_id)
+
+    async def event_generator():
+        # 建连先回一条 ready,便于前端确认订阅成功并拿到 session_id
+        yield f"event: ready\ndata: {json.dumps({'session_id': session_id}, ensure_ascii=False)}\n\n"
+        try:
+            while True:
+                try:
+                    # 15s 无新消息则发心跳注释行,保活长连接、穿透代理空闲超时
+                    msg = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"event: message\ndata: {json.dumps(msg, ensure_ascii=False, default=str)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        except asyncio.CancelledError:
+            raise
+        finally:
+            SIDEBAR_BROKER.unsubscribe(session_id, queue)
+            logger.info("侧边栏 SSE 订阅断开 session_id=%s", session_id)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # 关闭 Nginx 缓冲,确保事件即时下发
+        },
+    )
+
+
+@app.get("/api/wecom/session_join_check")
+async def wecom_session_join_check(
+    userid: str = Query(..., description="销售成员 userid"),
+    external_userid: str = Query(..., description="客户 external_userid"),
+):
+    """join key 核对:验证侧边栏算出的 session_id 与存档实际落库的 user_id 能否对上。
+
+    用真实的 (userid, external_userid) 调用本接口,即可判断两套 ID 是否同源、
+    是否因 tolist 为空/多人或编码不一致导致 join 不上(latest_dialog_count=0 的根因)。
+    """
+    sales_userid = (userid or "").strip()
+    ext_userid = (external_userid or "").strip()
+    if not sales_userid or not ext_userid:
+        raise HTTPException(status_code=400, detail="userid 和 external_userid 不能为空")
+
+    expected_session_id = build_single_session_id(sales_userid, ext_userid)
+    candidate_ids = _archive_session_candidates(expected_session_id)
+
+    db = SessionLocal()
+    try:
+        # 1) 侧边栏标准 join:精确 session_id(含历史 50 字符截断回退)
+        joined_id, joined_logs, lookup = find_existing_single_session_id(
+            db, sales_userid, ext_userid, limit=5
+        )
+        exact_match_count = db.query(func.count(MessageLog.id)).filter(
+            MessageLog.user_id == expected_session_id,
+            MessageLog.is_mock.is_(False),
+        ).scalar() or 0
+
+        # 2) 旁证:库里任何 user_id 含该 external_userid 的会话(用于发现编码/拼接差异)
+        like_rows = db.query(
+            MessageLog.user_id, func.count(MessageLog.id)
+        ).filter(
+            MessageLog.user_id.like(f"%{ext_userid}%"),
+            MessageLog.is_mock.is_(False),
+        ).group_by(MessageLog.user_id).limit(20).all()
+        sessions_containing_external = [
+            {"user_id": uid, "message_count": cnt, "matches_expected": uid in candidate_ids}
+            for uid, cnt in like_rows
+        ]
+
+        joined = bool(joined_logs)
+        if joined:
+            verdict = "ok" if lookup == "exact" else "ok_legacy_truncated"
+            summary = "join 正常,侧边栏 session_id 与存档落库一致。"
+        elif sessions_containing_external:
+            verdict = "mismatch"
+            summary = (
+                "存档里有含该 external_userid 的会话,但 user_id 与侧边栏算出的 session_id 不一致。"
+                "请对照 sessions_containing_external 的实际 user_id 排查 tolist 拼接或 id 编码差异。"
+            )
+        else:
+            verdict = "no_data"
+            summary = "存档里暂无该客户的消息(可能尚未拉取,或 external_userid 不正确)。"
+
+        return {
+            "status": "success",
+            "verdict": verdict,
+            "summary": summary,
+            "input": {"userid": sales_userid, "external_userid": ext_userid},
+            "expected_session_id": expected_session_id,
+            "candidate_ids": candidate_ids,
+            "joined": joined,
+            "joined_session_id": joined_id if joined else None,
+            "lookup": lookup,
+            "exact_match_message_count": int(exact_match_count),
+            "sessions_containing_external": sessions_containing_external,
+            "sample_joined_messages": [
+                {
+                    "content": (m.content or "")[:60],
+                    "sender_type": m.sender_type,
+                    "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+                }
+                for m in joined_logs[:3]
+            ],
+        }
+    finally:
+        db.close()
+
 
 @app.post("/api/wecom/sidebar_assist")
 async def sidebar_assist(

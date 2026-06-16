@@ -21,6 +21,9 @@ class ArchiveService:
     
     _sdk = None
     _sync_lock = threading.Lock()
+    # 新消息落库后的回调钩子(供 SSE 推送等订阅)。在工作线程中触发,
+    # 监听方需自行保证线程安全(如用 loop.call_soon_threadsafe 投递到 asyncio 队列)。
+    _new_message_hooks: list = []
     _sdk_error_messages = {
         10000: "参数错误，请检查 SDK 初始化与调用参数",
         10001: "网络错误，腾讯会话存档接口请求失败",
@@ -34,6 +37,22 @@ class ArchiveService:
         10009: "IP 不合法",
         10010: "数据过期或不可用",
     }
+
+    @classmethod
+    def register_new_message_hook(cls, fn) -> None:
+        """注册新消息回调。fn(messages: list[dict]) 在每批新消息落库提交后被调用。"""
+        if fn not in cls._new_message_hooks:
+            cls._new_message_hooks.append(fn)
+
+    @classmethod
+    def _emit_new_messages(cls, messages: list) -> None:
+        if not messages or not cls._new_message_hooks:
+            return
+        for hook in list(cls._new_message_hooks):
+            try:
+                hook(messages)
+            except Exception as exc:  # 钩子异常绝不能影响主同步链路
+                logger.warning("新消息钩子触发失败: %s", exc)
 
     @staticmethod
     def _is_placeholder(value: object) -> bool:
@@ -463,6 +482,7 @@ class ArchiveService:
             chat_data_slice = sdk.NewSlice()
             db = SessionLocal()
             inserted_count = 0
+            emitted_messages: list[dict] = []  # 本次新增消息,提交后用于 SSE 等推送
             duplicate_count = 0
             parse_failed_count = 0
             fetched_count = 0
@@ -548,6 +568,13 @@ class ArchiveService:
                                     archive_seq=str(item.get("seq", ""))[:40] or None,
                                 ))
                                 inserted_count += 1
+                                emitted_messages.append({
+                                    "session_id": session_id,
+                                    "content": content,
+                                    "sender_type": sender_type,
+                                    "timestamp": datetime.fromtimestamp(ts).isoformat(),
+                                    "archive_msg_id": archive_msg_id,
+                                })
                                 if session_id_filter and session_id == session_id_filter:
                                     matched_session_new_count += 1
                         finally:
@@ -570,6 +597,8 @@ class ArchiveService:
             commit_started = time.perf_counter()
             db.commit()
             cls._accumulate_timing(timings_ms, "commit_ms", commit_started)
+            # 落库提交成功后再触发新消息钩子,保证订阅方读到的是已持久化数据
+            cls._emit_new_messages(emitted_messages)
             timings_ms["total_ms"] = round((time.perf_counter() - total_started) * 1000, 2)
             
             result = {

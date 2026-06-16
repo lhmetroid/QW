@@ -36,8 +36,16 @@ class Settings(BaseSettings):
     PRIVATE_KEY_PATH: str = ""
     PUBLIC_KEY_VER: int = 2
     ENABLE_ARCHIVE_POLLING: bool = False
+    # 常驻增量拉取 worker 的轮询间隔(秒)。1-2s 可把侧边栏延迟压到"存档落库延迟"下限,
+    # 但腾讯 GetChatData 有限频风险,生产建议 2-3s。空转时游标无新数据,开销很低。
+    ARCHIVE_POLL_INTERVAL_SECONDS: float = 2.0
     ARCHIVE_SYNC_TIMEOUT_SECONDS: int = 300
     SIDEBAR_ASSIST_SYNC_ARCHIVE_BEFORE_READ_DEFAULT: bool = False
+    WECOM_ADVANCE_COMPLETION_ENABLED: bool = False
+    WECOM_ADVANCE_COMPLETION_PROVIDER: str = "hybrid"
+    WECOM_ADVANCE_COMPLETION_OLLAMA_CHAT_URL: str = "http://127.0.0.1:11434/api/chat"
+    WECOM_ADVANCE_COMPLETION_LOCAL_MODEL: str = "unsloth-qwen2.5-task-62:latest"
+    WECOM_ADVANCE_COMPLETION_TIMEOUT_SECONDS: int = 70
 
     # PostgreSQL configuration.
     DATABASE_URL: str | None = None
