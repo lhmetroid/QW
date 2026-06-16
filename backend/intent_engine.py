@@ -476,7 +476,7 @@ class IntentEngine:
                 focus_note += (
                     "\n客户这句是在承诺稍后发送文件/资料。"
                     "不要重复催问同一材料，不要机械复述客户原话。"
-                    "\n优先回复方式：确认收到 + 说明收到后会马上查看/处理；必要时只补一个轻量下一步。"
+                    "\n优先回复方式：确认收到 + 说明收到后这边尽快查看/处理；必要时只补一个轻量下一步。"
                 )
             elif latest_customer_reply_type == "ack_only":
                 focus_note += (
@@ -2313,6 +2313,9 @@ class IntentEngine:
         warnings.extend(thread_state_validation.get("warnings") or [])
         blocking_issues.extend(thread_state_validation.get("blocking_issues") or [])
 
+        # 即时承诺兜底: 现实做不到秒回,禁夸大时效措辞(prompt 偶尔漏),命中即提示改口
+        if re.search(r"(马上就?|立刻|立即|立马|几分钟内|稍等几分钟|秒回|第一时间就)", text):
+            warnings.append("话术含不切实际的即时承诺(如 马上/立刻/几分钟内),现实做不到,建议改成 尽快/今天内/安排好就回您。")
         # 占位符兜底(含邮箱/电话/PO): prompt 预防非100%(如 xxxx@xx.com 漏网),命中即人工复核
         if re.search(r"(x{2,}|X{2,}|[xX]+@|@x+\.|1[xX]{3,}|PO[xX]{2,}|[xX]+折|[xX]+元)", text):
             blocking_issues.append("话术疑似含未替换占位符(如 xxxx@xx.com / XX元 / X折),不可直接发送。")
@@ -2385,11 +2388,11 @@ class IntentEngine:
             reply_line = f"好，那我这边按您说的时间准备{('，' + time_hint) if time_hint else ''}，提前到场。"
             rationale = "客户已经确认时间，这里只需确认收到并说明我方动作，不要再把同一时间反问回去。"
         elif reply_type == "promise_send_later":
-            reply_line = "好，您方便时发我就行，我这边收到后马上看。"
+            reply_line = "好，您方便时发我就行，我这边收到后尽快看。"
             rationale = "客户已承诺稍后发资料，此时先承接并说明收到后的动作，不重复催同一材料。"
         else:
             topic = (summary_json or {}).get("topic") or "这块"
-            reply_line = f"好，我这边先接住。关于{topic}，有新进展我第一时间跟您对一下。"
+            reply_line = f"好，我这边先接住。关于{topic}，有新进展我尽快跟您对一下。"
             rationale = "客户已经给出有效回应，此时宜先承接，不再机械复述客户原话。"
         # 【跟进思路说明】已从输出格式移除（2026-05-13）。恢复时同步恢复脚本：
         # 将下方返回改回：
