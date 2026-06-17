@@ -65,28 +65,38 @@ async def wecom_callback_verify(
 async def wecom_callback_trigger(
     request: Request,
     background_tasks: BackgroundTasks,
-    msg_signature: str = Query(..., description="企业微信加密签名"),
-    timestamp: str = Query(...),
-    nonce: str = Query(...)
+    msg_signature: str | None = Query(None, description="企业微信加密签名"),
+    timestamp: str | None = Query(None),
+    nonce: str | None = Query(None),
 ):
     """
     被动接收企微有新聊天发生时的“事件通知流” (Post)
     收到事件 => 立刻去后台异步执行同步任务。这就是最高实时性的引擎。
+
+    注意:三个参数改为可选(Query(None))。因为企微单应用唯一接收 URL 被老 C# 系统
+    (SPEEDCRMWeb 的 .ashx)占用,本端点实际由老 .ashx 收到企微事件后中转(relay)触发。
+    无论老 .ashx 是透传企微真签名,还是仅发裸 ping,都能稳定唤醒同步,不再因缺参 422。
     """
-    logger.info("📡 收到企微官方新通信事件触发信号！(Webhook Ping)")
-    
+    logger.info(
+        "📡 收到企微官方新通信事件触发信号！(Webhook Ping) sig=%s ts=%s",
+        msg_signature, timestamp,
+    )
+
     # 不阻塞 HTTP 响应，立刻利用 BackgroundTasks 启动我们的 ArchiveService 获取最新游标内容
     from archive_service import ArchiveService
-    
+
     def sync_worker():
         try:
             logger.info("🚀 Webhook 唤醒：后置执行 `sync_today_data`...")
             res = ArchiveService.sync_today_data()
-            logger.info(f"✨ Webhook 唤醒数据获取完毕: {res}")
+            logger.info(
+                "✨ Webhook 唤醒数据获取完毕: status=%s 新增=%s seq=%s",
+                res.get("status"), res.get("inserted_count"), res.get("current_seq"),
+            )
         except Exception as e:
             logger.error(f"Webhook 唤醒失败: {e}\n{traceback.format_exc()}")
-            
+
     background_tasks.add_task(sync_worker)
-    
+
     # 按照企微规范，必须极速返回 "success" 字符串，以防企微重试或判定服务器挂掉
     return PlainTextResponse("success")
