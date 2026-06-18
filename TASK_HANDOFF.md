@@ -1496,3 +1496,17 @@
 - **用户补充截图**：正文里也有 `是否方便将SpeedAsia列为参考供应商`，说明问题不只是默认签名，LLM 正文也会自发输出该品牌词。
 - **已改**：`MailGenerateDraftResponse.model_post_init()` 对所有最终响应做最后一层归一，覆盖普通 drafted、红牌阻断、黄牌锁定等所有返回分支的 `final_subject` 与 `final_body_html`。
 - **新增验证**：构造 `MailGenerateDraftResponse(final_subject='SpeedAsia subject', final_body_html='<p>是否方便将SpeedAsia列为参考供应商</p><p>SpeedAsia Sales</p>')`，返回对象中已变为 `事必达 subject` 和 `事必达 Sales`。
+
+## 2026-06-18 mail-suite 联系人显示与草稿卡片隐藏项交接
+
+- **用户反馈**：`mail-suite` 独立页客户信息区“联系人”为空，但邮件正文里的联系人称呼是对的；草稿正文下方“目标推广业务 / 已有业务线 / 下一步建议”整块不应显示。
+- **定位**：
+  - 正文称呼走生成链路内部 CRM 查询的 `contact_name`。
+  - 页面客户信息区读取 `profile.crm_contact_name`，但 `GET /api/v1/mail/customer-suite` 的 `customer_profile` 原来没有返回该字段，所以页面为空。
+  - 草稿卡片下方三列信息来自 `review_metadata.crm_profile_signals` 和 `review.suggested_next_step`，属于内部诊断展示。
+- **已改**：
+  - `backend/main.py`：`customer_profile` 补充 `crm_contact_name` 与 `contact_name`，均来自 CRM 联系人姓名；同时透传 `customer_lifecycle_stage/customer_tier/existing_business_lines` 供页面需要时使用。
+  - `frontend/mail-suite.html`：客户信息区联系人优先读取 `profile.crm_contact_name`，缺失时回退 `profile.contact_name`。
+  - `frontend/mail-suite.html`：移除草稿正文下方“目标推广业务 / 已有业务线 / 下一步建议”整块内部诊断面板；复制按钮和反馈区保留。
+- **边界**：本次没有修改任何 LLM prompt、AI 指令、模板规则或额外生成约束。
+- **待验证**：部署后打开 `https://api.speedasia.net/static/mail-suite.html?id=KH33879-001`，客户信息区应显示脱敏联系人；草稿正文下方不再显示目标推广业务、已有业务线、下一步建议三列面板。

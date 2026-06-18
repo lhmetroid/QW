@@ -903,3 +903,16 @@
 - `backend/database.py` 将 `MailDemoContact.default_seller_signature` 默认值改为 `销售测试\n事必达翻译与本地化部`。
 - 验证：`python -m py_compile backend\main.py backend\database.py` 通过；`git diff --check -- backend/main.py backend/database.py` 通过；`SKIP_DB_PATCH=1` 导入 `main` 并断言品牌归一 helper 通过；`rg -n "SpeedAsia|SPEED" backend/main.py backend/database.py frontend/index.html` 只剩归一函数自身。
 - 追加修正：用户截图确认正文中也出现 `是否方便将SpeedAsia列为参考供应商`，说明 LLM 正文原文也会自发输出该品牌词；已在 `MailGenerateDraftResponse.model_post_init()` 增加最终响应层兜底，所有返回分支的 `final_subject/final_body_html` 出站前再次归一为 `事必达`。验证构造响应正文 `SpeedAsia Sales` 后已自动变为 `事必达 Sales`。
+
+## 2026-06-18 mail-suite 客户信息区联系人显示修复
+
+- 针对用户反馈邮件正文能正确称呼联系人，但页面客户信息区“联系人”为空，确认原因是前端读取 `profile.crm_contact_name`，而 `GET /api/v1/mail/customer-suite` 的 `customer_profile` 没有返回该字段；生成链路内部重新查 CRM 使用 `contact_name`，所以正文对、页面空。
+- `backend/main.py` 在 `customer_profile` 中补充 `crm_contact_name` 与 `contact_name`，均来自同一个 CRM 联系人姓名；同时把已有的 `customer_lifecycle_stage/customer_tier/existing_business_lines` 透传给页面，缺失时仍由前端显示空值。
+- `frontend/mail-suite.html` 联系人展示改为优先使用 `profile.crm_contact_name`，缺失时回退 `profile.contact_name`。
+- 验证：`python -m py_compile backend\main.py` 通过；`git diff --check -- backend/main.py frontend/mail-suite.html` 通过；`rg` 确认前端联系人字段已改为兼容两路字段。
+
+## 2026-06-18 mail-suite 草稿卡片展示收窄
+
+- 针对用户反馈草稿正文下方“目标推广业务 / 已有业务线 / 下一步建议”整块不应显示，已从 `frontend/mail-suite.html` 的草稿卡片渲染中移除该内部诊断面板。
+- 本次只隐藏草稿卡片下方的内部元信息块，复制正文、复制主题+正文和反馈区保留；上方客户信息区联系人显示修复不受影响。
+- 本次没有修改任何 LLM prompt、AI 指令、模板规则或生成约束。

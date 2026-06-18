@@ -313,11 +313,12 @@
 
     function renderCustomer(data) {
       const profile = data.customer_profile || {};
+      const contactName = profile.crm_contact_name || profile.contact_name || '';
       document.getElementById('page-badge').textContent = `客户 ${maskCustomerId(data.customer_id)}`;
       document.getElementById('customer-grid').innerHTML = [
         field('客户编号', maskCustomerId(data.customer_id)),
         field('公司名称', maskCompanyName(profile.company_name)),
-        field('联系人', maskText(profile.crm_contact_name, { keepStart: 1, keepEnd: 0 })),
+        field('联系人', maskText(contactName, { keepStart: 1, keepEnd: 0 })),
         field('收件方式', '仅生成模板，不发邮件'),
         field('自动判断场景', `${scenarioLabel(data)} (${data.scenario})`),
         field('判断依据', data.scenario_reason),
@@ -356,8 +357,6 @@
           continue;
         }
         const draft = item.draft || {};
-        const review = draft.review_metadata || {};
-        const crmSignals = review.crm_profile_signals || {};
         const details = document.createElement('details');
         details.className = 'mail';
         details.open = true;
@@ -372,13 +371,6 @@
           <div class="mail-body">
             <div class="subject">邮件主题：${esc(draft.final_subject)}</div>
             <div id="body-${esc(item.suite_step)}" class="body-html">${draft.final_body_html || '（正文为空）'}</div>
-            <div class="panel" style="margin-top:10px;">
-              <div class="grid">
-                ${field('目标推广业务', crmSignals.target_product_line)}
-                ${field('已有业务线', (crmSignals.existing_business_lines || []).join('、'))}
-                ${field('下一步建议', review.suggested_next_step)}
-              </div>
-            </div>
             <div class="actions">
               <button type="button" onclick="copyMail(${esc(item.suite_step)})">复制正文</button>
               <button type="button" onclick="copyMail(${esc(item.suite_step)}, true)">复制主题+正文</button>

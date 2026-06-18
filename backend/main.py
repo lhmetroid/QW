@@ -16489,6 +16489,7 @@ def get_mail_customer_suite(
     seller_signature = "事必达销售"
     crm_profile = _lookup_mail_crm_profile(customer_id, "")
     contact_email = sanitize_text(crm_profile.get("contact_email"))
+    contact_name = sanitize_text(crm_profile.get("contact_name"))
     draft_contact_email = _mail_demo_contact_email_for_draft(contact_email)
     draft_contact_email_is_placeholder = False
     if not draft_contact_email:
@@ -16497,6 +16498,8 @@ def get_mail_customer_suite(
     customer_profile = {
         "customer_id": customer_id,
         "company_name": sanitize_text(crm_profile.get("company_name")) or customer_id,
+        "crm_contact_name": contact_name,
+        "contact_name": contact_name,
         "contact_email": contact_email,
         "contact_email_note": (
             "CRM 邮箱在接口展示层保持脱敏；本页只生成草稿模板，不真实发信。"
@@ -16505,7 +16508,10 @@ def get_mail_customer_suite(
         ),
         "draft_contact_email_mode": "review_only_placeholder" if draft_contact_email_is_placeholder else "crm_email",
         "company_industry": crm_profile.get("company_industry"),
+        "customer_lifecycle_stage": crm_profile.get("customer_lifecycle_stage"),
+        "customer_tier": crm_profile.get("customer_tier"),
         "payment_risk_level": crm_profile.get("payment_risk_level"),
+        "existing_business_lines": crm_profile.get("existing_business_lines") or [],
         "customer_domains": list(crm_profile.get("customer_domains") or []),
         "crm_profile_lookup_status": crm_profile.get("crm_profile_lookup_status"),
         "crm_profile_source": crm_profile.get("crm_profile_source"),
