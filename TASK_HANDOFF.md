@@ -1490,3 +1490,9 @@
   - `SKIP_DB_PATCH=1` 导入 `main` 并断言 `_mail_brand_display_text('SpeedAsia Sales / SPEED') == '事必达 Sales / 事必达'` 通过。
   - `rg -n "SpeedAsia|SPEED" backend/main.py backend/database.py frontend/index.html` 只剩归一函数自身包含匹配词。
 - **下一步**：服务器端人工更新后，重新打开该 URL 生成草稿，正文签名应显示 `事必达销售`，不应再出现 `SpeedAsia Sales`。
+
+### 追加修正：正文中 LLM 自发输出 SpeedAsia
+
+- **用户补充截图**：正文里也有 `是否方便将SpeedAsia列为参考供应商`，说明问题不只是默认签名，LLM 正文也会自发输出该品牌词。
+- **已改**：`MailGenerateDraftResponse.model_post_init()` 对所有最终响应做最后一层归一，覆盖普通 drafted、红牌阻断、黄牌锁定等所有返回分支的 `final_subject` 与 `final_body_html`。
+- **新增验证**：构造 `MailGenerateDraftResponse(final_subject='SpeedAsia subject', final_body_html='<p>是否方便将SpeedAsia列为参考供应商</p><p>SpeedAsia Sales</p>')`，返回对象中已变为 `事必达 subject` 和 `事必达 Sales`。

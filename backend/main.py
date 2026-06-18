@@ -1296,6 +1296,10 @@ class MailGenerateDraftResponse(BaseModel):
     llm_error: str | None = None
     review_metadata: MailGenerateDraftReviewMetadata = MailGenerateDraftReviewMetadata()
 
+    def model_post_init(self, __context: Any) -> None:
+        self.final_subject = _mail_brand_display_text(self.final_subject)
+        self.final_body_html = _mail_brand_display_text(self.final_body_html)
+
 class MailSequenceInterruptRequest(BaseModel):
     customer_key: str | None = None
     interrupt_reason: str

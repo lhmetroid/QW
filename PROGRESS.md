@@ -902,3 +902,4 @@
 - `backend/main.py` 将 `mail-suite` 默认 `seller_name/seller_signature` 改为 `事必达销售`，并把模板种子、fallback 签名、邮件迭代默认签名中的 `SpeedAsia` 改为 `事必达`。
 - `backend/database.py` 将 `MailDemoContact.default_seller_signature` 默认值改为 `销售测试\n事必达翻译与本地化部`。
 - 验证：`python -m py_compile backend\main.py backend\database.py` 通过；`git diff --check -- backend/main.py backend/database.py` 通过；`SKIP_DB_PATCH=1` 导入 `main` 并断言品牌归一 helper 通过；`rg -n "SpeedAsia|SPEED" backend/main.py backend/database.py frontend/index.html` 只剩归一函数自身。
+- 追加修正：用户截图确认正文中也出现 `是否方便将SpeedAsia列为参考供应商`，说明 LLM 正文原文也会自发输出该品牌词；已在 `MailGenerateDraftResponse.model_post_init()` 增加最终响应层兜底，所有返回分支的 `final_subject/final_body_html` 出站前再次归一为 `事必达`。验证构造响应正文 `SpeedAsia Sales` 后已自动变为 `事必达 Sales`。
