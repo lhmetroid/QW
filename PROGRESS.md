@@ -894,3 +894,11 @@
 - `backend/main.py` 避免占位邮箱污染称呼：`draft-only+...` 不再用于推断收件人姓名，称呼仍从 CRM 联系人/公司/客户编号取。
 - `backend/main.py` 增加模板回落：非当前 3 个案例客户如 `KH33879-001` 没有专属 `customer_key` 模板时，按同场景同阶段读取已保存模板，确保独立页也使用“AI 指令直接替换变量后发给 LLM”的新流程。
 - 验证：`python -m py_compile backend\main.py backend\database.py` 通过；`SKIP_DB_PATCH=1` 导入 `main` 并断言 review-only 占位邮箱 helper 通过；定向 `git diff --check` 通过。
+
+## 2026-06-18 mail-suite 品牌词归一为事必达
+
+- 针对用户反馈 `mail-suite` 草稿正文出现脚本外 `SpeedAsia Sales`，确认来源不是用户 AI 指令脚本，而是后端 `customer-suite` 默认销售姓名/签名，以及历史模板种子中残留的 `SpeedAsia`/`SPEED` 文案。
+- `backend/main.py` 新增 `_mail_brand_display_text()`，在模板变量替换、模板接口序列化、模板保存、最终 `subject/body_html/llm_prompt` 出站时把 `SpeedAsia` 和 `SPEED` 归一为 `事必达`，避免旧数据库模板未迁移时继续漏出。
+- `backend/main.py` 将 `mail-suite` 默认 `seller_name/seller_signature` 改为 `事必达销售`，并把模板种子、fallback 签名、邮件迭代默认签名中的 `SpeedAsia` 改为 `事必达`。
+- `backend/database.py` 将 `MailDemoContact.default_seller_signature` 默认值改为 `销售测试\n事必达翻译与本地化部`。
+- 验证：`python -m py_compile backend\main.py backend\database.py` 通过；`git diff --check -- backend/main.py backend/database.py` 通过；`SKIP_DB_PATCH=1` 导入 `main` 并断言品牌归一 helper 通过；`rg -n "SpeedAsia|SPEED" backend/main.py backend/database.py frontend/index.html` 只剩归一函数自身。

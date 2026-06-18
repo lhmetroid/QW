@@ -1471,3 +1471,22 @@
   - `SKIP_DB_PATCH=1` 导入 `main` 并断言 `KH33879-001 + infor.com` 可生成 review-only 占位邮箱，通过。
   - `git diff --check -- backend/main.py backend/database.py frontend/index.html PROGRESS.md TASK_HANDOFF.md logs/codex-run.log` 通过。
 - **注意**：本轮改的是本地代码；线上需部署后再复测该 URL。真实发信仍关闭，review-only 占位邮箱只用于草稿生成链路通过安全门。
+
+## 2026-06-18 mail-suite 脚本外 SpeedAsia 品牌词修复交接
+
+- **用户反馈**：`https://api.speedasia.net/static/mail-suite.html?id=KH33879-001` 生成草稿中出现脚本里没有的 `SpeedAsia Sales`，要求所有 `SpeedAsia` 替换为 `事必达`。
+- **定位**：
+  - `SpeedAsia Sales` 直接来源于 `backend/main.py` 的 `get_mail_customer_suite()` 默认 `seller_name` / `seller_signature`。
+  - 旧模板种子、fallback 签名、邮件迭代默认签名中也残留 `SpeedAsia` / `SPEED`，若线上数据库已有旧模板，单纯改种子仍可能继续漏出。
+- **已改**：
+  - `backend/main.py` 新增 `_mail_brand_display_text()`，只做品牌词替换，不向 LLM 追加任何新限制或约束。
+  - 模板变量替换、模板接口序列化、模板保存、最终草稿 `subject/body_html/llm_prompt` 出站都调用品牌词归一，旧库内容也会在展示和生成出口被替换。
+  - `mail-suite` 默认销售姓名/签名改为 `事必达销售`。
+  - 模板种子、fallback 默认签名、迭代默认签名中的 `SpeedAsia`/`SPEED` 改为 `事必达`。
+  - `backend/database.py` 的 `MailDemoContact.default_seller_signature` 默认值改为 `销售测试\n事必达翻译与本地化部`。
+- **验证**：
+  - `python -m py_compile backend\main.py backend\database.py` 通过。
+  - `git diff --check -- backend/main.py backend/database.py` 通过。
+  - `SKIP_DB_PATCH=1` 导入 `main` 并断言 `_mail_brand_display_text('SpeedAsia Sales / SPEED') == '事必达 Sales / 事必达'` 通过。
+  - `rg -n "SpeedAsia|SPEED" backend/main.py backend/database.py frontend/index.html` 只剩归一函数自身包含匹配词。
+- **下一步**：服务器端人工更新后，重新打开该 URL 生成草稿，正文签名应显示 `事必达销售`，不应再出现 `SpeedAsia Sales`。

@@ -5882,7 +5882,7 @@ _MAIL_CTA_CN_BY_STEP: dict[tuple[str, int], str] = {
     ),
     ("new_business_promotion", 2): (
         "作为 4 封套装的第 2 封，承接第 1 封的多业务破冰，重点用客户行业、CRM 历史合作和知识库/同行业案例证明"
-        "SpeedAsia 的业务沟通支持有实际落地经验；本封不急于讲完整方案流程，也不进入报价收口。"
+        "事必达的业务沟通支持有实际落地经验；本封不急于讲完整方案流程，也不进入报价收口。"
     ),
     ("new_business_promotion", 3): "给出资料输入、服务组合和协作流程，避免只围绕翻译单一业务。",
     ("new_business_promotion", 4): "以服务清单、资料评估方向或相关团队确认收口，不承诺免费服务或未审核优惠。",
@@ -6034,7 +6034,7 @@ _MAIL_SEQUENCE_TEMPLATE_SCRIPT: dict[tuple[str, int], str] = {
     ("new_business_promotion", 1): (
         "【邮件目标】\n"
         "这是老客户其他业务介绍场景的第 1 封，不是群发宣传，也不是简单问候。目标是在承接既有合作信任的基础上，"
-        "让客户明确知道 SpeedAsia 除翻译外，还可以支持同传/会议支持、多媒体本地化、排版印刷、活动物料、海外内容适配等业务，"
+        "让客户明确知道事必达除翻译外，还可以支持同传/会议支持、多媒体本地化、排版印刷、活动物料、海外内容适配等业务，"
         "并引导客户回复近期是否有相关项目，或推荐负责这些事项的同事。它在 4 封套装中的定位是：第 1 封打开多业务话题，"
         "第 2 封再展开同行业案例，第 3 封讲组合方案和流程，第 4 封做评估、预算沟通或转介绍收口。\n\n"
         "【必须使用的数据】\n"
@@ -6046,7 +6046,7 @@ _MAIL_SEQUENCE_TEMPLATE_SCRIPT: dict[tuple[str, int], str] = {
         "5. 如果客户是高频活跃老客户，语气要更亲和、更像关系维护；如果历史合作较少，则更强调行业场景和低压力介绍。\n\n"
         "【正文结构，建议 4 段】\n"
         "第 1 段：自然称呼客户，承接真实历史合作或最近联系背景。没有历史事实时，只写“之前有过业务沟通/关注到贵司相关业务场景”，不要编造具体项目。\n"
-        "第 2 段：说明这次联系的原因：不是继续推单一翻译，而是同步 SpeedAsia 可支持的多业务能力，并点名 3 类以上适合客户行业的业务线。第 1 封优先讲业务面，不做重报价、不展开复杂流程。\n"
+        "第 2 段：说明这次联系的原因：不是继续推单一翻译，而是同步事必达可支持的多业务能力，并点名 3 类以上适合客户行业的业务线。第 1 封优先讲业务面，不做重报价、不展开复杂流程。\n"
         "第 3 段：加入知识库或同行业经验。写法要像商业证据，例如“在类似 {industry} 场景中，客户通常会把培训资料、发布会内容、视频字幕和宣传物料统一协调，以减少多供应商沟通成本”。\n"
         "第 4 段：低压力 CTA。询问客户近期是否有培训、市场、活动、海外内容或跨部门多语资料需求；如果不是本人负责，请推荐市场、培训、活动、采购或海外内容相关同事。\n\n"
         "【禁止内容】\n"
@@ -6057,14 +6057,14 @@ _MAIL_SEQUENCE_TEMPLATE_SCRIPT: dict[tuple[str, int], str] = {
     ("new_business_promotion", 2): (
         "【邮件目标】\n"
         "这是老客户其他业务介绍场景的第 2 封。它承接第 1 封的多业务破冰，核心任务是用客户行业、历史合作事实和知识库/同行业案例建立可信度，"
-        "证明 SpeedAsia 的多业务能力不是泛泛介绍。第 2 封不要重复第 1 封的大范围业务清单，也不要提前讲第 3 封的完整协作方案或第 4 封的报价收口。\n\n"
+        "证明事必达的多业务能力不是泛泛介绍。第 2 封不要重复第 1 封的大范围业务清单，也不要提前讲第 3 封的完整协作方案或第 4 封的报价收口。\n\n"
         "【必须使用的数据】\n"
         "1. 必须使用 {industry} 判断客户行业场景；如果行业缺失，要用客户公司或历史业务类型保守推断，不得编造。\n"
         "2. 必须承接 {history} 中真实存在的合作、合同、商机、最近跟进或客户活跃度；高频活跃老客户要写得更亲和，低频老客户要写得更克制。\n"
         "3. 必须使用 {peer_case} 或知识库/黄金范例库中的同行业、同业务类型或相近场景案例。案例写法必须转成商业证据：客户遇到什么类型问题、我们如何协调多业务、可迁移价值是什么。\n"
         "4. 如果知识库明确允许公开同行业公司名，可以例举公司名；否则只能写“某同行业客户/类似行业客户”，不能泄露客户名称、金额、项目号、底价、内部成本或敏感细节。\n\n"
         "【正文结构，建议 4 段】\n"
-        "第 1 段：承接第 1 封，简短说明这次补充一条和 {industry} 相关的经验，不要重新大段介绍 SpeedAsia。\n"
+        "第 1 段：承接第 1 封，简短说明这次补充一条和 {industry} 相关的经验，不要重新大段介绍事必达。\n"
         "第 2 段：结合 {history}，说明为什么这个案例/经验与客户有关；如果客户过去只合作过翻译，要自然过渡到“类似材料常常还会牵涉排版、视频字幕、会议支持、活动物料”等相关业务。\n"
         "第 3 段：写知识库/同行业案例证明。必须包含“场景-做法-价值”三要素，例如：在类似行业项目中，多语内容、培训材料、视频字幕、宣传物料由一个窗口统筹，减少多供应商沟通成本并提高交付一致性。\n"
         "第 4 段：低压力 CTA。询问客户近期是否有类似资料、活动节点、培训内容或海外市场材料需要提前评估；如果不是本人负责，请推荐市场、培训、活动、采购或海外内容相关同事。\n\n"
@@ -6098,7 +6098,7 @@ _MAIL_SEQUENCE_TEMPLATE_SCRIPT: dict[tuple[str, int], str] = {
         "如果目前相关需求由其他同事负责，也烦请您推荐一下对接人。我会先说明我们与贵司的历史合作背景，再用克制的方式沟通。"
     ),
     ("new_contact_intro", 1): (
-        "{customer_name} 您好，我是 {seller_name}，来自 SpeedAsia。我们主要为企业客户提供翻译、本地化、同传会议、多媒体内容、排版印刷和活动物料等语言与内容服务。\n\n"
+        "{customer_name} 您好，我是 {seller_name}，来自事必达。我们主要为企业客户提供翻译、本地化、同传会议、多媒体内容、排版印刷和活动物料等语言与内容服务。\n\n"
         "了解到贵司可能有相关业务对接需求，我先做一个简短介绍。若您不是负责同类事项的同事，也烦请您帮忙推荐合适对接人。"
     ),
     ("new_contact_intro", 2): (
@@ -6111,7 +6111,7 @@ _MAIL_SEQUENCE_TEMPLATE_SCRIPT: dict[tuple[str, int], str] = {
     ),
     ("new_contact_intro", 4): (
         "如果近期有小项目、资料评估、活动物料或跨语内容计划，我可以先协助做一轮初步梳理，便于您判断是否适合继续沟通。\n\n"
-        "如果这类事项由其他部门或同事负责，也烦请您帮忙转介绍。我会把 SpeedAsia 的服务范围和联系背景说明清楚，不做打扰式跟进。"
+        "如果这类事项由其他部门或同事负责，也烦请您帮忙转介绍。我会把事必达的服务范围和联系背景说明清楚，不做打扰式跟进。"
     ),
 }
 
@@ -6122,7 +6122,7 @@ _MAIL_SEQUENCE_TEMPLATE_AI_INSTRUCTION: dict[tuple[str, int], str] = {
         "1. 正文必须 4 段左右，不能只写两段，也不能只写寒暄 + 约聊。\n"
         "2. 第 1 段必须承接 CRM 或历史事实：客户公司、行业、历史合作、合同、商机、最近跟进中能用哪个就用哪个；没有事实时必须保守表达，不能编造。\n"
         "3. 第 2 段必须明确说明这次不是继续推单一翻译，而是介绍翻译以外的业务线；至少写出同传/会议支持、多媒体本地化、排版印刷、活动物料、海外内容适配中的 3 类。第 1 封只打开多业务话题，不要把第 2-4 封要讲的案例、方案、报价收口全部讲完。\n"
-        "4. 第 3 段必须使用知识库、黄金范例或同行业经验作为商业证据。不得直接复制案例原文；要改写成“类似行业/类似场景客户通常如何解决问题、SpeedAsia 能迁移什么经验”。如果知识库没有命中，必须写成保守的行业经验表达，不能虚构案例。只有知识库明确允许公开的同行业公司名才可写出公司名，否则使用“某同行业客户/类似行业客户”。\n"
+        "4. 第 3 段必须使用知识库、黄金范例或同行业经验作为商业证据。不得直接复制案例原文；要改写成“类似行业/类似场景客户通常如何解决问题、事必达能迁移什么经验”。如果知识库没有命中，必须写成保守的行业经验表达，不能虚构案例。只有知识库明确允许公开的同行业公司名才可写出公司名，否则使用“某同行业客户/类似行业客户”。\n"
         "5. 第 4 段必须是低压力 CTA：询问近期是否有培训资料、市场物料、发布会/活动、多媒体内容或海外内容需求；如果不是收件人负责，请推荐市场、培训、活动、采购或海外内容相关同事。\n"
         "6. 禁止输出具体价格、折扣、账期、付款方式、内部底价、工期承诺、免费服务、未审核优惠。\n"
         "7. 禁止写“我们拥有丰富经验、欢迎咨询”这类空泛结尾，必须让客户知道下一步怎么回复。\n"
@@ -6175,7 +6175,7 @@ _MAIL_SEQUENCE_TEMPLATE_AI_INSTRUCTION: dict[tuple[str, int], str] = {
         "结尾必须加转介绍请求：如果当前收件人不负责，请推荐相关同事，并说明会先带着历史合作背景沟通。"
     ),
     ("new_contact_intro", 1): (
-        "请生成新客户开发介绍场景第1封。必须有1到2句简洁公司介绍：SpeedAsia 做翻译、本地化、同传会议、多媒体内容、排版印刷和活动物料等语言与内容服务。"
+        "请生成新客户开发介绍场景第1封。必须有1到2句简洁公司介绍：事必达做翻译、本地化、同传会议、多媒体内容、排版印刷和活动物料等语言与内容服务。"
         "不要假设已经有合作历史；若 CRM 有历史合同，也只说系统显示有过相关合作背景，语气谨慎。"
         "结尾请确认是否为正确对接人，或请求推荐负责相关业务的同事。"
     ),
@@ -6192,7 +6192,7 @@ _MAIL_SEQUENCE_TEMPLATE_AI_INSTRUCTION: dict[tuple[str, int], str] = {
     ("new_contact_intro", 4): (
         "请生成新客户开发介绍场景第4封。目标是形成低门槛下一步：资料评估、项目梳理、业务范围确认，或请对方推荐正确负责人。"
         "语气要礼貌、亲和、有商务价值，不要强推下单。"
-        "结尾必须包含转介绍表达，并说明会把 SpeedAsia 服务范围和联系背景讲清楚。"
+        "结尾必须包含转介绍表达，并说明会把事必达服务范围和联系背景讲清楚。"
     ),
 }
 
@@ -6210,11 +6210,11 @@ _MAIL_COMMERCIAL_SCENARIO_PROFILES: dict[str, dict[str, str]] = {
     "re_activation": {
         "scenario_name": "老客户激活",
         "relationship": "曾经合作、近期沉默或长期未触达、需要恢复联系和关系重启的老客户",
-        "main_goal": "先像正常商务关系维护一样恢复联系，再说明 SpeedAsia 现在能更成熟地支持技术资料、会议沟通、培训内容、多媒体和跨境沟通等需求",
+        "main_goal": "先像正常商务关系维护一样恢复联系，再说明事必达现在能更成熟地支持技术资料、会议沟通、培训内容、多媒体和跨境沟通等需求",
         "tone": "温和、熟悉、低压力，重点像关系维护而不是冷启动销售",
         "history_rule": "必须使用真实历史合作、合同、最近跟进或沉默状态；不能虚构曾经合作内容。高频活跃老客户要更亲和，长期沉默客户要更克制",
         "case_rule": "使用同行业经验或历史合作相近案例唤醒客户兴趣，强调供应商理解业务背景、术语、配合度和沟通效率，而不是只做文字翻译",
-        "intro_rule": "不做新客户式公司介绍，只需提醒 SpeedAsia 当前可支持的业务范围比过去更完整",
+        "intro_rule": "不做新客户式公司介绍，只需提醒事必达当前可支持的业务范围比过去更完整",
         "referral_targets": "目前负责翻译、本地化、培训、市场物料、活动或海外内容的同事",
     },
     "new_contact_intro": {
@@ -6349,7 +6349,7 @@ _MAIL_NEW_BUSINESS_PROMOTION_SCRIPT_OVERRIDES: dict[int, str] = {
         "1. {customer_name} 单独称呼。\n"
         "2. 用 {history} 里真实合作事实自然承接，只表达“我们对贵司业务有基础了解”，不写“最近整理/回想/上次聊到”。\n"
         "3. 只选一个主切口：行业活动、双语资料、会议沟通、对外展示、商务礼品或多媒体内容，写出客户为什么可能用得上。\n"
-        "4. 借鉴人工认可 full_email 的写法：先具体场景，再轻量说明 SpeedAsia 可如何省心、省力或减少多供应商沟通，不堆服务清单。\n"
+        "4. 借鉴人工认可 full_email 的写法：先具体场景，再轻量说明事必达可如何省心、省力或减少多供应商沟通，不堆服务清单。\n"
         "5. 结尾低压力：只问后续如有相关场景，是否方便留作备选，或请对方判断是否转给相关团队。\n\n"
         "【可用变量】\n"
         "{customer_name}；{company_name}；{industry}；{history}；"
@@ -6611,6 +6611,11 @@ def _mail_sequence_template_send_interval_days(value: str | None, scenario: str,
     return _mail_sequence_default_send_interval_days(scenario, suite_step)
 
 
+def _mail_brand_display_text(value: str | None) -> str:
+    text_value = value or ""
+    return text_value.replace("SpeedAsia", "事必达").replace("SPEED", "事必达")
+
+
 def _serialize_mail_sequence_template(row) -> dict[str, Any]:
     send_interval_days = _mail_sequence_template_send_interval_days(
         getattr(row, "send_timing_cn", None),
@@ -6630,8 +6635,8 @@ def _serialize_mail_sequence_template(row) -> dict[str, Any]:
         "send_interval_days": send_interval_days,
         "send_interval_help": "距今天多少天后发送",
         "variable_notes": row.variable_notes or {},
-        "script_template": row.script_template,
-        "ai_instruction_script": getattr(row, "ai_instruction_script", "") or "",
+        "script_template": _mail_brand_display_text(row.script_template),
+        "ai_instruction_script": _mail_brand_display_text(getattr(row, "ai_instruction_script", "") or ""),
         "version_no": row.version_no,
         "is_active": row.is_active,
         "updated_by": row.updated_by,
@@ -6870,7 +6875,7 @@ def _load_runtime_settings_with_defaults() -> dict[str, Any]:
 
 
 _MAIL_DRAFT_LLM_SYSTEM_PROMPT = (
-    "你是 SpeedAsia 的资深销售。写给客户的邮件要像真人发出的轻商务邮件：自然、具体、克制。\n"
+    "你是事必达的资深销售。写给客户的邮件要像真人发出的轻商务邮件：自然、具体、克制。\n"
     "不要写成营销文、服务清单、合规摘要或 AI 总结。\n"
     "只输出 JSON，不要 Markdown：{\"subject\":\"\",\"paragraphs\":[\"称呼段\",\"正文段1\",\"正文段2\"]}"
 )
@@ -7357,7 +7362,7 @@ def _mail_apply_prompt_template_variables(template: str, values: dict[str, str])
     rendered = template or ""
     for key, value in values.items():
         rendered = rendered.replace("{" + key + "}", sanitize_text(value))
-    return rendered
+    return _mail_brand_display_text(rendered)
 
 
 def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile) -> str:
@@ -7602,16 +7607,18 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
                 f"错误: {llm_result.get('error') or '未返回 subject/paragraphs'}"
             ),
         )
-    subject_text = llm_result.get("subject") or ""
-    body_html_from_llm = sanitize_text(llm_result.get("body_html") or "").strip()
+    subject_text = _mail_brand_display_text(llm_result.get("subject") or "")
+    body_html_from_llm = _mail_brand_display_text(sanitize_text(llm_result.get("body_html") or "").strip())
+    seller_signature = _mail_brand_display_text(profile.seller_signature)
     if body_html_from_llm:
         body_html = body_html_from_llm
-        body_html += f"<p>{html.escape(profile.seller_signature).replace(chr(10), '<br>')}</p>"
+        body_html += f"<p>{html.escape(seller_signature).replace(chr(10), '<br>')}</p>"
     else:
         body_paragraphs = _mail_normalize_body_paragraphs(llm_result["paragraphs"])
-        paragraphs = [html.escape(p) for p in body_paragraphs]
-        paragraphs.append(html.escape(profile.seller_signature).replace("\n", "<br>"))
+        paragraphs = [html.escape(_mail_brand_display_text(p)) for p in body_paragraphs]
+        paragraphs.append(html.escape(seller_signature).replace("\n", "<br>"))
         body_html = "".join(f"<p>{paragraph}</p>" for paragraph in paragraphs)
+    body_html = _mail_brand_display_text(body_html)
 
     review_meta = MailGenerateDraftReviewMetadata(
         crm_profile_signals={
@@ -7639,7 +7646,7 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
         llm_status=llm_result["status"],
         llm_model_used=llm_result["model"],
         llm_error=llm_result["error"],
-        llm_prompt=llm_result.get("prompt"),
+        llm_prompt=_mail_brand_display_text(llm_result.get("prompt")),
         review_metadata=review_meta,
     )
 
@@ -9600,7 +9607,7 @@ DEV_EMAIL_ROW_META = {
     28: {"name": "轨交标书翻译案例触达模板", "business_line": "translation", "service_scope": "railway"},
 }
 DEV_EMAIL_LINE_SPECS = {
-    4: [("背景与行业痛点", 1, 2, "background", "template"), ("一站式活动方案", 3, 4, "core_answer", "template"), ("实战案例表现", 5, 10, "highlight", "example"), ("服务清单", 11, 16, "core_answer", "template"), ("SPEED三省优势", 17, 20, "highlight", "template"), ("合作场景与邀约", 21, 26, "cta", "template")],
+    4: [("背景与行业痛点", 1, 2, "background", "template"), ("一站式活动方案", 3, 4, "core_answer", "template"), ("实战案例表现", 5, 10, "highlight", "example"), ("服务清单", 11, 16, "core_answer", "template"), ("事必达三省优势", 17, 20, "highlight", "template"), ("合作场景与邀约", 21, 26, "cta", "template")],
     5: [("年终活动场景引入", 1, 1, "background", "template"), ("公司经验与整体价值", 2, 3, "highlight", "template"), ("活动策划与场地布置", 4, 6, "core_answer", "template"), ("印刷与视觉物料", 7, 8, "core_answer", "template"), ("口译与多媒体支持", 9, 12, "core_answer", "template"), ("礼品定制方案", 13, 14, "core_answer", "template"), ("档期提醒与合作邀约", 15, 18, "cta", "template")],
     6: [("年终问候与感谢", 1, 2, "background", "template"), ("年度服务成果", 3, 7, "highlight", "example"), ("客户信任与能力延展", 8, 9, "highlight", "template"), ("新年合作展望", 10, 12, "cta", "template")],
     7: [("HMOs项目服务背景", 1, 1, "background", "template"), ("HMOs领域理解", 2, 5, "highlight", "example"), ("翻译质量与合规要求", 6, 6, "core_answer", "template"), ("保密机制与沟通邀约", 7, 8, "cta", "template")],
@@ -9678,7 +9685,7 @@ def _make_email_chunk(title: str, content: str, *, function_fragment: str, chunk
 def _split_dev_email_row_3(content: str, *, business_line: str, service_scope: str) -> list[dict]:
     text = content.replace("''", "'")
     anchors = [
-        "This is Joyce Sheng form SPEED.",
+        "This is Joyce Sheng from 事必达.",
         "With the Chinaplas exhibition in Shanghai coming up this April,",
         "Beyond our past collaborations in printing and translation, our team also offers a range of other services that you may not have experienced before:",
         "Event Planning & Execution:",
@@ -16439,9 +16446,9 @@ def update_mail_sequence_template(
     elif payload.send_timing_cn is not None:
         row.send_timing_cn = sanitize_text(payload.send_timing_cn).strip()[:240]
     if payload.script_template is not None:
-        row.script_template = sanitize_text(payload.script_template).strip()[:12000]
+        row.script_template = _mail_brand_display_text(sanitize_text(payload.script_template).strip())[:12000]
     if payload.ai_instruction_script is not None:
-        row.ai_instruction_script = sanitize_text(payload.ai_instruction_script).strip()[:12000]
+        row.ai_instruction_script = _mail_brand_display_text(sanitize_text(payload.ai_instruction_script).strip())[:12000]
     row.updated_by = sanitize_text(payload.updated_by or "web_admin")[:120]
     row.version_no = int(row.version_no or 1) + 1
     row.updated_at = datetime.utcnow()
@@ -16474,8 +16481,8 @@ def get_mail_customer_suite(
     if scenario_norm not in _MAIL_SCENARIO_CHINESE:
         raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario_norm}")
 
-    seller_name = "SpeedAsia Sales"
-    seller_signature = "SpeedAsia Sales"
+    seller_name = "事必达销售"
+    seller_signature = "事必达销售"
     crm_profile = _lookup_mail_crm_profile(customer_id, "")
     contact_email = sanitize_text(crm_profile.get("contact_email"))
     draft_contact_email = _mail_demo_contact_email_for_draft(contact_email)
@@ -16692,7 +16699,7 @@ async def get_mail_demo_contacts(db: Session = Depends(get_db)):
             "default_scenario": (row.default_scenario if row else current_case["default_scenario"]),
             "default_suite_step": (row.default_suite_step if row else current_case["default_suite_step"]),
             "default_seller_name": seller_name,
-            "default_seller_signature": f"{seller_name}\nSpeedAsia 多业务开发部",
+            "default_seller_signature": f"{seller_name}\n事必达多业务开发部",
             "source_note": (
                 "当前 3 个案例按产品指定客户编号实时只读查询 CRM 原始信息；未脱敏，仅限邮件质量诊断当前案例展示/测试。"
                 if crm_hit
@@ -16929,7 +16936,7 @@ def _run_one_mail_iteration_draft(
         scenario=scenario,
         suite_step=suite_step,
         current_seller_name=demo_contact.get("default_seller_name") or "销售测试",
-        current_seller_signature=demo_contact.get("default_seller_signature") or "销售测试\nSpeedAsia 翻译与本地化部",
+        current_seller_signature=demo_contact.get("default_seller_signature") or "销售测试\n事必达翻译与本地化部",
     )
 
     started_at = datetime.utcnow()
@@ -17081,7 +17088,7 @@ def _run_mail_iteration_background(run_id: str, run_label: str) -> None:
                 "default_scenario": r.default_scenario if r else current_case["default_scenario"],
                 "default_suite_step": r.default_suite_step if r else current_case["default_suite_step"],
                 "default_seller_name": r.default_seller_name if r else "销售测试",
-                "default_seller_signature": r.default_seller_signature if r else "销售测试\nSpeedAsia 多业务开发部",
+                "default_seller_signature": r.default_seller_signature if r else "销售测试\n事必达多业务开发部",
             })
 
         steps = list(ALL_MAIL_SEQUENCE_STEPS)

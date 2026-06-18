@@ -1635,7 +1635,7 @@ class MailDemoContact(Base):
 
     default_seller_name = Column(String(120), nullable=False, default="销售测试")
 
-    default_seller_signature = Column(Text, nullable=False, default="销售测试\nSpeedAsia 翻译与本地化部")
+    default_seller_signature = Column(Text, nullable=False, default="销售测试\n事必达翻译与本地化部")
 
 
 
