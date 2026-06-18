@@ -1,5 +1,57 @@
 # PROGRESS
 
+## 2026-06-17 邮件 V40 案例3 Step1 仅脚本双模型直跑
+
+- 已按用户要求“只拿以上脚本”完成 V40：本轮 prompt 只包含用户给出的精简结构脚本、AI 指令和变量取值，不包含 V39 中的黄金范例库全文和合同案例库参考。
+- 新增 `scratch/run_mail_v40_case3_step1_script_only_compare.py`，分别真实调用 DeepSeek `deepseek-chat` 和 OpenAI `gpt-4.1` 各一次，不启用真实发信。
+- 已落库 `mail_iteration_run.version_no=40`，run_id=`12b1631b-0ca7-423b-be08-f1d4ca98e81f`，2/2 成功，两个 draft 分别为 DeepSeek 与 GPT 输出。
+- 报告已生成：`logs/mail-v40-case3-step1-script-only-compare-20260617.md`，完整保存本轮精简 prompt 原文、两家模型 raw/parsed JSON、耗时和基础质量标记。
+- 初步质量观察：两家模型都能输出 JSON 和非空主题；但两者都未严格做到 `paragraphs[0]` 只等于“萧小姐”，DeepSeek 输出“萧小姐您好，”，GPT 第一段把称呼和正文合在一起。这说明只靠当前脚本仍不足以稳定约束称呼单独成段。
+- 验证：`python -m py_compile scratch\run_mail_v40_case3_step1_script_only_compare.py` 通过；`git diff --check -- scratch\run_mail_v40_case3_step1_script_only_compare.py logs\mail-v40-case3-step1-script-only-compare-20260617.md` 通过；DB 查询确认 V40 存在且 Drafts Count=2。
+
+## 2026-06-17 邮件 V39 案例3 Step1 Prompt 双模型直跑
+
+- 已按用户要求将 `logs/mail-current-case3-step1-prompt-20260617.md` 中的完整脚本作为最终 prompt 原文，分别真实调用 DeepSeek 与 OpenAI/GPT 各一次。
+- 新增 `scratch/run_mail_v39_case3_step1_prompt_compare.py`，脚本只处理案例3 `new_contact_intro` Step1，不启用真实发信；prompt 原文同时写入 `mail_iteration_draft.llm_prompt` 和报告。
+- 已落库 `mail_iteration_run.version_no=39`，run_id=`7330f5ea-e1b0-437c-9133-92ac17d28408`，2/2 成功，两个 draft 分别为 DeepSeek 与 GPT 输出。
+- 报告已生成：`logs/mail-v39-case3-step1-prompt-compare-20260617.md`，包含 prompt 原文、DeepSeek raw/parsed JSON、OpenAI raw/parsed JSON、耗时和基础质量标记。
+- 初步质量观察：DeepSeek 主题非空但称呼段不是严格“萧小姐”，且写出完整公司名；GPT 保持空主题，也同样称呼不严格并写出完整公司名。两者都说明当前脚本仍需在出口层更强约束称呼段、主题和公司名脱敏。
+- 验证：`python -m py_compile scratch\run_mail_v39_case3_step1_prompt_compare.py` 通过；`git diff --check -- scratch\run_mail_v39_case3_step1_prompt_compare.py logs\mail-v39-case3-step1-prompt-compare-20260617.md` 通过；DB 查询确认 V39 存在且 Drafts Count=2。
+
+## 2026-06-16 案例2 Step1 多轮 API 脚本收口
+
+- 已按用户校准只处理案例2 `re_activation` Step1，不继续跑整套4封。
+- 修改 `scratch/run_case2_suite_multiturn_api_compare.py`：真实读取 CRM 联系人/公司信息，Step1 改为正向事实约束，不再使用“爱德华/TAVR/医疗器械/生命科学”等硬禁词，也未加入“不得带入其他客户信息”这类泛化负担。
+- 给 LLM 的公开上下文已去除 `customer_key/case_id`，脚本内部仍用客户号查 CRM；减少内部编号被模型带入最终邮件的风险。
+- Step1 中间变量卡改为 `fact_boundary`，`supporting_points` 仅允许当前 CRM 历史事实或客户资料客观要求；质量检查增加过程告警，覆盖 `老朋友`、`持续关注`、`一直非常重视` 等偏差。
+- 已真实调用 DeepSeek step1，基准报告为 `logs/case2-suite-deepseek-step1-20260616-152607.md`，质量标记 `pass`；最终 JSON 使用真实联系人“周希”和公司“申万菱信”，未输出内部客户号或其他客户信息。
+- 验证：`python -m py_compile scratch\run_case2_suite_multiturn_api_compare.py` 通过；`git diff --check -- scratch\run_case2_suite_multiturn_api_compare.py` 通过。
+- 用户继续要求按爱德华网页多轮 100% 复刻，不再提前安全收口。已将 Step1 改为四轮：找入口、理解业务结构和机会、初版邮件、补充服务后 JSON 改写；真实调用 DeepSeek 生成 `logs/case2-suite-deepseek-step1-20260616-160058.md`。结果篇幅和业务展开明显接近爱德华轮次，但也出现模型自由发挥带来的待后处理点：`[你的名字]` 占位符、`最近流程优化`、`由我们团队配合完成` 等表述。
+- 用户反馈仍像机器人、不够亲和。已保留前两轮业务分析发挥，只调整最后成稿层的风格提示，要求把咨询腔转成老客户销售邮件人话；真实调用 DeepSeek 生成 `logs/case2-suite-deepseek-step1-20260616-161444.md`。最新版本语气更自然，主题为“关于金融资料翻译和会议材料，想跟您打个招呼”；仍需下一步轻量出口清理“每次交付前确保和您内部审核的终稿完全一致”等过满表述。
+- 继续复核 `logs/case2-suite-deepseek-step1-20260616-163922.md` 后确认：质量比前版好，但仍被 CRM 中“董事会资料/议案/中译英”低层事实过度锚定，模型把第一封主题写成“董事会资料翻译”，且主题带称呼、正文出现“您对版本一致性和术语准确性的要求一直很明确”等无依据客户态度推断。
+- 已修改 `scratch/run_case2_suite_multiturn_api_compare.py`：把案例2上下文改为“历史事实 -> 金融/资管资料上位主题 -> 同类行业场景扩展”的结构；新增 `peer_scene_hints`，强调治理/披露/投资者沟通/会议材料等仅作同行场景扩展，不写成客户已发生项目；Step1 前两轮明确要求区分 CRM 已知事实、行业推断和可写入邮件表达。
+- 已新增出口质检项：主题带联系人称呼、最终邮件过度锚定“董事会资料翻译”、推断客户认可/满意/要求明确，都会打质量标记。验证：`python -m py_compile scratch\run_case2_suite_multiturn_api_compare.py` 通过；`git diff --check -- scratch\run_case2_suite_multiturn_api_compare.py` 通过。
+- 当前判断：案例2目前从 CRM 读取的数据只够支撑“真实客户身份、真实联系人、近3条报价、近3条合同、近5条跟进和历史文件类型”，不足以支撑爱德华式的业务结构展开；要稳定生成接近网页 GPT 的邮件，还需要把 `mail_contract_case` 同行业脱敏案例、approved full_email 黄金邮件和更完整客户画像接入本多轮脚本。
+- 按用户补充的“老客户激活/老客户新业务”要求，已在 `scratch/run_case2_suite_multiturn_api_compare.py` 增加套装节点业务策略：Step1 曾经合作过的老客户唤醒 + 行业经验/相近成功案例方向 + 低压力转介绍；Step2 一体化服务介绍；Step3 近期成功案例；Step4 低压力收口。Step1 成稿提示同步加入“如果当前联系人不负责，可请其帮忙转给合适同事”，并新增 `asks_for_contact_details` 质检，避免模型直接索要姓名、电话、邮箱。验证：`python -m py_compile scratch\run_case2_suite_multiturn_api_compare.py` 与定向 `git diff --check` 均通过。本轮未重新调用模型。
+- 按用户“其他10个版本逐个完成并逐个 DeepSeek 测试记录 md 文件”的要求，已基于当前案例2 Step1 调整逻辑连续真实调用 DeepSeek 10 次，每次单独生成完整多轮记录 md：`logs/case2-suite-deepseek-step1-20260616-190320.md`、`190424.md`、`190544.md`、`190702.md`、`190828.md`、`190929.md`、`191037.md`、`191158.md`、`191312.md`、`191426.md`。其中 9 个质量标记为 pass，`191158.md` 命中 `overanchored_board_translation`，建议剔除；`191037.md` 主题偏长偏营销，建议人工谨慎。
+
+## 2026-06-15 邮件 V38 客户画像 + 案例库语义生成
+
+- 已按用户要求在 V38 中同时使用客户画像、邮件合同案例库和 `other/邮件AI案例1-4.docx` 的写法原则，不调用 DeepSeek、ChatGPT/OpenAI。
+- 已先只读获取 3 个当前客户画像：案例1为医疗器械熟联系人/key客户，已有患者日活动、笔译、同传/设备合作，并有经导管负责人询问触点；案例2为基金/资管老联系人，历史集中在董事会资料、议案和中英资料翻译；案例3为设备/技术资料类老联系人，历史有手册/技术资料翻译和后续手册修改支持。
+- 新增 `scratch/run_mail_v38_profile_case_semantic.py`，将上述画像转为写作切口，并显式使用 `mail_contract_case.mail_case_text` 中的脱敏案例做证明；生成并落库 V38：`version_no=38`，run_id=`b3fcd120-4cfa-415f-a7e4-2ad39ef9e824`。
+- V38 结果：12/12 成功，`llm_success_count=0`，`llm_fallback_count=0`，平均分 88.08；人工复查正文输出到 `logs/mail-v38-profile-case-library-outputs.md`。
+- 复查中发现案例3第2封误用医疗器械患者日案例作为“设备手册”证明，已用 `scratch/fix_mail_v38_manual_case.py` 原地修正为工业设备操作手册案例，并同步更新 V38 数据库行和报告。
+- 验证：`python -m py_compile scratch\run_mail_v38_profile_case_semantic.py scratch\fix_mail_v38_manual_case.py` 通过；DB 查询确认 V38 12 条、状态 success；正文风险词检查无完整公司名、内部编号、联系方式、微信二维码、变量/脚本痕迹；定向 `git diff --check` 通过。
+
+## 2026-06-15 邮件 V36 无 LLM 黄金模板语义生成
+
+- 已按人工反馈确认 V35 仍不合格：虽然命中 approved full_email，但仍可能带入完整公司名、具体客户名和过度 CRM 原文事实。
+- 已新增 `scratch/run_mail_v36_no_llm.py`，不调用 DeepSeek、ChatGPT/OpenAI，只读取数据库中 `review_status=approved` 且 `function_fragment=full_email` 的黄金模板，学习其亲和、具体、低压力写法后本地生成。
+- 已完成 V36：3 个当前案例 × 4 封套装，共 12 封，落库 `mail_iteration_run.version_no=36`，run_id=`3e0bf113-9be9-4f2f-aa92-a0270f8190b3`。
+- V36 结果：12/12 成功，`llm_success_count=0`，`llm_fallback_count=0`，平均分 98.00；正文已输出到 `logs/mail-v36-no-llm-approved-full-email-outputs.md`。
+- 验证：`python -m py_compile scratch\run_mail_v36_no_llm.py` 通过；定向 `git diff --check` 通过；报告正文未命中完整公司名、电话邮箱、微信二维码、变量痕迹等风险词。
+
 ## 2026-06-15 企微 API 输出剥离模型自加的策略标签(【直接回应】等)
 
 - 现象：实时验证/迭代详情里"第6步·AI生成回复"出现 `【始终在线·Contextual Response】`/`【直接回应】`/`【直接回应客户最后一句】`/`【模板·直接回应·简短确认】` 等说明性前缀。
@@ -604,3 +656,241 @@
 - 清理内容包括：删除时间/节日/相对日期，脱敏客户名/联系人/项目名，删除电话邮箱地址/订单下载/评价/报价 PO 等事务内容，软化不可验证数字和夸张表述，修复段落与破损标题。
 - 9 条清理后正文不足，不再作为生成素材：已关闭 `publishable`、`allowed_for_generation`、`usable_for_reply`，保留给人工复核。
 - 最终 postcheck：`changed_count=0`、`residual_count=0`；记录见 `logs/mail-full-email-rank-301-400-cleanup-20260615.md`。
+
+## 2026-06-17 三案例四阶段 DeepSeek 多轮生成纠偏
+
+- 已纠正上一轮把“其他10个版本”误做成案例2 Step1 候选版本的问题：新增通用脚本 `scratch/run_mail_3cases_multiturn_api_compare.py`，按 3 个案例 × 4 个套装阶段分别生成，而不是固定 `re_activation / 1/4 - 关系重启`。
+- 脚本每个节点均执行真实 DeepSeek Chat Completions 多轮调用：客户入口与事实边界、节点策略与递进、草稿、最终 JSON；同一案例后续节点会带入上一封最终邮件，避免重复并形成递进。
+- 已真实生成 12 个节点报告：`logs/case1-suite-deepseek-step1-20260617-083601.md`、`logs/case1-suite-deepseek-step2-20260617-084444.md`、`logs/case1-suite-deepseek-step3-20260617-083736.md`、`logs/case1-suite-deepseek-step4-20260617-083819.md`、`logs/case2-suite-deepseek-step1-20260617-083850.md`、`logs/case2-suite-deepseek-step2-20260617-083923.md`、`logs/case2-suite-deepseek-step3-20260617-083959.md`、`logs/case2-suite-deepseek-step4-20260617-084027.md`、`logs/case3-suite-deepseek-step1-20260617-084058.md`、`logs/case3-suite-deepseek-step2-20260617-084137.md`、`logs/case3-suite-deepseek-step3-20260617-084206.md`、`logs/case3-suite-deepseek-step4-20260617-084236.md`。
+- 首轮 case1 step2 命中 `banned_term:链条` 和 `asks_for_contact_details`，已补强草稿轮/最终 JSON 轮约束并只重跑该节点，最新文件 `logs/case1-suite-deepseek-step2-20260617-084444.md` 质量标记为 `pass`。
+- 验证：`python -m py_compile scratch\run_mail_3cases_multiturn_api_compare.py` 通过；`git diff --check -- scratch\run_mail_3cases_multiturn_api_compare.py` 通过。
+
+## 2026-06-17 多轮销售邮件生成标准固化
+
+- 用户复盘指出：爱德华案例1-1和案例2-1靠多轮对话逐步纠正后才接近目标，但扩展到剩余节点时，通用脚本把第2轮“理解业务结构和机会”和第4轮“亲和、人话、服务自然融入改写”替换成了节点策略卡和最终 JSON 清洗，导致已纠正要求失效。
+- 已新增 `docs/mail_multiturn_sales_email_generation_standard.md`，固化后续必须遵守的四轮结构：确认客户入口、理解业务结构和机会、初版邮件、人工口吻改写并输出最终 JSON。
+- 文档明确：`logs/sales-email-multiturn-openai-20260616-134817.md`、`logs/sales-email-multiturn-deepseek-20260616-134749.md`、`logs/case2-suite-openai-step1-20260616-171421.md`、`logs/case2-suite-deepseek-step1-20260616-171356.md` 为主要过程参考；`logs/case2-suite-deepseek-step1-20260617-083850.md` 只能作为反例。
+- 文档同时沉淀禁止项、推荐表达、三类场景四阶段目标、批量扩展执行顺序和脚本层修正建议，避免再次用“pass 禁词检查”替代真实文案质量。
+
+## 2026-06-17 案例2 Step2 标准四轮真实调用验证
+
+- 已新增 `scratch/run_case2_step2_standard_multiturn.py`，严格按 `docs/mail_multiturn_sales_email_generation_standard.md` 跑案例2 Step2：确认客户入口、理解业务结构和机会、初版一体化服务介绍邮件、亲和口吻改写并输出 JSON。
+- 脚本真实读取案例2 CRM 画像，带入上一封 Step1 最终邮件，避免第二封重复第一封，并把 Step2 目标限定为“一体化服务介绍”。
+- 已真实调用 DeepSeek 与 OpenAI/GPT，最新可用报告分别为 `logs/case2-suite-deepseek-step2-standard-20260617-100231.md`、`logs/case2-suite-openai-step2-standard-20260617-100305.md`，最终 JSON 质量标记均为 `pass`。
+- 已输出对比结论 `logs/case2-step2-standard-comparison-20260617-1005.md`：两模型第4轮均比第3轮更接近 case2 Step1 的老客户销售口吻，并完成从“唤醒试探”到“资料用途和沟通场景下的一体化配合方式”的递进。
+- 验证：`python -m py_compile scratch\run_case2_step2_standard_multiturn.py` 通过；`git diff --check -- scratch\run_case2_step2_standard_multiturn.py` 通过。
+
+## 2026-06-17 案例2 Step3/Step4 标准四轮真实调用验证
+
+- 已新增 `scratch/run_case2_steps34_standard_multiturn.py`，沿用 Step2 的标准四轮结构，专门跑案例2 Step3 和 Step4。
+- 用户补充要求已纳入脚本：前序邮件只用于避免重复，不代表客户已回复；正文不要特意提“上次/上一封/接着上封/之前聊到”，而要换切入点继续开发客户。
+- Step3 定位为“近期/同类脱敏成功案例”，Step4 定位为“低压力备用窗口”，避免连续几封都重复一体化服务介绍。
+- 已真实调用 DeepSeek 与 OpenAI/GPT。最新可用文件为 `logs/case2-suite-deepseek-step3-standard-20260617-102736.md`、`logs/case2-suite-openai-step3-standard-20260617-102448.md`、`logs/case2-suite-deepseek-step4-standard-20260617-102811.md`、`logs/case2-suite-openai-step4-standard-20260617-102545.md`，质量标记均为 `pass`。
+- 首轮 DeepSeek Step3/Step4 已废弃：`logs/case2-suite-deepseek-step3-standard-20260617-102419.md` 写了未验证客户反馈，`logs/case2-suite-deepseek-step4-standard-20260617-102521.md` 在最终正文写了“之前聊到”。脚本已补强硬门并重跑通过。
+- 对比结论见 `logs/case2-steps34-standard-comparison-20260617-1030.md`。OpenAI Step3/Step4 更稳，DeepSeek 最新版可作为备选。
+- 验证：`python -m py_compile scratch\run_case2_steps34_standard_multiturn.py` 通过；`git diff --check -- scratch\run_case2_steps34_standard_multiturn.py` 通过。
+
+## 2026-06-17 案例2知识库增强四封 DeepSeek 复跑
+
+- 已按用户要求严格参照 `docs/mail_sequence_12_step_purpose_draft.md` 和 `docs/mail_multiturn_sales_email_generation_standard.md`，在上一版基础上优化案例2老客户激活四封邮件。
+- 新脚本 `scratch/run_case2_reactivation_deepseek_with_kb.py` 固定只处理案例2 / 申万菱信 / `re_activation`，不重新定义场景；四个节点为曾经合作过唤醒、一体化服务介绍、近期成功案例、低压力备用窗口。
+- 脚本保留标准四轮：确认客户入口、理解业务结构和机会、初版邮件、人话改写并输出 JSON；Round0 真实读取 CRM、合作案例库和黄金邮件库。
+- 首轮复跑中 Step3 写了“配合下来比较顺畅”、Step4 写了“之前聊到”，已作为废弃文件记录；随后补强节点特别要求和质量门并重跑通过。
+- 最新可用 DeepSeek 报告：`logs/case2-suite-deepseek-step1-kb-standard-20260617-132510.md`、`logs/case2-suite-deepseek-step2-kb-standard-20260617-132553.md`、`logs/case2-suite-deepseek-step3-kb-standard-20260617-132639.md`、`logs/case2-suite-deepseek-step4-kb-standard-20260617-132723.md`，四封质量标记均为 `pass`。
+- 对比结论见 `logs/case2-kb-standard-deepseek-final-comparison-20260617-1328.md`。其中 Step3 明确因案例库缺少直接金融案例而按“同类活动/同类资料场景”迁移，未写客户名、合同号、金额或客户反馈。
+- 验证：`python -m py_compile scratch\run_case2_reactivation_deepseek_with_kb.py` 通过；`git diff --check -- scratch\run_case2_reactivation_deepseek_with_kb.py` 通过。
+
+## 2026-06-17 案例2信息密度与枚举结构修正
+
+- 用户指出上一版过度追求“安全/克制”，导致正文信息量不足，且 Step2/Step3 没有保留爱德华早期版本中较好的短枚举/案例清单结构。
+- 已修正 `docs/mail_multiturn_sales_email_generation_standard.md` 与 `docs/mail_sequence_12_step_purpose_draft.md`：明确邮件不是微信短句，Step1/Step4 建议 300-450 字，Step2/Step3 建议 420-700 字；Step2/Step3 允许短枚举、场景清单、案例清单。
+- 已修正 `scratch/run_case2_reactivation_deepseek_with_kb.py`：黄金邮件库同场景为空时兜底读取 approved/high-score full_email；Round1/Round2 要求提取黄金邮件的短枚举、案例块、先总后分结构；Step3 强制输出 2-3 条脱敏案例清单。
+- 最新通过样本：`logs/case2-suite-deepseek-step2-kb-standard-20260617-141337.md`、`logs/case2-suite-deepseek-step3-kb-standard-20260617-141200.md`，质量标记均为 `pass`。
+- 记录见 `logs/case2-density-and-structure-adjustment-20260617-1416.md`。注意：合作案例库直接金融/资管案例不足，Step3 目前主要依赖跨行业活动案例做行业化迁移，后续补充金融案例会更稳。
+- 验证：`python -m py_compile scratch\run_case2_reactivation_deepseek_with_kb.py` 通过；`git diff --check -- docs\mail_sequence_12_step_purpose_draft.md docs\mail_multiturn_sales_email_generation_standard.md scratch\run_case2_reactivation_deepseek_with_kb.py` 通过。
+
+## 2026-06-17 案例2最小限制与完整上下文复测
+
+- 用户进一步要求“原则上能不限制就不限制，还有案例、知识库内容给全”。已继续收窄 `scratch/run_case2_reactivation_deepseek_with_kb.py` 的出口质检，只硬拦内部编号、电话邮箱、价格折扣、占位符、前序显性承接、客户反馈编造和其他案例串场。
+- 已从硬禁中移除风格类/结构类词，如“完整解决方案”“一体化解决方案”“赋能”“链条”“流程优化”“期待您的回复”“董事会资料”等，避免模型为了避词变短、变空、变模板化。
+- 保持 Round0 给足 CRM、合作案例库和黄金邮件库长文本：合作案例库 20 条，黄金邮件库 10 条长摘录；Step2/Step3 继续允许短枚举和案例清单。
+- 已真实调用 DeepSeek 复跑案例2 Step2/Step3，最新文件：`logs/case2-suite-deepseek-step2-kb-standard-20260617-142714.md`、`logs/case2-suite-deepseek-step3-kb-standard-20260617-142820.md`，质量标记均为 `pass`。
+- 抽查结论记录在 `logs/case2-minimal-constraints-full-context-20260617-1429.md`：Step2 保留金融资料、会议、视频、活动物料等业务场景短枚举；Step3 使用 3 条脱敏案例清单，未写客户名、合同号、金额、具体日期或申万菱信当前项目。
+- 仍需后续产品化优化：黄金邮件长摘录里可能带未脱敏公司名或旧模板占位符，当前最终输出未带出，但更稳做法是在“给全文”前先脱敏，而不是重新裁短。
+- 验证：`python -m py_compile scratch\run_case2_reactivation_deepseek_with_kb.py` 通过；`git diff --check -- docs\mail_sequence_12_step_purpose_draft.md docs\mail_multiturn_sales_email_generation_standard.md scratch\run_case2_reactivation_deepseek_with_kb.py` 通过。
+
+## 2026-06-17 案例1知识库增强四封 DeepSeek 复跑
+
+- 已按用户要求先更新两份标准文档：`docs/mail_sequence_12_step_purpose_draft.md` 与 `docs/mail_multiturn_sales_email_generation_standard.md`。新增/强化要求包括：少设硬限制、给全 CRM/案例库/黄金邮件长文本、先脱敏再保留业务内容、同一 case 四封必须用同一版脚本重跑。
+- 已优化 case1/case3 部分：case1 明确医疗器械/生命科学新业务方向，覆盖医生教育、学术会议、患者教育、产品培训、市场活动、多媒体医学内容、会议同传/设备、展会活动物料和商务礼品；case3 明确新联系人场景必须先判断是否有公司层面合作基础，设备/技术资料客户应围绕手册、安装说明、售后培训、技术视频和展会资料。
+- 新增 `scratch/run_case1_new_business_deepseek_with_kb.py`，沿用 case2 已验证的知识库增强四轮结构，固定处理 case1 / 爱德华 / `new_business_promotion`。脚本真实读取 CRM、合作案例库和黄金邮件库，使用最小硬限制质量门。
+- 针对 Step3 模型多次写“客户反馈/客户后续/之前聊到”的问题，已增加真实 API 硬风险修正轮；修正过程保留在 md 报告中，不做本地字符串替换。
+- 已真实调用 DeepSeek 完成 case1 四封最终通过版：`logs/case1-suite-deepseek-step1-kb-standard-20260617-153201.md`、`logs/case1-suite-deepseek-step2-kb-standard-20260617-153253.md`、`logs/case1-suite-deepseek-step3-kb-standard-20260617-153354.md`、`logs/case1-suite-deepseek-step4-kb-standard-20260617-153450.md`，质量标记均为 `pass`。
+- 汇总文件：`logs/case1-kb-standard-deepseek-final-comparison-20260617-1536.md`。其中列明了 Step3 多个废弃文件，避免人工误用失败版本。
+- 验证：`python -m py_compile scratch\run_case1_new_business_deepseek_with_kb.py` 通过；`git diff --check -- docs\mail_sequence_12_step_purpose_draft.md docs\mail_multiturn_sales_email_generation_standard.md scratch\run_case1_new_business_deepseek_with_kb.py` 通过。
+
+## 2026-06-18 邮件 V41 案例3 Step1 body_html 仅脚本双模型直跑
+
+- 用户要求将输出契约从 `paragraphs` 改为 `body_html`，只使用本轮消息中的精简脚本，不限制段落数组，让 HTML 符合邮件排版显示。
+- 已新增 `scratch/run_mail_v41_case3_step1_body_html_script_only_compare.py`，prompt 只包含用户本轮 `subject/body_html` 脚本，不带黄金范例库、合同案例库长文本或 V39/V40 的额外上下文。
+- 已真实调用 DeepSeek `deepseek-chat` 与 OpenAI `gpt-4.1` 各一次；落库 `mail_iteration_run.version_no=41`，run_id=`595fb0b0-71ca-418f-a8a8-15ff46b70df0`，2/2 成功，真实发信关闭。
+- 报告：`logs/mail-v41-case3-step1-body-html-script-only-compare-20260618.md`，完整保存 prompt 原文、raw output、parsed JSON 和 draft_id。
+- 结果摘要：DeepSeek draft_id=`df7f955e-a0b2-4463-a559-7578047dbf85`，耗时 4049ms；OpenAI draft_id=`669d5ebf-aecc-4d5d-8e00-ea063a33b69d`，耗时 6030ms；两者基础 JSON/HTML 契约质检均为 `pass`。
+- 人工注意：基础契约通过不等于语义完全可用。DeepSeek 正文有“近期注意到贵司在海外业务拓展上持续发力”，OpenAI 引入“某大型制造企业策划国际展会宣传资料”的脚本外案例式表达，后续若严格执行“只用真实合作事实”，应把这类语义风险加入质量门。
+- 验证：`python -m py_compile scratch\run_mail_v41_case3_step1_body_html_script_only_compare.py` 通过；定向 `git diff --check` 通过；`scratch/query_iterations.py` 确认 V41 status=success、Drafts Count=2。
+
+## 2026-06-18 邮件 V42 案例3 Step1 body_html 去壳修正版
+
+- 用户指出 V41 输出出现 `SpeedAsia`，但用户脚本中没有该词。复核确认问题来自 V41 脚本的 system prompt 第一行“你是事必达 SpeedAsia 的资深B2B销售邮件主笔”，属于额外加壳。
+- 已新增 `scratch/run_mail_v42_case3_step1_body_html_no_shell_compare.py`，保留同一份用户脚本原文，系统层只保留 JSON/HTML 格式约束，并明确禁止添加用户脚本中没有出现的公司名、品牌名、团队名、发件人身份、案例、历史事实或背景信息。
+- 已真实调用 DeepSeek `deepseek-chat` 与 OpenAI `gpt-4.1` 各一次；落库 `mail_iteration_run.version_no=42`，run_id=`1fb2291d-88f4-4a06-9408-8935f8c28063`，2/2 成功，真实发信关闭。
+- 报告：`logs/mail-v42-case3-step1-body-html-no-shell-compare-20260618.md`，完整保存 neutral system prompt、user prompt、raw output、parsed JSON 和 draft_id。
+- 结果摘要：DeepSeek draft_id=`65a96388-87ab-4ea8-9107-f3dc5262414a`，耗时 4066ms，质量标记 `banned_or_out_of_scope_term:近期注意到`；OpenAI draft_id=`c042d45a-958a-4ad5-b268-8a03b260f01d`，耗时 6187ms，基础字段质检 `pass`。
+- 修正结论：V42 两家输出均未再出现 `SpeedAsia` 或 `事必达`。但语义上仍需人工注意：DeepSeek 仍有“近期注意到”，OpenAI 写了“此前，我们曾为孚乐率的海外发布活动提供内容支持”，这仍属于无真实 history 支撑的事实扩写，后续应进一步强化事实门。
+- 验证：`python -m py_compile scratch\run_mail_v42_case3_step1_body_html_no_shell_compare.py` 通过；定向 `git diff --check` 通过；`scratch/query_iterations.py` 确认 V42 status=success、Drafts Count=2。
+
+## 2026-06-18 邮件 V43 案例3 Step1 body_html 纯用户脚本直跑
+
+- 用户进一步要求不要再额外加任何内容，包括“不得添加脚本外公司/品牌/身份/案例”这类约束也不要加，必须给什么脚本就直接运行。
+- 已新增 `scratch/run_mail_v43_case3_step1_body_html_user_prompt_only_compare.py`，API `messages` 只包含一条 `user` 消息，内容即用户脚本原文；没有 system prompt，没有身份、品牌、禁词、案例或事实门补充。
+- 首次运行中 DeepSeek 成功，OpenAI 因 SSL EOF 网络错误失败；随后新增 `scratch/retry_mail_v43_openai_user_prompt_only.py`，只补跑 V43 中失败的 OpenAI draft，调用结构仍为单条 user prompt。
+- 最终落库 `mail_iteration_run.version_no=43`，run_id=`15e0dc06-30b3-4ada-ba93-b9dfd3a28e64`，2/2 成功，真实发信关闭。
+- 报告：`logs/mail-v43-case3-step1-body-html-user-prompt-only-compare-20260618.md`，完整保存 user prompt 原文、raw output、parsed JSON 和 draft_id。
+- 结果摘要：DeepSeek draft_id=`ae578f30-3c3c-4588-b978-4c7fddf532db`，耗时 4082ms；OpenAI draft_id=`b079096e-a3be-4579-b7c4-0697cd07a65d`，补跑耗时 6733ms；基础 JSON/HTML 字段质检均为 `pass`。
+- 注意：V43 是严格按用户要求不加任何额外 prompt 的对照版，因此模型自由发挥更明显，例如 DeepSeek 输出“我是王磊/最近/客户反馈”，OpenAI 输出“多个设备说明书和操作手册/某大型装备制造企业”等脚本外事实扩写；这些不是系统层注入，而是模型基于用户脚本自由生成。
+- 验证：`python -m py_compile scratch\run_mail_v43_case3_step1_body_html_user_prompt_only_compare.py scratch\retry_mail_v43_openai_user_prompt_only.py` 通过；定向 `git diff --check` 通过；`scratch/query_iterations.py` 确认 V43 status=success、Drafts Count=2。
+
+## 2026-06-18 邮件 V44 案例3 Step1 精确脚本直跑
+
+- 用户指出 V43 仍把“只拿以上脚本，按上述规则完成v41”这类执行句传给了模型；本轮重新按用户新贴的脚本执行，并明确末尾“以上做v43测试...”不传给模型。
+- 已新增 `scratch/run_mail_v44_case3_step1_body_html_exact_prompt_only_compare.py`，API `messages` 仍只包含一条 `user` 消息；没有 system prompt；`SCRIPT_ONLY_PROMPT` 只到“风格要求：像资深销售写给熟悉的客户公司新联系人，而不是营销模板”结束。
+- 初次运行 DeepSeek 成功，OpenAI 因同类 SSL EOF 网络错误失败；随后新增 `scratch/retry_mail_v44_openai_exact_prompt_only.py`，只补跑 V44 中失败的 OpenAI draft，调用结构仍为单条 user prompt。
+- 最终落库 `mail_iteration_run.version_no=44`，run_id=`0a6ca544-34d0-435a-b56b-3d4de0c13acf`，2/2 成功，真实发信关闭。
+- 报告：`logs/mail-v44-case3-step1-body-html-exact-prompt-only-compare-20260618.md`，已确认报告和脚本全文均不包含用户末尾执行说明。
+- 结果摘要：DeepSeek draft_id=`d4cc399d-a17a-4e79-8d8f-f3833ec630d4`，耗时 3706ms；OpenAI draft_id=`e508d796-9d21-4ca6-b5d7-a624ddf2ebf8`，补跑耗时 5121ms；基础 JSON/HTML 字段质检均为 `pass`。
+- 验证：`python -m py_compile scratch\run_mail_v44_case3_step1_body_html_exact_prompt_only_compare.py scratch\retry_mail_v44_openai_exact_prompt_only.py` 通过；定向 `git diff --check` 通过；`scratch/query_iterations.py` 确认 V44 status=success、Drafts Count=2；`Select-String` 确认报告与脚本不含末尾执行说明关键词。
+
+## 2026-06-18 邮件 V45 案例3 Step1 结构脚本无输出契约直跑
+
+- 用户本轮去掉了 `只输出 JSON`/`subject/body_html` 输出契约，只给结构脚本和 AI 指令，并要求末尾执行说明不传、不要加其他。
+- 因 `version_no=44` 已存在，本轮落库为 `version_no=45`，报告中标明这是结构脚本无输出契约对照测试。
+- 已新增 `scratch/run_mail_v45_case3_step1_body_html_exact_prompt_no_contract_compare.py`，API `messages` 只包含一条 `user` 消息；没有 system prompt；没有 `response_format`；没有额外输出 JSON 行；没有末尾执行说明。
+- 已真实调用 DeepSeek `deepseek-chat` 与 OpenAI `gpt-4.1` 各一次；落库 `mail_iteration_run.version_no=45`，run_id=`cd3c4d34-169a-4d0f-80ae-e9d241038a2e`，2/2 成功，真实发信关闭。
+- 报告：`logs/mail-v45-case3-step1-exact-prompt-no-contract-compare-20260618.md`，完整保存 user prompt 原文和两家 raw output。
+- 结果摘要：DeepSeek draft_id=`146448c6-a49c-42ec-9511-8396247f8575`，耗时 5370ms；OpenAI draft_id=`5dcd3132-4162-4787-ae8b-b1ec959c1c26`，耗时 4823ms。
+- 观察：由于没有输出契约和 API `response_format`，两家都返回普通邮件文本，`parsed_json=null`；这符合本轮“不要加其他”的输入边界，但不适合直接进入 `subject/body_html` 自动落库链路。
+- 验证：`python -m py_compile scratch\run_mail_v45_case3_step1_body_html_exact_prompt_no_contract_compare.py` 通过；定向 `git diff --check` 通过；`scratch/query_iterations.py` 确认 V45 status=success、Drafts Count=2；关键词检查确认 prompt/报告不含末尾执行说明和 `只输出 JSON` 行。
+- 已按用户要求把输出结果填写到对应位置：新增 `scratch/backfill_mail_v45_outputs_to_fields.py`，不重跑模型，仅从 V45 raw output 回填 `final_subject` / `final_body_html`。
+- 回填结果：DeepSeek 识别出主题“关于孚乐率过往项目的支持与后续合作可能”，正文 HTML 长度 580；OpenAI raw output 未给主题，因此主题保持空，只回填正文 HTML 长度 462。报告末尾已追加“回填字段”节。
+
+## 2026-06-18 邮件 V46 老客户多业务开发 4 脚本直跑
+
+- 用户要求读取 `C:\Users\Admin\Desktop\老客户多业务开发.txt` 的 4 个脚本，按 V45 同样方式测试，最终输出 8 个邮件，并把输出结果填写到对应位置。
+- 已新增 `scratch/run_mail_v46_4scripts_exact_prompt_compare.py`：
+  - 运行时读取桌面 txt。
+  - 按 `第1封` 到 `第4封` 拆分 4 个脚本。
+  - 每个脚本作为唯一 `user` prompt。
+  - 不加 system prompt、不加 `response_format`、不加输出 JSON 契约、不补变量。
+  - DeepSeek 和 OpenAI/GPT 各跑 4 个脚本，共 8 次模型调用。
+  - 直接从 raw output 提取主题和正文，回填 `final_subject` / `final_body_html`。
+- 已落库 `mail_iteration_run.version_no=46`，run_id=`baed295e-e557-4c4a-a085-9b054ef35b2e`，8/8 成功，真实发信关闭。
+- 报告：`logs/mail-v46-4scripts-exact-prompt-compare-20260618.md`，完整保存源文件全文、拆分后的 4 个 prompt、8 条 raw output 和回填字段。
+- 结果摘要：
+  - Step1 DeepSeek draft=`46fd479f-3ed8-4765-8e4e-7a4f61a7f7ae`，OpenAI draft=`79dbfc2b-8cc3-4b62-8f2d-17a53aebbfe8`。
+  - Step2 DeepSeek draft=`75eb9413-9163-47fc-8d1a-a4c0dbb9fc44`，OpenAI draft=`c4c3b267-4d8a-4841-8a4a-d5ce7443dae6`。
+  - Step3 DeepSeek draft=`b6eb0eaf-5c0c-4595-bb44-48be52c2d19e`，OpenAI draft=`fd478c98-9af8-4b97-9c27-83da65a811e1`。
+  - Step4 DeepSeek draft=`14ecef76-7be2-4a96-963f-314748902eb6`，OpenAI draft=`4e65454d-7dde-45b9-a8b4-8bfe2adb84de`。
+- 注意：因为按 V45 口径未补变量，部分输出主题仍保留 `{company_name}`、`{industry}` 等占位符；这是源脚本未提供变量值且未加额外上下文的直接结果。
+- 验证：`python -m py_compile scratch\run_mail_v46_4scripts_exact_prompt_compare.py` 通过；定向 `git diff --check` 通过；DB 查询确认 V46 status=success、Drafts Count=8，8 条 draft 均有 `final_subject` 和 `final_body_html`。
+
+## 2026-06-18 邮件质量诊断模板区收窄与直接脚本生成
+
+- 已按用户要求修改邮件质量诊断页“三大场景全阶段脚本模板（可编辑保存）”区域：界面只显示 `AI指令` 和 `发送间隔` 两个字段；目的说明、变量说明、结构脚本等旧字段不再在界面渲染。
+- `发送间隔` 改为数字输入，后端返回 `send_interval_days` 和浮动说明 `距今天多少天后发送`；默认按 Sequence 累计天数展示为第 1/2/3/4 封 0/7/17/27 天，保存时写回数字。
+- `AI指令` 保存仍写入 `mail_sequence_template.ai_instruction_script`，保存失败会在界面显示错误；后端保留旧字段兼容，但新界面不再发送旧字段。
+- 草稿生成链路已改为只取 `ai_instruction_script`，替换 `{customer_name}`、`{company_name}`、`{history}`、`{industry}` 后直接作为 user prompt 调用 LLM，不再自动拼接系统 prompt、CRM 原始摘要、黄金范例库、合同案例库、边界规则或 JSON 输出约束。
+- 变量处理当前为本地归一化：`{industry}` 沿用现有 `_mail_generation_industry_for_prompt` 行业判断逻辑；`{customer_name}`、`{company_name}`、`{history}` 先用 CRM/profile 文本做轻量归一化。尚未新增 deepseek14b 变量预处理调用，避免本轮为变量再引入一层 prompt。
+- 邮件草稿 LLM 调用已支持纯文本输出：不再强制 `response_format=json_object`；后端会从 JSON、`body_html`、`paragraphs`、`邮件主题/正文` 标签或纯正文中提取 `final_subject/final_body_html`。
+- 验证：`python -m py_compile backend\main.py` 通过；`git diff --check -- backend/main.py frontend/index.html` 通过；`rg` 确认模板区不再出现旧控件 id 和“变量说明/结构脚本/保存目的”等渲染文本。
+
+## 2026-06-18 邮件 V47 老客户公司新联系人 4 脚本变量替换后直跑
+
+- 用户确认中间变量后，已读取 `C:\Users\Admin\Desktop\老客户公司新联系人.txt` 的 4 个脚本，先替换案例3客户联系人变量，再按 V46/V45 口径直跑。
+- 新增 `scratch/run_mail_v47_new_contact_replaced_prompt_compare.py`：
+  - 替换变量：`{customer_name}=萧小姐`、`{history}=为客户提供笔译、排版印刷服务`、`{industry}=工业设备/制造客户`、`{case_company_1}=某跨国制造集团`、`{case_company_2}=某大型工业设备企业`、`{case_company_3}=某知名空气处理设备厂商`。
+  - 每个替换后脚本作为唯一 `user` prompt。
+  - 无 system prompt、无 `response_format`、无额外输出契约。
+  - DeepSeek 与 OpenAI/GPT 各跑 4 个脚本，共 8 封。
+  - 直接从 raw output 提取主题和正文，回填 `final_subject` / `final_body_html`。
+- 已落库 `mail_iteration_run.version_no=47`，run_id=`bd54285e-e125-41c7-b2eb-5a9351f72fd9`，8/8 成功，真实发信关闭。
+- 报告：`logs/mail-v47-new-contact-replaced-prompt-compare-20260618.md`，完整保存源文件全文、变量替换表、替换后脚本、8 条 raw output 和回填字段。
+- 结果摘要：
+  - Step1 DeepSeek draft=`ea476090-6985-424d-bf6c-7b4405cee715`，OpenAI draft=`ca8f7b6b-43b0-46be-a6ae-21afa41679d2`。
+  - Step2 DeepSeek draft=`f33743cb-726b-4f51-92af-44f4815c4d4b`，OpenAI draft=`918165a6-438f-44ac-8f8d-c20c0ec9898e`。
+  - Step3 DeepSeek draft=`cf3c6241-e16b-4537-994c-9f515742f91e`，OpenAI draft=`26ac163e-d02e-48b8-8653-a183ec320876`。
+  - Step4 DeepSeek draft=`bd4195ad-931c-47d2-b071-fbb01adba979`，OpenAI draft=`de183c38-4af6-40a1-b416-3dfacc2d0063`。
+- 注意：OpenAI 四封 raw output 未显式给主题，因此 `final_subject` 为空但 `final_body_html` 已回填；DeepSeek 四封均提取到主题。
+- 验证：`python -m py_compile scratch\run_mail_v47_new_contact_replaced_prompt_compare.py` 通过；`scratch/query_iterations.py 47` 确认 V47 status=success、Drafts Count=8；定向 `git diff --check` 通过。
+
+## 2026-06-18 邮件 V48 老客户激活 4 脚本变量替换后直跑
+
+- 用户要求读取 `C:\Users\Admin\Desktop\老客户激活.txt` 的 4 个脚本，按 V47 一样测试，最终输出 8 个邮件并填写到对应位置；客户为案例2客户联系人。
+- 新增 `scratch/run_mail_v48_reactivation_replaced_prompt_compare.py`：
+  - 替换变量：`{customer_name}=周希`、`{company_name}=申万菱信`、`{industry}=金融/资管客户`、`{history}=为客户提供董事会资料、议案及中英文资料笔译服务`、`{business_lines}=笔译、会议沟通支持、多语言资料、本地化排版、多媒体内容及对外展示支持`、`{case_company_1}=某大型金融机构`、`{case_company_2}=某跨国资管集团`、`{case_company_3}=某上市金融服务集团`。
+  - 每个替换后脚本作为唯一 `user` prompt。
+  - 无 system prompt、无 `response_format`、无额外输出契约。
+  - DeepSeek 与 OpenAI/GPT 各跑 4 个脚本，共 8 封。
+  - 直接从 raw output 提取主题和正文，回填 `final_subject` / `final_body_html`。
+- 已落库 `mail_iteration_run.version_no=48`，run_id=`3a1b84db-d46e-49ee-959b-53513b1b0bc2`，8/8 成功，真实发信关闭。
+- 报告：`logs/mail-v48-reactivation-replaced-prompt-compare-20260618.md`，完整保存源文件全文、变量替换表、替换后脚本、8 条 raw output 和回填字段。
+- 结果摘要：
+  - Step1 DeepSeek draft=`e1f48164-9323-46fd-86b8-5d000228efff`，OpenAI draft=`381571ee-9002-4baf-87ec-4bf834360223`。
+  - Step2 DeepSeek draft=`aee7bc01-2b28-4dc0-bf20-2036b468c168`，OpenAI draft=`345d13ec-c1d0-4478-8f61-1241477a45c1`。
+  - Step3 DeepSeek draft=`d9309b22-7e34-4ea1-83b7-4e782d955cbc`，OpenAI draft=`141d99ae-365f-4c1d-aa5a-b568ec3a5817`。
+  - Step4 DeepSeek draft=`61633d97-9563-43dd-8c73-2a4655c9b386`，OpenAI draft=`0f01346c-a906-4efd-8355-a1314f0ddcc3`。
+- 注意：OpenAI 第1封和第4封未显式给主题，因此 `final_subject` 为空但 `final_body_html` 已回填；其余 6 封均提取到主题。
+- 验证：`python -m py_compile scratch\run_mail_v48_reactivation_replaced_prompt_compare.py` 通过；`scratch/query_iterations.py 48` 确认 V48 status=success、Drafts Count=8；定向 `git diff --check` 通过。
+
+## 2026-06-18 邮件 V49 案例1老客户多业务开发 4 脚本变量替换后直跑
+
+- 用户要求读取 `C:\Users\Admin\Desktop\老客户多业务开发.txt` 的 4 个脚本，按 V48 一样测试，最终输出 8 个邮件并填写到对应位置；客户为案例1客户联系人。
+- 新增 `scratch/run_mail_v49_case1_multibusiness_replaced_prompt_compare.py`：
+  - 替换变量：`{customer_name}=Michelle Li`、`{company_name}=爱德华`、`{industry}=医疗器械/生命科学客户`、`{history}=为客户提供笔译、同传设备及会议口译相关支持`、`{business_lines}=笔译、会议同传及设备支持、多语言资料、本地化排版、多媒体医学内容、展会活动物料及商务礼品支持`、`{case_studies}=3条医疗器械/生命科学脱敏案例`。
+  - 每个替换后脚本作为唯一 `user` prompt。
+  - 无 system prompt、无 `response_format`、无额外输出契约。
+  - DeepSeek 与 OpenAI/GPT 各跑 4 个脚本，共 8 封。
+  - 直接从 raw output 提取主题和正文，回填 `final_subject` / `final_body_html`。
+- 已落库 `mail_iteration_run.version_no=49`，run_id=`a75a3502-ab52-44df-957b-7c21e61db0bc`，8/8 成功，真实发信关闭。
+- 报告：`logs/mail-v49-case1-multibusiness-replaced-prompt-compare-20260618.md`，完整保存源文件全文、变量替换表、替换后脚本、8 条 raw output 和回填字段。
+- 结果摘要：
+  - Step1 DeepSeek draft=`25c51e4c-d2b7-4d46-bc98-402af5155193`，OpenAI draft=`9fba7eeb-a68e-4638-b3b5-03541fdd69dc`。
+  - Step2 DeepSeek draft=`9a01e320-9c82-4f91-a14c-deaefb16a448`，OpenAI draft=`8ad0cb69-40f7-4fcc-a0c8-2187182ea3b8`。
+  - Step3 DeepSeek draft=`67056c7d-baa7-4517-985b-35abe3db2320`，OpenAI draft=`1a86dda0-9c6b-4938-869b-03045530331b`。
+  - Step4 DeepSeek draft=`61732028-43e1-434a-9a32-1ba3eeb55751`，OpenAI draft=`07e02a90-d0a1-4af3-9798-f49d9bd7b71a`。
+- 注意：8 封均提取到主题和正文；Step3 原脚本未包含客户姓名变量，故两家 Step3 质量备注为 `missing_known_greeting`，但草稿状态仍为 success 且字段已回填。
+- 验证：`python -m py_compile scratch\run_mail_v49_case1_multibusiness_replaced_prompt_compare.py` 通过；`scratch/query_iterations.py 49` 确认 V49 status=success、Drafts Count=8；定向 `git diff --check` 通过。
+
+## 2026-06-18 邮件质量诊断模板保存按钮修复
+
+- 针对用户反馈“三大场景全阶段脚本模板区域点击保存没有用”，检查前端保存链路：按钮调用 `PUT /api/v1/mail/sequence-templates/{scenario}/{suite_step}`，后端路由存在并保存 `ai_instruction_script` / `send_interval_days`。
+- 修复 `frontend/index.html`：AI 指令保存按钮从包裹 textarea 的 `label` 中拆出，避免长文本区域和 label 点击行为影响按钮；AI 指令与发送间隔保存按钮都增加按钮级“保存中/保存失败”反馈。
+- 继续按用户反馈收窄模板展示：AI 指令编辑框默认高度从大块展示压缩为 8rem 内部滚动，卡片头部隐藏版本号和更新时间，只保留阶段识别与两个编辑字段。
+- 验证：抽取 `frontend/index.html` 内联脚本后执行 `node --check` 通过。
+
+## 2026-06-18 邮件质量诊断模板改为 3 案例 × 4 封
+
+- 针对用户反馈“每个案例要有不同版本，相当于 12 个模板，现在 3 个案例模板都一样”，将模板维度从旧的 `scenario + suite_step` 扩展为 `customer_key + scenario + suite_step`。
+- `backend/database.py`：`MailSequenceTemplate` 增加 `customer_key` 字段，唯一键改为客户编号 + 场景 + 阶段。
+- `backend/main.py`：初始化表时补 `customer_key` 列，移除旧 `scenario + suite_step` 唯一约束，新增客户维度唯一索引；`_ensure_mail_sequence_templates` 改为按 `MAIL_CURRENT_DEMO_CASES` 生成 3 个当前案例各 4 封模板；草稿生成优先读取当前 `customer_key` 对应模板，找不到再回落全局模板。
+- `frontend/index.html`：模板选择器从“场景”改为“案例”，接口读取 `templates_by_case`，保存时带 `customer_key` 查询参数，避免不同案例互相覆盖模板。
+- 针对线上仍可能存在旧前端缓存或旧保存请求不带 `customer_key` 的情况，`PUT /api/v1/mail/sequence-templates/{scenario}/{suite_step}` 增加后端兜底：按当前 3 个案例的默认场景自动映射到对应 `customer_key`，缺行则新建案例模板行，不覆盖旧共享历史模板。
+- 按用户要求移除模板区独立案例下拉：模板区现在跟随上方当前案例卡片自动联动，点击上方案例后下方直接显示该案例 4 个模板；模板区仅显示当前联动案例标签、刷新按钮和保存状态。
+- 验证：`python -m py_compile backend\main.py backend\database.py` 通过；抽取 `frontend/index.html` 内联脚本 `node --check` 通过；`SKIP_DB_PATCH=1` 导入 `main` 并确认模板路由注册通过；定向 `git diff --check` 通过。
+
+## 2026-06-18 mail-suite 独立页接入新模板链路与无邮箱草稿生成
+
+- 针对 `https://api.speedasia.net/static/mail-suite.html?id=KH33879-001` 数据接口 4 封均失败 `valid recipient email is required` 的问题，确认原因是 CRM 邮箱在接口展示层被 `sanitize_text` 脱敏为 `***EMAIL***` 后又被当作生成收件地址校验。
+- `backend/main.py` 新增 review-only 草稿占位邮箱逻辑：页面继续展示脱敏邮箱；仅在草稿生成内部、且真实发信关闭时，用客户域名生成 `draft-only+客户编号@客户域名` 作为安全门校验用地址。
+- `backend/main.py` 避免占位邮箱污染称呼：`draft-only+...` 不再用于推断收件人姓名，称呼仍从 CRM 联系人/公司/客户编号取。
+- `backend/main.py` 增加模板回落：非当前 3 个案例客户如 `KH33879-001` 没有专属 `customer_key` 模板时，按同场景同阶段读取已保存模板，确保独立页也使用“AI 指令直接替换变量后发给 LLM”的新流程。
+- 验证：`python -m py_compile backend\main.py backend\database.py` 通过；`SKIP_DB_PATCH=1` 导入 `main` 并断言 review-only 占位邮箱 helper 通过；定向 `git diff --check` 通过。

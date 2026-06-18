@@ -25,6 +25,7 @@ from time import perf_counter
 from typing import Any
 from urllib.parse import quote, urlparse
 from sqlalchemy import and_, or_, text, func
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, defer
 from pydantic import BaseModel
 from config import settings
@@ -634,6 +635,7 @@ def auto_patch_db():
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS mail_sequence_template ("
             "template_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "customer_key VARCHAR(120) NOT NULL DEFAULT '',"
             "scenario VARCHAR(80) NOT NULL,"
             "suite_step INTEGER NOT NULL,"
             "scenario_label_cn VARCHAR(80) NOT NULL,"
@@ -648,11 +650,13 @@ def auto_patch_db():
             "updated_by VARCHAR(120),"
             "created_at TIMESTAMP DEFAULT now(),"
             "updated_at TIMESTAMP DEFAULT now(),"
-            "CONSTRAINT uq_mail_sequence_template_scenario_step UNIQUE(scenario, suite_step)"
+            "CONSTRAINT uq_mail_sequence_template_customer_scenario_step UNIQUE(customer_key, scenario, suite_step)"
             ");"
         ))
+        db.execute(text("ALTER TABLE mail_sequence_template ADD COLUMN IF NOT EXISTS customer_key VARCHAR(120) NOT NULL DEFAULT '';"))
         db.execute(text("ALTER TABLE mail_sequence_template ADD COLUMN IF NOT EXISTS ai_instruction_script TEXT NOT NULL DEFAULT '';"))
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mst_scenario_step ON mail_sequence_template (scenario, suite_step);"))
+        db.execute(text("ALTER TABLE mail_sequence_template DROP CONSTRAINT IF EXISTS uq_mail_sequence_template_scenario_step;"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mst_customer_scenario_step ON mail_sequence_template (customer_key, scenario, suite_step);"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS mail_customer_suite_feedback ("
             "feedback_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -1416,6 +1420,7 @@ class RuntimeLlmSettings(BaseModel):
 class MailSequenceTemplateUpdateRequest(BaseModel):
     purpose_cn: str | None = None
     send_timing_cn: str | None = None
+    send_interval_days: int | None = None
     script_template: str | None = None
     ai_instruction_script: str | None = None
     updated_by: str | None = None
@@ -1491,6 +1496,8 @@ class MailDraftIntentProfile(BaseModel):
     admitted_fewshot_title: str | None = None
     admitted_fewshot_content: str | None = None
     admitted_fewshot_examples: list[dict[str, Any]] = []
+    prompt_full_email_examples: list[dict[str, Any]] = []
+    prompt_contract_case_examples: list[dict[str, Any]] = []
     commercial_terms: MailDraftCommercialTerms
 
 class MailDraftAssembledContent(BaseModel):
@@ -3469,6 +3476,105 @@ def _mail_approved_full_email_gold_seed_rows(
     ).limit(2000).all()
     approved = [row for row in rows if str(row.fragment_id) in approved_ids]
     return approved[:max(int(limit), 1)]
+
+
+def _mail_full_email_gold_examples_for_prompt(
+    db: Session,
+    *,
+    scenario: str,
+    min_score: Decimal,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    full_email_min_score = min(min_score, Decimal("0.80"))
+    approved_ids = {
+        sanitize_text(str(row.fragment_id)).strip()
+        for row in db.query(MailGoldSeedReview).filter(
+            MailGoldSeedReview.review_status == "approved"
+        ).all()
+        if sanitize_text(str(row.fragment_id)).strip()
+    }
+    rows = db.query(EmailFragmentAsset).filter(
+        EmailFragmentAsset.source_type == "mail_gold_seed",
+        EmailFragmentAsset.scenario_label == sanitize_text(scenario).strip(),
+        EmailFragmentAsset.function_fragment == "full_email",
+        EmailFragmentAsset.status.in_(sorted(MAIL_FEWSHOT_READY_STATUSES)),
+        EmailFragmentAsset.useful_score >= full_email_min_score,
+    ).order_by(
+        EmailFragmentAsset.useful_score.desc(),
+        EmailFragmentAsset.effect_score.desc(),
+        EmailFragmentAsset.updated_at.desc(),
+    ).limit(200).all()
+    rows = sorted(
+        rows,
+        key=lambda item: (
+            1 if str(item.fragment_id) in approved_ids else 0,
+            float(item.useful_score or 0),
+            float(item.effect_score or 0),
+        ),
+        reverse=True,
+    )
+    items = []
+    for row in rows[: max(int(limit), 1)]:
+        payload = _mail_fewshot_to_dict(row, full_email_min_score)
+        snapshot = payload.get("source_snapshot") if isinstance(payload.get("source_snapshot"), dict) else {}
+        payload["review_status"] = "approved" if str(row.fragment_id) in approved_ids else sanitize_text(snapshot.get("review_status")) or "unreviewed"
+        items.append(payload)
+    return items
+
+
+def _mail_contract_case_examples_for_prompt(
+    db: Session,
+    *,
+    industry: str,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    rows = db.query(MailContractCase).filter(
+        MailContractCase.mail_case_text.isnot(None),
+        MailContractCase.mail_case_text != "",
+    ).order_by(
+        MailContractCase.total_money.desc().nullslast(),
+        MailContractCase.contract_time.desc().nullslast(),
+    ).limit(300).all()
+    industry_text = sanitize_text(industry)
+    if "工业" in industry_text or "设备" in industry_text or "制造" in industry_text:
+        tokens = ("设备", "手册", "说明", "操作", "培训", "技术", "制造", "工业", "维修", "安装")
+    elif "医疗" in industry_text or "生命科学" in industry_text:
+        tokens = ("医疗", "医学", "器械", "培训", "会议", "患者", "医生", "说明")
+    elif "金融" in industry_text:
+        tokens = ("金融", "基金", "银行", "会议", "资料", "路演", "报告")
+    else:
+        tokens = ("资料", "会议", "手册", "培训", "多媒体", "展会", "印刷")
+
+    def rank(row: MailContractCase) -> tuple[int, int, float]:
+        text_value = " ".join(
+            sanitize_text(value) or ""
+            for value in [
+                row.mail_case_text,
+                row.contract_description,
+                row.product_name_all,
+                row.business_type,
+                row.industry_inferred,
+            ]
+        )
+        token_hits = sum(1 for token in tokens if token and token in text_value)
+        business_line = sanitize_text(row.business_line_inferred)
+        line_score = 1 if business_line in {"translation", "multimedia", "printing", "interpretation", "exhibition"} else 0
+        amount = float(row.total_money or 0)
+        return (token_hits, line_score, amount)
+
+    ranked = sorted(rows, key=rank, reverse=True)
+    selected = []
+    seen_texts: set[str] = set()
+    for row in ranked:
+        text_key = sanitize_text(row.mail_case_text)
+        if text_key and text_key in seen_texts:
+            continue
+        if text_key:
+            seen_texts.add(text_key)
+        selected.append(row)
+        if len(selected) >= max(int(limit), 1):
+            break
+    return [_local_contract_case_to_dict(row) for row in selected]
 
 
 def _mail_fewshot_rank(item: EmailFragmentAsset, suite_step: int) -> tuple:
@@ -5675,6 +5781,8 @@ def _build_mail_draft_intent_profile(
     commercial_terms: MailDraftCommercialTerms,
     sequence_template: dict[str, Any] | None = None,
     admitted_fewshots: list[dict] | None = None,
+    prompt_full_email_examples: list[dict[str, Any]] | None = None,
+    prompt_contract_case_examples: list[dict[str, Any]] | None = None,
 ) -> MailDraftIntentProfile:
     customer_key = (payload.customer_key or "").strip()
     contact_email = (payload.contact_email or "").strip()
@@ -5689,7 +5797,7 @@ def _build_mail_draft_intent_profile(
     crm_profile = _lookup_mail_crm_profile(customer_key, contact_email)
     recipient_name = (
         _mail_contact_name_from_email(contact_email)
-        if contact_email and "@" in contact_email
+        if contact_email and "@" in contact_email and not _mail_is_review_only_draft_email(contact_email)
         else sanitize_text(crm_profile.get("contact_name"))
         or sanitize_text(crm_profile.get("company_name"))
         or sanitize_text(customer_key)
@@ -5732,6 +5840,8 @@ def _build_mail_draft_intent_profile(
         admitted_fewshot_title=sanitize_text((admitted_fewshot or {}).get("title")),
         admitted_fewshot_content=_mail_sanitize_fewshot_reference_for_draft((admitted_fewshot or {}).get("content")),
         admitted_fewshot_examples=admitted_fewshots or ([admitted_fewshot] if admitted_fewshot else []),
+        prompt_full_email_examples=prompt_full_email_examples or [],
+        prompt_contract_case_examples=prompt_contract_case_examples or [],
         commercial_terms=commercial_terms,
     )
 
@@ -5821,6 +5931,19 @@ def _mail_demo_contact_email_for_draft(value: str | None) -> str:
     if not email or email == "***EMAIL***" or "@" not in email:
         return ""
     return email
+
+
+def _mail_review_only_draft_contact_email(customer_key: str, crm_profile: dict[str, Any]) -> str:
+    for domain in crm_profile.get("customer_domains") or []:
+        normalized = _normalize_mail_recipient_domain(domain)
+        if normalized:
+            key_part = re.sub(r"[^a-z0-9]+", "-", sanitize_text(customer_key).lower()).strip("-") or "customer"
+            return f"draft-only+{key_part}@{normalized}"
+    return ""
+
+
+def _mail_is_review_only_draft_email(value: str | None) -> bool:
+    return bool(re.match(r"^draft-only\+", (value or "").strip().lower()))
 
 
 _MAIL_SEQUENCE_STEP_LABEL_CN = {
@@ -6422,12 +6545,39 @@ def _mail_sequence_template_default_version(scenario: str, suite_step: int) -> i
     )
 
 
-def _default_mail_sequence_template_payload(scenario: str, suite_step: int, step: Any | None = None) -> dict[str, Any]:
+def _mail_sequence_template_case_label(customer_key: str | None) -> str:
+    normalized = sanitize_text(customer_key or "").strip().upper()
+    if not normalized:
+        return "全局默认"
+    for current_case in MAIL_CURRENT_DEMO_CASES:
+        if current_case["real_customer_key"].upper() == normalized:
+            return sanitize_text(current_case.get("demo_label")) or normalized
+    return normalized
+
+
+def _mail_sequence_template_customer_key_for_scenario(scenario: str) -> str:
+    scenario_norm = sanitize_text(scenario).strip()
+    for current_case in MAIL_CURRENT_DEMO_CASES:
+        if current_case.get("default_scenario") == scenario_norm:
+            return sanitize_text(current_case.get("real_customer_key")).strip().upper()
+    return ""
+
+
+def _default_mail_sequence_template_payload(
+    scenario: str,
+    suite_step: int,
+    step: Any | None = None,
+    customer_key: str | None = "",
+) -> dict[str, Any]:
     scenario_cn = _MAIL_SCENARIO_CHINESE.get(scenario, scenario)
     commercial_template = _mail_commercial_sequence_template_payload(scenario, suite_step)
     purpose = _MAIL_CTA_CN_BY_STEP.get((scenario, suite_step)) or sanitize_text(getattr(step, "objective", "")) or "按当前场景推进客户沟通。"
     version_no = _mail_sequence_template_default_version(scenario, suite_step)
+    normalized_customer_key = sanitize_text(customer_key or "").strip().upper()
+    if not normalized_customer_key:
+        normalized_customer_key = _mail_sequence_template_customer_key_for_scenario(scenario)
     return {
+        "customer_key": normalized_customer_key,
         "scenario": scenario,
         "suite_step": suite_step,
         "scenario_label_cn": scenario_cn,
@@ -6441,15 +6591,44 @@ def _default_mail_sequence_template_payload(scenario: str, suite_step: int, step
     }
 
 
+def _mail_sequence_default_send_interval_days(scenario: str, suite_step: int) -> int:
+    try:
+        interval = get_mail_sequence_step_interval(scenario, int(suite_step))
+        return max(0, int(interval.cumulative_min_days_from_sequence_start))
+    except Exception:
+        return {1: 0, 2: 7, 3: 17, 4: 27}.get(int(suite_step or 1), 0)
+
+
+def _mail_sequence_template_send_interval_days(value: str | None, scenario: str, suite_step: int) -> int:
+    text_value = sanitize_text(value or "").strip()
+    if text_value:
+        exact_number = re.fullmatch(r"\d+", text_value)
+        if exact_number:
+            return max(0, int(exact_number.group(0)))
+        explicit_from_today = re.search(r"距今天\s*(\d+)\s*天", text_value)
+        if explicit_from_today:
+            return max(0, int(explicit_from_today.group(1)))
+    return _mail_sequence_default_send_interval_days(scenario, suite_step)
+
+
 def _serialize_mail_sequence_template(row) -> dict[str, Any]:
+    send_interval_days = _mail_sequence_template_send_interval_days(
+        getattr(row, "send_timing_cn", None),
+        getattr(row, "scenario", ""),
+        int(getattr(row, "suite_step", 1) or 1),
+    )
     return {
         "template_id": str(row.template_id) if getattr(row, "template_id", None) else None,
+        "customer_key": sanitize_text(getattr(row, "customer_key", "") or ""),
+        "case_label": _mail_sequence_template_case_label(getattr(row, "customer_key", "") or ""),
         "scenario": row.scenario,
         "suite_step": row.suite_step,
         "scenario_label_cn": row.scenario_label_cn,
         "step_label_cn": row.step_label_cn,
         "purpose_cn": row.purpose_cn,
         "send_timing_cn": row.send_timing_cn,
+        "send_interval_days": send_interval_days,
+        "send_interval_help": "距今天多少天后发送",
         "variable_notes": row.variable_notes or {},
         "script_template": row.script_template,
         "ai_instruction_script": getattr(row, "ai_instruction_script", "") or "",
@@ -6493,26 +6672,92 @@ def _serialize_mail_customer_suite_feedback(row) -> dict[str, Any]:
     }
 
 
+def _ensure_mail_sequence_template_schema(db: Session) -> None:
+    """Non-destructive schema patch for the editable sequence template table."""
+    try:
+        db.execute(text("ALTER TABLE mail_sequence_template ADD COLUMN IF NOT EXISTS customer_key VARCHAR(120) NOT NULL DEFAULT '';"))
+        db.execute(text("ALTER TABLE mail_sequence_template ADD COLUMN IF NOT EXISTS ai_instruction_script TEXT NOT NULL DEFAULT '';"))
+        db.execute(text("ALTER TABLE mail_sequence_template DROP CONSTRAINT IF EXISTS uq_mail_sequence_template_scenario_step;"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mst_customer_scenario_step ON mail_sequence_template (customer_key, scenario, suite_step);"))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+def _blank_mail_sequence_templates_by_case() -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    rows: list[dict[str, Any]] = []
+    grouped_by_case: dict[str, dict[str, Any]] = {}
+    for current_case in MAIL_CURRENT_DEMO_CASES:
+        customer_key = current_case["real_customer_key"]
+        scenario = current_case["default_scenario"]
+        for suite_step in ALL_MAIL_SEQUENCE_STEPS:
+            defaults = _default_mail_sequence_template_payload(
+                scenario,
+                int(suite_step),
+                customer_key=customer_key,
+            )
+            item = {
+                "template_id": None,
+                "customer_key": customer_key,
+                "case_label": _mail_sequence_template_case_label(customer_key),
+                "scenario": scenario,
+                "suite_step": int(suite_step),
+                "scenario_label_cn": defaults["scenario_label_cn"],
+                "step_label_cn": defaults["step_label_cn"],
+                "purpose_cn": defaults["purpose_cn"],
+                "send_timing_cn": str(_mail_sequence_default_send_interval_days(scenario, int(suite_step))),
+                "send_interval_days": _mail_sequence_default_send_interval_days(scenario, int(suite_step)),
+                "send_interval_help": "距今天多少天后发送",
+                "variable_notes": {},
+                "script_template": "",
+                "ai_instruction_script": "",
+                "version_no": 0,
+                "is_active": True,
+                "updated_by": None,
+                "created_at": None,
+                "updated_at": None,
+            }
+            rows.append(item)
+            grouped_by_case.setdefault(customer_key, {
+                "customer_key": customer_key,
+                "case_label": item["case_label"],
+                "scenario": scenario,
+                "scenario_label_cn": item["scenario_label_cn"],
+                "templates": [],
+            })["templates"].append(item)
+    return rows, grouped_by_case
+
+
 def _ensure_mail_sequence_templates(db: Session) -> list[Any]:
     from mail_sequence_strategy import list_mail_sequence_strategies
 
+    _ensure_mail_sequence_template_schema(db)
     rows = []
-    for strategy in list_mail_sequence_strategies():
-        scenario = strategy["scenario"]
+    strategy_by_scenario = {strategy["scenario"]: strategy for strategy in list_mail_sequence_strategies()}
+    current_case_templates = [
+        (case["real_customer_key"], case["default_scenario"])
+        for case in MAIL_CURRENT_DEMO_CASES
+    ]
+    for customer_key, scenario in current_case_templates:
+        strategy = strategy_by_scenario.get(scenario)
+        if not strategy:
+            continue
         for step in strategy.get("steps") or []:
             suite_step = int(step["suite_step"])
             row = db.query(MailSequenceTemplate).filter(
+                MailSequenceTemplate.customer_key == customer_key,
                 MailSequenceTemplate.scenario == scenario,
                 MailSequenceTemplate.suite_step == suite_step,
             ).first()
             if row is None:
-                defaults = _default_mail_sequence_template_payload(scenario, suite_step)
+                defaults = _default_mail_sequence_template_payload(scenario, suite_step, customer_key=customer_key)
                 row = MailSequenceTemplate(**defaults, updated_by="system_default")
                 db.add(row)
                 db.flush()
             target_version = _mail_sequence_template_default_version(scenario, suite_step)
             if int(row.version_no or 0) < target_version:
-                defaults = _default_mail_sequence_template_payload(scenario, suite_step)
+                defaults = _default_mail_sequence_template_payload(scenario, suite_step, customer_key=customer_key)
                 row.scenario_label_cn = defaults["scenario_label_cn"]
                 row.step_label_cn = defaults["step_label_cn"]
                 row.purpose_cn = defaults["purpose_cn"]
@@ -6528,8 +6773,15 @@ def _ensure_mail_sequence_templates(db: Session) -> list[Any]:
     return rows
 
 
-def _get_mail_sequence_template_for_prompt(db: Session, scenario: str, suite_step: int) -> dict[str, Any] | None:
+def _get_mail_sequence_template_for_prompt(
+    db: Session,
+    scenario: str,
+    suite_step: int,
+    customer_key: str | None = "",
+) -> dict[str, Any] | None:
+    normalized_customer_key = sanitize_text(customer_key or "").strip().upper()
     row = db.query(MailSequenceTemplate).filter(
+        MailSequenceTemplate.customer_key == normalized_customer_key,
         MailSequenceTemplate.scenario == scenario,
         MailSequenceTemplate.suite_step == suite_step,
         MailSequenceTemplate.is_active.is_(True),
@@ -6537,10 +6789,24 @@ def _get_mail_sequence_template_for_prompt(db: Session, scenario: str, suite_ste
     if row is None:
         _ensure_mail_sequence_templates(db)
         row = db.query(MailSequenceTemplate).filter(
+            MailSequenceTemplate.customer_key == normalized_customer_key,
             MailSequenceTemplate.scenario == scenario,
             MailSequenceTemplate.suite_step == suite_step,
             MailSequenceTemplate.is_active.is_(True),
         ).first()
+    if row is None and normalized_customer_key:
+        row = db.query(MailSequenceTemplate).filter(
+            MailSequenceTemplate.customer_key == "",
+            MailSequenceTemplate.scenario == scenario,
+            MailSequenceTemplate.suite_step == suite_step,
+            MailSequenceTemplate.is_active.is_(True),
+        ).first()
+    if row is None and normalized_customer_key:
+        row = db.query(MailSequenceTemplate).filter(
+            MailSequenceTemplate.scenario == scenario,
+            MailSequenceTemplate.suite_step == suite_step,
+            MailSequenceTemplate.is_active.is_(True),
+        ).order_by(MailSequenceTemplate.customer_key.asc()).first()
     return _serialize_mail_sequence_template(row) if row else None
 
 
@@ -6764,7 +7030,7 @@ def test_mail_draft_llm_config(payload: MailDraftLlmConfigUpdateRequest):
         globals()["_MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE"] = original
 
 
-def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> dict:
+def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35, force_json: bool = True) -> dict:
     """Call mail draft LLM provider (default DeepSeek, can switch to OpenAI/ChatGPT/Claude) for JSON response.
 
     Returns {parsed: dict | None, raw_text: str, error: str | None, model: str}.
@@ -6806,7 +7072,7 @@ def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> di
         }
         # Do not force response_format JSON if it's Claude model or Anthropic provider,
         # as standard proxy APIs might fail or reject JSON schema formatting parameters
-        if not ("claude" in model.lower() or "anthropic" in provider):
+        if force_json and not ("claude" in model.lower() or "anthropic" in provider):
             payload["response_format"] = {"type": "json_object"}
 
     raw_text = ""
@@ -6837,12 +7103,20 @@ def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> di
             cleaned = cleaned[:-3]
         cleaned = cleaned.strip()
 
+        if not force_json:
+            return {"parsed": None, "raw_text": raw_text, "error": None, "model": f"{provider}:{model}"}
+
         parsed = json.loads(cleaned)
         return {"parsed": parsed, "raw_text": raw_text, "error": None, "model": f"{provider}:{model}"}
     except json.JSONDecodeError as exc:
         return {"parsed": None, "raw_text": raw_text, "error": f"JSON 解析失败: {exc}. 原始输出: {raw_text[:200]}", "model": f"{provider}:{model}"}
     except Exception as exc:
         return {"parsed": None, "raw_text": "", "error": f"{provider} 调用异常: {sanitize_text(str(exc))[:200]}", "model": f"{provider}:{model}"}
+
+
+def _call_llm2_text_for_mail_draft(prompt: str, timeout_seconds: int = 35) -> dict:
+    """Call mail draft LLM with the exact user script only; do not force JSON response."""
+    return _call_llm2_json_for_mail_draft(prompt, timeout_seconds=timeout_seconds, force_json=False)
 
 
 def _mail_generation_industry_for_prompt(profile: MailDraftIntentProfile) -> str:
@@ -6865,6 +7139,14 @@ def _mail_prompt_template_text(value: str | None, limit: int = 1200) -> str:
     if not text_value:
         return "无前台模板内容。"
     return text_value[:limit]
+
+
+def _mail_prompt_multiline_fact(value: str | None, limit: int = 900) -> str:
+    text_value = sanitize_text(value or "")
+    if not text_value:
+        return "无明确记录。"
+    text_value = re.sub(r"\n{3,}", "\n\n", text_value).strip()
+    return text_value[: max(int(limit), 1)]
 
 
 def _mail_prompt_variable_value(value: str | None, limit: int = 240) -> str:
@@ -6895,28 +7177,45 @@ def _mail_prompt_template_variable_map(
     ]
 
 
-def _mail_prompt_fewshot_examples(profile: MailDraftIntentProfile, limit: int = 3) -> list[str]:
+def _mail_prompt_full_email_examples(profile: MailDraftIntentProfile, limit: int = 5) -> list[str]:
     examples = []
-    for item in (profile.admitted_fewshot_examples or [])[:max(int(limit), 1)]:
+    for item in (profile.prompt_full_email_examples or [])[:max(int(limit), 1)]:
         function_fragment = sanitize_text(item.get("function_fragment") if isinstance(item, dict) else "")
         review_status = sanitize_text(item.get("review_status") if isinstance(item, dict) else "")
-        is_approved_full_email = function_fragment == "full_email" and review_status == "approved"
         title = _mail_prompt_fact(sanitize_text(item.get("title") if isinstance(item, dict) else ""), 90)
         content = _mail_sanitize_fewshot_reference_for_draft(item.get("content") if isinstance(item, dict) else "") or ""
-        content = _mail_prompt_fact(content, 260 if is_approved_full_email else 130)
+        content = _mail_prompt_fact(content, 520)
         score = item.get("useful_score") if isinstance(item, dict) else None
-        label = title if title != "无明确记录" else "未命名优秀邮件段落"
+        label = title if title != "无明确记录" else "未命名完整邮件"
         body = content if content != "无明确记录" else "无可用内容"
         score_text = f"；分数：{score}" if score is not None else ""
-        approved_text = "；人工认可完整邮件" if is_approved_full_email else ""
-        examples.append(f"{len(examples) + 1}）{label}{score_text}{approved_text}\n{body}")
+        approved_text = "；人工认可" if review_status == "approved" else "；未评审/候选"
+        fragment_text = f"；切片类型：{function_fragment or 'unknown'}"
+        examples.append(f"{len(examples) + 1}）{label}{score_text}{approved_text}{fragment_text}\n{body}")
+    return examples
+
+
+def _mail_prompt_contract_case_examples(profile: MailDraftIntentProfile, limit: int = 5) -> list[str]:
+    examples = []
+    for item in (profile.prompt_contract_case_examples or [])[:max(int(limit), 1)]:
+        contract_id = sanitize_text(item.get("contract_id") if isinstance(item, dict) else "")
+        business_type = sanitize_text(item.get("business_type") if isinstance(item, dict) else "")
+        product_name = sanitize_text(item.get("product_name_all") if isinstance(item, dict) else "")
+        business_line = sanitize_text(item.get("business_line_inferred") if isinstance(item, dict) else "")
+        case_text = sanitize_text(item.get("mail_case_text") if isinstance(item, dict) else "")
+        raw_text = sanitize_text(item.get("case_text_raw") if isinstance(item, dict) else "")
+        main_text = case_text or raw_text or "无案例摘要"
+        examples.append(
+            f"{len(examples) + 1}）合同案例 {contract_id or '未编号'}｜{business_type or '业务类型未标注'}｜{product_name or '产品未标注'}｜{business_line or '业务线未标注'}\n"
+            f"{_mail_prompt_fact(main_text, 320)}"
+        )
     return examples
 
 
 def _mail_prompt_approved_gold_style_standard(profile: MailDraftIntentProfile) -> str:
     full_email_titles = [
         sanitize_text(item.get("title") or "")
-        for item in (profile.admitted_fewshot_examples or [])
+        for item in (profile.prompt_full_email_examples or profile.admitted_fewshot_examples or [])
         if isinstance(item, dict)
         and sanitize_text(item.get("function_fragment") or "") == "full_email"
         and sanitize_text(item.get("review_status") or "") == "approved"
@@ -6988,9 +7287,80 @@ def _mail_prompt_short_timing(profile: MailDraftIntentProfile) -> str:
     return _mail_prompt_fact(timing, 55)
 
 
+def _mail_prompt_customer_salutation(profile: MailDraftIntentProfile) -> str:
+    name = sanitize_text(profile.recipient_name or "").strip()
+    if not name:
+        return "您好"
+    if re.search(r"[A-Za-z]", name):
+        return name.split()[0].strip(" ,;，；") or name
+    chinese = re.sub(r"[^\u4e00-\u9fff]", "", name)
+    if chinese:
+        surname = chinese[:1]
+        suffix = "小姐" if any(token in name for token in ("女士", "小姐", "Miss", "Ms")) else "先生"
+        if name.endswith(("小姐", "先生", "女士", "总", "经理")):
+            return name
+        return f"{surname}{suffix}"
+    return name
+
+
+def _mail_prompt_company_short_name(profile: MailDraftIntentProfile) -> str:
+    company = sanitize_text(profile.company_name or "").strip()
+    if not company:
+        return "贵司"
+    company = re.sub(r"[（(].*?[）)]", "", company)
+    company = re.sub(r"(股份)?有限公司|有限责任公司|集团|中国|上海|北京|广州|深圳|科技|技术|贸易|实业", "", company)
+    company = company.strip(" -_，,；;")
+    return company or sanitize_text(profile.company_name or "").strip() or "贵司"
+
+
+def _mail_prompt_history_summary(profile: MailDraftIntentProfile, crm_history: str) -> str:
+    source = "；".join(
+        item for item in [
+            sanitize_text(profile.recent_opportunities or ""),
+            sanitize_text(profile.ongoing_contracts or ""),
+            sanitize_text(profile.contact_recent_followup or ""),
+            sanitize_text(crm_history or ""),
+        ]
+        if item
+    )
+    service_terms: list[str] = []
+    term_map = [
+        ("笔译", ("笔译", "翻译", "英译中", "中译英", "资料")),
+        ("同传", ("同传", "口译", "会议")),
+        ("多媒体译制", ("多媒体", "视频", "字幕", "配音")),
+        ("排版印刷", ("排版", "印刷", "画册", "手册")),
+        ("活动物料", ("展会", "活动", "物料", "礼品")),
+    ]
+    for label, keywords in term_map:
+        if any(keyword in source for keyword in keywords) and label not in service_terms:
+            service_terms.append(label)
+    if service_terms:
+        return f"为客户提供{'，'.join(service_terms)}服务"
+    cleaned = _mail_prompt_variable_value(crm_history, 240)
+    return cleaned if cleaned != "无明确记录" else "为客户提供过相关服务"
+
+
+def _mail_prompt_template_variable_values(profile: MailDraftIntentProfile, *, industry: str, crm_history: str) -> dict[str, str]:
+    return {
+        "customer_name": _mail_prompt_customer_salutation(profile),
+        "company_name": _mail_prompt_company_short_name(profile),
+        "industry": _mail_prompt_variable_value(industry, 120),
+        "history": _mail_prompt_history_summary(profile, crm_history),
+        "business_lines": "笔译/本地化、会议同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品",
+        "seller_name": _mail_prompt_variable_value(profile.seller_name, 40),
+        "referral_request": "请对方判断是否转给相关团队",
+        "peer_case": "",
+    }
+
+
+def _mail_apply_prompt_template_variables(template: str, values: dict[str, str]) -> str:
+    rendered = template or ""
+    for key, value in values.items():
+        rendered = rendered.replace("{" + key + "}", sanitize_text(value))
+    return rendered
+
+
 def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile) -> str:
-    fewshot_title = _mail_prompt_fact(profile.admitted_fewshot_title, 60)
-    fewshot_content = _mail_prompt_fact(profile.admitted_fewshot_content, 260)
     crm_history = "；".join(
         part
         for part in [
@@ -7008,51 +7378,110 @@ def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile) -> str:
     crm_history = re.sub(r"-{3,}", "", crm_history).strip("；; ，,")
     crm_history = crm_history.replace("近期商机记录", "已有商机记录")
     crm_history = crm_history.replace("近期时间", "历史时间")
-    scenario_cn = _MAIL_SCENARIO_CHINESE.get(profile.scenario, profile.scenario_label)
     industry = _mail_generation_industry_for_prompt(profile)
-    service_focus = (
-        "选1个主切口：笔译/本地化、会议同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品。"
-        if profile.scenario == "new_business_promotion"
-        else "只选1个最贴合客户背景的服务切口。"
-    )
-    template_script = _mail_prompt_template_text(profile.sequence_template_script, 900)
-    template_ai_instruction = _mail_prompt_template_text(profile.sequence_template_ai_instruction, 500)
-    variable_map = _mail_prompt_template_variable_map(
-        profile,
-        industry=industry,
-        crm_history=crm_history,
-        fewshot_title=fewshot_title if fewshot_title != "无明确记录" else "",
-        fewshot_content=fewshot_content if fewshot_content != "无明确记录" else "",
-        service_focus=service_focus,
-    )
-    fewshot_examples = _mail_prompt_fewshot_examples(profile, limit=3)
-    approved_gold_style_standard = _mail_prompt_approved_gold_style_standard(profile)
-    user_prompt = "\n".join([
-        f"任务：{scenario_cn}第{profile.suite_step}/4封。",
-        f"目标：{_mail_prompt_short_purpose(profile)}",
-        f"节奏：{_mail_prompt_short_timing(profile)}",
-        "",
-        "结构脚本：",
-        template_script,
-        "",
-        "AI指令：",
-        template_ai_instruction,
-        "",
-        "变量取值：",
-        *variable_map,
-        "",
-        approved_gold_style_standard,
-        "",
-        "相关优秀同类型邮件供参考或运用（优先学习人工认可 full_email 的语气、节奏和场景表达；只参考表达方式，不得把外部案例写成当前客户自己的历史）：",
-        *(fewshot_examples or ["无命中。"]),
-        "",
-        "边界：按结构脚本和AI指令写；每封只选一个主切口；CRM事实只做背景；禁价格/报价/折扣/账期/免费/试译/样稿/工期承诺/内部编号；不得直接索要电话、邮箱、联系人；不得把资料类型写成客户行业；不要写成条款清单或系统说明。",
-        "",
-        "输出：只输出JSON，paragraphs第一段必须只是称呼；正文要像人写的亲和商务邮件。",
-    ])
-    runtime_settings = _load_runtime_settings_with_defaults()
-    system_prompt = runtime_settings.get("mail_system_prompt") or _MAIL_DRAFT_LLM_SYSTEM_PROMPT
-    return system_prompt + "\n\n" + user_prompt
+    template = sanitize_text(profile.sequence_template_ai_instruction or "").strip()
+    if not template:
+        template = sanitize_text(profile.sequence_template_script or "").strip()
+    values = _mail_prompt_template_variable_values(profile, industry=industry, crm_history=crm_history)
+    return _mail_apply_prompt_template_variables(template, values)
+
+
+def _mail_normalize_llm_text(value: str | None) -> str:
+    text_value = (value or "").replace("\r\n", "\n").replace("\r", "\n")
+    text_value = re.sub(r"[ \t]+\n", "\n", text_value)
+    text_value = re.sub(r"\n{3,}", "\n\n", text_value)
+    return text_value.strip()
+
+
+def _mail_strip_markdown_label(value: str | None) -> str:
+    text_value = re.sub(r"^\s*[-*#]+\s*", "", value or "")
+    text_value = text_value.replace("**", "").replace("__", "")
+    return text_value.strip()
+
+
+def _mail_text_to_body_html(value: str | None) -> str:
+    text_value = _mail_normalize_llm_text(value)
+    if not text_value:
+        return ""
+    paragraphs = [part.strip() for part in re.split(r"\n{2,}", text_value) if part.strip()]
+    return "".join(f"<p>{html.escape(part).replace(chr(10), '<br>')}</p>" for part in paragraphs)
+
+
+def _mail_generated_body_html_from_value(value: str | None) -> str:
+    text_value = _mail_normalize_llm_text(value)
+    if not text_value:
+        return ""
+    text_value = re.sub(r"(?is)<\s*(script|style)\b.*?>.*?<\s*/\s*\1\s*>", "", text_value)
+    if re.search(r"<\s*(p|div|br|table|ul|ol|li)\b", text_value, flags=re.IGNORECASE):
+        return text_value
+    return _mail_text_to_body_html(text_value)
+
+
+def _mail_extract_json_object_from_text(value: str | None) -> dict[str, Any] | None:
+    raw = _mail_normalize_llm_text(value)
+    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, flags=re.S | re.I)
+    if fence:
+        raw = fence.group(1)
+    else:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start >= 0 and end > start:
+            raw = raw[start : end + 1]
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _mail_subject_body_from_json_payload(data: dict[str, Any]) -> tuple[str, str, list[str]]:
+    subject = sanitize_text(data.get("subject") or data.get("title") or "").strip()[:200]
+    body_html = _mail_generated_body_html_from_value(data.get("body_html") or data.get("html") or "")
+    if body_html:
+        return subject, body_html, []
+    body = sanitize_text(data.get("body") or data.get("content") or "").strip()
+    if body:
+        return subject, _mail_text_to_body_html(body), []
+    paragraphs_raw = data.get("paragraphs")
+    if isinstance(paragraphs_raw, list):
+        paragraphs = [
+            _mail_sanitize_generated_mail_paragraph(str(item or "").strip())
+            for item in paragraphs_raw
+            if str(item or "").strip()
+        ]
+        return subject, "", paragraphs
+    return subject, "", []
+
+
+def _mail_extract_subject_body_from_raw_llm_output(raw_text: str) -> tuple[str, str, list[str], dict[str, Any]]:
+    parsed = _mail_extract_json_object_from_text(raw_text)
+    if parsed:
+        subject, body_html, paragraphs = _mail_subject_body_from_json_payload(parsed)
+        return subject, body_html, paragraphs, {"source": "json"}
+
+    text_value = _mail_normalize_llm_text(raw_text)
+    subject = ""
+    body = text_value
+    subject_match = None
+    for pattern in [
+        r"(?m)^\s*(?:\*\*)?邮件主题(?:\*\*)?\s*[：:]\s*(.+)$",
+        r"(?m)^\s*(?:\*\*)?主题(?:\*\*)?\s*[：:]\s*(.+)$",
+        r"(?m)^\s*Subject\s*[：:]\s*(.+)$",
+        r"(?m)^\s*邮件标题\s*[：:]\s*(.+)$",
+    ]:
+        subject_match = re.search(pattern, text_value, flags=re.I)
+        if subject_match:
+            subject = _mail_strip_markdown_label(subject_match.group(1)).strip(" ：:")[:200]
+            break
+    if subject_match:
+        body = text_value[: subject_match.start()] + text_value[subject_match.end() :]
+    body_match = re.search(r"(?is)(?:\*\*)?正文(?:\*\*)?\s*[：:]\s*(.+)$", body)
+    if body_match:
+        body = body_match.group(1)
+    body = re.sub(r"(?m)^\s*(?:\*\*)?(?:邮件主题|主题|邮件标题|Subject)(?:\*\*)?\s*[：:].*$", "", body, flags=re.I)
+    body = re.sub(r"(?m)^\s*(?:\*\*)?正文(?:\*\*)?\s*[：:]\s*", "", body)
+    body_html = _mail_text_to_body_html(body)
+    return subject, body_html, [], {"source": "raw_text", "subject_detected": bool(subject)}
 
 
 def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict:
@@ -7065,7 +7494,7 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
     """
     full_prompt = _build_mail_draft_llm_full_prompt(profile)
 
-    llm_resp = _call_llm2_json_for_mail_draft(full_prompt, timeout_seconds=35)
+    llm_resp = _call_llm2_text_for_mail_draft(full_prompt, timeout_seconds=35)
     model_name = llm_resp.get("model") or "llm2"
     # v1.7.208 旧的 fallback_template 返回逻辑（已注释 — 用户禁止假装成功）:
     #   if llm_resp.get("error") or not llm_resp.get("parsed"):
@@ -7073,37 +7502,35 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
     #       logger.warning("MAIL_DRAFT_LLM2_FALLBACK reason=%s", err)
     #       return {"status": "fallback_template", "model": model_name, "subject": "", "paragraphs": [], "error": ..., "prompt": full_prompt}
     if llm_resp.get("error") or not llm_resp.get("parsed"):
-        err = llm_resp.get("error") or "LLM-2 返回空"
-        logger.warning("MAIL_DRAFT_LLM2_FAILED reason=%s", err)
-        raise HTTPException(
-            status_code=503,
-            detail=f"LLM-2 (DeepSeek) 调用失败（v1.7.208 不再返 fallback_template 兜底）: {sanitize_text(str(err))[:240]}",
-        )
-    parsed = llm_resp["parsed"]
-    subject = str((parsed or {}).get("subject") or "").strip()
-    raw_paragraphs = (parsed or {}).get("paragraphs") or []
-    paragraphs: list[str] = []
-    for item in raw_paragraphs:
-        text = _mail_sanitize_generated_mail_paragraph(str(item or "").strip())
-        if text:
-            paragraphs.append(text[:600])
+        if llm_resp.get("error"):
+            err = llm_resp.get("error") or "LLM-2 返回空"
+            logger.warning("MAIL_DRAFT_LLM2_FAILED reason=%s", err)
+            raise HTTPException(
+                status_code=503,
+                detail=f"LLM-2 (DeepSeek) 调用失败（v1.7.208 不再返 fallback_template 兜底）: {sanitize_text(str(err))[:240]}",
+            )
+    raw_text = llm_resp.get("raw_text") or ""
+    subject, body_html, paragraphs, parse_meta = _mail_extract_subject_body_from_raw_llm_output(raw_text)
     # v1.7.208 旧的"缺 subject/paragraphs 返 fallback_template"逻辑（已注释）:
     #   if not subject or not paragraphs:
     #       logger.warning("MAIL_DRAFT_LLM2_FALLBACK reason=missing subject/paragraphs")
     #       return {"status": "fallback_template", ...}
-    if not subject or not paragraphs:
-        logger.warning("MAIL_DRAFT_LLM2_FAILED reason=missing subject/paragraphs")
+    if not body_html and not paragraphs:
+        logger.warning("MAIL_DRAFT_LLM2_FAILED reason=missing body")
         raise HTTPException(
             status_code=502,
-            detail="LLM-2 (DeepSeek) 返回的 JSON 缺少 subject 或 paragraphs 字段（v1.7.208 不再返 fallback_template 兜底）。",
+            detail="LLM-2 (DeepSeek) 返回内容为空或无法解析为邮件正文（v1.7.208 不再返 fallback_template 兜底）。",
         )
     return {
         "status": "success",
         "model": model_name,
         "subject": subject[:200],
         "paragraphs": paragraphs[:6],
+        "body_html": body_html,
         "error": None,
         "prompt": full_prompt,
+        "raw_text": raw_text,
+        "parse_meta": parse_meta,
     }
 
 
@@ -7175,16 +7602,16 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
                 f"错误: {llm_result.get('error') or '未返回 subject/paragraphs'}"
             ),
         )
-    # v1.7.207 注释掉主题三级 fallback — LLM 返空 subject 直接 raise 不再用预设/subject_hint 兜底.
-    # 旧逻辑（已注释）:  subject_text = llm_result["subject"] or _mail_subject_from_intent_profile(profile)
-    subject_text = llm_result["subject"]
-    if not subject_text:
-        raise HTTPException(status_code=502, detail="大模型 LLM2 返回的 JSON 缺少 subject 字段")
-    body_paragraphs = _mail_normalize_body_paragraphs(llm_result["paragraphs"])
-    paragraphs = [html.escape(p) for p in body_paragraphs]
-
-    # 邮件正文只含: LLM 生成的段落 + 销售签名档。审稿辅助信息走独立字段 review_metadata, 不夹在邮件正文里。
-    paragraphs.append(html.escape(profile.seller_signature).replace("\n", "<br>"))
+    subject_text = llm_result.get("subject") or ""
+    body_html_from_llm = sanitize_text(llm_result.get("body_html") or "").strip()
+    if body_html_from_llm:
+        body_html = body_html_from_llm
+        body_html += f"<p>{html.escape(profile.seller_signature).replace(chr(10), '<br>')}</p>"
+    else:
+        body_paragraphs = _mail_normalize_body_paragraphs(llm_result["paragraphs"])
+        paragraphs = [html.escape(p) for p in body_paragraphs]
+        paragraphs.append(html.escape(profile.seller_signature).replace("\n", "<br>"))
+        body_html = "".join(f"<p>{paragraph}</p>" for paragraph in paragraphs)
 
     review_meta = MailGenerateDraftReviewMetadata(
         crm_profile_signals={
@@ -7208,7 +7635,7 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
 
     return MailDraftAssembledContent(
         subject=subject_text,
-        body_html="".join(f"<p>{paragraph}</p>" for paragraph in paragraphs),
+        body_html=body_html,
         llm_status=llm_result["status"],
         llm_model_used=llm_result["model"],
         llm_error=llm_result["error"],
@@ -7237,7 +7664,12 @@ def _build_mail_generate_draft_response(
     )
     fewshot = fewshot_examples[0] if fewshot_examples else None
     commercial_terms = _resolve_mail_commercial_terms(db, suite_step=int(payload.suite_step))
-    sequence_template = _get_mail_sequence_template_for_prompt(db, payload.scenario, int(payload.suite_step))
+    sequence_template = _get_mail_sequence_template_for_prompt(
+        db,
+        payload.scenario,
+        int(payload.suite_step),
+        customer_key=payload.customer_key,
+    )
     intent_profile = _build_mail_draft_intent_profile(
         payload=payload,
         step=step,
@@ -7247,12 +7679,28 @@ def _build_mail_generate_draft_response(
         commercial_terms=commercial_terms,
         sequence_template=sequence_template,
     )
+    intent_profile.prompt_full_email_examples = _mail_full_email_gold_examples_for_prompt(
+        db,
+        scenario=payload.scenario,
+        min_score=min_score,
+        limit=5,
+    )
+    intent_profile.prompt_contract_case_examples = _mail_contract_case_examples_for_prompt(
+        db,
+        industry=_mail_generation_industry_for_prompt(intent_profile),
+        limit=5,
+    )
     assembled = _assemble_mail_draft_from_intent_profile(intent_profile)
     delivery_sla_guardrail = _evaluate_and_calibrate_mail_delivery_sla_guardrail(assembled.body_html)
     if delivery_sla_guardrail:
         assembled = MailDraftAssembledContent(
             subject=assembled.subject,
             body_html=delivery_sla_guardrail["calibrated_body_html"],
+            llm_status=assembled.llm_status,
+            llm_model_used=assembled.llm_model_used,
+            llm_error=assembled.llm_error,
+            llm_prompt=assembled.llm_prompt,
+            review_metadata=assembled.review_metadata,
         )
     recipient_domain_confidentiality_block = _evaluate_mail_recipient_domain_confidentiality_guardrail(
         customer_key=intent_profile.customer_key,
@@ -15904,19 +16352,42 @@ async def get_mail_crm_mock_profiles():
 @app.get("/api/v1/mail/sequence-templates")
 def list_mail_sequence_templates(db: Session = Depends(get_db)):
     """返回三大邮件场景 × 4 阶段的可编辑脚本模板。"""
-    rows = _ensure_mail_sequence_templates(db)
-    rows = sorted(rows, key=lambda row: (row.scenario, row.suite_step))
+    degraded_error = None
+    try:
+        rows = _ensure_mail_sequence_templates(db)
+        rows = sorted(rows, key=lambda row: (getattr(row, "customer_key", "") or "", row.scenario, row.suite_step))
+        serialized_rows = [_serialize_mail_sequence_template(row) for row in rows]
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("MAIL_SEQUENCE_TEMPLATE_LOAD_FAILED_USE_BLANKS")
+        degraded_error = sanitize_text(str(exc))[:500]
+        serialized_rows, grouped_by_case = _blank_mail_sequence_templates_by_case()
+    else:
+        grouped_by_case = {}
+        for item in serialized_rows:
+            customer_key = item["customer_key"]
+            grouped_by_case.setdefault(customer_key, {
+                "customer_key": customer_key,
+                "case_label": item["case_label"],
+                "scenario": item["scenario"],
+                "scenario_label_cn": item["scenario_label_cn"],
+                "templates": [],
+            })["templates"].append(item)
     grouped: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
-        grouped.setdefault(row.scenario, []).append(_serialize_mail_sequence_template(row))
+    for item in serialized_rows:
+        grouped.setdefault(item["scenario"], []).append(item)
     return {
         "version": "mail_sequence_template.v1",
         "source": "mail_sequence_template",
         "read_only": False,
         "real_sending_enabled": False,
         "scenario_order": ["new_business_promotion", "re_activation", "new_contact_intro"],
-        "count": len(rows),
+        "count": len(serialized_rows),
         "templates": grouped,
+        "templates_by_case": grouped_by_case,
+        "case_order": [case["real_customer_key"] for case in MAIL_CURRENT_DEMO_CASES],
+        "degraded": bool(degraded_error),
+        "degraded_reason": degraded_error,
         "requirements_cn": [
             "套装邮件 4 封必须层层递进，不能 4 封重复同一套话。",
             "内容不能只局限于翻译业务，要能支持同传、多媒体本地化、排版印刷、活动物料等多业务开发。",
@@ -15932,23 +16403,40 @@ def update_mail_sequence_template(
     scenario: str,
     suite_step: int,
     payload: MailSequenceTemplateUpdateRequest,
+    customer_key: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    """保存单个场景单个阶段的目的、发送日期或脚本模板。"""
+    """保存单个场景单个阶段的 AI 指令或发送间隔。"""
     if scenario not in _MAIL_SCENARIO_CHINESE:
         raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
     if suite_step not in ALL_MAIL_SEQUENCE_STEPS:
         raise HTTPException(status_code=422, detail=f"unsupported suite_step: {suite_step}")
+    normalized_customer_key = sanitize_text(customer_key or "").strip().upper()
+    if not normalized_customer_key:
+        normalized_customer_key = _mail_sequence_template_customer_key_for_scenario(scenario)
     _ensure_mail_sequence_templates(db)
     row = db.query(MailSequenceTemplate).filter(
+        MailSequenceTemplate.customer_key == normalized_customer_key,
         MailSequenceTemplate.scenario == scenario,
         MailSequenceTemplate.suite_step == suite_step,
     ).first()
     if not row:
-        raise HTTPException(status_code=404, detail="sequence template not found")
+        defaults = _default_mail_sequence_template_payload(
+            scenario,
+            suite_step,
+            customer_key=normalized_customer_key,
+        )
+        row = MailSequenceTemplate(**defaults, updated_by="web_admin")
+        db.add(row)
+        db.flush()
     if payload.purpose_cn is not None:
         row.purpose_cn = sanitize_text(payload.purpose_cn).strip()[:4000]
-    if payload.send_timing_cn is not None:
+    if payload.send_interval_days is not None:
+        send_interval_days = int(payload.send_interval_days)
+        if send_interval_days < 0:
+            raise HTTPException(status_code=422, detail="send_interval_days must be >= 0")
+        row.send_timing_cn = str(send_interval_days)
+    elif payload.send_timing_cn is not None:
         row.send_timing_cn = sanitize_text(payload.send_timing_cn).strip()[:240]
     if payload.script_template is not None:
         row.script_template = sanitize_text(payload.script_template).strip()[:12000]
@@ -15990,11 +16478,21 @@ def get_mail_customer_suite(
     seller_signature = "SpeedAsia Sales"
     crm_profile = _lookup_mail_crm_profile(customer_id, "")
     contact_email = sanitize_text(crm_profile.get("contact_email"))
+    draft_contact_email = _mail_demo_contact_email_for_draft(contact_email)
+    draft_contact_email_is_placeholder = False
+    if not draft_contact_email:
+        draft_contact_email = _mail_review_only_draft_contact_email(customer_id, crm_profile)
+        draft_contact_email_is_placeholder = bool(draft_contact_email)
     customer_profile = {
         "customer_id": customer_id,
         "company_name": sanitize_text(crm_profile.get("company_name")) or customer_id,
         "contact_email": contact_email,
-        "contact_email_note": "CRM 邮箱为空时保持空值；本页只生成草稿模板，不真实发信。",
+        "contact_email_note": (
+            "CRM 邮箱在接口展示层保持脱敏；本页只生成草稿模板，不真实发信。"
+            if draft_contact_email_is_placeholder
+            else "CRM 邮箱为空时保持空值；本页只生成草稿模板，不真实发信。"
+        ),
+        "draft_contact_email_mode": "review_only_placeholder" if draft_contact_email_is_placeholder else "crm_email",
         "company_industry": crm_profile.get("company_industry"),
         "payment_risk_level": crm_profile.get("payment_risk_level"),
         "customer_domains": list(crm_profile.get("customer_domains") or []),
@@ -16008,7 +16506,7 @@ def get_mail_customer_suite(
     for suite_step in ALL_MAIL_SEQUENCE_STEPS:
         payload = MailGenerateDraftRequest(
             customer_key=customer_id,
-            contact_email=contact_email,
+            contact_email=draft_contact_email,
             scenario=scenario_norm,
             suite_step=int(suite_step),
             current_seller_name=seller_name,
@@ -16467,7 +16965,12 @@ def _run_one_mail_iteration_draft(
         )
         fewshot = fewshot_examples[0] if fewshot_examples else None
         commercial_terms = _resolve_mail_commercial_terms(db, suite_step=int(payload.suite_step))
-        sequence_template = _get_mail_sequence_template_for_prompt(db, payload.scenario, int(payload.suite_step))
+        sequence_template = _get_mail_sequence_template_for_prompt(
+            db,
+            payload.scenario,
+            int(payload.suite_step),
+            customer_key=payload.customer_key,
+        )
         intent_profile = _build_mail_draft_intent_profile(
             payload=payload,
             step=step,
@@ -16476,6 +16979,17 @@ def _run_one_mail_iteration_draft(
             admitted_fewshots=fewshot_examples,
             commercial_terms=commercial_terms,
             sequence_template=sequence_template,
+        )
+        intent_profile.prompt_full_email_examples = _mail_full_email_gold_examples_for_prompt(
+            db,
+            scenario=payload.scenario,
+            min_score=min_score,
+            limit=5,
+        )
+        intent_profile.prompt_contract_case_examples = _mail_contract_case_examples_for_prompt(
+            db,
+            industry=_mail_generation_industry_for_prompt(intent_profile),
+            limit=5,
         )
         assembled = _assemble_mail_draft_from_intent_profile(intent_profile)
         # 拿到 llm_prompt 后调真正 endpoint 拿完整响应

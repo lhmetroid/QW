@@ -1667,6 +1667,7 @@ class MailSequenceTemplate(Base):
     __tablename__ = "mail_sequence_template"
 
     template_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    customer_key = Column(String(120), nullable=False, default="")
     scenario = Column(String(80), nullable=False)
     suite_step = Column(Integer, nullable=False)
     scenario_label_cn = Column(String(80), nullable=False)
@@ -1683,8 +1684,8 @@ class MailSequenceTemplate(Base):
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("scenario", "suite_step", name="uq_mail_sequence_template_scenario_step"),
-        Index("idx_mst_scenario_step", "scenario", "suite_step"),
+        UniqueConstraint("customer_key", "scenario", "suite_step", name="uq_mail_sequence_template_customer_scenario_step"),
+        Index("idx_mst_customer_scenario_step", "customer_key", "scenario", "suite_step"),
     )
 
 
