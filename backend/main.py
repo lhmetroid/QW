@@ -1568,6 +1568,8 @@ class MailDraftIntentProfile(BaseModel):
     customer_key: str
     contact_email: str
     recipient_name: str
+    recipient_english_name: str = ""
+    recipient_gender: str = ""
     seller_name: str
     seller_signature: str
     company_name: str = ""
@@ -4321,7 +4323,9 @@ def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> 
                         c.ContactName,
                         c.Email,
                         c.CustomerId,
-                        d.CompanyName
+                        d.CompanyName,
+                        ISNULL(c.EnglishName, ''),
+                        ISNULL(c.Gender, '')
                     FROM usrCustomerContact AS c
                     LEFT JOIN usrCustomer AS d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL
                     WHERE c.Deleter IS NULL
@@ -4473,6 +4477,8 @@ def _mail_crm_profile_from_sql(customer_key: str | None, contact_email: str) -> 
         domains.add(contact_domain)
     return {
         "contact_name": sanitize_text(row[1] if len(row) > 1 else ""),
+        "contact_english_name": sanitize_text(row[5] if len(row) > 5 else ""),
+        "contact_gender": sanitize_text(row[6] if len(row) > 6 else ""),
         "contact_email": sanitize_text(row[2] if len(row) > 2 else ""),
         "company_name": sanitize_text(row[4] if len(row) > 4 else ""),
         "company_industry": company_industry,
@@ -4552,6 +4558,8 @@ def _lookup_mail_crm_profile(customer_key: str | None, contact_email: str) -> di
         domains.add(contact_domain)
     return {
         "contact_name": sanitize_text(profile.get("contact_name")),
+        "contact_english_name": sanitize_text(profile.get("contact_english_name")),
+        "contact_gender": sanitize_text(profile.get("contact_gender")),
         "contact_email": sanitize_text(profile.get("contact_email")),
         "company_name": sanitize_text(profile.get("company_name")),
         "company_industry": sanitize_text(profile.get("company_industry")) or "unknown",
@@ -4602,7 +4610,9 @@ def _fetch_mail_current_case_crm_detail(customer_key: str) -> dict[str, Any]:
                         c.StaffName,
                         c.OwnerName AS ContactOwnerName,
                         c.CustomerContactStatus,
-                        c.LastFollowUpTime
+                        c.LastFollowUpTime,
+                        ISNULL(c.EnglishName, '') AS ContactEnglishName,
+                        ISNULL(c.Gender, '') AS ContactGender
                     FROM usrCustomerContact AS c
                     LEFT JOIN usrCustomer AS d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL
                     WHERE c.Deleter IS NULL
@@ -4741,6 +4751,8 @@ def _fetch_mail_current_case_crm_detail(customer_key: str) -> dict[str, Any]:
                 "crm_profile_source": "crm_sql_current_case_unmasked",
                 "contact_id": sanitize_text(row[0]),
                 "contact_name": sanitize_text(row[1]),
+                "contact_english_name": sanitize_text(row[14]) if len(row) > 14 else "",
+                "contact_gender": sanitize_text(row[15]) if len(row) > 15 else "",
                 "contact_email": sanitize_text(row[2]),
                 "new_contact_id": sanitize_text(row[3]),
                 "customer_id": sanitize_text(row[4]),
@@ -4795,6 +4807,8 @@ def _mail_crm_profile_from_current_case(customer_key: str | None) -> dict[str, A
         domains.add(domain)
     return {
         "contact_name": detail.get("contact_name"),
+        "contact_english_name": detail.get("contact_english_name"),
+        "contact_gender": detail.get("contact_gender"),
         "contact_email": contact_email,
         "company_name": detail.get("company_name"),
         "company_industry": detail.get("company_industry"),
@@ -5912,6 +5926,8 @@ def _build_mail_draft_intent_profile(
         customer_key=customer_key,
         contact_email=contact_email,
         recipient_name=recipient_name,
+        recipient_english_name=sanitize_text(crm_profile.get("contact_english_name")) or "",
+        recipient_gender=sanitize_text(crm_profile.get("contact_gender")) or "",
         seller_name=seller_name,
         seller_signature=seller_signature,
         company_name=sanitize_text(crm_profile.get("company_name")) or "",
@@ -7418,18 +7434,33 @@ def _mail_prompt_short_timing(profile: MailDraftIntentProfile) -> str:
 
 
 def _mail_prompt_customer_salutation(profile: MailDraftIntentProfile) -> str:
+    """问候语称呼:有英文名优先用英文名;否则"姓+称谓",称谓按真实性别(男->先生,女->女士)。
+
+    性别未知时不强加称谓(避免叫错),退回原名。称呼为空则返回"您好"。
+    """
+    # 1) 英文名优先(来自 CRM 联系人 EnglishName)
+    english = sanitize_text(getattr(profile, "recipient_english_name", "") or "").strip()
+    if english:
+        return english.split()[0].strip(" ,;，；") or english
     name = sanitize_text(profile.recipient_name or "").strip()
     if not name:
         return "您好"
+    # recipient_name 本身就是英文(如来自邮箱前缀)时也按英文名用
     if re.search(r"[A-Za-z]", name):
         return name.split()[0].strip(" ,;，；") or name
+    # 名字本身已带称谓/职务则原样保留
+    if name.endswith(("小姐", "先生", "女士", "总", "经理")):
+        return name
     chinese = re.sub(r"[^\u4e00-\u9fff]", "", name)
+    gender = sanitize_text(getattr(profile, "recipient_gender", "") or "").strip()
     if chinese:
         surname = chinese[:1]
-        suffix = "小姐" if any(token in name for token in ("女士", "小姐", "Miss", "Ms")) else "先生"
-        if name.endswith(("小姐", "先生", "女士", "总", "经理")):
-            return name
-        return f"{surname}{suffix}"
+        if gender == "男":
+            return f"{surname}先生"
+        if gender == "女":
+            return f"{surname}女士"
+        # 性别未知:不猜称谓,直接用原中文名
+        return name
     return name
 
 
