@@ -17104,13 +17104,24 @@ def get_mail_customer_suite(
             current_seller_signature=seller_signature,
         )
         try:
-            response = _build_mail_generate_draft_response(db, payload)
-            draft = response.dict() if hasattr(response, "dict") else dict(response)
-            if saved is not None:
-                if saved.subject:
-                    draft["final_subject"] = saved.subject
-                if saved.body_html:
-                    draft["final_body_html"] = saved.body_html
+            if saved is not None and saved.subject and saved.body_html:
+                # 已保存过(主题+正文齐全)：直接读取，不再调大模型重生成
+                draft = {
+                    "final_subject": saved.subject,
+                    "final_body_html": saved.body_html,
+                    "mail_uid": saved.mail_uid or "",
+                    "llm_status": "saved_edit",
+                    "llm_model_used": "",
+                    "from_saved_edit": True,
+                }
+            else:
+                response = _build_mail_generate_draft_response(db, payload)
+                draft = response.dict() if hasattr(response, "dict") else dict(response)
+                if saved is not None:
+                    if saved.subject:
+                        draft["final_subject"] = saved.subject
+                    if saved.body_html:
+                        draft["final_body_html"] = saved.body_html
             # 始终清洗正文 + 幂等重注入真实签名: 保存过的旧正文/历史打码签名也会被纠正
             draft["final_body_html"] = _apply_mail_suite_signature(
                 draft.get("final_body_html") or "", signature_html
