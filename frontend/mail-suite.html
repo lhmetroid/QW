@@ -814,7 +814,7 @@
         if (status) { status.textContent = '请先填写客户邮箱'; status.className = 'feedback-status err'; }
         return;
       }
-      if (!confirm(`将按计划时间把第 ${steps.join(',')} 封加入待发队列，收件人：\n${emails.join(', ')}\n确认？`)) return;
+      if (!confirm(`【真实发送】将把第 ${steps.join(',')} 封写入发送队列，由系统按计划时间真实发出。\n收件人：\n${emails.join(', ')}\n\n请确认收件人无误，确认发送？`)) return;
       btn.disabled = true;
       if (status) { status.textContent = '处理中…'; status.className = 'feedback-status'; }
       try {
@@ -830,12 +830,13 @@
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
-        const lines = (data.prepared || []).map(p => `第${p.suite_step}封 · ${p.plan_send_time}`).join('；');
+        const lines = (data.prepared || []).map(p => `第${p.suite_step}封 · ${p.plan_send_time} · ${p.status}${p.error ? '（' + p.error + '）' : ''}`).join('\n');
+        const enq = data.enqueued_count != null ? data.enqueued_count : data.prepared_count;
         if (status) {
-          status.textContent = `已加入待发计划 ${data.prepared_count} 封（${data.status}）`;
-          status.className = 'feedback-status ok';
+          status.textContent = `已入队 ${enq}/${data.prepared_count} 封`;
+          status.className = (enq === data.prepared_count) ? 'feedback-status ok' : 'feedback-status err';
         }
-        alert(`已生成待发计划 ${data.prepared_count} 封\n发件人：${data.sender_email}\n收件人：${(data.recipient_emails || []).join(', ')}\n${lines}\n\n${data.note || ''}`);
+        alert(`已写入发送队列 ${enq}/${data.prepared_count} 封\n发件人：${data.sender_email}\n收件人：${(data.recipient_emails || []).join(', ')}\n\n${lines}\n\n${data.note || ''}`);
       } catch (err) {
         if (status) { status.textContent = `发送失败：${err.message}`; status.className = 'feedback-status err'; }
       } finally {

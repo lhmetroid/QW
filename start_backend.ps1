@@ -147,6 +147,14 @@ try {
         Stop-PortListeners -TargetPort $Port
     }
 
+    # 确保邮件 .eml 上传所需 SFTP 库已安装(老 SSH 服务需 paramiko<4，5.x 不兼容)。
+    # 幂等：已满足则很快返回，无需人工单独运行 pip。
+    Write-Host "INFO: ensuring 'paramiko<4' is installed for mail .eml SFTP upload..."
+    python -m pip install "paramiko<4" --quiet --disable-pip-version-check
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARN: paramiko install returned $LASTEXITCODE (continuing; SFTP upload may fail until fixed)."
+    }
+
     python startup_check.py
     if ($LASTEXITCODE -ne 0) {
         throw "Runtime configuration check failed."

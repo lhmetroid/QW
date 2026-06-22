@@ -17280,6 +17280,59 @@ def _mail_suite_html_to_text(html_value: str) -> str:
     return s.strip()
 
 
+def _build_mail_eml_bytes(sender_email: str, sender_name: str, to_emails: list[str], subject: str, body_html: str) -> bytes:
+    """生成 RFC822 .eml(HTML 正文 + From/To/Subject/Date)，供 SFTP 上传后由发送系统投递。"""
+    from email.mime.text import MIMEText
+    from email.header import Header
+    from email.utils import formataddr, formatdate, make_msgid
+    msg = MIMEText(body_html or "", "html", "utf-8")
+    display = str(sender_name or sender_email)
+    try:
+        from_value = formataddr((str(Header(display, "utf-8")), sender_email))
+    except Exception:
+        from_value = sender_email
+    msg["From"] = from_value
+    msg["To"] = ", ".join(to_emails)
+    msg["Subject"] = str(Header(subject or "", "utf-8"))
+    msg["Date"] = formatdate(localtime=True)
+    try:
+        msg["Message-ID"] = make_msgid()
+    except Exception:
+        pass
+    return msg.as_bytes()
+
+
+def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, sender_email: str,
+                             send_address: str, receiver: str, staff_id: str, eml_ftp_path: str,
+                             email_text: str) -> None:
+    """把一封邮件写入 CRM spQueueSend(待发队列)，由发送系统按 PlanSendTime 真发。"""
+    crm_db.execute(
+        text(
+            "INSERT INTO spQueueSend "
+            "(RowId, SessionId, PlanSendTime, Subject, Content, MessageType, FolderId, "
+            " EmergencyLevel, SendAddress, InputTime, Receiver, Receivers, SecretReceivers, "
+            " InputerStaffId, ProcessNow, RepeatTimes, InstanceType, Inputer, EmlFtpPath, EmailContent) "
+            "VALUES "
+            "(:rowid, NEWID(), :plan, :subject, :content, 'Email', 'OutBox', "
+            " 0, :sendaddr, GETDATE(), :receiver, '', '', "
+            " :staffid, 0, 0, 'SpeedPersonal.Message.EmailSend', :inputer, :emlpath, :emailcontent)"
+        ),
+        {
+            "rowid": row_guid,
+            "plan": plan_dt,
+            "subject": (subject or "")[:500],
+            "content": sender_email,
+            "sendaddr": send_address,
+            "receiver": receiver,
+            "staffid": staff_id or "",
+            "inputer": staff_id or "",
+            "emlpath": eml_ftp_path,
+            "emailcontent": email_text or "",
+        },
+    )
+    crm_db.commit()
+
+
 @app.post("/api/v1/mail/customer-suite-send")
 def send_mail_customer_suite(
     payload: MailCustomerSuiteSendRequest,
@@ -17391,32 +17444,71 @@ def send_mail_customer_suite(
         except Exception:
             hh, mm = 9, 0
         plan_dt = (now_bj + timedelta(days=max(0, interval))).replace(hour=hh, minute=mm, second=0, microsecond=0)
+        body_text = _mail_suite_html_to_text(final_body_html)
         row = MailCustomerSuiteSendPlan(
             batch_id=batch_id, customer_id=customer_id[:120], scenario=scenario, suite_step=int(suite_step),
             sender_email=sender_email[:255], sender_name=(sender_name or "")[:255],
             to_emails=",".join(recipient_emails), subject=final_subject[:500],
-            body_html=final_body_html, body_text=_mail_suite_html_to_text(final_body_html),
+            body_html=final_body_html, body_text=body_text,
             plan_send_time=plan_dt, send_address_serialized=send_address_serialized,
             receiver_serialized=receiver_serialized, inputer_staff_id=(owner_staff_id or "")[:120],
-            status="prepared_pending_ftp",
+            status="prepared",
         )
         db.add(row)
+        db.flush()
+
+        # 真发闭环：生成 .eml → SFTP 上传 → 写入 CRM spQueueSend
+        step_status = "enqueued"
+        step_error = None
+        spqueue_rowid = None
+        try:
+            import mail_sftp
+            eml_bytes = _build_mail_eml_bytes(sender_email, sender_name, recipient_emails, final_subject, final_body_html)
+            ok, eml_ftp_path = mail_sftp.upload_eml_bytes(eml_bytes)
+            if not ok or not eml_ftp_path:
+                step_status = "eml_upload_failed"
+                step_error = "SFTP 上传失败"
+            else:
+                spqueue_rowid = str(_uuid.uuid4())
+                from crm_database import CRMSessionLocal
+                crm_db = CRMSessionLocal()
+                try:
+                    _insert_spqueue_send_row(
+                        crm_db, row_guid=spqueue_rowid, plan_dt=plan_dt, subject=final_subject,
+                        sender_email=sender_email, send_address=send_address_serialized,
+                        receiver=receiver_serialized, staff_id=(owner_staff_id or ""),
+                        eml_ftp_path=eml_ftp_path, email_text=body_text,
+                    )
+                finally:
+                    crm_db.close()
+                row.status = "enqueued"
+                row.spqueue_rowid = spqueue_rowid
+        except Exception as exc:
+            logger.exception("MAIL_SUITE_SEND_ENQUEUE_FAILED customer=%s step=%s", sanitize_text(customer_id), suite_step)
+            step_status = "enqueue_failed"
+            step_error = sanitize_text(str(exc))[:200]
+            row.status = step_status
+
         prepared.append({
             "suite_step": int(suite_step),
             "subject": final_subject,
             "plan_send_time": plan_dt.strftime("%Y-%m-%d %H:%M"),
+            "status": step_status,
+            "spqueue_rowid": spqueue_rowid,
+            "error": step_error,
         })
     db.commit()
+    enqueued = sum(1 for p in prepared if p["status"] == "enqueued")
     return {
         "ok": True,
         "batch_id": batch_id,
         "sender_email": sender_email,
         "recipient_emails": recipient_emails,
         "prepared_count": len(prepared),
+        "enqueued_count": enqueued,
         "prepared": prepared,
-        "status": "prepared_pending_ftp",
-        "real_sending_enabled": False,
-        "note": "已生成待发计划并暂存；正文 .eml 上传 FTP 与写入 spQueueSend 待 FTP 接入后完成，当前不会真实发件。",
+        "real_sending_enabled": True,
+        "note": f"已写入 CRM spQueueSend 待发队列 {enqueued}/{len(prepared)} 封，由发送系统按计划时间真发。",
     }
 
 
