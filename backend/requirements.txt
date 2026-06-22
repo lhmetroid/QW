@@ -24,3 +24,4 @@ pytesseract            # Tesseract OCR Python 绑定（需系统安装 tesseract
 # 以下为可选，不安装会降级（不解压 7z/rar）：
 # py7zr                # 7z 压缩包解析
 # rarfile              # RAR 压缩包解析（需系统安装 unrar）
+paramiko<4

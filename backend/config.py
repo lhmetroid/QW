@@ -177,6 +177,12 @@ class Settings(BaseSettings):
     CRM_DB_TRUST_SERVER_CERTIFICATE: bool = True
     CRM_DB_CONNECTION_TIMEOUT: int = 100
 
+    # 邮件 .eml 上传用 SFTP(老 SSH 服务，22 端口，外网映射端口见 FTP_PORT)。
+    FTP_HOST: str = ""
+    FTP_PORT: int = 22
+    FTP_USERID: str = ""
+    FTP_PASSWORD: str = ""
+
     # Redis configuration.
     REDIS_HOST: str = ""
     REDIS_PORT: int = 6379
