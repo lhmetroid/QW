@@ -17329,10 +17329,21 @@ def _build_mail_eml_bytes(sender_email: str, sender_name: str, to_emails: list[s
     root["Subject"] = Header(subject or "", ch).encode()
     root["Date"] = formatdate(localtime=True)
 
+    # 包一层与页面编辑器一致的基准字体/字号/行高/颜色(编辑器靠页面 CSS 渲染，innerHTML 不含这些)，
+    # 保证存进 eml、在邮件客户端/发送系统里看到的与页面所见一致。
+    _font_css = "font-family:Arial,'Microsoft YaHei',sans-serif;font-size:14px;line-height:1.6;color:#172033;"
+    styled_html = (
+        "<html><head>"
+        f'<meta http-equiv="Content-Type" content="text/html; charset={cs_name}">'
+        "<style>body{" + _font_css + "margin:0;} p{margin:0 0 10px;}</style>"
+        "</head><body>"
+        f'<div style="{_font_css}">' + (body_html or "") + "</div>"
+        "</body></html>"
+    )
     p_text = MIMENonMultipart("text", "plain")
     p_text.set_payload(text_body or "", ch)
     p_html = MIMENonMultipart("text", "html")
-    p_html.set_payload(body_html or "", ch)
+    p_html.set_payload(styled_html, ch)
     root.attach(p_text)
     root.attach(p_html)
     raw = root.as_bytes()
