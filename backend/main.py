@@ -16598,7 +16598,12 @@ def update_mail_sequence_template(
 
 
 def _fetch_mail_contact_owner_staff_id(customer_key: str) -> str:
-    """只读查询客户联系人的销售代表工号(usrCustomerContact.Owner)。查不到返回空串。"""
+    """只读解析客户联系人对应的销售代表工号。
+
+    口径：联系人 Owner -> usrStaff，只取在职(DismissTime IS NULL)的销售；
+    一个客户可能有多个联系人/多个 Owner 时，优先销售部门、再按最近联系人取一个。
+    查不到在职销售返回空串(不退而求其次用离职人员的签名)。
+    """
     normalized_key = sanitize_text(customer_key).strip()
     if not normalized_key:
         return ""
@@ -16609,10 +16614,12 @@ def _fetch_mail_contact_owner_staff_id(customer_key: str) -> str:
             row = crm_db.execute(
                 text(
                     """
-                    SELECT TOP 1 ISNULL(CAST(c.Owner AS NVARCHAR(120)), '')
+                    SELECT TOP 1 s.StaffId
                     FROM usrCustomerContact AS c
                     LEFT JOIN usrCustomer AS d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL
+                    INNER JOIN usrStaff AS s ON ISNULL(CAST(c.Owner AS NVARCHAR(120)), '') = s.StaffId
                     WHERE c.Deleter IS NULL
+                      AND s.DismissTime IS NULL
                       AND ISNULL(CAST(c.Owner AS NVARCHAR(120)), '') <> ''
                       AND (
                         LOWER(ISNULL(CAST(c.ContactId AS NVARCHAR(120)), '')) = :k
@@ -16622,7 +16629,13 @@ def _fetch_mail_contact_owner_staff_id(customer_key: str) -> str:
                         OR LOWER(ISNULL(d.CompanyName, '')) LIKE :like
                         OR LOWER(ISNULL(d.CompanyNameEnglish, '')) LIKE :like
                       )
-                    ORDER BY c.ContactId DESC
+                    ORDER BY
+                      (CASE WHEN ISNULL(s.Division, '') LIKE '%销售%'
+                                 OR ISNULL(s.Division, '') LIKE '%电销%'
+                                 OR ISNULL(s.Division, '') LIKE '%大客户%'
+                                 OR ISNULL(s.Division, '') LIKE '%市场%'
+                            THEN 0 ELSE 1 END),
+                      c.ContactId DESC
                     """
                 ),
                 {"k": normalized_key.lower(), "like": f"%{normalized_key.lower()}%"},
