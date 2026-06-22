@@ -16762,21 +16762,43 @@ _MAIL_SUITE_GENERIC_SIGNOFFS = (
 )
 
 
-def _apply_mail_suite_signature(body_html: str, signature_html: str) -> str:
-    """用真实销售代表签名替换正文里的占位/通用落款。signature_html 为空则原样返回。"""
+def _clean_mail_suite_body_html(body_html: str) -> str:
+    """纯输出层清洗 LLM 正文(不改生成脚本): 去开头元信息行/方括号占位/通用落款/markdown/空段落。"""
     s = str(body_html or "")
-    if not signature_html:
-        return s
-    # 去掉 LLM 留下的方括号占位符(如 [你的名字]/[职位]/[您的姓名])
+    # 1) 去掉 LLM 多写的开头元信息行: 收件人/发件人/抄送/主题/公司 ：xxx
+    #    正文应从问候语(如 "Feng 您好,")开始
+    meta_label = r"(?:收件人|发件人|抄\s*送|主题|公司)"
+    s = re.sub(r"(?is)" + meta_label + r"\s*[:：][^<]*?(?=<br\s*/?>|</p>)", "", s)
+    # 去掉因此在段首残留的多余 <br>
+    s = re.sub(r"(?is)<p>(?:\s*<br\s*/?>)+", "<p>", s)
+    # 2) 去掉方括号占位符(如 [你的名字]/[职位]/[您的姓名])
     s = re.sub(r"\[[^\[\]\n]{1,20}\]", "", s)
-    # 去掉通用落款行(整段或 <br> 行)
+    # 3) 去掉通用落款行(整段或 <br> 行)
     for generic in _MAIL_SUITE_GENERIC_SIGNOFFS:
         esc = re.escape(generic)
         s = re.sub(r"<p>\s*(?:<br\s*/?>|\s)*" + esc + r"\s*(?:<br\s*/?>|\s)*</p>", "", s)
         s = re.sub(r"(?:<br\s*/?>\s*)*" + esc + r"(?=\s*(?:<br\s*/?>|</p>|$))", "", s)
-    # 清理空段落
-    s = re.sub(r"<p>\s*(?:<br\s*/?>|&nbsp;|\s)*</p>", "", s)
-    return s.rstrip() + signature_html
+    # 4) 去掉 "事必达 | 综合国际化服务伙伴" 这类 tagline 落款行(| 或 ｜)
+    s = re.sub(r"(?is)<p>\s*(?:<br\s*/?>|\s)*事必达\s*[|｜][^<]*</p>", "", s)
+    s = re.sub(r"(?:<br\s*/?>\s*)*事必达\s*[|｜][^<]*?(?=\s*(?:<br\s*/?>|</p>|$))", "", s)
+    # 5) 去掉残留 markdown 标记(** * --- 等)
+    s = _mail_strip_markdown_artifacts(s)
+    # 6) 清理空段落
+    s = re.sub(r"(?is)<p>\s*(?:<br\s*/?>|&nbsp;|\s)*</p>", "", s)
+    return s
+
+
+def _apply_mail_suite_signature(body_html: str, signature_html: str) -> str:
+    """清洗正文并幂等地换上真实销售代表签名。
+
+    会先剥离任何已存在的 <div class="mail-signature"> 旧签名块(含历史保存的打码签名),
+    再追加最新真实签名; signature_html 为空(无在职销售)时只清洗、不动已有签名。
+    """
+    s = _clean_mail_suite_body_html(body_html)
+    if not signature_html:
+        return s.rstrip()
+    s = re.sub(r'(?is)<div class="mail-signature".*?</div>', "", s).rstrip()
+    return s + signature_html
 
 
 @app.get("/api/v1/mail/customer-suite")
@@ -16884,10 +16906,10 @@ def get_mail_customer_suite(
                     draft["final_subject"] = saved.subject
                 if saved.body_html:
                     draft["final_body_html"] = saved.body_html
-            if signature_html and not (saved is not None and saved.body_html):
-                draft["final_body_html"] = _apply_mail_suite_signature(
-                    draft.get("final_body_html") or "", signature_html
-                )
+            # 始终清洗正文 + 幂等重注入真实签名: 保存过的旧正文/历史打码签名也会被纠正
+            draft["final_body_html"] = _apply_mail_suite_signature(
+                draft.get("final_body_html") or "", signature_html
+            )
             drafts.append({
                 "suite_step": int(suite_step),
                 "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(suite_step)),
