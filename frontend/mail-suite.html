@@ -17,6 +17,7 @@
       --bad: #dc2626;
     }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body {
       margin: 0;
       background: var(--bg);
@@ -548,8 +549,8 @@
               <span class="rte-sep"></span>
               <button type="button" title="上标" onmousedown="rteCmd(event,'superscript')">x²</button>
               <button type="button" title="下标" onmousedown="rteCmd(event,'subscript')">x₂</button>
-              <button type="button" title="插入链接" onmousedown="rteLink(event)">链接</button>
-              <button type="button" title="插入图片" onmousedown="rteImage(event)">图片</button>
+              <button type="button" title="插入链接" onmousedown="rteLink(event)" hidden>链接</button>
+              <button type="button" title="插入图片" onmousedown="rteImage(event)" hidden>图片</button>
               <button type="button" title="分割线" onmousedown="rteCmd(event,'insertHorizontalRule')">―</button>
               <button type="button" title="清除格式" onmousedown="rteCmd(event,'removeFormat')">清除格式</button>
             </div>
@@ -559,7 +560,7 @@
               <div class="send-config-row">
                 <span>距今天</span>
                 <input type="number" min="0" id="interval-${esc(item.suite_step)}" class="interval-input" value="${esc(interval)}" onblur="saveDraftField(${esc(item.suite_step)})">
-                <span>天的</span>
+                <span>天后的</span>
                 <input type="time" id="sendtime-${esc(item.suite_step)}" class="time-input" value="${esc(sendTime)}" onblur="saveDraftField(${esc(item.suite_step)})">
                 <span>发送</span>
                 <span class="hint" title="${esc(intervalTip)}">?</span>

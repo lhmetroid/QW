@@ -456,28 +456,46 @@ frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
 if os.path.exists(frontend_path):
     app.mount("/static", StaticFiles(directory=frontend_path, html=True), name="static")
 
+
+def _ensure_wecom_runtime_config_schema(db: Session) -> None:
+    """兼容旧版 wecom_runtime_config：老表可能没有 id 或部分配置列。"""
+    db.execute(text(
+        "CREATE TABLE IF NOT EXISTS wecom_runtime_config ("
+        "id INTEGER PRIMARY KEY DEFAULT 1,"
+        "wecom_recent_message_limit INTEGER NOT NULL DEFAULT 10,"
+        "api_kb2_enabled BOOLEAN NOT NULL DEFAULT true,"
+        "wecom_auto_assist_on_customer_message BOOLEAN NOT NULL DEFAULT false,"
+        "system_prompt_llm1 TEXT,"
+        "system_prompt_llm2 TEXT,"
+        "reply_style_options JSON,"
+        "fast_track_rules JSON,"
+        "updated_by VARCHAR(120),"
+        "created_at TIMESTAMP DEFAULT now(),"
+        "updated_at TIMESTAMP DEFAULT now()"
+        ");"
+    ))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS id INTEGER;"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS wecom_recent_message_limit INTEGER NOT NULL DEFAULT 10;"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS api_kb2_enabled BOOLEAN NOT NULL DEFAULT true;"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS wecom_auto_assist_on_customer_message BOOLEAN NOT NULL DEFAULT false;"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS system_prompt_llm1 TEXT;"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS system_prompt_llm2 TEXT;"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS reply_style_options JSON;"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS fast_track_rules JSON;"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS updated_by VARCHAR(120);"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT now();"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();"))
+    db.execute(text("UPDATE wecom_runtime_config SET id = 1 WHERE id IS NULL AND ctid = (SELECT ctid FROM wecom_runtime_config WHERE id IS NULL ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST LIMIT 1);"))
+    db.execute(text("UPDATE wecom_runtime_config SET wecom_recent_message_limit = 10 WHERE wecom_recent_message_limit IS NULL;"))
+    db.execute(text("UPDATE wecom_runtime_config SET api_kb2_enabled = true WHERE api_kb2_enabled IS NULL;"))
+    db.execute(text("UPDATE wecom_runtime_config SET wecom_auto_assist_on_customer_message = false WHERE wecom_auto_assist_on_customer_message IS NULL;"))
 # 初始化数据库结构
 def auto_patch_db():
     try:
         init_db() # 基础建表
         db = SessionLocal()
-        db.execute(text(
-            "CREATE TABLE IF NOT EXISTS wecom_runtime_config ("
-            "id INTEGER PRIMARY KEY DEFAULT 1,"
-            "wecom_recent_message_limit INTEGER NOT NULL DEFAULT 10,"
-            "api_kb2_enabled BOOLEAN NOT NULL DEFAULT true,"
-            "wecom_auto_assist_on_customer_message BOOLEAN NOT NULL DEFAULT false,"
-            "system_prompt_llm1 TEXT,"
-            "system_prompt_llm2 TEXT,"
-            "reply_style_options JSON,"
-            "fast_track_rules JSON,"
-            "updated_by VARCHAR(120),"
-            "created_at TIMESTAMP DEFAULT now(),"
-            "updated_at TIMESTAMP DEFAULT now()"
-            ");"
-        ))
-        db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS wecom_auto_assist_on_customer_message BOOLEAN NOT NULL DEFAULT false;"))
-        if db.query(WecomRuntimeConfig).filter(WecomRuntimeConfig.id == 1).one_or_none() is None:
+        _ensure_wecom_runtime_config_schema(db)
+        if db.query(WecomRuntimeConfig).filter(WecomRuntimeConfig.id == 1).order_by(WecomRuntimeConfig.updated_at.desc()).first() is None:
             seed_settings = {}
             for settings_name in ("ai_settings.json", "ai_settings.local.json"):
                 settings_path = os.path.join(os.path.dirname(__file__), settings_name)
@@ -16672,13 +16690,14 @@ def _fetch_mail_sender_signature_fields(owner_staff_id: str) -> dict[str, str]:
                 fields["staff_name"] = sanitize_text(staff[0]).strip()
                 fields["english_name"] = sanitize_text(staff[1]).strip()
                 fields["division"] = sanitize_text(staff[2]).strip()
-                fields["mobile"] = sanitize_text(staff[3]).strip()
+                # 手机号是签名要展示的内容，不能走 sanitize_text(会被脱敏成 ***PHONE***)
+                fields["mobile"] = str(staff[3] or "").strip()
             ext = crm_db.execute(
                 text("SELECT TOP 1 PhoneNum FROM usrTelLinePhoneNumSet WHERE staffId = :owner"),
                 {"owner": owner},
             ).fetchone()
             if ext and ext[0] is not None:
-                fields["extend_no"] = sanitize_text(str(ext[0])).strip()
+                fields["extend_no"] = str(ext[0]).strip()
             email = crm_db.execute(
                 text(
                     """
@@ -16694,7 +16713,8 @@ def _fetch_mail_sender_signature_fields(owner_staff_id: str) -> dict[str, str]:
                 {"owner": owner},
             ).fetchone()
             if email and email[0]:
-                fields["email"] = sanitize_text(email[0]).strip()
+                # 企业邮箱是签名要展示的内容，不能走 sanitize_text(会被脱敏成 ***EMAIL***)
+                fields["email"] = str(email[0]).strip()
             return fields
         finally:
             crm_db.close()
@@ -16705,12 +16725,13 @@ def _fetch_mail_sender_signature_fields(owner_staff_id: str) -> dict[str, str]:
 
 def _build_mail_sender_signature_html(fields: dict[str, str]) -> str:
     """按固定版式拼装销售代表签名(变量来自 CRM，固定内容一致)。无姓名则返回空串。"""
-    name = sanitize_text((fields or {}).get("staff_name")).strip()
-    english = sanitize_text((fields or {}).get("english_name")).strip()
-    division = sanitize_text((fields or {}).get("division")).strip()
-    ext = sanitize_text((fields or {}).get("extend_no")).strip()
-    mobile = sanitize_text((fields or {}).get("mobile")).strip()
-    email = sanitize_text((fields or {}).get("email")).strip()
+    # 这些字段后续都会 html.escape；此处不能用 sanitize_text，否则手机号/邮箱会被脱敏成 ***PHONE***/***EMAIL***
+    name = str((fields or {}).get("staff_name") or "").strip()
+    english = str((fields or {}).get("english_name") or "").strip()
+    division = str((fields or {}).get("division") or "").strip()
+    ext = str((fields or {}).get("extend_no") or "").strip()
+    mobile = str((fields or {}).get("mobile") or "").strip()
+    email = str((fields or {}).get("email") or "").strip()
     if not (name or english):
         return ""
     name_line = (name + (" " + english if english else "")).strip()
@@ -16736,8 +16757,8 @@ def _build_mail_sender_signature_html(fields: dict[str, str]) -> str:
 
 
 _MAIL_SUITE_GENERIC_SIGNOFFS = (
-    "事必达国际化服务团队", "事必达客户经理", "事必达销售团队",
-    "事必达销售", "事必达国际化服务团队",
+    "事必达国际化服务团队", "事必达销售团队", "事必达客户经理",
+    "事必达国际", "事必达销售",
 )
 
 
@@ -18485,11 +18506,35 @@ def _wecom_runtime_config_payload(row: WecomRuntimeConfig) -> dict[str, Any]:
     }
 
 
+def _backfill_empty_wecom_runtime_config(row: WecomRuntimeConfig, defaults: dict[str, Any]) -> bool:
+    changed = False
+    if not row.system_prompt_llm1 and defaults.get("SYSTEM_PROMPT_LLM1"):
+        row.system_prompt_llm1 = defaults.get("SYSTEM_PROMPT_LLM1")
+        changed = True
+    if not row.system_prompt_llm2 and defaults.get("SYSTEM_PROMPT_LLM2"):
+        row.system_prompt_llm2 = defaults.get("SYSTEM_PROMPT_LLM2")
+        changed = True
+    if not row.reply_style_options and isinstance(defaults.get("REPLY_STYLE_OPTIONS"), list):
+        row.reply_style_options = defaults.get("REPLY_STYLE_OPTIONS")
+        changed = True
+    if not row.fast_track_rules and isinstance(defaults.get("FAST_TRACK_RULES"), list):
+        row.fast_track_rules = defaults.get("FAST_TRACK_RULES")
+        changed = True
+    if changed:
+        row.updated_by = "api_backfill_from_files"
+    return changed
+
+
 def _get_or_create_wecom_runtime_config(db: Session) -> WecomRuntimeConfig:
-    row = db.query(WecomRuntimeConfig).filter(WecomRuntimeConfig.id == 1).one_or_none()
-    if row is not None:
-        return row
+    _ensure_wecom_runtime_config_schema(db)
     defaults = _load_wecom_ai_script_file_defaults()
+    row = db.query(WecomRuntimeConfig).filter(WecomRuntimeConfig.id == 1).order_by(WecomRuntimeConfig.updated_at.desc()).first()
+    if row is not None:
+        if _backfill_empty_wecom_runtime_config(row, defaults):
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+        return row
     row = WecomRuntimeConfig(
         id=1,
         wecom_recent_message_limit=_clamp_wecom_recent_message_limit(defaults.get("WECOM_RECENT_MESSAGE_LIMIT")),
