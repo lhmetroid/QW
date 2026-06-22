@@ -68,7 +68,7 @@ from database import (
     ApiAssistInvocation, WecomTriggerRecord,
     CaseLibraryCase, CaseLibraryDialogueTurn, CaseIterationRun, CaseIterationResult,
     MailSequenceTemplate, MailCustomerSuiteFeedback, MailContractCase,
-    MailGoldSeedReview, MailCustomerSuiteDraftEdit,
+    MailGoldSeedReview, MailCustomerSuiteDraftEdit, WecomRuntimeConfig,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -130,6 +130,12 @@ SIDEBAR_ASSIST_CACHE_LOCK = threading.Lock()
 # 内容级强缓存：按 session_id 和最近消息的文本内容指纹缓存，避免无文字变化时的重跑
 SIDEBAR_CONTENT_RESULT_CACHE: dict[str, dict[str, Any]] = {}
 SIDEBAR_CONTENT_CACHE_LOCK = threading.Lock()
+_SIDEBAR_MEDIA_PLACEHOLDER_RE = re.compile(r"^\[(?:语音|文件|图片|视频)消息\]")
+
+
+def _is_sidebar_media_placeholder(text: str | None) -> bool:
+    return bool(_SIDEBAR_MEDIA_PLACEHOLDER_RE.match(str(text or "").strip()))
+
 
 def _get_cached_sidebar_content_result(session_id: str, recent_logs: list[MessageLog], force_refresh: bool) -> dict | None:
     now_epoch = datetime.utcnow().timestamp()
@@ -455,6 +461,42 @@ def auto_patch_db():
     try:
         init_db() # 基础建表
         db = SessionLocal()
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS wecom_runtime_config ("
+            "id INTEGER PRIMARY KEY DEFAULT 1,"
+            "wecom_recent_message_limit INTEGER NOT NULL DEFAULT 10,"
+            "api_kb2_enabled BOOLEAN NOT NULL DEFAULT true,"
+            "system_prompt_llm1 TEXT,"
+            "system_prompt_llm2 TEXT,"
+            "reply_style_options JSON,"
+            "fast_track_rules JSON,"
+            "updated_by VARCHAR(120),"
+            "created_at TIMESTAMP DEFAULT now(),"
+            "updated_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
+        if db.query(WecomRuntimeConfig).filter(WecomRuntimeConfig.id == 1).one_or_none() is None:
+            seed_settings = {}
+            for settings_name in ("ai_settings.json", "ai_settings.local.json"):
+                settings_path = os.path.join(os.path.dirname(__file__), settings_name)
+                if os.path.exists(settings_path):
+                    try:
+                        with open(settings_path, "r", encoding="utf-8") as f:
+                            loaded_settings = json.load(f) or {}
+                        if isinstance(loaded_settings, dict):
+                            seed_settings.update(loaded_settings)
+                    except Exception as seed_exc:
+                        logger.warning("企微运行配置种子读取失败 %s: %s", settings_name, seed_exc)
+            db.add(WecomRuntimeConfig(
+                id=1,
+                wecom_recent_message_limit=max(1, min(30, int(seed_settings.get("WECOM_RECENT_MESSAGE_LIMIT") or 10))),
+                api_kb2_enabled=str(seed_settings.get("API_KB2_ENABLED", True)).strip().lower() not in {"0", "false", "no", "off", "disabled"},
+                system_prompt_llm1=seed_settings.get("SYSTEM_PROMPT_LLM1"),
+                system_prompt_llm2=seed_settings.get("SYSTEM_PROMPT_LLM2"),
+                reply_style_options=seed_settings.get("REPLY_STYLE_OPTIONS"),
+                fast_track_rules=seed_settings.get("FAST_TRACK_RULES"),
+                updated_by="auto_patch_seed",
+            ))
         # 强制补丁：为旧表增加 is_mock 列
         db.execute(text("ALTER TABLE message_logs ADD COLUMN IF NOT EXISTS is_mock BOOLEAN DEFAULT FALSE;"))
         db.execute(text("ALTER TABLE message_logs ADD COLUMN IF NOT EXISTS archive_msg_id VARCHAR(120);"))
@@ -7630,6 +7672,27 @@ def _mail_normalize_body_paragraphs(raw_paragraphs: list[str]) -> list[str]:
     return compact[:8]
 
 
+def _mail_strip_markdown_artifacts(value: str | None) -> str:
+    """剥离 LLM 正文/主题里多余的 markdown 痕迹(** * --- 等)，仅做出站展示清理，不修改生成脚本或提示词。"""
+    s = str(value or "")
+    if not s:
+        return ""
+    # 成对强调标记 ***x*** **x** *x* __x__ -> 保留文字去掉符号
+    s = re.sub(r"\*\*\*(.+?)\*\*\*", r"\1", s)
+    s = re.sub(r"\*\*(.+?)\*\*", r"\1", s)
+    s = re.sub(r"\*(.+?)\*", r"\1", s)
+    s = re.sub(r"__(.+?)__", r"\1", s)
+    # 水平分隔线/连续符号(3个及以上的 - * _，两侧非单词字符) -> 删除；电话/日期里的单个连字符不受影响
+    s = re.sub(r"(?<![\w一-鿿])[-*_]{3,}(?![\w一-鿿])", "", s)
+    # 行首或标签后(>、换行、<br>)的列表符号 "- " "* " "+ " -> 删除符号保留文字
+    s = re.sub(r"(^|[>\n]|<br\s*/?>)[ \t]*[*+\-][ \t]+", r"\1", s)
+    # 残留孤立 **
+    s = s.replace("**", "")
+    # 清理因去分隔线产生的空段落
+    s = re.sub(r"<p>\s*(?:&nbsp;| )?\s*</p>", "", s)
+    return s
+
+
 def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) -> MailDraftAssembledContent:
     llm_result = _llm_generate_mail_intro_paragraphs(profile)
     terms = profile.commercial_terms
@@ -7664,7 +7727,7 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
                 f"错误: {llm_result.get('error') or '未返回 subject/paragraphs'}"
             ),
         )
-    subject_text = _mail_brand_display_text(llm_result.get("subject") or "")
+    subject_text = _mail_strip_markdown_artifacts(_mail_brand_display_text(llm_result.get("subject") or ""))
     body_html_from_llm = _mail_brand_display_text(sanitize_text(llm_result.get("body_html") or "").strip())
     seller_signature = _mail_brand_display_text(profile.seller_signature)
     if body_html_from_llm:
@@ -7675,7 +7738,7 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
         paragraphs = [html.escape(_mail_brand_display_text(p)) for p in body_paragraphs]
         paragraphs.append(html.escape(seller_signature).replace("\n", "<br>"))
         body_html = "".join(f"<p>{paragraph}</p>" for paragraph in paragraphs)
-    body_html = _mail_brand_display_text(body_html)
+    body_html = _mail_strip_markdown_artifacts(_mail_brand_display_text(body_html))
 
     review_meta = MailGenerateDraftReviewMetadata(
         crm_profile_signals={
@@ -14782,6 +14845,14 @@ def update_runtime_llm_settings(payload: RuntimeLlmSettings):
     existing = _load_runtime_settings_with_defaults()
     if payload.wecom_system_prompt is not None:
         existing["wecom_system_prompt"] = payload.wecom_system_prompt
+        db = SessionLocal()
+        try:
+            row = _get_or_create_wecom_runtime_config(db)
+            row.system_prompt_llm2 = payload.wecom_system_prompt
+            row.updated_by = "api/v1/system/runtime-llm-settings"
+            db.commit()
+        finally:
+            db.close()
     if payload.wecom_temperature is not None:
         existing["wecom_temperature"] = payload.wecom_temperature
     if payload.mail_system_prompt is not None:
@@ -18189,68 +18260,121 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
 
 # --- 系统运行时脚本管理 API ---
 
-@app.get("/api/system/ai_scripts")
-async def get_ai_scripts():
-    import os, json
+_AI_SCRIPT_DEFAULTS = {
+    "WECOM_RECENT_MESSAGE_LIMIT": 10,
+    "API_KB2_ENABLED": True,
+}
+
+
+def _load_wecom_ai_script_file_defaults() -> dict[str, Any]:
     base_path = os.path.join(os.path.dirname(__file__), "ai_settings.json")
     local_path = os.path.join(os.path.dirname(__file__), "ai_settings.local.json")
-    defaults = {
-        "WECOM_RECENT_MESSAGE_LIMIT": 10,
-        "API_KB2_ENABLED": True,
-    }
+    payload: dict[str, Any] = dict(_AI_SCRIPT_DEFAULTS)
+    for path in (base_path, local_path):
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                loaded = json.load(f) or {}
+            if isinstance(loaded, dict):
+                payload.update(loaded)
+        except Exception as exc:
+            logger.warning("读取企微脚本默认文件失败 path=%s error=%s", path, exc)
+    return payload
+
+
+def _clamp_wecom_recent_message_limit(value: Any) -> int:
     try:
-        if os.path.exists(base_path):
-            with open(base_path, "r", encoding="utf-8") as f:
-                base = json.load(f) or {}
-                if not isinstance(base, dict):
-                    raise HTTPException(status_code=500, detail="ai_settings.json 格式错误")
-            local = {}
-            if os.path.exists(local_path):
-                with open(local_path, "r", encoding="utf-8") as f:
-                    local = json.load(f) or {}
-                    if not isinstance(local, dict):
-                        local = {}
-            return {**defaults, **base, **local}
-        raise HTTPException(status_code=500, detail="ai_settings.json 不存在")
-    except HTTPException:
-        raise
+        return max(1, min(30, int(value)))
+    except (TypeError, ValueError):
+        return 10
+
+
+def _wecom_runtime_config_payload(row: WecomRuntimeConfig) -> dict[str, Any]:
+    return {
+        "WECOM_RECENT_MESSAGE_LIMIT": _clamp_wecom_recent_message_limit(row.wecom_recent_message_limit),
+        "API_KB2_ENABLED": bool(row.api_kb2_enabled),
+        "SYSTEM_PROMPT_LLM1": row.system_prompt_llm1 or "",
+        "SYSTEM_PROMPT_LLM2": row.system_prompt_llm2 or "",
+        "REPLY_STYLE_OPTIONS": row.reply_style_options or [],
+        "FAST_TRACK_RULES": row.fast_track_rules or [],
+        "_storage": "database",
+        "_table": "wecom_runtime_config",
+        "_updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def _get_or_create_wecom_runtime_config(db: Session) -> WecomRuntimeConfig:
+    row = db.query(WecomRuntimeConfig).filter(WecomRuntimeConfig.id == 1).one_or_none()
+    if row is not None:
+        return row
+    defaults = _load_wecom_ai_script_file_defaults()
+    row = WecomRuntimeConfig(
+        id=1,
+        wecom_recent_message_limit=_clamp_wecom_recent_message_limit(defaults.get("WECOM_RECENT_MESSAGE_LIMIT")),
+        api_kb2_enabled=_coerce_bool_setting(defaults.get("API_KB2_ENABLED", True), default=True),
+        system_prompt_llm1=defaults.get("SYSTEM_PROMPT_LLM1"),
+        system_prompt_llm2=defaults.get("SYSTEM_PROMPT_LLM2"),
+        reply_style_options=defaults.get("REPLY_STYLE_OPTIONS") if isinstance(defaults.get("REPLY_STYLE_OPTIONS"), list) else [],
+        fast_track_rules=defaults.get("FAST_TRACK_RULES") if isinstance(defaults.get("FAST_TRACK_RULES"), list) else [],
+        updated_by="api_seed_from_files",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@app.get("/api/system/ai_scripts")
+async def get_ai_scripts():
+    db = SessionLocal()
+    try:
+        row = _get_or_create_wecom_runtime_config(db)
+        payload = _wecom_runtime_config_payload(row)
+        return {**_load_wecom_ai_script_file_defaults(), **payload}
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"读取 ai_settings.json 失败: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"读取 wecom_runtime_config 失败: {exc}") from exc
+    finally:
+        db.close()
+
 
 @app.post("/api/system/ai_scripts")
 async def save_ai_scripts(payload: dict):
-    import os, json
-    base_path  = os.path.join(os.path.dirname(__file__), "ai_settings.json")
-    local_path = os.path.join(os.path.dirname(__file__), "ai_settings.local.json")
+    db = SessionLocal()
     try:
-        # 读基础默认值
-        base = {}
-        if os.path.exists(base_path):
-            with open(base_path, "r", encoding="utf-8") as f:
-                base = json.load(f) or {}
-                if not isinstance(base, dict):
-                    base = {}
-        # 读已有本地覆盖
-        local = {}
-        if os.path.exists(local_path):
-            with open(local_path, "r", encoding="utf-8") as f:
-                local = json.load(f) or {}
-                if not isinstance(local, dict):
-                    local = {}
-        # 合并：base → local → 本次提交
-        merged_local = {**local, **(payload or {})}
-        try:
-            if "WECOM_RECENT_MESSAGE_LIMIT" in merged_local:
-                merged_local["WECOM_RECENT_MESSAGE_LIMIT"] = max(1, min(30, int(merged_local["WECOM_RECENT_MESSAGE_LIMIT"])))
-        except (TypeError, ValueError):
-            merged_local["WECOM_RECENT_MESSAGE_LIMIT"] = 10
-        with open(local_path, "w", encoding="utf-8") as f:
-            json.dump(merged_local, f, ensure_ascii=False, indent=4)
-        # 返回最终生效值（base + local）
-        effective = {**base, **merged_local}
+        row = _get_or_create_wecom_runtime_config(db)
+        incoming = payload or {}
+        if "WECOM_RECENT_MESSAGE_LIMIT" in incoming:
+            row.wecom_recent_message_limit = _clamp_wecom_recent_message_limit(incoming.get("WECOM_RECENT_MESSAGE_LIMIT"))
+        if "API_KB2_ENABLED" in incoming:
+            row.api_kb2_enabled = _coerce_bool_setting(incoming.get("API_KB2_ENABLED"), default=True)
+        if "SYSTEM_PROMPT_LLM1" in incoming:
+            row.system_prompt_llm1 = str(incoming.get("SYSTEM_PROMPT_LLM1") or "")
+        if "SYSTEM_PROMPT_LLM2" in incoming:
+            row.system_prompt_llm2 = str(incoming.get("SYSTEM_PROMPT_LLM2") or "")
+        if "REPLY_STYLE_OPTIONS" in incoming:
+            styles = incoming.get("REPLY_STYLE_OPTIONS")
+            if not isinstance(styles, list):
+                raise HTTPException(status_code=422, detail="REPLY_STYLE_OPTIONS 必须是 JSON 数组")
+            row.reply_style_options = styles
+        if "FAST_TRACK_RULES" in incoming:
+            rules = incoming.get("FAST_TRACK_RULES")
+            if not isinstance(rules, list):
+                raise HTTPException(status_code=422, detail="FAST_TRACK_RULES 必须是 JSON 数组")
+            row.fast_track_rules = rules
+        row.updated_by = "api/system/ai_scripts"
+        db.commit()
+        db.refresh(row)
+        effective = _wecom_runtime_config_payload(row)
         return {"status": "success", "saved": effective}
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"保存 wecom_runtime_config 失败: {e}") from e
+    finally:
+        db.close()
 
 # --- 会话查询 API (供前端使用) ---
 
@@ -23992,7 +24116,8 @@ async def sidebar_assist(
         )
 
         # 只要没有内容变化就不应该重跑，而是直接回复原答案 (内容级指纹强缓存)
-        if not stream and session_id and recent_logs:
+        latest_customer_is_media_placeholder = _is_sidebar_media_placeholder(anchor_message.content if anchor_message else "")
+        if not stream and session_id and recent_logs and not latest_customer_is_media_placeholder:
             content_cached = _get_cached_sidebar_content_result(
                 session_id=session_id,
                 recent_logs=recent_logs,
