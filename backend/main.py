@@ -17366,6 +17366,15 @@ def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, se
             "emailcontent": email_text or "",
         },
     )
+    # 关键：发送系统按 spQueueSendFile 找正文 .eml(FtpDir+FileName)。FileType=1 标识 eml 正文文件。
+    crm_db.execute(
+        text(
+            "INSERT INTO spQueueSendFile "
+            "(RowId, SendId, FtpDir, FileType, FileName, FileSize, CustomerWildCard, QueueRowId) "
+            "VALUES (NEWID(), NULL, :ftpdir, 1, 'MailMainTemp.eml', NULL, 0, :queuerowid)"
+        ),
+        {"ftpdir": eml_ftp_path, "queuerowid": row_guid},
+    )
     crm_db.commit()
 
 
