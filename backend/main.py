@@ -17285,25 +17285,46 @@ def _mail_suite_html_to_text(html_value: str) -> str:
 
 
 def _build_mail_eml_bytes(sender_email: str, sender_name: str, to_emails: list[str], subject: str, body_html: str) -> bytes:
-    """生成 RFC822 .eml(HTML 正文 + From/To/Subject/Date)，供 SFTP 上传后由发送系统投递。"""
-    from email.mime.text import MIMEText
+    """生成与既有系统一致的 .eml，供 SFTP 上传后由发送系统投递。
+
+    对齐历史邮件格式：multipart/alternative(text/plain + text/html) + gb2312/gbk 字符集 +
+    quoted-printable 编码；不写 From 头(历史件无 From，发送端按 SendAddress 设置发件人)。
+    用 gb2312→gbk→gb18030 依次尝试，避免少数生僻字编码失败。
+    """
+    import email.charset as _ec
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.nonmultipart import MIMENonMultipart
     from email.header import Header
-    from email.utils import formataddr, formatdate, make_msgid
-    msg = MIMEText(body_html or "", "html", "utf-8")
-    display = str(sender_name or sender_email)
-    try:
-        from_value = formataddr((str(Header(display, "utf-8")), sender_email))
-    except Exception:
-        from_value = sender_email
-    msg["From"] = from_value
-    msg["To"] = ", ".join(to_emails)
-    msg["Subject"] = str(Header(subject or "", "utf-8"))
-    msg["Date"] = formatdate(localtime=True)
-    try:
-        msg["Message-ID"] = make_msgid()
-    except Exception:
-        pass
-    return msg.as_bytes()
+    from email.utils import formatdate
+
+    def _pick(s: str) -> str:
+        for cs in ("gb2312", "gbk", "gb18030"):
+            try:
+                s.encode(cs)
+                return cs
+            except Exception:
+                continue
+        return "utf-8"
+
+    text_body = _mail_suite_html_to_text(body_html)
+    cs_name = _pick((text_body or "") + (body_html or "") + (subject or ""))
+    ch = _ec.Charset(cs_name)
+    ch.body_encoding = _ec.QP
+    ch.header_encoding = _ec.QP
+
+    root = MIMEMultipart("alternative")
+    if to_emails:
+        root["To"] = ", ".join(to_emails)
+    root["Subject"] = Header(subject or "", ch).encode()
+    root["Date"] = formatdate(localtime=True)
+
+    p_text = MIMENonMultipart("text", "plain")
+    p_text.set_payload(text_body or "", ch)
+    p_html = MIMENonMultipart("text", "html")
+    p_html.set_payload(body_html or "", ch)
+    root.attach(p_text)
+    root.attach(p_html)
+    return root.as_bytes()
 
 
 def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, sender_email: str,
@@ -17315,11 +17336,11 @@ def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, se
             "INSERT INTO spQueueSend "
             "(RowId, SessionId, PlanSendTime, Subject, Content, MessageType, FolderId, "
             " EmergencyLevel, SendAddress, InputTime, Receiver, Receivers, SecretReceivers, "
-            " InputerStaffId, ProcessNow, RepeatTimes, InstanceType, Inputer, EmlFtpPath, EmailContent) "
+            " InputerStaffId, ProcessNow, RepeatTimes, InstanceType, Inputer, EmlFtpPath, EmailContent, UseRange) "
             "VALUES "
             "(:rowid, NEWID(), :plan, :subject, :content, 'Email', 'OutBox', "
             " 0, :sendaddr, GETDATE(), :receiver, '', '', "
-            " :staffid, 0, 0, 'SpeedPersonal.Message.EmailSend', :inputer, :emlpath, :emailcontent)"
+            " :staffid, 0, 0, 'SpeedPersonal.Message.EmailSend', :inputer, :emlpath, :emailcontent, N'邮件宣传')"
         ),
         {
             "rowid": row_guid,
