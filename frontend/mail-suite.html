@@ -815,6 +815,16 @@
         return;
       }
       if (!confirm(`【真实发送】将把第 ${steps.join(',')} 封写入发送队列，由系统按计划时间真实发出。\n收件人：\n${emails.join(', ')}\n\n请确认收件人无误，确认发送？`)) return;
+      // 带上页面当前显示/编辑后的每封内容，后端直接用，不再调大模型重生成(避免覆盖你的编辑)
+      const draftsPayload = steps.map(s => {
+        const subjEl = document.getElementById(`subject-${s}`);
+        const bodyEl = document.getElementById(`body-${s}`);
+        return {
+          suite_step: s,
+          subject: subjEl ? subjEl.value : '',
+          body_html: bodyEl ? bodyEl.innerHTML : '',
+        };
+      });
       btn.disabled = true;
       if (status) { status.textContent = '处理中…'; status.className = 'feedback-status'; }
       try {
@@ -826,6 +836,7 @@
             scenario: suiteData.scenario,
             suite_steps: steps,
             recipient_emails: input ? input.value : '',
+            drafts: draftsPayload,
           }),
         });
         const data = await resp.json().catch(() => ({}));

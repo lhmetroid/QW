@@ -1602,6 +1602,8 @@ class MailCustomerSuiteSendRequest(BaseModel):
     scenario: str
     suite_steps: list[int] | None = None
     recipient_emails: str | None = None
+    # 前端把页面上当前显示/编辑后的每封内容带上，避免发送时再调大模型重生成(更快也更准)
+    drafts: list[dict[str, Any]] | None = None
 
     class Config:
         extra = "forbid"
@@ -17420,25 +17422,40 @@ def send_mail_customer_suite(
     send_address_serialized = _mail_suite_serialize_address(sender_email, sender_name, internal_meta=None)
     receiver_serialized = _mail_suite_serialize_receivers(recipients)
 
+    # 前端带来的每封当前内容(避免重复调大模型)
+    provided_drafts = {}
+    for d in (payload.drafts or []):
+        try:
+            provided_drafts[int(d.get("suite_step"))] = d
+        except Exception:
+            continue
+
     now_bj = datetime.utcnow() + timedelta(hours=8)
     import uuid as _uuid
     batch_id = _uuid.uuid4().hex
     prepared = []
     for suite_step in steps:
         saved = saved_edits.get(int(suite_step))
-        req = MailGenerateDraftRequest(
-            customer_key=customer_id, contact_email=draft_contact_email, scenario=scenario,
-            suite_step=int(suite_step), current_seller_name=seller_name, current_seller_signature=seller_name,
-        )
-        try:
-            resp = _build_mail_generate_draft_response(db, req)
-            draft = resp.dict() if hasattr(resp, "dict") else dict(resp)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"第 {suite_step} 封草稿生成失败：{sanitize_text(str(exc))[:200]}")
-        final_subject = (saved.subject if (saved and saved.subject) else draft.get("final_subject")) or ""
-        if saved and saved.body_html:
-            draft["final_body_html"] = saved.body_html
-        final_body_html = _apply_mail_suite_signature(draft.get("final_body_html") or "", signature_html)
+        prov = provided_drafts.get(int(suite_step))
+        if prov and str(prov.get("body_html") or "").strip():
+            # 直接用页面当前显示/编辑后的内容(已含签名与清洗)，不再调大模型
+            final_subject = str(prov.get("subject") or "").strip()
+            final_body_html = str(prov.get("body_html") or "")
+        else:
+            # 兜底:页面没带内容时才重新生成
+            req = MailGenerateDraftRequest(
+                customer_key=customer_id, contact_email=draft_contact_email, scenario=scenario,
+                suite_step=int(suite_step), current_seller_name=seller_name, current_seller_signature=seller_name,
+            )
+            try:
+                resp = _build_mail_generate_draft_response(db, req)
+                draft = resp.dict() if hasattr(resp, "dict") else dict(resp)
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail=f"第 {suite_step} 封草稿生成失败：{sanitize_text(str(exc))[:200]}")
+            final_subject = (saved.subject if (saved and saved.subject) else draft.get("final_subject")) or ""
+            if saved and saved.body_html:
+                draft["final_body_html"] = saved.body_html
+            final_body_html = _apply_mail_suite_signature(draft.get("final_body_html") or "", signature_html)
         # 计划发送时间 = (今天 + 间隔天) 当天的 send_time
         interval = int(saved.send_interval_days) if (saved and saved.send_interval_days is not None) else _mail_sequence_default_send_interval_days(scenario, int(suite_step))
         send_time = (saved.send_time if (saved and saved.send_time) else _MAIL_SUITE_DEFAULT_SEND_TIME) or "09:00"
