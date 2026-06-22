@@ -262,6 +262,40 @@
       font-size: 13px;
       line-height: 1.2;
     }
+    .rte-toolbar select {
+      height: 28px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 12px;
+      padding: 0 4px;
+      cursor: pointer;
+    }
+    .rte-color {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 2px 5px;
+      font-weight: 800;
+      cursor: pointer;
+      user-select: none;
+    }
+    .rte-color input[type=color] {
+      width: 18px;
+      height: 18px;
+      border: none;
+      padding: 0;
+      background: none;
+      cursor: pointer;
+    }
+    .rte-sep {
+      width: 1px;
+      align-self: stretch;
+      background: #e2e8f0;
+      margin: 2px 2px;
+    }
     .body-html.rte {
       min-height: 170px;
       outline: none;
@@ -467,12 +501,56 @@
             <input type="text" id="subject-${esc(item.suite_step)}" class="subject-input" value="${esc(draft.final_subject)}" onblur="saveDraftField(${esc(item.suite_step)})">
             <div class="field-label">邮件正文</div>
             <div class="rte-toolbar">
+              <button type="button" title="撤销" onmousedown="rteCmd(event,'undo')">↶</button>
+              <button type="button" title="重做" onmousedown="rteCmd(event,'redo')">↷</button>
+              <span class="rte-sep"></span>
+              <select title="字体" onchange="rteExec('fontName', this.value); this.selectedIndex=0">
+                <option value="">字体</option>
+                <option value="Microsoft YaHei">微软雅黑</option>
+                <option value="SimSun">宋体</option>
+                <option value="SimHei">黑体</option>
+                <option value="KaiTi">楷体</option>
+                <option value="Arial">Arial</option>
+                <option value="Times New Roman">Times New Roman</option>
+              </select>
+              <select title="字号" onchange="rteExec('fontSize', this.value); this.selectedIndex=0">
+                <option value="">字号</option>
+                <option value="1">小</option>
+                <option value="2">较小</option>
+                <option value="3">正常</option>
+                <option value="4">较大</option>
+                <option value="5">大</option>
+                <option value="6">特大</option>
+                <option value="7">超大</option>
+              </select>
+              <select title="段落" onchange="rteExec('formatBlock', this.value); this.selectedIndex=0">
+                <option value="">段落</option>
+                <option value="p">正文</option>
+                <option value="h1">标题1</option>
+                <option value="h2">标题2</option>
+                <option value="h3">标题3</option>
+              </select>
+              <span class="rte-sep"></span>
               <button type="button" title="加粗" onmousedown="rteCmd(event,'bold')"><b>B</b></button>
               <button type="button" title="斜体" onmousedown="rteCmd(event,'italic')"><i>I</i></button>
               <button type="button" title="下划线" onmousedown="rteCmd(event,'underline')"><u>U</u></button>
-              <button type="button" title="项目符号列表" onmousedown="rteCmd(event,'insertUnorderedList')">• 列表</button>
-              <button type="button" title="编号列表" onmousedown="rteCmd(event,'insertOrderedList')">1. 列表</button>
+              <button type="button" title="删除线" onmousedown="rteCmd(event,'strikeThrough')"><s>S</s></button>
+              <label class="rte-color" title="字体颜色">A<input type="color" onchange="rteExec('foreColor', this.value)"></label>
+              <label class="rte-color" title="背景色">底<input type="color" onchange="rteHilite(this.value)"></label>
+              <span class="rte-sep"></span>
+              <button type="button" title="无序列表" onmousedown="rteCmd(event,'insertUnorderedList')">• 列表</button>
+              <button type="button" title="有序列表" onmousedown="rteCmd(event,'insertOrderedList')">1. 列表</button>
+              <button type="button" title="减少缩进" onmousedown="rteCmd(event,'outdent')">⇤</button>
+              <button type="button" title="增加缩进" onmousedown="rteCmd(event,'indent')">⇥</button>
+              <button type="button" title="左对齐" onmousedown="rteCmd(event,'justifyLeft')">左</button>
+              <button type="button" title="居中对齐" onmousedown="rteCmd(event,'justifyCenter')">中</button>
+              <button type="button" title="右对齐" onmousedown="rteCmd(event,'justifyRight')">右</button>
+              <span class="rte-sep"></span>
+              <button type="button" title="上标" onmousedown="rteCmd(event,'superscript')">x²</button>
+              <button type="button" title="下标" onmousedown="rteCmd(event,'subscript')">x₂</button>
               <button type="button" title="插入链接" onmousedown="rteLink(event)">链接</button>
+              <button type="button" title="插入图片" onmousedown="rteImage(event)">图片</button>
+              <button type="button" title="分割线" onmousedown="rteCmd(event,'insertHorizontalRule')">―</button>
               <button type="button" title="清除格式" onmousedown="rteCmd(event,'removeFormat')">清除格式</button>
             </div>
             <div id="body-${esc(item.suite_step)}" class="body-html rte" contenteditable="true" onblur="saveDraftField(${esc(item.suite_step)})">${draft.final_body_html || ''}</div>
@@ -502,15 +580,53 @@
       }
     }
 
+    // 富文本编辑：保存/恢复选区，保证点击下拉、取色器等控件后仍能作用到原选区
+    let rteSavedRange = null;
+    document.addEventListener('selectionchange', () => {
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      let node = range.commonAncestorContainer;
+      if (node.nodeType === 3) node = node.parentElement;
+      if (node && node.closest && node.closest('.rte')) {
+        rteSavedRange = range.cloneRange();
+      }
+    });
+
+    function rteRestore() {
+      if (!rteSavedRange) return;
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(rteSavedRange);
+    }
+
+    function rteExec(cmd, value) {
+      rteRestore();
+      document.execCommand(cmd, false, value == null ? null : value);
+    }
+
     function rteCmd(event, cmd, value) {
       event.preventDefault();
-      document.execCommand(cmd, false, value || null);
+      document.execCommand(cmd, false, value == null ? null : value);
+    }
+
+    function rteHilite(color) {
+      rteRestore();
+      if (!document.execCommand('hiliteColor', false, color)) {
+        document.execCommand('backColor', false, color);
+      }
     }
 
     function rteLink(event) {
       event.preventDefault();
       const url = prompt('请输入链接地址（含 http:// 或 https://）');
-      if (url) document.execCommand('createLink', false, url);
+      if (url) rteExec('createLink', url);
+    }
+
+    function rteImage(event) {
+      event.preventDefault();
+      const url = prompt('请输入图片地址（含 http:// 或 https://）');
+      if (url) rteExec('insertImage', url);
     }
 
     function readDraftFields(step) {
