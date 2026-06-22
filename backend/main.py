@@ -17486,8 +17486,12 @@ def send_mail_customer_suite(
             # 直接用页面当前显示/编辑后的内容(已含签名与清洗)，不再调大模型
             final_subject = str(prov.get("subject") or "").strip()
             final_body_html = str(prov.get("body_html") or "")
+        elif saved is not None and saved.subject and saved.body_html:
+            # 次选:已保存内容，同样不调大模型
+            final_subject = saved.subject
+            final_body_html = saved.body_html
         else:
-            # 兜底:页面没带内容时才重新生成
+            # 兜底:页面没带内容且未保存过时才重新生成(慢，正常不会走到)
             req = MailGenerateDraftRequest(
                 customer_key=customer_id, contact_email=draft_contact_email, scenario=scenario,
                 suite_step=int(suite_step), current_seller_name=seller_name, current_seller_signature=seller_name,
