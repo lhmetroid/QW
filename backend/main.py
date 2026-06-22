@@ -17248,7 +17248,8 @@ def upsert_mail_customer_suite_recipient(
         raise HTTPException(status_code=422, detail="customer_id is required")
     if scenario not in _MAIL_SCENARIO_CHINESE:
         raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
-    raw = sanitize_text(payload.emails or "")
+    # 邮箱不能走 sanitize_text(会被脱敏成 ***EMAIL***)；这里是收件人地址，原样解析
+    raw = str(payload.emails or "")
     emails = [e.strip() for e in re.split(r"[,;\s]+", raw) if e.strip() and "@" in e]
     normalized = ",".join(emails)
     row = (
@@ -17361,7 +17362,8 @@ def send_mail_customer_suite(
 
     # 2) 收件人 = 入参覆盖 > 已保存覆盖 > CRM 有效邮箱
     if payload.recipient_emails is not None and payload.recipient_emails.strip():
-        recipient_emails = [e.strip() for e in re.split(r"[,;\s]+", sanitize_text(payload.recipient_emails)) if e.strip() and "@" in e]
+        # 邮箱原样解析，禁用 sanitize_text(否则被脱敏成 ***EMAIL*** 全被过滤)
+        recipient_emails = [e.strip() for e in re.split(r"[,;\s]+", str(payload.recipient_emails)) if e.strip() and "@" in e]
     else:
         rrow = (
             db.query(MailCustomerSuiteRecipient)
