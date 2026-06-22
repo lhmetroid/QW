@@ -466,6 +466,7 @@ def auto_patch_db():
             "id INTEGER PRIMARY KEY DEFAULT 1,"
             "wecom_recent_message_limit INTEGER NOT NULL DEFAULT 10,"
             "api_kb2_enabled BOOLEAN NOT NULL DEFAULT true,"
+            "wecom_auto_assist_on_customer_message BOOLEAN NOT NULL DEFAULT false,"
             "system_prompt_llm1 TEXT,"
             "system_prompt_llm2 TEXT,"
             "reply_style_options JSON,"
@@ -475,6 +476,7 @@ def auto_patch_db():
             "updated_at TIMESTAMP DEFAULT now()"
             ");"
         ))
+        db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS wecom_auto_assist_on_customer_message BOOLEAN NOT NULL DEFAULT false;"))
         if db.query(WecomRuntimeConfig).filter(WecomRuntimeConfig.id == 1).one_or_none() is None:
             seed_settings = {}
             for settings_name in ("ai_settings.json", "ai_settings.local.json"):
@@ -491,6 +493,7 @@ def auto_patch_db():
                 id=1,
                 wecom_recent_message_limit=max(1, min(30, int(seed_settings.get("WECOM_RECENT_MESSAGE_LIMIT") or 10))),
                 api_kb2_enabled=str(seed_settings.get("API_KB2_ENABLED", True)).strip().lower() not in {"0", "false", "no", "off", "disabled"},
+                wecom_auto_assist_on_customer_message=str(seed_settings.get("WECOM_AUTO_ASSIST_ON_CUSTOMER_MESSAGE", False)).strip().lower() in {"1", "true", "yes", "on", "enabled"},
                 system_prompt_llm1=seed_settings.get("SYSTEM_PROMPT_LLM1"),
                 system_prompt_llm2=seed_settings.get("SYSTEM_PROMPT_LLM2"),
                 reply_style_options=seed_settings.get("REPLY_STYLE_OPTIONS"),
@@ -922,6 +925,10 @@ class SidebarBroker:
         """ArchiveService 新消息钩子(在工作线程调用)。"""
         if not self._loop:
             return
+        try:
+            self._loop.call_soon_threadsafe(_schedule_auto_sidebar_assist_for_messages, list(messages or []))
+        except Exception as exc:
+            logger.warning("客户新消息自动触发调度失败: %s", exc)
         for msg in messages:
             session_id = msg.get("session_id")
             if not session_id:
@@ -932,6 +939,7 @@ class SidebarBroker:
                 continue
             for queue in queues:
                 self._loop.call_soon_threadsafe(self._safe_put, queue, msg)
+
 
     @staticmethod
     def _safe_put(queue: asyncio.Queue, item: dict) -> None:
@@ -16589,6 +16597,154 @@ def update_mail_sequence_template(
     }
 
 
+def _fetch_mail_contact_owner_staff_id(customer_key: str) -> str:
+    """只读查询客户联系人的销售代表工号(usrCustomerContact.Owner)。查不到返回空串。"""
+    normalized_key = sanitize_text(customer_key).strip()
+    if not normalized_key:
+        return ""
+    try:
+        from crm_database import CRMSessionLocal
+        crm_db = CRMSessionLocal()
+        try:
+            row = crm_db.execute(
+                text(
+                    """
+                    SELECT TOP 1 ISNULL(CAST(c.Owner AS NVARCHAR(120)), '')
+                    FROM usrCustomerContact AS c
+                    LEFT JOIN usrCustomer AS d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL
+                    WHERE c.Deleter IS NULL
+                      AND ISNULL(CAST(c.Owner AS NVARCHAR(120)), '') <> ''
+                      AND (
+                        LOWER(ISNULL(CAST(c.ContactId AS NVARCHAR(120)), '')) = :k
+                        OR LOWER(ISNULL(CAST(c.NewContactId AS NVARCHAR(120)), '')) = :k
+                        OR LOWER(ISNULL(CAST(c.CustomerId AS NVARCHAR(120)), '')) = :k
+                        OR LOWER(ISNULL(CAST(d.NewCustomerId AS NVARCHAR(120)), '')) = :k
+                        OR LOWER(ISNULL(d.CompanyName, '')) LIKE :like
+                        OR LOWER(ISNULL(d.CompanyNameEnglish, '')) LIKE :like
+                      )
+                    ORDER BY c.ContactId DESC
+                    """
+                ),
+                {"k": normalized_key.lower(), "like": f"%{normalized_key.lower()}%"},
+            ).fetchone()
+            return sanitize_text(row[0]).strip() if row and row[0] else ""
+        finally:
+            crm_db.close()
+    except Exception:
+        logger.exception("MAIL_SUITE_CONTACT_OWNER_LOOKUP_FAILED key=%s", sanitize_text(customer_key))
+        return ""
+
+
+def _fetch_mail_sender_signature_fields(owner_staff_id: str) -> dict[str, str]:
+    """只读取销售代表签名要素(分机/手机/中英文名/部门/企业邮箱)，口径对齐既有 CRM 取数逻辑。只读不写。"""
+    owner = sanitize_text(owner_staff_id).strip()
+    fields = {
+        "staff_id": owner, "staff_name": "", "english_name": "",
+        "division": "", "extend_no": "", "mobile": "", "email": "",
+    }
+    if not owner:
+        return fields
+    try:
+        from crm_database import CRMSessionLocal
+        crm_db = CRMSessionLocal()
+        try:
+            staff = crm_db.execute(
+                text(
+                    "SELECT TOP 1 ISNULL(StaffName,''), ISNULL(StaffEnglishName,''), "
+                    "ISNULL(Division,''), ISNULL(Mobile,'') FROM usrStaff WHERE StaffId = :owner"
+                ),
+                {"owner": owner},
+            ).fetchone()
+            if staff:
+                fields["staff_name"] = sanitize_text(staff[0]).strip()
+                fields["english_name"] = sanitize_text(staff[1]).strip()
+                fields["division"] = sanitize_text(staff[2]).strip()
+                fields["mobile"] = sanitize_text(staff[3]).strip()
+            ext = crm_db.execute(
+                text("SELECT TOP 1 PhoneNum FROM usrTelLinePhoneNumSet WHERE staffId = :owner"),
+                {"owner": owner},
+            ).fetchone()
+            if ext and ext[0] is not None:
+                fields["extend_no"] = sanitize_text(str(ext[0])).strip()
+            email = crm_db.execute(
+                text(
+                    """
+                    SELECT TOP 1 a.EmailAddress
+                    FROM spEmailAddressBelong a
+                    INNER JOIN spEmailAddress b ON a.EmailAddress = b.EmailAddress AND ISNULL(b.IsUse, 0) = 1
+                    LEFT JOIN spEmailAddressDefaultSet AS c ON a.EmailAddress = c.EmailAddress AND c.DefaultStaffId = :owner
+                    WHERE a.belongId = :owner
+                       OR a.BelongId IN (SELECT StructId FROM usrStaffInDivisionStruct WHERE StaffId = :owner)
+                    ORDER BY (CASE WHEN c.EmailAddress IS NOT NULL THEN 1 ELSE 0 END) DESC, a.belongId, a.EmailAddress ASC
+                    """
+                ),
+                {"owner": owner},
+            ).fetchone()
+            if email and email[0]:
+                fields["email"] = sanitize_text(email[0]).strip()
+            return fields
+        finally:
+            crm_db.close()
+    except Exception:
+        logger.exception("MAIL_SUITE_SIGNATURE_FIELDS_FAILED owner=%s", owner)
+        return fields
+
+
+def _build_mail_sender_signature_html(fields: dict[str, str]) -> str:
+    """按固定版式拼装销售代表签名(变量来自 CRM，固定内容一致)。无姓名则返回空串。"""
+    name = sanitize_text((fields or {}).get("staff_name")).strip()
+    english = sanitize_text((fields or {}).get("english_name")).strip()
+    division = sanitize_text((fields or {}).get("division")).strip()
+    ext = sanitize_text((fields or {}).get("extend_no")).strip()
+    mobile = sanitize_text((fields or {}).get("mobile")).strip()
+    email = sanitize_text((fields or {}).get("email")).strip()
+    if not (name or english):
+        return ""
+    name_line = (name + (" " + english if english else "")).strip()
+    phone_base = "+86 21 5489 6060"
+    if ext:
+        phone_base += "-" + ext
+    phone_line = "Phone: " + phone_base + ("," + mobile if mobile else "")
+    web_line = "www.speed-asia.com" + (" " + email if email else "")
+    lines = [
+        f"<strong>{html.escape(name_line)}</strong>",
+        "",
+        html.escape(division),
+        "上海嘉赛科技有限公司(事必达)",
+        html.escape(phone_line),
+        html.escape(web_line),
+        "中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室",
+    ]
+    inner = "<br>".join(lines)
+    return (
+        '<div class="mail-signature" style="margin-top:16px;color:#004080;'
+        'font-size:13px;line-height:1.7;">' + inner + "</div>"
+    )
+
+
+_MAIL_SUITE_GENERIC_SIGNOFFS = (
+    "事必达国际化服务团队", "事必达客户经理", "事必达销售团队",
+    "事必达销售", "事必达国际化服务团队",
+)
+
+
+def _apply_mail_suite_signature(body_html: str, signature_html: str) -> str:
+    """用真实销售代表签名替换正文里的占位/通用落款。signature_html 为空则原样返回。"""
+    s = str(body_html or "")
+    if not signature_html:
+        return s
+    # 去掉 LLM 留下的方括号占位符(如 [你的名字]/[职位]/[您的姓名])
+    s = re.sub(r"\[[^\[\]\n]{1,20}\]", "", s)
+    # 去掉通用落款行(整段或 <br> 行)
+    for generic in _MAIL_SUITE_GENERIC_SIGNOFFS:
+        esc = re.escape(generic)
+        s = re.sub(r"<p>\s*(?:<br\s*/?>|\s)*" + esc + r"\s*(?:<br\s*/?>|\s)*</p>", "", s)
+        s = re.sub(r"(?:<br\s*/?>\s*)*" + esc + r"(?=\s*(?:<br\s*/?>|</p>|$))", "", s)
+    # 清理空段落
+    s = re.sub(r"<p>\s*(?:<br\s*/?>|&nbsp;|\s)*</p>", "", s)
+    return s.rstrip() + signature_html
+
+
 @app.get("/api/v1/mail/customer-suite")
 def get_mail_customer_suite(
     request: Request,
@@ -16669,6 +16825,12 @@ def get_mail_customer_suite(
             "included": included,
         }
 
+    owner_staff_id = _fetch_mail_contact_owner_staff_id(customer_id)
+    signature_html = (
+        _build_mail_sender_signature_html(_fetch_mail_sender_signature_fields(owner_staff_id))
+        if owner_staff_id else ""
+    )
+
     drafts = []
     for suite_step in ALL_MAIL_SEQUENCE_STEPS:
         saved = saved_edits.get(int(suite_step))
@@ -16688,6 +16850,10 @@ def get_mail_customer_suite(
                     draft["final_subject"] = saved.subject
                 if saved.body_html:
                     draft["final_body_html"] = saved.body_html
+            if signature_html and not (saved is not None and saved.body_html):
+                draft["final_body_html"] = _apply_mail_suite_signature(
+                    draft.get("final_body_html") or "", signature_html
+                )
             drafts.append({
                 "suite_step": int(suite_step),
                 "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(suite_step)),
@@ -18263,6 +18429,7 @@ async def import_assisted_text(payload: KnowledgeAssistTextImport, db: Session =
 _AI_SCRIPT_DEFAULTS = {
     "WECOM_RECENT_MESSAGE_LIMIT": 10,
     "API_KB2_ENABLED": True,
+    "WECOM_AUTO_ASSIST_ON_CUSTOMER_MESSAGE": False,
 }
 
 
@@ -18294,6 +18461,7 @@ def _wecom_runtime_config_payload(row: WecomRuntimeConfig) -> dict[str, Any]:
     return {
         "WECOM_RECENT_MESSAGE_LIMIT": _clamp_wecom_recent_message_limit(row.wecom_recent_message_limit),
         "API_KB2_ENABLED": bool(row.api_kb2_enabled),
+        "WECOM_AUTO_ASSIST_ON_CUSTOMER_MESSAGE": bool(row.wecom_auto_assist_on_customer_message),
         "SYSTEM_PROMPT_LLM1": row.system_prompt_llm1 or "",
         "SYSTEM_PROMPT_LLM2": row.system_prompt_llm2 or "",
         "REPLY_STYLE_OPTIONS": row.reply_style_options or [],
@@ -18313,6 +18481,7 @@ def _get_or_create_wecom_runtime_config(db: Session) -> WecomRuntimeConfig:
         id=1,
         wecom_recent_message_limit=_clamp_wecom_recent_message_limit(defaults.get("WECOM_RECENT_MESSAGE_LIMIT")),
         api_kb2_enabled=_coerce_bool_setting(defaults.get("API_KB2_ENABLED", True), default=True),
+        wecom_auto_assist_on_customer_message=_coerce_bool_setting(defaults.get("WECOM_AUTO_ASSIST_ON_CUSTOMER_MESSAGE", False), default=False),
         system_prompt_llm1=defaults.get("SYSTEM_PROMPT_LLM1"),
         system_prompt_llm2=defaults.get("SYSTEM_PROMPT_LLM2"),
         reply_style_options=defaults.get("REPLY_STYLE_OPTIONS") if isinstance(defaults.get("REPLY_STYLE_OPTIONS"), list) else [],
@@ -18348,6 +18517,8 @@ async def save_ai_scripts(payload: dict):
             row.wecom_recent_message_limit = _clamp_wecom_recent_message_limit(incoming.get("WECOM_RECENT_MESSAGE_LIMIT"))
         if "API_KB2_ENABLED" in incoming:
             row.api_kb2_enabled = _coerce_bool_setting(incoming.get("API_KB2_ENABLED"), default=True)
+        if "WECOM_AUTO_ASSIST_ON_CUSTOMER_MESSAGE" in incoming:
+            row.wecom_auto_assist_on_customer_message = _coerce_bool_setting(incoming.get("WECOM_AUTO_ASSIST_ON_CUSTOMER_MESSAGE"), default=False)
         if "SYSTEM_PROMPT_LLM1" in incoming:
             row.system_prompt_llm1 = str(incoming.get("SYSTEM_PROMPT_LLM1") or "")
         if "SYSTEM_PROMPT_LLM2" in incoming:
@@ -18662,13 +18833,13 @@ def extract_external_userid(value: str) -> str:
     import re
 
     text_value = (value or "").strip()
-    if text_value.startswith(("wm", "wo", "wb")):
+    if text_value.startswith(("wm", "wo", "wb", "ex")):
         return text_value
     if text_value.startswith("group_"):
         return ""
     if text_value.startswith("single_"):
         body = text_value.replace("single_", "", 1)
-        match = re.search(r"(?:^|_)((?:wm|wo|wb)[A-Za-z0-9_-]+)$", body)
+        match = re.search(r"(?:^|_)((?:wm|wo|wb|ex)[A-Za-z0-9_-]+)$", body)
         if match:
             return match.group(1)
     return ""
@@ -18781,6 +18952,9 @@ def _normalize_trigger_source(value: str | None, default: str = "web_manual") ->
         "api": "api",
         "api_trigger": "api",
         "sidebar_api": "api",
+        "auto": "auto_customer_message",
+        "auto_customer": "auto_customer_message",
+        "auto_customer_message": "auto_customer_message",
         "web": "web_manual",
         "web_manual": "web_manual",
         "frontend": "web_manual",
@@ -19288,6 +19462,8 @@ def _resolve_customer_trigger_anchor_id(messages: list[MessageLog], anchor_messa
     for item in ordered[anchor_index + 1:]:
         if item.sender_type != "customer":
             break
+        if _is_sidebar_media_placeholder(item.content):
+            break
         if previous.timestamp and item.timestamp:
             gap_seconds = abs((item.timestamp - previous.timestamp).total_seconds())
             if gap_seconds > 90:
@@ -19405,7 +19581,7 @@ def _message_id_signature(message_ids: list[Any] | None) -> str:
 
 def _find_latest_customer_anchor(messages: list[MessageLog]) -> MessageLog | None:
     for item in reversed(messages or []):
-        if item.sender_type == "customer":
+        if item.sender_type == "customer" and not _is_sidebar_media_placeholder(item.content):
             return item
     return None
 
@@ -19449,12 +19625,45 @@ def _sidebar_assist_request_key(
     force_refresh: bool,
 ) -> str:
     anchor_message = _find_latest_customer_anchor(messages)
+    visible_messages = _visible_messages_until_anchor(messages, anchor_message.id) if anchor_message else []
     return (
         f"{session_id or ''}"
         f"::{1 if force_refresh else 0}"
         f"::{int(anchor_message.id) if anchor_message else 0}"
-        f"::{_message_id_signature([item.id for item in messages])}"
+        f"::{_message_id_signature([item.id for item in visible_messages])}"
     )
+
+def _get_stored_sidebar_assist_result(
+    db: Session,
+    *,
+    session_id: str,
+    anchor_message: MessageLog | None,
+    visible_messages: list[MessageLog],
+    request_key: str,
+) -> dict | None:
+    if not session_id or not anchor_message:
+        return None
+    visible_ids = [int(item.id) for item in (visible_messages or []) if getattr(item, "id", None) is not None]
+    rows = db.query(ApiAssistInvocation).filter(
+        ApiAssistInvocation.session_id == session_id,
+        ApiAssistInvocation.anchor_message_id == int(anchor_message.id),
+    ).order_by(ApiAssistInvocation.triggered_at.desc()).limit(20).all()
+    for item in rows:
+        stored_ids = []
+        for raw_value in item.visible_message_ids or []:
+            try:
+                stored_ids.append(int(raw_value))
+            except (TypeError, ValueError):
+                stored_ids.append(raw_value)
+        if stored_ids == visible_ids and item.result_payload:
+            return _decorate_sidebar_assist_result(
+                _api_invocation_result_payload(item),
+                status="reused_stored_api_invocation",
+                reason="同一客户消息锚点和可见上下文已完成生成，直接读取数据库历史结果",
+                request_key=request_key,
+            )
+    return None
+
 
 def _decorate_sidebar_assist_result(
     payload: dict,
@@ -22807,6 +23016,7 @@ async def get_latest_analysis(user_id: str, snapshot_id: str | None = Query(defa
 def _analytics_source_label(source: str | None) -> str:
     return {
         "api": "API触发",
+        "auto_customer_message": "客户新消息自动触发",
         "web_manual": "网页人工触发",
         "test": "测试触发",
     }.get(_normalize_trigger_source(source, default="web_manual"), source or "-")
@@ -23689,6 +23899,88 @@ class SidebarAssistRequest(BaseModel):
     # 案例库迭代 V9 起：跳过 step7 评分，链路到 step6 AI 生成即截止；评分改由 rescore 端点单独补
     eval_skip_scoring: bool = False
 
+
+
+def _wecom_auto_assist_enabled_sync() -> bool:
+    db = SessionLocal()
+    try:
+        row = _get_or_create_wecom_runtime_config(db)
+        return bool(row.wecom_auto_assist_on_customer_message)
+    except Exception as exc:
+        logger.warning("读取客户新消息自动触发开关失败，按关闭处理: %s", exc)
+        return False
+    finally:
+        db.close()
+
+
+def _auto_sidebar_assist_targets(messages: list[dict]) -> dict[str, tuple[str, str]]:
+    targets: dict[str, tuple[str, str]] = {}
+    for msg in messages or []:
+        session_id = str(msg.get("session_id") or "").strip()
+        if not session_id or session_id.startswith("group_"):
+            continue
+        if str(msg.get("sender_type") or "").strip() != "customer":
+            continue
+        if _is_sidebar_media_placeholder(msg.get("content")):
+            continue
+        external_userid = extract_external_userid(session_id)
+        sales_userid = _parse_sales_userid_from_session(session_id) or ""
+        if not external_userid or not sales_userid:
+            continue
+        targets[session_id] = (sales_userid, external_userid)
+    return targets
+
+
+class _AutoSidebarHttpRequest:
+    def __init__(self, request_id: str):
+        self.headers = {"x-trigger-source": "auto_customer_message", "user-agent": "wecom-auto-assist"}
+        self.client = type("Client", (), {"host": "auto_customer_message"})()
+        self.state = type("State", (), {"request_id": request_id})()
+
+
+async def _run_auto_sidebar_assist_for_session(session_id: str, sales_userid: str, external_userid: str) -> None:
+    request_id = f"auto_{uuid.uuid4().hex[:16]}"
+    try:
+        req = SidebarAssistRequest(
+            userid=sales_userid,
+            external_userid=external_userid,
+            force_refresh=False,
+            sync_archive_before_read=False,
+            trigger_source="auto_customer_message",
+        )
+        result = await sidebar_assist(req, _AutoSidebarHttpRequest(request_id), stream=False)
+        log_sidebar_result("AUTO_CUSTOMER_MESSAGE_DONE", {
+            "request_id": request_id,
+            "session_id": session_id,
+            "sales_userid": sales_userid,
+            "external_userid": external_userid,
+            "status": (result or {}).get("status") if isinstance(result, dict) else "unknown",
+            "anchor_message_id": (result or {}).get("anchor_message_id") if isinstance(result, dict) else None,
+            "dedupe_status": ((result or {}).get("request_dedupe") or {}).get("status") if isinstance(result, dict) else None,
+        })
+    except Exception as exc:
+        log_sidebar_result("AUTO_CUSTOMER_MESSAGE_ERROR", {
+            "request_id": request_id,
+            "session_id": session_id,
+            "sales_userid": sales_userid,
+            "external_userid": external_userid,
+            "error": str(exc),
+        })
+
+
+async def _auto_sidebar_assist_from_messages(messages: list[dict]) -> None:
+    if not await asyncio.to_thread(_wecom_auto_assist_enabled_sync):
+        return
+    targets = _auto_sidebar_assist_targets(messages)
+    for session_id, (sales_userid, external_userid) in targets.items():
+        asyncio.create_task(_run_auto_sidebar_assist_for_session(session_id, sales_userid, external_userid))
+
+
+def _schedule_auto_sidebar_assist_for_messages(messages: list[dict]) -> None:
+    if not messages:
+        return
+    asyncio.create_task(_auto_sidebar_assist_from_messages(messages))
+
 class SessionArchiveSyncRequest(BaseModel):
     session_id: str | None = None
     userid: str | None = None
@@ -24115,9 +24407,36 @@ async def sidebar_assist(
             force_refresh=bool(request.force_refresh),
         )
 
+        if not stream and session_id and recent_logs and not request.force_refresh:
+            stored_result = _get_stored_sidebar_assist_result(
+                db,
+                session_id=session_id,
+                anchor_message=anchor_message,
+                visible_messages=visible_messages,
+                request_key=dedupe_request_key,
+            )
+            if stored_result:
+                mark_timing("dedupe_lookup_ms", stage_started)
+                timings_ms["total_ms"] = round((perf_counter() - total_started) * 1000, 2)
+                log_sidebar_result("REUSED_STORED", {
+                    "request_id": current_request_id,
+                    "wall_clock_utc": datetime.utcnow().isoformat() + "Z",
+                    "external_userid": external_userid,
+                    "sales_userid": sales_userid,
+                    "session_id": session_id,
+                    "requested_session_id": requested_session_id,
+                    "dedupe_status": "reused_stored_api_invocation",
+                    "anchor_message_id": int(anchor_message.id) if anchor_message else None,
+                    "latest_dialog_count": len(recent_logs),
+                    "request_key": dedupe_request_key,
+                    "timings_ms": timings_ms,
+                })
+                db.close()
+                return stored_result
+
+
         # 只要没有内容变化就不应该重跑，而是直接回复原答案 (内容级指纹强缓存)
-        latest_customer_is_media_placeholder = _is_sidebar_media_placeholder(anchor_message.content if anchor_message else "")
-        if not stream and session_id and recent_logs and not latest_customer_is_media_placeholder:
+        if not stream and session_id and recent_logs:
             content_cached = _get_cached_sidebar_content_result(
                 session_id=session_id,
                 recent_logs=recent_logs,
