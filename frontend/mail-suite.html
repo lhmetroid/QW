@@ -25,13 +25,60 @@
       font: 14px/1.6 Arial, "Microsoft YaHei", sans-serif;
     }
     .appbar {
-      height: 56px;
+      min-height: 56px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 20px;
+      gap: 14px;
+      flex-wrap: wrap;
+      padding: 8px 20px;
       background: #fff;
       border-bottom: 1px solid #e2e8f0;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .appbar-tools {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex: 1 1 auto;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+    .recipients-box {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1 1 360px;
+      min-width: 220px;
+    }
+    .recipients-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .recipients-box input {
+      flex: 1 1 auto;
+      min-width: 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 7px 9px;
+      font: inherit;
+      font-size: 13px;
+    }
+    .recipients-box input:focus { border-color: var(--brand); outline: none; }
+    .send-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      white-space: nowrap;
+    }
+    .send-box .steps-text {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0f172a;
     }
     .brand {
       font-weight: 900;
@@ -352,6 +399,17 @@
 <body>
   <header class="appbar">
     <div class="brand">智能销售辅助工作台<small>邮件套装生成</small></div>
+    <div class="appbar-tools">
+      <label class="recipients-box">
+        <span class="recipients-label">客户邮箱</span>
+        <input type="text" id="recipient-emails" placeholder="加载中…" onblur="saveRecipientEmails()">
+      </label>
+      <div class="send-box">
+        <span id="suite-steps-text" class="steps-text">当前未勾选</span>
+        <button type="button" class="primary" id="suite-send-btn" onclick="sendSuite()">发送</button>
+        <span id="send-status" class="feedback-status"></span>
+      </div>
+    </div>
     <div class="badge">免登录独立页</div>
   </header>
   <main>
@@ -688,7 +746,101 @@
       if (details) details.classList.toggle('skipped', !included);
       const item = (suiteData.drafts || []).find(x => Number(x.suite_step) === Number(step));
       if (item && item.send_settings) item.send_settings.included = included;
+      updateSuiteStepsText();
       await postDraftEdit(step, { included }, included ? '已勾选，这封会发送' : '已取消勾选，这封跳过不发');
+    }
+
+    function checkedSuiteSteps() {
+      return (suiteData && suiteData.drafts || [])
+        .map(it => Number(it.suite_step))
+        .filter(step => {
+          const cb = document.getElementById(`include-${step}`);
+          return cb ? cb.checked : false;
+        })
+        .sort((a, b) => a - b);
+    }
+
+    function updateSuiteStepsText() {
+      const el = document.getElementById('suite-steps-text');
+      if (!el) return;
+      const steps = checkedSuiteSteps();
+      el.textContent = steps.length
+        ? `当前以 ${steps.join(',')} 作为套装`
+        : '当前未勾选任何邮件';
+    }
+
+    function fillRecipientEmails() {
+      const input = document.getElementById('recipient-emails');
+      if (!input || !suiteData) return;
+      input.value = (suiteData.recipient_emails || []).join(', ');
+      input.placeholder = (suiteData.recipient_emails || []).length ? '' : '未读取到有效客户邮箱';
+    }
+
+    async function saveRecipientEmails() {
+      const input = document.getElementById('recipient-emails');
+      const status = document.getElementById('send-status');
+      if (!input || !suiteData) return;
+      try {
+        const resp = await fetch('/api/v1/mail/customer-suite-recipient', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_id: suiteData.customer_id,
+            scenario: suiteData.scenario,
+            emails: input.value || '',
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+        suiteData.recipient_emails = data.emails || [];
+        if (status) { status.textContent = `客户邮箱已保存(${(data.emails || []).length})`; status.className = 'feedback-status ok'; }
+      } catch (err) {
+        if (status) { status.textContent = `邮箱保存失败：${err.message}`; status.className = 'feedback-status err'; }
+      }
+    }
+
+    async function sendSuite() {
+      const status = document.getElementById('send-status');
+      const btn = document.getElementById('suite-send-btn');
+      const input = document.getElementById('recipient-emails');
+      if (!suiteData) return;
+      const steps = checkedSuiteSteps();
+      if (!steps.length) {
+        if (status) { status.textContent = '请先勾选要发送的邮件'; status.className = 'feedback-status err'; }
+        return;
+      }
+      const emails = (input && input.value || '').split(/[,;\s]+/).filter(Boolean);
+      if (!emails.length) {
+        if (status) { status.textContent = '请先填写客户邮箱'; status.className = 'feedback-status err'; }
+        return;
+      }
+      if (!confirm(`将按计划时间把第 ${steps.join(',')} 封加入待发队列，收件人：\n${emails.join(', ')}\n确认？`)) return;
+      btn.disabled = true;
+      if (status) { status.textContent = '处理中…'; status.className = 'feedback-status'; }
+      try {
+        const resp = await fetch('/api/v1/mail/customer-suite-send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_id: suiteData.customer_id,
+            scenario: suiteData.scenario,
+            suite_steps: steps,
+            recipient_emails: input ? input.value : '',
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+        const lines = (data.prepared || []).map(p => `第${p.suite_step}封 · ${p.plan_send_time}`).join('；');
+        if (status) {
+          status.textContent = `已加入待发计划 ${data.prepared_count} 封（${data.status}）`;
+          status.className = 'feedback-status ok';
+        }
+        alert(`已生成待发计划 ${data.prepared_count} 封\n发件人：${data.sender_email}\n收件人：${(data.recipient_emails || []).join(', ')}\n${lines}\n\n${data.note || ''}`);
+      } catch (err) {
+        if (status) { status.textContent = `发送失败：${err.message}`; status.className = 'feedback-status err'; }
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     async function copyMail(step, includeSubject) {
@@ -770,6 +922,8 @@
         setStatus(`生成完成：${scenarioLabel(data)} · 共 ${(data.drafts || []).length} 封 · 真发开关关闭`);
         renderCustomer(data);
         renderDrafts(data);
+        fillRecipientEmails();
+        updateSuiteStepsText();
       } catch (err) {
         setStatus(`加载失败：${err.message}`, true);
       }

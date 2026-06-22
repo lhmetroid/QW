@@ -132,6 +132,34 @@ class IntentSummary(Base):
 
 
 
+class WecomRuntimeConfig(Base):
+
+    """企微实时智能运行配置：前台脚本/强扫描/知识库开关的数据库单行配置。"""
+
+    __tablename__ = "wecom_runtime_config"
+
+    id = Column(Integer, primary_key=True, default=1)
+
+    wecom_recent_message_limit = Column(Integer, nullable=False, default=10)
+
+    api_kb2_enabled = Column(Boolean, nullable=False, default=True)
+
+    wecom_auto_assist_on_customer_message = Column(Boolean, nullable=False, default=False)
+
+    system_prompt_llm1 = Column(Text, nullable=True)
+
+    system_prompt_llm2 = Column(Text, nullable=True)
+
+    reply_style_options = Column(JSON, nullable=True)
+
+    fast_track_rules = Column(JSON, nullable=True)
+
+    updated_by = Column(String(120), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
 class KnowledgeBase(Base):
 
     """销售知识库/回复模板"""
@@ -2090,6 +2118,85 @@ class MailCustomerSuiteDraftEdit(Base):
     __table_args__ = (
 
         Index("uq_mcsde_customer_scenario_step", "customer_id", "scenario", "suite_step", unique=True),
+
+    )
+
+
+class MailCustomerSuiteRecipient(Base):
+
+    """套装页客户收件邮箱(可人工编辑覆盖,默认取 CRM 有效邮箱),按 客户编号+场景 唯一。"""
+
+    __tablename__ = "mail_customer_suite_recipient"
+
+    recipient_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+
+    customer_id = Column(String(120), nullable=False)
+
+    scenario = Column(String(80), nullable=False)
+
+    emails = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+
+        Index("uq_mcsr_customer_scenario", "customer_id", "scenario", unique=True),
+
+    )
+
+
+class MailCustomerSuiteSendPlan(Base):
+
+    """套装页"发送"动作生成的待发计划(本地暂存)。
+
+    收发件人已按 spQueueSend 格式备好;真正写入 CRM spQueueSend + 上传 .eml 待 FTP 接入后由后续步骤完成。
+    """
+
+    __tablename__ = "mail_customer_suite_send_plan"
+
+    plan_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+
+    batch_id = Column(String(64), nullable=True)
+
+    customer_id = Column(String(120), nullable=False)
+
+    scenario = Column(String(80), nullable=False)
+
+    suite_step = Column(Integer, nullable=False)
+
+    sender_email = Column(String(255), nullable=True)
+
+    sender_name = Column(String(255), nullable=True)
+
+    to_emails = Column(Text, nullable=True)
+
+    subject = Column(String(500), nullable=True)
+
+    body_html = Column(Text, nullable=True)
+
+    body_text = Column(Text, nullable=True)
+
+    plan_send_time = Column(DateTime, nullable=True)
+
+    send_address_serialized = Column(Text, nullable=True)
+
+    receiver_serialized = Column(Text, nullable=True)
+
+    inputer_staff_id = Column(String(120), nullable=True)
+
+    status = Column(String(40), nullable=False, default="prepared_pending_ftp")
+
+    spqueue_rowid = Column(String(64), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+
+        Index("idx_mcssp_customer_scenario", "customer_id", "scenario"),
+
+        Index("idx_mcssp_batch", "batch_id"),
 
     )
 

@@ -69,6 +69,7 @@ from database import (
     CaseLibraryCase, CaseLibraryDialogueTurn, CaseIterationRun, CaseIterationResult,
     MailSequenceTemplate, MailCustomerSuiteFeedback, MailContractCase,
     MailGoldSeedReview, MailCustomerSuiteDraftEdit, WecomRuntimeConfig,
+    MailCustomerSuiteRecipient, MailCustomerSuiteSendPlan,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -758,6 +759,41 @@ def auto_patch_db():
             "CONSTRAINT uq_mcsde_customer_scenario_step UNIQUE(customer_id, scenario, suite_step)"
             ");"
         ))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_customer_suite_recipient ("
+            "recipient_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "customer_id VARCHAR(120) NOT NULL,"
+            "scenario VARCHAR(80) NOT NULL,"
+            "emails TEXT,"
+            "created_at TIMESTAMP DEFAULT now(),"
+            "updated_at TIMESTAMP DEFAULT now(),"
+            "CONSTRAINT uq_mcsr_customer_scenario UNIQUE(customer_id, scenario)"
+            ");"
+        ))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_customer_suite_send_plan ("
+            "plan_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "batch_id VARCHAR(64),"
+            "customer_id VARCHAR(120) NOT NULL,"
+            "scenario VARCHAR(80) NOT NULL,"
+            "suite_step INTEGER NOT NULL,"
+            "sender_email VARCHAR(255),"
+            "sender_name VARCHAR(255),"
+            "to_emails TEXT,"
+            "subject VARCHAR(500),"
+            "body_html TEXT,"
+            "body_text TEXT,"
+            "plan_send_time TIMESTAMP,"
+            "send_address_serialized TEXT,"
+            "receiver_serialized TEXT,"
+            "inputer_staff_id VARCHAR(120),"
+            "status VARCHAR(40) NOT NULL DEFAULT 'prepared_pending_ftp',"
+            "spqueue_rowid VARCHAR(64),"
+            "created_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcssp_customer_scenario ON mail_customer_suite_send_plan (customer_id, scenario);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcssp_batch ON mail_customer_suite_send_plan (batch_id);"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS wecom_trigger_record ("
             "record_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -1547,6 +1583,25 @@ class MailCustomerSuiteDraftEditRequest(BaseModel):
     send_interval_days: int | None = None
     send_time: str | None = None
     included: bool | None = None
+
+    class Config:
+        extra = "forbid"
+
+
+class MailCustomerSuiteRecipientRequest(BaseModel):
+    customer_id: str
+    scenario: str
+    emails: str | None = None
+
+    class Config:
+        extra = "forbid"
+
+
+class MailCustomerSuiteSendRequest(BaseModel):
+    customer_id: str
+    scenario: str
+    suite_steps: list[int] | None = None
+    recipient_emails: str | None = None
 
     class Config:
         extra = "forbid"
@@ -16697,6 +16752,105 @@ def _fetch_mail_contact_owner_staff_id(customer_key: str) -> str:
         return ""
 
 
+def _fetch_mail_contact_valid_emails(customer_key: str) -> list[str]:
+    """只读取客户联系人当前有效(IsCollect='正确')的邮箱清单，来自 usrCustomerContactCommunicateNo。"""
+    normalized_key = sanitize_text(customer_key).strip()
+    if not normalized_key:
+        return []
+    try:
+        from crm_database import CRMSessionLocal
+        crm_db = CRMSessionLocal()
+        try:
+            # 先用 customer-suite 一致口径定位联系人 ContactId(最近联系人)
+            contact_row = crm_db.execute(
+                text(
+                    """
+                    SELECT TOP 1 c.ContactId
+                    FROM usrCustomerContact AS c
+                    LEFT JOIN usrCustomer AS d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL
+                    WHERE c.Deleter IS NULL
+                      AND (
+                        LOWER(ISNULL(CAST(c.ContactId AS NVARCHAR(120)), '')) = :k
+                        OR LOWER(ISNULL(CAST(c.NewContactId AS NVARCHAR(120)), '')) = :k
+                        OR LOWER(ISNULL(CAST(c.CustomerId AS NVARCHAR(120)), '')) = :k
+                        OR LOWER(ISNULL(CAST(d.NewCustomerId AS NVARCHAR(120)), '')) = :k
+                        OR LOWER(ISNULL(d.CompanyName, '')) LIKE :like
+                        OR LOWER(ISNULL(d.CompanyNameEnglish, '')) LIKE :like
+                      )
+                    ORDER BY c.ContactId DESC
+                    """
+                ),
+                {"k": normalized_key.lower(), "like": f"%{normalized_key.lower()}%"},
+            ).fetchone()
+            if not contact_row or not contact_row[0]:
+                return []
+            contact_id = contact_row[0]
+            rows = crm_db.execute(
+                text(
+                    """
+                    SELECT CommunicateNo
+                    FROM usrCustomerContactCommunicateNo
+                    WHERE ContactId = :cid
+                      AND CommunicateType = 'ContactEmail'
+                      AND ISNULL(IsCollect, '') = '正确'
+                    ORDER BY InputTime DESC
+                    """
+                ),
+                {"cid": contact_id},
+            ).fetchall()
+            emails: list[str] = []
+            seen: set[str] = set()
+            for r in rows:
+                raw = str(r[0] or "").strip()
+                if not raw:
+                    continue
+                # 跳过明显异常的拼接条目(含空格或斜杠的脏数据)
+                if "/" in raw or " " in raw:
+                    continue
+                if "@" not in raw:
+                    continue
+                key = raw.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                emails.append(raw)
+            return emails
+        finally:
+            crm_db.close()
+    except Exception:
+        logger.exception("MAIL_SUITE_VALID_EMAILS_LOOKUP_FAILED key=%s", sanitize_text(customer_key))
+        return []
+
+
+def _mail_suite_serialize_address(email: str, present: str, *, internal_meta: dict[str, str] | None = None) -> str:
+    """按 spQueueSend 的收发件人序列化格式拼装一条地址。internal_meta 提供则按内部联系人写元数据。"""
+    email = str(email or "").strip()
+    present = str(present or "").strip() or email
+    parts = [
+        '{MsgType}"Email"',
+        '{Value}"' + email + '"',
+    ]
+    if internal_meta:
+        for k in ("CustomerTableName", "CompanyName", "CustomerId", "Source", "ID"):
+            v = str(internal_meta.get(k, "") or "").strip()
+            if v:
+                parts.append('{' + k + '}"' + v + '"')
+        parts.append('{SourceType}"Internal"')
+    else:
+        parts.append('{SourceType}"usrInput"')
+    parts.append('{Key}"' + email + '"')
+    parts.append('{Present}"' + present + '"')
+    return f"{present}<{email}>[" + ",".join(parts) + ",]"
+
+
+def _mail_suite_serialize_receivers(recipients: list[dict[str, str]]) -> str:
+    """多个收件人按 ';' 拼接(spQueueSend Receiver/Receivers 格式)。"""
+    items = []
+    for r in recipients:
+        items.append(_mail_suite_serialize_address(r.get("email", ""), r.get("name", ""), internal_meta=r.get("meta")))
+    return ";".join(items)
+
+
 def _fetch_mail_sender_signature_fields(owner_staff_id: str) -> dict[str, str]:
     """只读取销售代表签名要素(分机/手机/中英文名/部门/企业邮箱)，口径对齐既有 CRM 取数逻辑。只读不写。"""
     owner = sanitize_text(owner_staff_id).strip()
@@ -16913,10 +17067,27 @@ def get_mail_customer_suite(
         }
 
     owner_staff_id = _fetch_mail_contact_owner_staff_id(customer_id)
-    signature_html = (
-        _build_mail_sender_signature_html(_fetch_mail_sender_signature_fields(owner_staff_id))
-        if owner_staff_id else ""
+    signature_fields = _fetch_mail_sender_signature_fields(owner_staff_id) if owner_staff_id else {}
+    signature_html = _build_mail_sender_signature_html(signature_fields) if owner_staff_id else ""
+    sender_email = sanitize_text(signature_fields.get("email")) if signature_fields else ""
+    sender_name = sanitize_text(signature_fields.get("english_name")) or sanitize_text(signature_fields.get("staff_name")) if signature_fields else ""
+
+    # 客户收件邮箱：人工覆盖优先，否则取 CRM 当前有效邮箱(IsCollect='正确')
+    valid_emails = _fetch_mail_contact_valid_emails(customer_id)
+    recipient_row = (
+        db.query(MailCustomerSuiteRecipient)
+        .filter(
+            MailCustomerSuiteRecipient.customer_id == customer_id,
+            MailCustomerSuiteRecipient.scenario == scenario_norm,
+        )
+        .one_or_none()
     )
+    if recipient_row is not None and (recipient_row.emails or "").strip():
+        recipient_emails = [e.strip() for e in re.split(r"[,;\s]+", recipient_row.emails) if e.strip()]
+        recipient_emails_source = "manual_override"
+    else:
+        recipient_emails = valid_emails
+        recipient_emails_source = "crm_valid_emails"
 
     drafts = []
     for suite_step in ALL_MAIL_SEQUENCE_STEPS:
@@ -16977,6 +17148,11 @@ def get_mail_customer_suite(
         "customer_profile": customer_profile,
         "drafts": drafts,
         "suite_total": len(drafts),
+        "sender_email": sender_email,
+        "sender_name": sender_name,
+        "recipient_emails": recipient_emails,
+        "recipient_emails_source": recipient_emails_source,
+        "crm_valid_emails": valid_emails,
         "real_sending_enabled": False,
         "note": "套装页只生成草稿和保存反馈，不真实发送邮件。",
     }
@@ -17057,6 +17233,190 @@ def upsert_mail_customer_suite_draft(
         "draft_edit_id": str(row.draft_edit_id),
         "record": _serialize_mail_customer_suite_draft_edit(row),
         "real_sending_enabled": False,
+    }
+
+
+@app.post("/api/v1/mail/customer-suite-recipient")
+def upsert_mail_customer_suite_recipient(
+    payload: MailCustomerSuiteRecipientRequest,
+    db: Session = Depends(get_db),
+):
+    """保存套装页人工编辑后的客户收件邮箱(按 客户编号+场景 upsert)。"""
+    customer_id = sanitize_text(payload.customer_id).strip()
+    scenario = sanitize_text(payload.scenario).strip()
+    if not customer_id:
+        raise HTTPException(status_code=422, detail="customer_id is required")
+    if scenario not in _MAIL_SCENARIO_CHINESE:
+        raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
+    raw = sanitize_text(payload.emails or "")
+    emails = [e.strip() for e in re.split(r"[,;\s]+", raw) if e.strip() and "@" in e]
+    normalized = ",".join(emails)
+    row = (
+        db.query(MailCustomerSuiteRecipient)
+        .filter(
+            MailCustomerSuiteRecipient.customer_id == customer_id,
+            MailCustomerSuiteRecipient.scenario == scenario,
+        )
+        .one_or_none()
+    )
+    created = False
+    if row is None:
+        row = MailCustomerSuiteRecipient(customer_id=customer_id[:120], scenario=scenario)
+        db.add(row)
+        created = True
+    row.emails = normalized or None
+    db.commit()
+    return {"ok": True, "created": created, "emails": emails}
+
+
+def _mail_suite_html_to_text(html_value: str) -> str:
+    s = str(html_value or "")
+    s = re.sub(r"(?is)<br\s*/?>", "\n", s)
+    s = re.sub(r"(?is)</p>", "\n\n", s)
+    s = re.sub(r"(?is)<[^>]+>", "", s)
+    s = (s.replace("&nbsp;", " ").replace("&amp;", "&")
+           .replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"'))
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
+
+
+@app.post("/api/v1/mail/customer-suite-send")
+def send_mail_customer_suite(
+    payload: MailCustomerSuiteSendRequest,
+    db: Session = Depends(get_db),
+):
+    """套装页"发送"：把勾选的邮件按 计划时间 + 客户邮箱 备好待发计划(本地暂存)。
+
+    收发件人已按 spQueueSend 格式序列化；真正写入 CRM spQueueSend + 上传 .eml 待 FTP 接入后由后续步骤完成，
+    现阶段不会真实发件。
+    """
+    customer_id = sanitize_text(payload.customer_id).strip()
+    scenario = sanitize_text(payload.scenario).strip()
+    if not customer_id:
+        raise HTTPException(status_code=422, detail="customer_id is required")
+    if scenario not in _MAIL_SCENARIO_CHINESE:
+        raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
+
+    # 1) 发件人 = 在职销售签名企业邮箱
+    owner_staff_id = _fetch_mail_contact_owner_staff_id(customer_id)
+    signature_fields = _fetch_mail_sender_signature_fields(owner_staff_id) if owner_staff_id else {}
+    sender_email = sanitize_text(signature_fields.get("email")) if signature_fields else ""
+    sender_name = (sanitize_text(signature_fields.get("english_name"))
+                   or sanitize_text(signature_fields.get("staff_name")) if signature_fields else "")
+    if not sender_email:
+        raise HTTPException(status_code=422, detail="未取到在职销售的发件企业邮箱，无法发送")
+
+    # 2) 收件人 = 入参覆盖 > 已保存覆盖 > CRM 有效邮箱
+    if payload.recipient_emails is not None and payload.recipient_emails.strip():
+        recipient_emails = [e.strip() for e in re.split(r"[,;\s]+", sanitize_text(payload.recipient_emails)) if e.strip() and "@" in e]
+    else:
+        rrow = (
+            db.query(MailCustomerSuiteRecipient)
+            .filter(MailCustomerSuiteRecipient.customer_id == customer_id,
+                    MailCustomerSuiteRecipient.scenario == scenario)
+            .one_or_none()
+        )
+        if rrow is not None and (rrow.emails or "").strip():
+            recipient_emails = [e.strip() for e in re.split(r"[,;\s]+", rrow.emails) if e.strip() and "@" in e]
+        else:
+            recipient_emails = _fetch_mail_contact_valid_emails(customer_id)
+    # 去重保序
+    seen = set(); deduped = []
+    for e in recipient_emails:
+        if e.lower() not in seen:
+            seen.add(e.lower()); deduped.append(e)
+    recipient_emails = deduped
+    if not recipient_emails:
+        raise HTTPException(status_code=422, detail="没有可用的客户收件邮箱")
+
+    # 3) 选择要发的封次
+    saved_edits = {
+        int(r.suite_step): r
+        for r in db.query(MailCustomerSuiteDraftEdit)
+        .filter(MailCustomerSuiteDraftEdit.customer_id == customer_id,
+                MailCustomerSuiteDraftEdit.scenario == scenario).all()
+    }
+    if payload.suite_steps:
+        steps = [s for s in payload.suite_steps if s in ALL_MAIL_SEQUENCE_STEPS]
+    else:
+        steps = [s for s in ALL_MAIL_SEQUENCE_STEPS
+                 if (saved_edits.get(int(s)).included if saved_edits.get(int(s)) is not None else True)]
+    if not steps:
+        raise HTTPException(status_code=422, detail="没有勾选要发送的邮件")
+
+    # 4) CRM 画像(收件人元数据) + 草稿生成所需信息
+    crm_profile = _lookup_mail_crm_profile(customer_id, "")
+    contact_name = sanitize_text(crm_profile.get("contact_name"))
+    company_name = sanitize_text(crm_profile.get("company_name")) or customer_id
+    contact_email = sanitize_text(crm_profile.get("contact_email"))
+    draft_contact_email = _mail_demo_contact_email_for_draft(contact_email) or _mail_review_only_draft_contact_email(customer_id, crm_profile)
+    seller_name = "事必达销售"
+    signature_html = _build_mail_sender_signature_html(signature_fields) if signature_fields else ""
+
+    receiver_meta = {
+        "CustomerTableName": "usrCustomer",
+        "CompanyName": company_name,
+        "CustomerId": customer_id.split("-")[0],
+        "Source": "usrCustomerContact",
+        "ID": customer_id,
+    }
+    recipients = [{"email": e, "name": contact_name or e, "meta": receiver_meta} for e in recipient_emails]
+    send_address_serialized = _mail_suite_serialize_address(sender_email, sender_name, internal_meta=None)
+    receiver_serialized = _mail_suite_serialize_receivers(recipients)
+
+    now_bj = datetime.utcnow() + timedelta(hours=8)
+    import uuid as _uuid
+    batch_id = _uuid.uuid4().hex
+    prepared = []
+    for suite_step in steps:
+        saved = saved_edits.get(int(suite_step))
+        req = MailGenerateDraftRequest(
+            customer_key=customer_id, contact_email=draft_contact_email, scenario=scenario,
+            suite_step=int(suite_step), current_seller_name=seller_name, current_seller_signature=seller_name,
+        )
+        try:
+            resp = _build_mail_generate_draft_response(db, req)
+            draft = resp.dict() if hasattr(resp, "dict") else dict(resp)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"第 {suite_step} 封草稿生成失败：{sanitize_text(str(exc))[:200]}")
+        final_subject = (saved.subject if (saved and saved.subject) else draft.get("final_subject")) or ""
+        if saved and saved.body_html:
+            draft["final_body_html"] = saved.body_html
+        final_body_html = _apply_mail_suite_signature(draft.get("final_body_html") or "", signature_html)
+        # 计划发送时间 = (今天 + 间隔天) 当天的 send_time
+        interval = int(saved.send_interval_days) if (saved and saved.send_interval_days is not None) else _mail_sequence_default_send_interval_days(scenario, int(suite_step))
+        send_time = (saved.send_time if (saved and saved.send_time) else _MAIL_SUITE_DEFAULT_SEND_TIME) or "09:00"
+        try:
+            hh, mm = [int(x) for x in send_time.split(":")]
+        except Exception:
+            hh, mm = 9, 0
+        plan_dt = (now_bj + timedelta(days=max(0, interval))).replace(hour=hh, minute=mm, second=0, microsecond=0)
+        row = MailCustomerSuiteSendPlan(
+            batch_id=batch_id, customer_id=customer_id[:120], scenario=scenario, suite_step=int(suite_step),
+            sender_email=sender_email[:255], sender_name=(sender_name or "")[:255],
+            to_emails=",".join(recipient_emails), subject=final_subject[:500],
+            body_html=final_body_html, body_text=_mail_suite_html_to_text(final_body_html),
+            plan_send_time=plan_dt, send_address_serialized=send_address_serialized,
+            receiver_serialized=receiver_serialized, inputer_staff_id=(owner_staff_id or "")[:120],
+            status="prepared_pending_ftp",
+        )
+        db.add(row)
+        prepared.append({
+            "suite_step": int(suite_step),
+            "subject": final_subject,
+            "plan_send_time": plan_dt.strftime("%Y-%m-%d %H:%M"),
+        })
+    db.commit()
+    return {
+        "ok": True,
+        "batch_id": batch_id,
+        "sender_email": sender_email,
+        "recipient_emails": recipient_emails,
+        "prepared_count": len(prepared),
+        "prepared": prepared,
+        "status": "prepared_pending_ftp",
+        "real_sending_enabled": False,
+        "note": "已生成待发计划并暂存；正文 .eml 上传 FTP 与写入 spQueueSend 待 FTP 接入后完成，当前不会真实发件。",
     }
 
 
