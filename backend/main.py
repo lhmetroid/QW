@@ -17335,7 +17335,11 @@ def _build_mail_eml_bytes(sender_email: str, sender_name: str, to_emails: list[s
     p_html.set_payload(body_html or "", ch)
     root.attach(p_text)
     root.attach(p_html)
-    return root.as_bytes()
+    raw = root.as_bytes()
+    # 统一为邮件标准 CRLF：Python 默认输出 LF，老发送/解码器遇到 QP 软换行 =\n(而非 =\r\n)
+    # 会解不动，导致汉字字节漏成原始 hex(乱码)。先归一到 LF 再转 CRLF，保证全文含 QP 软换行均为 \r\n。
+    raw = raw.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+    return raw
 
 
 def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, sender_email: str,
