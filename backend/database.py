@@ -2054,6 +2054,46 @@ class MailCustomerSuiteFeedback(Base):
     )
 
 
+class MailCustomerSuiteDraftEdit(Base):
+
+    """独立客户套装邮件页的逐封草稿人工编辑(主题/正文/发送间隔/发送时间/是否发送)。
+
+    按 客户编号+场景+第N封 唯一,每封一条,leave 保存即 upsert 覆盖。
+    """
+
+    __tablename__ = "mail_customer_suite_draft_edit"
+
+    draft_edit_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+
+    customer_id = Column(String(120), nullable=False)
+
+    scenario = Column(String(80), nullable=False)
+
+    suite_step = Column(Integer, nullable=False)
+
+    mail_uid = Column(String(120), nullable=True)
+
+    subject = Column(String(500), nullable=True)
+
+    body_html = Column(Text, nullable=True)
+
+    send_interval_days = Column(Integer, nullable=True)
+
+    send_time = Column(String(10), nullable=True)
+
+    included = Column(Boolean, nullable=False, default=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+
+        Index("uq_mcsde_customer_scenario_step", "customer_id", "scenario", "suite_step", unique=True),
+
+    )
+
+
 class MailContractCase(Base):
     """邮件本地合同案例表：缓存/灌库 CRM 中的所有符合标准的合同案例，减少动态查询开销"""
     __tablename__ = "mail_contract_case"

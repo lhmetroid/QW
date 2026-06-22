@@ -68,7 +68,7 @@ from database import (
     ApiAssistInvocation, WecomTriggerRecord,
     CaseLibraryCase, CaseLibraryDialogueTurn, CaseIterationRun, CaseIterationResult,
     MailSequenceTemplate, MailCustomerSuiteFeedback, MailContractCase,
-    MailGoldSeedReview,
+    MailGoldSeedReview, MailCustomerSuiteDraftEdit,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -678,6 +678,23 @@ def auto_patch_db():
         ))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcsf_customer_created ON mail_customer_suite_feedback (customer_id, created_at);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcsf_scenario_step ON mail_customer_suite_feedback (scenario, suite_step);"))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_customer_suite_draft_edit ("
+            "draft_edit_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "customer_id VARCHAR(120) NOT NULL,"
+            "scenario VARCHAR(80) NOT NULL,"
+            "suite_step INTEGER NOT NULL,"
+            "mail_uid VARCHAR(120),"
+            "subject VARCHAR(500),"
+            "body_html TEXT,"
+            "send_interval_days INTEGER,"
+            "send_time VARCHAR(10),"
+            "included BOOLEAN NOT NULL DEFAULT true,"
+            "created_at TIMESTAMP DEFAULT now(),"
+            "updated_at TIMESTAMP DEFAULT now(),"
+            "CONSTRAINT uq_mcsde_customer_scenario_step UNIQUE(customer_id, scenario, suite_step)"
+            ");"
+        ))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS wecom_trigger_record ("
             "record_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -1447,6 +1464,21 @@ class MailCustomerSuiteFeedbackRequest(BaseModel):
     feedback_status: str | None = None
     draft_payload: dict[str, Any] | None = None
     customer_profile: dict[str, Any] | None = None
+
+    class Config:
+        extra = "forbid"
+
+
+class MailCustomerSuiteDraftEditRequest(BaseModel):
+    customer_id: str
+    scenario: str
+    suite_step: int
+    mail_uid: str | None = None
+    subject: str | None = None
+    body_html: str | None = None
+    send_interval_days: int | None = None
+    send_time: str | None = None
+    included: bool | None = None
 
     class Config:
         extra = "forbid"
@@ -6678,6 +6710,27 @@ def _serialize_mail_customer_suite_feedback(row) -> dict[str, Any]:
             "seller_name": profile.get("seller_name") or profile.get("current_seller_name") or profile.get("owner_name"),
         },
         "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+_MAIL_SUITE_DEFAULT_SEND_TIME = "09:00"
+
+
+def _serialize_mail_customer_suite_draft_edit(row) -> dict[str, Any]:
+    return {
+        "draft_edit_id": str(row.draft_edit_id) if getattr(row, "draft_edit_id", None) else None,
+        "customer_id": row.customer_id,
+        "scenario": row.scenario,
+        "scenario_label_cn": _MAIL_SCENARIO_CHINESE.get(row.scenario, row.scenario),
+        "suite_step": row.suite_step,
+        "mail_uid": row.mail_uid,
+        "subject": row.subject,
+        "body_html": row.body_html,
+        "send_interval_days": row.send_interval_days,
+        "send_time": row.send_time,
+        "included": bool(row.included),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
 
 
@@ -16519,8 +16572,35 @@ def get_mail_customer_suite(
         "seller_name": seller_name,
     }
 
+    saved_edits = {
+        int(r.suite_step): r
+        for r in db.query(MailCustomerSuiteDraftEdit)
+        .filter(
+            MailCustomerSuiteDraftEdit.customer_id == customer_id,
+            MailCustomerSuiteDraftEdit.scenario == scenario_norm,
+        )
+        .all()
+    }
+
+    def _suite_step_send_settings(step: int, saved) -> dict[str, Any]:
+        default_interval = _mail_sequence_default_send_interval_days(scenario_norm, int(step))
+        if saved is not None and saved.send_interval_days is not None:
+            interval = int(saved.send_interval_days)
+        else:
+            interval = default_interval
+        send_time = saved.send_time if (saved is not None and saved.send_time) else _MAIL_SUITE_DEFAULT_SEND_TIME
+        included = bool(saved.included) if saved is not None else True
+        return {
+            "send_interval_days": interval,
+            "default_send_interval_days": default_interval,
+            "send_time": send_time,
+            "default_send_time": _MAIL_SUITE_DEFAULT_SEND_TIME,
+            "included": included,
+        }
+
     drafts = []
     for suite_step in ALL_MAIL_SEQUENCE_STEPS:
+        saved = saved_edits.get(int(suite_step))
         payload = MailGenerateDraftRequest(
             customer_key=customer_id,
             contact_email=draft_contact_email,
@@ -16532,11 +16612,17 @@ def get_mail_customer_suite(
         try:
             response = _build_mail_generate_draft_response(db, payload)
             draft = response.dict() if hasattr(response, "dict") else dict(response)
+            if saved is not None:
+                if saved.subject:
+                    draft["final_subject"] = saved.subject
+                if saved.body_html:
+                    draft["final_body_html"] = saved.body_html
             drafts.append({
                 "suite_step": int(suite_step),
                 "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(suite_step)),
                 "status": "success",
                 "draft": draft,
+                "send_settings": _suite_step_send_settings(int(suite_step), saved),
             })
         except HTTPException as exc:
             drafts.append({
@@ -16545,6 +16631,7 @@ def get_mail_customer_suite(
                 "status": "failed",
                 "error": exc.detail,
                 "draft": None,
+                "send_settings": _suite_step_send_settings(int(suite_step), saved),
             })
         except Exception as exc:
             logger.exception("MAIL_CUSTOMER_SUITE_DRAFT_FAILED customer_id=%s suite_step=%s", sanitize_text(customer_id), suite_step)
@@ -16554,6 +16641,7 @@ def get_mail_customer_suite(
                 "status": "failed",
                 "error": sanitize_text(str(exc))[:500],
                 "draft": None,
+                "send_settings": _suite_step_send_settings(int(suite_step), saved),
             })
 
     return {
@@ -16567,6 +16655,84 @@ def get_mail_customer_suite(
         "suite_total": len(drafts),
         "real_sending_enabled": False,
         "note": "套装页只生成草稿和保存反馈，不真实发送邮件。",
+    }
+
+
+def _normalize_suite_send_time(value: str | None) -> str | None:
+    text_value = sanitize_text(value or "").strip()
+    if not text_value:
+        return None
+    parts = text_value.split(":")
+    if len(parts) != 2:
+        raise HTTPException(status_code=422, detail="send_time 必须是 HH:MM 格式")
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="send_time 必须是 HH:MM 格式") from exc
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise HTTPException(status_code=422, detail="send_time 超出有效范围")
+    return f"{hour:02d}:{minute:02d}"
+
+
+@app.post("/api/v1/mail/customer-suite-draft")
+def upsert_mail_customer_suite_draft(
+    payload: MailCustomerSuiteDraftEditRequest,
+    db: Session = Depends(get_db),
+):
+    """套装页逐封草稿编辑保存：按 客户编号+场景+第N封 upsert 覆盖，支持部分字段更新。"""
+    customer_id = sanitize_text(payload.customer_id).strip()
+    scenario = sanitize_text(payload.scenario).strip()
+    if not customer_id:
+        raise HTTPException(status_code=422, detail="customer_id is required")
+    if scenario not in _MAIL_SCENARIO_CHINESE:
+        raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
+    if payload.suite_step not in ALL_MAIL_SEQUENCE_STEPS:
+        raise HTTPException(status_code=422, detail=f"unsupported suite_step: {payload.suite_step}")
+    if payload.send_interval_days is not None and int(payload.send_interval_days) < 0:
+        raise HTTPException(status_code=422, detail="send_interval_days must be >= 0")
+
+    row = (
+        db.query(MailCustomerSuiteDraftEdit)
+        .filter(
+            MailCustomerSuiteDraftEdit.customer_id == customer_id,
+            MailCustomerSuiteDraftEdit.scenario == scenario,
+            MailCustomerSuiteDraftEdit.suite_step == int(payload.suite_step),
+        )
+        .one_or_none()
+    )
+    created = False
+    if row is None:
+        row = MailCustomerSuiteDraftEdit(
+            customer_id=customer_id[:120],
+            scenario=scenario,
+            suite_step=int(payload.suite_step),
+            included=True,
+        )
+        db.add(row)
+        created = True
+
+    if payload.mail_uid is not None:
+        row.mail_uid = sanitize_text(payload.mail_uid).strip()[:120] or None
+    if payload.subject is not None:
+        row.subject = sanitize_text(payload.subject).strip()[:500] or None
+    if payload.body_html is not None:
+        row.body_html = sanitize_text(payload.body_html).strip() or None
+    if payload.send_interval_days is not None:
+        row.send_interval_days = int(payload.send_interval_days)
+    if payload.send_time is not None:
+        row.send_time = _normalize_suite_send_time(payload.send_time)
+    if payload.included is not None:
+        row.included = bool(payload.included)
+
+    db.commit()
+    db.refresh(row)
+    return {
+        "ok": True,
+        "created": created,
+        "draft_edit_id": str(row.draft_edit_id),
+        "record": _serialize_mail_customer_suite_draft_edit(row),
+        "real_sending_enabled": False,
     }
 
 

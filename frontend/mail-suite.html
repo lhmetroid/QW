@@ -218,6 +218,93 @@
       flex: 0 0 auto;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .include-toggle {
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+    }
+    .include-toggle input {
+      width: 17px;
+      height: 17px;
+      cursor: pointer;
+    }
+    .summary-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    details.mail.skipped {
+      opacity: .5;
+    }
+    .field-label {
+      font-weight: 700;
+      color: var(--muted);
+      font-size: 12px;
+      margin: 12px 0 4px;
+    }
+    .subject-input {
+      width: 100%;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 9px;
+      font: inherit;
+      font-weight: 700;
+    }
+    .subject-input:focus { border-color: var(--brand); outline: none; }
+    .rte-toolbar {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    .rte-toolbar button {
+      padding: 4px 9px;
+      font-size: 13px;
+      line-height: 1.2;
+    }
+    .body-html.rte {
+      min-height: 170px;
+      outline: none;
+    }
+    .body-html.rte:focus { border-color: var(--brand); }
+    .send-config { margin-top: 14px; }
+    .send-config-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .interval-input {
+      width: 72px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 7px 8px;
+      font: inherit;
+    }
+    .time-input {
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 7px 8px;
+      font: inherit;
+    }
+    .hint {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #e2e8f0;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: help;
+      user-select: none;
+    }
+    .feedback.no-divider {
+      border-top: none;
+      padding-top: 0;
+    }
     @media (max-width: 760px) {
       main { width: calc(100vw - 20px); margin-top: 14px; }
       .top { display: block; }
@@ -233,7 +320,7 @@
     <div class="badge">免登录独立页</div>
   </header>
   <main>
-    <div class="top">
+    <div class="top" hidden>
       <div>
         <h1>客户套装邮件生成</h1>
         <div class="sub">根据 URL 参数 <code>id</code> 读取 CRM 客户画像，自动判断场景并生成 4 封套装草稿。</div>
@@ -321,13 +408,6 @@
         field('联系人', maskText(contactName, { keepStart: 1, keepEnd: 0 })),
         field('收件方式', '仅生成模板，不发邮件'),
         field('自动判断场景', `${scenarioLabel(data)} (${data.scenario})`),
-        field('判断依据', data.scenario_reason),
-        field('行业', profile.company_industry),
-        field('客户阶段', profile.customer_lifecycle_stage),
-        field('客户级别', profile.customer_tier),
-        field('欠款风险', profile.payment_risk_level),
-        field('已有业务', (profile.existing_business_lines || []).join('、')),
-        field('数据来源', profile.crm_profile_source),
       ].join('');
       document.getElementById('customer-panel').hidden = false;
     }
@@ -337,15 +417,29 @@
       wrap.hidden = false;
       wrap.innerHTML = '';
       for (const item of data.drafts || []) {
+        const settings = item.send_settings || {};
+        const included = settings.included !== false;
+        const interval = settings.send_interval_days != null ? settings.send_interval_days : (settings.default_send_interval_days || 0);
+        const sendTime = settings.send_time || settings.default_send_time || '09:00';
+        const includeTip = '勾上才会发这封；取消勾选就跳过这一封，其他勾着的照常发。';
+        const intervalTip = '填 0 就是今天发；填几就是从今天起再过几个自然日发，比如填 5 就是 5 天后发。右边是当天几点几分发。';
+        const checkboxHtml = `
+          <label class="include-toggle" title="${esc(includeTip)}" onclick="event.stopPropagation()">
+            <input type="checkbox" id="include-${esc(item.suite_step)}" ${included ? 'checked' : ''} onchange="saveInclude(${esc(item.suite_step)})">
+          </label>`;
+
         if (item.status !== 'success' || !item.draft) {
           const details = document.createElement('details');
-          details.className = 'mail';
+          details.className = 'mail' + (included ? '' : ' skipped');
           details.open = true;
           details.innerHTML = `
             <summary>
-              <div>
-                <div class="step-title">第 ${esc(item.suite_step)} 封 · ${esc(scenarioLabel(data))}</div>
-                <div class="meta-line">生成失败 · ${esc(item.step_label_cn)}</div>
+              <div class="summary-left">
+                ${checkboxHtml}
+                <div>
+                  <div class="step-title">第 ${esc(item.suite_step)} 封 · ${esc(scenarioLabel(data))}</div>
+                  <div class="meta-line">生成失败 · ${esc(item.step_label_cn)}</div>
+                </div>
               </div>
               <div class="meta-line">默认展开</div>
             </summary>
@@ -358,24 +452,43 @@
         }
         const draft = item.draft || {};
         const details = document.createElement('details');
-        details.className = 'mail';
+        details.className = 'mail' + (included ? '' : ' skipped');
         details.open = true;
         details.innerHTML = `
           <summary>
-            <div>
+            <div class="summary-left">
+              ${checkboxHtml}
               <div class="step-title">第 ${esc(item.suite_step)} 封 · ${esc(scenarioLabel(data))}</div>
-              <div class="meta-line">草稿编号 ${esc(draft.mail_uid)} · 大模型 ${esc(draft.llm_model_used)} · 安全门 ${esc((draft.safety_guardrail || {}).overall_outcome)}${item.elapsed_ms ? ` · ${esc(item.elapsed_ms)}ms` : ''}</div>
             </div>
             <div class="meta-line">默认展开</div>
           </summary>
           <div class="mail-body">
-            <div class="subject">邮件主题：${esc(draft.final_subject)}</div>
-            <div id="body-${esc(item.suite_step)}" class="body-html">${draft.final_body_html || '（正文为空）'}</div>
-            <div class="actions">
-              <button type="button" onclick="copyMail(${esc(item.suite_step)})">复制正文</button>
-              <button type="button" onclick="copyMail(${esc(item.suite_step)}, true)">复制主题+正文</button>
+            <div class="field-label">邮件主题</div>
+            <input type="text" id="subject-${esc(item.suite_step)}" class="subject-input" value="${esc(draft.final_subject)}" onblur="saveDraftField(${esc(item.suite_step)})">
+            <div class="field-label">邮件正文</div>
+            <div class="rte-toolbar">
+              <button type="button" title="加粗" onmousedown="rteCmd(event,'bold')"><b>B</b></button>
+              <button type="button" title="斜体" onmousedown="rteCmd(event,'italic')"><i>I</i></button>
+              <button type="button" title="下划线" onmousedown="rteCmd(event,'underline')"><u>U</u></button>
+              <button type="button" title="项目符号列表" onmousedown="rteCmd(event,'insertUnorderedList')">• 列表</button>
+              <button type="button" title="编号列表" onmousedown="rteCmd(event,'insertOrderedList')">1. 列表</button>
+              <button type="button" title="插入链接" onmousedown="rteLink(event)">链接</button>
+              <button type="button" title="清除格式" onmousedown="rteCmd(event,'removeFormat')">清除格式</button>
             </div>
-            <div class="feedback">
+            <div id="body-${esc(item.suite_step)}" class="body-html rte" contenteditable="true" onblur="saveDraftField(${esc(item.suite_step)})">${draft.final_body_html || ''}</div>
+            <div class="send-config">
+              <div class="field-label">发送间隔</div>
+              <div class="send-config-row">
+                <span>距今天</span>
+                <input type="number" min="0" id="interval-${esc(item.suite_step)}" class="interval-input" value="${esc(interval)}" onblur="saveDraftField(${esc(item.suite_step)})">
+                <span>天的</span>
+                <input type="time" id="sendtime-${esc(item.suite_step)}" class="time-input" value="${esc(sendTime)}" onblur="saveDraftField(${esc(item.suite_step)})">
+                <span>发送</span>
+                <span class="hint" title="${esc(intervalTip)}">?</span>
+              </div>
+              <div id="draft-status-${esc(item.suite_step)}" class="feedback-status" style="margin-top:6px;"></div>
+            </div>
+            <div class="feedback no-divider" style="margin-top:14px;">
               <div style="font-weight:800;margin-bottom:6px;">反馈</div>
               <textarea id="feedback-${esc(item.suite_step)}" placeholder="填写这封邮件的问题、修改意见或是否可用。每次保存都会新建一条反馈记录。"></textarea>
               <div class="actions">
@@ -387,6 +500,78 @@
         `;
         wrap.appendChild(details);
       }
+    }
+
+    function rteCmd(event, cmd, value) {
+      event.preventDefault();
+      document.execCommand(cmd, false, value || null);
+    }
+
+    function rteLink(event) {
+      event.preventDefault();
+      const url = prompt('请输入链接地址（含 http:// 或 https://）');
+      if (url) document.execCommand('createLink', false, url);
+    }
+
+    function readDraftFields(step) {
+      const subjectEl = document.getElementById(`subject-${step}`);
+      const bodyEl = document.getElementById(`body-${step}`);
+      const intervalEl = document.getElementById(`interval-${step}`);
+      const timeEl = document.getElementById(`sendtime-${step}`);
+      const fields = {};
+      if (subjectEl) fields.subject = subjectEl.value;
+      if (bodyEl) fields.body_html = bodyEl.innerHTML;
+      if (intervalEl && intervalEl.value !== '') fields.send_interval_days = Number(intervalEl.value);
+      if (timeEl && timeEl.value) fields.send_time = timeEl.value;
+      return fields;
+    }
+
+    async function postDraftEdit(step, extra, okMsg) {
+      const status = document.getElementById(`draft-status-${step}`);
+      if (status) { status.textContent = '保存中...'; status.className = 'feedback-status'; }
+      try {
+        const resp = await fetch('/api/v1/mail/customer-suite-draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_id: suiteData.customer_id,
+            scenario: suiteData.scenario,
+            suite_step: Number(step),
+            ...extra,
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+        if (status) { status.textContent = okMsg; status.className = 'feedback-status ok'; }
+        return data;
+      } catch (err) {
+        if (status) { status.textContent = `保存失败：${err.message}`; status.className = 'feedback-status err'; }
+        return null;
+      }
+    }
+
+    async function saveDraftField(step) {
+      const item = (suiteData.drafts || []).find(x => Number(x.suite_step) === Number(step));
+      if (!item) return;
+      const draft = item.draft || {};
+      const fields = readDraftFields(step);
+      const ok = await postDraftEdit(step, { mail_uid: draft.mail_uid, ...fields }, '已保存');
+      if (ok) {
+        if (fields.subject !== undefined) draft.final_subject = fields.subject;
+        if (fields.body_html !== undefined) draft.final_body_html = fields.body_html;
+        if (fields.send_interval_days !== undefined && item.send_settings) item.send_settings.send_interval_days = fields.send_interval_days;
+        if (fields.send_time !== undefined && item.send_settings) item.send_settings.send_time = fields.send_time;
+      }
+    }
+
+    async function saveInclude(step) {
+      const cb = document.getElementById(`include-${step}`);
+      const included = cb ? cb.checked : true;
+      const details = cb && cb.closest('details');
+      if (details) details.classList.toggle('skipped', !included);
+      const item = (suiteData.drafts || []).find(x => Number(x.suite_step) === Number(step));
+      if (item && item.send_settings) item.send_settings.included = included;
+      await postDraftEdit(step, { included }, included ? '已勾选，这封会发送' : '已取消勾选，这封跳过不发');
     }
 
     async function copyMail(step, includeSubject) {
