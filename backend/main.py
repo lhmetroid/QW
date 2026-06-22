@@ -17069,8 +17069,9 @@ def get_mail_customer_suite(
     owner_staff_id = _fetch_mail_contact_owner_staff_id(customer_id)
     signature_fields = _fetch_mail_sender_signature_fields(owner_staff_id) if owner_staff_id else {}
     signature_html = _build_mail_sender_signature_html(signature_fields) if owner_staff_id else ""
-    sender_email = sanitize_text(signature_fields.get("email")) if signature_fields else ""
-    sender_name = sanitize_text(signature_fields.get("english_name")) or sanitize_text(signature_fields.get("staff_name")) if signature_fields else ""
+    # 发件邮箱不能走 sanitize_text(会被脱敏成 ***EMAIL***)
+    sender_email = str((signature_fields or {}).get("email") or "").strip()
+    sender_name = str((signature_fields or {}).get("english_name") or "").strip() or str((signature_fields or {}).get("staff_name") or "").strip()
 
     # 客户收件邮箱：人工覆盖优先，否则取 CRM 当前有效邮箱(IsCollect='正确')
     valid_emails = _fetch_mail_contact_valid_emails(customer_id)
@@ -17354,9 +17355,9 @@ def send_mail_customer_suite(
     # 1) 发件人 = 在职销售签名企业邮箱
     owner_staff_id = _fetch_mail_contact_owner_staff_id(customer_id)
     signature_fields = _fetch_mail_sender_signature_fields(owner_staff_id) if owner_staff_id else {}
-    sender_email = sanitize_text(signature_fields.get("email")) if signature_fields else ""
-    sender_name = (sanitize_text(signature_fields.get("english_name"))
-                   or sanitize_text(signature_fields.get("staff_name")) if signature_fields else "")
+    # 发件邮箱不能走 sanitize_text(会被脱敏成 ***EMAIL***)
+    sender_email = str((signature_fields or {}).get("email") or "").strip()
+    sender_name = str((signature_fields or {}).get("english_name") or "").strip() or str((signature_fields or {}).get("staff_name") or "").strip()
     if not sender_email:
         raise HTTPException(status_code=422, detail="未取到在职销售的发件企业邮箱，无法发送")
 
