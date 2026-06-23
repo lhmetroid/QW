@@ -6005,6 +6005,7 @@ def _build_mail_draft_intent_profile(
     admitted_fewshots: list[dict] | None = None,
     prompt_full_email_examples: list[dict[str, Any]] | None = None,
     prompt_contract_case_examples: list[dict[str, Any]] | None = None,
+    precomputed_crm_profile: dict | None = None,
 ) -> MailDraftIntentProfile:
     customer_key = (payload.customer_key or "").strip()
     contact_email = (payload.contact_email or "").strip()
@@ -6016,7 +6017,7 @@ def _build_mail_draft_intent_profile(
         raise HTTPException(status_code=422, detail="current_seller_name is required")
     if not seller_signature:
         raise HTTPException(status_code=422, detail="current_seller_signature is required")
-    crm_profile = _lookup_mail_crm_profile(customer_key, contact_email)
+    crm_profile = precomputed_crm_profile if precomputed_crm_profile is not None else _lookup_mail_crm_profile(customer_key, contact_email)
     recipient_name = (
         _mail_contact_name_from_email(contact_email)
         if contact_email and "@" in contact_email and not _mail_is_review_only_draft_email(contact_email)
@@ -8064,6 +8065,7 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
 def _build_mail_generate_draft_response(
     db: Session,
     payload: MailGenerateDraftRequest,
+    precomputed_crm_profile: dict | None = None,
 ) -> MailGenerateDraftResponse:
     try:
         step = get_mail_sequence_step(payload.scenario, int(payload.suite_step))
@@ -8096,6 +8098,7 @@ def _build_mail_generate_draft_response(
         admitted_fewshots=fewshot_examples,
         commercial_terms=commercial_terms,
         sequence_template=sequence_template,
+        precomputed_crm_profile=precomputed_crm_profile,
     )
     intent_profile.prompt_full_email_examples = _mail_full_email_gold_examples_for_prompt(
         db,
@@ -17201,6 +17204,14 @@ def get_mail_customer_suite(
     if not draft_contact_email:
         draft_contact_email = _mail_review_only_draft_contact_email(customer_id, crm_profile)
         draft_contact_email_is_placeholder = bool(draft_contact_email)
+    # 构造供 4 个生成线程复用的 CRM 画像，避免每线程重复查 CRM SQL Server
+    _contact_domain_for_shared = _normalize_mail_recipient_domain(draft_contact_email)
+    if _contact_domain_for_shared:
+        _shared_domains = set(crm_profile.get("customer_domains") or ())
+        _shared_domains.add(_contact_domain_for_shared)
+        shared_crm_profile = {**crm_profile, "customer_domains": tuple(sorted(_shared_domains))}
+    else:
+        shared_crm_profile = crm_profile
     customer_profile = {
         "customer_id": customer_id,
         "company_name": sanitize_text(crm_profile.get("company_name")) or customer_id,
@@ -17258,7 +17269,12 @@ def get_mail_customer_suite(
             "included": included,
         }
 
-    owner_staff_id = _fetch_mail_contact_owner_staff_id(customer_id)
+    # owner 查询与 valid_emails 查询互相独立，并发执行省一次 CRM 往返
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="mail-suite-pre") as _pre_ex:
+        _owner_fut = _pre_ex.submit(_fetch_mail_contact_owner_staff_id, customer_id)
+        _valid_emails_fut = _pre_ex.submit(_fetch_mail_contact_valid_emails, customer_id)
+        owner_staff_id = _owner_fut.result()
+        valid_emails = _valid_emails_fut.result()
     signature_fields = _fetch_mail_sender_signature_fields(owner_staff_id) if owner_staff_id else {}
     signature_html = _build_mail_sender_signature_html(signature_fields) if owner_staff_id else ""
     # 发件邮箱不能走 sanitize_text(会被脱敏成 ***EMAIL***)
@@ -17266,7 +17282,6 @@ def get_mail_customer_suite(
     sender_name = str((signature_fields or {}).get("english_name") or "").strip() or str((signature_fields or {}).get("staff_name") or "").strip()
 
     # 客户收件邮箱：人工覆盖优先，否则取 CRM 当前有效邮箱(IsCollect='正确')
-    valid_emails = _fetch_mail_contact_valid_emails(customer_id)
     recipient_row = (
         db.query(MailCustomerSuiteRecipient)
         .filter(
@@ -17308,7 +17323,7 @@ def get_mail_customer_suite(
                 # 并发生成: 每封用独立 Session, 避免与主请求 db 及其他线程共享 Session
                 thread_db = SessionLocal()
                 try:
-                    response = _build_mail_generate_draft_response(thread_db, payload)
+                    response = _build_mail_generate_draft_response(thread_db, payload, precomputed_crm_profile=shared_crm_profile)
                 finally:
                     thread_db.close()
                 draft = response.dict() if hasattr(response, "dict") else dict(response)
@@ -17348,15 +17363,20 @@ def get_mail_customer_suite(
                 "send_settings": _suite_step_send_settings(int(suite_step), saved),
             }
 
-    # 并发前先在主线程预热模板(建表/补列 DDL + 默认模板播种)一次, 串行完成:
-    # 避免 4 个并发线程各自触发同一句 DDL 互相抢表锁导致 LockNotAvailable(锁超时)。
-    try:
-        _ensure_mail_sequence_templates(db)
-    except Exception:
-        logger.exception("MAIL_CUSTOMER_SUITE_TEMPLATE_PREWARM_FAILED customer_id=%s", sanitize_text(customer_id))
-
     # 4 封相互独立, 并发生成: 墙钟时间由"4×单封"降到"≈1×单封"; ex.map 保持原有步序; timeout=90s 防 LLM 挂死
     suite_steps = list(ALL_MAIL_SEQUENCE_STEPS)
+    # 全部命中缓存时跳过模板预热（无 LLM 调用，不会触发并发 DDL 锁），节省 10-20 次 DB 查询
+    _all_cached = all(
+        saved_edits.get(int(s), {}).get("subject") and saved_edits.get(int(s), {}).get("body_html")
+        for s in suite_steps
+    )
+    if not _all_cached:
+        # 并发前先在主线程预热模板(建表/补列 DDL + 默认模板播种)一次, 串行完成:
+        # 避免 4 个并发线程各自触发同一句 DDL 互相抢表锁导致 LockNotAvailable(锁超时)。
+        try:
+            _ensure_mail_sequence_templates(db)
+        except Exception:
+            logger.exception("MAIL_CUSTOMER_SUITE_TEMPLATE_PREWARM_FAILED customer_id=%s", sanitize_text(customer_id))
     try:
         with ThreadPoolExecutor(max_workers=max(1, len(suite_steps)), thread_name_prefix="mail-suite") as executor:
             drafts = list(executor.map(_generate_one_suite_draft, suite_steps, timeout=90))
