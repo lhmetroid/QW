@@ -111,18 +111,30 @@ def _norm_msgid(v: str) -> str:
     return (v or "").strip().strip("<>").strip().lower()
 
 
-# 发送端规则: Message-ID 形如 <AIMAIL-{SendId}-{uniq}@域>, SendId 形如 Mal_S260622-000003。
-# 读取端从回信 In-Reply-To/References 里按此规则正则提取 SendId, 直接匹配本地 plan.crm_send_id。
-_AI_MSGID_RE = re.compile(r"AIMAIL-(Mal_S\d{6}-\d{6})", re.I)
+# 发送端规则: Message-ID 形如 <AIMAIL-{SendId}@域> 或 <AIMAIL-{SendId}-{uniq}@域>。
+# SendId 是唯一关联键(发送端有, 本地 crm_send_id 也存); uniq 可选、由发送端生成、读取端忽略。
+# 正则只抓 AIMAIL- 到 @/>/空白 之间的整段 token(可能是 SendId, 也可能是 SendId-uniq), 再按 SendId 匹配。
+_AI_MSGID_RE = re.compile(r"AIMAIL-([^@>\s]+)", re.I)
 
 
-def extract_send_ids_from_refs(*header_values: str) -> set[str]:
-    """从 In-Reply-To/References 头按发送端规则提取所有 SendId。"""
-    found: set[str] = set()
+def extract_ai_tokens_from_refs(*header_values: str) -> list[str]:
+    """从 In-Reply-To/References 头提取所有 AIMAIL- 后的 token(SendId 或 SendId-uniq)。"""
+    found: list[str] = []
     for hv in header_values:
         for m in _AI_MSGID_RE.findall(hv or ""):
-            found.add(m)
+            t = m.strip()
+            if t:
+                found.append(t)
     return found
+
+
+def ai_token_matches_send_id(token: str, send_id: str) -> bool:
+    """token 命中 send_id: 完全相等(无 uniq) 或 以 send_id- 开头(发送端追加了 uniq)。"""
+    sid = (send_id or "").strip()
+    tok = (token or "").strip()
+    if not sid or not tok:
+        return False
+    return tok == sid or tok.startswith(sid + "-")
 
 
 # ---------------------------------------------------------------------------
@@ -290,15 +302,15 @@ def discover_replies(db: Session, lookback_days: int = 120, max_fetch: int = 400
                 refs = (_norm_msgid(in_reply_to) + " " + references.lower())
                 if not refs.strip():
                     continue
-                # 主路径(发送端规则): 从 In-Reply-To/References 提取 SendId, 按 crm_send_id 精确匹配
-                ref_send_ids = extract_send_ids_from_refs(in_reply_to, references)
+                # 主路径(发送端规则): 从 In-Reply-To/References 提取 token, 按 crm_send_id 匹配(uniq 忽略)
+                ref_tokens = extract_ai_tokens_from_refs(in_reply_to, references)
                 body = (c[5] or c[6] or "")
                 if isinstance(body, bytes):
                     body = body.decode("utf-8", "replace")
                 rtime = c[4]
                 for p in pend_plans:
                     method = None
-                    if ref_send_ids and (p[1] or "") in ref_send_ids:
+                    if ref_tokens and any(ai_token_matches_send_id(t, p[1]) for t in ref_tokens):
                         method = "eml_message_id_rule"      # 发送端规则: SendId 内嵌 Message-ID
                     else:
                         mid = _norm_msgid(p[5])
