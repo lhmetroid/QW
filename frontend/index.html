@@ -5443,7 +5443,6 @@
             cases: [],
             currentRunId: null,
             currentDetail: null,
-            pollingTimer: null,
             selectedRunId: null,      // 列表页选中查看分析的迭代
             detailAllRows: null,      // 详情页的全集 results
             detailFilter: {scenario: '', sort: 'scenario_turn'},
@@ -5755,16 +5754,7 @@
             }
             if (name === 'list') {
                 loadCaselibList(false);
-                if (caselibState.pollingTimer == null) {
-                    caselibState.pollingTimer = setInterval(() => {
-                        if (caselibState.subTab === 'list') loadCaselibList(false);
-                    }, 4000);
-                }
             } else {
-                if (caselibState.pollingTimer) {
-                    clearInterval(caselibState.pollingTimer);
-                    caselibState.pollingTimer = null;
-                }
                 if (name === 'cases') loadCaselibCases();
             }
         }
