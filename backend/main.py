@@ -29046,9 +29046,9 @@ def _get_daily_validation_stats_range(
     selected_ids = [row.invocation_id for bucket in per_day.values() for (_rank, row) in bucket.values()]
     payload_by_id: dict[Any, tuple] = {}
     if selected_ids:
-        # 分批 IN 查询, 避免单条 IN 参数过多
-        for i in range(0, len(selected_ids), 500):
-            chunk = selected_ids[i : i + 500]
+        # 分批 IN 查询; chunk=50 避免大 JSON 列单批超 statement_timeout(20s)
+        for i in range(0, len(selected_ids), 50):
+            chunk = selected_ids[i : i + 50]
             for inv_id, payload, qscore in db.query(
                 ApiAssistInvocation.invocation_id,
                 ApiAssistInvocation.result_payload,
