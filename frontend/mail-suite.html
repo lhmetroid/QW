@@ -406,6 +406,16 @@
       cursor: help;
       user-select: none;
     }
+    .send-date-preview {
+      margin-left: 4px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: #eef2ff;
+      color: #4338ca;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
     .feedback.no-divider {
       border-top: none;
       padding-top: 0;
@@ -655,11 +665,12 @@
               <div class="field-label">发送间隔</div>
               <div class="send-config-row">
                 <span>距今天</span>
-                <input type="number" min="0" id="interval-${esc(item.suite_step)}" class="interval-input" value="${esc(interval)}" onblur="saveDraftField(${esc(item.suite_step)})">
+                <input type="number" min="0" id="interval-${esc(item.suite_step)}" class="interval-input" value="${esc(interval)}" oninput="updateSendDatePreview(${esc(item.suite_step)})" onblur="saveDraftField(${esc(item.suite_step)})">
                 <span>天后的</span>
-                <input type="time" id="sendtime-${esc(item.suite_step)}" class="time-input" value="${esc(sendTime)}" onblur="saveDraftField(${esc(item.suite_step)})">
+                <input type="time" id="sendtime-${esc(item.suite_step)}" class="time-input" value="${esc(sendTime)}" oninput="updateSendDatePreview(${esc(item.suite_step)})" onblur="saveDraftField(${esc(item.suite_step)})">
                 <span>发送</span>
                 <span class="hint" title="${esc(intervalTip)}">?</span>
+                <span id="send-date-${esc(item.suite_step)}" class="send-date-preview"></span>
               </div>
               <div id="draft-status-${esc(item.suite_step)}" class="feedback-status" style="margin-top:6px;"></div>
             </div>
@@ -675,6 +686,28 @@
         `;
         wrap.appendChild(details);
       }
+      // 渲染后初始化各封"发送具体日期"浮动提示
+      for (const item of data.drafts || []) {
+        if (item.status === 'success' && item.draft) updateSendDatePreview(item.suite_step);
+      }
+    }
+
+    // 根据"距今天 N 天 + 时间"算出实际发送日期, 浮动显示在发送间隔行尾(如: 即 2026-06-23 周一 09:00 发送)
+    function updateSendDatePreview(step) {
+      const intervalEl = document.getElementById(`interval-${step}`);
+      const timeEl = document.getElementById(`sendtime-${step}`);
+      const out = document.getElementById(`send-date-${step}`);
+      if (!out) return;
+      const days = Math.max(0, parseInt(intervalEl && intervalEl.value, 10) || 0);
+      const time = (timeEl && timeEl.value) || '09:00';
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() + days);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const week = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()];
+      out.textContent = `即 ${y}-${m}-${day} ${week} ${time} 发送`;
     }
 
     // 富文本编辑：保存/恢复选区，保证点击下拉、取色器等控件后仍能作用到原选区
@@ -1004,7 +1037,7 @@
       try {
         const data = await fetchSuite(currentId, scenario);
         renderSuite(data);
-        setStatus(`${cached ? '已读取缓存' : '生成完成'}：${scenarioLabel(data)} · 共 ${(data.drafts || []).length} 封 · 真发开关关闭`);
+        setStatus(`${cached ? '已读取缓存' : '生成完成'}：${scenarioLabel(data)} · 共 ${(data.drafts || []).length} 封`);
       } catch (err) {
         setStatus(`切换场景失败：${err.message}`, true);
         if (sel) {
@@ -1028,7 +1061,7 @@
       try {
         // 默认不传场景: 走后端自动判断场景.
         const data = await fetchSuite(id, '');
-        setStatus(`生成完成：${scenarioLabel(data)} · 共 ${(data.drafts || []).length} 封 · 真发开关关闭`);
+        setStatus(`生成完成：${scenarioLabel(data)} · 共 ${(data.drafts || []).length} 封`);
         renderSuite(data);
       } catch (err) {
         setStatus(`加载失败：${err.message}`, true);

@@ -7575,7 +7575,9 @@ def _mail_prompt_company_short_name(profile: MailDraftIntentProfile) -> str:
     company = re.sub(r"[（(].*?[）)]", "", company)
     company = re.sub(r"(股份)?有限公司|有限责任公司|集团|中国|上海|北京|广州|深圳|科技|技术|贸易|实业", "", company)
     company = company.strip(" -_，,；;")
-    return company or sanitize_text(profile.company_name or "").strip() or "贵司"
+    short = company or sanitize_text(profile.company_name or "").strip() or "贵司"
+    # 公司名最多保留 4 个字符（含 4），避免邮件抬头过长
+    return short[:4]
 
 
 def _mail_prompt_history_summary(profile: MailDraftIntentProfile, crm_history: str) -> str:
@@ -17139,8 +17141,8 @@ def get_mail_customer_suite(
         recipient_emails = valid_emails
         recipient_emails_source = "crm_valid_emails"
 
-    drafts = []
-    for suite_step in ALL_MAIL_SEQUENCE_STEPS:
+    def _generate_one_suite_draft(suite_step: int) -> dict[str, Any]:
+        """生成单封套装草稿。供线程池并发调用，每个线程使用独立 DB Session(Session 非线程安全)。"""
         saved = saved_edits.get(int(suite_step))
         payload = MailGenerateDraftRequest(
             customer_key=customer_id,
@@ -17162,7 +17164,12 @@ def get_mail_customer_suite(
                     "from_saved_edit": True,
                 }
             else:
-                response = _build_mail_generate_draft_response(db, payload)
+                # 并发生成: 每封用独立 Session, 避免与主请求 db 及其他线程共享 Session
+                thread_db = SessionLocal()
+                try:
+                    response = _build_mail_generate_draft_response(thread_db, payload)
+                finally:
+                    thread_db.close()
                 draft = response.dict() if hasattr(response, "dict") else dict(response)
                 if saved is not None:
                     if saved.subject:
@@ -17173,32 +17180,37 @@ def get_mail_customer_suite(
             draft["final_body_html"] = _apply_mail_suite_signature(
                 draft.get("final_body_html") or "", signature_html
             )
-            drafts.append({
+            return {
                 "suite_step": int(suite_step),
                 "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(suite_step)),
                 "status": "success",
                 "draft": draft,
                 "send_settings": _suite_step_send_settings(int(suite_step), saved),
-            })
+            }
         except HTTPException as exc:
-            drafts.append({
+            return {
                 "suite_step": int(suite_step),
                 "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(suite_step)),
                 "status": "failed",
                 "error": exc.detail,
                 "draft": None,
                 "send_settings": _suite_step_send_settings(int(suite_step), saved),
-            })
+            }
         except Exception as exc:
             logger.exception("MAIL_CUSTOMER_SUITE_DRAFT_FAILED customer_id=%s suite_step=%s", sanitize_text(customer_id), suite_step)
-            drafts.append({
+            return {
                 "suite_step": int(suite_step),
                 "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(suite_step)),
                 "status": "failed",
                 "error": sanitize_text(str(exc))[:500],
                 "draft": None,
                 "send_settings": _suite_step_send_settings(int(suite_step), saved),
-            })
+            }
+
+    # 4 封相互独立, 并发生成: 墙钟时间由"4×单封"降到"≈1×单封"; ex.map 保持原有步序
+    suite_steps = list(ALL_MAIL_SEQUENCE_STEPS)
+    with ThreadPoolExecutor(max_workers=max(1, len(suite_steps)), thread_name_prefix="mail-suite") as executor:
+        drafts = list(executor.map(_generate_one_suite_draft, suite_steps))
 
     return {
         "status": "success" if any(item["status"] == "success" for item in drafts) else "failed",
