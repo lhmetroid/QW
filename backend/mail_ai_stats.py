@@ -111,6 +111,20 @@ def _norm_msgid(v: str) -> str:
     return (v or "").strip().strip("<>").strip().lower()
 
 
+# 发送端规则: Message-ID 形如 <AIMAIL-{SendId}-{uniq}@域>, SendId 形如 Mal_S260622-000003。
+# 读取端从回信 In-Reply-To/References 里按此规则正则提取 SendId, 直接匹配本地 plan.crm_send_id。
+_AI_MSGID_RE = re.compile(r"AIMAIL-(Mal_S\d{6}-\d{6})", re.I)
+
+
+def extract_send_ids_from_refs(*header_values: str) -> set[str]:
+    """从 In-Reply-To/References 头按发送端规则提取所有 SendId。"""
+    found: set[str] = set()
+    for hv in header_values:
+        for m in _AI_MSGID_RE.findall(hv or ""):
+            found.add(m)
+    return found
+
+
 # ---------------------------------------------------------------------------
 # 1) 同步真发状态: 本地 send_plan <- CRM spSendInfo{销售}.SendId
 # ---------------------------------------------------------------------------
@@ -201,8 +215,7 @@ def discover_replies(db: Session, lookback_days: int = 120, max_fetch: int = 400
         "SELECT plan_id, crm_send_id, customer_id, inputer_staff_id, to_emails, "
         "       crm_message_id, crm_fact_send_time "
         "FROM mail_customer_suite_send_plan "
-        "WHERE status='enqueued' AND crm_send_status='SendSuccess' "
-        "AND crm_message_id IS NOT NULL AND crm_message_id<>'' AND created_at>=:cut"
+        "WHERE status='enqueued' AND crm_send_status='SendSuccess' AND created_at>=:cut"
     ), {"cut": cutoff}).fetchall()
     if not plans:
         return {"candidates": 0, "matched": 0}
@@ -272,29 +285,40 @@ def discover_replies(db: Session, lookback_days: int = 120, max_fetch: int = 400
                     continue
                 fetched += 1
                 hdr = fetch_eml_headers(c[3])
-                refs = (_norm_msgid(hdr.get("in_reply_to")) + " " + (hdr.get("references") or "").lower())
+                in_reply_to = hdr.get("in_reply_to") or ""
+                references = hdr.get("references") or ""
+                refs = (_norm_msgid(in_reply_to) + " " + references.lower())
                 if not refs.strip():
                     continue
+                # 主路径(发送端规则): 从 In-Reply-To/References 提取 SendId, 按 crm_send_id 精确匹配
+                ref_send_ids = extract_send_ids_from_refs(in_reply_to, references)
                 body = (c[5] or c[6] or "")
                 if isinstance(body, bytes):
                     body = body.decode("utf-8", "replace")
                 rtime = c[4]
                 for p in pend_plans:
-                    mid = _norm_msgid(p[5])
-                    if mid and mid in refs:
-                        db.execute(text(
-                            "INSERT INTO mail_ai_reply_analysis "
-                            "(plan_id, crm_send_id, customer_id, staff_id, reply_crm_rowid, reply_sender, "
-                            " reply_subject, reply_body, reply_received_at, match_method) "
-                            "VALUES (:pid,:sid,:cid,:stf,:rid,:snd,:sub,:body,:rt,'eml_in_reply_to') "
-                            "ON CONFLICT (plan_id, reply_crm_rowid) DO NOTHING"
-                        ), {
-                            "pid": p[0], "sid": p[1], "cid": p[2], "stf": staff_id,
-                            "rid": reply_rowid, "snd": sender_email, "sub": (c[2] or "")[:500],
-                            "body": body[:20000], "rt": rtime,
-                        })
-                        existing.add((str(p[0]), reply_rowid))
-                        matched += 1
+                    method = None
+                    if ref_send_ids and (p[1] or "") in ref_send_ids:
+                        method = "eml_message_id_rule"      # 发送端规则: SendId 内嵌 Message-ID
+                    else:
+                        mid = _norm_msgid(p[5])
+                        if mid and mid in refs:
+                            method = "eml_in_reply_to"      # 兜底: 系统自生成 Message-ID(需先拉发送 .eml 解析)
+                    if not method:
+                        continue
+                    db.execute(text(
+                        "INSERT INTO mail_ai_reply_analysis "
+                        "(plan_id, crm_send_id, customer_id, staff_id, reply_crm_rowid, reply_sender, "
+                        " reply_subject, reply_body, reply_received_at, match_method) "
+                        "VALUES (:pid,:sid,:cid,:stf,:rid,:snd,:sub,:body,:rt,:mm) "
+                        "ON CONFLICT (plan_id, reply_crm_rowid) DO NOTHING"
+                    ), {
+                        "pid": p[0], "sid": p[1], "cid": p[2], "stf": staff_id,
+                        "rid": reply_rowid, "snd": sender_email, "sub": (c[2] or "")[:500],
+                        "body": body[:20000], "rt": rtime, "mm": method,
+                    })
+                    existing.add((str(p[0]), reply_rowid))
+                    matched += 1
         db.commit()
     finally:
         crm.close()
