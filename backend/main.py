@@ -17226,7 +17226,14 @@ def get_mail_customer_suite(
     }
 
     saved_edits = {
-        int(r.suite_step): r
+        int(r.suite_step): {
+            "subject": r.subject,
+            "body_html": r.body_html,
+            "mail_uid": r.mail_uid,
+            "included": r.included,
+            "send_interval_days": r.send_interval_days,
+            "send_time": r.send_time,
+        }
         for r in db.query(MailCustomerSuiteDraftEdit)
         .filter(
             MailCustomerSuiteDraftEdit.customer_id == customer_id,
@@ -17237,12 +17244,12 @@ def get_mail_customer_suite(
 
     def _suite_step_send_settings(step: int, saved) -> dict[str, Any]:
         default_interval = _mail_sequence_default_send_interval_days(scenario_norm, int(step))
-        if saved is not None and saved.send_interval_days is not None:
-            interval = int(saved.send_interval_days)
+        if saved is not None and saved.get("send_interval_days") is not None:
+            interval = int(saved["send_interval_days"])
         else:
             interval = default_interval
-        send_time = saved.send_time if (saved is not None and saved.send_time) else _MAIL_SUITE_DEFAULT_SEND_TIME
-        included = bool(saved.included) if saved is not None else True
+        send_time = saved.get("send_time") if (saved is not None and saved.get("send_time")) else _MAIL_SUITE_DEFAULT_SEND_TIME
+        included = bool(saved.get("included")) if saved is not None else True
         return {
             "send_interval_days": interval,
             "default_send_interval_days": default_interval,
@@ -17287,12 +17294,12 @@ def get_mail_customer_suite(
             current_seller_signature=seller_signature,
         )
         try:
-            if saved is not None and saved.subject and saved.body_html:
+            if saved is not None and saved.get("subject") and saved.get("body_html"):
                 # 已保存过(主题+正文齐全)：直接读取，不再调大模型重生成
                 draft = {
-                    "final_subject": saved.subject,
-                    "final_body_html": saved.body_html,
-                    "mail_uid": saved.mail_uid or "",
+                    "final_subject": saved["subject"],
+                    "final_body_html": saved["body_html"],
+                    "mail_uid": saved.get("mail_uid") or "",
                     "llm_status": "saved_edit",
                     "llm_model_used": "",
                     "from_saved_edit": True,
@@ -17306,10 +17313,10 @@ def get_mail_customer_suite(
                     thread_db.close()
                 draft = response.dict() if hasattr(response, "dict") else dict(response)
                 if saved is not None:
-                    if saved.subject:
-                        draft["final_subject"] = saved.subject
-                    if saved.body_html:
-                        draft["final_body_html"] = saved.body_html
+                    if saved.get("subject"):
+                        draft["final_subject"] = saved["subject"]
+                    if saved.get("body_html"):
+                        draft["final_body_html"] = saved["body_html"]
             # 始终清洗正文 + 幂等重注入真实签名: 保存过的旧正文/历史打码签名也会被纠正
             draft["final_body_html"] = _apply_mail_suite_signature(
                 draft.get("final_body_html") or "", signature_html
