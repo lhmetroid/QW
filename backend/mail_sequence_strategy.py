@@ -1828,6 +1828,15 @@ PRINT_QUOTE_FOLLOWUP_SEQUENCE = MailSequenceStrategy(
 )
 
 
+# 新增套装场景只需在这里加一行，其余函数自动覆盖
+_STRATEGY_REGISTRY: dict[str, MailSequenceStrategy] = {
+    MailScenario.RE_ACTIVATION.value: RE_ACTIVATION_SEQUENCE,
+    MailScenario.NEW_BUSINESS_PROMOTION.value: NEW_BUSINESS_PROMOTION_SEQUENCE,
+    MailScenario.NEW_CONTACT_INTRO.value: NEW_CONTACT_INTRO_SEQUENCE,
+    MailScenario.PRINT_QUOTE_FOLLOWUP.value: PRINT_QUOTE_FOLLOWUP_SEQUENCE,
+}
+
+
 def get_re_activation_sequence() -> MailSequenceStrategy:
     return RE_ACTIVATION_SEQUENCE
 
@@ -1841,15 +1850,9 @@ def get_new_contact_intro_sequence() -> MailSequenceStrategy:
 
 
 def get_mail_sequence_strategy(scenario: str) -> MailSequenceStrategy:
-    if scenario == MailScenario.RE_ACTIVATION.value:
-        return RE_ACTIVATION_SEQUENCE
-    if scenario == MailScenario.NEW_BUSINESS_PROMOTION.value:
-        return NEW_BUSINESS_PROMOTION_SEQUENCE
-    if scenario == MailScenario.NEW_CONTACT_INTRO.value:
-        return NEW_CONTACT_INTRO_SEQUENCE
-    if scenario == MailScenario.PRINT_QUOTE_FOLLOWUP.value:
-        return PRINT_QUOTE_FOLLOWUP_SEQUENCE
-    raise ValueError(f"unsupported mail sequence scenario: {scenario}")
+    if scenario not in _STRATEGY_REGISTRY:
+        raise ValueError(f"unsupported mail sequence scenario: {scenario}")
+    return _STRATEGY_REGISTRY[scenario]
 
 
 def get_mail_sequence_step(scenario: str, suite_step: int) -> MailSequenceStepStrategy:
@@ -1861,8 +1864,4 @@ def get_mail_sequence_step(scenario: str, suite_step: int) -> MailSequenceStepSt
 
 
 def list_mail_sequence_strategies() -> list[dict[str, Any]]:
-    return [
-        RE_ACTIVATION_SEQUENCE.to_dict(),
-        NEW_BUSINESS_PROMOTION_SEQUENCE.to_dict(),
-        NEW_CONTACT_INTRO_SEQUENCE.to_dict(),
-    ]
+    return [s.to_dict() for s in _STRATEGY_REGISTRY.values()]

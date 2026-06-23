@@ -475,13 +475,27 @@
     let currentId = '';
     // 已生成套装缓存: scenario -> 接口返回数据. 计算过的场景直接读取,不再重新调大模型.
     const suiteCache = {};
-    // 可选套装场景,与后端 _MAIL_SCENARIO_CHINESE 一致.
-    const SUITE_SCENARIOS = [
-      { value: 're_activation', label: '老客户激活' },
-      { value: 'new_business_promotion', label: '老客户其他业务介绍' },
-      { value: 'new_contact_intro', label: '新客户开发介绍' },
-      { value: 'print_quote_followup', label: '独立模板·印刷报价后跟进' },
-    ];
+    // 套装场景列表从后端动态加载，新增场景只需改后端，前端自动跟上
+    let SUITE_SCENARIOS = [];
+    async function loadSuiteScenarios() {
+      try {
+        const res = await fetch('/api/v1/mail/suite-scenario-options');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.scenarios) && data.scenarios.length) {
+            SUITE_SCENARIOS = data.scenarios;
+            return;
+          }
+        }
+      } catch (_) {}
+      // 降级兜底，避免接口异常时页面空白
+      SUITE_SCENARIOS = [
+        { value: 're_activation', label: '老客户激活' },
+        { value: 'new_business_promotion', label: '老客户其他业务介绍' },
+        { value: 'new_contact_intro', label: '新客户开发介绍' },
+        { value: 'print_quote_followup', label: '独立模板·印刷报价后跟进' },
+      ];
+    }
 
     const esc = (v) => String(v == null || v === '' ? '-' : v)
       .replace(/&/g, '&amp;')
@@ -1057,6 +1071,7 @@
         return;
       }
       currentId = id;
+      await loadSuiteScenarios();
       buildSuitePicker();
       document.getElementById('page-badge').textContent = `客户 ${id}`;
       setStatus(`正在读取 CRM 并生成 4 封套装邮件：${id}`);

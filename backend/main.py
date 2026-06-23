@@ -17168,6 +17168,21 @@ def _apply_mail_suite_signature(body_html: str, signature_html: str) -> str:
     return s + signature_html
 
 
+@app.get("/api/v1/mail/suite-scenario-options")
+def get_mail_suite_scenario_options():
+    """返回所有已注册的套装场景选项（value + 中文 label），供前端下拉动态渲染。"""
+    from mail_sequence_strategy import _STRATEGY_REGISTRY
+    return {
+        "scenarios": [
+            {
+                "value": scenario,
+                "label": _MAIL_SCENARIO_CHINESE.get(scenario, scenario),
+            }
+            for scenario in _STRATEGY_REGISTRY
+        ]
+    }
+
+
 @app.get("/api/v1/mail/customer-suite")
 def get_mail_customer_suite(
     request: Request,
@@ -25907,8 +25922,8 @@ async def sidebar_assist(
                     # 盲评映射:与非流式一致,随机把 ai/训练AI 回复分到 reply_reference1/2
                     _blind_map = _build_blind_eval_map()
                     _blind_texts = {
-                        "ai": (full_content or "").strip(),
-                        "train_ai": str((_training_ai or {}).get("reply") or "").strip(),
+                        "ai": IntentEngine.clean_sendable_reply(full_content),
+                        "train_ai": IntentEngine.clean_sendable_reply(str((_training_ai or {}).get("reply") or "")),
                     }
                     _blind_status = {
                         "ai": ("success" if _blind_texts["ai"] else "failed"),
