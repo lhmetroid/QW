@@ -6946,17 +6946,33 @@ def _serialize_mail_customer_suite_draft_edit(row) -> dict[str, Any]:
     }
 
 
+_MAIL_SEQUENCE_TEMPLATE_SCHEMA_READY = False
+_MAIL_SEQUENCE_TEMPLATE_SCHEMA_LOCK = threading.Lock()
+
+
 def _ensure_mail_sequence_template_schema(db: Session) -> None:
-    """Non-destructive schema patch for the editable sequence template table."""
-    try:
-        db.execute(text("ALTER TABLE mail_sequence_template ADD COLUMN IF NOT EXISTS customer_key VARCHAR(120) NOT NULL DEFAULT '';"))
-        db.execute(text("ALTER TABLE mail_sequence_template ADD COLUMN IF NOT EXISTS ai_instruction_script TEXT NOT NULL DEFAULT '';"))
-        db.execute(text("ALTER TABLE mail_sequence_template DROP CONSTRAINT IF EXISTS uq_mail_sequence_template_scenario_step;"))
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mst_customer_scenario_step ON mail_sequence_template (customer_key, scenario, suite_step);"))
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
+    """Non-destructive schema patch for the editable sequence template table.
+
+    进程级一次性守卫: DDL(ALTER/DROP/CREATE INDEX 需要表的排他锁)只在本进程首次成功执行一次;
+    后续调用直接跳过。避免并发(套装 4 封并行生成)时多线程同时跑同一句 DDL 互相抢表锁导致
+    LockNotAvailable(锁超时)。
+    """
+    global _MAIL_SEQUENCE_TEMPLATE_SCHEMA_READY
+    if _MAIL_SEQUENCE_TEMPLATE_SCHEMA_READY:
+        return
+    with _MAIL_SEQUENCE_TEMPLATE_SCHEMA_LOCK:
+        if _MAIL_SEQUENCE_TEMPLATE_SCHEMA_READY:
+            return
+        try:
+            db.execute(text("ALTER TABLE mail_sequence_template ADD COLUMN IF NOT EXISTS customer_key VARCHAR(120) NOT NULL DEFAULT '';"))
+            db.execute(text("ALTER TABLE mail_sequence_template ADD COLUMN IF NOT EXISTS ai_instruction_script TEXT NOT NULL DEFAULT '';"))
+            db.execute(text("ALTER TABLE mail_sequence_template DROP CONSTRAINT IF EXISTS uq_mail_sequence_template_scenario_step;"))
+            db.execute(text("CREATE INDEX IF NOT EXISTS idx_mst_customer_scenario_step ON mail_sequence_template (customer_key, scenario, suite_step);"))
+            db.commit()
+            _MAIL_SEQUENCE_TEMPLATE_SCHEMA_READY = True
+        except Exception:
+            db.rollback()
+            raise
 
 
 def _blank_mail_sequence_templates_by_case() -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
@@ -17236,6 +17252,13 @@ def get_mail_customer_suite(
                 "draft": None,
                 "send_settings": _suite_step_send_settings(int(suite_step), saved),
             }
+
+    # 并发前先在主线程预热模板(建表/补列 DDL + 默认模板播种)一次, 串行完成:
+    # 避免 4 个并发线程各自触发同一句 DDL 互相抢表锁导致 LockNotAvailable(锁超时)。
+    try:
+        _ensure_mail_sequence_templates(db)
+    except Exception:
+        logger.exception("MAIL_CUSTOMER_SUITE_TEMPLATE_PREWARM_FAILED customer_id=%s", sanitize_text(customer_id))
 
     # 4 封相互独立, 并发生成: 墙钟时间由"4×单封"降到"≈1×单封"; ex.map 保持原有步序
     suite_steps = list(ALL_MAIL_SEQUENCE_STEPS)
