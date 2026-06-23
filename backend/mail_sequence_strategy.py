@@ -1836,6 +1836,64 @@ _STRATEGY_REGISTRY: dict[str, MailSequenceStrategy] = {
     MailScenario.PRINT_QUOTE_FOLLOWUP.value: PRINT_QUOTE_FOLLOWUP_SEQUENCE,
 }
 
+# 用户从界面新建的套装，运行时动态注册，重启后从 DB 重新加载
+_DYNAMIC_REGISTRY: dict[str, MailSequenceStrategy] = {}
+
+
+def _make_generic_suite_strategy(
+    scenario: str,
+    label_cn: str,
+    step_count: int,
+    step_labels: dict[int, str] | None = None,
+) -> MailSequenceStrategy:
+    """为用户自建套装生成通用策略对象（LLM 生成时以 DB 模板的 ai_instruction_script 为主导）。"""
+    steps = tuple(
+        MailSequenceStepStrategy(
+            scenario=scenario,
+            scenario_label=scenario,
+            suite_step=i,
+            step_key=f"{scenario}_step_{i}",
+            objective=(step_labels or {}).get(i, f"第 {i} 封"),
+            recommended_snippet_types=(),
+            subject_template_hints=(),
+            cta_style="",
+            retrieval_filter_requirements=(
+                f"scenario 为 {scenario}，优先使用 ai_instruction_script 模板内容。",
+            ),
+            forbidden_boundaries=(),
+            exit_conditions=(),
+            data_structure_fields={"body_intent": f"custom_step_{i}"},
+        )
+        for i in range(1, step_count + 1)
+    )
+    return MailSequenceStrategy(
+        scenario=scenario,
+        scenario_label=scenario,
+        objective=label_cn,
+        applicable_trigger="用户自定义套装",
+        isolation_boundary="仅邮件侧，内容由 ai_instruction_script 模板驱动。",
+        steps=steps,
+    )
+
+
+def register_dynamic_scenario(
+    scenario: str,
+    label_cn: str,
+    step_count: int,
+    step_labels: dict[int, str] | None = None,
+) -> None:
+    """注册用户自建套装策略到运行时缓存。"""
+    _DYNAMIC_REGISTRY[scenario] = _make_generic_suite_strategy(
+        scenario, label_cn, step_count, step_labels
+    )
+
+
+def get_dynamic_scenario_step_count(scenario: str) -> int | None:
+    strat = _DYNAMIC_REGISTRY.get(scenario)
+    if strat is None:
+        return None
+    return len(strat.steps)
+
 
 def get_re_activation_sequence() -> MailSequenceStrategy:
     return RE_ACTIVATION_SEQUENCE
@@ -1850,9 +1908,11 @@ def get_new_contact_intro_sequence() -> MailSequenceStrategy:
 
 
 def get_mail_sequence_strategy(scenario: str) -> MailSequenceStrategy:
-    if scenario not in _STRATEGY_REGISTRY:
-        raise ValueError(f"unsupported mail sequence scenario: {scenario}")
-    return _STRATEGY_REGISTRY[scenario]
+    if scenario in _STRATEGY_REGISTRY:
+        return _STRATEGY_REGISTRY[scenario]
+    if scenario in _DYNAMIC_REGISTRY:
+        return _DYNAMIC_REGISTRY[scenario]
+    raise ValueError(f"unsupported mail sequence scenario: {scenario}")
 
 
 def get_mail_sequence_step(scenario: str, suite_step: int) -> MailSequenceStepStrategy:
@@ -1864,4 +1924,5 @@ def get_mail_sequence_step(scenario: str, suite_step: int) -> MailSequenceStepSt
 
 
 def list_mail_sequence_strategies() -> list[dict[str, Any]]:
-    return [s.to_dict() for s in _STRATEGY_REGISTRY.values()]
+    all_strategies = {**_STRATEGY_REGISTRY, **_DYNAMIC_REGISTRY}
+    return [s.to_dict() for s in all_strategies.values()]

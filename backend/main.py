@@ -69,7 +69,7 @@ from database import (
     CaseLibraryCase, CaseLibraryDialogueTurn, CaseIterationRun, CaseIterationResult,
     MailSequenceTemplate, MailCustomerSuiteFeedback, MailContractCase,
     MailGoldSeedReview, MailCustomerSuiteDraftEdit, WecomRuntimeConfig,
-    MailCustomerSuiteRecipient, MailCustomerSuiteSendPlan,
+    MailCustomerSuiteRecipient, MailCustomerSuiteSendPlan, MailCustomSuite,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -968,6 +968,15 @@ def auto_patch_db():
             ))
         if settings.PGVECTOR_ENABLED:
             db.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_custom_suite ("
+            "id SERIAL PRIMARY KEY,"
+            "scenario VARCHAR(120) UNIQUE NOT NULL,"
+            "label_cn VARCHAR(200) NOT NULL,"
+            "step_count INTEGER NOT NULL DEFAULT 3,"
+            "created_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
         db.commit()
         db.close()
         logger.info("数据库 Schema 自动检查/修复完成")
@@ -1073,6 +1082,14 @@ async def startup_event():
     SIDEBAR_BROKER.bind_loop(asyncio.get_running_loop())
     ArchiveService.register_new_message_hook(SIDEBAR_BROKER.on_new_messages)
     logger.info("侧边栏 SSE 推送总线已就绪。")
+
+    # 加载用户自定义套装到策略注册表
+    try:
+        _startup_db = SessionLocal()
+        _load_custom_suites_into_registry(_startup_db)
+        _startup_db.close()
+    except Exception as _e:
+        logger.warning("加载自定义套装注册失败: %s", _e)
 
     if not settings.ENABLE_ARCHIVE_POLLING:
         logger.info("企微会话存档自动轮询未启用；知识库后台正常启动。")
@@ -6078,6 +6095,44 @@ _MAIL_SCENARIO_CHINESE = {
     "print_quote_followup": "印刷报价后跟进",
 }
 
+# 用户自建套装的中文标签和步骤标签，运行时动态填充（重启后从 DB 重新加载）
+_DYNAMIC_SCENARIO_CHINESE: dict[str, str] = {}
+_DYNAMIC_STEP_LABELS: dict[tuple[str, int], str] = {}
+
+
+def _get_scenario_label_cn(scenario: str) -> str | None:
+    """返回场景中文标签，内置场景优先，否则查用户自建。"""
+    return _MAIL_SCENARIO_CHINESE.get(scenario) or _DYNAMIC_SCENARIO_CHINESE.get(scenario)
+
+
+def _is_supported_scenario(scenario: str) -> bool:
+    return scenario in _MAIL_SCENARIO_CHINESE or scenario in _DYNAMIC_SCENARIO_CHINESE
+
+
+def _load_custom_suites_into_registry(db) -> None:
+    """启动时/创建后将自建套装注册到运行时缓存。"""
+    from mail_sequence_strategy import register_dynamic_scenario
+    try:
+        rows = db.query(MailCustomSuite).all()
+    except Exception:
+        return
+    for row in rows:
+        _DYNAMIC_SCENARIO_CHINESE[row.scenario] = row.label_cn
+        # 从 MailSequenceTemplate 加载各步骤标签
+        step_labels: dict[int, str] = {}
+        try:
+            tmpl_rows = db.query(MailSequenceTemplate).filter(
+                MailSequenceTemplate.scenario == row.scenario,
+            ).all()
+            for t in tmpl_rows:
+                lbl = (t.step_label_cn or "").strip()
+                if lbl:
+                    step_labels[int(t.suite_step)] = lbl
+                    _DYNAMIC_STEP_LABELS[(row.scenario, int(t.suite_step))] = lbl
+        except Exception:
+            pass
+        register_dynamic_scenario(row.scenario, row.label_cn, row.step_count, step_labels)
+
 # "印刷报价后跟进"独立模板: 不绑定案例联系人, 用固定 customer_key 单独成组, 内容人工填写。
 _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO = "print_quote_followup"
 _MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY = "PRINT-QUOTE-FOLLOWUP"
@@ -6239,9 +6294,11 @@ _MAIL_SEQUENCE_SEND_TIMING_BY_SCENARIO: dict[tuple[str, int], str] = {
 def _mail_sequence_step_label_cn(scenario: str, suite_step: int) -> str:
     scenario_key = sanitize_text(scenario).strip()
     step_no = int(suite_step)
-    return _MAIL_SEQUENCE_STEP_LABEL_BY_SCENARIO.get(
-        (scenario_key, step_no),
-        _MAIL_SEQUENCE_STEP_LABEL_CN.get(step_no, f"第 {step_no} 封"),
+    return (
+        _MAIL_SEQUENCE_STEP_LABEL_BY_SCENARIO.get((scenario_key, step_no))
+        or _DYNAMIC_STEP_LABELS.get((scenario_key, step_no))
+        or _MAIL_SEQUENCE_STEP_LABEL_CN.get(step_no)
+        or f"第 {step_no} 封"
     )
 
 
@@ -17169,18 +17226,84 @@ def _apply_mail_suite_signature(body_html: str, signature_html: str) -> str:
 
 
 @app.get("/api/v1/mail/suite-scenario-options")
-def get_mail_suite_scenario_options():
+def get_mail_suite_scenario_options(db: Session = Depends(get_db)):
     """返回所有已注册的套装场景选项（value + 中文 label），供前端下拉动态渲染。"""
-    from mail_sequence_strategy import _STRATEGY_REGISTRY
-    return {
-        "scenarios": [
-            {
-                "value": scenario,
-                "label": _MAIL_SCENARIO_CHINESE.get(scenario, scenario),
-            }
-            for scenario in _STRATEGY_REGISTRY
-        ]
-    }
+    from mail_sequence_strategy import _STRATEGY_REGISTRY, _DYNAMIC_REGISTRY
+    scenarios = []
+    for s in list(_STRATEGY_REGISTRY) + [k for k in _DYNAMIC_REGISTRY if k not in _STRATEGY_REGISTRY]:
+        label = _get_scenario_label_cn(s) or s
+        scenarios.append({"value": s, "label": label})
+    return {"scenarios": scenarios}
+
+
+class MailCustomSuiteStepIn(BaseModel):
+    label_cn: str = ""
+    send_interval_days: int = 0
+    ai_instruction: str = ""
+
+
+class MailCustomSuiteCreateRequest(BaseModel):
+    label_cn: str
+    steps: list[MailCustomSuiteStepIn]
+
+
+@app.post("/api/v1/mail/custom-suites")
+def create_mail_custom_suite(payload: MailCustomSuiteCreateRequest, db: Session = Depends(get_db)):
+    """用户自建套装：保存元数据 + 各步骤模板，并注册到运行时缓存。"""
+    label = sanitize_text(payload.label_cn).strip()[:100]
+    if not label:
+        raise HTTPException(status_code=422, detail="label_cn 不能为空")
+    step_count = max(1, min(8, len(payload.steps)))
+    import time, hashlib
+    scenario = "custom_" + hashlib.md5(f"{label}{time.time()}".encode()).hexdigest()[:8]
+    # 检查重名
+    if db.query(MailCustomSuite).filter(MailCustomSuite.label_cn == label).first():
+        raise HTTPException(status_code=409, detail=f"已存在同名套装：{label}")
+    row = MailCustomSuite(scenario=scenario, label_cn=label, step_count=step_count)
+    db.add(row)
+    db.flush()
+    step_labels: dict[int, str] = {}
+    for i, step in enumerate(payload.steps[:step_count], start=1):
+        slabel = sanitize_text(step.label_cn).strip() or f"第 {i} 封"
+        step_labels[i] = slabel
+        existing = db.query(MailSequenceTemplate).filter(
+            MailSequenceTemplate.scenario == scenario,
+            MailSequenceTemplate.suite_step == i,
+        ).first()
+        if existing is None:
+            tmpl = MailSequenceTemplate(
+                customer_key="",
+                scenario=scenario,
+                suite_step=i,
+                scenario_label_cn=label,
+                step_label_cn=slabel,
+                purpose_cn=slabel,
+                send_timing_cn=str(max(0, int(step.send_interval_days or 0))),
+                variable_notes="",
+                script_template="",
+                ai_instruction_script=sanitize_text(step.ai_instruction).strip(),
+                is_active=True,
+                version_no=1,
+                updated_by="user_create",
+            )
+            db.add(tmpl)
+        else:
+            existing.step_label_cn = slabel
+            existing.ai_instruction_script = sanitize_text(step.ai_instruction).strip()
+    db.commit()
+    # 注册到运行时缓存
+    from mail_sequence_strategy import register_dynamic_scenario
+    _DYNAMIC_SCENARIO_CHINESE[scenario] = label
+    for step_no, lbl in step_labels.items():
+        _DYNAMIC_STEP_LABELS[(scenario, step_no)] = lbl
+    register_dynamic_scenario(scenario, label, step_count, step_labels)
+    return {"scenario": scenario, "label_cn": label, "step_count": step_count}
+
+
+@app.get("/api/v1/mail/custom-suites")
+def list_mail_custom_suites(db: Session = Depends(get_db)):
+    rows = db.query(MailCustomSuite).order_by(MailCustomSuite.created_at).all()
+    return {"suites": [{"scenario": r.scenario, "label_cn": r.label_cn, "step_count": r.step_count} for r in rows]}
 
 
 @app.get("/api/v1/mail/customer-suite")
@@ -17210,7 +17333,7 @@ def get_mail_customer_suite(
         scenario_basis = "手动指定场景"
     else:
         scenario_norm, scenario_basis = _mail_scenario_from_lifecycle_stage(lifecycle_stage)
-    if scenario_norm not in _MAIL_SCENARIO_CHINESE:
+    if not _is_supported_scenario(scenario_norm):
         raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario_norm}")
     contact_email = sanitize_text(crm_profile.get("contact_email"))
     contact_name = sanitize_text(crm_profile.get("contact_name"))
@@ -17379,7 +17502,10 @@ def get_mail_customer_suite(
             }
 
     # 4 封相互独立, 并发生成: 墙钟时间由"4×单封"降到"≈1×单封"; ex.map 保持原有步序; timeout=90s 防 LLM 挂死
-    suite_steps = list(ALL_MAIL_SEQUENCE_STEPS)
+    # 用户自建套装按其实际封数生成，内置场景固定 4 封
+    from mail_sequence_strategy import get_dynamic_scenario_step_count
+    _custom_step_count = get_dynamic_scenario_step_count(scenario_norm)
+    suite_steps = list(range(1, _custom_step_count + 1)) if _custom_step_count else list(ALL_MAIL_SEQUENCE_STEPS)
     # 全部命中缓存时跳过模板预热（无 LLM 调用，不会触发并发 DDL 锁），节省 10-20 次 DB 查询
     _all_cached = all(
         saved_edits.get(int(s), {}).get("subject") and saved_edits.get(int(s), {}).get("body_html")

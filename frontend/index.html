@@ -441,6 +441,7 @@
                         <div class="flex items-center gap-2">
                             <select id="mql-template-case-select" onchange="onMailTemplateCaseChange(this.value)" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700" title="切换要编辑的模板。默认跟随上方案例联系人(1对1)；点上方 3 个案例联系人会自动联动切换；也可手动选独立模板(如 印刷报价后跟进)。"></select>
                             <button type="button" onclick="loadMailSequenceTemplates()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] text-indigo-700 hover:bg-indigo-100" title="重新从后端 GET /api/v1/mail/sequence-templates 拉取模板。">刷新模板</button>
+                            <button type="button" onclick="openNewSuiteModal()" class="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-100" title="新增自定义套装场景，可设置封数、步骤名称和 AI 指令。">+ 新增套装</button>
                             <span id="mql-template-status" class="text-[11px] text-slate-500">未加载</span>
                         </div>
                     </div>
@@ -15318,6 +15319,133 @@
         bootstrapApp().catch(err => {
             console.error('应用初始化失败:', err);
         });
+    </script>
+
+    <!-- 新增套装 Modal -->
+    <div id="new-suite-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40" onclick="if(event.target===this)closeNewSuiteModal()">
+        <div class="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-2xl p-6" onclick="event.stopPropagation()">
+            <h2 class="text-base font-bold text-slate-800 mb-4">新增套装</h2>
+            <div class="mb-3">
+                <label class="block text-xs font-bold text-slate-700 mb-1">套装名称 <span class="text-red-500">*</span></label>
+                <input id="new-suite-label" type="text" placeholder="例：印刷报价后跟进" class="w-full rounded border border-slate-300 px-2 py-1 text-xs">
+            </div>
+            <div id="new-suite-steps" class="space-y-3 mb-3">
+                <!-- steps injected by JS -->
+            </div>
+            <div class="flex gap-2 mb-4">
+                <button type="button" onclick="addSuiteStep()" class="rounded border border-slate-300 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">+ 添加一封</button>
+            </div>
+            <div id="new-suite-error" class="text-xs text-red-500 mb-2 hidden"></div>
+            <div class="flex justify-end gap-2">
+                <button type="button" onclick="closeNewSuiteModal()" class="rounded border border-slate-300 px-4 py-1.5 text-xs text-slate-600 hover:bg-slate-50">取消</button>
+                <button type="button" onclick="submitNewSuite()" id="new-suite-submit" class="rounded bg-emerald-600 px-4 py-1.5 text-xs text-white hover:bg-emerald-700">创建套装</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // ── 新增套装 Modal ──────────────────────────────────────────────
+        let _newSuiteStepCount = 0;
+
+        function openNewSuiteModal() {
+            _newSuiteStepCount = 0;
+            document.getElementById('new-suite-label').value = '';
+            document.getElementById('new-suite-steps').innerHTML = '';
+            document.getElementById('new-suite-error').classList.add('hidden');
+            document.getElementById('new-suite-error').textContent = '';
+            // default 3 steps
+            addSuiteStep();
+            addSuiteStep();
+            addSuiteStep();
+            const modal = document.getElementById('new-suite-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeNewSuiteModal() {
+            const modal = document.getElementById('new-suite-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function addSuiteStep() {
+            _newSuiteStepCount++;
+            const idx = _newSuiteStepCount;
+            const container = document.getElementById('new-suite-steps');
+            const div = document.createElement('div');
+            div.id = `new-suite-step-${idx}`;
+            div.className = 'rounded border border-slate-200 p-3 bg-slate-50 relative';
+            div.innerHTML = `
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-bold text-slate-700">第 ${idx} 封</span>
+                    ${idx > 1 ? `<button type="button" onclick="removeSuiteStep(${idx})" class="text-xs text-red-400 hover:text-red-600">删除</button>` : ''}
+                </div>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <label class="flex flex-col gap-1">
+                        <span class="text-[11px] text-slate-500">步骤名称</span>
+                        <input type="text" id="new-suite-step-label-${idx}" placeholder="例：初次开发" class="rounded border border-slate-300 px-2 py-1 text-xs">
+                    </label>
+                    <label class="flex flex-col gap-1">
+                        <span class="text-[11px] text-slate-500">发送间隔（天，距上封）</span>
+                        <input type="number" id="new-suite-step-interval-${idx}" min="0" value="${idx === 1 ? 0 : 3}" class="rounded border border-slate-300 px-2 py-1 text-xs">
+                    </label>
+                </div>
+                <label class="flex flex-col gap-1">
+                    <span class="text-[11px] text-slate-500">AI 指令（可为空，事后在模板页修改）</span>
+                    <textarea id="new-suite-step-instruction-${idx}" rows="2" placeholder="例：突出印刷工艺和交期优势" class="rounded border border-slate-300 px-2 py-1 text-xs resize-y"></textarea>
+                </label>`;
+            container.appendChild(div);
+        }
+
+        function removeSuiteStep(idx) {
+            const el = document.getElementById(`new-suite-step-${idx}`);
+            if (el) el.remove();
+        }
+
+        async function submitNewSuite() {
+            const label = document.getElementById('new-suite-label').value.trim();
+            const errEl = document.getElementById('new-suite-error');
+            errEl.classList.add('hidden');
+            if (!label) { errEl.textContent = '请输入套装名称'; errEl.classList.remove('hidden'); return; }
+
+            // collect steps in DOM order
+            const stepDivs = document.querySelectorAll('#new-suite-steps > div[id^="new-suite-step-"]');
+            const steps = [];
+            let stepNum = 1;
+            for (const div of stepDivs) {
+                const idxMatch = div.id.match(/new-suite-step-(\d+)/);
+                if (!idxMatch) continue;
+                const i = idxMatch[1];
+                steps.push({
+                    label_cn: (document.getElementById(`new-suite-step-label-${i}`)?.value || '').trim(),
+                    send_interval_days: parseInt(document.getElementById(`new-suite-step-interval-${i}`)?.value || '0', 10) || 0,
+                    ai_instruction: (document.getElementById(`new-suite-step-instruction-${i}`)?.value || '').trim(),
+                });
+            }
+            if (steps.length < 1) { errEl.textContent = '至少需要 1 封'; errEl.classList.remove('hidden'); return; }
+
+            const btn = document.getElementById('new-suite-submit');
+            btn.disabled = true;
+            btn.textContent = '创建中...';
+            try {
+                const resp = await fetch('/api/v1/mail/custom-suites', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ label_cn: label, steps }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) { errEl.textContent = data.detail || '创建失败'; errEl.classList.remove('hidden'); return; }
+                closeNewSuiteModal();
+                // refresh scenario selector in mail-suite.html (if open in same tab via postMessage or just reload templates)
+                await loadMailSequenceTemplates();
+                alert(`套装"${label}"已创建，可在模板下拉中选择使用。`);
+            } catch (e) {
+                errEl.textContent = '网络错误: ' + e.message;
+                errEl.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '创建套装';
+            }
+        }
     </script>
 </body>
 </html>

@@ -2122,6 +2122,18 @@ class MailCustomerSuiteDraftEdit(Base):
     )
 
 
+class MailCustomSuite(Base):
+    """用户从界面自建的套装场景元数据（scenario 值、中文名、封数）。"""
+
+    __tablename__ = "mail_custom_suite"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scenario = Column(String(120), unique=True, nullable=False)
+    label_cn = Column(String(200), nullable=False)
+    step_count = Column(Integer, nullable=False, default=3)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+
 class MailCustomerSuiteRecipient(Base):
 
     """套装页客户收件邮箱(可人工编辑覆盖,默认取 CRM 有效邮箱),按 客户编号+场景 唯一。"""
