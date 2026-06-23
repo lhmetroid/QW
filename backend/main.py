@@ -17414,7 +17414,7 @@ def _build_mail_eml_bytes(sender_email: str, sender_name: str, to_emails: list[s
 
 # 套装页 AI 邮件在 CRM 的统一标识(UseRange)。发送系统不按 UseRange 决定是否发送(该字段只是分类标签)，
 # 改成专属值便于"邮件统计"页识别哪些是本系统转入的 AI 邮件，与销售手工分类区分。
-_MAIL_AI_USE_RANGE = "宣传邮箱-AI"
+_MAIL_AI_USE_RANGE = "宣传邮件-AI"
 
 
 def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, sender_email: str,
