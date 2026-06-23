@@ -475,11 +475,12 @@
     let currentId = '';
     // 已生成套装缓存: scenario -> 接口返回数据. 计算过的场景直接读取,不再重新调大模型.
     const suiteCache = {};
-    // 3 个可选套装场景,与后端 _MAIL_SCENARIO_CHINESE 一致.
+    // 可选套装场景,与后端 _MAIL_SCENARIO_CHINESE 一致.
     const SUITE_SCENARIOS = [
       { value: 're_activation', label: '老客户激活' },
       { value: 'new_business_promotion', label: '老客户其他业务介绍' },
       { value: 'new_contact_intro', label: '新客户开发介绍' },
+      { value: 'print_quote_followup', label: '独立模板·印刷报价后跟进' },
     ];
 
     const esc = (v) => String(v == null || v === '' ? '-' : v)
