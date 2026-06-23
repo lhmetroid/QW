@@ -6075,6 +6075,30 @@ _MAIL_SCENARIO_CHINESE = {
     "new_contact_intro": "新客户开发介绍",
 }
 
+# CRM 生命周期阶段(crm_profile._get_customer_lifecycle_stage 的 3 个取值)→ 套装场景映射:
+#   熟联系人(近1年≥3销售合同) → 老客户其他业务介绍
+#   老联系人(历史有销售合同)   → 老客户激活
+#   新联系人(无销售合同)       → 新客户开发介绍
+_MAIL_LIFECYCLE_STAGE_TO_SCENARIO = {
+    "熟联系人": "new_business_promotion",
+    "老联系人": "re_activation",
+    "新联系人": "new_contact_intro",
+}
+
+
+def _mail_scenario_from_lifecycle_stage(lifecycle_stage: str | None) -> tuple[str, str]:
+    """按 CRM 生命周期阶段真实判断套装场景, 返回 (scenario, 判断依据文案)。
+
+    阶段无法识别(CRM 查询失败/为空/未知值)时回退默认 new_business_promotion。
+    """
+    stage = sanitize_text(lifecycle_stage or "").strip()
+    scenario = _MAIL_LIFECYCLE_STAGE_TO_SCENARIO.get(stage)
+    if scenario:
+        return scenario, f"CRM 生命周期阶段={stage}"
+    if stage:
+        return "new_business_promotion", f"未知生命周期阶段({stage})，回退默认"
+    return "new_business_promotion", "CRM 生命周期阶段未识别，回退默认"
+
 _MAIL_INDUSTRY_CN = {
     "unknown": "未识别",
     "medical": "医疗医药",
@@ -17052,14 +17076,20 @@ def get_mail_customer_suite(
     if "text/html" in accept and "application/json" not in accept:
         return RedirectResponse(url=f"/static/mail-suite.html?id={quote(customer_id, safe='')}")
 
-    current_case = next((item for item in MAIL_CURRENT_DEMO_CASES if item["real_customer_key"].upper() == customer_id.upper()), None)
-    scenario_norm = sanitize_text(scenario or (current_case or {}).get("default_scenario") or "new_business_promotion").strip()
-    if scenario_norm not in _MAIL_SCENARIO_CHINESE:
-        raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario_norm}")
-
     seller_name = "事必达销售"
     seller_signature = "事必达销售"
     crm_profile = _lookup_mail_crm_profile(customer_id, "")
+    lifecycle_stage = sanitize_text(crm_profile.get("customer_lifecycle_stage"))
+
+    # 场景判定: 手动指定(下拉/URL)优先; 否则按 CRM 生命周期阶段真实判断
+    explicit_scenario = sanitize_text(scenario or "").strip()
+    if explicit_scenario:
+        scenario_norm = explicit_scenario
+        scenario_basis = "手动指定场景"
+    else:
+        scenario_norm, scenario_basis = _mail_scenario_from_lifecycle_stage(lifecycle_stage)
+    if scenario_norm not in _MAIL_SCENARIO_CHINESE:
+        raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario_norm}")
     contact_email = sanitize_text(crm_profile.get("contact_email"))
     contact_name = sanitize_text(crm_profile.get("contact_name"))
     draft_contact_email = _mail_demo_contact_email_for_draft(contact_email)
@@ -17218,6 +17248,8 @@ def get_mail_customer_suite(
         "customer_id": customer_id,
         "scenario": scenario_norm,
         "scenario_label_cn": _MAIL_SCENARIO_CHINESE.get(scenario_norm, scenario_norm),
+        "scenario_basis": scenario_basis,
+        "customer_lifecycle_stage": lifecycle_stage or "未识别",
         "customer_profile": customer_profile,
         "drafts": drafts,
         "suite_total": len(drafts),
