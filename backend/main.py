@@ -17348,10 +17348,70 @@ def get_mail_customer_suite(
     except Exception:
         logger.exception("MAIL_CUSTOMER_SUITE_TEMPLATE_PREWARM_FAILED customer_id=%s", sanitize_text(customer_id))
 
-    # 4 封相互独立, 并发生成: 墙钟时间由"4×单封"降到"≈1×单封"; ex.map 保持原有步序
+    # 4 封相互独立, 并发生成: 墙钟时间由"4×单封"降到"≈1×单封"; ex.map 保持原有步序; timeout=90s 防 LLM 挂死
     suite_steps = list(ALL_MAIL_SEQUENCE_STEPS)
-    with ThreadPoolExecutor(max_workers=max(1, len(suite_steps)), thread_name_prefix="mail-suite") as executor:
-        drafts = list(executor.map(_generate_one_suite_draft, suite_steps))
+    try:
+        with ThreadPoolExecutor(max_workers=max(1, len(suite_steps)), thread_name_prefix="mail-suite") as executor:
+            drafts = list(executor.map(_generate_one_suite_draft, suite_steps, timeout=90))
+    except Exception as _exc:
+        if "TimeoutError" not in type(_exc).__name__:
+            raise
+        logger.error("MAIL_CUSTOMER_SUITE_TIMEOUT customer_id=%s scenario=%s", sanitize_text(customer_id), scenario_norm)
+        drafts = [
+            {
+                "suite_step": s,
+                "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(s)),
+                "status": "failed",
+                "error": "生成超时（>90s），请重试",
+                "draft": None,
+                "send_settings": _suite_step_send_settings(int(s), saved_edits.get(int(s))),
+            }
+            for s in suite_steps
+        ]
+
+    # LLM 生成成功后自动存库 — 下次加载(含 Ctrl+F5)直接读库，不再重调 LLM
+    for _item in drafts:
+        if _item.get("status") != "success":
+            continue
+        _d = _item.get("draft") or {}
+        if _d.get("from_saved_edit"):
+            continue
+        _subj = (_d.get("final_subject") or "")[:500]
+        _html = _d.get("final_body_html") or ""
+        _uid = (_d.get("mail_uid") or "")[:120]
+        _step = int(_item.get("suite_step", 0))
+        if not _subj or not _html or _step not in ALL_MAIL_SEQUENCE_STEPS:
+            continue
+        try:
+            _row = (
+                db.query(MailCustomerSuiteDraftEdit)
+                .filter(
+                    MailCustomerSuiteDraftEdit.customer_id == customer_id,
+                    MailCustomerSuiteDraftEdit.scenario == scenario_norm,
+                    MailCustomerSuiteDraftEdit.suite_step == _step,
+                )
+                .one_or_none()
+            )
+            if _row is None:
+                _row = MailCustomerSuiteDraftEdit(
+                    customer_id=customer_id[:120],
+                    scenario=scenario_norm,
+                    suite_step=_step,
+                    included=True,
+                )
+                db.add(_row)
+            _row.subject = _subj
+            _row.body_html = _html
+            if _uid:
+                _row.mail_uid = _uid
+            db.flush()
+        except Exception:
+            logger.exception("MAIL_SUITE_AUTOSAVE_FAILED customer_id=%s step=%s", sanitize_text(customer_id), _step)
+    try:
+        db.commit()
+    except Exception:
+        logger.exception("MAIL_SUITE_AUTOSAVE_COMMIT_FAILED customer_id=%s", sanitize_text(customer_id))
+        db.rollback()
 
     return {
         "status": "success" if any(item["status"] == "success" for item in drafts) else "failed",
