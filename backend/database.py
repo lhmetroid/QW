@@ -1,6 +1,6 @@
 from sqlalchemy import (
 
-    create_engine, Column, Integer, String, Text, DateTime, JSON, text, Boolean,
+    create_engine, Column, Integer, String, Text, DateTime, Date, JSON, text, Boolean,
 
     ForeignKey, Numeric, Index, UniqueConstraint
 
@@ -2190,6 +2190,17 @@ class MailCustomerSuiteSendPlan(Base):
 
     spqueue_rowid = Column(String(64), nullable=True)
 
+    # CRM spQueueSend 触发器生成的 SendId(如 Mal_S260622-000003)。真发后据此在 spSendInfo{销售}
+    # 用 SendId 关联确认 SendSuccess/FactSendTime，是"邮件统计"实发数的稳定关联键。
+    crm_send_id = Column(String(80), nullable=True)
+
+    # 邮件统计：从 CRM spSendInfo{销售} 同步回来的真发状态缓存(刷新时更新)
+    crm_send_status = Column(String(40), nullable=True)  # SendSuccess/SendFail/WaitSend/Sending/deleted
+    crm_fact_send_time = Column(DateTime, nullable=True)  # 真发成功时间(实发数按此日计)
+    crm_message_id = Column(String(255), nullable=True)  # 发送 .eml 解析出的 Message-ID(回信匹配键)
+    crm_eml_ftp_dir = Column(String(255), nullable=True)
+    status_synced_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
     __table_args__ = (
@@ -2198,7 +2209,56 @@ class MailCustomerSuiteSendPlan(Base):
 
         Index("idx_mcssp_batch", "batch_id"),
 
+        Index("idx_mcssp_send_id", "crm_send_id"),
+
     )
+
+
+class MailAiReplyAnalysis(Base):
+    """邮件统计：AI 套装邮件的客户回信解析缓存(回信识别 + deepseek 价值判定)。
+
+    一封 AI 邮件(plan_id) x 一封匹配上的 CRM 收件行(reply_crm_rowid) 唯一一条。
+    回信识别用 FTP 解析收件 .eml 的 In-Reply-To 精确匹配发送 .eml 的 Message-ID。
+    """
+    __tablename__ = "mail_ai_reply_analysis"
+
+    reply_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    plan_id = Column(UUID(as_uuid=False), nullable=False)
+    crm_send_id = Column(String(80), nullable=True)
+    customer_id = Column(String(120), nullable=True)
+    staff_id = Column(String(120), nullable=True)
+    reply_crm_rowid = Column(String(64), nullable=False)
+    reply_sender = Column(String(255), nullable=True)
+    reply_subject = Column(String(500), nullable=True)
+    reply_body = Column(Text, nullable=True)
+    reply_received_at = Column(DateTime, nullable=True)
+    match_method = Column(String(40), nullable=True)  # eml_in_reply_to / contact_time_fallback
+    is_valuable = Column(Boolean, nullable=True)
+    value_reason = Column(Text, nullable=True)
+    value_model = Column(String(120), nullable=True)
+    analyzed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("uq_mar_plan_reply", "plan_id", "reply_crm_rowid", unique=True),
+        Index("idx_mar_received", "reply_received_at"),
+        Index("idx_mar_staff", "staff_id"),
+    )
+
+
+class MailAiDailyStats(Base):
+    """邮件统计：按天 x 销售 预计算结果。历史日固化(is_final),当天每次查询实时重算覆盖。"""
+    __tablename__ = "mail_ai_daily_stats"
+
+    stat_date = Column(Date, primary_key=True)
+    staff_id = Column(String(120), primary_key=True, default="")
+    generated_count = Column(Integer, nullable=False, default=0)
+    sent_count = Column(Integer, nullable=False, default=0)
+    reply_count = Column(Integer, nullable=False, default=0)
+    valuable_count = Column(Integer, nullable=False, default=0)
+    feedback_count = Column(Integer, nullable=False, default=0)
+    is_final = Column(Boolean, nullable=False, default=False)
+    computed_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
 
 class MailContractCase(Base):

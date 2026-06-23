@@ -358,6 +358,7 @@
                     <p class="text-xs text-slate-500 mt-1">独立承载邮件草稿、范例黄金库、邮件序列、安全门和人工纠偏诊断，不接入企微实时会话链路。</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
+                    <button id="mail-subtab-stats" type="button" onclick="switchMailWorkspaceTab('stats')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件统计: 统计通过套装页转入CRM的AI邮件及其成效(生成/实发/回信/有价值/反馈)，按天展示，可按日期范围和销售筛选，双击数字看明细邮件清单。">邮件统计</button>
                     <button id="mail-subtab-quality" type="button" onclick="switchMailWorkspaceTab('quality')" class="px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold" title="查看邮件质量诊断面板（含真接入演示区 + 占位静态卡片），不接入企微工作流。">质量诊断</button>
                     <button id="mail-subtab-iteration" type="button" onclick="switchMailWorkspaceTab('iteration')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件迭代记录: 一次迭代跑当前 3 案例 × 4 步 = 12 封邮件并打分入库, 可对比多次迭代的草稿质量变化, 含每封邮件用到的真实大模型 prompt。">邮件迭代记录</button>
                     <button id="mail-subtab-goldlib" type="button" onclick="switchMailWorkspaceTab('goldlib')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="黄金范例库: 邮件草稿生成时由后端 RAG 从此库召回参考。当前 25 条种子由 backend/seed_mail_gold_candidates.py 从历史真实邮件脱敏后灌入。">黄金范例库</button>
@@ -369,6 +370,52 @@
             </div>
         </div>
         <div class="flex-1 overflow-auto px-6 py-5 space-y-5">
+            <section id="mail-stats-panel" class="hidden rounded-lg border border-slate-300 bg-white p-5">
+                <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
+                    <div>
+                        <div class="text-[11px] font-bold tracking-wide text-indigo-700">邮件统计 · 转入CRM的AI邮件成效</div>
+                        <h2 class="text-base font-bold text-slate-900 mt-1">AI 邮件转入与成效统计（按天）</h2>
+                        <p class="text-xs text-slate-500 mt-1">统计通过套装页 <code>/static/mail-suite.html</code> 转入 CRM 的 AI 邮件及发送/回信/反馈情况。当天实时计算，历史日已固化入库读取提速。时间口径为北京时间。</p>
+                    </div>
+                    <div class="flex flex-wrap items-end gap-2">
+                        <label class="text-xs text-slate-600">起<input type="date" id="mail-stats-start" class="ml-1 rounded border border-slate-300 px-2 py-1 text-xs"></label>
+                        <label class="text-xs text-slate-600">止<input type="date" id="mail-stats-end" class="ml-1 rounded border border-slate-300 px-2 py-1 text-xs"></label>
+                        <label class="text-xs text-slate-600">销售
+                            <select id="mail-stats-staff" class="ml-1 rounded border border-slate-300 px-2 py-1 text-xs">
+                                <option value="">全部销售</option>
+                            </select>
+                        </label>
+                        <button type="button" onclick="loadMailAiStats(false)" class="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100" title="按当前筛选条件查询。当天用本地缓存实时重算，历史日读已固化结果。">查询</button>
+                        <button type="button" onclick="loadMailAiStats(true)" class="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100" title="从 CRM 同步真发状态、用FTP解析邮件头匹配回信、调 deepseek 判定回信价值后再统计。较慢，按需点。">从CRM刷新</button>
+                    </div>
+                </div>
+                <div id="mail-stats-status" class="mt-3 text-xs text-slate-500">加载中…</div>
+                <div class="mt-3 overflow-auto">
+                    <table class="min-w-full text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-600">
+                                <th class="border border-slate-200 px-3 py-2 text-left">日期</th>
+                                <th class="border border-slate-200 px-3 py-2 text-right cursor-help" title="当天通过套装页转入 CRM 的邮件封数。按实际转入算（套装里没勾的不算），不看计划发送时间。">AI生成邮件数</th>
+                                <th class="border border-slate-200 px-3 py-2 text-right cursor-help" title="这些转入邮件里，当天真正发出去的封数（以 CRM 发送成功为准）。哪天发的就算哪天，删掉的、还没到发送日的都不算。">AI实际发送数</th>
+                                <th class="border border-slate-200 px-3 py-2 text-right cursor-help" title="客户对这些 AI 邮件的回复封数。通过解析邮件往来标识精确对应到原邮件，算在收到回信当天。">回信邮件数</th>
+                                <th class="border border-slate-200 px-3 py-2 text-right cursor-help" title="回信里经 AI（deepseek）判断含真实意向/需求/可推进信号的封数，算在收到回信当天。">有价值邮件数</th>
+                                <th class="border border-slate-200 px-3 py-2 text-right cursor-help" title="在套装页对邮件填写过反馈的封数，不管最后有没有发送，算在填写反馈当天。">反馈邮件数</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mail-stats-tbody"></tbody>
+                    </table>
+                </div>
+                <p class="mt-2 text-[11px] text-slate-400">提示：双击任意数字单元格可查看该天该指标对应的具体邮件清单（含联系人、主题、正文，有反馈/价值理由才显示）。</p>
+            </section>
+            <div id="mail-stats-detail-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col">
+                    <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                        <h3 id="mail-stats-detail-title" class="text-sm font-bold text-slate-900">明细</h3>
+                        <button type="button" onclick="closeMailStatsDetail()" class="text-slate-400 hover:text-slate-700 text-lg leading-none">&times;</button>
+                    </div>
+                    <div id="mail-stats-detail-body" class="overflow-auto p-4 text-xs space-y-3"></div>
+                </div>
+            </div>
             <section id="mail-quality-live-demo" class="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-5">
                 <div class="flex flex-wrap items-start justify-between gap-3 border-b border-emerald-200 pb-3">
                     <div>
@@ -3088,6 +3135,121 @@
             }
         }
 
+        // ===== 邮件统计（AI 邮件转入与成效） =====
+        function mailStatsLocalDate(d) {
+            const x = d || new Date();
+            const p = (n) => String(n).padStart(2, '0');
+            return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
+        }
+        function mailStatsScenarioCn(s) {
+            return ({ re_activation: '老客户激活', new_business_promotion: '老客户其他业务介绍', new_contact_intro: '新客户开发介绍' })[s] || s || '';
+        }
+        async function loadMailAiStats(refresh) {
+            const startEl = document.getElementById('mail-stats-start');
+            const endEl = document.getElementById('mail-stats-end');
+            const staffEl = document.getElementById('mail-stats-staff');
+            const statusEl = document.getElementById('mail-stats-status');
+            if (!startEl || !endEl) return;
+            if (!endEl.value) endEl.value = mailStatsLocalDate();
+            if (!startEl.value) { const d = new Date(); d.setDate(d.getDate() - 29); startEl.value = mailStatsLocalDate(d); }
+            const params = new URLSearchParams({ start: startEl.value, end: endEl.value });
+            if (staffEl && staffEl.value) params.set('staff_id', staffEl.value);
+            if (refresh) params.set('refresh', '1');
+            if (statusEl) { statusEl.textContent = refresh ? '正在从 CRM 同步真发状态 + FTP 解析回信 + deepseek 价值判定，请稍候…' : '加载中…'; statusEl.className = 'mt-3 text-xs text-slate-500'; }
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/ai-stats/summary?${params.toString()}`);
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+                renderMailAiStats(data);
+                if (statusEl) {
+                    const t = data.totals || {};
+                    const rr = data.refresh_result;
+                    let extra = '';
+                    if (rr) extra = ` · 刷新：真发${(rr.send_status || {}).sent || 0} / 新回信${(rr.replies || {}).matched || 0} / 价值分析${(rr.values || {}).analyzed || 0}`;
+                    statusEl.textContent = `区间 ${data.start} ~ ${data.end} · 合计 生成${t.generated_count || 0} / 实发${t.sent_count || 0} / 回信${t.reply_count || 0} / 有价值${t.valuable_count || 0} / 反馈${t.feedback_count || 0}${extra}`;
+                    statusEl.className = 'mt-3 text-xs text-emerald-700 font-bold';
+                }
+            } catch (err) {
+                if (statusEl) { statusEl.textContent = `加载失败：${err.message}`; statusEl.className = 'mt-3 text-xs text-red-600 font-bold'; }
+            }
+        }
+        function renderMailAiStats(data) {
+            const staffEl = document.getElementById('mail-stats-staff');
+            if (staffEl) {
+                const cur = staffEl.value;
+                const opts = ['<option value="">全部销售</option>'].concat((data.staff_options || []).map(s => `<option value="${escapeHtml(s)}">销售 ${escapeHtml(s)}</option>`));
+                staffEl.innerHTML = opts.join('');
+                staffEl.value = cur;
+            }
+            const tbody = document.getElementById('mail-stats-tbody');
+            if (!tbody) return;
+            const daily = data.daily || [];
+            const t = data.totals || {};
+            const staff = (data.staff_id || '');
+            const cell = (metric, day, val) => `<td class="border border-slate-200 px-3 py-2 text-right ${val ? 'cursor-pointer text-indigo-700 hover:bg-indigo-50 font-bold' : 'text-slate-400'}" ${val ? `ondblclick="openMailStatsDetail('${metric}','${day}')" title="双击查看该天明细"` : ''}>${val || 0}</td>`;
+            let html = `<tr class="bg-amber-50 font-bold text-slate-800"><td class="border border-slate-200 px-3 py-2">合计</td>`
+                + `<td class="border border-slate-200 px-3 py-2 text-right">${t.generated_count || 0}</td>`
+                + `<td class="border border-slate-200 px-3 py-2 text-right">${t.sent_count || 0}</td>`
+                + `<td class="border border-slate-200 px-3 py-2 text-right">${t.reply_count || 0}</td>`
+                + `<td class="border border-slate-200 px-3 py-2 text-right">${t.valuable_count || 0}</td>`
+                + `<td class="border border-slate-200 px-3 py-2 text-right">${t.feedback_count || 0}</td></tr>`;
+            if (!daily.length) {
+                html += `<tr><td colspan="6" class="border border-slate-200 px-3 py-6 text-center text-slate-400">该区间暂无数据</td></tr>`;
+            } else {
+                for (const d of daily) {
+                    const flag = d.is_final ? '' : ' <span class="text-[10px] text-emerald-600">(当天实时)</span>';
+                    html += `<tr class="hover:bg-slate-50"><td class="border border-slate-200 px-3 py-2 whitespace-nowrap">${escapeHtml(d.stat_date)}${flag}</td>`
+                        + cell('generated', d.stat_date, d.generated_count)
+                        + cell('sent', d.stat_date, d.sent_count)
+                        + cell('reply', d.stat_date, d.reply_count)
+                        + cell('valuable', d.stat_date, d.valuable_count)
+                        + cell('feedback', d.stat_date, d.feedback_count)
+                        + `</tr>`;
+                }
+            }
+            tbody.innerHTML = html;
+        }
+        function closeMailStatsDetail() {
+            document.getElementById('mail-stats-detail-modal')?.classList.add('hidden');
+        }
+        async function openMailStatsDetail(metric, day) {
+            const modal = document.getElementById('mail-stats-detail-modal');
+            const title = document.getElementById('mail-stats-detail-title');
+            const body = document.getElementById('mail-stats-detail-body');
+            const staffEl = document.getElementById('mail-stats-staff');
+            const metricCn = { generated: 'AI生成邮件', sent: 'AI实际发送', reply: '回信邮件', valuable: '有价值回信', feedback: '反馈邮件' }[metric] || metric;
+            if (!modal || !body) return;
+            modal.classList.remove('hidden');
+            if (title) title.textContent = `${day} · ${metricCn} 明细`;
+            body.innerHTML = '<div class="text-slate-500">加载中…</div>';
+            const params = new URLSearchParams({ metric, day });
+            if (staffEl && staffEl.value) params.set('staff_id', staffEl.value);
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/ai-stats/detail?${params.toString()}`);
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+                const items = data.items || [];
+                if (!items.length) { body.innerHTML = '<div class="text-slate-400 py-6 text-center">无明细记录</div>'; return; }
+                body.innerHTML = items.map((it) => {
+                    const bodyHtml = it.body_html ? it.body_html : (it.body_text ? escapeHtml(it.body_text).replace(/\n/g, '<br>') : '（无正文）');
+                    const fb = it.feedback_text ? `<div class="mt-2 rounded bg-amber-50 border border-amber-200 p-2"><b>反馈：</b>${escapeHtml(it.feedback_text)}</div>` : '';
+                    const val = (it.value_reason || it.is_valuable != null) ? `<div class="mt-2 rounded ${it.is_valuable ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'} border p-2"><b>价值判定：</b>${it.is_valuable ? '有价值' : '无价值'}${it.value_reason ? ' · ' + escapeHtml(it.value_reason) : ''}</div>` : '';
+                    const meta = [it.scenario ? mailStatsScenarioCn(it.scenario) : '', it.suite_step ? ('第' + it.suite_step + '封') : '', it.fact_send_time ? ('实发 ' + it.fact_send_time) : '', it.received_at ? ('收信 ' + it.received_at) : ''].filter(Boolean).join(' · ');
+                    return `<div class="rounded border border-slate-200 p-3">
+                        <div class="flex flex-wrap justify-between gap-2">
+                            <div class="font-mono text-[11px] text-slate-900">${escapeHtml(it.customer_id || '')} <span class="text-slate-500">${escapeHtml(it.contact || '')}</span></div>
+                            <div class="text-[10px] text-slate-400">${escapeHtml(meta)}</div>
+                        </div>
+                        <div class="mt-1 font-bold text-slate-800">${escapeHtml(it.subject || '（无主题）')}</div>
+                        <div class="mt-2 max-h-48 overflow-auto rounded bg-slate-50 p-2 text-slate-700">${bodyHtml}</div>
+                        ${fb}${val}
+                    </div>`;
+                }).join('');
+            } catch (err) {
+                body.innerHTML = `<div class="text-red-600 py-6 text-center">加载失败：${escapeHtml(err.message)}</div>`;
+            }
+        }
+
         function renderMailCustomerSuiteFeedbackRecords() {
             const tbody = document.getElementById('mail-feedback-tbody');
             const empty = document.getElementById('mail-feedback-empty');
@@ -3193,9 +3355,10 @@
         }
 
         function switchMailWorkspaceTab(tab) {
-            const validTabs = ['quality', 'iteration', 'goldlib', 'contractcases', 'feedback', 'config'];
+            const validTabs = ['stats', 'quality', 'iteration', 'goldlib', 'contractcases', 'feedback', 'config'];
             let activeTab = validTabs.includes(tab) ? tab : 'quality';
             if (isMailQualityOnlyUser() && activeTab === 'config') activeTab = 'quality';
+            const statsPanel = document.getElementById('mail-stats-panel');
             const liveDemo = document.getElementById('mail-quality-live-demo');
             const qualityInfo = document.getElementById('mail-quality-panel-info');
             const iterationPanel = document.getElementById('mail-iteration-panel');
@@ -3203,6 +3366,7 @@
             const contractCasesPanel = document.getElementById('mail-contractcases-panel');
             const feedbackPanel = document.getElementById('mail-feedback-panel');
             const configPanel = document.getElementById('mail-config-panel');
+            const statsBtn = document.getElementById('mail-subtab-stats');
             const qualityBtn = document.getElementById('mail-subtab-quality');
             const iterationBtn = document.getElementById('mail-subtab-iteration');
             const goldlibBtn = document.getElementById('mail-subtab-goldlib');
@@ -3211,6 +3375,7 @@
             const configBtn = document.getElementById('mail-subtab-config');
             const activeClass = 'px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold';
             const inactiveClass = 'px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50';
+            if (statsPanel) statsPanel.classList.toggle('hidden', activeTab !== 'stats');
             if (liveDemo) liveDemo.classList.toggle('hidden', activeTab !== 'quality');
             if (qualityInfo) qualityInfo.classList.toggle('hidden', activeTab !== 'quality');
             if (iterationPanel) iterationPanel.classList.toggle('hidden', activeTab !== 'iteration');
@@ -3224,6 +3389,8 @@
             if (contractCasesBtn) contractCasesBtn.className = activeTab === 'contractcases' ? activeClass : inactiveClass;
             if (feedbackBtn) feedbackBtn.className = activeTab === 'feedback' ? activeClass : inactiveClass;
             if (configBtn) configBtn.className = activeTab === 'config' ? activeClass : inactiveClass;
+            if (statsBtn) statsBtn.className = activeTab === 'stats' ? activeClass : inactiveClass;
+            if (activeTab === 'stats' && typeof loadMailAiStats === 'function') loadMailAiStats(false);
             if (activeTab === 'config') {
                 renderMailConfigReviewOnlyMocks();
                 loadRuntimeLlmSettings();
@@ -5337,57 +5504,80 @@
         }
         function buildSidebarLatencyRowTip(row, line1Latency, line2Latency) {
             const t = (row && row.timings_ms && typeof row.timings_ms === 'object') ? row.timings_ms : {};
+            const node = (key) => sidebarNodeTiming(row, key);
+            const part = (key, partKey) => sidebarNodePartTiming(row, key, partKey);
+            const has = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+            const addLines = (lines, items) => {
+                items.filter(Boolean).forEach(x => lines.push(x));
+            };
             const lines = [
                 '【当前触发耗时实测拆分】',
                 '第一行 = 前台可输出点耗时；第二行 = 轻量落库后总墙钟耗时。'
             ];
-            [
-                sidebarLatencyLine('第一行：前台可输出点耗时', line1Latency, '到 AI 回复可返回'),
+            addLines(lines, [
+                sidebarLatencyLine('第一行：前台可输出点耗时', line1Latency, '主链路跑完，到 AI 回复可返回'),
                 sidebarLatencyLine('第二行：轻量落库后总耗时', line2Latency, '到轻量调用记录首次提交'),
-            ].filter(Boolean).forEach(x => lines.push(x));
+            ]);
             const diff = (line1Latency != null && line2Latency != null) ? Math.max(Number(line2Latency) - Number(line1Latency), 0) : null;
             const diffLine = sidebarLatencyLine('两行差值：尾段轻量处理', t.tail_ms != null ? t.tail_ms : diff, '第二行减第一行');
             if (diffLine) lines.push(diffLine);
+            if (has(t.pipeline_total_ms) || has(t.total_ms)) {
+                addLines(lines, [
+                    sidebarLatencyLine('数据库主链路字段 pipeline_total_ms', t.pipeline_total_ms, '第一行优先取值'),
+                    sidebarLatencyLine('数据库总墙钟字段 total_ms', t.total_ms, '第二行优先取值'),
+                ]);
+            }
 
             lines.push('', '【第一行包含的主链路环节】');
-            [
+            addLines(lines, [
                 sidebarLatencyLine('请求解析', t.normalize_request_ms, '解析客户ID、销售ID、触发来源'),
                 sidebarLatencyLine('会话ID生成', t.build_session_id_ms, '生成本次请求会话ID'),
                 sidebarLatencyLine('企微存档同步', t.archive_sync_ms, '只有开启读前同步时前台等待'),
+                sidebarLatencyLine('缓存/并发复用判断', t.dedupe_lookup_ms, '相同客户消息复用或合并运行'),
                 sidebarLatencyLine('定位会话并读取最近消息', t.load_recent_messages_ms, '查真实会话和最近消息'),
                 sidebarLatencyLine('读取全量会话消息', t.load_all_messages_ms, '用于锚点截断'),
-                sidebarLatencyLine('会话输入准备合计', sidebarNodeTiming(row, 'conversation_input'), '最近消息+全量消息'),
-                sidebarLatencyLine('强信号扫描', sidebarNodeTiming(row, 'fast_track') ?? t.fast_track_scan_ms, '报价/付款/发货/售后/等待客户等'),
+                sidebarLatencyLine('会话输入准备合计', node('conversation_input'), '最近消息+全量消息'),
+                sidebarLatencyLine('强信号扫描', node('fast_track') ?? t.fast_track_scan_ms, '报价/付款/发货/售后/等待客户等'),
                 sidebarLatencyLine('读取已有摘要', t.load_summary_ms, '读取历史 LLM-1 摘要'),
-                sidebarLatencyLine('LLM-1 摘要', sidebarNodeTiming(row, 'llm1') ?? t.llm1_analyze_ms, '首次/强刷/旧摘要补齐时运行'),
+                sidebarLatencyLine('LLM-1 摘要', node('llm1') ?? t.llm1_analyze_ms, '首次/强刷/旧摘要补齐时运行'),
+                sidebarLatencyLine('LLM-1 对比摘要', t.llm1_compare_ms, '仅评测全链路启用时出现'),
                 sidebarLatencyLine('重新读取摘要', t.reload_summary_ms, 'LLM-1 后重新读取摘要'),
-                sidebarLatencyLine('CRM 画像', sidebarNodeTiming(row, 'crm_profile') ?? t.crm_profile_ms, 'CRM + 会话业务事实'),
-                sidebarLatencyLine('知识检索总耗时', sidebarNodeTiming(row, 'knowledge') ?? t.knowledge_retrieve_ms, '私域/外部知识库按开关执行'),
-                sidebarLatencyLine('  私域知识库检索', sidebarNodePartTiming(row, 'knowledge', 'knowledge_v2_ms'), 'KB1'),
-                sidebarLatencyLine('  外部知识库检索', sidebarNodePartTiming(row, 'knowledge', 'knowledge_external_api_ms'), 'KB2，可能跳过'),
-            ].filter(Boolean).forEach(x => lines.push(x));
+                sidebarLatencyLine('CRM 画像', node('crm_profile') ?? t.crm_profile_ms, 'CRM + 会话业务事实'),
+                sidebarLatencyLine('知识检索总耗时', node('knowledge') ?? t.knowledge_retrieve_ms, '私域/外部知识库按开关执行'),
+                sidebarLatencyLine('  私域知识库检索', part('knowledge', 'knowledge_v2_ms'), 'KB1'),
+                sidebarLatencyLine('  外部知识库检索', part('knowledge', 'knowledge_external_api_ms'), 'KB2，可能跳过'),
+            ]);
 
-            lines.push('', '【并行生成环节分别计时】');
-            [
-                sidebarLatencyLine('LLM2 主回复总耗时', sidebarNodeTiming(row, 'llm2'), '链路1'),
-                sidebarLatencyLine('  LLM2 主模型生成', sidebarNodePartTiming(row, 'llm2', 'llm2_ms') ?? sidebarNodePartTiming(row, 'llm2', 'llm2_generate_ms'), '主模型'),
-                sidebarLatencyLine('  LLM2 知识增强生成', sidebarNodePartTiming(row, 'llm2', 'llm2_knowledge_v2_ms'), '如有'),
+            lines.push('', '【并行/生成环节分别计时】');
+            addLines(lines, [
+                sidebarLatencyLine('LLM2 主回复总耗时', node('llm2'), '链路1'),
+                sidebarLatencyLine('  LLM2 主模型生成', part('llm2', 'llm2_ms') ?? part('llm2', 'llm2_generate_ms'), '主模型'),
+                sidebarLatencyLine('  LLM2 知识增强生成', part('llm2', 'llm2_knowledge_v2_ms'), '如有'),
+                sidebarLatencyLine('  LLM2 对比模型生成', part('llm2', 'llm2_compare_ms'), '仅评测全链路启用时出现'),
                 sidebarLatencyLine('训练AI独立耗时', row && row.training_ai_latency_ms, '链路2，并行有限时等待'),
-            ].filter(Boolean).forEach(x => lines.push(x));
+                sidebarLatencyLine('后处理补全', node('advance_completion') ?? t.advance_completion_ms, '企微增强补全/确定事实等后处理'),
+            ]);
+
+            const backgroundLines = [
+                sidebarLatencyLine('后台回复评分', part('llm2', 'reply_scoring_ms'), '响应返回后异步补算，不计入两行主耗时'),
+            ].filter(Boolean);
+            if (backgroundLines.length) {
+                lines.push('', '【后台补算节点】');
+                backgroundLines.forEach(x => lines.push(x));
+            }
 
             lines.push('', '【第二行额外包含的尾段】');
-            [
+            addLines(lines, [
                 sidebarLatencyLine('结果转可存储结构', t.jsonable_ms, '转成可入库 JSON'),
                 sidebarLatencyLine('脱敏清理返回内容', t.sanitize_ms, '清理/脱敏返回内容'),
                 sidebarLatencyLine('写轻量调用记录', t.store_invocation_ms, '写 ApiAssistInvocation 快照，不跑评分'),
                 sidebarLatencyLine('首次数据库提交', t.first_db_commit_ms, '首次提交调用记录'),
                 sidebarLatencyLine('耗时字段二阶段回写', t.timings_repatch_ms, '只回写诊断字段，不计入第二行'),
-            ].filter(Boolean).forEach(x => lines.push(x));
+            ]);
 
             lines.push('', '不包含：后台 LLM-1 评分/相似度补算、训练AI事后评分、HTTP 网络传输、浏览器渲染。');
             return lines.join('\n');
         }
-
         // 强制走当前 origin (localhost:8071)，绕过 localStorage 缓存的外部 api_base。
         // 经典案例迭代是本机特性，不能走 api.speedasia.net（那里没有这些表/端点）。
         async function caselibFetch(path, init) {
@@ -5555,7 +5745,7 @@
         async function loadCaselibList(force) {
             loadTrainAiModels();
             try {
-                const res = await caselibFetch(`/api/case_lib/iterations?limit=100`);
+                const res = await caselibFetch(`/api/case_lib/iterations?limit=100&include_daily_stats=true`);
                 const data = await res.json();
                 caselibState.iterations = data.iterations || [];
                 renderCaselibList(caselibState.iterations);
@@ -10554,6 +10744,11 @@
                             <span class="text-sm text-slate-700 font-medium">API 触发启用知识库2检索</span>
                         </label>
                         <div class="text-[11px] text-slate-500 mt-2 ml-7">勾选：API 触发第⑤步同时检索知识库1和知识库2，第⑥步 LLM2 分别用两个知识库各生成一路候选。<br>不勾选：第⑤步只检索知识库1，第⑥步 LLM2 只基于知识库1输出一路结果。网页触发、测试触发不受此项影响。</div>
+                        <label class="flex items-center gap-3 cursor-pointer select-none mt-4">
+                            <input id="set_wecom_auto_assist_on_customer_message" type="checkbox" class="w-4 h-4 accent-indigo-600" ${data.WECOM_AUTO_ASSIST_ON_CUSTOMER_MESSAGE === true ? 'checked' : ''}>
+                            <span class="text-sm text-slate-700 font-medium">企微客户新消息自动触发智能回复</span>
+                        </label>
+                        <div class="text-[11px] text-slate-500 mt-2 ml-7">打开：收到会话存档回调或拉取到的一对一外部联系人客户文字消息后，后端自动触发智能回复；同一批多条按最后客户文字锚点打包。群聊、内部员工会话、销售消息、纯语音/文件/图片/视频占位不触发。关闭：保持现有由侧边栏/API 调用触发的逻辑。</div>
                     </div>
                     <div>
                         <label class="block font-bold text-slate-700 mb-2">▶️ 第一阶段：结构化特征提取与格式约束</label>
@@ -10586,6 +10781,7 @@
                 const payload = {
                     WECOM_RECENT_MESSAGE_LIMIT: clampWecomRecentMessageLimit(document.getElementById('set_recent_message_limit').value),
                     API_KB2_ENABLED: document.getElementById('set_api_kb2_enabled').checked,
+                    WECOM_AUTO_ASSIST_ON_CUSTOMER_MESSAGE: document.getElementById('set_wecom_auto_assist_on_customer_message').checked,
                     SYSTEM_PROMPT_LLM1: document.getElementById('set_prompt1').value,
                     SYSTEM_PROMPT_LLM2: document.getElementById('set_prompt2').value,
                     REPLY_STYLE_OPTIONS: JSON.parse(document.getElementById('set_reply_styles').value),

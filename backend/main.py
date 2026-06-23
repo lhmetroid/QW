@@ -794,6 +794,53 @@ def auto_patch_db():
         ))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcssp_customer_scenario ON mail_customer_suite_send_plan (customer_id, scenario);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcssp_batch ON mail_customer_suite_send_plan (batch_id);"))
+        db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS crm_send_id VARCHAR(80);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcssp_send_id ON mail_customer_suite_send_plan (crm_send_id);"))
+        db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS crm_send_status VARCHAR(40);"))
+        db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS crm_fact_send_time TIMESTAMP;"))
+        db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS crm_message_id VARCHAR(255);"))
+        db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS crm_eml_ftp_dir VARCHAR(255);"))
+        db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS status_synced_at TIMESTAMP;"))
+        # 邮件统计：每封 AI 回信的解析缓存(回信识别 + deepseek 价值判定)，按本地 send_plan + CRM 收件行去重
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_ai_reply_analysis ("
+            "reply_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "plan_id UUID NOT NULL,"
+            "crm_send_id VARCHAR(80),"
+            "customer_id VARCHAR(120),"
+            "staff_id VARCHAR(120),"
+            "reply_crm_rowid VARCHAR(64) NOT NULL,"
+            "reply_sender VARCHAR(255),"
+            "reply_subject VARCHAR(500),"
+            "reply_body TEXT,"
+            "reply_received_at TIMESTAMP,"
+            "match_method VARCHAR(40),"
+            "is_valuable BOOLEAN,"
+            "value_reason TEXT,"
+            "value_model VARCHAR(120),"
+            "analyzed_at TIMESTAMP,"
+            "created_at TIMESTAMP DEFAULT now(),"
+            "CONSTRAINT uq_mar_plan_reply UNIQUE(plan_id, reply_crm_rowid)"
+            ");"
+        ))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mar_received ON mail_ai_reply_analysis (reply_received_at);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mar_staff ON mail_ai_reply_analysis (staff_id);"))
+        # 邮件统计：按天 x 销售 预计算结果(历史日固化，当天实时算覆盖)
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_ai_daily_stats ("
+            "stat_date DATE NOT NULL,"
+            "staff_id VARCHAR(120) NOT NULL DEFAULT '',"
+            "generated_count INTEGER NOT NULL DEFAULT 0,"
+            "sent_count INTEGER NOT NULL DEFAULT 0,"
+            "reply_count INTEGER NOT NULL DEFAULT 0,"
+            "valuable_count INTEGER NOT NULL DEFAULT 0,"
+            "feedback_count INTEGER NOT NULL DEFAULT 0,"
+            "is_final BOOLEAN NOT NULL DEFAULT FALSE,"
+            "computed_at TIMESTAMP DEFAULT now(),"
+            "CONSTRAINT uq_mads_date_staff UNIQUE(stat_date, staff_id)"
+            ");"
+        ))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mads_date ON mail_ai_daily_stats (stat_date);"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS wecom_trigger_record ("
             "record_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -17353,10 +17400,19 @@ def _build_mail_eml_bytes(sender_email: str, sender_name: str, to_emails: list[s
     return raw
 
 
+# 套装页 AI 邮件在 CRM 的统一标识(UseRange)。发送系统不按 UseRange 决定是否发送(该字段只是分类标签)，
+# 改成专属值便于"邮件统计"页识别哪些是本系统转入的 AI 邮件，与销售手工分类区分。
+_MAIL_AI_USE_RANGE = "宣传邮箱-AI"
+
+
 def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, sender_email: str,
                              send_address: str, receiver: str, staff_id: str, eml_ftp_path: str,
-                             email_text: str) -> None:
-    """把一封邮件写入 CRM spQueueSend(待发队列)，由发送系统按 PlanSendTime 真发。"""
+                             email_text: str) -> str | None:
+    """把一封邮件写入 CRM spQueueSend(待发队列)，由发送系统按 PlanSendTime 真发。
+
+    返回 CRM 触发器为该行生成的 SendId(如 Mal_S260622-000003)：它是 spQueueSend 行真发后落到
+    spSendInfo{销售编号} 的稳定关联键(RowId 在两表不一致，SendId 一致)，统计页据此确认真发状态。
+    """
     crm_db.execute(
         text(
             "INSERT INTO spQueueSend "
@@ -17366,7 +17422,7 @@ def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, se
             "VALUES "
             "(:rowid, NEWID(), :plan, :subject, :content, 'Email', 'OutBox', "
             " 0, :sendaddr, GETDATE(), :receiver, '', '', "
-            " :staffid, 0, 0, 'SpeedPersonal.Message.EmailSend', :inputer, :emlpath, :emailcontent, N'邮件宣传')"
+            " :staffid, 0, 0, 'SpeedPersonal.Message.EmailSend', :inputer, :emlpath, :emailcontent, :userange)"
         ),
         {
             "rowid": row_guid,
@@ -17379,6 +17435,7 @@ def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, se
             "inputer": staff_id or "",
             "emlpath": eml_ftp_path,
             "emailcontent": email_text or "",
+            "userange": _MAIL_AI_USE_RANGE,
         },
     )
     # 关键：发送系统按 spQueueSendFile 找正文 .eml(FtpDir+FileName)。FileType=1 标识 eml 正文文件。
@@ -17391,6 +17448,15 @@ def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, se
         {"ftpdir": eml_ftp_path, "queuerowid": row_guid},
     )
     crm_db.commit()
+    # 触发器在 insert 时已生成 SendId，回读用于本地落库(统计关联键)
+    try:
+        send_id_row = crm_db.execute(
+            text("SELECT SendId FROM spQueueSend WHERE RowId=:rowid"), {"rowid": row_guid}
+        ).fetchone()
+        return str(send_id_row[0]) if send_id_row and send_id_row[0] else None
+    except Exception:
+        logger.warning("MAIL_SPQUEUE_READ_SENDID_FAILED rowid=%s", row_guid, exc_info=True)
+        return None
 
 
 @app.post("/api/v1/mail/customer-suite-send")
@@ -17553,7 +17619,7 @@ def send_mail_customer_suite(
                 from crm_database import CRMSessionLocal
                 crm_db = CRMSessionLocal()
                 try:
-                    _insert_spqueue_send_row(
+                    crm_send_id = _insert_spqueue_send_row(
                         crm_db, row_guid=spqueue_rowid, plan_dt=plan_dt, subject=final_subject,
                         sender_email=sender_email, send_address=send_address_serialized,
                         receiver=receiver_serialized, staff_id=(owner_staff_id or ""),
@@ -17563,6 +17629,8 @@ def send_mail_customer_suite(
                     crm_db.close()
                 row.status = "enqueued"
                 row.spqueue_rowid = spqueue_rowid
+                # 统计关联键：spSendInfo{销售}.SendId == 此 SendId(真发后据此确认 SendSuccess/FactSendTime)
+                row.crm_send_id = crm_send_id
         except Exception as exc:
             logger.exception("MAIL_SUITE_SEND_ENQUEUE_FAILED customer=%s step=%s", sanitize_text(customer_id), suite_step)
             step_status = "enqueue_failed"
@@ -17671,6 +17739,99 @@ def list_mail_customer_suite_feedback(
         "filters": filters,
         "items": [_serialize_mail_customer_suite_feedback(row) for row in rows],
         "real_sending_enabled": False,
+    }
+
+
+def _mail_ai_stats_llm_call(prompt: str) -> dict:
+    """供 mail_ai_stats 价值分析复用的 deepseek 调用(强制 JSON)。"""
+    return _call_llm2_json_for_mail_draft(prompt, timeout_seconds=30, force_json=True)
+
+
+def _parse_stat_date(value: str | None, default: "date | None" = None):
+    import datetime as _dt
+    if not value:
+        return default
+    try:
+        return _dt.date.fromisoformat(value.strip())
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"日期格式应为 YYYY-MM-DD: {value}") from exc
+
+
+@app.get("/api/v1/mail/ai-stats/summary")
+def get_mail_ai_stats_summary(
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+    staff_id: str | None = Query(None),
+    refresh: int = Query(0),
+    db: Session = Depends(get_db),
+):
+    """邮件统计汇总: 按天 x 销售 的 5 指标。
+
+    - 默认只读本地日表 + 当天用本地缓存实时重算(快); refresh=1 时先从 CRM/FTP/deepseek 全量刷新(慢)。
+    - 时间口径为北京时间(UTC+8)。
+    """
+    import mail_ai_stats as _stats
+    import datetime as _dt
+    today_bj = (_dt.datetime.utcnow() + _dt.timedelta(hours=8)).date()
+    end_d = _parse_stat_date(end, today_bj)
+    start_d = _parse_stat_date(start, end_d - _dt.timedelta(days=29))
+    if start_d > end_d:
+        start_d, end_d = end_d, start_d
+    refresh_result = None
+    try:
+        if refresh:
+            refresh_result = _stats.refresh_all(db, _mail_ai_stats_llm_call,
+                                                lookback_days=max(1, (today_bj - start_d).days + 1))
+        else:
+            # 当天实时: 仅用本地缓存重算日表(纯本地 SQL, 不碰 CRM/FTP/LLM)
+            _stats.compute_and_store_daily(db, start_d, end_d)
+    except Exception as exc:
+        logger.exception("MAIL_AI_STATS_SUMMARY_COMPUTE_FAILED")
+        raise HTTPException(status_code=502, detail=f"统计计算失败: {sanitize_text(str(exc))[:200]}")
+    daily = _stats.query_daily(db, start_d, end_d, staff_id)
+    totals = {
+        "generated_count": sum(d["generated_count"] for d in daily),
+        "sent_count": sum(d["sent_count"] for d in daily),
+        "reply_count": sum(d["reply_count"] for d in daily),
+        "valuable_count": sum(d["valuable_count"] for d in daily),
+        "feedback_count": sum(d["feedback_count"] for d in daily),
+    }
+    return {
+        "version": "mail_ai_stats.v1",
+        "start": start_d.isoformat(),
+        "end": end_d.isoformat(),
+        "staff_id": (staff_id or "").strip(),
+        "staff_options": _stats.list_staff(db),
+        "totals": totals,
+        "daily": daily,
+        "refreshed": bool(refresh),
+        "refresh_result": refresh_result,
+    }
+
+
+@app.get("/api/v1/mail/ai-stats/detail")
+def get_mail_ai_stats_detail(
+    metric: str = Query(..., min_length=1),
+    day: str = Query(..., min_length=1),
+    staff_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """某天某指标的明细邮件清单(双击单元格打开)。含联系人/主题/正文; 反馈、价值理由有才返回。"""
+    import mail_ai_stats as _stats
+    metric_norm = (metric or "").strip()
+    if metric_norm not in ("generated", "sent", "reply", "valuable", "feedback"):
+        raise HTTPException(status_code=422, detail=f"unsupported metric: {metric_norm}")
+    day_d = _parse_stat_date(day)
+    if day_d is None:
+        raise HTTPException(status_code=422, detail="day is required (YYYY-MM-DD)")
+    items = _stats.detail_rows(db, metric_norm, day_d, staff_id)
+    return {
+        "version": "mail_ai_stats_detail.v1",
+        "metric": metric_norm,
+        "day": day_d.isoformat(),
+        "staff_id": (staff_id or "").strip(),
+        "count": len(items),
+        "items": items,
     }
 
 
@@ -28551,143 +28712,76 @@ def parse_session_id(uid: str, sales_ids: list) -> tuple | None:
 
 
 def _get_daily_validation_stats(db: Session, day_start: datetime, day_end: datetime):
-    """v1.7.192: 入参 day_start/day_end 应为 **北京-naive** 自然日边界(00:00-次日00:00)。
-    MessageLog.timestamp 是北京-naive(服务器 Beijing TZ + datetime.fromtimestamp), 直接用 day_start;
-    ApiAssistInvocation.triggered_at 是 datetime.utcnow 真 UTC, 函数内自行 -8h 转 UTC 边界。"""
+    """按企微实时辅助 API 记录统计每日验证轮次。
+
+    入参 day_start/day_end 为北京-naive 自然日边界；ApiAssistInvocation.triggered_at
+    是 UTC，函数内转换为 UTC 边界。统计口径与 /api/case_lib/daily_validation/{date}?view=api
+    对齐：只统计销售-外部联系人的客户消息锚点调用，并按 (session_id, anchor_message_id)
+    去重，优先保留已评分且较新的调用。这样列表的完成进度不再显示 0/0。
+    """
     day_start_utc = day_start - timedelta(hours=8)
     day_end_utc = day_end - timedelta(hours=8)
     sales_ids = ["alicehe", "davidXiaoMeiPeng", "HanHan", "joycesheng", "WangHuiYing"]
 
-    logs = db.query(MessageLog).filter(
-        MessageLog.timestamp >= day_start,
-        MessageLog.timestamp < day_end,
-        MessageLog.is_mock.is_(False)
-    ).order_by(MessageLog.timestamp.asc()).all()
-
-    session_logs = {}
-    for l in logs:
-        session_logs.setdefault(l.user_id, []).append(l)
-
-    target_sessions = {}
-    for uid, msgs in session_logs.items():
-        parsed = parse_session_id(uid, sales_ids)
-        if parsed:
-            sales_userid, external_userid = parsed
-            if external_userid.startswith("wm") or external_userid.startswith("wo"):
-                target_sessions[uid] = msgs
-
-    if not target_sessions:
-        return 0, None, None
-
     invs = db.query(ApiAssistInvocation).filter(
-        ApiAssistInvocation.session_id.in_(list(target_sessions.keys())),
-        # ApiAssistInvocation.triggered_at 是 UTC, 用 day_start_utc 比较
-        ApiAssistInvocation.triggered_at >= day_start_utc - timedelta(hours=1),
-        ApiAssistInvocation.triggered_at < day_end_utc + timedelta(hours=1)
+        ApiAssistInvocation.triggered_at >= day_start_utc,
+        ApiAssistInvocation.triggered_at < day_end_utc,
+        ApiAssistInvocation.session_id.isnot(None),
+        ApiAssistInvocation.anchor_message_id.isnot(None),
     ).all()
 
-    # 同一锚点消息可能被多次触发(先 pending 占位、后补打分)，匹配时优先取"已打分"且最新的那次，
-    # 避免命中早先的 pending_no_sales_reply 占位导致 AI 回复/质量分显示为空。
+    def _is_external_single_session(session_id: str | None) -> bool:
+        parsed = parse_session_id(str(session_id or ""), sales_ids)
+        if not parsed:
+            return False
+        _sales_userid, external_userid = parsed
+        return str(external_userid or "").startswith(("wm", "wo"))
+
     def _inv_rank(inv: ApiAssistInvocation) -> tuple:
         scored = 1 if (inv.quality_status == "scored" or inv.quality_score is not None) else 0
         return (scored, inv.triggered_at or datetime.min)
 
     inv_map = {}
     for inv in invs:
-        if inv.anchor_message_id is None:
+        if not _is_external_single_session(inv.session_id):
             continue
         key = (inv.session_id, inv.anchor_message_id)
         existing = inv_map.get(key)
         if existing is None or _inv_rank(inv) >= _inv_rank(existing):
             inv_map[key] = inv
 
-    results_count = 0
+    selected = list(inv_map.values())
     valid_scores = []
     total_latency = 0
     latency_count = 0
 
-    for uid, msgs in target_sessions.items():
-        consolidated = []
-        for m in msgs:
-            if not consolidated:
-                consolidated.append({
-                    "sender_type": m.sender_type,
-                    "content": m.content,
-                    "timestamp": m.timestamp,
-                    "ids": [m.id]
-                })
-            else:
-                last = consolidated[-1]
-                if last["sender_type"] == m.sender_type:
-                    last["content"] += "\n" + m.content
-                    last["ids"].append(m.id)
-                    last["timestamp"] = m.timestamp
-                else:
-                    consolidated.append({
-                        "sender_type": m.sender_type,
-                        "content": m.content,
-                        "timestamp": m.timestamp,
-                        "ids": [m.id]
-                    })
-
-        groups = []
-        current_customer = None
-        for turn in consolidated:
-            if turn["sender_type"] == "customer":
-                if current_customer:
-                    groups.append({"type": "unreplied", "customer": current_customer, "sales": None, "timestamp": current_customer["timestamp"]})
-                current_customer = turn
-            elif turn["sender_type"] == "sales":
-                if current_customer:
-                    groups.append({"type": "qa", "customer": current_customer, "sales": turn, "timestamp": turn["timestamp"]})
-                    current_customer = None
-                else:
-                    groups.append({"type": "sales_initiated", "customer": None, "sales": turn, "timestamp": turn["timestamp"]})
-        if current_customer:
-            groups.append({"type": "unreplied", "customer": current_customer, "sales": None, "timestamp": current_customer["timestamp"]})
-
-        results_count += len(groups)
-
-        for idx, g in enumerate(groups):
-            matched_inv = None
-            cust = g["customer"]
-            if cust:
-                for rid in cust["ids"]:
-                    if (uid, rid) in inv_map:
-                        matched_inv = inv_map[(uid, rid)]
-                        break
-                if not matched_inv:
-                    for inv in invs:
-                        if inv.session_id == uid:
-                            time_diff = abs((inv.triggered_at - cust["timestamp"]).total_seconds())
-                            if time_diff < 180:
-                                matched_inv = inv
-                                break
-            if matched_inv:
-                # 平均分与列表 AI 质量分口径对齐：优先取 reply_scores_v2 的 AI 候选 7 维总分(绝对质量)，
-                # 回退 quality_score(贴合代理分)。
-                rs2 = (matched_inv.result_payload or {}).get("reply_scores_v2") if isinstance(matched_inv.result_payload, dict) else None
-                ai_overall = _caselib_ai_score_from_step7(rs2)
-                if ai_overall is None and matched_inv.quality_score is not None:
-                    ai_overall = float(matched_inv.quality_score)
-                if ai_overall is not None:
-                    valid_scores.append(ai_overall)
-                if matched_inv.result_payload:
-                    latency = int(matched_inv.result_payload.get("timings_ms", {}).get("total_ms", 0))
-                    if latency > 0:
-                        total_latency += latency
-                        latency_count += 1
+    for inv in selected:
+        payload = inv.result_payload if isinstance(inv.result_payload, dict) else {}
+        rs2 = payload.get("reply_scores_v2") if isinstance(payload, dict) else None
+        ai_overall = _caselib_ai_score_from_step7(rs2)
+        if ai_overall is None and inv.quality_score is not None:
+            ai_overall = float(inv.quality_score)
+        if ai_overall is not None:
+            valid_scores.append(ai_overall)
+        timings = payload.get("timings_ms") if isinstance(payload, dict) else None
+        if isinstance(timings, dict):
+            try:
+                latency = int(float(timings.get("total_ms") or 0))
+            except (TypeError, ValueError):
+                latency = 0
+            if latency > 0:
+                total_latency += latency
+                latency_count += 1
 
     avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else None
     avg_latency = int(total_latency / latency_count) if latency_count > 0 else None
-
-    return results_count, avg_score, avg_latency
+    return len(selected), avg_score, avg_latency
 
 
 @app.get("/api/case_lib/iterations")
 async def caselib_list_iterations(
     limit: int = Query(default=50, ge=1, le=500),
-    include_daily_stats: bool = Query(default=False),
+    include_daily_stats: bool = Query(default=True),
 ):
     db = SessionLocal()
     try:
@@ -28732,7 +28826,7 @@ async def caselib_list_iterations(
                 "min_quality_score": None,
                 "max_quality_score": None,
                 "avg_latency_ms": avg_latency,
-                "improvement_analysis": "日常真实会话统计" if include_daily_stats else "日常真实会话入口；列表页默认不实时统计，避免首屏卡顿",
+                "improvement_analysis": "日常真实会话统计" if include_daily_stats else "日常真实会话入口；本次请求未统计每日轮次",
                 "ai_next_step_plan": "",
                 "analysis_codex": "",
                 "analysis_antigravity": "",

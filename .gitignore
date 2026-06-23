@@ -40,3 +40,8 @@ draft1.json
 draft_v202.json
 llm_resp.txt
 运行日志.md
+
+# 临时/构建产物，勿入库
+.codex_pycache_v15/
+__pycache__/
+*.pyc
