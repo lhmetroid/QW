@@ -15,6 +15,7 @@ class MailScenario(str, Enum):
     RE_ACTIVATION = "re_activation"
     NEW_BUSINESS_PROMOTION = "new_business_promotion"
     NEW_CONTACT_INTRO = "new_contact_intro"
+    PRINT_QUOTE_FOLLOWUP = "print_quote_followup"
 
 
 class MailSnippetType(str, Enum):
@@ -1696,6 +1697,137 @@ NEW_CONTACT_INTRO_SEQUENCE = MailSequenceStrategy(
 )
 
 
+PRINT_QUOTE_FOLLOWUP_SEQUENCE = MailSequenceStrategy(
+    scenario=MailScenario.PRINT_QUOTE_FOLLOWUP.value,
+    scenario_label="print_quote_followup",
+    objective=(
+        "印刷报价发出后的四步跟进：确认收件→样稿/工艺跟进→异议处理与价值强化→促成下单或转介绍收口。"
+        "使用人工填写的 AI 指令模板生成正文，不依赖案例库少样本检索。"
+    ),
+    applicable_trigger="销售已向客户发送印刷报价，客户尚未回复或未明确表态。",
+    isolation_boundary="仅邮件侧独立模板，不绑定具体客户案例，内容由 ai_instruction_script 模板驱动。",
+    steps=(
+        MailSequenceStepStrategy(
+            scenario=MailScenario.PRINT_QUOTE_FOLLOWUP.value,
+            scenario_label="print_quote_followup",
+            suite_step=1,
+            step_key="print_quote_followup_step_1_delivery_confirm",
+            objective="确认报价已送达，邀请客户反馈疑问或安排进一步沟通。",
+            recommended_snippet_types=(MailSnippetType.GREETINGS.value,),
+            subject_template_hints=(
+                "关于我们刚发出的印刷报价，请您确认收到",
+                "印刷报价确认——期待您的反馈",
+                "您好，请问收到我们的报价了吗",
+            ),
+            cta_style="轻量确认，邀请客户告知是否收到并提出疑问。",
+            retrieval_filter_requirements=(
+                "scenario 为 print_quote_followup，优先使用 ai_instruction_script 模板内容。",
+                "不强制要求 snippet_type 匹配，模板驱动优先。",
+            ),
+            forbidden_boundaries=(
+                "不能擅自更改报价中的价格、数量或交期。",
+                "不能施压催单，保持专业礼貌语气。",
+            ),
+            exit_conditions=(
+                "客户回复确认或提出具体问题。",
+                "销售手动跟进或封印。",
+            ),
+            data_structure_fields={
+                "body_intent": "delivery_confirm",
+                "cta_type": "soft_reply_invitation",
+            },
+        ),
+        MailSequenceStepStrategy(
+            scenario=MailScenario.PRINT_QUOTE_FOLLOWUP.value,
+            scenario_label="print_quote_followup",
+            suite_step=2,
+            step_key="print_quote_followup_step_2_sample_process",
+            objective="跟进样稿或工艺方案，提供额外参考资料，推进客户决策。",
+            recommended_snippet_types=(MailSnippetType.EXAMPLE.value,),
+            subject_template_hints=(
+                "关于印刷方案的工艺细节——补充说明",
+                "样稿跟进：提供更多参考供您决策",
+                "附上工艺说明，期待您的进一步反馈",
+            ),
+            cta_style="提供增值信息，推动客户进入下一步决策。",
+            retrieval_filter_requirements=(
+                "scenario 为 print_quote_followup，优先使用 ai_instruction_script 模板内容。",
+            ),
+            forbidden_boundaries=(
+                "不能主动降价或承诺未经确认的 SLA。",
+                "不能虚构样品或工艺参数。",
+            ),
+            exit_conditions=(
+                "客户回复或进入打样/下单流程。",
+                "销售手动跟进或封印。",
+            ),
+            data_structure_fields={
+                "body_intent": "sample_process_followup",
+                "cta_type": "info_share_and_next_step",
+            },
+        ),
+        MailSequenceStepStrategy(
+            scenario=MailScenario.PRINT_QUOTE_FOLLOWUP.value,
+            scenario_label="print_quote_followup",
+            suite_step=3,
+            step_key="print_quote_followup_step_3_objection_value",
+            objective="主动处理可能的价格或交期异议，强化整体服务价值。",
+            recommended_snippet_types=(MailSnippetType.CONSTRAINT.value, MailSnippetType.EXAMPLE.value),
+            subject_template_hints=(
+                "关于报价中您可能关注的问题——我们的说明",
+                "价值再确认：为什么选择我们的印刷方案",
+                "解答疑问，期待推进合作",
+            ),
+            cta_style="主动化解顾虑，重申价值，邀请客户告知障碍点。",
+            retrieval_filter_requirements=(
+                "scenario 为 print_quote_followup，优先使用 ai_instruction_script 模板内容。",
+            ),
+            forbidden_boundaries=(
+                "不能擅自承诺额外折扣或超出报价范围的条款。",
+                "不能贬低竞争对手。",
+            ),
+            exit_conditions=(
+                "客户提出具体异议或表示有意推进。",
+                "销售手动跟进或封印。",
+            ),
+            data_structure_fields={
+                "body_intent": "objection_handling_value_reinforcement",
+                "cta_type": "objection_resolution_invitation",
+            },
+        ),
+        MailSequenceStepStrategy(
+            scenario=MailScenario.PRINT_QUOTE_FOLLOWUP.value,
+            scenario_label="print_quote_followup",
+            suite_step=4,
+            step_key="print_quote_followup_step_4_close_or_referral",
+            objective="促成下单决策或请求转介绍，礼貌收口本轮跟进序列。",
+            recommended_snippet_types=(MailSnippetType.QUOTATION.value, MailSnippetType.CONSTRAINT.value),
+            subject_template_hints=(
+                "期待您的最终决定——随时为您服务",
+                "关于合作的最后一次跟进",
+                "如果时机不合适，欢迎推荐有需要的同事或伙伴",
+            ),
+            cta_style="温和催单或请求转介绍，礼貌结束序列。",
+            retrieval_filter_requirements=(
+                "scenario 为 print_quote_followup，优先使用 ai_instruction_script 模板内容。",
+            ),
+            forbidden_boundaries=(
+                "不能施加过度压力或发出最后通牒语气。",
+                "不能承诺报价之外的任何条款。",
+            ),
+            exit_conditions=(
+                "客户确认下单、明确拒绝或被销售手动封印。",
+                "本步骤为序列终止步骤，之后不再自动生成草稿。",
+            ),
+            data_structure_fields={
+                "body_intent": "close_or_referral",
+                "cta_type": "close_or_referral_request",
+            },
+        ),
+    ),
+)
+
+
 def get_re_activation_sequence() -> MailSequenceStrategy:
     return RE_ACTIVATION_SEQUENCE
 
@@ -1715,6 +1847,8 @@ def get_mail_sequence_strategy(scenario: str) -> MailSequenceStrategy:
         return NEW_BUSINESS_PROMOTION_SEQUENCE
     if scenario == MailScenario.NEW_CONTACT_INTRO.value:
         return NEW_CONTACT_INTRO_SEQUENCE
+    if scenario == MailScenario.PRINT_QUOTE_FOLLOWUP.value:
+        return PRINT_QUOTE_FOLLOWUP_SEQUENCE
     raise ValueError(f"unsupported mail sequence scenario: {scenario}")
 
 
