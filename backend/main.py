@@ -6073,7 +6073,13 @@ _MAIL_SCENARIO_CHINESE = {
     "re_activation": "老客户激活",
     "new_business_promotion": "老客户其他业务介绍",
     "new_contact_intro": "新客户开发介绍",
+    # 独立可切换模板: 不参与套装生命周期自动判断, 仅作为模板编辑区可手动切换的第 4 套模板(内容人工填写)
+    "print_quote_followup": "印刷报价后跟进",
 }
+
+# "印刷报价后跟进"独立模板: 不绑定案例联系人, 用固定 customer_key 单独成组, 内容人工填写。
+_MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO = "print_quote_followup"
+_MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY = "PRINT-QUOTE-FOLLOWUP"
 
 # CRM 生命周期阶段(crm_profile._get_customer_lifecycle_stage 的 3 个取值)→ 套装场景映射:
 #   熟联系人(近1年≥3销售合同) → 老客户其他业务介绍
@@ -6204,6 +6210,10 @@ _MAIL_SEQUENCE_STEP_LABEL_CN = {
 _MAIL_SEQUENCE_STEP_LABEL_BY_SCENARIO: dict[tuple[str, int], str] = {
     ("new_business_promotion", 1): "第 1 封：老客户多业务破冰与低压力价值提示",
     ("new_business_promotion", 2): "第 2 封：同行业案例证明与历史合作承接",
+    ("print_quote_followup", 1): "第 1 封：印刷报价送达确认",
+    ("print_quote_followup", 2): "第 2 封：样稿/工艺与方案跟进",
+    ("print_quote_followup", 3): "第 3 封：异议处理与价值强化",
+    ("print_quote_followup", 4): "第 4 封：促成下单或转介绍收口",
 }
 
 _MAIL_SEQUENCE_SEND_TIMING_CN = {
@@ -6797,6 +6807,8 @@ def _mail_sequence_template_case_label(customer_key: str | None) -> str:
     normalized = sanitize_text(customer_key or "").strip().upper()
     if not normalized:
         return "全局默认"
+    if normalized == _MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY:
+        return "独立模板"
     for current_case in MAIL_CURRENT_DEMO_CASES:
         if current_case["real_customer_key"].upper() == normalized:
             return sanitize_text(current_case.get("demo_label")) or normalized
@@ -6953,9 +6965,12 @@ _MAIL_SEQUENCE_TEMPLATE_SCHEMA_LOCK = threading.Lock()
 def _ensure_mail_sequence_template_schema(db: Session) -> None:
     """Non-destructive schema patch for the editable sequence template table.
 
-    进程级一次性守卫: DDL(ALTER/DROP/CREATE INDEX 需要表的排他锁)只在本进程首次成功执行一次;
-    后续调用直接跳过。避免并发(套装 4 封并行生成)时多线程同时跑同一句 DDL 互相抢表锁导致
-    LockNotAvailable(锁超时)。
+    关键: DDL(ALTER/DROP/CREATE INDEX)即便是 IF NOT EXISTS 空操作也要拿表的 ACCESS EXCLUSIVE 锁;
+    并发(套装 4 封并行)或服务器负载下会被其它事务挡住, 命中 lock_timeout 抛错。因此这里:
+      1. 进程级一次性守卫: 就绪后直接返回, 不再碰表。
+      2. 先用系统目录(information_schema / pg_indexes)只读检查列与索引是否已存在(只读, 不加表锁);
+         已就绪则只置标志、不跑任何 DDL —— 正常情况(启动期已建好)永远走这条, 杜绝抢锁超时。
+      3. 仅当确实缺列/缺索引(真正全新库)才执行 DDL。
     """
     global _MAIL_SEQUENCE_TEMPLATE_SCHEMA_READY
     if _MAIL_SEQUENCE_TEMPLATE_SCHEMA_READY:
@@ -6964,6 +6979,22 @@ def _ensure_mail_sequence_template_schema(db: Session) -> None:
         if _MAIL_SEQUENCE_TEMPLATE_SCHEMA_READY:
             return
         try:
+            have_cols = db.execute(text(
+                "SELECT count(*) FROM information_schema.columns "
+                "WHERE table_name='mail_sequence_template' "
+                "AND column_name IN ('customer_key','ai_instruction_script')"
+            )).scalar()
+            have_index = db.execute(text(
+                "SELECT count(*) FROM pg_indexes "
+                "WHERE tablename='mail_sequence_template' "
+                "AND indexname='idx_mst_customer_scenario_step'"
+            )).scalar()
+            if int(have_cols or 0) >= 2 and int(have_index or 0) >= 1:
+                # 已就绪: 不跑任何 DDL, 不加表锁
+                db.commit()
+                _MAIL_SEQUENCE_TEMPLATE_SCHEMA_READY = True
+                return
+            # 仅全新库会走到这里
             db.execute(text("ALTER TABLE mail_sequence_template ADD COLUMN IF NOT EXISTS customer_key VARCHAR(120) NOT NULL DEFAULT '';"))
             db.execute(text("ALTER TABLE mail_sequence_template ADD COLUMN IF NOT EXISTS ai_instruction_script TEXT NOT NULL DEFAULT '';"))
             db.execute(text("ALTER TABLE mail_sequence_template DROP CONSTRAINT IF EXISTS uq_mail_sequence_template_scenario_step;"))
@@ -7016,6 +7047,42 @@ def _blank_mail_sequence_templates_by_case() -> tuple[list[dict[str, Any]], dict
                 "scenario_label_cn": item["scenario_label_cn"],
                 "templates": [],
             })["templates"].append(item)
+
+    # 独立"印刷报价后跟进"模板空行(degraded 兜底, 保持下拉与正常路径一致)
+    print_scenario = _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO
+    print_key = _MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY
+    for suite_step in ALL_MAIL_SEQUENCE_STEPS:
+        suite_step = int(suite_step)
+        defaults = _default_mail_sequence_template_payload(print_scenario, suite_step, customer_key=print_key)
+        item = {
+            "template_id": None,
+            "customer_key": print_key,
+            "case_label": _mail_sequence_template_case_label(print_key),
+            "scenario": print_scenario,
+            "suite_step": suite_step,
+            "scenario_label_cn": defaults["scenario_label_cn"],
+            "step_label_cn": defaults["step_label_cn"],
+            "purpose_cn": defaults["purpose_cn"],
+            "send_timing_cn": str(_mail_sequence_default_send_interval_days(print_scenario, suite_step)),
+            "send_interval_days": _mail_sequence_default_send_interval_days(print_scenario, suite_step),
+            "send_interval_help": "距今天多少天后发送",
+            "variable_notes": {},
+            "script_template": "",
+            "ai_instruction_script": "",
+            "version_no": 0,
+            "is_active": True,
+            "updated_by": None,
+            "created_at": None,
+            "updated_at": None,
+        }
+        rows.append(item)
+        grouped_by_case.setdefault(print_key, {
+            "customer_key": print_key,
+            "case_label": item["case_label"],
+            "scenario": print_scenario,
+            "scenario_label_cn": item["scenario_label_cn"],
+            "templates": [],
+        })["templates"].append(item)
     return rows, grouped_by_case
 
 
@@ -7059,6 +7126,27 @@ def _ensure_mail_sequence_templates(db: Session) -> list[Any]:
                 row.updated_by = f"system_default_v{target_version}"
                 row.updated_at = datetime.utcnow()
             rows.append(row)
+
+    # 独立"印刷报价后跟进"模板(4 环节, 不绑定案例, 内容人工填写): 单独成组播种, 仅首次建空行,
+    # 不做版本升级覆盖, 保留人工填写内容。
+    for suite_step in ALL_MAIL_SEQUENCE_STEPS:
+        suite_step = int(suite_step)
+        row = db.query(MailSequenceTemplate).filter(
+            MailSequenceTemplate.customer_key == _MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY,
+            MailSequenceTemplate.scenario == _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO,
+            MailSequenceTemplate.suite_step == suite_step,
+        ).first()
+        if row is None:
+            defaults = _default_mail_sequence_template_payload(
+                _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO,
+                suite_step,
+                customer_key=_MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY,
+            )
+            row = MailSequenceTemplate(**defaults, updated_by="system_default")
+            db.add(row)
+            db.flush()
+        rows.append(row)
+
     db.commit()
     return rows
 
@@ -16719,11 +16807,11 @@ def list_mail_sequence_templates(db: Session = Depends(get_db)):
         "source": "mail_sequence_template",
         "read_only": False,
         "real_sending_enabled": False,
-        "scenario_order": ["new_business_promotion", "re_activation", "new_contact_intro"],
+        "scenario_order": ["new_business_promotion", "re_activation", "new_contact_intro", _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO],
         "count": len(serialized_rows),
         "templates": grouped,
         "templates_by_case": grouped_by_case,
-        "case_order": [case["real_customer_key"] for case in MAIL_CURRENT_DEMO_CASES],
+        "case_order": [case["real_customer_key"] for case in MAIL_CURRENT_DEMO_CASES] + [_MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY],
         "degraded": bool(degraded_error),
         "degraded_reason": degraded_error,
         "requirements_cn": [
@@ -28845,6 +28933,97 @@ def _get_daily_validation_stats(db: Session, day_start: datetime, day_end: datet
     return len(selected), avg_score, avg_latency
 
 
+def _get_daily_validation_stats_range(
+    db: Session, range_start_bj: datetime, range_end_bj: datetime
+) -> dict[str, tuple[int, float | None, int | None]]:
+    """一次性统计 [range_start_bj, range_end_bj) 北京自然日区间内每天的验证轮次。
+
+    替代"按天循环 N 次全行查询"以避免语句超时(QueryCanceled):
+      1. 第一遍只查轻量列(不含大 JSON result_payload), 整段一次取出, 按北京日分桶并去重;
+      2. 第二遍仅对去重命中的 invocation_id 批量补取 result_payload/quality_score。
+    返回 {北京日期字符串: (count, avg_score, avg_latency)}。
+    """
+    range_start_utc = range_start_bj - timedelta(hours=8)
+    range_end_utc = range_end_bj - timedelta(hours=8)
+    sales_ids = ["alicehe", "davidXiaoMeiPeng", "HanHan", "joycesheng", "WangHuiYing"]
+
+    def _is_external_single_session(session_id: str | None) -> bool:
+        parsed = parse_session_id(str(session_id or ""), sales_ids)
+        if not parsed:
+            return False
+        _sales_userid, external_userid = parsed
+        return str(external_userid or "").startswith(("wm", "wo"))
+
+    light_rows = db.query(
+        ApiAssistInvocation.invocation_id,
+        ApiAssistInvocation.session_id,
+        ApiAssistInvocation.anchor_message_id,
+        ApiAssistInvocation.triggered_at,
+        ApiAssistInvocation.quality_status,
+        ApiAssistInvocation.quality_score,
+    ).filter(
+        ApiAssistInvocation.triggered_at >= range_start_utc,
+        ApiAssistInvocation.triggered_at < range_end_utc,
+        ApiAssistInvocation.session_id.isnot(None),
+        ApiAssistInvocation.anchor_message_id.isnot(None),
+    ).all()
+
+    # per_day[day_str][(session_id, anchor)] = (rank_tuple, light_row)
+    per_day: dict[str, dict[tuple, tuple]] = {}
+    for r in light_rows:
+        if not _is_external_single_session(r.session_id):
+            continue
+        triggered = r.triggered_at or datetime.min
+        day_str = (triggered + timedelta(hours=8)).date().isoformat()
+        key = (r.session_id, r.anchor_message_id)
+        scored = 1 if (r.quality_status == "scored" or r.quality_score is not None) else 0
+        rank = (scored, triggered)
+        bucket = per_day.setdefault(day_str, {})
+        existing = bucket.get(key)
+        if existing is None or rank >= existing[0]:
+            bucket[key] = (rank, r)
+
+    selected_ids = [row.invocation_id for bucket in per_day.values() for (_rank, row) in bucket.values()]
+    payload_by_id: dict[Any, tuple] = {}
+    if selected_ids:
+        # 分批 IN 查询, 避免单条 IN 参数过多
+        for i in range(0, len(selected_ids), 500):
+            chunk = selected_ids[i : i + 500]
+            for inv_id, payload, qscore in db.query(
+                ApiAssistInvocation.invocation_id,
+                ApiAssistInvocation.result_payload,
+                ApiAssistInvocation.quality_score,
+            ).filter(ApiAssistInvocation.invocation_id.in_(chunk)).all():
+                payload_by_id[inv_id] = (payload, qscore)
+
+    result: dict[str, tuple[int, float | None, int | None]] = {}
+    for day_str, bucket in per_day.items():
+        valid_scores: list[float] = []
+        total_latency = 0
+        latency_count = 0
+        for (_rank, row) in bucket.values():
+            payload, qscore = payload_by_id.get(row.invocation_id, (None, row.quality_score))
+            payload = payload if isinstance(payload, dict) else {}
+            ai_overall = _caselib_ai_score_from_step7(payload.get("reply_scores_v2"))
+            if ai_overall is None and qscore is not None:
+                ai_overall = float(qscore)
+            if ai_overall is not None:
+                valid_scores.append(ai_overall)
+            timings = payload.get("timings_ms")
+            if isinstance(timings, dict):
+                try:
+                    latency = int(float(timings.get("total_ms") or 0))
+                except (TypeError, ValueError):
+                    latency = 0
+                if latency > 0:
+                    total_latency += latency
+                    latency_count += 1
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else None
+        avg_latency = int(total_latency / latency_count) if latency_count > 0 else None
+        result[day_str] = (len(bucket), avg_score, avg_latency)
+    return result
+
+
 @app.get("/api/case_lib/iterations")
 async def caselib_list_iterations(
     limit: int = Query(default=50, ge=1, le=500),
@@ -28861,18 +29040,20 @@ async def caselib_list_iterations(
         today = (datetime.utcnow() + timedelta(hours=8)).date()
         start_date = datetime(2026, 5, 26).date()
         daily_rows = []
+        # v1.7.310: 整段一次性统计, 避免按天循环 N 次全行查询导致语句超时(QueryCanceled)。
+        daily_stats_map: dict[str, tuple] = {}
+        if include_daily_stats:
+            range_start_bj = datetime(start_date.year, start_date.month, start_date.day)
+            range_end_bj = datetime(today.year, today.month, today.day) + timedelta(days=1)
+            daily_stats_map = _get_daily_validation_stats_range(db, range_start_bj, range_end_bj)
         curr = start_date
         while curr <= today:
             date_str = curr.isoformat()
-            # v1.7.192: 与明细页一致, 按"北京本地自然日"取数。MessageLog 是北京-naive 直接用 day_start_bj;
-            # ApiAssistInvocation.triggered_at 是 utcnow 真 UTC, _get_daily_validation_stats 内部自行 -8h 转 UTC。
+            # v1.7.192: 与明细页一致, 按"北京本地自然日"取数。
             day_start_bj = datetime(curr.year, curr.month, curr.day)
             day_end_bj = day_start_bj + timedelta(days=1)
 
-            if include_daily_stats:
-                count, avg_score, avg_latency = _get_daily_validation_stats(db, day_start_bj, day_end_bj)
-            else:
-                count, avg_score, avg_latency = 0, None, None
+            count, avg_score, avg_latency = daily_stats_map.get(date_str, (0, None, None))
 
             daily_rows.append({
                 "run_id": f"daily_{date_str.replace('-', '')}",

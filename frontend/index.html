@@ -448,7 +448,7 @@
                             <div class="text-xs font-bold text-indigo-950" title="只显示 AI 指令和发送间隔。保存后写入后端 mail_sequence_template 表，草稿生成时仅对 AI 指令做变量替换后直接发送给大模型。">三大场景全阶段脚本模板（可编辑保存）</div>
                         </div>
                         <div class="flex items-center gap-2">
-                            <span id="mql-template-case-label" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700">跟随上方案例</span>
+                            <select id="mql-template-case-select" onchange="onMailTemplateCaseChange(this.value)" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700" title="切换要编辑的模板。默认跟随上方案例联系人(1对1)；点上方 3 个案例联系人会自动联动切换；也可手动选独立模板(如 印刷报价后跟进)。"></select>
                             <button type="button" onclick="loadMailSequenceTemplates()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] text-indigo-700 hover:bg-indigo-100" title="重新从后端 GET /api/v1/mail/sequence-templates 拉取模板。">刷新模板</button>
                             <span id="mql-template-status" class="text-[11px] text-slate-500">未加载</span>
                         </div>
@@ -1744,6 +1744,9 @@
         // === 邮件 AI 回复测试案例切换器（当前 3 案例 + 套装步数 + 批量生成） ===
         let mailDemoContactCache = [];
         let mailDemoContactActiveIndex = null;
+        // 模板编辑区当前选中的案例/模板分组 customer_key。null=跟随上方案例联系人(1对1默认);
+        // 手动从下拉选择(如 印刷报价后跟进 独立模板)后置为该 key, 点上方案例联系人会重新联动覆盖。
+        let mailTemplateSelectedCaseKey = null;
         let mailDemoSuiteTotalSteps = 4;  // 由 GET demo-contacts 的 suite_total_steps 字段动态填充，默认 4
         let mailDemoContactsCollapsed = false;
         const MAIL_DEMO_CASE_LABELS = {
@@ -1814,20 +1817,42 @@
             }
         }
 
+        // 填充模板分组下拉(3 个案例 + 独立模板如 印刷报价后跟进), 并选中当前分组
+        function renderMailTemplateCaseSelect(currentKey) {
+            const sel = document.getElementById('mql-template-case-select');
+            if (!sel) return;
+            const escAttr = (v) => String(v == null ? '' : v)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            const byCase = mailSequenceTemplateCache.byCase || {};
+            const caseOrder = mailSequenceTemplateCache.caseOrder || Object.keys(byCase);
+            const opts = caseOrder.filter(k => byCase[k]).map(k => {
+                const c = byCase[k] || {};
+                const label = c.case_label || k;
+                const scen = c.scenario_label_cn ? ' · ' + c.scenario_label_cn : '';
+                return `<option value="${escAttr(k)}">${escAttr(label + scen)}</option>`;
+            });
+            sel.innerHTML = opts.join('') || '<option value="">暂无模板</option>';
+            if (currentKey != null && byCase[currentKey]) sel.value = currentKey;
+        }
+
+        // 手动切换模板分组(独立模板 / 任一案例); 点上方案例联系人会再次联动覆盖此选择
+        function onMailTemplateCaseChange(value) {
+            mailTemplateSelectedCaseKey = value || null;
+            renderMailSequenceTemplates();
+        }
+
         function renderMailSequenceTemplates() {
             const gridEl = document.getElementById('mql-template-grid');
             if (!gridEl) return;
+            const byCase = mailSequenceTemplateCache.byCase || {};
+            const caseOrder = mailSequenceTemplateCache.caseOrder || Object.keys(byCase);
             const activeContact = mailDemoContactCache.find(x => x.demo_index === mailDemoContactActiveIndex) || mailDemoContactCache[0] || null;
-            const selectedCustomerKey = (activeContact && (activeContact.real_customer_key || activeContact.customer_key)) || ((mailSequenceTemplateCache.caseOrder || [])[0] || '');
-            const selectedCase = (mailSequenceTemplateCache.byCase || {})[selectedCustomerKey] || {};
+            // 默认跟随上方案例联系人; 若手动在下拉选了某分组(且该分组仍存在)则用手选值。
+            const followKey = (activeContact && (activeContact.real_customer_key || activeContact.customer_key)) || (caseOrder[0] || '');
+            const selectedCustomerKey = (mailTemplateSelectedCaseKey && byCase[mailTemplateSelectedCaseKey]) ? mailTemplateSelectedCaseKey : followKey;
+            const selectedCase = byCase[selectedCustomerKey] || {};
             const templates = selectedCase.templates || [];
-            const caseLabelEl = document.getElementById('mql-template-case-label');
-            if (caseLabelEl) {
-                const label = selectedCase.case_label || (activeContact ? mailDemoCaseLabel(activeContact.demo_index, activeContact.demo_label) : '') || selectedCustomerKey || '跟随上方案例';
-                const scenarioLabel = selectedCase.scenario_label_cn || (activeContact ? chineseScenarioName(activeContact.default_scenario) : '');
-                caseLabelEl.textContent = `${label}${scenarioLabel ? ' · ' + scenarioLabel : ''}`;
-                caseLabelEl.title = selectedCustomerKey ? `当前模板跟随上方案例：${selectedCustomerKey}` : '当前模板跟随上方案例';
-            }
+            renderMailTemplateCaseSelect(selectedCustomerKey);
             const esc = (v) => String(v == null ? '' : v)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
@@ -2069,6 +2094,8 @@
             setVal('mql-suite-step', c.default_suite_step);
             setVal('mql-seller-name', c.default_seller_name);
             setVal('mql-seller-sig', c.default_seller_signature);
+            // 点案例联系人 → 模板分组联动切回该联系人对应案例(1对1默认关系)
+            mailTemplateSelectedCaseKey = c.real_customer_key || c.customer_key || null;
             renderMailSequenceTemplates();
 
             // 展示完整画像
