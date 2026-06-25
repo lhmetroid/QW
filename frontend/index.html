@@ -475,19 +475,21 @@
                 </div>
                 <div class="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
                             <button type="button" id="mql-template-toggle" onclick="toggleMailSequenceTemplatesCollapsed()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100" title="展开或折叠三大场景四阶段脚本模板。">▶ 展开</button>
                             <div class="text-xs font-bold text-indigo-950" title="只显示 AI 指令和发送间隔。保存后写入后端 mail_sequence_template 表，草稿生成时仅对 AI 指令做变量替换后直接发送给大模型。">三大场景全阶段脚本模板（可编辑保存）</div>
+                            <select id="mql-template-case-select" onchange="onMailTemplateCaseChange(this.value)" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700" title="切换要编辑的模板。默认跟随上方案例联系人(1对1)；点上方 3 个案例联系人会自动联动切换；也可手动选独立模板(如 印刷报价后跟进)。"></select>
+                            <input id="mql-suite-name-input" type="text" class="w-44 rounded border border-indigo-300 px-2 py-1 text-[11px] font-bold text-indigo-900" placeholder="套装名称" title="修改当前自建套装的名称。仅自建套装可改；scenario 代码不变，保存后其他页面下拉同步显示新名，已生成草稿不受影响。" />
+                            <button type="button" id="mql-suite-name-save" onclick="saveMailSuiteName()" class="rounded bg-indigo-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-indigo-700" title="保存套装名称（仅自建套装）">保存名称</button>
                         </div>
                         <div class="flex items-center gap-2">
-                            <select id="mql-template-case-select" onchange="onMailTemplateCaseChange(this.value)" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700" title="切换要编辑的模板。默认跟随上方案例联系人(1对1)；点上方 3 个案例联系人会自动联动切换；也可手动选独立模板(如 印刷报价后跟进)。"></select>
                             <button type="button" onclick="loadMailSequenceTemplates()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] text-indigo-700 hover:bg-indigo-100" title="重新从后端 GET /api/v1/mail/sequence-templates 拉取模板。">刷新模板</button>
                             <button type="button" onclick="openNewSuiteModal()" class="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-100" title="新增自定义套装场景，可设置封数、步骤名称和 AI 指令。">+ 新增套装</button>
                             <span id="mql-template-status" class="text-[11px] text-slate-500">未加载</span>
                         </div>
                     </div>
                     <div id="mql-template-collapsible" class="hidden mt-3">
-                        <div id="mql-template-grid" class="grid grid-cols-1 gap-3"></div>
+                        <div id="mql-template-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-3"></div>
                     </div>
                 </div>
                 <div class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-xs">
@@ -1885,6 +1887,7 @@
             const selectedCase = byCase[selectedCustomerKey] || {};
             const templates = selectedCase.templates || [];
             renderMailTemplateCaseSelect(selectedCustomerKey);
+            syncMailSuiteNameInput(selectedCase.scenario || '', selectedCase.scenario_label_cn || selectedCase.case_label || '');
             const esc = (v) => String(v == null ? '' : v)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
@@ -1899,35 +1902,126 @@
                 .map(t => {
                     const groupKey = t.template_group_key || t.customer_key || t.scenario || '';
                     const key = `${groupKey}-${t.scenario}-${t.suite_step}`;
-                    const textareaClass = 'w-full rounded border border-slate-300 px-2 py-2 text-xs leading-relaxed resize-y';
-                    const textareaLimitStyle = 'height: 8rem; max-height: 8rem; overflow:auto;';
-                    const intervalDays = Number.isFinite(Number(t.send_interval_days)) ? Number(t.send_interval_days) : (Number(t.suite_step) === 1 ? 0 : 0);
+                    const intervalDays = Number.isFinite(Number(t.send_interval_days)) ? Number(t.send_interval_days) : 0;
                     return `
                         <div class="rounded-lg border border-indigo-200 bg-white p-3">
-                            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <input id="mql-template-title-${key}" type="text" value="${esc(t.step_label_cn)}" class="min-w-64 flex-1 rounded border border-indigo-200 px-2 py-1 text-xs font-bold text-indigo-900" title="每封邮件的阶段标题，可编辑保存" />
-                                    <button id="mql-template-save-title-${key}" type="button" onclick="saveMailSequenceTemplateField('${t.scenario}', ${t.suite_step}, 'step_label_cn', '${esc(t.customer_key || '')}', '${esc(groupKey)}')" class="whitespace-nowrap rounded bg-indigo-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-indigo-700">保存标题</button>
-                                </div>
+                            <div class="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-2">
+                                <span class="whitespace-nowrap rounded bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700">第 ${esc(t.suite_step)} 封</span>
+                                <input id="mql-template-title-${key}" type="text" value="${esc(t.step_label_cn)}" class="min-w-48 flex-1 rounded border border-indigo-200 px-2 py-1 text-xs font-bold text-indigo-900" title="每封邮件的阶段标题" placeholder="阶段标题" />
+                                <label class="flex items-center gap-1 text-[10px] font-bold text-slate-600" title="距今天多少天后发送">
+                                    <span class="whitespace-nowrap">发送间隔</span>
+                                    <input id="mql-template-interval-${key}" type="number" min="0" step="1" value="${esc(intervalDays)}" class="w-16 rounded border border-slate-300 px-2 py-1 text-xs leading-5" title="距今天多少天后发送" />
+                                </label>
+                                <button id="mql-template-save-${key}" type="button" onclick="saveMailSequenceTemplateAll('${t.scenario}', ${t.suite_step}, '${esc(t.customer_key || '')}', '${esc(groupKey)}')" class="whitespace-nowrap rounded bg-indigo-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-indigo-700" title="一次保存标题、发送间隔和 AI 指令">保存</button>
                             </div>
-                            <div class="mt-3 grid grid-cols-1 gap-3">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <label class="flex items-center gap-2 text-[10px] font-bold text-slate-600" title="距今天多少天后发送">
-                                        <span class="whitespace-nowrap">发送间隔</span>
-                                        <input id="mql-template-interval-${key}" type="number" min="0" step="1" value="${esc(intervalDays)}" class="w-24 rounded border border-slate-300 px-2 py-1.5 text-xs leading-5" title="距今天多少天后发送" />
-                                    </label>
-                                    <button id="mql-template-save-interval-${key}" type="button" onclick="saveMailSequenceTemplateField('${t.scenario}', ${t.suite_step}, 'send_interval_days', '${esc(t.customer_key || '')}', '${esc(groupKey)}')" class="whitespace-nowrap rounded bg-indigo-600 px-2 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700">保存发送间隔</button>
-                                </div>
-                                <div class="flex flex-col gap-1">
-                                    <label for="mql-template-ai-${key}" class="text-[10px] font-bold text-slate-600">AI指令</label>
-                                    <textarea id="mql-template-ai-${key}" rows="6" class="${textareaClass}" style="${textareaLimitStyle}">${esc(t.ai_instruction_script || '')}</textarea>
-                                    <button id="mql-template-save-ai-${key}" type="button" onclick="saveMailSequenceTemplateField('${t.scenario}', ${t.suite_step}, 'ai_instruction_script', '${esc(t.customer_key || '')}', '${esc(groupKey)}')" class="inline-flex rounded bg-indigo-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-indigo-700" style="width:max-content;">保存 AI 指令</button>
-                                </div>
+                            <div class="mt-3 flex flex-col gap-1">
+                                <label for="mql-template-ai-${key}" class="text-[10px] font-bold text-slate-600">AI指令</label>
+                                <textarea id="mql-template-ai-${key}" rows="14" class="w-full rounded border border-slate-300 px-2 py-2 text-xs leading-relaxed resize-y" style="height: 16rem; max-height: 28rem; overflow:auto;">${esc(t.ai_instruction_script || '')}</textarea>
                             </div>
                         </div>
                     `;
                 })
                 .join('');
+        }
+
+        // 顶部"套装名称"输入框: 仅自建套装(custom_*)可改名; 标准场景禁用并提示。
+        function syncMailSuiteNameInput(scenario, label) {
+            const input = document.getElementById('mql-suite-name-input');
+            const btn = document.getElementById('mql-suite-name-save');
+            if (!input || !btn) return;
+            const isCustom = String(scenario || '').startsWith('custom_');
+            input.value = label || '';
+            input.dataset.scenario = scenario || '';
+            input.disabled = !isCustom;
+            btn.disabled = !isCustom;
+            btn.classList.toggle('opacity-50', !isCustom);
+            btn.classList.toggle('cursor-not-allowed', !isCustom);
+            input.title = isCustom
+                ? '修改当前自建套装的名称。scenario 代码不变，保存后下拉同步显示新名，已生成草稿不受影响。'
+                : '仅自建套装(custom_*)可改名；标准场景名称固定。';
+        }
+
+        async function saveMailSuiteName() {
+            const input = document.getElementById('mql-suite-name-input');
+            const statusEl = document.getElementById('mql-template-status');
+            if (!input) return;
+            const scenario = input.dataset.scenario || '';
+            const label = (input.value || '').trim();
+            if (!scenario.startsWith('custom_')) {
+                if (statusEl) { statusEl.textContent = '仅自建套装可改名'; statusEl.className = 'text-[11px] text-amber-700 font-bold'; }
+                return;
+            }
+            if (!label) {
+                if (statusEl) { statusEl.textContent = '套装名称不能为空'; statusEl.className = 'text-[11px] text-red-600 font-bold'; }
+                return;
+            }
+            if (statusEl) { statusEl.textContent = '保存名称中……'; statusEl.className = 'text-[11px] text-indigo-700 font-bold'; }
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/custom-suites/${encodeURIComponent(scenario)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ label_cn: label }),
+                    credentials: 'include',
+                });
+                const text = await resp.text();
+                let data; try { data = JSON.parse(text); } catch (e) { data = { _raw: text }; }
+                if (!resp.ok) throw new Error(data.detail || text.slice(0, 120));
+                if (statusEl) { statusEl.textContent = `已保存套装名称：${label}`; statusEl.className = 'text-[11px] text-emerald-700 font-bold'; }
+                await loadMailSequenceTemplates();
+                if (typeof loadSuiteScenarioOptions === 'function') loadSuiteScenarioOptions();
+            } catch (err) {
+                if (statusEl) { statusEl.textContent = `名称保存失败：${err.message}`; statusEl.className = 'text-[11px] text-red-600 font-bold'; }
+            }
+        }
+
+        // 合并保存: 一次提交 标题 + 发送间隔 + AI 指令
+        async function saveMailSequenceTemplateAll(scenario, suiteStep, customerKey = '', groupKey = '') {
+            const key = `${groupKey || customerKey || scenario}-${scenario}-${suiteStep}`;
+            const statusEl = document.getElementById('mql-template-status');
+            const titleEl = document.getElementById(`mql-template-title-${key}`);
+            const intervalEl = document.getElementById(`mql-template-interval-${key}`);
+            const aiEl = document.getElementById(`mql-template-ai-${key}`);
+            const buttonEl = document.getElementById(`mql-template-save-${key}`);
+            if (!titleEl || !intervalEl || !aiEl) {
+                if (statusEl) { statusEl.textContent = '保存失败：没找到输入框，请刷新页面后重试'; statusEl.className = 'text-[11px] text-red-600 font-bold'; }
+                return;
+            }
+            const parsed = parseInt(intervalEl.value, 10);
+            if (!Number.isFinite(parsed) || parsed < 0) {
+                if (statusEl) { statusEl.textContent = '保存失败：发送间隔必须是大于等于 0 的整数'; statusEl.className = 'text-[11px] text-red-600 font-bold'; }
+                return;
+            }
+            const payload = {
+                step_label_cn: titleEl.value || '',
+                send_interval_days: parsed,
+                ai_instruction_script: aiEl.value || '',
+                updated_by: 'admin',
+            };
+            if (statusEl) { statusEl.textContent = '保存中……'; statusEl.className = 'text-[11px] text-indigo-700 font-bold'; }
+            const originalBtnText = buttonEl ? buttonEl.textContent : '';
+            if (buttonEl) { buttonEl.disabled = true; buttonEl.textContent = '保存中...'; buttonEl.classList.add('opacity-70', 'cursor-wait'); }
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/sequence-templates/${encodeURIComponent(scenario)}/${suiteStep}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    credentials: 'include',
+                });
+                const text = await resp.text();
+                let data; try { data = JSON.parse(text); } catch (e) { data = { _raw: text }; }
+                if (!resp.ok) throw new Error(data.detail || text.slice(0, 160));
+                const byCase = mailSequenceTemplateCache.byCase || {};
+                const cacheKey = groupKey || customerKey || (data.template && data.template.template_group_key) || scenario;
+                if (cacheKey && byCase[cacheKey]) {
+                    const idx = byCase[cacheKey].templates.findIndex(t => Number(t.suite_step) === Number(suiteStep) && t.scenario === scenario);
+                    if (idx >= 0) byCase[cacheKey].templates[idx] = data.template;
+                }
+                if (statusEl) { statusEl.textContent = `已保存 第 ${suiteStep} 封（标题/间隔/AI指令）`; statusEl.className = 'text-[11px] text-emerald-700 font-bold'; }
+                renderMailSequenceTemplates();
+            } catch (err) {
+                if (statusEl) { statusEl.textContent = `保存失败：${err.message}`; statusEl.className = 'text-[11px] text-red-600 font-bold'; }
+                if (buttonEl) { buttonEl.disabled = false; buttonEl.textContent = '保存失败，重试'; buttonEl.classList.remove('opacity-70', 'cursor-wait'); buttonEl.classList.add('bg-red-600'); }
+            }
         }
 
         async function saveMailSequenceTemplateField(scenario, suiteStep, fieldName, customerKey = '', groupKey = '') {

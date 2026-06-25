@@ -1614,6 +1614,7 @@ class RuntimeLlmSettings(BaseModel):
 
 class MailSequenceTemplateUpdateRequest(BaseModel):
     purpose_cn: str | None = None
+    step_label_cn: str | None = None
     send_timing_cn: str | None = None
     send_interval_days: int | None = None
     script_template: str | None = None
@@ -16945,10 +16946,12 @@ def update_mail_sequence_template(
     customer_key: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    """保存单个场景单个阶段的 AI 指令或发送间隔。"""
-    if scenario not in _MAIL_SCENARIO_CHINESE:
+    """保存单个场景单个阶段的标题/AI 指令/发送间隔(可一次提交多字段)。自建套装(custom_*)同样可编辑。"""
+    is_custom = scenario.startswith("custom_")
+    if scenario not in _MAIL_SCENARIO_CHINESE and not is_custom:
         raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
-    if suite_step not in ALL_MAIL_SEQUENCE_STEPS:
+    # 自建套装可有 1..8 步; 固定场景仍限 1..4。
+    if (is_custom and not (1 <= suite_step <= 8)) or (not is_custom and suite_step not in ALL_MAIL_SEQUENCE_STEPS):
         raise HTTPException(status_code=422, detail=f"unsupported suite_step: {suite_step}")
     normalized_customer_key = ""
     _ensure_mail_sequence_templates(db)
@@ -16968,6 +16971,8 @@ def update_mail_sequence_template(
         db.flush()
     if payload.purpose_cn is not None:
         row.purpose_cn = sanitize_text(payload.purpose_cn).strip()[:4000]
+    if payload.step_label_cn is not None:
+        row.step_label_cn = sanitize_text(payload.step_label_cn).strip()[:120]
     if payload.send_interval_days is not None:
         send_interval_days = int(payload.send_interval_days)
         if send_interval_days < 0:
@@ -17472,6 +17477,49 @@ def create_mail_custom_suite(payload: MailCustomSuiteCreateRequest, db: Session 
 def list_mail_custom_suites(db: Session = Depends(get_db)):
     rows = db.query(MailCustomSuite).order_by(MailCustomSuite.created_at).all()
     return {"suites": [{"scenario": r.scenario, "label_cn": r.label_cn, "step_count": r.step_count} for r in rows]}
+
+
+class MailCustomSuiteRenameRequest(BaseModel):
+    label_cn: str
+
+    class Config:
+        extra = "forbid"
+
+
+@app.put("/api/v1/mail/custom-suites/{scenario}")
+def rename_mail_custom_suite(scenario: str, payload: MailCustomSuiteRenameRequest, db: Session = Depends(get_db)):
+    """重命名自建套装(只改中文名 label_cn; scenario 代码不变, 故其他页面/已存草稿不受影响)。"""
+    if not (scenario or "").startswith("custom_"):
+        raise HTTPException(status_code=422, detail="只能重命名自建套装(custom_*)")
+    label = sanitize_text(payload.label_cn).strip()[:100]
+    if not label:
+        raise HTTPException(status_code=422, detail="label_cn 不能为空")
+    row = db.query(MailCustomSuite).filter(MailCustomSuite.scenario == scenario).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"套装不存在: {scenario}")
+    dup = db.query(MailCustomSuite).filter(
+        MailCustomSuite.label_cn == label, MailCustomSuite.scenario != scenario
+    ).first()
+    if dup is not None:
+        raise HTTPException(status_code=409, detail=f"已存在同名套装：{label}")
+    row.label_cn = label
+    # 同步各阶段模板的场景中文名, 让模板/下拉显示新名
+    for t in db.query(MailSequenceTemplate).filter(MailSequenceTemplate.scenario == scenario).all():
+        t.scenario_label_cn = label
+    db.commit()
+    # 刷新运行时缓存(中文名 + 动态策略 objective)
+    _DYNAMIC_SCENARIO_CHINESE[scenario] = label
+    try:
+        from mail_sequence_strategy import register_dynamic_scenario
+        step_labels = {
+            int(t.suite_step): (t.step_label_cn or "").strip()
+            for t in db.query(MailSequenceTemplate).filter(MailSequenceTemplate.scenario == scenario).all()
+            if (t.step_label_cn or "").strip()
+        }
+        register_dynamic_scenario(scenario, label, int(row.step_count or len(step_labels) or 4), step_labels)
+    except Exception:
+        logger.warning("MAIL_CUSTOM_SUITE_RENAME_REGISTER_FAILED scenario=%s", scenario, exc_info=True)
+    return {"ok": True, "scenario": scenario, "label_cn": label}
 
 
 

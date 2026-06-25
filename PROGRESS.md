@@ -1087,3 +1087,13 @@
 
 ## 2026-06-25 14:35:00 套装页客户信息3字段取消脱敏
 - frontend/mail-suite.html renderCustomer: 客户编号/公司名称/联系人 改为显示原值(去掉 maskCustomerId/maskCompanyName/maskText), 仍经 esc() HTML 转义。数据本就全量, 脱敏仅前端展示, 直接显示即可。页面顶部 badge 保持原样。
+
+## 2026-06-25 16:35:00 套装模板编辑器改造(改名/两列/合并保存) + 自建套装可编辑修复
+- 后端:
+  - PUT /api/v1/mail/sequence-templates/{scenario}/{suite_step} 放行自建套装(custom_*, 1..8步), 新增 step_label_cn 字段处理, 支持一次提交 标题+间隔+AI指令。(原 extra=forbid + 仅 _MAIL_SCENARIO_CHINESE 导致自建套装模板根本存不了、标题也存不了)
+  - 新增 PUT /api/v1/mail/custom-suites/{scenario} 重命名自建套装(只改 label_cn, scenario 代码不变, 同步各阶段 scenario_label_cn + 运行时缓存; 其他页面/已存草稿不受影响)。
+- 前端 index.html 三大场景全阶段脚本模板:
+  - 下拉移到标题旁(前面); 新增"套装名称"输入框+保存名称按钮(仅自建套装可改, syncMailSuiteNameInput/saveMailSuiteName)。
+  - 每封卡片改两列(lg:grid-cols-2); 标题+发送间隔同一行(其他); AI指令文本框加高至2倍(16rem); 三个保存合并为一个"保存"按钮(saveMailSequenceTemplateAll 一次提交三字段)。
+- 验证: 后端 py_compile + 实调 PUT(custom 合并保存 OK / 标准场景 OK)+ 重命名 OK; 前端内联 JS 通过。
+- 注意: 测试 PUT 时误覆盖了 custom_0904af93 第1封内容, 已恢复标题/间隔, AI指令按截取内容恢复(尾部需人工核对补全)。需重启后端生效。
