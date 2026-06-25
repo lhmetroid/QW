@@ -916,3 +916,102 @@
 - 针对用户反馈草稿正文下方“目标推广业务 / 已有业务线 / 下一步建议”整块不应显示，已从 `frontend/mail-suite.html` 的草稿卡片渲染中移除该内部诊断面板。
 - 本次只隐藏草稿卡片下方的内部元信息块，复制正文、复制主题+正文和反馈区保留；上方客户信息区联系人显示修复不受影响。
 - 本次没有修改任何 LLM prompt、AI 指令、模板规则或生成约束。
+
+## 2026-06-23 企微智能助手第二候选去思考过程
+
+- 仅改企微链路，不涉及邮件。
+- 已增强 `backend/intent_engine.py` 的 `IntentEngine.clean_sendable_reply()`：优先抽取“最终回复/可以这样回/可复制回复”等结果标签后的正文；遇到“理解您当前沟通的重点/思考过程/策略”等元分析文本时不再直接展示给侧边栏。
+- 针对截图中的“目前没有需求，有需求会找”的场景，清洗后兜底为可直接发送的轻量承接：`好的，那先不打扰你啦，有需要随时喊我～`。
+- 已修复 `backend/main.py` 流式盲评最终帧：`reply_reference1/2` 现在与非流式一样调用 `clean_sendable_reply()`，避免第二条候选绕过清洗。
+- 验证：`python -m py_compile backend\intent_engine.py backend\main.py` 通过；`git diff --check -- backend/intent_engine.py backend/main.py` 通过；函数级样例验证通过。
+
+## 2026-06-23 邮件统计实际发送数漏计修复
+
+- 定位用户截图中已发送邮件未计入：CRM spSendInfo0017 已有 SendSuccess，但本地 mail_customer_suite_send_plan 对应记录 crm_send_id 为空，旧同步 SQL 只处理 crm_send_id 非空记录。
+- 已修复 backend/mail_ai_stats.py：缺 SendId 时按销售分表、精确主题、计划时间窗口、UseRange=宣传邮件-AI、真实发件地址反查 CRM spSendInfo，并回填 crm_send_id/crm_send_status/crm_fact_send_time。
+- 已执行同步验证：2026-06-23 全部销售与销售0017统计均为 生成4 / 实发1 / 回信0 / 有价值0 / 反馈0。
+- 验证：AST 语法检查通过；git diff --check -- backend/mail_ai_stats.py 通过；python -m py_compile 因既有 backend/__pycache__ 权限拒绝未作为失败项。
+
+## 2026-06-24 09:42:29 邮件质量诊断新增套装下拉与标题编辑修复
+
+- 修复邮件质量诊断页模板下拉未显示新增自建套装的问题：后端 /api/v1/mail/sequence-templates 现在会把 mail_custom_suite 下的动态套装模板一起返回，并用 template_group_key=scenario 避免多个自建套装挤在空 customer_key 分组里。
+- 修复自建套装模板保存：PUT /api/v1/mail/sequence-templates/{scenario}/{suite_step} 支持动态 scenario，空 customer_key 不再被强行映射到内置三大场景客户。
+- 模板区每封邮件阶段标题改为可编辑输入框，支持保存 step_label_cn；质量诊断页单封/整套生成结果的邮件主题改为可直接编辑输入框。
+- 验证：python -m py_compile backend\main.py backend\database.py、抽取 frontend/index.html 内联脚本后 node --check、git diff --check -- backend/main.py frontend/index.html、自建套装序列化冒烟均通过。
+
+## 2026-06-24 10:41:15 知识库命中日志双击查看命中条目
+
+- 用户要求：命中日志里「命中 5」可双击显示命中的 5 条知识。
+- 已完成：/api/kb/hit_logs 支持 include_hits=true 回查 knowledge_chunk，前端命中数字双击弹窗展示命中切片标题、类型、服务、分数、chunk_id 和正文。
+- 验证：python -m py_compile backend\main.py；抽取 frontend/index.html 内联脚本 node --check；git diff --check -- backend/main.py frontend/index.html logs/codex-run.log scratch/frontend-index-scripts-check.js 均通过。
+
+## 2026-06-24 11:18:57 邮件测试套装 111/222 删除
+
+- 按用户要求删除邮件质量诊断页自建测试套装 111、222。
+- 数据库核查：111 对应 custom_ec17323c，222 对应 custom_0bccb7bd；每个套装各 3 个阶段模板。
+- 已在一个事务中删除 mail_sequence_template 对应 6 条阶段模板，并删除 mail_custom_suite 对应 2 条套装元数据。
+- 删除后复查：suite_left=0，template_left=0，remaining_custom_suites 为空。
+
+## 2026-06-24 13:00:05 邮件模板下拉文案去重
+
+- 按用户反馈，邮件质量诊断页三大场景全阶段脚本模板下拉不再显示“分组名 + 场景名”的重复文案。
+- 前端 renderMailTemplateCaseSelect 现在优先只显示 scenario_label_cn；没有场景名时再回退 case_label 或 key。
+- 验证：抽取 frontend/index.html 内联脚本后 node --check 通过；git diff --check -- frontend/index.html 通过。
+
+## 2026-06-24 13:23:06 邮件套装页单封重刷与真实 prompt 查看
+- 新增每封邮件的重刷按钮：强制重新运行 LLM 并覆盖该封已保存标题/正文。
+- 新增每封邮件的脚本按钮：只展示已保存的当次真实 llm_prompt，不做临时拼接；历史未记录 prompt 的旧稿会提示需重刷后才可查看。
+- 验证通过：py_compile、node --check、git diff --check。
+
+## 2026-06-24 13:34:53 修正老客户激活模板命中顺序
+- 查明老客户激活此前命中 customer_key 为空的共享旧模板，未命中质量页显示的规范模板。
+- 已调整内置套装模板选择顺序：当前客户专属 -> 规范模板 -> 空共享模板。
+- 验证：KH33103-015 的老客户激活 step1 当前选择 KH02659-011 模板；python -m py_compile backend\\main.py 和 git diff --check 通过。
+- 注意：该客户老客户激活已有 4 封旧保存稿；刷新会继续读保存稿，需要点单封重刷才会覆盖成新模板生成结果。
+
+## 2026-06-24 13:40:54 邮件套装模板严格读取
+- 已取消套装生成中的客户专属模板/空共享模板/任意模板兜底。
+- 四个内置套装固定读取质量诊断下拉对应规范模板：老客户其他业务介绍 KH15411-117、老客户激活 KH02659-011、新客户开发介绍 KH13770-006、印刷报价后跟进 PRINT-QUOTE-FOLLOWUP。
+- 缺模板或缺 AI 指令时直接返回不存在可用脚本错误。
+- 验证：4 个套装 1-4 封均命中规范模板且 AI 指令非空；python -m py_compile backend\\main.py 通过；git diff --check 通过。
+
+## 2026-06-24 14:03:48 修正套装页自动判断场景展示
+- 客户信息里的自动判断场景改为固定展示 CRM 生命周期自动判断结果。
+- 上方套装下拉只影响当前使用套装，不再覆盖自动判断场景字段。
+- 验证：KH33103-015 当前 CRM 生命周期为熟联系人，自动判断为老客户其他业务介绍；py_compile、node --check、git diff --check 通过。
+
+## 2026-06-24 14:22:58 邮件统计当天实时与签名稳定性
+- 邮件统计查询范围包含当天时，不再只读本地缓存，会自动执行 CRM 真发同步、FTP 回信匹配、DeepSeek 价值判定后再统计。
+- 套装邮件签名改为统一构建：优先 CRM 负责人真实签名；读取不到时注入固定版式的事必达销售签名，避免正文无签名档。
+- 验证：py_compile、前端脚本 node --check、git diff --check 通过；KH33103-015 签名函数返回非空。
+
+## 2026-06-24 17:12:00 知识库管理独立页面
+
+- 按用户要求新增独立入口 `frontend/kb.html`，通过独立模式打开知识库管理，原 `frontend/index.html` 既有主工作台入口保持可用。
+- `frontend/index.html` 新增 `kbStandalone=1` 独立模式：自动进入知识库管理；隐藏“返回企微实时智能”按钮；隐藏“知识分类怎么选 / 映射摘要 / 特殊规则 / 知识文档状态”说明卡片区。
+- 验证：抽取 `frontend/index.html` 内联脚本后 `node --check scratch\frontend-index-scripts-check.js` 通过；`git diff --check -- frontend/index.html frontend/kb.html scratch/frontend-index-scripts-check.js logs/codex-run.log` 通过。
+
+## 2026-06-24 17:20:00 知识库列表默认已发布
+
+- 按用户要求把知识库管理“列表”页默认文档阶段改为 `已发布`，原工作台入口和独立 `frontend/kb.html` 入口共用同一默认。
+- 修改点：`frontend/index.html` 的 `getKbListState('documents')` 初始化时默认 `stage=published`，其他 tab 仍保持原默认。
+- 验证：抽取内联脚本 `node --check scratch\frontend-index-scripts-check.js` 通过；`git diff --check -- frontend/index.html scratch/frontend-index-scripts-check.js` 通过。
+
+## 2026-06-24 17:52:00 邮件生成模型配置
+- 已为邮件模块新增持久化生成邮件模型配置：deepseek-v4-flash（默认）、deepseek-v4-pro、chatgpt。
+- 后端 /api/v1/mail/draft-llm-config 现在保存到 runtime_llm_settings.json；邮件草稿生成链路每次调用都会读取当前配置。
+- 邮件质量诊断页顶部和 /static/mail-suite.html 独立页均读取同一配置；mail-suite 切换模型后清空本页套装缓存，避免旧模型草稿混用。
+- 验证：python -m py_compile backend\\main.py；index/mail-suite 内联脚本 node --check；git diff --check 定向检查通过。
+
+## 2026-06-24 18:02:00 知识库独立页免登录
+- 已将 /static/kb.html 加入前端静态页免登录白名单；主工作台 /static/index.html 仍保持登录要求。
+- 验证：python -m py_compile backend\\main.py；git diff --check -- backend/main.py logs/codex-run.log 通过。
+
+## 2026-06-25 10:43:00 邮件统计-回信匹配兜底修复
+- 查证两处疑似漏数：
+  - 生成数 16 正确无丢：06-24 `mail_customer_suite_send_plan` 仅 enqueued=16（4 布鲁克纳联系人 × 4 步套装，send_id 连续 Mal_S260624-000002~000017），无 failed/draft 被漏计。
+  - 回信读不到为结构性缺陷：CRM 经 Exchange 真发，发送 .eml 仅 5 个头、无 Message-ID/From（MTA 真发时才赋），CRM 发送表亦未存；回信 In-Reply-To 指向 Exchange 分配的 Message-ID，本地无从记录，故 AIMAIL 规则与 crm_message_id 兜底双双失效；叠加 `mail_ai_reply_analysis.created_at` NOT NULL 但 INSERT 未赋值，匹配上也插入失败，致该表至今全空、回信数恒为 0。
+- 修复 `backend/mail_ai_stats.py`：
+  - `discover_replies` 新增「主题串接」末路兜底（match_method=eml_subject_thread）：发件人=我方收件客户 + 归一主题完全相等（剥离 RE:/答复:/FW: 前缀）+ 收信不早于实发，唯一定位具体步骤；新增 `_norm_subject` / `_SUBJECT_PREFIX_RE`。
+  - INSERT 补 `created_at=now()`。
+- 验证：对实库跑 discover_replies → candidates=1 matched=1，王菊慧 RE 回信成功匹配；重算后 06-24 reply_count 0→1（已落库）。需重启后端使新逻辑对后续回信长期生效。

@@ -24,6 +24,7 @@ BJ_OFFSET = timedelta(hours=8)
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 # 我方企业邮箱域(回信发件人不该是我们自己)
 _OUR_DOMAINS = ("speed-asia.com",)
+_MAIL_AI_USE_RANGE = "宣传邮件-AI"
 
 
 def bj_date(dt) -> date | None:
@@ -111,6 +112,23 @@ def _norm_msgid(v: str) -> str:
     return (v or "").strip().strip("<>").strip().lower()
 
 
+# 回复/转发前缀(中英文常见)。归一主题用于"主题串接"兜底匹配。
+_SUBJECT_PREFIX_RE = re.compile(
+    r"^\s*(re|aw|sv|答复|回复|回覆|转发|轉發|fw|fwd)\s*[:：]\s*", re.I
+)
+
+
+def _norm_subject(s: str) -> str:
+    """归一主题: 反复剥离 RE:/答复:/FW: 等前缀, 去首尾空白并小写, 便于回信与原邮件主题精确比对。"""
+    t = (s or "").strip()
+    for _ in range(6):
+        nt = _SUBJECT_PREFIX_RE.sub("", t)
+        if nt == t:
+            break
+        t = nt.strip()
+    return t.strip().lower()
+
+
 # 发送端规则: Message-ID 形如 <AIMAIL-{SendId}@域> 或 <AIMAIL-{SendId}-{uniq}@域>。
 # SendId 是唯一关联键(发送端有, 本地 crm_send_id 也存); uniq 可选、由发送端生成、读取端忽略。
 # 正则只抓 AIMAIL- 到 @/>/空白 之间的整段 token(可能是 SendId, 也可能是 SendId-uniq), 再按 SendId 匹配。
@@ -140,15 +158,52 @@ def ai_token_matches_send_id(token: str, send_id: str) -> bool:
 # ---------------------------------------------------------------------------
 # 1) 同步真发状态: 本地 send_plan <- CRM spSendInfo{销售}.SendId
 # ---------------------------------------------------------------------------
+def _crm_send_info_for_missing_send_id(crm, table_name: str, plan) -> object | None:
+    """Fallback when CRM SendId was not readable immediately after queue insert.
+
+    Some CRM sender deployments remove the queue row and only later expose the generated SendId in
+    spSendInfo{staff}. In that case local crm_send_id stays empty, so match by the narrow immutable
+    fields we inserted: exact subject, planned send minute, AI UseRange, and sender address.
+    """
+    subject = (plan[5] or "").strip()
+    sender = (plan[7] or "").strip().lower()
+    if "@" not in sender or "*" in sender:
+        sender = ""
+    plan_time = plan[6]
+    if not subject or not plan_time:
+        return None
+    start = plan_time - timedelta(minutes=2)
+    end = plan_time + timedelta(minutes=10)
+    rows = crm.execute(text(
+        f"SELECT TOP 2 SendId, Status, FactSendTime, EmlFtpDir, DeleteTime "
+        f"FROM [{table_name}] "
+        f"WHERE Subject=:sub AND PlanSendTime>=:a AND PlanSendTime<:b "
+        f"AND UseRange=:ur "
+        f"AND (:sender='' OR LOWER(CAST(COALESCE(SendAddress,'') AS NVARCHAR(MAX))) LIKE :sender_like) "
+        f"ORDER BY FactSendTime DESC, PlanSendTime DESC"
+    ), {
+        "sub": subject,
+        "a": start,
+        "b": end,
+        "ur": _MAIL_AI_USE_RANGE,
+        "sender": sender,
+        "sender_like": f"%{sender}%" if sender else "%",
+    }).fetchall()
+    if len(rows) != 1:
+        return None
+    return rows[0]
+
+
 def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
     """对最近 lookback_days 转入的 enqueued 计划, 用 SendId 关联 spSendInfo{销售} 回填真发状态;
     真发成功且尚无 message_id 的, 拉发送 .eml 解析 Message-ID(供回信匹配)。"""
     from crm_database import CRMSessionLocal
     cutoff = datetime.utcnow() - timedelta(days=lookback_days)
     plans = db.execute(text(
-        "SELECT plan_id, crm_send_id, inputer_staff_id, crm_message_id, crm_send_status "
+        "SELECT plan_id, crm_send_id, inputer_staff_id, crm_message_id, crm_send_status, "
+        "       subject, plan_send_time, sender_email "
         "FROM mail_customer_suite_send_plan "
-        "WHERE status='enqueued' AND crm_send_id IS NOT NULL AND created_at>=:cut"
+        "WHERE status='enqueued' AND created_at>=:cut"
     ), {"cut": cutoff}).fetchall()
     if not plans:
         return {"checked": 0, "sent": 0}
@@ -163,30 +218,37 @@ def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
             tbl = _staff_partition("spSendInfo", staff_id)
             if not tbl or not _crm_table_exists(crm, tbl):
                 continue
-            send_ids = [r[1] for r in rows]
+            send_ids = [r[1] for r in rows if r[1]]
             # 分批 IN 查询
             info = {}
-            for i in range(0, len(send_ids), 200):
-                chunk = send_ids[i:i + 200]
-                params = {f"s{j}": v for j, v in enumerate(chunk)}
-                placeholders = ",".join(f":s{j}" for j in range(len(chunk)))
-                q = crm.execute(text(
-                    f"SELECT SendId, Status, FactSendTime, EmlFtpDir, DeleteTime "
-                    f"FROM [{tbl}] WHERE SendId IN ({placeholders})"
-                ), params).fetchall()
-                for rr in q:
-                    info[str(rr[0])] = rr
+            if send_ids:
+                for i in range(0, len(send_ids), 200):
+                    chunk = send_ids[i:i + 200]
+                    params = {f"s{j}": v for j, v in enumerate(chunk)}
+                    placeholders = ",".join(f":s{j}" for j in range(len(chunk)))
+                    q = crm.execute(text(
+                        f"SELECT SendId, Status, FactSendTime, EmlFtpDir, DeleteTime "
+                        f"FROM [{tbl}] WHERE SendId IN ({placeholders})"
+                    ), params).fetchall()
+                    for rr in q:
+                        info[str(rr[0])] = rr
             for r in rows:
                 checked += 1
-                rec = info.get(str(r[1]))
+                rec = info.get(str(r[1])) if r[1] else None
+                recovered_send_id = None
+                if rec is None and not r[1]:
+                    rec = _crm_send_info_for_missing_send_id(crm, tbl, r)
+                    if rec is not None and rec[0]:
+                        recovered_send_id = str(rec[0])
                 plan_id = r[0]
                 if rec is None:
-                    # SendId 不在 spSendInfo: 仍在队列待发 或 已被删除。保持/标记 unknown。
-                    db.execute(text(
-                        "UPDATE mail_customer_suite_send_plan "
-                        "SET crm_send_status=COALESCE(crm_send_status,'pending_or_deleted'), status_synced_at=now() "
-                        "WHERE plan_id=:pid"
-                    ), {"pid": plan_id})
+                    # SendId 不在 spSendInfo: 仍在队列待发 或 已被删除。缺 SendId 的未来计划保持空状态, 等后续真发后再反查。
+                    if r[1]:
+                        db.execute(text(
+                            "UPDATE mail_customer_suite_send_plan "
+                            "SET crm_send_status=COALESCE(crm_send_status,'pending_or_deleted'), status_synced_at=now() "
+                            "WHERE plan_id=:pid"
+                        ), {"pid": plan_id})
                     continue
                 status_v = (str(rec[1]) if rec[1] else "").strip()
                 fact = rec[2]
@@ -195,9 +257,10 @@ def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
                 final_status = "deleted" if deleted else status_v
                 db.execute(text(
                     "UPDATE mail_customer_suite_send_plan "
-                    "SET crm_send_status=:st, crm_fact_send_time=:ft, crm_eml_ftp_dir=:ed, status_synced_at=now() "
+                    "SET crm_send_id=COALESCE(crm_send_id,:sid), crm_send_status=:st, "
+                    "crm_fact_send_time=:ft, crm_eml_ftp_dir=:ed, status_synced_at=now() "
                     "WHERE plan_id=:pid"
-                ), {"st": final_status, "ft": fact, "ed": eml_dir, "pid": plan_id})
+                ), {"sid": recovered_send_id, "st": final_status, "ft": fact, "ed": eml_dir, "pid": plan_id})
                 if status_v == "SendSuccess" and not deleted:
                     sent += 1
                     # 解析发送 Message-ID(仅一次)
@@ -220,12 +283,13 @@ def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
 def discover_replies(db: Session, lookback_days: int = 120, max_fetch: int = 400) -> dict:
     """对真发成功且已解析 message_id 的 AI 邮件, 在对应销售的 spReceiveInfo 分表里找候选回信
     (发件人=我方收件客户邮箱 且 收信晚于实发), 拉收件 .eml 解析 In-Reply-To/References,
-    若包含我们的发送 Message-ID 即判定为回信, 写入 mail_ai_reply_analysis。"""
+    若包含我们的发送 Message-ID 即判定为回信; 若发送 .eml 无 Message-ID(CRM 经 Exchange 真发常见),
+    再用"发件人+归一主题精确串接+收信晚于实发"兜底定位, 写入 mail_ai_reply_analysis。"""
     from crm_database import CRMSessionLocal
     cutoff = datetime.utcnow() - timedelta(days=lookback_days)
     plans = db.execute(text(
         "SELECT plan_id, crm_send_id, customer_id, inputer_staff_id, to_emails, "
-        "       crm_message_id, crm_fact_send_time "
+        "       crm_message_id, crm_fact_send_time, subject "
         "FROM mail_customer_suite_send_plan "
         "WHERE status='enqueued' AND crm_send_status='SendSuccess' AND created_at>=:cut"
     ), {"cut": cutoff}).fetchall()
@@ -308,6 +372,7 @@ def discover_replies(db: Session, lookback_days: int = 120, max_fetch: int = 400
                 if isinstance(body, bytes):
                     body = body.decode("utf-8", "replace")
                 rtime = c[4]
+                reply_subj_norm = _norm_subject(c[2])
                 for p in pend_plans:
                     method = None
                     if ref_tokens and any(ai_token_matches_send_id(t, p[1]) for t in ref_tokens):
@@ -316,13 +381,19 @@ def discover_replies(db: Session, lookback_days: int = 120, max_fetch: int = 400
                         mid = _norm_msgid(p[5])
                         if mid and mid in refs:
                             method = "eml_in_reply_to"      # 兜底: 系统自生成 Message-ID(需先拉发送 .eml 解析)
+                        elif (reply_subj_norm and _norm_subject(p[7]) == reply_subj_norm
+                              and (p[6] is None or rtime is None or rtime >= p[6])):
+                            # 末路兜底: CRM 经 Exchange 真发, 发送 .eml 无 Message-ID 头(真发时才由 MTA 赋), 本地/CRM 均无从记录,
+                            # 故 In-Reply-To 永远匹配不上。改用线程主题精确串接: 发件人=我方收件客户(候选已保证) +
+                            # 归一后主题完全相等(剥离 RE:/答复: 等前缀) + 收信不早于实发, 唯一定位到具体那一步。
+                            method = "eml_subject_thread"
                     if not method:
                         continue
                     db.execute(text(
                         "INSERT INTO mail_ai_reply_analysis "
                         "(plan_id, crm_send_id, customer_id, staff_id, reply_crm_rowid, reply_sender, "
-                        " reply_subject, reply_body, reply_received_at, match_method) "
-                        "VALUES (:pid,:sid,:cid,:stf,:rid,:snd,:sub,:body,:rt,:mm) "
+                        " reply_subject, reply_body, reply_received_at, match_method, created_at) "
+                        "VALUES (:pid,:sid,:cid,:stf,:rid,:snd,:sub,:body,:rt,:mm, now()) "
                         "ON CONFLICT (plan_id, reply_crm_rowid) DO NOTHING"
                     ), {
                         "pid": p[0], "sid": p[1], "cid": p[2], "stf": staff_id,
