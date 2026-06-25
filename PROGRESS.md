@@ -1015,3 +1015,38 @@
   - `discover_replies` 新增「主题串接」末路兜底（match_method=eml_subject_thread）：发件人=我方收件客户 + 归一主题完全相等（剥离 RE:/答复:/FW: 前缀）+ 收信不早于实发，唯一定位具体步骤；新增 `_norm_subject` / `_SUBJECT_PREFIX_RE`。
   - INSERT 补 `created_at=now()`。
 - 验证：对实库跑 discover_replies → candidates=1 matched=1，王菊慧 RE 回信成功匹配；重算后 06-24 reply_count 0→1（已落库）。需重启后端使新逻辑对后续回信长期生效。
+
+## 2026-06-25 11:11:00 邮件套装页重刷脚本与签名持久化修复
+
+- 复核昨日 项目进展.md / PROGRESS.md 记录：2026-06-24 已修过单封重刷、真实 prompt 查看、旧保存稿不自动覆盖、签名兜底；但当前代码仍有三个闭环缺口导致用户今日复现。
+- 根因 1：套装页首次/自动生成保存只落库 subject/body_html/mail_uid，未保存 llm_prompt，所以“脚本”面板刷新后仍可能显示 0 字符。
+- 根因 2：保存稿读取时没有把 mail_customer_suite_draft_edit.llm_prompt 放回 draft，也没有在序列化 record 中返回，导致即使单封重刷保存过 prompt，再次进入仍读不到。
+- 根因 3：单封重刷接口保存/返回前没有复用套装页签名注入；且 CRM 负责人签名读取不到时没有固定兜底签名，导致重刷后正文仍可能无签名档。
+- 已修复 backend/main.py：为 mail_customer_suite_draft_edit 初始化补 llm_prompt 列；自动保存、保存稿读取、record 序列化均带 llm_prompt；新增统一签名兜底函数；单封重刷生成后先注入签名再保存和返回。
+- 验证：python -B -c ast.parse(...) 通过；git diff --check -- backend/main.py 通过。python -m py_compile backend\main.py 因本机 pyc rename 权限拒绝仍失败，非语法错误。
+
+## 2026-06-25 11:20:44 邮件套装发件销售代表多 Owner 解析修复
+
+- 针对 KH07679-004 发送失败“未取到在职销售的发件企业邮箱”，只读核查 CRM：该联系人 Owner 实际为 2012,0017 两个工号拼接，旧代码用 c.Owner = s.StaffId 精确匹配单个工号，因此一个销售都匹配不到。
+- 已修复 backend/main.py 的 _fetch_mail_contact_owner_staff_id：先读取联系人 Owner 原始值，按逗号/分号/中文分隔符拆成多个工号；逐个校验 usrStaff.DismissTime IS NULL，并优先选择有默认/可用企业邮箱、销售/大客户/市场相关部门的在职员工。
+- 实测 KH07679-004 现在选择工号 0017，员工韩瑾 / Angela / 大客户部，存在默认可用企业邮箱（日志中仅遮罩展示）。2012 也是在职但未查到可用企业邮箱，因此不会优先作为发件人。
+- 验证：backend/main.py AST 解析通过；git diff --check -- backend/main.py 通过；函数级只读 CRM 验证通过。
+
+## 2026-06-25 11:30:46 邮件套装销售代表优先工号规则
+
+- 按用户要求新增销售代表优先工号列表：0017、0002、0141、0188、1607。
+- 规则落地在 backend/main.py 的 _fetch_mail_contact_owner_staff_id：联系人 Owner 多工号拆分后，若命中上述优先工号，且该员工在职并有默认/可用企业邮箱，则优先作为套装邮件发件销售；若优先工号无可用邮箱，再回退其他在职且有邮箱的销售，避免选到不能发件的员工。
+- 验证 KH07679-004：Owner=2012,0017，最终选择 0017（韩瑾 / Angela / 大客户部），有可用默认企业邮箱；规则符合“优先读取指定销售编号”。
+- 验证：backend/main.py AST 解析通过；git diff --check -- backend/main.py 通过；函数级只读 CRM 验证通过。
+
+## 2026-06-25 11:39:18 邮件套装历史保存稿 prompt 回填
+
+- 针对用户截图中正文已有签名但“真实大模型 prompt (0 字符)”仍为空的问题，确认这是历史 saved_edit 行：正文/主题已保存，但该行创建时没有 llm_prompt。
+- 已新增 _build_mail_customer_suite_prompt_only：只装配当前客户、套装、阶段、模板对应的 LLM prompt，不调用 LLM、不覆盖正文。
+- 套装页读取历史保存稿时，如果 subject/body_html 存在但 llm_prompt 为空，会自动回填并保存 llm_prompt，再返回给前端；人工修改正文/主题的保存逻辑不变。
+- 本地验证 KH00362-425 / re_activation / Step1 可回填 prompt_len=745；backend/main.py AST 与 diff-check 通过。
+
+## 2026-06-25 11:30:00 邮件回信匹配-主路径改用 Message_ID 列
+- 确认发送软件(classMail.Send.cs)已在 smtp.Send 前对 UseRange='宣传邮件-AI' 注入 Message-ID=<AIMAIL-{SendId}-{StaffId}-{发件邮箱}>(仅内存注入, 不回写存档 .eml, 故下载草稿 .eml 永远看不到); 接收软件(classMail.cs)已解析回信 In-Reply-To/References 中的 AIMAIL token 并写入 spReceiveInfo{销售}.Message_ID 列。
+- 据此改 backend/mail_ai_stats.py discover_replies: 新增主路径直读 spReceiveInfo{销售}.Message_ID 列, 正则(extract_send_id_from_msgid_col)取 SendId 与本地 crm_send_id 精确匹配(match_method=crm_message_id_col), 无需拉 .eml、不依赖发件人/主题; 老邮件(无 AIMAIL)保留 .eml/主题串接兜底。新增 _crm_column_exists 助手。
+- 现状: spReceiveInfo0017.Message_ID 列已存在; 今日入队 AI 邮件待发, 暂无 AIMAIL 回信(0命中, 等新邮件回信自动精确计入)。兜底路径今日新捕获张君良 RE 真实回信(06-25), reply_count: 06-24=1 / 06-25=1。

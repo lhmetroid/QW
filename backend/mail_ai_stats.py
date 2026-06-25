@@ -61,6 +61,16 @@ def _crm_table_exists(crm, name: str) -> bool:
         return False
 
 
+def _crm_column_exists(crm, table: str, column: str) -> bool:
+    try:
+        row = crm.execute(text(
+            "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME=:t AND COLUMN_NAME=:c"
+        ), {"t": table, "c": column}).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+
+
 # ---------------------------------------------------------------------------
 # FTP: 拉取 .eml 并解析头部(回信精确匹配)
 # ---------------------------------------------------------------------------
@@ -127,6 +137,18 @@ def _norm_subject(s: str) -> str:
             break
         t = nt.strip()
     return t.strip().lower()
+
+
+# 接收端(CRM 发信软件)对回信解析后, 把原始 AI 邮件的 Message-ID 整段写进 spReceiveInfo{销售}.Message_ID 列,
+# 格式固定为 <AIMAIL-{SendId}-{StaffId}-{发件邮箱}>。SendId 自身含 '-'(如 Mal_S260625-000003), StaffId 不含 '-'/'@',
+# 故贪婪取第一段为 SendId、第二段为 StaffId、第三段为邮箱(与发送端 C# 正则一致)。
+_AIMAIL_COL_RE = re.compile(r"AIMAIL-(.+)-([^-@]+)-(.+@.+)", re.I)
+
+
+def extract_send_id_from_msgid_col(value: str) -> str:
+    """从 spReceiveInfo.Message_ID 列值提取原始发送 SendId。无 AIMAIL token 返回空串。"""
+    m = _AIMAIL_COL_RE.search((value or "").strip().strip("<>"))
+    return m.group(1).strip() if m else ""
 
 
 # 发送端规则: Message-ID 形如 <AIMAIL-{SendId}@域> 或 <AIMAIL-{SendId}-{uniq}@域>。
@@ -314,10 +336,14 @@ def discover_replies(db: Session, lookback_days: int = 120, max_fetch: int = 400
             tbl = _staff_partition("spReceiveInfo", staff_id)
             if not tbl or not _crm_table_exists(crm, tbl):
                 continue
-            # 该销售下: 客户邮箱 -> [plan...]; message_id -> plan
+            # 该销售下: send_id -> plan(精确回链键); 客户邮箱 -> [plan...](兜底); 最早实发时间(限定扫描窗口)
+            send_id_to_plan: dict[str, object] = {}
             email_to_plans: dict[str, list] = {}
             min_time = None
             for p in rows:
+                sid = (p[1] or "").strip()
+                if sid:
+                    send_id_to_plan.setdefault(sid, p)
                 for e in _all_emails(p[4]):
                     if any(d in e for d in _OUR_DOMAINS):
                         continue
@@ -325,7 +351,45 @@ def discover_replies(db: Session, lookback_days: int = 120, max_fetch: int = 400
                 ft = p[6]
                 if ft and (min_time is None or ft < min_time):
                     min_time = ft
-            if not email_to_plans or min_time is None:
+            if min_time is None:
+                continue
+
+            # ---- 主路径: 直读 spReceiveInfo{销售}.Message_ID 列 ----
+            # 接收端已把回信里的 <AIMAIL-{SendId}-{StaffId}-{邮箱}> 解析后写入该列。正则取 SendId 与本地 crm_send_id
+            # 精确匹配即可定位发出的那封 AI 邮件, 无需拉 .eml、不依赖发件人/主题, 最稳。
+            if send_id_to_plan and _crm_column_exists(crm, tbl, "Message_ID"):
+                amrows = crm.execute(text(
+                    f"SELECT RowId, Sender, Subject, ReceiveTime, EmailContent, PureText, Message_ID "
+                    f"FROM [{tbl}] WHERE MessageType='Email' AND ReceiveTime>=:mt "
+                    f"AND Message_ID LIKE '%AIMAIL-%' ORDER BY ReceiveTime DESC"
+                ), {"mt": min_time}).fetchall()
+                for c in amrows:
+                    reply_rowid = str(c[0])
+                    sid = extract_send_id_from_msgid_col(c[6])
+                    p = send_id_to_plan.get(sid) if sid else None
+                    if p is None or (str(p[0]), reply_rowid) in existing:
+                        continue
+                    candidates += 1
+                    body = (c[4] or c[5] or "")
+                    if isinstance(body, bytes):
+                        body = body.decode("utf-8", "replace")
+                    db.execute(text(
+                        "INSERT INTO mail_ai_reply_analysis "
+                        "(plan_id, crm_send_id, customer_id, staff_id, reply_crm_rowid, reply_sender, "
+                        " reply_subject, reply_body, reply_received_at, match_method, created_at) "
+                        "VALUES (:pid,:sid,:cid,:stf,:rid,:snd,:sub,:body,:rt,:mm, now()) "
+                        "ON CONFLICT (plan_id, reply_crm_rowid) DO NOTHING"
+                    ), {
+                        "pid": p[0], "sid": p[1], "cid": p[2], "stf": staff_id,
+                        "rid": reply_rowid, "snd": _extract_email(c[1] or ""),
+                        "sub": (c[2] or "")[:500], "body": body[:20000],
+                        "rt": c[3], "mm": "crm_message_id_col",
+                    })
+                    existing.add((str(p[0]), reply_rowid))
+                    matched += 1
+
+            # ---- 兜底路径: 老邮件(发送端未注入 AIMAIL Message-ID)按 发件人 + .eml/主题 串接 ----
+            if not email_to_plans:
                 continue
             emails = list(email_to_plans.keys())
             # 候选收信: 发件人含我方客户邮箱 且 收信晚于最早实发时间
