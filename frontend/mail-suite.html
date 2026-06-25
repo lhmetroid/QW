@@ -699,9 +699,9 @@
       const contactName = profile.crm_contact_name || profile.contact_name || '';
       document.getElementById('page-badge').textContent = `客户 ${maskCustomerId(data.customer_id)}`;
       document.getElementById('customer-grid').innerHTML = [
-        field('客户编号', maskCustomerId(data.customer_id)),
-        field('公司名称', maskCompanyName(profile.company_name)),
-        field('联系人', maskText(contactName, { keepStart: 1, keepEnd: 0 })),
+        field('客户编号', data.customer_id || ''),
+        field('公司名称', profile.company_name || ''),
+        field('联系人', contactName || ''),
         field('收件方式', '仅生成模板，不发邮件'),
         field('自动判断场景', `${profile.auto_scenario_label_cn || data.auto_scenario_label_cn || scenarioNameByValue(profile.auto_scenario || data.auto_scenario || data.scenario) || scenarioLabel(data)}`),
         field('判断依据', profile.auto_scenario_basis || data.auto_scenario_basis || `CRM 生命周期阶段=${data.customer_lifecycle_stage || '未识别'}`),
