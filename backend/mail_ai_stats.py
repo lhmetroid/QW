@@ -611,6 +611,20 @@ def query_daily(db: Session, start: date, end: date, staff_id: str | None) -> li
     } for r in rows]
 
 
+def query_daily_by_staff(db: Session, day: date) -> list[dict]:
+    """某一天 各销售(staff_id 非空) 的 5 指标, 按生成数降序。供"按销售单日统计"表格。"""
+    rows = db.execute(text(
+        "SELECT staff_id, generated_count, sent_count, reply_count, valuable_count, feedback_count, is_final "
+        "FROM mail_ai_daily_stats WHERE stat_date=:d AND staff_id<>'' "
+        "ORDER BY generated_count DESC, sent_count DESC, staff_id"
+    ), {"d": day}).fetchall()
+    return [{
+        "staff_id": r[0],
+        "generated_count": r[1], "sent_count": r[2], "reply_count": r[3],
+        "valuable_count": r[4], "feedback_count": r[5], "is_final": bool(r[6]),
+    } for r in rows]
+
+
 def list_staff(db: Session) -> list[str]:
     rows = db.execute(text(
         "SELECT DISTINCT inputer_staff_id FROM mail_customer_suite_send_plan "

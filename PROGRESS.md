@@ -1064,3 +1064,10 @@
 - ② 主页"全阶段脚本模板"下拉缺自建套装: backend _ensure_mail_sequence_templates 追加 custom_* 套装模板行; list_mail_sequence_templates 的 case_order/scenario_order 在固定4个后动态追加自建场景(取 grouped_by_case 实际分组), 前端按 scenario_label_cn 显示中文名, 可选中编辑。
 - ③ 自建套装第1封主题为空(显示 "-"): 新增套装表单每步只填 步骤名/间隔/AI指令, 无主题字段, 且 AI 指令多只写正文; 给 _make_generic_suite_strategy 的 subject_template_hints 补一条"必产出邮件主题"提示, LLM 自动生成主题(对已建套装重启后即时生效)。
 - 验证: py_compile + mail-suite 内联 JS 通过; 动态场景 subject_hints 已注入; 实库 custom_0904af93 模板字段确认(scenario_label_cn=翻译报价后跟进)。需重启后端生效。
+
+## 2026-06-25 13:30:00 邮件统计新增"按销售单日统计"表
+- 需求: 邮件统计页在按天总表之上新增一个按销售统计单日数据的表, 默认上一天, 可选日期刷新加载, 销售显示中文名, 列与功能(双击看明细)与下表一致。
+- 后端: mail_ai_stats.query_daily_by_staff(db, day) 取某天各 staff_id 的5指标; main.py 新增 GET /api/v1/mail/ai-stats/by-staff(day 默认昨天, refresh 可选) + _resolve_mail_staff_names(查 CRM usrStaff.StaffName 工号转中文名)。明细复用 /ai-stats/detail?staff_id=...。
+- 前端 index.html: 邮件统计面板按天总表上方插入"按销售单日统计"区块(日期默认上一天 + 查询/从CRM刷新 + 合计行 + 按销售行); loadMailAiStatsByStaff/renderMailAiStatsByStaff; openMailStatsDetail 增加可选 staffId(按销售双击优先用该销售, 否则回退顶部销售筛选); 切到 stats 子页时一并加载。
+- 验证: py_compile + index/mail-suite 内联JS + git diff --check 通过; 实库 2026-06-24 0017→韩瑾, 生成16/实发4/回信1。
+- 已知口径: 反馈数按现有统计不分销售(仅入全体), 故按销售行的反馈列恒为0; 其余4列(生成/实发/回信/有价值)按销售正常。

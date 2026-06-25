@@ -18559,6 +18559,77 @@ def get_mail_ai_stats_detail(
     }
 
 
+def _resolve_mail_staff_names(staff_ids: "list[str]") -> "dict[str, str]":
+    """销售工号 -> CRM 中文姓名(usrStaff.StaffName)。查不到的留空, 前端回退显示工号。"""
+    ids = sorted({(s or "").strip() for s in staff_ids if (s or "").strip()})
+    if not ids:
+        return {}
+    from crm_database import CRMSessionLocal
+    crm = CRMSessionLocal()
+    out: dict[str, str] = {}
+    try:
+        for i in range(0, len(ids), 200):
+            chunk = ids[i:i + 200]
+            params = {f"s{j}": v for j, v in enumerate(chunk)}
+            ph = ",".join(f":s{j}" for j in range(len(chunk)))
+            for row in crm.execute(text(
+                f"SELECT StaffId, ISNULL(CAST(StaffName AS NVARCHAR(120)),'') FROM usrStaff WHERE StaffId IN ({ph})"
+            ), params).fetchall():
+                out[str(row[0]).strip()] = sanitize_text(str(row[1] or "")).strip()
+    except Exception:
+        logger.warning("MAIL_STAFF_NAME_RESOLVE_FAILED", exc_info=True)
+    finally:
+        crm.close()
+    return out
+
+
+@app.get("/api/v1/mail/ai-stats/by-staff")
+def get_mail_ai_stats_by_staff(
+    day: str | None = Query(None),
+    refresh: int = Query(0),
+    db: Session = Depends(get_db),
+):
+    """某一天 各销售 的 5 指标(销售显示中文名)。默认昨天(北京时间)。
+
+    - refresh=1 时先从 CRM/FTP/deepseek 全量刷新再统计; 否则当天用本地缓存实时重算。
+    - 双击明细复用 /ai-stats/detail?staff_id=... 接口。
+    """
+    import mail_ai_stats as _stats
+    import datetime as _dt
+    today_bj = (_dt.datetime.utcnow() + _dt.timedelta(hours=8)).date()
+    day_d = _parse_stat_date(day, today_bj - _dt.timedelta(days=1))  # 默认上一天
+    refresh_result = None
+    try:
+        if refresh:
+            refresh_result = _stats.refresh_all(db, _mail_ai_stats_llm_call,
+                                                lookback_days=max(1, (today_bj - day_d).days + 1))
+        else:
+            _stats.compute_and_store_daily(db, day_d, day_d)
+    except Exception as exc:
+        logger.exception("MAIL_AI_STATS_BY_STAFF_COMPUTE_FAILED")
+        raise HTTPException(status_code=502, detail=f"统计计算失败: {sanitize_text(str(exc))[:200]}")
+    rows = _stats.query_daily_by_staff(db, day_d)
+    name_map = _resolve_mail_staff_names([r["staff_id"] for r in rows])
+    for r in rows:
+        r["staff_name"] = name_map.get(r["staff_id"], "") or r["staff_id"]
+    totals = {
+        "generated_count": sum(r["generated_count"] for r in rows),
+        "sent_count": sum(r["sent_count"] for r in rows),
+        "reply_count": sum(r["reply_count"] for r in rows),
+        "valuable_count": sum(r["valuable_count"] for r in rows),
+        "feedback_count": sum(r["feedback_count"] for r in rows),
+    }
+    return {
+        "version": "mail_ai_stats_by_staff.v1",
+        "day": day_d.isoformat(),
+        "is_final": (day_d < today_bj),
+        "rows": rows,
+        "totals": totals,
+        "refreshed": bool(refresh),
+        "refresh_result": refresh_result,
+    }
+
+
 @app.get("/api/v1/mail/demo-contacts")
 async def get_mail_demo_contacts(db: Session = Depends(get_db)):
     """返回当前邮件 AI 回复测试案例。
