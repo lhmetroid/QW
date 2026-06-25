@@ -527,7 +527,7 @@ def _bucket_counts(db: Session, start: date, end: date):
     def add(d, staff, key, n=1):
         if d is None or d < start or d > end:
             return
-        for s in (staff or "", ""):  # 同时累加到该销售和全体('')
+        for s in dict.fromkeys([(staff or ""), ""]):  # 该销售 + 全体(''); 去重避免 staff 为空时重复累加
             cell = agg.setdefault((d, s), {"generated": 0, "sent": 0, "reply": 0, "valuable": 0, "feedback": 0})
             cell[key] += n
 
@@ -551,14 +551,55 @@ def _bucket_counts(db: Session, start: date, end: date):
         add(d, (r[1] or "").strip(), "reply")
         if r[2]:
             add(d, (r[1] or "").strip(), "valuable")
-    # 反馈数: mail_customer_suite_feedback, 按 created_at(UTC->BJ)。销售维度无直接字段, 仅计入全体。
+    # 客户 -> 销售映射: 反馈表无销售字段, 按该客户在 send_plan 里计划数最多的 inputer_staff_id 归属。
+    cust_staff: dict[str, str] = {}
+    cust_staff_best: dict[str, int] = {}
     for r in db.execute(text(
-        "SELECT created_at FROM mail_customer_suite_feedback"
+        "SELECT customer_id, inputer_staff_id, count(*) AS n FROM mail_customer_suite_send_plan "
+        "WHERE status='enqueued' AND customer_id IS NOT NULL AND inputer_staff_id IS NOT NULL "
+        "AND inputer_staff_id<>'' GROUP BY customer_id, inputer_staff_id"
+    )).fetchall():
+        cid = (r[0] or "").strip()
+        sid = (r[1] or "").strip()
+        n = int(r[2] or 0)
+        if not cid or not sid:
+            continue
+        if n > cust_staff_best.get(cid, 0):
+            cust_staff_best[cid] = n
+            cust_staff[cid] = sid
+    # 反馈数: 按"客户对应销售"归属。范围内反馈先取 send_plan 映射; 未命中的(仅预览未转入CRM的客户)
+    # 再查 CRM usrCustomerContact.Owner 取客户联系人负责人(逗号分隔取第一个); 仍查不到才仅计全体。
+    fb_rows = []
+    for r in db.execute(text(
+        "SELECT created_at, customer_id FROM mail_customer_suite_feedback"
     )).fetchall():
         d = bj_date(r[0])
         if d is not None and start <= d <= end:
-            cell = agg.setdefault((d, ""), {"generated": 0, "sent": 0, "reply": 0, "valuable": 0, "feedback": 0})
-            cell["feedback"] += 1
+            fb_rows.append((d, (r[1] or "").strip()))
+    unmapped = sorted({cid for (_, cid) in fb_rows if cid and cid not in cust_staff})
+    if unmapped:
+        try:
+            from crm_database import CRMSessionLocal
+            crm = CRMSessionLocal()
+            try:
+                for i in range(0, len(unmapped), 200):
+                    chunk = unmapped[i:i + 200]
+                    params = {f"c{j}": v for j, v in enumerate(chunk)}
+                    ph = ",".join(f":c{j}" for j in range(len(chunk)))
+                    for row in crm.execute(text(
+                        f"SELECT ContactId, ISNULL(CAST(Owner AS NVARCHAR(200)),'') "
+                        f"FROM usrCustomerContact WHERE ContactId IN ({ph})"
+                    ), params).fetchall():
+                        cid = str(row[0]).strip()
+                        owner = str(row[1] or "").replace("，", ",").split(",")[0].strip()
+                        if cid and owner:
+                            cust_staff[cid] = owner
+            finally:
+                crm.close()
+        except Exception:
+            logger.warning("MAIL_FEEDBACK_OWNER_LOOKUP_FAILED", exc_info=True)
+    for (d, cid) in fb_rows:
+        add(d, cust_staff.get(cid, ""), "feedback")
     return agg
 
 

@@ -1071,3 +1071,11 @@
 - 前端 index.html: 邮件统计面板按天总表上方插入"按销售单日统计"区块(日期默认上一天 + 查询/从CRM刷新 + 合计行 + 按销售行); loadMailAiStatsByStaff/renderMailAiStatsByStaff; openMailStatsDetail 增加可选 staffId(按销售双击优先用该销售, 否则回退顶部销售筛选); 切到 stats 子页时一并加载。
 - 验证: py_compile + index/mail-suite 内联JS + git diff --check 通过; 实库 2026-06-24 0017→韩瑾, 生成16/实发4/回信1。
 - 已知口径: 反馈数按现有统计不分销售(仅入全体), 故按销售行的反馈列恒为0; 其余4列(生成/实发/回信/有价值)按销售正常。
+
+## 2026-06-25 14:00:00 反馈数按"客户对应销售"归属
+- 需求: 邮件统计反馈列按客户对应的销售记录(原仅计全体)。
+- 改 mail_ai_stats._bucket_counts:
+  - 建"客户->销售"映射: 优先 mail_customer_suite_send_plan(该客户计划数最多的 inputer_staff_id);
+  - 未命中的反馈客户(仅套装页预览未转入CRM)再查 CRM usrCustomerContact.Owner 取客户联系人负责人(逗号分隔取第一个), CRM 不可用则降级仅计全体;
+  - 反馈用 add(d, staff, "feedback") 同时计入该销售与全体; add() 改用 dict.fromkeys 去重, 修正 staff 为空时对全体重复累加的隐患。
+- 验证: 重算后 06-22=15(韩瑾5/王慧莹1/何珺1/0433_4/肖美鹏4)、06-24=3、06-25=4, 各天按销售合计均=全体; 全体反馈总数不变。需重启后端(查询会按新逻辑重算)。
