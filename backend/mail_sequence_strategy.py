@@ -1906,7 +1906,10 @@ def _make_generic_suite_strategy(
             step_key=f"{scenario}_step_{i}",
             objective=(step_labels or {}).get(i, f"第 {i} 封"),
             recommended_snippet_types=(),
-            subject_template_hints=(),
+            # 自建套装表单只填 AI 指令(多只写正文), 给一条主题提示让 LLM 必产出邮件主题, 避免主题为空显示 "-"。
+            subject_template_hints=(
+                f"为「{label_cn}」第 {i} 封（{(step_labels or {}).get(i, '')}）生成一个简洁、专业、与正文目标一致的邮件主题，不要留空。",
+            ),
             cta_style="",
             retrieval_filter_requirements=(
                 f"scenario 为 {scenario}，优先使用 ai_instruction_script 模板内容。",

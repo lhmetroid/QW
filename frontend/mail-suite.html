@@ -92,6 +92,40 @@
     }
     .suite-picker select:focus { border-color: var(--brand); outline: none; }
     .suite-picker select:disabled { background: #f1f5f9; cursor: progress; }
+    .model-picker {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      padding: 6px 8px;
+      border: 1px solid #ddd6fe;
+      border-radius: 8px;
+      background: #faf5ff;
+    }
+    .model-picker-label {
+      font-size: 12px;
+      font-weight: 800;
+      color: #5b21b6;
+    }
+    .model-picker select {
+      border: 1px solid #c4b5fd;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      background: #fff;
+      color: #312e81;
+      cursor: pointer;
+      max-width: 190px;
+    }
+    .model-picker select:focus { border-color: #7c3aed; outline: none; }
+    .model-status {
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+    }
+    .model-status.error { color: #be123c; }
     .send-box {
       display: flex;
       align-items: center;
@@ -209,6 +243,39 @@
     .meta-line {
       color: var(--muted);
       font-size: 12px;
+    }
+    .summary-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .mini-btn {
+      padding: 5px 9px;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .prompt-panel {
+      margin: 12px 0;
+      border: 1px solid #c7d2fe;
+      border-radius: 6px;
+      background: #eef2ff;
+      overflow: hidden;
+    }
+    .prompt-panel-title {
+      padding: 8px 10px;
+      border-bottom: 1px solid #c7d2fe;
+      color: #312e81;
+      font-weight: 800;
+      font-size: 12px;
+    }
+    .prompt-panel pre {
+      max-height: 360px;
+      overflow: auto;
+      padding: 10px;
+      background: #0f172a;
+      color: #e5e7eb;
     }
     .mail-body {
       padding: 14px;
@@ -439,6 +506,15 @@
           <option value="">自动判断中…</option>
         </select>
       </label>
+      <label class="model-picker" title="保存后本页和邮件质量诊断页共用同一个邮件生成模型配置。">
+        <span class="model-picker-label">生成邮件模型</span>
+        <select id="mail-generation-model-select" onchange="saveMailGenerationModel(this.value)">
+          <option value="deepseek-v4-flash">deepseek-v4-flash（默认）</option>
+          <option value="deepseek-v4-pro">deepseek-v4-pro</option>
+          <option value="chatgpt">chatgpt</option>
+        </select>
+        <span id="mail-generation-model-status" class="model-status">未加载</span>
+      </label>
       <label class="recipients-box">
         <span class="recipients-label">客户邮箱</span>
         <input type="text" id="recipient-emails" placeholder="加载中…" onblur="saveRecipientEmails()">
@@ -473,6 +549,7 @@
   <script>
     let suiteData = null;
     let currentId = '';
+    let mailDraftLlmRuntimeConfig = null;
     // 已生成套装缓存: scenario -> 接口返回数据. 计算过的场景直接读取,不再重新调大模型.
     const suiteCache = {};
     // 套装场景列表从后端动态加载，新增场景只需改后端，前端自动跟上
@@ -518,12 +595,75 @@
       if (spinner) spinner.style.display = error || text.includes('完成') || text.includes('已读取') ? 'none' : 'inline-block';
     }
 
+    function syncMailGenerationModelSelector() {
+      const cfg = mailDraftLlmRuntimeConfig || {};
+      const activeModel = cfg.active_model || 'deepseek-v4-flash';
+      const select = document.getElementById('mail-generation-model-select');
+      const status = document.getElementById('mail-generation-model-status');
+      if (select) select.value = activeModel;
+      if (status) {
+        const text = cfg.status_text || (cfg.active_model ? `当前 ${activeModel}` : '未加载');
+        status.textContent = text;
+        status.className = `model-status${String(text).includes('失败') ? ' error' : ''}`;
+      }
+    }
+
+    async function loadMailDraftLlmRuntimeConfig() {
+      try {
+        mailDraftLlmRuntimeConfig = { status_text: '读取中...' };
+        syncMailGenerationModelSelector();
+        const resp = await fetch('/api/v1/mail/draft-llm-config', { credentials: 'include' });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+        mailDraftLlmRuntimeConfig = data;
+      } catch (err) {
+        mailDraftLlmRuntimeConfig = { active_model: 'deepseek-v4-flash', status_text: `读取失败：${err.message}` };
+      }
+      syncMailGenerationModelSelector();
+    }
+
+    async function saveMailGenerationModel(model) {
+      const modelKey = model || 'deepseek-v4-flash';
+      const select = document.getElementById('mail-generation-model-select');
+      if (select) select.disabled = true;
+      mailDraftLlmRuntimeConfig = { ...(mailDraftLlmRuntimeConfig || {}), active_model: modelKey, status_text: `保存中 ${modelKey}...` };
+      syncMailGenerationModelSelector();
+      try {
+        const resp = await fetch('/api/v1/mail/draft-llm-config', {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: modelKey }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+        mailDraftLlmRuntimeConfig = { ...data, status_text: `已保存 ${data.active_model || modelKey}` };
+        Object.keys(suiteCache).forEach((key) => delete suiteCache[key]);
+        if (currentId) setStatus(`已保存生成邮件模型：${data.active_model || modelKey}，请重新生成或切换套装刷新草稿`);
+      } catch (err) {
+        mailDraftLlmRuntimeConfig = { ...(mailDraftLlmRuntimeConfig || {}), active_model: modelKey, status_text: `保存失败：${err.message}` };
+      } finally {
+        if (select) select.disabled = false;
+        syncMailGenerationModelSelector();
+      }
+    }
     function field(label, value) {
       return `<div class="kv"><b>${esc(label)}</b><span>${esc(value)}</span></div>`;
     }
 
+    // 把场景 value(可能是 custom_xxx 代码)映射成下拉里的中文名
+    function scenarioNameByValue(v) {
+      if (!v) return '';
+      const hit = (SUITE_SCENARIOS || []).find(s => s.value === v);
+      return hit ? hit.label : v;
+    }
     function scenarioLabel(data) {
-      return data.scenario_label_cn || data.scenario_label || data.scenario || '';
+      if (!data) return '';
+      if (data.scenario_label_cn) return data.scenario_label_cn;
+      // 自建套装后端把 scenario_label 设成了代码本身, 统一用下拉中文名映射, 避免页面显示 custom_xxx
+      const mapped = scenarioNameByValue(data.scenario || '');
+      if (mapped && mapped !== data.scenario) return mapped;
+      return data.scenario_label || data.scenario || '';
     }
 
     function maskText(value, options = {}) {
@@ -563,8 +703,8 @@
         field('公司名称', maskCompanyName(profile.company_name)),
         field('联系人', maskText(contactName, { keepStart: 1, keepEnd: 0 })),
         field('收件方式', '仅生成模板，不发邮件'),
-        field('自动判断场景', `${scenarioLabel(data)} (${data.scenario})`),
-        field('判断依据', data.scenario_basis || `CRM 生命周期阶段=${data.customer_lifecycle_stage || '未识别'}`),
+        field('自动判断场景', `${profile.auto_scenario_label_cn || data.auto_scenario_label_cn || scenarioNameByValue(profile.auto_scenario || data.auto_scenario || data.scenario) || scenarioLabel(data)}`),
+        field('判断依据', profile.auto_scenario_basis || data.auto_scenario_basis || `CRM 生命周期阶段=${data.customer_lifecycle_stage || '未识别'}`),
       ].join('');
       document.getElementById('customer-panel').hidden = false;
     }
@@ -598,7 +738,11 @@
                   <div class="meta-line">生成失败 · ${esc(item.step_label_cn)}</div>
                 </div>
               </div>
-              <div class="meta-line">默认展开</div>
+              <div class="summary-actions" onclick="event.stopPropagation()">
+              <button type="button" class="mini-btn" onclick="regenerateDraft(${esc(item.suite_step)}, this)">重刷</button>
+              <button type="button" class="mini-btn" onclick="togglePrompt(${esc(item.suite_step)})">脚本</button>
+              <span class="meta-line">默认展开</span>
+            </div>
             </summary>
             <div class="mail-body">
               <div class="status error">这封草稿没有生成成功：${esc(item.error || '未知错误')}</div>
@@ -617,7 +761,11 @@
               ${checkboxHtml}
               <div class="step-title">第 ${esc(item.suite_step)} 封 · ${esc(scenarioLabel(data))}</div>
             </div>
-            <div class="meta-line">默认展开</div>
+            <div class="summary-actions" onclick="event.stopPropagation()">
+              <button type="button" class="mini-btn" onclick="regenerateDraft(${esc(item.suite_step)}, this)">重刷</button>
+              <button type="button" class="mini-btn" onclick="togglePrompt(${esc(item.suite_step)})">脚本</button>
+              <span class="meta-line">默认展开</span>
+            </div>
           </summary>
           <div class="mail-body">
             <div class="field-label">邮件主题</div>
@@ -677,6 +825,10 @@
               <button type="button" title="清除格式" onmousedown="rteCmd(event,'removeFormat')">清除格式</button>
             </div>
             <div id="body-${esc(item.suite_step)}" class="body-html rte" contenteditable="true" onblur="saveDraftField(${esc(item.suite_step)})">${draft.final_body_html || ''}</div>
+            <div id="prompt-panel-${esc(item.suite_step)}" class="prompt-panel" hidden>
+              <div class="prompt-panel-title">真实大模型 prompt（<span id="prompt-count-${esc(item.suite_step)}">0</span> 字符）</div>
+              <pre id="prompt-text-${esc(item.suite_step)}"></pre>
+            </div>
             <div class="send-config">
               <div class="field-label">发送间隔</div>
               <div class="send-config-row">
@@ -826,6 +978,83 @@
       }
     }
 
+    function getDraftItem(step) {
+      return (suiteData && suiteData.drafts || []).find(x => Number(x.suite_step) === Number(step));
+    }
+
+    function promptTextForStep(step) {
+      const item = getDraftItem(step);
+      const draft = item && item.draft || {};
+      return String(draft.llm_prompt || '').trim();
+    }
+
+    function syncPromptPanel(step) {
+      const panel = document.getElementById(`prompt-panel-${step}`);
+      const textEl = document.getElementById(`prompt-text-${step}`);
+      const countEl = document.getElementById(`prompt-count-${step}`);
+      if (!panel || !textEl || !countEl) return;
+      const promptText = promptTextForStep(step);
+      const displayText = promptText || '这封历史保存稿没有记录当时真实 prompt；请点“重刷”重新运行一次 LLM，系统会保存这次真实发给大模型的完整 prompt。';
+      textEl.textContent = displayText;
+      countEl.textContent = String(promptText.length);
+    }
+
+    function togglePrompt(step) {
+      const panel = document.getElementById(`prompt-panel-${step}`);
+      if (!panel) return;
+      syncPromptPanel(step);
+      panel.hidden = !panel.hidden;
+    }
+
+    function applyDraftItemToDom(item) {
+      if (!item || !item.draft) return;
+      const step = Number(item.suite_step);
+      const draft = item.draft || {};
+      const subjectEl = document.getElementById(`subject-${step}`);
+      const bodyEl = document.getElementById(`body-${step}`);
+      const intervalEl = document.getElementById(`interval-${step}`);
+      const timeEl = document.getElementById(`sendtime-${step}`);
+      if (subjectEl) subjectEl.value = draft.final_subject || '';
+      if (bodyEl) bodyEl.innerHTML = draft.final_body_html || '';
+      if (item.send_settings) {
+        if (intervalEl) intervalEl.value = item.send_settings.send_interval_days ?? item.send_settings.default_send_interval_days ?? 0;
+        if (timeEl) timeEl.value = item.send_settings.send_time || item.send_settings.default_send_time || '09:00';
+      }
+      syncPromptPanel(step);
+      updateSendDatePreview(step);
+    }
+
+    async function regenerateDraft(step, btn) {
+      const item = getDraftItem(step);
+      const status = document.getElementById(`draft-status-${step}`);
+      if (!suiteData || !item) return;
+      const oldText = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = '重刷中'; }
+      if (status) { status.textContent = '正在重新运行 LLM，会覆盖这封已保存的标题和正文...'; status.className = 'feedback-status'; }
+      try {
+        const resp = await fetch('/api/v1/mail/customer-suite-draft/regenerate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_id: suiteData.customer_id,
+            scenario: suiteData.scenario,
+            suite_step: Number(step),
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+        const nextItem = data.item;
+        if (!nextItem || !nextItem.draft) throw new Error('后端未返回新草稿');
+        const idx = (suiteData.drafts || []).findIndex(x => Number(x.suite_step) === Number(step));
+        if (idx >= 0) suiteData.drafts[idx] = nextItem;
+        applyDraftItemToDom(nextItem);
+        if (status) { status.textContent = '已重刷并覆盖保存'; status.className = 'feedback-status ok'; }
+      } catch (err) {
+        if (status) { status.textContent = `重刷失败：${err.message}`; status.className = 'feedback-status err'; }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = oldText || '重刷'; }
+      }
+    }
     async function saveInclude(step) {
       const cb = document.getElementById(`include-${step}`);
       const included = cb ? cb.checked : true;
@@ -1071,6 +1300,7 @@
         return;
       }
       currentId = id;
+      await loadMailDraftLlmRuntimeConfig();
       await loadSuiteScenarios();
       buildSuitePicker();
       document.getElementById('page-badge').textContent = `客户 ${id}`;

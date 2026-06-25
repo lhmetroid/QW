@@ -1058,3 +1058,9 @@
   - mail_sequence_strategy.py: 新增惰性加载钩子 set_dynamic_scenario_loader/_ensure_dynamic_loaded; get_mail_sequence_strategy / get_dynamic_scenario_step_count / get_mail_sequence_step_interval 在 miss 时按需从 DB 注册; get_mail_sequence_step_interval 支持自建场景(返回通用区间 _dynamic_step_interval, 实际节奏仍以套装保存的 send_interval_days 为准)。
   - main.py: 新增 _load_single_custom_suite_from_db(按 scenario 从 MailCustomSuite+MailSequenceTemplate 注册), 启动时 set_dynamic_scenario_loader 注入。
 - 验证: 实库 custom_5dcb9341/custom_0904af93 存在且模板齐全; 惰性加载→get_mail_sequence_step/interval 正常; 标准场景与未知场景回归正常。需重启后端生效; 重启后任意进程(含独立页)解析自建场景都会按需从 DB 注册, 不再 unsupported。
+
+## 2026-06-25 12:50:00 自建套装3个体验问题修复(显示名/下拉联动/主题)
+- ① 独立页显示代码而非名称: frontend/mail-suite.html 新增 scenarioNameByValue 用后端下拉(suite-scenario-options)把 custom_xxx 映射成中文名; scenarioLabel 优先中文名; "自动判断场景"去掉括号里的代码, 只显示名称。
+- ② 主页"全阶段脚本模板"下拉缺自建套装: backend _ensure_mail_sequence_templates 追加 custom_* 套装模板行; list_mail_sequence_templates 的 case_order/scenario_order 在固定4个后动态追加自建场景(取 grouped_by_case 实际分组), 前端按 scenario_label_cn 显示中文名, 可选中编辑。
+- ③ 自建套装第1封主题为空(显示 "-"): 新增套装表单每步只填 步骤名/间隔/AI指令, 无主题字段, 且 AI 指令多只写正文; 给 _make_generic_suite_strategy 的 subject_template_hints 补一条"必产出邮件主题"提示, LLM 自动生成主题(对已建套装重启后即时生效)。
+- 验证: py_compile + mail-suite 内联 JS 通过; 动态场景 subject_hints 已注入; 实库 custom_0904af93 模板字段确认(scenario_label_cn=翻译报价后跟进)。需重启后端生效。

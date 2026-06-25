@@ -7220,6 +7220,17 @@ def _ensure_mail_sequence_templates(db: Session) -> list[Any]:
                 row.updated_by = f"system_default_shared_v{target_version}"
                 row.updated_at = datetime.utcnow()
             rows.append(row)
+    # 自建套装(custom_*): 用户新建的套装模板也纳入, 供主页"全阶段脚本模板"下拉显示并可编辑保存。
+    try:
+        custom_scenarios = [r.scenario for r in db.query(MailCustomSuite).all() if (r.scenario or "").strip()]
+        for cs in custom_scenarios:
+            crows = db.query(MailSequenceTemplate).filter(
+                MailSequenceTemplate.customer_key == "",
+                MailSequenceTemplate.scenario == cs,
+            ).order_by(MailSequenceTemplate.suite_step).all()
+            rows.extend(crows)
+    except Exception:
+        logger.warning("MAIL_CUSTOM_SUITE_TEMPLATE_INCLUDE_FAILED", exc_info=True)
     db.commit()
     return rows
 
@@ -16900,16 +16911,20 @@ def list_mail_sequence_templates(db: Session = Depends(get_db)):
     grouped: dict[str, list[dict[str, Any]]] = {}
     for item in serialized_rows:
         grouped.setdefault(item["scenario"], []).append(item)
+    # 基础 4 个固定场景在前, 用户自建套装(custom_*)按出现顺序追加, 让主页下拉也能选中并编辑。
+    _base_case_order = ["new_business_promotion", "re_activation", "new_contact_intro", _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO]
+    _extra_case_order = [k for k in grouped_by_case.keys() if k not in _base_case_order]
+    _full_case_order = _base_case_order + sorted(_extra_case_order)
     return {
         "version": "mail_sequence_template.v1",
         "source": "mail_sequence_template",
         "read_only": False,
         "real_sending_enabled": False,
-        "scenario_order": ["new_business_promotion", "re_activation", "new_contact_intro", _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO],
+        "scenario_order": _full_case_order,
         "count": len(serialized_rows),
         "templates": grouped,
         "templates_by_case": grouped_by_case,
-        "case_order": ["new_business_promotion", "re_activation", "new_contact_intro", _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO],
+        "case_order": _full_case_order,
         "degraded": bool(degraded_error),
         "degraded_reason": degraded_error,
         "requirements_cn": [
