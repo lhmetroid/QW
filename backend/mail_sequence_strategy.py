@@ -814,6 +814,14 @@ def get_mail_sequence_step_interval(
     try:
         scenario_enum = MailScenario(scenario)
     except ValueError as exc:
+        # 自建套装: 不在固定枚举内。按需从 DB 加载注册后, 给通用发送区间(实际节奏以套装保存的发送间隔为准)。
+        scenario_str = str(scenario)
+        _ensure_dynamic_loaded(scenario_str)
+        strat = _DYNAMIC_REGISTRY.get(scenario_str)
+        if strat is not None:
+            if 1 <= int(suite_step) <= len(strat.steps):
+                return _dynamic_step_interval(scenario_str, int(suite_step))
+            raise ValueError(f"unsupported suite_step for {scenario_str}: {suite_step}") from exc
         raise ValueError(f"unsupported mail sequence scenario: {scenario}") from exc
 
     try:
@@ -1839,6 +1847,49 @@ _STRATEGY_REGISTRY: dict[str, MailSequenceStrategy] = {
 # 用户从界面新建的套装，运行时动态注册，重启后从 DB 重新加载
 _DYNAMIC_REGISTRY: dict[str, MailSequenceStrategy] = {}
 
+# 惰性加载钩子: 某自建场景不在本进程内存注册表时, 由宿主(main.py)按需从 DB 注册进来。
+# 解决多 worker 进程间"创建套装的进程注册了、生成草稿的进程没注册"导致 unsupported scenario 的不同步问题。
+_DYNAMIC_LOADER = None  # Callable[[str], bool] | None
+
+
+def set_dynamic_scenario_loader(loader) -> None:
+    """注入自建场景按需 DB 加载器。loader(scenario)->bool, 命中即注册进 _DYNAMIC_REGISTRY 并返回 True。"""
+    global _DYNAMIC_LOADER
+    _DYNAMIC_LOADER = loader
+
+
+def _ensure_dynamic_loaded(scenario: str) -> None:
+    """若该自建场景未在本进程注册, 调用宿主加载器按需从 DB 拉取注册。"""
+    if scenario in _DYNAMIC_REGISTRY or scenario in _STRATEGY_REGISTRY:
+        return
+    loader = _DYNAMIC_LOADER
+    if loader is None:
+        return
+    try:
+        loader(scenario)
+    except Exception:
+        pass
+
+
+# 自建套装的通用发送区间(实际节奏以套装保存的 send_interval_days / 模板 send_timing 为准, 此处仅给 prompt 上下文兜底)
+_DYNAMIC_DEFAULT_CUMULATIVE_DAYS = {1: 0, 2: 7, 3: 17, 4: 27}
+
+
+def _dynamic_step_interval(scenario: str, suite_step: int) -> "MailSequenceStepInterval":
+    cum = _DYNAMIC_DEFAULT_CUMULATIVE_DAYS.get(suite_step, max(0, (suite_step - 1) * 10))
+    prev = _DYNAMIC_DEFAULT_CUMULATIVE_DAYS.get(suite_step - 1, max(0, (suite_step - 2) * 10)) if suite_step > 1 else 0
+    return MailSequenceStepInterval(
+        scenario=scenario,
+        suite_step=suite_step,
+        trigger_anchor="sequence_start" if suite_step == 1 else "previous_step_sent",
+        delay_days=max(0, cum - prev),
+        cumulative_min_days_from_sequence_start=cum,
+        default_status_to_create="draft_ready",
+        generation_policy="generate_on_demand",
+        interrupt_before_generation=False,
+        notes=("用户自建套装通用区间, 实际发送节奏以套装保存的发送间隔为准。",),
+    )
+
 
 def _make_generic_suite_strategy(
     scenario: str,
@@ -1889,6 +1940,8 @@ def register_dynamic_scenario(
 
 
 def get_dynamic_scenario_step_count(scenario: str) -> int | None:
+    if scenario not in _DYNAMIC_REGISTRY:
+        _ensure_dynamic_loaded(scenario)
     strat = _DYNAMIC_REGISTRY.get(scenario)
     if strat is None:
         return None
@@ -1910,6 +1963,8 @@ def get_new_contact_intro_sequence() -> MailSequenceStrategy:
 def get_mail_sequence_strategy(scenario: str) -> MailSequenceStrategy:
     if scenario in _STRATEGY_REGISTRY:
         return _STRATEGY_REGISTRY[scenario]
+    if scenario not in _DYNAMIC_REGISTRY:
+        _ensure_dynamic_loaded(scenario)
     if scenario in _DYNAMIC_REGISTRY:
         return _DYNAMIC_REGISTRY[scenario]
     raise ValueError(f"unsupported mail sequence scenario: {scenario}")

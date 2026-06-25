@@ -313,7 +313,7 @@ def _safe_next_url(value: str | None) -> str:
 def _frontend_path_requires_auth(path: str) -> bool:
     if not settings.FRONTEND_AUTH_ENABLED:
         return False
-    if path in {"/static/login.html", "/static/agent_builder.html", "/static/mail-suite.html"}:
+    if path in {"/static/login.html", "/static/agent_builder.html", "/static/mail-suite.html", "/static/kb.html"}:
         return False
     if path == "/static/index.html":
         return True
@@ -751,6 +751,7 @@ def auto_patch_db():
             "mail_uid VARCHAR(120),"
             "subject VARCHAR(500),"
             "body_html TEXT,"
+            "llm_prompt TEXT,"
             "send_interval_days INTEGER,"
             "send_time VARCHAR(10),"
             "included BOOLEAN NOT NULL DEFAULT true,"
@@ -759,6 +760,7 @@ def auto_patch_db():
             "CONSTRAINT uq_mcsde_customer_scenario_step UNIQUE(customer_id, scenario, suite_step)"
             ");"
         ))
+        db.execute(text("ALTER TABLE mail_customer_suite_draft_edit ADD COLUMN IF NOT EXISTS llm_prompt TEXT;"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS mail_customer_suite_recipient ("
             "recipient_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -1083,8 +1085,10 @@ async def startup_event():
     ArchiveService.register_new_message_hook(SIDEBAR_BROKER.on_new_messages)
     logger.info("侧边栏 SSE 推送总线已就绪。")
 
-    # 加载用户自定义套装到策略注册表
+    # 加载用户自定义套装到策略注册表; 并注入惰性 DB 加载器(多进程按需同步, 避免 unsupported scenario)
     try:
+        import mail_sequence_strategy as _mss
+        _mss.set_dynamic_scenario_loader(_load_single_custom_suite_from_db)
         _startup_db = SessionLocal()
         _load_custom_suites_into_registry(_startup_db)
         _startup_db.close()
@@ -1479,6 +1483,7 @@ class MailGenerateDraftResponse(BaseModel):
     llm_status: str = "fallback_template"
     llm_model_used: str | None = None
     llm_error: str | None = None
+    llm_prompt: str | None = None
     review_metadata: MailGenerateDraftReviewMetadata = MailGenerateDraftReviewMetadata()
 
     def model_post_init(self, __context: Any) -> None:
@@ -1601,6 +1606,7 @@ class RuntimeLlmSettings(BaseModel):
     wecom_temperature: float | None = None
     mail_system_prompt: str | None = None
     mail_temperature: float | None = None
+    mail_generation_model: str | None = None
 
     class Config:
         extra = "forbid"
@@ -1647,10 +1653,19 @@ class MailCustomerSuiteDraftEditRequest(BaseModel):
     send_interval_days: int | None = None
     send_time: str | None = None
     included: bool | None = None
+    llm_prompt: str | None = None
 
     class Config:
         extra = "forbid"
 
+
+class MailCustomerSuiteDraftRegenerateRequest(BaseModel):
+    customer_id: str
+    scenario: str
+    suite_step: int
+
+    class Config:
+        extra = "forbid"
 
 class MailCustomerSuiteRecipientRequest(BaseModel):
     customer_id: str
@@ -6133,6 +6148,39 @@ def _load_custom_suites_into_registry(db) -> None:
             pass
         register_dynamic_scenario(row.scenario, row.label_cn, row.step_count, step_labels)
 
+
+def _load_single_custom_suite_from_db(scenario: str) -> bool:
+    """按需把单个自建套装从 DB 注册进本进程运行时缓存。
+
+    供 mail_sequence_strategy 的惰性加载钩子调用: 任何 worker 进程解析到没见过的 custom_* 场景时,
+    直接从 DB 读取注册, 解决"创建套装的进程注册了、生成草稿的进程没注册"的多进程不同步问题。
+    """
+    scenario = (scenario or "").strip()
+    if not scenario.startswith("custom_"):
+        return False
+    from mail_sequence_strategy import register_dynamic_scenario
+    db = SessionLocal()
+    try:
+        row = db.query(MailCustomSuite).filter(MailCustomSuite.scenario == scenario).first()
+        if row is None:
+            return False
+        step_labels: dict[int, str] = {}
+        for t in db.query(MailSequenceTemplate).filter(
+            MailSequenceTemplate.scenario == scenario,
+        ).all():
+            lbl = (t.step_label_cn or "").strip()
+            if lbl:
+                step_labels[int(t.suite_step)] = lbl
+                _DYNAMIC_STEP_LABELS[(scenario, int(t.suite_step))] = lbl
+        _DYNAMIC_SCENARIO_CHINESE[scenario] = row.label_cn
+        register_dynamic_scenario(scenario, row.label_cn, row.step_count, step_labels)
+        return True
+    except Exception:
+        logger.warning("MAIL_CUSTOM_SUITE_LAZYLOAD_FAILED scenario=%s", scenario, exc_info=True)
+        return False
+    finally:
+        db.close()
+
 # "印刷报价后跟进"独立模板: 不绑定案例联系人, 用固定 customer_key 单独成组, 内容人工填写。
 _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO = "print_quote_followup"
 _MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY = "PRINT-QUOTE-FOLLOWUP"
@@ -6874,12 +6922,8 @@ def _mail_sequence_template_case_label(customer_key: str | None) -> str:
 
 
 def _mail_sequence_template_customer_key_for_scenario(scenario: str) -> str:
-    scenario_norm = sanitize_text(scenario).strip()
-    for current_case in MAIL_CURRENT_DEMO_CASES:
-        if current_case.get("default_scenario") == scenario_norm:
-            return sanitize_text(current_case.get("real_customer_key")).strip().upper()
+    # 套装脚本按“下拉场景 + 第几封”共享保存；不再按当前客户或案例客户号读取专属脚本。
     return ""
-
 
 def _default_mail_sequence_template_payload(
     scenario: str,
@@ -6892,8 +6936,6 @@ def _default_mail_sequence_template_payload(
     purpose = _MAIL_CTA_CN_BY_STEP.get((scenario, suite_step)) or sanitize_text(getattr(step, "objective", "")) or "按当前场景推进客户沟通。"
     version_no = _mail_sequence_template_default_version(scenario, suite_step)
     normalized_customer_key = sanitize_text(customer_key or "").strip().upper()
-    if not normalized_customer_key:
-        normalized_customer_key = _mail_sequence_template_customer_key_for_scenario(scenario)
     return {
         "customer_key": normalized_customer_key,
         "scenario": scenario,
@@ -6935,18 +6977,23 @@ def _mail_brand_display_text(value: str | None) -> str:
 
 
 def _serialize_mail_sequence_template(row) -> dict[str, Any]:
+    customer_key = sanitize_text(getattr(row, "customer_key", "") or "").strip().upper()
+    scenario = sanitize_text(getattr(row, "scenario", "") or "").strip()
+    scenario_label_cn = _get_scenario_label_cn(scenario) or getattr(row, "scenario_label_cn", None) or scenario
+    template_group_key = customer_key or scenario
     send_interval_days = _mail_sequence_template_send_interval_days(
         getattr(row, "send_timing_cn", None),
-        getattr(row, "scenario", ""),
+        scenario,
         int(getattr(row, "suite_step", 1) or 1),
     )
     return {
         "template_id": str(row.template_id) if getattr(row, "template_id", None) else None,
-        "customer_key": sanitize_text(getattr(row, "customer_key", "") or ""),
-        "case_label": _mail_sequence_template_case_label(getattr(row, "customer_key", "") or ""),
-        "scenario": row.scenario,
+        "customer_key": customer_key,
+        "template_group_key": template_group_key,
+        "case_label": _mail_sequence_template_case_label(customer_key) if customer_key else scenario_label_cn,
+        "scenario": scenario,
         "suite_step": row.suite_step,
-        "scenario_label_cn": row.scenario_label_cn,
+        "scenario_label_cn": scenario_label_cn,
         "step_label_cn": row.step_label_cn,
         "purpose_cn": row.purpose_cn,
         "send_timing_cn": row.send_timing_cn,
@@ -7008,6 +7055,7 @@ def _serialize_mail_customer_suite_draft_edit(row) -> dict[str, Any]:
         "mail_uid": row.mail_uid,
         "subject": row.subject,
         "body_html": row.body_html,
+        "llm_prompt": row.llm_prompt,
         "send_interval_days": row.send_interval_days,
         "send_time": row.send_time,
         "included": bool(row.included),
@@ -7067,19 +7115,19 @@ def _ensure_mail_sequence_template_schema(db: Session) -> None:
 def _blank_mail_sequence_templates_by_case() -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     rows: list[dict[str, Any]] = []
     grouped_by_case: dict[str, dict[str, Any]] = {}
-    for current_case in MAIL_CURRENT_DEMO_CASES:
-        customer_key = current_case["real_customer_key"]
-        scenario = current_case["default_scenario"]
+    scenarios = [case["default_scenario"] for case in MAIL_CURRENT_DEMO_CASES] + [_MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO]
+    for scenario in scenarios:
         for suite_step in ALL_MAIL_SEQUENCE_STEPS:
             defaults = _default_mail_sequence_template_payload(
                 scenario,
                 int(suite_step),
-                customer_key=customer_key,
+                customer_key="",
             )
             item = {
                 "template_id": None,
-                "customer_key": customer_key,
-                "case_label": _mail_sequence_template_case_label(customer_key),
+                "customer_key": "",
+                "template_group_key": scenario,
+                "case_label": defaults["scenario_label_cn"],
                 "scenario": scenario,
                 "suite_step": int(suite_step),
                 "scenario_label_cn": defaults["scenario_label_cn"],
@@ -7098,49 +7146,14 @@ def _blank_mail_sequence_templates_by_case() -> tuple[list[dict[str, Any]], dict
                 "updated_at": None,
             }
             rows.append(item)
-            grouped_by_case.setdefault(customer_key, {
-                "customer_key": customer_key,
+            grouped_by_case.setdefault(scenario, {
+                "customer_key": "",
+                "template_group_key": scenario,
                 "case_label": item["case_label"],
                 "scenario": scenario,
                 "scenario_label_cn": item["scenario_label_cn"],
                 "templates": [],
             })["templates"].append(item)
-
-    # 独立"印刷报价后跟进"模板空行(degraded 兜底, 保持下拉与正常路径一致)
-    print_scenario = _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO
-    print_key = _MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY
-    for suite_step in ALL_MAIL_SEQUENCE_STEPS:
-        suite_step = int(suite_step)
-        defaults = _default_mail_sequence_template_payload(print_scenario, suite_step, customer_key=print_key)
-        item = {
-            "template_id": None,
-            "customer_key": print_key,
-            "case_label": _mail_sequence_template_case_label(print_key),
-            "scenario": print_scenario,
-            "suite_step": suite_step,
-            "scenario_label_cn": defaults["scenario_label_cn"],
-            "step_label_cn": defaults["step_label_cn"],
-            "purpose_cn": defaults["purpose_cn"],
-            "send_timing_cn": str(_mail_sequence_default_send_interval_days(print_scenario, suite_step)),
-            "send_interval_days": _mail_sequence_default_send_interval_days(print_scenario, suite_step),
-            "send_interval_help": "距今天多少天后发送",
-            "variable_notes": {},
-            "script_template": "",
-            "ai_instruction_script": "",
-            "version_no": 0,
-            "is_active": True,
-            "updated_by": None,
-            "created_at": None,
-            "updated_at": None,
-        }
-        rows.append(item)
-        grouped_by_case.setdefault(print_key, {
-            "customer_key": print_key,
-            "case_label": item["case_label"],
-            "scenario": print_scenario,
-            "scenario_label_cn": item["scenario_label_cn"],
-            "templates": [],
-        })["templates"].append(item)
     return rows, grouped_by_case
 
 
@@ -7150,29 +7163,52 @@ def _ensure_mail_sequence_templates(db: Session) -> list[Any]:
     _ensure_mail_sequence_template_schema(db)
     rows = []
     strategy_by_scenario = {strategy["scenario"]: strategy for strategy in list_mail_sequence_strategies()}
-    current_case_templates = [
-        (case["real_customer_key"], case["default_scenario"])
+    legacy_customer_key_by_scenario = {
+        sanitize_text(case.get("default_scenario")).strip(): sanitize_text(case.get("real_customer_key")).strip().upper()
         for case in MAIL_CURRENT_DEMO_CASES
-    ]
-    for customer_key, scenario in current_case_templates:
+    }
+    legacy_customer_key_by_scenario[_MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO] = _MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY
+    scenarios = [case["default_scenario"] for case in MAIL_CURRENT_DEMO_CASES] + [_MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO]
+    for scenario in scenarios:
         strategy = strategy_by_scenario.get(scenario)
-        if not strategy:
-            continue
-        for step in strategy.get("steps") or []:
-            suite_step = int(step["suite_step"])
+        step_values = [int(step["suite_step"]) for step in (strategy.get("steps") or [])] if strategy else list(ALL_MAIL_SEQUENCE_STEPS)
+        for suite_step in step_values:
+            legacy_key = legacy_customer_key_by_scenario.get(scenario) or ""
+            legacy_row = None
+            if legacy_key:
+                legacy_row = db.query(MailSequenceTemplate).filter(
+                    MailSequenceTemplate.customer_key == legacy_key,
+                    MailSequenceTemplate.scenario == scenario,
+                    MailSequenceTemplate.suite_step == suite_step,
+                ).first()
             row = db.query(MailSequenceTemplate).filter(
-                MailSequenceTemplate.customer_key == customer_key,
+                MailSequenceTemplate.customer_key == "",
                 MailSequenceTemplate.scenario == scenario,
                 MailSequenceTemplate.suite_step == suite_step,
             ).first()
             if row is None:
-                defaults = _default_mail_sequence_template_payload(scenario, suite_step, customer_key=customer_key)
-                row = MailSequenceTemplate(**defaults, updated_by="system_default")
+                defaults = _default_mail_sequence_template_payload(scenario, suite_step, customer_key="")
+                row = MailSequenceTemplate(**defaults, updated_by="system_default_shared")
                 db.add(row)
                 db.flush()
+            if legacy_row is not None:
+                row_updated = getattr(row, "updated_at", None) or datetime.min
+                legacy_updated = getattr(legacy_row, "updated_at", None) or datetime.min
+                if legacy_updated > row_updated or not sanitize_text(getattr(row, "ai_instruction_script", "")).strip():
+                    row.scenario_label_cn = legacy_row.scenario_label_cn
+                    row.step_label_cn = legacy_row.step_label_cn
+                    row.purpose_cn = legacy_row.purpose_cn
+                    row.send_timing_cn = legacy_row.send_timing_cn
+                    row.variable_notes = legacy_row.variable_notes
+                    row.script_template = legacy_row.script_template
+                    row.ai_instruction_script = legacy_row.ai_instruction_script
+                    row.version_no = legacy_row.version_no
+                    row.is_active = legacy_row.is_active
+                    row.updated_by = legacy_row.updated_by or "legacy_shared_migration"
+                    row.updated_at = datetime.utcnow()
             target_version = _mail_sequence_template_default_version(scenario, suite_step)
-            if int(row.version_no or 0) < target_version:
-                defaults = _default_mail_sequence_template_payload(scenario, suite_step, customer_key=customer_key)
+            if int(row.version_no or 0) < target_version and not sanitize_text(getattr(row, "ai_instruction_script", "")).strip():
+                defaults = _default_mail_sequence_template_payload(scenario, suite_step, customer_key="")
                 row.scenario_label_cn = defaults["scenario_label_cn"]
                 row.step_label_cn = defaults["step_label_cn"]
                 row.purpose_cn = defaults["purpose_cn"]
@@ -7181,33 +7217,11 @@ def _ensure_mail_sequence_templates(db: Session) -> list[Any]:
                 row.script_template = defaults["script_template"]
                 row.ai_instruction_script = defaults["ai_instruction_script"]
                 row.version_no = target_version
-                row.updated_by = f"system_default_v{target_version}"
+                row.updated_by = f"system_default_shared_v{target_version}"
                 row.updated_at = datetime.utcnow()
             rows.append(row)
-
-    # 独立"印刷报价后跟进"模板(4 环节, 不绑定案例, 内容人工填写): 单独成组播种, 仅首次建空行,
-    # 不做版本升级覆盖, 保留人工填写内容。
-    for suite_step in ALL_MAIL_SEQUENCE_STEPS:
-        suite_step = int(suite_step)
-        row = db.query(MailSequenceTemplate).filter(
-            MailSequenceTemplate.customer_key == _MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY,
-            MailSequenceTemplate.scenario == _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO,
-            MailSequenceTemplate.suite_step == suite_step,
-        ).first()
-        if row is None:
-            defaults = _default_mail_sequence_template_payload(
-                _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO,
-                suite_step,
-                customer_key=_MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY,
-            )
-            row = MailSequenceTemplate(**defaults, updated_by="system_default")
-            db.add(row)
-            db.flush()
-        rows.append(row)
-
     db.commit()
     return rows
-
 
 def _get_mail_sequence_template_for_prompt(
     db: Session,
@@ -7215,36 +7229,16 @@ def _get_mail_sequence_template_for_prompt(
     suite_step: int,
     customer_key: str | None = "",
 ) -> dict[str, Any] | None:
-    normalized_customer_key = sanitize_text(customer_key or "").strip().upper()
+    """Strictly load the configured shared template for this suite/step; no customer fallback."""
+    scenario_norm = sanitize_text(scenario).strip()
+    _ensure_mail_sequence_templates(db)
     row = db.query(MailSequenceTemplate).filter(
-        MailSequenceTemplate.customer_key == normalized_customer_key,
-        MailSequenceTemplate.scenario == scenario,
+        MailSequenceTemplate.customer_key == "",
+        MailSequenceTemplate.scenario == scenario_norm,
         MailSequenceTemplate.suite_step == suite_step,
         MailSequenceTemplate.is_active.is_(True),
     ).first()
-    if row is None:
-        _ensure_mail_sequence_templates(db)
-        row = db.query(MailSequenceTemplate).filter(
-            MailSequenceTemplate.customer_key == normalized_customer_key,
-            MailSequenceTemplate.scenario == scenario,
-            MailSequenceTemplate.suite_step == suite_step,
-            MailSequenceTemplate.is_active.is_(True),
-        ).first()
-    if row is None and normalized_customer_key:
-        row = db.query(MailSequenceTemplate).filter(
-            MailSequenceTemplate.customer_key == "",
-            MailSequenceTemplate.scenario == scenario,
-            MailSequenceTemplate.suite_step == suite_step,
-            MailSequenceTemplate.is_active.is_(True),
-        ).first()
-    if row is None and normalized_customer_key:
-        row = db.query(MailSequenceTemplate).filter(
-            MailSequenceTemplate.scenario == scenario,
-            MailSequenceTemplate.suite_step == suite_step,
-            MailSequenceTemplate.is_active.is_(True),
-        ).order_by(MailSequenceTemplate.customer_key.asc()).first()
     return _serialize_mail_sequence_template(row) if row else None
-
 
 def _mail_subject_from_intent_profile(profile: MailDraftIntentProfile) -> str:
     """中文邮件主题：优先按场景拿预设的中文主题，再加上步骤标识。
@@ -7302,6 +7296,7 @@ def _load_runtime_settings_with_defaults() -> dict[str, Any]:
         "wecom_temperature": data.get("wecom_temperature") if data.get("wecom_temperature") is not None else default_wecom_temp,
         "mail_system_prompt": data.get("mail_system_prompt") or default_mail_prompt,
         "mail_temperature": data.get("mail_temperature") if data.get("mail_temperature") is not None else default_mail_temp,
+        "mail_generation_model": _normalize_mail_generation_model(data.get("mail_generation_model")),
     }
 
 
@@ -7311,7 +7306,59 @@ _MAIL_DRAFT_LLM_SYSTEM_PROMPT = (
     "只输出 JSON，不要 Markdown：{\"subject\":\"\",\"paragraphs\":[\"称呼段\",\"正文段1\",\"正文段2\"]}"
 )
 
-_MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE: str | None = None
+_MAIL_GENERATION_MODEL_OPTIONS: dict[str, dict[str, str]] = {
+    "deepseek-v4-flash": {
+        "provider": "deepseek",
+        "label": "deepseek-v4-flash（默认）",
+        "model": "deepseek-v4-flash",
+    },
+    "deepseek-v4-pro": {
+        "provider": "deepseek",
+        "label": "deepseek-v4-pro",
+        "model": "deepseek-v4-pro",
+    },
+    "chatgpt": {
+        "provider": "openai",
+        "label": "ChatGPT",
+        "model": "",
+    },
+}
+
+
+def _normalize_mail_generation_model(value: str | None) -> str:
+    key = sanitize_text(value or "").strip().lower()
+    aliases = {
+        "": "deepseek-v4-flash",
+        "deepseek": "deepseek-v4-flash",
+        "deepseek-chat": "deepseek-v4-flash",
+        "deepseek-v4-flash": "deepseek-v4-flash",
+        "deepseek-v4-pro": "deepseek-v4-pro",
+        "openai": "chatgpt",
+        "gpt": "chatgpt",
+        "chatgpt": "chatgpt",
+    }
+    return aliases.get(key, "deepseek-v4-flash")
+
+
+def _save_mail_generation_model(model_key: str) -> None:
+    import os, json
+
+    path = os.path.join(os.path.dirname(__file__), "runtime_llm_settings.json")
+    data: dict[str, Any] = {}
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                data = loaded
+        except Exception:
+            data = {}
+    data["mail_generation_model"] = _normalize_mail_generation_model(model_key)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"保存邮件生成模型配置失败: {exc}")
 
 
 def _mail_draft_chat_url(api_url: str) -> str:
@@ -7324,16 +7371,15 @@ def _mail_draft_chat_url(api_url: str) -> str:
 
 
 def _mail_draft_llm_provider() -> str:
-    provider = (_MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE or getattr(settings, "MAIL_DRAFT_LLM_PROVIDER", "") or "deepseek").strip().lower()
-    if provider in {"chatgpt", "gpt", "openai"}:
-        return "openai"
-    if provider in {"anthropic", "claude"}:
-        return "anthropic"
-    return "deepseek"
+    model_key = _normalize_mail_generation_model(_load_runtime_settings_with_defaults().get("mail_generation_model"))
+    return _MAIL_GENERATION_MODEL_OPTIONS[model_key]["provider"]
 
 
 def _mail_draft_llm_config(provider: str | None = None) -> dict[str, Any]:
-    provider_key = (provider or _mail_draft_llm_provider()).strip().lower()
+    requested = sanitize_text(provider or "").strip().lower()
+    model_key = _normalize_mail_generation_model(requested) if requested else _normalize_mail_generation_model(_load_runtime_settings_with_defaults().get("mail_generation_model"))
+    option = _MAIL_GENERATION_MODEL_OPTIONS[model_key]
+    provider_key = option["provider"]
     if provider_key == "openai":
         api_url = (
             getattr(settings, "MAIL_DRAFT_OPENAI_API_URL", "")
@@ -7343,16 +7389,11 @@ def _mail_draft_llm_config(provider: str | None = None) -> dict[str, Any]:
         api_key = getattr(settings, "MAIL_DRAFT_OPENAI_API_KEY", "") or getattr(settings, "RECORDING_PARSE_OPENAI_VISION_API_KEY", "")
         model = getattr(settings, "MAIL_DRAFT_OPENAI_MODEL", "") or "gpt-4o-mini"
         timeout = int(getattr(settings, "MAIL_DRAFT_OPENAI_TIMEOUT_SECONDS", 60) or 60)
-    elif provider_key == "anthropic":
-        api_url = getattr(settings, "MAIL_DRAFT_ANTHROPIC_API_URL", "") or "https://api.anthropic.com/v1/messages"
-        api_key = getattr(settings, "MAIL_DRAFT_ANTHROPIC_API_KEY", "")
-        model = getattr(settings, "MAIL_DRAFT_ANTHROPIC_MODEL", "") or "claude-3-5-sonnet-20241022"
-        timeout = int(getattr(settings, "MAIL_DRAFT_ANTHROPIC_TIMEOUT_SECONDS", 60) or 60)
     else:
         provider_key = "deepseek"
         api_url = getattr(settings, "LLM2_API_URL", "")
         api_key = getattr(settings, "LLM2_API_KEY", "")
-        model = getattr(settings, "LLM2_MODEL", "")
+        model = option["model"] or getattr(settings, "LLM2_MODEL", "")
         timeout = int(getattr(settings, "LLM2_TIMEOUT_SECONDS", 100) or 100)
     runtime_settings = _load_runtime_settings_with_defaults()
     dyn_temp = runtime_settings.get("mail_temperature")
@@ -7366,6 +7407,7 @@ def _mail_draft_llm_config(provider: str | None = None) -> dict[str, Any]:
 
     return {
         "provider": provider_key,
+        "model_key": model_key,
         "api_url": _mail_draft_chat_url(api_url),
         "api_key": api_key or "",
         "model": model or "",
@@ -7376,34 +7418,34 @@ def _mail_draft_llm_config(provider: str | None = None) -> dict[str, Any]:
 
 
 def _mail_draft_llm_public_config() -> dict[str, Any]:
-    active = _mail_draft_llm_provider()
-    providers = []
-    for provider in ("deepseek", "openai", "anthropic"):
-        cfg = _mail_draft_llm_config(provider)
-        providers.append({
-            "provider": provider,
-            "label": (
-                "DeepSeek API" if provider == "deepseek"
-                else "ChatGPT / OpenAI API" if provider == "openai"
-                else "Claude / Anthropic API"
-            ),
+    active_model = _normalize_mail_generation_model(_load_runtime_settings_with_defaults().get("mail_generation_model"))
+    active_provider = _MAIL_GENERATION_MODEL_OPTIONS[active_model]["provider"]
+    model_options = []
+    for model_key, option in _MAIL_GENERATION_MODEL_OPTIONS.items():
+        cfg = _mail_draft_llm_config(model_key)
+        model_options.append({
+            "value": model_key,
+            "provider": cfg["provider"],
+            "label": option["label"],
             "configured": bool(cfg["api_url"] and cfg["api_key"] and cfg["model"]),
             "api_url": cfg["api_url"],
             "model": cfg["model"],
-            "active": provider == active,
+            "active": model_key == active_model,
         })
     return {
-        "version": "mail_draft_llm_config.v1",
-        "active_provider": active,
-        "runtime_override": _MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE,
-        "providers": providers,
+        "version": "mail_draft_llm_config.v2",
+        "active_model": active_model,
+        "active_provider": active_provider,
+        "providers": model_options,
+        "model_options": model_options,
         "real_sending_enabled": False,
         "wecom_impact": "none",
     }
 
 
 class MailDraftLlmConfigUpdateRequest(BaseModel):
-    provider: str
+    model: str | None = None
+    provider: str | None = None
 
 
 @app.get("/api/v1/mail/draft-llm-config")
@@ -7413,67 +7455,51 @@ def get_mail_draft_llm_config():
 
 @app.put("/api/v1/mail/draft-llm-config")
 def update_mail_draft_llm_config(payload: MailDraftLlmConfigUpdateRequest):
-    global _MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE
-    provider = sanitize_text(payload.provider).strip().lower()
-    if provider in {"chatgpt", "gpt"}:
-        provider = "openai"
-    if provider in {"claude"}:
-        provider = "anthropic"
-    if provider not in {"deepseek", "openai", "anthropic"}:
-        raise HTTPException(status_code=422, detail="provider must be deepseek, openai, or anthropic")
-    cfg = _mail_draft_llm_config(provider)
+    model_key = _normalize_mail_generation_model(payload.model or payload.provider)
+    cfg = _mail_draft_llm_config(model_key)
     if not (cfg["api_url"] and cfg["api_key"] and cfg["model"]):
-        raise HTTPException(status_code=422, detail=f"{provider} 邮件草稿 LLM 未配置完整，不能切换")
-    _MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE = provider
+        raise HTTPException(status_code=422, detail=f"{model_key} 邮件草稿 LLM 未配置完整，不能切换")
+    _save_mail_generation_model(model_key)
     return _mail_draft_llm_public_config()
 
 
 @app.post("/api/v1/mail/draft-llm-config/test")
 def test_mail_draft_llm_config(payload: MailDraftLlmConfigUpdateRequest):
-    provider = sanitize_text(payload.provider).strip().lower()
-    if provider in {"chatgpt", "gpt"}:
-        provider = "openai"
-    if provider in {"claude"}:
-        provider = "anthropic"
-    if provider not in {"deepseek", "openai", "anthropic"}:
-        raise HTTPException(status_code=422, detail="provider must be deepseek, openai, or anthropic")
-    cfg = _mail_draft_llm_config(provider)
+    model_key = _normalize_mail_generation_model(payload.model or payload.provider)
+    cfg = _mail_draft_llm_config(model_key)
+    provider = cfg["provider"]
     if not (cfg["api_url"] and cfg["api_key"] and cfg["model"]):
         return {
             "status": "not_configured",
             "provider": provider,
+            "model_key": model_key,
             "model": cfg["model"],
             "configured": False,
-            "message": f"{provider} 邮件草稿 LLM 未配置完整",
+            "message": f"{model_key} 邮件草稿 LLM 未配置完整",
         }
-    original = _MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE
-    try:
-        globals()["_MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE"] = provider
-        test_prompt = (
-            "只输出JSON，不要markdown。"
-            '{"subject":"测试邮件主题","paragraphs":["测试您好，","这是一条邮件模型连通性测试。"]}'
-        )
-        result = _call_llm2_json_for_mail_draft(test_prompt, timeout_seconds=min(cfg["timeout_seconds"], 30))
-        return {
-            "status": "success" if result.get("parsed") else "error",
-            "provider": provider,
-            "model": result.get("model") or cfg["model"],
-            "configured": True,
-            "error": result.get("error"),
-            "parsed_keys": sorted((result.get("parsed") or {}).keys()),
-        }
-    finally:
-        globals()["_MAIL_DRAFT_LLM_PROVIDER_RUNTIME_OVERRIDE"] = original
+    test_prompt = (
+        "只输出JSON，不要markdown。"
+        '{"subject":"测试邮件主题","paragraphs":["测试您好，","这是一条邮件模型连通性测试。"]}'
+    )
+    result = _call_llm2_json_for_mail_draft(test_prompt, timeout_seconds=min(cfg["timeout_seconds"], 30), model_key=model_key)
+    return {
+        "status": "success" if result.get("parsed") else "error",
+        "provider": provider,
+        "model_key": model_key,
+        "model": result.get("model") or cfg["model"],
+        "configured": True,
+        "error": result.get("error"),
+        "parsed_keys": sorted((result.get("parsed") or {}).keys()),
+    }
 
-
-def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35, force_json: bool = True) -> dict:
+def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35, force_json: bool = True, model_key: str | None = None) -> dict:
     """Call mail draft LLM provider (default DeepSeek, can switch to OpenAI/ChatGPT/Claude) for JSON response.
 
     Returns {parsed: dict | None, raw_text: str, error: str | None, model: str}.
     """
     import requests as _rq
 
-    cfg = _mail_draft_llm_config()
+    cfg = _mail_draft_llm_config(model_key)
     api_url = cfg["api_url"]
     api_key = cfg["api_key"]
     model = cfg["model"]
@@ -8147,6 +8173,11 @@ def _build_mail_generate_draft_response(
         int(payload.suite_step),
         customer_key=payload.customer_key,
     )
+    if not sequence_template or not sanitize_text(sequence_template.get("ai_instruction_script")).strip():
+        raise HTTPException(
+            status_code=422,
+            detail=f"不存在可用脚本：scenario={payload.scenario}, suite_step={int(payload.suite_step)}, template_customer_key=EMPTY",
+        )
     intent_profile = _build_mail_draft_intent_profile(
         payload=payload,
         step=step,
@@ -8257,6 +8288,7 @@ def _build_mail_generate_draft_response(
             llm_status=assembled.llm_status,
             llm_model_used=assembled.llm_model_used,
             llm_error=assembled.llm_error,
+            llm_prompt=assembled.llm_prompt,
             review_metadata=assembled.review_metadata,
             safety_guardrail=MailSafetyGuardrail(
                 overall_outcome=overall_outcome,
@@ -8294,6 +8326,7 @@ def _build_mail_generate_draft_response(
             llm_status=assembled.llm_status,
             llm_model_used=assembled.llm_model_used,
             llm_error=assembled.llm_error,
+            llm_prompt=assembled.llm_prompt,
             review_metadata=assembled.review_metadata,
             safety_guardrail=MailSafetyGuardrail(
                 overall_outcome=overall_outcome,
@@ -8329,6 +8362,7 @@ def _build_mail_generate_draft_response(
             llm_status=assembled.llm_status,
             llm_model_used=assembled.llm_model_used,
             llm_error=assembled.llm_error,
+            llm_prompt=assembled.llm_prompt,
             review_metadata=assembled.review_metadata,
             safety_guardrail=MailSafetyGuardrail(
                 overall_outcome=overall_outcome,
@@ -8367,6 +8401,7 @@ def _build_mail_generate_draft_response(
             llm_status=assembled.llm_status,
             llm_model_used=assembled.llm_model_used,
             llm_error=assembled.llm_error,
+            llm_prompt=assembled.llm_prompt,
             review_metadata=assembled.review_metadata,
             safety_guardrail=MailSafetyGuardrail(
                 overall_outcome=overall_outcome,
@@ -15210,6 +15245,8 @@ def update_runtime_llm_settings(payload: RuntimeLlmSettings):
         existing["mail_system_prompt"] = payload.mail_system_prompt
     if payload.mail_temperature is not None:
         existing["mail_temperature"] = payload.mail_temperature
+    if payload.mail_generation_model is not None:
+        existing["mail_generation_model"] = _normalize_mail_generation_model(payload.mail_generation_model)
 
     path = os.path.join(os.path.dirname(__file__), "runtime_llm_settings.json")
     try:
@@ -16851,9 +16888,10 @@ def list_mail_sequence_templates(db: Session = Depends(get_db)):
     else:
         grouped_by_case = {}
         for item in serialized_rows:
-            customer_key = item["customer_key"]
-            grouped_by_case.setdefault(customer_key, {
-                "customer_key": customer_key,
+            group_key = item.get("template_group_key") or item.get("customer_key") or item.get("scenario")
+            grouped_by_case.setdefault(group_key, {
+                "customer_key": item.get("customer_key") or "",
+                "template_group_key": group_key,
                 "case_label": item["case_label"],
                 "scenario": item["scenario"],
                 "scenario_label_cn": item["scenario_label_cn"],
@@ -16871,7 +16909,7 @@ def list_mail_sequence_templates(db: Session = Depends(get_db)):
         "count": len(serialized_rows),
         "templates": grouped,
         "templates_by_case": grouped_by_case,
-        "case_order": [case["real_customer_key"] for case in MAIL_CURRENT_DEMO_CASES] + [_MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY],
+        "case_order": ["new_business_promotion", "re_activation", "new_contact_intro", _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO],
         "degraded": bool(degraded_error),
         "degraded_reason": degraded_error,
         "requirements_cn": [
@@ -16897,9 +16935,7 @@ def update_mail_sequence_template(
         raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
     if suite_step not in ALL_MAIL_SEQUENCE_STEPS:
         raise HTTPException(status_code=422, detail=f"unsupported suite_step: {suite_step}")
-    normalized_customer_key = sanitize_text(customer_key or "").strip().upper()
-    if not normalized_customer_key:
-        normalized_customer_key = _mail_sequence_template_customer_key_for_scenario(scenario)
+    normalized_customer_key = ""
     _ensure_mail_sequence_templates(db)
     row = db.query(MailSequenceTemplate).filter(
         MailSequenceTemplate.customer_key == normalized_customer_key,
@@ -16940,11 +16976,14 @@ def update_mail_sequence_template(
     }
 
 
+_MAIL_SUITE_OWNER_PRIORITY_STAFF_IDS = ("0017", "0002", "0141", "0188", "1607")
+_MAIL_SUITE_OWNER_PRIORITY_RANK = {staff_id: idx for idx, staff_id in enumerate(_MAIL_SUITE_OWNER_PRIORITY_STAFF_IDS)}
+
 def _fetch_mail_contact_owner_staff_id(customer_key: str) -> str:
     """只读解析客户联系人对应的销售代表工号。
 
     口径：联系人 Owner -> usrStaff，只取在职(DismissTime IS NULL)的销售；
-    一个客户可能有多个联系人/多个 Owner 时，优先销售部门、再按最近联系人取一个。
+    一个客户可能有多个联系人/多个 Owner 时，显式优先销售工号优先，其次有邮箱销售优先。
     查不到在职销售返回空串(不退而求其次用离职人员的签名)。
     """
     normalized_key = sanitize_text(customer_key).strip()
@@ -16953,6 +16992,95 @@ def _fetch_mail_contact_owner_staff_id(customer_key: str) -> str:
     try:
         from crm_database import CRMSessionLocal
         crm_db = CRMSessionLocal()
+        def _owner_tokens(raw_owner: str) -> list[str]:
+            tokens: list[str] = []
+            seen: set[str] = set()
+            for token in re.split(r"[,;，、\s]+", str(raw_owner or "")):
+                token = token.strip()
+                if not token or token in seen:
+                    continue
+                seen.add(token)
+                tokens.append(token)
+            return tokens
+
+        def _active_owner_with_email_score(owner: str) -> tuple[int, str] | None:
+            staff_row = crm_db.execute(
+                text(
+                    """
+                    SELECT TOP 1
+                        s.StaffId,
+                        ISNULL(s.Division, '') AS Division,
+                        CASE WHEN EXISTS (
+                            SELECT 1
+                            FROM spEmailAddressBelong a
+                            INNER JOIN spEmailAddress b ON a.EmailAddress = b.EmailAddress AND ISNULL(b.IsUse, 0) = 1
+                            WHERE a.belongId = s.StaffId
+                               OR a.BelongId IN (SELECT StructId FROM usrStaffInDivisionStruct WHERE StaffId = s.StaffId)
+                        ) THEN 1 ELSE 0 END AS HasUsableEmail,
+                        CASE WHEN EXISTS (
+                            SELECT 1
+                            FROM spEmailAddressBelong a
+                            INNER JOIN spEmailAddress b ON a.EmailAddress = b.EmailAddress AND ISNULL(b.IsUse, 0) = 1
+                            INNER JOIN spEmailAddressDefaultSet c ON a.EmailAddress = c.EmailAddress AND c.DefaultStaffId = s.StaffId
+                            WHERE a.belongId = s.StaffId
+                               OR a.BelongId IN (SELECT StructId FROM usrStaffInDivisionStruct WHERE StaffId = s.StaffId)
+                        ) THEN 1 ELSE 0 END AS HasDefaultEmail
+                    FROM usrStaff AS s
+                    WHERE s.StaffId = :owner
+                      AND s.DismissTime IS NULL
+                    """
+                ),
+                {"owner": owner},
+            ).fetchone()
+            if not staff_row:
+                return None
+            division = str(staff_row[1] or "")
+            sales_priority = 0 if any(k in division for k in ("销售", "电销", "大客户", "市场")) else 1
+            has_usable_email = bool(int(staff_row[2] or 0))
+            has_default_email = bool(int(staff_row[3] or 0))
+            priority_rank = _MAIL_SUITE_OWNER_PRIORITY_RANK.get(owner, 99)
+            if has_default_email or has_usable_email:
+                group_priority = 0 if owner in _MAIL_SUITE_OWNER_PRIORITY_RANK else 1
+            else:
+                group_priority = 2 if owner in _MAIL_SUITE_OWNER_PRIORITY_RANK else 3
+            email_priority = 0 if has_default_email else (1 if has_usable_email else 2)
+            # Lower score wins: priority staff with usable/default mailbox > other staff with mailbox > no-mailbox fallback.
+            return (group_priority * 1000 + priority_rank * 10 + email_priority * 2 + sales_priority, owner)
+
+        # CRM 有些联系人 Owner 是多个工号拼接(如 "2012,0017")。这里先拆开逐个判断，
+        # 只允许在职员工参与选择，并优先选择有可用/默认企业邮箱的销售代表。
+        contact_rows = crm_db.execute(
+            text(
+                """
+                SELECT TOP 10 ISNULL(CAST(c.Owner AS NVARCHAR(240)), '') AS OwnerRaw, c.ContactId
+                FROM usrCustomerContact AS c
+                LEFT JOIN usrCustomer AS d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL
+                WHERE c.Deleter IS NULL
+                  AND ISNULL(CAST(c.Owner AS NVARCHAR(240)), '') <> ''
+                  AND (
+                    LOWER(ISNULL(CAST(c.ContactId AS NVARCHAR(120)), '')) = :k
+                    OR LOWER(ISNULL(CAST(c.NewContactId AS NVARCHAR(120)), '')) = :k
+                    OR LOWER(ISNULL(CAST(c.CustomerId AS NVARCHAR(120)), '')) = :k
+                    OR LOWER(ISNULL(CAST(d.NewCustomerId AS NVARCHAR(120)), '')) = :k
+                    OR LOWER(ISNULL(d.CompanyName, '')) LIKE :like
+                    OR LOWER(ISNULL(d.CompanyNameEnglish, '')) LIKE :like
+                  )
+                ORDER BY c.ContactId DESC
+                """
+            ),
+            {"k": normalized_key.lower(), "like": f"%{normalized_key.lower()}%"},
+        ).fetchall()
+        scored_owners: list[tuple[int, int, str]] = []
+        for row_index, contact_row in enumerate(contact_rows):
+            for owner in _owner_tokens(contact_row[0] if contact_row else ""):
+                scored = _active_owner_with_email_score(owner)
+                if scored is not None:
+                    score, staff_id = scored
+                    scored_owners.append((score, row_index, staff_id))
+        if scored_owners:
+            scored_owners.sort(key=lambda item: (item[0], item[1]))
+            return scored_owners[0][2]
+
         try:
             row = crm_db.execute(
                 text(
@@ -17180,6 +17308,31 @@ def _build_mail_sender_signature_html(fields: dict[str, str]) -> str:
     )
 
 
+def _mail_suite_fallback_signature_html() -> str:
+    lines = [
+        "<strong>事必达销售</strong>",
+        "",
+        "事必达翻译与本地化部",
+        "上海嘉赛科技有限公司(事必达)",
+        "Phone: +86 21 5489 6060",
+        "www.speed-asia.com",
+        "中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室",
+    ]
+    return (
+        '<div class="mail-signature" style="margin-top:16px;color:#004080;'
+        'font-size:13px;line-height:1.7;">' + "<br>".join(lines) + "</div>"
+    )
+
+
+def _mail_suite_signature_html_for_customer(customer_id: str) -> tuple[str, dict[str, str], str]:
+    owner_staff_id = _fetch_mail_contact_owner_staff_id(customer_id)
+    signature_fields = _fetch_mail_sender_signature_fields(owner_staff_id) if owner_staff_id else {}
+    signature_html = _build_mail_sender_signature_html(signature_fields) if signature_fields else ""
+    if not signature_html:
+        signature_html = _mail_suite_fallback_signature_html()
+    return signature_html, signature_fields, owner_staff_id
+
+
 _MAIL_SUITE_GENERIC_SIGNOFFS = (
     "事必达国际化服务团队", "事必达销售团队", "事必达客户经理",
     "事必达国际", "事必达销售",
@@ -17306,6 +17459,59 @@ def list_mail_custom_suites(db: Session = Depends(get_db)):
     return {"suites": [{"scenario": r.scenario, "label_cn": r.label_cn, "step_count": r.step_count} for r in rows]}
 
 
+
+def _build_mail_customer_suite_prompt_only(
+    db: Session,
+    *,
+    payload: MailGenerateDraftRequest,
+    precomputed_crm_profile: dict | None = None,
+) -> str:
+    """Assemble the current LLM prompt without calling the model or changing the saved body."""
+    try:
+        step = get_mail_sequence_step(payload.scenario, int(payload.suite_step))
+        interval = get_mail_sequence_step_interval(payload.scenario, int(payload.suite_step))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    min_score = _mail_fewshot_min_score()
+    fewshot_examples = _mail_generate_draft_fewshot_candidates(
+        db,
+        scenario=payload.scenario,
+        suite_step=int(payload.suite_step),
+        function_fragments=tuple(step.recommended_snippet_types),
+        min_score=min_score,
+        limit=3,
+    )
+    fewshot = fewshot_examples[0] if fewshot_examples else None
+    commercial_terms = _resolve_mail_commercial_terms(db, suite_step=int(payload.suite_step))
+    sequence_template = _get_mail_sequence_template_for_prompt(
+        db,
+        payload.scenario,
+        int(payload.suite_step),
+        customer_key=payload.customer_key,
+    )
+    if not sequence_template or not sanitize_text(sequence_template.get("ai_instruction_script")).strip():
+        raise HTTPException(
+            status_code=422,
+            detail=f"不存在可用脚本：scenario={payload.scenario}, suite_step={int(payload.suite_step)}, template_customer_key=EMPTY",
+        )
+    intent_profile = _build_mail_draft_intent_profile(
+        payload=payload,
+        step=step,
+        interval=interval,
+        admitted_fewshot=fewshot,
+        admitted_fewshots=fewshot_examples,
+        commercial_terms=commercial_terms,
+        sequence_template=sequence_template,
+        precomputed_crm_profile=precomputed_crm_profile,
+    )
+    intent_profile.prompt_full_email_examples = _mail_full_email_gold_examples_for_prompt(
+        db,
+        scenario=payload.scenario,
+        min_score=min_score,
+        limit=5,
+    )
+    return _mail_brand_display_text(_build_mail_draft_llm_full_prompt(intent_profile))
+
 @app.get("/api/v1/mail/customer-suite")
 def get_mail_customer_suite(
     request: Request,
@@ -17378,6 +17584,7 @@ def get_mail_customer_suite(
         int(r.suite_step): {
             "subject": r.subject,
             "body_html": r.body_html,
+            "llm_prompt": r.llm_prompt,
             "mail_uid": r.mail_uid,
             "included": r.included,
             "send_interval_days": r.send_interval_days,
@@ -17413,8 +17620,7 @@ def get_mail_customer_suite(
         _valid_emails_fut = _pre_ex.submit(_fetch_mail_contact_valid_emails, customer_id)
         owner_staff_id = _owner_fut.result()
         valid_emails = _valid_emails_fut.result()
-    signature_fields = _fetch_mail_sender_signature_fields(owner_staff_id) if owner_staff_id else {}
-    signature_html = _build_mail_sender_signature_html(signature_fields) if owner_staff_id else ""
+    signature_html, signature_fields, _owner_staff_id_for_signature = _mail_suite_signature_html_for_customer(customer_id)
     # 发件邮箱不能走 sanitize_text(会被脱敏成 ***EMAIL***)
     sender_email = str((signature_fields or {}).get("email") or "").strip()
     sender_name = str((signature_fields or {}).get("english_name") or "").strip() or str((signature_fields or {}).get("staff_name") or "").strip()
@@ -17448,6 +17654,37 @@ def get_mail_customer_suite(
         )
         try:
             if saved is not None and saved.get("subject") and saved.get("body_html"):
+                saved_prompt = saved.get("llm_prompt") or ""
+                if not saved_prompt:
+                    # 历史保存稿没有 llm_prompt 时，只回填脚本，不重跑 LLM、不覆盖正文。
+                    try:
+                        prompt_db = SessionLocal()
+                        try:
+                            saved_prompt = _build_mail_customer_suite_prompt_only(
+                                prompt_db,
+                                payload=payload,
+                                precomputed_crm_profile=shared_crm_profile,
+                            )[:20000]
+                            prompt_row = (
+                                prompt_db.query(MailCustomerSuiteDraftEdit)
+                                .filter(
+                                    MailCustomerSuiteDraftEdit.customer_id == customer_id,
+                                    MailCustomerSuiteDraftEdit.scenario == scenario_norm,
+                                    MailCustomerSuiteDraftEdit.suite_step == int(suite_step),
+                                )
+                                .one_or_none()
+                            )
+                            if prompt_row is not None:
+                                prompt_row.llm_prompt = saved_prompt or None
+                                prompt_db.commit()
+                        finally:
+                            prompt_db.close()
+                    except Exception:
+                        logger.exception(
+                            "MAIL_SUITE_SAVED_PROMPT_BACKFILL_FAILED customer_id=%s step=%s",
+                            sanitize_text(customer_id),
+                            suite_step,
+                        )
                 # 已保存过(主题+正文齐全)：直接读取，不再调大模型重生成
                 draft = {
                     "final_subject": saved["subject"],
@@ -17455,6 +17692,7 @@ def get_mail_customer_suite(
                     "mail_uid": saved.get("mail_uid") or "",
                     "llm_status": "saved_edit",
                     "llm_model_used": "",
+                    "llm_prompt": saved_prompt,
                     "from_saved_edit": True,
                 }
             else:
@@ -17570,6 +17808,7 @@ def get_mail_customer_suite(
                 db.add(_row)
             _row.subject = _subj
             _row.body_html = _html
+            _row.llm_prompt = (_d.get("llm_prompt") or "")[:20000] or None
             if _uid:
                 _row.mail_uid = _uid
             db.flush()
@@ -17668,6 +17907,8 @@ def upsert_mail_customer_suite_draft(
         row.send_time = _normalize_suite_send_time(payload.send_time)
     if payload.included is not None:
         row.included = bool(payload.included)
+    if payload.llm_prompt is not None:
+        row.llm_prompt = sanitize_text(payload.llm_prompt).strip()[:20000] or None
 
     db.commit()
     db.refresh(row)
@@ -17679,6 +17920,91 @@ def upsert_mail_customer_suite_draft(
         "real_sending_enabled": False,
     }
 
+
+@app.post("/api/v1/mail/customer-suite-draft/regenerate")
+def regenerate_mail_customer_suite_draft(
+    payload: MailCustomerSuiteDraftRegenerateRequest,
+    db: Session = Depends(get_db),
+):
+    """强制单封套装邮件重新跑真实生成链路，并覆盖该封已保存稿。"""
+    customer_id = sanitize_text(payload.customer_id).strip()
+    scenario = sanitize_text(payload.scenario).strip()
+    suite_step = int(payload.suite_step or 0)
+    if not customer_id:
+        raise HTTPException(status_code=422, detail="customer_id is required")
+    if scenario not in _MAIL_SCENARIO_CHINESE:
+        raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
+    if suite_step not in ALL_MAIL_SEQUENCE_STEPS:
+        raise HTTPException(status_code=422, detail=f"unsupported suite_step: {suite_step}")
+
+    crm_profile = _lookup_mail_crm_profile(customer_id, "")
+    contact_email = sanitize_text(crm_profile.get("contact_email"))
+    draft_contact_email = _mail_demo_contact_email_for_draft(contact_email) or _mail_review_only_draft_contact_email(customer_id, crm_profile)
+    contact_domain = _normalize_mail_recipient_domain(draft_contact_email)
+    if contact_domain:
+        shared_domains = set(crm_profile.get("customer_domains") or ())
+        shared_domains.add(contact_domain)
+        crm_profile = {**crm_profile, "customer_domains": tuple(sorted(shared_domains))}
+
+    request_payload = MailGenerateDraftRequest(
+        customer_key=customer_id,
+        contact_email=draft_contact_email,
+        scenario=scenario,
+        suite_step=suite_step,
+        current_seller_name="事必达销售",
+        current_seller_signature="事必达销售",
+    )
+    response = _build_mail_generate_draft_response(db, request_payload, precomputed_crm_profile=crm_profile)
+    draft = response.model_dump() if hasattr(response, "model_dump") else response.dict()
+    signature_html, _signature_fields, _owner_staff_id = _mail_suite_signature_html_for_customer(customer_id)
+    draft["final_body_html"] = _apply_mail_suite_signature(draft.get("final_body_html") or "", signature_html)
+    row = (
+        db.query(MailCustomerSuiteDraftEdit)
+        .filter(
+            MailCustomerSuiteDraftEdit.customer_id == customer_id,
+            MailCustomerSuiteDraftEdit.scenario == scenario,
+            MailCustomerSuiteDraftEdit.suite_step == suite_step,
+        )
+        .one_or_none()
+    )
+    created = False
+    if row is None:
+        row = MailCustomerSuiteDraftEdit(
+            customer_id=customer_id[:120],
+            scenario=scenario,
+            suite_step=suite_step,
+            included=True,
+        )
+        db.add(row)
+        created = True
+    row.subject = (draft.get("final_subject") or "")[:500] or None
+    row.body_html = draft.get("final_body_html") or None
+    row.mail_uid = (draft.get("mail_uid") or "")[:120] or None
+    row.llm_prompt = (draft.get("llm_prompt") or "")[:20000] or None
+    db.commit()
+    db.refresh(row)
+
+    default_interval = _mail_sequence_default_send_interval_days(scenario, suite_step)
+    send_settings = {
+        "send_interval_days": int(row.send_interval_days) if row.send_interval_days is not None else default_interval,
+        "default_send_interval_days": default_interval,
+        "send_time": row.send_time or _MAIL_SUITE_DEFAULT_SEND_TIME,
+        "default_send_time": _MAIL_SUITE_DEFAULT_SEND_TIME,
+        "included": bool(row.included),
+    }
+    return {
+        "ok": True,
+        "created": created,
+        "item": {
+            "suite_step": suite_step,
+            "step_label_cn": _mail_sequence_step_label_cn(scenario, suite_step),
+            "status": "success",
+            "draft": draft,
+            "send_settings": send_settings,
+        },
+        "record": _serialize_mail_customer_suite_draft_edit(row),
+        "real_sending_enabled": False,
+    }
 
 @app.post("/api/v1/mail/customer-suite-recipient")
 def upsert_mail_customer_suite_recipient(
@@ -18554,6 +18880,11 @@ def _run_one_mail_iteration_draft(
             int(payload.suite_step),
             customer_key=payload.customer_key,
         )
+        if not sequence_template or not sanitize_text(sequence_template.get("ai_instruction_script")).strip():
+            raise HTTPException(
+                status_code=422,
+                detail=f"不存在可用脚本：scenario={payload.scenario}, suite_step={int(payload.suite_step)}, template_customer_key=EMPTY",
+            )
         intent_profile = _build_mail_draft_intent_profile(
             payload=payload,
             step=step,

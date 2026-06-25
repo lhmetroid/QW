@@ -1050,3 +1050,11 @@
 - 确认发送软件(classMail.Send.cs)已在 smtp.Send 前对 UseRange='宣传邮件-AI' 注入 Message-ID=<AIMAIL-{SendId}-{StaffId}-{发件邮箱}>(仅内存注入, 不回写存档 .eml, 故下载草稿 .eml 永远看不到); 接收软件(classMail.cs)已解析回信 In-Reply-To/References 中的 AIMAIL token 并写入 spReceiveInfo{销售}.Message_ID 列。
 - 据此改 backend/mail_ai_stats.py discover_replies: 新增主路径直读 spReceiveInfo{销售}.Message_ID 列, 正则(extract_send_id_from_msgid_col)取 SendId 与本地 crm_send_id 精确匹配(match_method=crm_message_id_col), 无需拉 .eml、不依赖发件人/主题; 老邮件(无 AIMAIL)保留 .eml/主题串接兜底。新增 _crm_column_exists 助手。
 - 现状: spReceiveInfo0017.Message_ID 列已存在; 今日入队 AI 邮件待发, 暂无 AIMAIL 回信(0命中, 等新邮件回信自动精确计入)。兜底路径今日新捕获张君良 RE 真实回信(06-25), reply_count: 06-24=1 / 06-25=1。
+
+## 2026-06-25 12:10:00 自建套装两边不同步修复(unsupported scenario)
+- 现象: 手工"+新增套装"(如 custom_5dcb9341 口译报价后跟进)注册进下拉/DB, 但生成草稿报 "unsupported mail sequence scenario: custom_xxx"(独立页 /static/mail-suite.html 与主页都会)。
+- 根因(两层): 1) get_mail_sequence_step_interval 用 MailScenario(scenario) 强枚举, 自建场景必抛(即便已注册策略); 2) 自建套装策略只在创建它的进程内存 _DYNAMIC_REGISTRY 注册, 多 worker 下生成进程没注册 → get_mail_sequence_strategy 也抛。
+- 修复:
+  - mail_sequence_strategy.py: 新增惰性加载钩子 set_dynamic_scenario_loader/_ensure_dynamic_loaded; get_mail_sequence_strategy / get_dynamic_scenario_step_count / get_mail_sequence_step_interval 在 miss 时按需从 DB 注册; get_mail_sequence_step_interval 支持自建场景(返回通用区间 _dynamic_step_interval, 实际节奏仍以套装保存的 send_interval_days 为准)。
+  - main.py: 新增 _load_single_custom_suite_from_db(按 scenario 从 MailCustomSuite+MailSequenceTemplate 注册), 启动时 set_dynamic_scenario_loader 注入。
+- 验证: 实库 custom_5dcb9341/custom_0904af93 存在且模板齐全; 惰性加载→get_mail_sequence_step/interval 正常; 标准场景与未知场景回归正常。需重启后端生效; 重启后任意进程(含独立页)解析自建场景都会按需从 DB 注册, 不再 unsupported。
