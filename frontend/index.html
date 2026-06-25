@@ -7320,15 +7320,27 @@
             const hits = Array.isArray(kv2.hits) && kv2.hits.length ? kv2.hits : (kv2.evidence_refs || []);
             const replyable = Array.isArray(kv2.replyable_hits) ? kv2.replyable_hits.length : null;
             const isUsed = (h) => (h && h.usable_for_reply && h.allowed_for_generation);
-            const usedCount = (replyable != null) ? replyable : hits.filter(isUsed).length;
-            const hitCount = hits.length;
+            // 计数权威来源 = 列表已携带的 kb_hit_count/kb_used_count(瘦数据/明细未加载/加载失败时仍正确);
+            // 实时(daily)列表只下发轻字段, hits/replyable_hits 是空的, 必须用计数兜底, 不能数 hits 长度得 0。
+            // 一旦逐条 hits 已懒加载, 改以 hits 实际条数为准(与下方逐条标注保持一致)。
+            const hitCount = hits.length ? hits.length : (r.kb_hit_count != null ? r.kb_hit_count : 0);
+            const usedCount = hits.length
+                ? ((replyable != null) ? replyable : hits.filter(isUsed).length)
+                : (r.kb_used_count != null ? r.kb_used_count : 0);
             lines.push(`命中 ${hitCount} 条，使用 ${usedCount} 条：`);
-            hits.forEach((h, i) => {
-                const used = (h.usable_for_reply !== undefined) ? isUsed(h) : (i < usedCount);
-                const sc = (h.score != null) ? `（相似度${(Number(h.score) <= 1 ? Number(h.score) * 100 : Number(h.score)).toFixed(1)}）` : '';
-                lines.push('  ' + (i+1) + '. ' + (used ? '[已用] ' : '[未用] ') + (h.title || '') + sc);
-                if (h.snippet) lines.push('       ' + h.snippet);
-            });
+            if (hits.length) {
+                hits.forEach((h, i) => {
+                    const used = (h.usable_for_reply !== undefined) ? isUsed(h) : (i < usedCount);
+                    const sc = (h.score != null) ? `（相似度${(Number(h.score) <= 1 ? Number(h.score) * 100 : Number(h.score)).toFixed(1)}）` : '';
+                    lines.push('  ' + (i+1) + '. ' + (used ? '[已用] ' : '[未用] ') + (h.title || '') + sc);
+                    if (h.snippet) lines.push('       ' + h.snippet);
+                });
+            } else if (hitCount > 0) {
+                // 计数正确但逐条明细不在瘦数据里: 加载失败给明确提示, 否则提示明细随后补齐
+                lines.push(r.__detailError
+                    ? '  （逐条明细加载失败，命中条数已按列表统计显示；点击该行查看完整 7 步链路详情）'
+                    : '  （逐条明细加载中…完成后显示每条标题与相似度）');
+            }
             // "使用"判定说明（用大白话，不出现字段名）
             lines.push('');
             lines.push('什么算"使用"：命中里那些既被标注为"可直接用于回复客户"、又"允许 AI 生成时引用"的知识，会真正喂给模型生成，计入"使用"。');
@@ -7367,8 +7379,9 @@
                     try {
                         const res = await caselibFetch(`/api/case_lib/results/${resultId}`);
                         const data = await res.json();
-                        if (data && data.result) { Object.assign(r, data.result); r.__full = true; }
-                    } catch (e) { /* 网络异常时保留瘦数据，浮层显示已有内容 */ }
+                        if (data && data.result) { Object.assign(r, data.result); r.__full = true; r.__detailError = false; }
+                        else { r.__detailError = true; }
+                    } catch (e) { r.__detailError = true; /* 保留瘦数据; 浮层用列表计数兜底并提示加载失败, 不伪装成命中0条 */ }
                     finally { delete caselibResultDetailInflight[resultId]; }
                 })();
             }
