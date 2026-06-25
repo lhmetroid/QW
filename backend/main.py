@@ -29717,11 +29717,7 @@ def _get_daily_validation_stats_range(
     return result
 
 
-@app.get("/api/case_lib/iterations")
-async def caselib_list_iterations(
-    limit: int = Query(default=50, ge=1, le=500),
-    include_daily_stats: bool = Query(default=True),
-):
+def _caselib_list_iterations_sync(limit: int, include_daily_stats: bool) -> dict:
     db = SessionLocal()
     try:
         rows = db.query(CaseIterationRun).order_by(
@@ -29795,6 +29791,17 @@ async def caselib_list_iterations(
         }
     finally:
         db.close()
+
+
+@app.get("/api/case_lib/iterations")
+async def caselib_list_iterations(
+    limit: int = Query(default=50, ge=1, le=500),
+    include_daily_stats: bool = Query(default=True),
+):
+    # 整段同步 DB 工作(全历史 invocation 扫描 + 大 JSON 聚合)丢到 worker 线程,
+    # 不在事件循环主线程上跑; 否则单个慢请求(可达 ~189s)会卡死所有并发请求
+    # (详情页/train_ai/models 等会一起排队冻住), 表现为"整站加载卡死"。
+    return await asyncio.to_thread(_caselib_list_iterations_sync, limit, include_daily_stats)
 
 
 @app.get("/api/case_lib/daily_validation/{date}")
