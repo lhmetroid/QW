@@ -29724,10 +29724,14 @@ def _caselib_list_iterations_sync(limit: int, include_daily_stats: bool) -> dict
             CaseIterationRun.triggered_at.desc()
         ).limit(limit).all()
 
-        # 增加从 2026/05/26 开始的每天一行日常日常验证记录
+        # 每天一行日常验证记录。只取"近 N 天": 历史全量(从 2026-05-26 起)会让下方
+        # _get_daily_validation_stats_range 第二遍批量拉 result_payload 大 JSON 超出
+        # 数据库 statement_timeout 抛 QueryCanceled(列表 500)。近 5 天扫描量/JSON 量
+        # 骤降, 既消除超时又满足"列表只看近几天"的需求; 取数口径不变, 数字不变。
         from datetime import date as pydate
+        DAILY_VALIDATION_RECENT_DAYS = 5
         today = (datetime.utcnow() + timedelta(hours=8)).date()
-        start_date = datetime(2026, 5, 26).date()
+        start_date = today - timedelta(days=DAILY_VALIDATION_RECENT_DAYS - 1)
         daily_rows = []
         # v1.7.310: 整段一次性统计, 避免按天循环 N 次全行查询导致语句超时(QueryCanceled)。
         daily_stats_map: dict[str, tuple] = {}
