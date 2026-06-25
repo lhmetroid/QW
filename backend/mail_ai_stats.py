@@ -520,6 +520,17 @@ def analyze_values(db: Session, llm_call, limit: int = 60) -> dict:
 # ---------------------------------------------------------------------------
 # 4) 按天聚合 + 落库
 # ---------------------------------------------------------------------------
+# 占位/未分配销售账号(如 "？待分配"): 不作为真实销售计入按销售统计, 落回全体。
+_PLACEHOLDER_STAFF_KEYWORDS = ("待分配", "未分配", "待定", "公共", "公海")
+
+
+def _is_placeholder_staff_name(name: str) -> bool:
+    n = (name or "").strip()
+    if not n:
+        return True
+    return n.startswith("？") or n.startswith("?") or any(k in n for k in _PLACEHOLDER_STAFF_KEYWORDS)
+
+
 def _bucket_counts(db: Session, start: date, end: date):
     """返回 {(date, staff_id): {metric: n}} 与全销售汇总 staff_id=''。日期均为北京日期。"""
     agg: dict[tuple, dict] = {}
@@ -582,6 +593,8 @@ def _bucket_counts(db: Session, start: date, end: date):
             from crm_database import CRMSessionLocal
             crm = CRMSessionLocal()
             try:
+                # contact -> 第一个负责人工号
+                contact_owner: dict[str, str] = {}
                 for i in range(0, len(unmapped), 200):
                     chunk = unmapped[i:i + 200]
                     params = {f"c{j}": v for j, v in enumerate(chunk)}
@@ -593,7 +606,23 @@ def _bucket_counts(db: Session, start: date, end: date):
                         cid = str(row[0]).strip()
                         owner = str(row[1] or "").replace("，", ",").split(",")[0].strip()
                         if cid and owner:
-                            cust_staff[cid] = owner
+                            contact_owner[cid] = owner
+                # 负责人工号 -> 中文名, 用于过滤"待分配"等占位销售
+                owner_ids = sorted(set(contact_owner.values()))
+                owner_name: dict[str, str] = {}
+                for i in range(0, len(owner_ids), 200):
+                    chunk = owner_ids[i:i + 200]
+                    params = {f"s{j}": v for j, v in enumerate(chunk)}
+                    ph = ",".join(f":s{j}" for j in range(len(chunk)))
+                    for row in crm.execute(text(
+                        f"SELECT StaffId, ISNULL(CAST(StaffName AS NVARCHAR(120)),'') "
+                        f"FROM usrStaff WHERE StaffId IN ({ph})"
+                    ), params).fetchall():
+                        owner_name[str(row[0]).strip()] = str(row[1] or "").strip()
+                for cid, owner in contact_owner.items():
+                    if _is_placeholder_staff_name(owner_name.get(owner, "")):
+                        continue  # 待分配/未分配等占位销售: 不计入按销售, 落回全体
+                    cust_staff[cid] = owner
             finally:
                 crm.close()
         except Exception:
