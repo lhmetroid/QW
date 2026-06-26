@@ -1510,3 +1510,146 @@
   - `frontend/mail-suite.html`：移除草稿正文下方“目标推广业务 / 已有业务线 / 下一步建议”整块内部诊断面板；复制按钮和反馈区保留。
 - **边界**：本次没有修改任何 LLM prompt、AI 指令、模板规则或额外生成约束。
 - **待验证**：部署后打开 `https://api.speedasia.net/static/mail-suite.html?id=KH33879-001`，客户信息区应显示脱敏联系人；草稿正文下方不再显示目标推广业务、已有业务线、下一步建议三列面板。
+
+## 2026-06-23 企微智能助手第二候选去思考过程交接
+
+- 用户反馈：企微回复智能助手中第二条候选不应显示思考过程，应直接给可发结果；要求仅涉及企微。
+- 已完成：`backend/intent_engine.py` 增强 `clean_sendable_reply()`，抽取显式最终回复标签，过滤“理解重点/思考过程/策略”等元分析；截图类暂无需求场景兜底为直接可发承接话术。
+- 已完成：`backend/main.py` 流式盲评 `_blind_texts` 对 AI 与训练AI两路都调用 `IntentEngine.clean_sendable_reply()`，与非流式保持一致。
+- 验证：py_compile、定向 diff-check、函数级样例均通过。
+- 注意：启动规则要求读取的 `企微记录入知识库标准定义.md` 当前仓库根目录未找到，本轮已按现有企微代码与 `项目进展.md` 继续处理；未改邮件相关文件。
+
+## 2026-06-23 邮件统计实发漏计交接
+
+- 用户指出邮件统计页 AI实际发送数为0，但 CRM 截图显示 2026-06-23 16:00 东丽医疗邮件已发送。
+- 核查：CRM spSendInfo0017 中该邮件 Status=SendSuccess、FactSendTime=2026-06-23 16:00:28；本地对应 plan_id=4fac741e-8974-4b5a-99e4-d282a30005ca 原 crm_send_id 为空，因此旧 sync_send_status 未查询它。
+- 已改 backend/mail_ai_stats.py：新增 _crm_send_info_for_missing_send_id fallback，缺 SendId 时按 subject + PlanSendTime 窗口 + UseRange + sender 反查 spSendInfo；同时兼容 SQL Server text 字段 CAST 后再匹配。
+- 已验证并写回本地统计缓存：目标记录 crm_send_id=Mal_S260623-000003、crm_send_status=SendSuccess、crm_fact_send_time=2026-06-23 16:00:28；2026-06-23 sent_count=1。
+- 注意：用户消息中贴过真实 .env 密码，后续回复和日志不得回显。
+
+## 2026-06-24 09:42:29 邮件新增套装下拉与标题编辑交接
+
+- 用户反馈：邮件质量诊断页新增套装后刷新仍不在模板下拉显示；单独 mail-suite.html 页面已显示；同时要求每封邮件标题可修改。
+- 已完成：backend/main.py 将自建套装模板纳入 /api/v1/mail/sequence-templates 返回，新增 	emplate_group_key，动态套装以 scenario 分组；保存接口允许动态 scenario，并支持保存 step_label_cn。
+- 已完成：rontend/index.html 模板区下拉读取动态分组；每封模板阶段标题可编辑保存；质量诊断页单封和整套生成结果里的邮件主题改为输入框可人工修改。
+- 验证：后端 py_compile、前端内联脚本 node --check、定向 diff-check、自建套装序列化冒烟均通过。
+- 注意：本轮没有启用真实发信，没有访问或输出任何密钥；工作区原本已有大量未提交/未跟踪文件，本轮只处理 backend/main.py 与 rontend/index.html，并为前端脚本检查生成了 scratch/frontend-index-scripts-check.js 临时校验文件。
+
+## 2026-06-24 10:40:58 知识库命中日志双击查看交接
+
+- 范围：知识库管理 > 命中日志。
+- 后端：backend/main.py 新增 _hit_log_hit_chunks；GET /api/kb/hit_logs 增加 include_hits 参数，true 时返回 hit_chunks。默认不带详情，兼容旧调用。
+- 前端：frontend/index.html 的 loadKbLogs 请求 include_hits=true；命中数按钮支持双击打开弹窗，显示每条命中切片详情。
+- 验证：py_compile、前端 node --check、定向 diff-check 通过。
+- 注意：未读取或输出 .env 密钥；未启用真实发信；工作区原有大量未提交改动未处理。
+
+
+## 2026-06-24 10:41:15 知识库命中日志双击查看交接
+
+- 范围：知识库管理 > 命中日志。
+- 后端：backend/main.py 新增 _hit_log_hit_chunks；GET /api/kb/hit_logs 增加 include_hits 参数，true 时返回 hit_chunks。默认不带详情，兼容旧调用。
+- 前端：frontend/index.html 的 loadKbLogs 请求 include_hits=true；命中数按钮支持双击打开弹窗，显示每条命中切片详情。
+- 验证：py_compile、前端 node --check、定向 diff-check 通过。
+- 注意：未读取或输出 .env 密钥；未启用真实发信；工作区原有大量未提交改动未处理。
+
+## 2026-06-24 11:18:57 邮件测试套装 111/222 删除交接
+
+- 用户要求：删除邮件质量诊断页下拉中的 111、222 两个测试套装。
+- 已完成：查到 111 -> custom_ec17323c、222 -> custom_0bccb7bd，各 3 条 mail_sequence_template；已删除对应 6 条模板和 2 条 mail_custom_suite 元数据。
+- 验证：删除后按 label/scenario 复查，mail_custom_suite 残留 0，mail_sequence_template 残留 0；当前 remaining_custom_suites 为空。
+- 注意：没有启用真实发信，没有输出或复制 .env 凭据。若浏览器仍显示旧下拉，点击“刷新模板”或刷新页面即可重新拉取后端数据。
+
+## 2026-06-24 13:00:05 邮件模板下拉文案去重交接
+
+- 用户要求：模板下拉只显示后面的字段，避免“老客户其他业务介绍 · 老客户其他业务介绍”这类重复。
+- 已完成：frontend/index.html 的 renderMailTemplateCaseSelect 改为优先显示 scenario_label_cn，回退 case_label/key。
+- 验证：前端内联脚本 node --check 和 frontend/index.html 定向 diff-check 均通过。
+- 注意：本轮未修改后端、未启用真实发信、未输出 .env 凭据。
+
+## 2026-06-24 13:23:06 交接：邮件套装页重刷/脚本按钮
+- 已完成：保存表新增 llm_prompt 字段；生成响应携带 llm_prompt；套装自动保存和单封重刷会落库真实 prompt；前端新增重刷/脚本按钮和 prompt 展示面板。
+- 注意：旧历史保存稿如果当时没有 llm_prompt 字段，无法证明当时 prompt，页面会提示缺失；重刷后会保存本次真实 prompt。
+- 验证：py_compile、前端脚本 node --check、git diff --check 均通过。
+
+## 2026-06-24 13:34:53 交接：老客户激活用错模板
+- 原因：KH33103-015 无专属模板时，旧查找顺序先取 customer_key='' 的共享模板，导致老客户激活没有使用质量页规范模板。
+- 已修复：_get_mail_sequence_template_for_prompt 对内置场景先查规范 customer_key，再查空共享模板。
+- 现状：KH33103-015/re_activation 已有 4 条旧保存稿和旧 llm_prompt；不自动覆盖人工/历史保存内容。前端点‘重刷’会按新模板重新运行 LLM 并覆盖单封。
+
+## 2026-06-24 13:40:54 交接：套装模板严格模式
+- 生成路径 _get_mail_sequence_template_for_prompt 已改为严格读取规范模板，不再使用客户专属/空共享/任意模板 fallback。
+- 当前验证 4 个套装全部 OK：new_business_promotion=>KH15411-117，re_activation=>KH02659-011，new_contact_intro=>KH13770-006，print_quote_followup=>PRINT-QUOTE-FOLLOWUP。
+- 注意：旧保存稿仍会按 saved_edit 读取，不会被自动覆盖；要更新旧页面内容需点单封重刷。
+
+## 2026-06-24 14:03:48 交接：自动判断场景不跟随手动下拉
+- 后端 customer-suite 响应新增 auto_scenario / auto_scenario_label_cn / auto_scenario_basis，同时保留当前使用 scenario。
+- 前端客户信息里的自动判断场景固定读 auto_* 字段；手动切换下拉仅改变当前生成套装。
+- 验证通过：py_compile、mail-suite 脚本 node --check、diff check。
+
+## 2026-06-24 14:22:58 交接：当天统计实时刷新与签名兜底
+- get_mail_ai_stats_summary 中 includes_today=true 时自动 refresh_all，不再需要用户点从CRM刷新才更新当天真发/回信/价值。
+- 新增 _mail_suite_signature_context，套装页/重刷/发送共用签名上下文；展示和重刷正文会始终注入非空签名。
+- 注意：发送仍要求真实企业发件邮箱；兜底签名只解决正文展示/草稿签名，不绕过发件邮箱校验。
+
+## 2026-06-24 17:12:00 知识库管理独立页面交接
+
+- 用户要求：这个节点单独出一个网页，原有保持不变；新页面隐藏“返回企微实时智能”；隐藏“知识分类怎么选”那排说明卡片。
+- 已完成：新增 `frontend/kb.html` 作为独立入口，iframe 打开 `index.html?kbStandalone=1#kb`；`index.html` 检测 `kbStandalone=1` 后自动打开知识库管理并加 `body.kb-standalone`，隐藏返回按钮和知识分类说明卡片。
+- 验证：前端内联脚本 `node --check` 通过；定向 `git diff --check` 通过。
+- 注意：未输出或复制 `.env` 凭据；工作区原本已有大量未提交改动，本轮只新增/修改前端独立入口相关内容和状态日志。
+
+## 2026-06-24 17:20:00 知识库列表默认已发布交接
+
+- 用户要求：进入知识库页面默认就是“已发布”，两个页面保持一致。
+- 已完成：`frontend/index.html` 中 `documents` 列表状态默认阶段改为 `published`；由于独立页 `frontend/kb.html` 复用同一入口逻辑，两个页面默认一致。
+- 验证：前端内联脚本 `node --check` 通过；定向 `git diff --check` 通过。
+
+## 2026-06-24 17:52:00 邮件生成模型配置交接
+- 范围：仅邮件模块；未修改企微回复生成链路。
+- 主要文件：backend/main.py、frontend/index.html、frontend/mail-suite.html。
+- 配置接口：GET/PUT /api/v1/mail/draft-llm-config；请求建议使用 {"model":"deepseek-v4-flash"|"deepseek-v4-pro"|"chatgpt"}，旧 provider 字段仍兼容。
+- 生成链路：_call_llm2_json_for_mail_draft/_call_llm2_text_for_mail_draft 未显式传 model 时读取 runtime_llm_settings.json 的 mail_generation_model。
+- 验证通过：py_compile、两个前端脚本 node --check、定向 diff-check。
+- 注意：未启动真实发信；未输出或修改任何密钥。
+
+## 2026-06-24 18:02:00 知识库独立页免登录交接
+- 用户要求：frontend/kb.html 这个网页不用登录。
+- 已完成：backend/main.py 的 _frontend_path_requires_auth 免登录白名单新增 /static/kb.html。
+- 范围：仅放开知识库独立页；/static/index.html 主工作台仍需登录。
+- 验证通过：py_compile 与定向 diff-check。
+
+## 2026-06-25 11:11:00 邮件套装页脚本为空/重刷版本/签名缺失交接
+
+- 用户反馈 URL：/static/mail-suite.html?id=KH00362-425，问题包括刷新后脚本为空、再次进入疑似不是重刷版本、重刷后签名档仍无。
+- 已确认昨日记录确实修过相关方向：13:23 单封重刷与真实 prompt 查看、13:34/13:40 模板命中与旧保存稿说明、14:22 签名稳定性。
+- 今日复现原因不是“昨天完全没修”，而是修复没有覆盖完整闭环：自动保存未落 llm_prompt；保存稿读取未回填 llm_prompt；重刷接口未在返回和落库前注入套装签名；负责人签名取不到时缺固定兜底。
+- 本轮改动：backend/main.py 补齐 llm_prompt schema patch、序列化、自动保存、保存稿读取；新增 _mail_suite_fallback_signature_html() 和 _mail_suite_signature_html_for_customer()；regenerate_mail_customer_suite_draft() 生成后立即 _apply_mail_suite_signature() 再保存/返回。
+- 验证结果：AST 语法解析通过；定向 diff-check 通过；python -m py_compile 被 backend/__pycache__ / 临时 pycache rename 权限阻断。
+- 线上确认：静态页 HEAD 返回 200，Last-Modified=Wed, 24 Jun 2026 09:52:05 GMT；当前 shell 调 API JSON 受本地 127.0.0.1 代理不可用影响未能拿到响应。部署本轮后需重启后端，再打开该客户点“重刷”验证 prompt_len > 0 且正文含 mail-signature。
+
+## 2026-06-25 11:20:44 邮件套装发件销售代表多 Owner 解析交接
+
+- 用户追问截图中 KH07679-004 为何未读取销售代表邮箱。定位：CRM usrCustomerContact.Owner 保存为 2012,0017，旧实现只支持单个 Owner 精确等于 usrStaff.StaffId，所以没有命中在职员工，也就没有发件企业邮箱。
+- 本轮修复：_fetch_mail_contact_owner_staff_id() 增加多 Owner 拆分与评分，拆分后只允许在职员工参与；优先级为默认企业邮箱 > 可用企业邮箱 > 无邮箱，同时销售/电销/大客户/市场部门优先。
+- 只读验证：KH07679-004 选择 0017（韩瑾 / Angela / 大客户部），有默认可用企业邮箱；2012 在职但无可用邮箱记录，因此不作为发件人优先项。
+- 边界：签名档展示仍有兜底签名；真实发送仍必须取到在职销售的企业发件邮箱，不会用兜底签名绕过发件邮箱校验。
+
+## 2026-06-25 11:30:46 邮件套装销售代表优先工号规则交接
+
+- 新增显式优先工号：0017、0002、0141、0188、1607。
+- 选择口径：先拆联系人 Owner 中的多个工号，只允许在职员工；优先工号中有默认/可用企业邮箱者优先，其次其他有邮箱的在职销售，最后才是无邮箱 fallback。
+- KH07679-004 验证：2012 在职但无可用邮箱；0017 在职且有默认可用邮箱，因此选择 0017。
+
+## 2026-06-25 11:39:18 邮件套装历史保存稿 prompt 回填交接
+
+- 截图显示签名已存在但 prompt 0 字符，说明命中历史 saved_edit，缺的是旧行 llm_prompt 回填，不是正文签名问题。
+- 新逻辑：读取 saved_edit 时若 llm_prompt 为空，调用 prompt-only 装配并写回 mail_customer_suite_draft_edit.llm_prompt；不调用 LLM、不覆盖正文、不改变人工保存逻辑。
+- 验证 KH00362-425 / re_activation / Step1：prompt-only 装配长度 745。
+
+## 2026-06-26 邮件质量诊断面板交互改造 + 测试邮件直出交接
+
+- 用户需求(6 项): 说明文字改浮动且改成易懂用途文案; 每封 AI 指令框高度翻倍; 隐藏原表单红框; 把生成测试邮件挪到每封邮件保存旁; 模板标题改名并在保存名称旁加可改的测试客户编号 + 生成测试套装邮件按钮; 单封/套装测试都用该客户编号弹新页(mail-suite.html)预览, 只展示不入库、去掉其他邮箱限制。
+- 前端 index.html: 标题/模型选择/子标签/案例切换/模板区 tooltip 全部改成大白话; AI 指令 textarea rows14->28、height16rem->32rem、max28rem->56rem; 隐藏原输入网格+生成按钮+未接入字段路线图(加 hidden); 模板标题"三大场景全阶段脚本模板(可编辑保存)"->"场景全阶段脚本模板"; 新增 #mql-test-customer-key(默认案例一客户编号, onblur 存 localStorage) 与 openMailTestSuite()/openMailTestSingle()/saveTestCustomerKey()/ensureTestCustomerKeyDefault(); 每封卡片新增"生成测试邮件"按钮(保存旁)。
+- 前端 mail-suite.html: loadSuite/fetchSuite 读 ?test=1&step=N&scenario=, 测试模式不读不写缓存、Accept:application/json、加测试横幅; 新增 TEST_MODE/ONLY_STEP 全局与 .test-banner 样式。
+- 后端 main.py GET /api/v1/mail/customer-suite: 新增 step、test 两个 query 参; test=1 时 saved_edits 置空强制重生成(反映脚本最新改动)且跳过自动写库; step=N 时只生成该封。生成读取的是 scenario 共享模板(_get_mail_sequence_template_for_prompt customer_key=""), 所以任意测试客户+同场景即可验证改后的脚本。
+- 验证: backend/main.py ast.parse 通过。未启动真实发信; 未改密钥。

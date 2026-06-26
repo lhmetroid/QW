@@ -359,10 +359,10 @@
             <div class="px-6 pt-5 pb-4 flex flex-wrap items-end justify-between gap-4">
                 <div>
                     <div class="text-[11px] font-bold tracking-wide text-indigo-700">邮件工作台</div>
-                    <h1 class="text-xl font-bold text-slate-900 mt-1" title="独立承载邮件草稿、范例黄金库、邮件序列、安全门和人工纠偏诊断，不接入企微实时会话链路。">邮件质量诊断</h1>
+                    <h1 class="text-xl font-bold text-slate-900 mt-1" title="在这里编辑邮件写作脚本、生成测试邮件、查看邮件成效，专门做邮件，不影响企微实时对话。">邮件质量诊断</h1>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    <label class="flex items-center gap-2 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-violet-800" title="选择邮件草稿生成使用的大模型；保存后邮件质量诊断和 mail-suite 独立页都会读取同一配置。">
+                    <label class="flex items-center gap-2 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-violet-800" title="选择用哪个 AI 来写邮件。选好后，本页和测试预览页都用这个 AI。">
                         <span>生成邮件模型</span>
                         <select id="mail-generation-model-select" onchange="saveMailGenerationModel(this.value)" class="rounded border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-900 outline-none focus:ring-2 focus:ring-violet-200">
                             <option value="deepseek-v4-flash">deepseek-v4-flash（默认）</option>
@@ -371,13 +371,13 @@
                         </select>
                         <span id="mail-generation-model-status" class="text-[10px] text-slate-500">未加载</span>
                     </label>
-                    <button id="mail-subtab-stats" type="button" onclick="switchMailWorkspaceTab('stats')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件统计: 统计通过套装页转入CRM的AI邮件及其成效(生成/实发/回信/有价值/反馈)，按天展示，可按日期范围和销售筛选，双击数字看明细邮件清单。">邮件统计</button>
-                    <button id="mail-subtab-quality" type="button" onclick="switchMailWorkspaceTab('quality')" class="px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold" title="查看邮件质量诊断面板（含真接入演示区 + 占位静态卡片），不接入企微工作流。">质量诊断</button>
-                    <button id="mail-subtab-iteration" type="button" onclick="switchMailWorkspaceTab('iteration')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件迭代记录: 一次迭代跑当前 3 案例 × 4 步 = 12 封邮件并打分入库, 可对比多次迭代的草稿质量变化, 含每封邮件用到的真实大模型 prompt。">邮件迭代记录</button>
-                    <button id="mail-subtab-goldlib" type="button" onclick="switchMailWorkspaceTab('goldlib')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="黄金范例库: 邮件草稿生成时由后端 RAG 从此库召回参考。当前 25 条种子由 backend/seed_mail_gold_candidates.py 从历史真实邮件脱敏后灌入。">黄金范例库</button>
-                    <button id="mail-subtab-contractcases" type="button" onclick="switchMailWorkspaceTab('contractcases')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件合同案例库: 只读读取 CRM usrContract 最近合同候选，与黄金范例库同级；当前只展示和分析，不脱敏、不入库。">合同案例库</button>
-                    <button id="mail-subtab-feedback" type="button" onclick="switchMailWorkspaceTab('feedback')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="反馈记录: 查询独立客户套装邮件页 /static/mail-suite.html 保存的真实反馈，一次保存一条数据库记录，并展开查看对应草稿模板和客户联系人画像。">反馈记录</button>
-                    <button id="mail-subtab-config" type="button" onclick="switchMailWorkspaceTab('config')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="查看邮件全局配置面板的占位骨架（评审 Mock 用），不调用后端、不写库、不真实热加载。">邮件配置</button>
+                    <button id="mail-subtab-stats" type="button" onclick="switchMailWorkspaceTab('stats')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="看 AI 邮件的成效：每天生成多少、实际发了多少、收到多少回信、多少有价值。可按日期和销售筛选，双击数字看明细。">邮件统计</button>
+                    <button id="mail-subtab-quality" type="button" onclick="switchMailWorkspaceTab('quality')" class="px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold" title="编辑邮件写作脚本、生成测试邮件看效果的主面板。">质量诊断</button>
+                    <button id="mail-subtab-iteration" type="button" onclick="switchMailWorkspaceTab('iteration')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="批量试跑：一次把当前几个案例的每封邮件都生成并打分，方便对比每次脚本调整后的质量变化。">邮件迭代记录</button>
+                    <button id="mail-subtab-goldlib" type="button" onclick="switchMailWorkspaceTab('goldlib')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="优质邮件范例库。AI 写邮件时会参考这里的好例子。">黄金范例库</button>
+                    <button id="mail-subtab-contractcases" type="button" onclick="switchMailWorkspaceTab('contractcases')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="查看 CRM 里最近的合同案例，供参考分析，只看不改。">合同案例库</button>
+                    <button id="mail-subtab-feedback" type="button" onclick="switchMailWorkspaceTab('feedback')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="查看销售在邮件页填写过的反馈，可展开看对应的邮件脚本和客户信息。">反馈记录</button>
+                    <button id="mail-subtab-config" type="button" onclick="switchMailWorkspaceTab('config')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件全局设置面板（展示用）。">邮件配置</button>
                     <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">返回企微实时智能</button>
                 </div>
             </div>
@@ -456,16 +456,16 @@
                     <div id="mail-stats-detail-body" class="overflow-auto p-4 text-xs space-y-3"></div>
                 </div>
             </div>
-            <section id="mail-quality-live-demo" class="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-5" title="第五阶段 · 真接入 · 实时演示 — 本区域真实调用后端接口生成邮件草稿，结果包含大模型名称、范例命中种子编号、CRM 画像、六道安全门评判。">
+            <section id="mail-quality-live-demo" class="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-5" title="在这里挑客户案例、编辑邮件脚本、生成测试邮件看真实效果。">
                 <div class="rounded-lg border border-emerald-200 bg-white p-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
-                            <button type="button" id="mql-demo-contacts-toggle" onclick="toggleMailDemoContactsCollapsed()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50" title="点击展开或折叠下方 3 个当前测试案例卡片区。">▼ 折叠</button>
-                            <div class="text-xs font-bold text-slate-800" title="当前显示和测试只使用 3 个产品指定客户编号；原 5 个旧案例保留在数据库中但不参与默认显示和迭代。点击案例卡片即自动填入下方表单。">真实测试案例切换（3 选 1：老客户其他业务介绍 / 老客户激活 / 新客户开发介绍）</div>
+                            <button type="button" id="mql-demo-contacts-toggle" onclick="toggleMailDemoContactsCollapsed()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50" title="点这里展开或收起下面的测试案例卡片。">▼ 折叠</button>
+                            <div class="text-xs font-bold text-slate-800" title="三个常用客户案例，点一下就切换到对应的邮件脚本。">真实测试案例切换（3 选 1：老客户其他业务介绍 / 老客户激活 / 新客户开发介绍）</div>
                         </div>
                         <div class="flex items-center gap-2">
                             <span id="mql-demo-contacts-status" class="text-[11px] text-slate-500">加载中……</span>
-                            <button type="button" onclick="reloadMailDemoContacts()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50" title="重新从后端 GET /api/v1/mail/demo-contacts 拉取当前 3 个案例。">刷新案例</button>
+                            <button type="button" onclick="reloadMailDemoContacts()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50" title="重新拉取最新的测试案例。">刷新案例</button>
                         </div>
                     </div>
                     <div id="mql-demo-contacts-collapsible">
@@ -476,15 +476,20 @@
                 <div class="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex flex-wrap items-center gap-2">
-                            <button type="button" id="mql-template-toggle" onclick="toggleMailSequenceTemplatesCollapsed()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100" title="展开或折叠三大场景四阶段脚本模板。">▶ 展开</button>
-                            <div class="text-xs font-bold text-indigo-950" title="只显示 AI 指令和发送间隔。保存后写入后端 mail_sequence_template 表，草稿生成时仅对 AI 指令做变量替换后直接发送给大模型。">三大场景全阶段脚本模板（可编辑保存）</div>
-                            <select id="mql-template-case-select" onchange="onMailTemplateCaseChange(this.value)" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700" title="切换要编辑的模板。默认跟随上方案例联系人(1对1)；点上方 3 个案例联系人会自动联动切换；也可手动选独立模板(如 印刷报价后跟进)。"></select>
-                            <input id="mql-suite-name-input" type="text" class="w-44 rounded border border-indigo-300 px-2 py-1 text-[11px] font-bold text-indigo-900" placeholder="套装名称" title="修改当前自建套装的名称。仅自建套装可改；scenario 代码不变，保存后其他页面下拉同步显示新名，已生成草稿不受影响。" />
-                            <button type="button" id="mql-suite-name-save" onclick="saveMailSuiteName()" class="rounded bg-indigo-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-indigo-700" title="保存套装名称（仅自建套装）">保存名称</button>
+                            <button type="button" id="mql-template-toggle" onclick="toggleMailSequenceTemplatesCollapsed()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100" title="点这里展开或收起下面每封邮件的写作脚本。">▶ 展开</button>
+                            <div class="text-xs font-bold text-indigo-950" title="这里编辑每封邮件交给 AI 的写作要求和发送间隔。改完保存，下次生成邮件就按新要求来。">场景全阶段脚本模板</div>
+                            <select id="mql-template-case-select" onchange="onMailTemplateCaseChange(this.value)" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700" title="选择要编辑哪一套邮件脚本。默认跟着上方选中的客户案例走，也可以手动切换。"></select>
+                            <input id="mql-suite-name-input" type="text" class="w-44 rounded border border-indigo-300 px-2 py-1 text-[11px] font-bold text-indigo-900" placeholder="套装名称" title="给自建的这套邮件起个名字，方便以后认。只有自己新建的套装能改名。" />
+                            <button type="button" id="mql-suite-name-save" onclick="saveMailSuiteName()" class="rounded bg-indigo-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-indigo-700" title="保存这套邮件的名字（只对自建套装有效）。">保存名称</button>
+                            <span class="ml-2 inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-1" title="测试用客户编号。默认填案例一的客户，可以改成任意客户编号。点下面的生成测试邮件就用这个客户去试。改完点别处即自动记住。">
+                                <span class="text-[11px] font-bold text-emerald-800">测试客户编号</span>
+                                <input id="mql-test-customer-key" type="text" class="w-40 rounded border border-emerald-300 px-2 py-1 text-[11px] font-mono font-bold text-emerald-900" placeholder="客户编号" onblur="saveTestCustomerKey()" />
+                            </span>
+                            <button type="button" onclick="openMailTestSuite()" class="rounded bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-emerald-700" title="用上面的测试客户编号，一次生成这套全部邮件，弹出新页面预览。只看效果，不入库不发送。">生成测试套装邮件</button>
                         </div>
                         <div class="flex items-center gap-2">
-                            <button type="button" onclick="loadMailSequenceTemplates()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] text-indigo-700 hover:bg-indigo-100" title="重新从后端 GET /api/v1/mail/sequence-templates 拉取模板。">刷新模板</button>
-                            <button type="button" onclick="openNewSuiteModal()" class="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-100" title="新增自定义套装场景，可设置封数、步骤名称和 AI 指令。">+ 新增套装</button>
+                            <button type="button" onclick="loadMailSequenceTemplates()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] text-indigo-700 hover:bg-indigo-100" title="重新拉取最新的邮件脚本。">刷新模板</button>
+                            <button type="button" onclick="openNewSuiteModal()" class="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-100" title="新建一套自己的邮件场景，自定封数、每封标题和写作要求。">+ 新增套装</button>
                             <span id="mql-template-status" class="text-[11px] text-slate-500">未加载</span>
                         </div>
                     </div>
@@ -492,7 +497,7 @@
                         <div id="mql-template-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-3"></div>
                     </div>
                 </div>
-                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-xs">
+                <div class="mt-4 hidden grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-xs">
                     <label class="flex flex-col gap-1" title="CRM 中客户的唯一标识（API 字段名 customer_key）。用于联查 CRM 画像、客户域名白名单、欠款风险等级。示例：CUST-DEMO-MULTI-DOMAIN。必填。">
                         <span class="font-bold text-slate-700">客户编号</span>
                         <input id="mql-customer-key" class="rounded border border-slate-300 px-2 py-1 font-mono" value="CUST-DEMO-MULTI-DOMAIN">
@@ -527,7 +532,7 @@
                         <input id="mql-seller-sig" class="rounded border border-slate-300 px-2 py-1" value="Mock Sales Owner">
                     </label>
                 </div>
-                <div class="mt-4 flex flex-wrap items-center gap-3">
+                <div class="mt-4 hidden flex-wrap items-center gap-3">
                     <button id="mql-run-btn" type="button" onclick="runMailQualityLiveDraft()" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700" title="只生成当前选定步骤的 1 封草稿。后端会真调大模型 + 真查范例黄金库 + 跑六道安全门，5 到 25 秒返回真草稿。整个过程不会真实发送邮件。">生成当前步骤草稿（真调后端）</button>
                     <button id="mql-run-all-btn" type="button" onclick="runMailQualityLiveDraftAllSteps()" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700" title="按当前业务场景的套装步数依次生成所有邮件（默认 4 封，每封对应 1 步）。每封串行真调后端，总耗时约 N × 单封耗时。生成完成后下方按步骤显示所有草稿。">生成本场景全部草稿（按套装步数）</button>
                     <span id="mql-status" class="text-xs text-slate-600">尚未发起请求</span>
@@ -592,7 +597,7 @@
                     <div id="mql-multi-grid" class="mt-3 grid grid-cols-1 gap-3"></div>
                 </div>
             </section>
-            <div id="mail-quality-panel-info" class="rounded-lg border border-slate-300 bg-slate-50 p-4">
+            <div id="mail-quality-panel-info" class="hidden rounded-lg border border-slate-300 bg-slate-50 p-4">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <div class="flex items-center gap-2">
                         <button type="button" id="mql-info-toggle" onclick="toggleMailQualityInfoPanel()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50" title="点击展开或折叠下方未接入字段路线图。默认折叠以保持页面专注于上方真接入演示区。">▶ 展开</button>
@@ -1784,6 +1789,43 @@
         let mailTemplateSelectedCaseKey = null;
         let mailDemoSuiteTotalSteps = 4;  // 由 GET demo-contacts 的 suite_total_steps 字段动态填充，默认 4
         let mailDemoContactsCollapsed = false;
+        let mailTemplateCurrentScenario = '';  // 模板编辑区当前选中场景, 供"生成测试套装/测试邮件"按钮使用
+
+        // 测试客户编号: 保存到 localStorage, 默认取案例一的客户编号。
+        function getTestCustomerKey() {
+            const el = document.getElementById('mql-test-customer-key');
+            return (el && el.value || '').trim();
+        }
+        function saveTestCustomerKey() {
+            try { localStorage.setItem('mqlTestCustomerKey', getTestCustomerKey()); } catch (e) {}
+        }
+        function ensureTestCustomerKeyDefault() {
+            const el = document.getElementById('mql-test-customer-key');
+            if (!el) return;
+            if ((el.value || '').trim()) return;  // 已有值(用户填过/已恢复)不覆盖
+            let saved = '';
+            try { saved = localStorage.getItem('mqlTestCustomerKey') || ''; } catch (e) {}
+            if (saved) { el.value = saved; return; }
+            // 默认取案例一(第一个 demo 联系人)的客户编号
+            const first = mailDemoContactCache[0];
+            if (first) el.value = (first.real_customer_key || first.customer_key || '').trim();
+        }
+        // 弹出新页面: 生成整套测试邮件(全部封)
+        function openMailTestSuite() {
+            const id = getTestCustomerKey();
+            if (!id) { alert('请先填写测试客户编号'); return; }
+            const params = new URLSearchParams({ id, test: '1' });
+            if (mailTemplateCurrentScenario) params.set('scenario', mailTemplateCurrentScenario);
+            window.open(`/static/mail-suite.html?${params.toString()}`, '_blank');
+        }
+        // 弹出新页面: 只生成第 step 封测试邮件
+        function openMailTestSingle(scenario, step) {
+            const id = getTestCustomerKey();
+            if (!id) { alert('请先填写测试客户编号'); return; }
+            const params = new URLSearchParams({ id, test: '1', step: String(step) });
+            if (scenario) params.set('scenario', scenario);
+            window.open(`/static/mail-suite.html?${params.toString()}`, '_blank');
+        }
         const MAIL_DEMO_CASE_LABELS = {
             1: '老客户其他业务介绍',
             2: '老客户激活',
@@ -1886,6 +1928,9 @@
             const selectedCustomerKey = (mailTemplateSelectedCaseKey && byCase[mailTemplateSelectedCaseKey]) ? mailTemplateSelectedCaseKey : followKey;
             const selectedCase = byCase[selectedCustomerKey] || {};
             const templates = selectedCase.templates || [];
+            // 记录当前选中场景, 供"生成测试套装邮件"按钮使用
+            mailTemplateCurrentScenario = selectedCase.scenario || '';
+            ensureTestCustomerKeyDefault();
             renderMailTemplateCaseSelect(selectedCustomerKey);
             syncMailSuiteNameInput(selectedCase.scenario || '', selectedCase.scenario_label_cn || selectedCase.case_label || '');
             const esc = (v) => String(v == null ? '' : v)
@@ -1912,11 +1957,12 @@
                                     <span class="whitespace-nowrap">发送间隔</span>
                                     <input id="mql-template-interval-${key}" type="number" min="0" step="1" value="${esc(intervalDays)}" class="w-16 rounded border border-slate-300 px-2 py-1 text-xs leading-5" title="距今天多少天后发送" />
                                 </label>
-                                <button id="mql-template-save-${key}" type="button" onclick="saveMailSequenceTemplateAll('${t.scenario}', ${t.suite_step}, '${esc(t.customer_key || '')}', '${esc(groupKey)}')" class="whitespace-nowrap rounded bg-indigo-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-indigo-700" title="一次保存标题、发送间隔和 AI 指令">保存</button>
+                                <button id="mql-template-save-${key}" type="button" onclick="saveMailSequenceTemplateAll('${t.scenario}', ${t.suite_step}, '${esc(t.customer_key || '')}', '${esc(groupKey)}')" class="whitespace-nowrap rounded bg-indigo-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-indigo-700" title="一次性保存这封邮件的标题、发送间隔和写作要求。">保存</button>
+                                <button type="button" onclick="openMailTestSingle('${t.scenario}', ${t.suite_step})" class="whitespace-nowrap rounded bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-emerald-700" title="用上方测试客户编号，只生成这一封邮件，弹出新页面预览。只看效果，不入库不发送。">生成测试邮件</button>
                             </div>
                             <div class="mt-3 flex flex-col gap-1">
                                 <label for="mql-template-ai-${key}" class="text-[10px] font-bold text-slate-600">AI指令</label>
-                                <textarea id="mql-template-ai-${key}" rows="14" class="w-full rounded border border-slate-300 px-2 py-2 text-xs leading-relaxed resize-y" style="height: 16rem; max-height: 28rem; overflow:auto;">${esc(t.ai_instruction_script || '')}</textarea>
+                                <textarea id="mql-template-ai-${key}" rows="28" class="w-full rounded border border-slate-300 px-2 py-2 text-xs leading-relaxed resize-y" style="height: 32rem; max-height: 56rem; overflow:auto;">${esc(t.ai_instruction_script || '')}</textarea>
                             </div>
                         </div>
                     `;
@@ -2138,6 +2184,7 @@
                     statusEl.className = 'text-[11px] text-emerald-700';
                 }
                 renderMailDemoContactsGrid(contacts);
+                ensureTestCustomerKeyDefault();
                 // 默认选第一个
                 if (contacts.length) pickMailDemoContact(contacts[0].demo_index);
             } catch (err) {

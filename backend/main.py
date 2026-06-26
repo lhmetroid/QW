@@ -17580,12 +17580,20 @@ def get_mail_customer_suite(
     request: Request,
     id: str = Query(..., min_length=1),
     scenario: str | None = Query(None),
+    step: int | None = Query(None),
+    test: bool = Query(False),
     db: Session = Depends(get_db),
 ):
-    """独立客户套装邮件页数据源：按客户编号真生成 4 封套装草稿。"""
+    """独立客户套装邮件页数据源：按客户编号真生成套装草稿。
+
+    test=1: 测试模式 — 忽略已保存草稿强制重新调大模型(用于测脚本调整后的真实效果)，且不写库。
+    step=N: 只生成第 N 封(测试单封时用)；缺省时按场景实际封数全部生成。
+    """
     customer_id = sanitize_text(id).strip()
     if not customer_id:
         raise HTTPException(status_code=422, detail="id is required")
+    test_mode = bool(test)
+    only_step = int(step) if step is not None else None
     accept = (request.headers.get("accept") or "").lower()
     if "text/html" in accept and "application/json" not in accept:
         return RedirectResponse(url=f"/static/mail-suite.html?id={quote(customer_id, safe='')}")
@@ -17643,7 +17651,8 @@ def get_mail_customer_suite(
         "seller_name": seller_name,
     }
 
-    saved_edits = {
+    # 测试模式不读已保存草稿: 始终重跑大模型, 反映脚本最新改动
+    saved_edits = {} if test_mode else {
         int(r.suite_step): {
             "subject": r.subject,
             "body_html": r.body_html,
@@ -17807,6 +17816,9 @@ def get_mail_customer_suite(
     from mail_sequence_strategy import get_dynamic_scenario_step_count
     _custom_step_count = get_dynamic_scenario_step_count(scenario_norm)
     suite_steps = list(range(1, _custom_step_count + 1)) if _custom_step_count else list(ALL_MAIL_SEQUENCE_STEPS)
+    # 测试单封: 只生成指定的那一封
+    if only_step is not None and only_step in suite_steps:
+        suite_steps = [only_step]
     # 全部命中缓存时跳过模板预热（无 LLM 调用，不会触发并发 DDL 锁），节省 10-20 次 DB 查询
     _all_cached = all(
         saved_edits.get(int(s), {}).get("subject") and saved_edits.get(int(s), {}).get("body_html")
@@ -17839,7 +17851,8 @@ def get_mail_customer_suite(
         ]
 
     # LLM 生成成功后自动存库 — 下次加载(含 Ctrl+F5)直接读库，不再重调 LLM
-    for _item in drafts:
+    # 测试模式不写库: 纯展示, 不污染该客户已保存草稿
+    for _item in (drafts if not test_mode else []):
         if _item.get("status") != "success":
             continue
         _d = _item.get("draft") or {}

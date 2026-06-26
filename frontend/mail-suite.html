@@ -202,6 +202,16 @@
       font-family: Consolas, monospace;
       font-size: 12px;
     }
+    .test-banner {
+      margin-bottom: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      color: #92400e;
+      font-weight: 700;
+      font-size: 13px;
+    }
     .status {
       padding: 12px 14px;
       border-radius: 8px;
@@ -531,10 +541,12 @@
     <div class="top" hidden>
       <div>
         <h1>客户套装邮件生成</h1>
-        <div class="sub">根据 URL 参数 <code>id</code> 读取 CRM 客户画像，自动判断场景并生成 4 封套装草稿。</div>
+        <div class="sub">根据 URL 参数 <code>id</code> 读取 CRM 客户画像，自动判断场景并生成整套套装草稿。</div>
       </div>
       <div id="page-badge" class="badge">等待客户编号</div>
     </div>
+
+    <div id="test-banner" class="test-banner" hidden></div>
 
     <div id="status" class="status"><span class="spinner"></span><span id="status-text">正在读取参数...</span></div>
 
@@ -549,6 +561,8 @@
   <script>
     let suiteData = null;
     let currentId = '';
+    let TEST_MODE = false;   // ?test=1: 强制重新生成, 不读库不写库
+    let ONLY_STEP = null;    // ?step=N: 只看第 N 封
     let mailDraftLlmRuntimeConfig = null;
     // 已生成套装缓存: scenario -> 接口返回数据. 计算过的场景直接读取,不再重新调大模型.
     const suiteCache = {};
@@ -1252,14 +1266,16 @@
 
     // 拉取套装数据: 指定场景且已缓存则直接读取, 否则请求后端(默认场景传空走自动判断).
     async function fetchSuite(id, scenario) {
-      if (scenario && suiteCache[scenario]) return suiteCache[scenario];
-      const url = scenario
-        ? `/api/v1/mail/customer-suite?id=${encodeURIComponent(id)}&scenario=${encodeURIComponent(scenario)}`
-        : `/api/v1/mail/customer-suite?id=${encodeURIComponent(id)}`;
-      const resp = await fetch(url);
+      // 测试模式: 始终重新调大模型(反映脚本最新改动), 不读缓存
+      if (!TEST_MODE && scenario && suiteCache[scenario]) return suiteCache[scenario];
+      let url = `/api/v1/mail/customer-suite?id=${encodeURIComponent(id)}`;
+      if (scenario) url += `&scenario=${encodeURIComponent(scenario)}`;
+      if (TEST_MODE) url += '&test=1';
+      if (ONLY_STEP != null) url += `&step=${encodeURIComponent(ONLY_STEP)}`;
+      const resp = await fetch(url, { headers: { Accept: 'application/json' } });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
-      if (data.scenario) suiteCache[data.scenario] = data;
+      if (!TEST_MODE && data.scenario) suiteCache[data.scenario] = data;
       return data;
     }
 
@@ -1299,15 +1315,30 @@
         setStatus('URL 缺少客户编号参数，例如 /static/mail-suite.html?id=KH23447-001', true);
         return;
       }
+      // 测试参数: test=1 强制重新生成不读库; step=N 只看第 N 封; scenario 强制指定场景
+      TEST_MODE = ['1', 'true', 'yes'].includes((params.get('test') || '').toLowerCase());
+      const stepRaw = (params.get('step') || '').trim();
+      ONLY_STEP = stepRaw && /^\d+$/.test(stepRaw) ? parseInt(stepRaw, 10) : null;
+      const urlScenario = (params.get('scenario') || '').trim();
       currentId = id;
+      if (TEST_MODE) {
+        document.body.classList.add('test-mode');
+        const banner = document.getElementById('test-banner');
+        if (banner) {
+          banner.hidden = false;
+          banner.textContent = ONLY_STEP != null
+            ? `测试预览 · 只看第 ${ONLY_STEP} 封 · 实时重生成、不入库、不发送`
+            : '测试套装预览 · 全部实时重生成、不入库、不发送';
+        }
+      }
       await loadMailDraftLlmRuntimeConfig();
       await loadSuiteScenarios();
       buildSuitePicker();
       document.getElementById('page-badge').textContent = `客户 ${id}`;
-      setStatus(`正在读取 CRM 并生成 4 封套装邮件：${id}`);
+      setStatus(ONLY_STEP != null ? `正在生成测试邮件（第 ${ONLY_STEP} 封）：${id}` : `正在读取 CRM 并生成套装邮件：${id}`);
       try {
-        // 默认不传场景: 走后端自动判断场景.
-        const data = await fetchSuite(id, '');
+        // 指定 scenario 优先; 否则走后端自动判断场景.
+        const data = await fetchSuite(id, urlScenario);
         setStatus(`生成完成：${scenarioLabel(data)} · 共 ${(data.drafts || []).length} 封`);
         renderSuite(data);
       } catch (err) {
