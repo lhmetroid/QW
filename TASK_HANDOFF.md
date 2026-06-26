@@ -1667,3 +1667,10 @@
 - 用户需求: 测试预览页黄色横幅去掉; 邮件诊断页隐藏"邮件工作台"面包屑与右上"已加载N案例"状态文字; "真实测试案例切换"默认折叠; 顶部"智能销售辅助工作台"与"邮件质量诊断"两行高度压一半。
 - mail-suite.html: 移除 #test-banner 及其填充逻辑(仅留 body.test-mode class)。
 - index.html: 删 邮件工作台 面包屑; #mql-demo-contacts-status 加 hidden; 案例切换默认折叠(mailDemoContactsCollapsed=true + collapsible 加 hidden + 按钮 展开); 顶部 header py-2->py-1、标题 text-lg->base、主导航按钮 py-2->py-1; 邮件诊断头 pt-5 pb-4->pt-2 pb-2、items-end->center、h1 text-xl->lg、子标签与模型选择 py-2->py-1。
+
+## 2026-06-26 反馈记录页改造(结论/已处理/列精简)交接
+
+- 需求(9+1): 说明文字浮动易懂; 保存时间->时间只显年月日; 每行最多2行超出...浮动看全; 客户/联系人->只显联系人编号; 场景阶段拉宽显示"场景- N"; 隐藏对应主题列; 新增可编辑"结论"列(leave 保存); 新增"已处理"勾选+上方筛选; 隐藏说明文字与"已加载N条"状态; 另:案例切换标题去掉(3选1...)括号。
+- 后端: mail_customer_suite_feedback 加 conclusion TEXT + handled BOOLEAN(DDL ALTER + database.py 模型 + 序列化); GET 加 handled 筛选参数; 新增 PATCH /api/v1/mail/customer-suite-feedback/{id} 改结论/已处理。
+- 前端 index.html: 反馈表头重排(时间/联系人编号/场景阶段/反馈摘要/结论/已处理/操作); 渲染用 -webkit-line-clamp:2 截断+title 浮动全文; 日期 slice(0,10); 场景阶段 whitespace-nowrap 显示"场景- N"; 结论 input onblur PATCH; 已处理 checkbox onchange PATCH; 新增 handled 筛选下拉; 隐藏 p 说明与 mail-feedback-status(内联 display:none); saveMailFeedbackConclusion/saveMailFeedbackHandled。
+- 验证: ast.parse 通过。新列由启动 DDL 自动补; 需重启后端生效。

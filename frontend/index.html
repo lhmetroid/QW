@@ -460,7 +460,7 @@
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
                             <button type="button" id="mql-demo-contacts-toggle" onclick="toggleMailDemoContactsCollapsed()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50" title="点这里展开或收起下面的测试案例卡片。">▶ 展开</button>
-                            <div class="text-xs font-bold text-slate-800" title="三个常用客户案例，点一下就切换到对应的邮件脚本。">真实测试案例切换（3 选 1：老客户其他业务介绍 / 老客户激活 / 新客户开发介绍）</div>
+                            <div class="text-xs font-bold text-slate-800" title="三个常用客户案例，点一下就切换到对应的邮件脚本。">真实测试案例切换</div>
                         </div>
                         <div class="flex items-center gap-2">
                             <span id="mql-demo-contacts-status" style="display:none" class="text-[11px] text-slate-500">加载中……</span>
@@ -827,31 +827,35 @@
                 <div class="rounded-lg border border-cyan-300 bg-cyan-50 p-5">
                     <div class="flex flex-wrap items-start justify-between gap-4">
                         <div>
-                            <h2 class="text-base font-bold text-slate-900" title="反馈记录来自独立客户套装邮件页 /static/mail-suite.html。该页面每次保存反馈都会向后端 POST，一次保存就是数据库一条记录。">反馈记录（独立套装页，一次反馈一条记录）</h2>
-                            <p class="text-xs text-slate-600 mt-1">查询 <code>mail_customer_suite_feedback</code> 真表，展示完整反馈、对应邮件草稿/模板和客户联系人画像，便于核对套装页生成与人工反馈是否匹配。</p>
+                            <h2 class="text-base font-bold text-slate-900" title="销售在邮件页填写的反馈都汇总在这里，每填一次就是一条。可以核对邮件生成得对不对，并写处理结论、标记是否已处理。">反馈记录</h2>
                         </div>
                         <div class="flex flex-wrap items-center gap-2">
-                            <input id="mail-feedback-filter-customer" type="text" placeholder="客户编号" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs w-36" title="按客户编号过滤，例如 KH15411-117。留空查询最近记录。">
-                            <select id="mail-feedback-filter-scenario" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" title="按邮件业务场景过滤。">
+                            <input id="mail-feedback-filter-customer" type="text" placeholder="客户编号" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs w-36" title="按客户编号筛选，例如 KH15411-117。留空看最近的。">
+                            <select id="mail-feedback-filter-scenario" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" title="按业务场景筛选。">
                                 <option value="">全部场景</option>
                                 <option value="new_business_promotion">老客户其他业务介绍</option>
                                 <option value="re_activation">老客户激活</option>
                                 <option value="new_contact_intro">新客户开发介绍</option>
                             </select>
-                            <select id="mail-feedback-filter-step" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" title="按 4 轮套装第几封过滤。">
+                            <select id="mail-feedback-filter-step" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" title="按第几封邮件筛选。">
                                 <option value="">全部阶段</option>
                                 <option value="1">第 1 封</option>
                                 <option value="2">第 2 封</option>
                                 <option value="3">第 3 封</option>
                                 <option value="4">第 4 封</option>
                             </select>
-                            <select id="mail-feedback-filter-limit" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" title="本次最多加载多少条。">
+                            <select id="mail-feedback-filter-handled" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" title="按是否已处理筛选。" onchange="loadMailCustomerSuiteFeedbackRecords()">
+                                <option value="">全部</option>
+                                <option value="0">未处理</option>
+                                <option value="1">已处理</option>
+                            </select>
+                            <select id="mail-feedback-filter-limit" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" title="最多加载多少条。">
                                 <option value="50">最近 50 条</option>
                                 <option value="100" selected>最近 100 条</option>
                                 <option value="200">最近 200 条</option>
                             </select>
-                            <button type="button" onclick="loadMailCustomerSuiteFeedbackRecords()" class="rounded border border-cyan-300 bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-100" title="重新从后端 GET /api/v1/mail/customer-suite-feedback 查询反馈记录。">刷新</button>
-                            <span id="mail-feedback-status" class="text-[11px] text-slate-500">未加载</span>
+                            <button type="button" onclick="loadMailCustomerSuiteFeedbackRecords()" class="rounded border border-cyan-300 bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-100" title="按当前筛选条件重新查询反馈记录。">刷新</button>
+                            <span id="mail-feedback-status" style="display:none" class="text-[11px] text-slate-500">未加载</span>
                         </div>
                     </div>
                 </div>
@@ -860,11 +864,12 @@
                         <table class="w-full text-xs">
                             <thead class="bg-slate-50">
                                 <tr class="text-slate-600">
-                                    <th class="px-2 py-2 text-left">保存时间</th>
-                                    <th class="px-2 py-2 text-left">客户 / 联系人</th>
-                                    <th class="px-2 py-2 text-left">场景阶段</th>
-                                    <th class="px-2 py-2 text-left">对应主题</th>
+                                    <th class="px-2 py-2 text-left whitespace-nowrap">时间</th>
+                                    <th class="px-2 py-2 text-left whitespace-nowrap">联系人编号</th>
+                                    <th class="px-2 py-2 text-left whitespace-nowrap">场景阶段</th>
                                     <th class="px-2 py-2 text-left">反馈摘要</th>
+                                    <th class="px-2 py-2 text-left">结论</th>
+                                    <th class="px-2 py-2 text-center whitespace-nowrap">已处理</th>
                                     <th class="px-2 py-2 text-center">操作</th>
                                 </tr>
                             </thead>
@@ -3314,11 +3319,13 @@
             const customerId = (document.getElementById('mail-feedback-filter-customer')?.value || '').trim();
             const scenario = document.getElementById('mail-feedback-filter-scenario')?.value || '';
             const suiteStep = document.getElementById('mail-feedback-filter-step')?.value || '';
+            const handled = document.getElementById('mail-feedback-filter-handled')?.value || '';
             const limit = document.getElementById('mail-feedback-filter-limit')?.value || '100';
             const params = new URLSearchParams({ limit });
             if (customerId) params.set('customer_id', customerId);
             if (scenario) params.set('scenario', scenario);
             if (suiteStep) params.set('suite_step', suiteStep);
+            if (handled) params.set('handled', handled);
             if (statusEl) {
                 statusEl.textContent = '加载中...';
                 statusEl.className = 'text-[11px] text-slate-500';
@@ -3530,30 +3537,69 @@
                 return;
             }
             if (empty) empty.classList.add('hidden');
+            const clampStyle = 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;';
             tbody.innerHTML = mailCustomerSuiteFeedbackRecords.map((item, idx) => {
-                const contact = item.customer_contact_info || {};
                 const feedbackText = item.feedback_text || '';
-                const subject = item.final_subject || (item.draft_payload && item.draft_payload.final_subject) || '（无主题）';
+                const conclusion = item.conclusion || '';
+                const dateOnly = (item.created_at || '').slice(0, 10) || '（无）';
+                const sceneStep = `${mailFeedbackScenarioCn(item.scenario)}- ${item.suite_step != null ? item.suite_step : '-'}`;
+                const fid = escapeHtml(item.feedback_id || '');
                 return `
-                    <tr class="border-t border-slate-100 hover:bg-cyan-50/50">
-                        <td class="px-2 py-2 text-slate-500 whitespace-nowrap" title="${escapeHtml(item.feedback_id || '')}">${escapeHtml(item.created_at || '（无）')}</td>
-                        <td class="px-2 py-2">
-                            <div class="font-mono text-[11px] text-slate-900">${escapeHtml(item.customer_id || '（空）')}</div>
-                            <div class="text-slate-600">${escapeHtml(contact.company_name || item.company_name || '（公司空）')}</div>
-                            <div class="text-[10px] text-slate-500 break-all">${escapeHtml(contact.contact_name || '')} ${escapeHtml(contact.contact_email || item.contact_email || '')}</div>
+                    <tr class="border-t border-slate-100 hover:bg-cyan-50/50 align-top">
+                        <td class="px-2 py-2 text-slate-500 whitespace-nowrap">${escapeHtml(dateOnly)}</td>
+                        <td class="px-2 py-2 whitespace-nowrap font-mono text-[11px] text-slate-900">${escapeHtml(item.customer_id || '（空）')}</td>
+                        <td class="px-2 py-2 whitespace-nowrap"><span class="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">${escapeHtml(sceneStep)}</span></td>
+                        <td class="px-2 py-2 max-w-[360px]"><div style="${clampStyle}" title="${escapeHtml(feedbackText)}">${escapeHtml(feedbackText)}</div></td>
+                        <td class="px-2 py-2 max-w-[260px]">
+                            <input type="text" value="${escapeHtml(conclusion)}" onblur="saveMailFeedbackConclusion('${fid}', this.value)" placeholder="填写结论…" title="${escapeHtml(conclusion)}" class="w-full rounded border border-slate-300 px-2 py-1 text-[11px]" />
                         </td>
-                        <td class="px-2 py-2">
-                            <div><span class="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">${escapeHtml(mailFeedbackScenarioCn(item.scenario))}</span></div>
-                            <div class="mt-1 text-[10px] text-slate-500">${escapeHtml(item.step_label_cn || ('第 ' + item.suite_step + ' 封'))}</div>
-                        </td>
-                        <td class="px-2 py-2 max-w-[260px] truncate" title="${escapeHtml(subject)}">${escapeHtml(subject)}</td>
-                        <td class="px-2 py-2 max-w-[320px] truncate" title="${escapeHtml(feedbackText)}">${escapeHtml(feedbackText)}</td>
                         <td class="px-2 py-2 text-center">
-                            <button type="button" onclick="openMailCustomerSuiteFeedbackDetail(${idx})" class="rounded border border-cyan-300 bg-white px-2 py-1 text-[11px] font-bold text-cyan-700 hover:bg-cyan-100" title="展开完整反馈、对应邮件正文、草稿 JSON 和客户画像。">查看详情</button>
+                            <input type="checkbox" ${item.handled ? 'checked' : ''} onchange="saveMailFeedbackHandled('${fid}', this.checked)" title="勾上表示这条反馈已处理" />
+                        </td>
+                        <td class="px-2 py-2 text-center">
+                            <button type="button" onclick="openMailCustomerSuiteFeedbackDetail(${idx})" class="rounded border border-cyan-300 bg-white px-2 py-1 text-[11px] font-bold text-cyan-700 hover:bg-cyan-100" title="展开完整反馈、对应邮件正文和客户信息。">查看详情</button>
                         </td>
                     </tr>
                 `;
             }).join('');
+        }
+
+        // 反馈记录: 保存"结论"(leave 保存)
+        async function saveMailFeedbackConclusion(feedbackId, value) {
+            if (!feedbackId) return;
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/customer-suite-feedback/${encodeURIComponent(feedbackId)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ conclusion: value || '' }),
+                    credentials: 'include',
+                });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const rec = mailCustomerSuiteFeedbackRecords.find(x => x.feedback_id === feedbackId);
+                if (rec) rec.conclusion = value || '';
+            } catch (err) {
+                alert(`结论保存失败：${err.message}`);
+            }
+        }
+        // 反馈记录: 勾选"已处理"
+        async function saveMailFeedbackHandled(feedbackId, checked) {
+            if (!feedbackId) return;
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/customer-suite-feedback/${encodeURIComponent(feedbackId)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ handled: !!checked }),
+                    credentials: 'include',
+                });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const rec = mailCustomerSuiteFeedbackRecords.find(x => x.feedback_id === feedbackId);
+                if (rec) rec.handled = !!checked;
+                // 若当前正在按"未处理/已处理"筛选, 勾选后该行可能需移出当前视图, 重新拉取
+                const handledFilter = document.getElementById('mail-feedback-filter-handled')?.value || '';
+                if (handledFilter) loadMailCustomerSuiteFeedbackRecords();
+            } catch (err) {
+                alert(`标记保存失败：${err.message}`);
+            }
         }
 
         function openMailCustomerSuiteFeedbackDetail(index) {

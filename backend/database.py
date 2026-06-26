@@ -2071,6 +2071,11 @@ class MailCustomerSuiteFeedback(Base):
 
     customer_profile = Column(JSON, nullable=True)
 
+    # 质检页人工填写的"结论"和"已处理"标记(leave 保存)
+    conclusion = Column(Text, nullable=True)
+
+    handled = Column(Boolean, nullable=False, default=False)
+
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
     __table_args__ = (
@@ -2104,6 +2109,8 @@ class MailCustomerSuiteDraftEdit(Base):
     subject = Column(String(500), nullable=True)
 
     body_html = Column(Text, nullable=True)
+
+    llm_prompt = Column(Text, nullable=True)
 
     send_interval_days = Column(Integer, nullable=True)
 

@@ -742,6 +742,9 @@ def auto_patch_db():
         ))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcsf_customer_created ON mail_customer_suite_feedback (customer_id, created_at);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcsf_scenario_step ON mail_customer_suite_feedback (scenario, suite_step);"))
+        # 反馈记录的人工"结论"和"已处理"标记(质检页可改, leave 保存)
+        db.execute(text("ALTER TABLE mail_customer_suite_feedback ADD COLUMN IF NOT EXISTS conclusion TEXT;"))
+        db.execute(text("ALTER TABLE mail_customer_suite_feedback ADD COLUMN IF NOT EXISTS handled BOOLEAN NOT NULL DEFAULT FALSE;"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS mail_customer_suite_draft_edit ("
             "draft_edit_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -7079,6 +7082,8 @@ def _serialize_mail_customer_suite_feedback(row) -> dict[str, Any]:
         "feedback_text": row.feedback_text,
         "feedback_source": row.feedback_source,
         "feedback_status": row.feedback_status,
+        "conclusion": getattr(row, "conclusion", None) or "",
+        "handled": bool(getattr(row, "handled", False)),
         "draft_payload": draft,
         "customer_profile": profile,
         "customer_contact_info": {
@@ -18198,62 +18203,187 @@ def _mail_suite_html_to_text(html_value: str) -> str:
     return s.strip()
 
 
-def _build_mail_eml_bytes(sender_email: str, sender_name: str, to_emails: list[str], subject: str, body_html: str) -> bytes:
-    """生成与既有系统一致的 .eml，供 SFTP 上传后由发送系统投递。
+def _build_mail_eml_bytes(
+    sender_email: str,
+    sender_name: str,
+    to_emails: list[str],
+    subject: str,
+    body_html: str,
+    attachments: list[dict[str, Any]] | None = None,
+) -> bytes:
+    """生成标准 UTF-8 .eml，供 SFTP 上传后由发送系统投递。
 
-    对齐历史邮件格式：multipart/alternative(text/plain + text/html) + gb2312/gbk 字符集 +
-    quoted-printable 编码；不写 From 头(历史件无 From，发送端按 SendAddress 设置发件人)。
-    用 gb2312→gbk→gb18030 依次尝试，避免少数生僻字编码失败。
+    无附件时保持 multipart/alternative；有附件或内嵌图片时使用 multipart/mixed。
+    主题、正文、附件文件名全部使用 UTF-8，避免旧 gbk/eucgb2312_cn 邮件头兼容问题。
     """
+    import base64 as _base64
     import email.charset as _ec
+    import mimetypes as _mimetypes
+    import re as _re
+    from email import encoders as _encoders
+    from email.header import Header
+    from email.mime.base import MIMEBase
+    from email.mime.image import MIMEImage
     from email.mime.multipart import MIMEMultipart
     from email.mime.nonmultipart import MIMENonMultipart
-    from email.header import Header
-    from email.utils import formatdate
+    from email.utils import formatdate, make_msgid
 
-    def _pick(s: str) -> str:
-        for cs in ("gb2312", "gbk", "gb18030"):
+    def _safe_filename(name: str, fallback: str) -> str:
+        value = str(name or "").replace("\\", "_").replace("/", "_").strip().strip(".")
+        value = _re.sub(r"[\r\n\x00-\x1f]+", "_", value)
+        return (value or fallback)[:160]
+
+    def _decode_upload(item: dict[str, Any], fallback_name: str) -> dict[str, Any] | None:
+        if not isinstance(item, dict):
+            return None
+        raw_data = str(item.get("data") or item.get("base64") or "")
+        if not raw_data:
+            return None
+        content_type = str(item.get("content_type") or item.get("type") or "").strip()
+        if raw_data.startswith("data:"):
+            meta, _, payload = raw_data.partition(",")
+            raw_data = payload
+            if not content_type:
+                content_type = meta[5:].split(";", 1)[0]
+        try:
+            payload_bytes = _base64.b64decode(raw_data, validate=True)
+        except Exception:
+            return None
+        if not payload_bytes:
+            return None
+        filename = _safe_filename(str(item.get("filename") or item.get("name") or ""), fallback_name)
+        if not content_type:
+            content_type = _mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        disposition = str(item.get("disposition") or "attachment").strip().lower()
+        if disposition not in {"attachment", "inline"}:
+            disposition = "attachment"
+        cid = str(item.get("cid") or "").strip().strip("<>")
+        return {
+            "filename": filename,
+            "content_type": content_type,
+            "payload": payload_bytes,
+            "disposition": disposition,
+            "cid": cid,
+        }
+
+    def _extract_inline_data_images(html: str) -> tuple[str, list[dict[str, Any]]]:
+        inline_images: list[dict[str, Any]] = []
+
+        def _replace(match) -> str:
+            quote = match.group(1)
+            mime = match.group(2) or "image/png"
+            data = match.group(3) or ""
             try:
-                s.encode(cs)
-                return cs
+                payload_bytes = _base64.b64decode(data, validate=True)
             except Exception:
-                continue
-        return "utf-8"
+                return match.group(0)
+            cid = make_msgid(domain="speed-asia.com").strip("<>")
+            ext = (_mimetypes.guess_extension(mime) or ".png").lstrip(".")
+            inline_images.append({
+                "filename": f"inline-image-{len(inline_images) + 1}.{ext}",
+                "content_type": mime,
+                "payload": payload_bytes,
+                "disposition": "inline",
+                "cid": cid,
+            })
+            return f"src={quote}cid:{cid}{quote}"
+
+        pattern_img = _re.compile(r"src\s*=\s*(['\"])data:(image/[A-Za-z0-9.+-]+);base64,([^'\"]+)\1", _re.I)
+        return pattern_img.sub(_replace, html or ""), inline_images
 
     text_body = _mail_suite_html_to_text(body_html)
-    cs_name = _pick((text_body or "") + (body_html or "") + (subject or ""))
+    html_body, inline_images = _extract_inline_data_images(body_html or "")
+    upload_attachments = [
+        decoded
+        for idx, item in enumerate(attachments or [], start=1)
+        for decoded in [_decode_upload(item, f"attachment-{idx}")]
+        if decoded is not None
+    ]
+
+    max_file_bytes = 8 * 1024 * 1024
+    max_total_bytes = 20 * 1024 * 1024
+    for image in inline_images:
+        if len(image["payload"]) > max_file_bytes:
+            raise HTTPException(status_code=413, detail=f"图片过大或总大小超过限制：{image['filename']}")
+    filtered_uploads: list[dict[str, Any]] = []
+    total_bytes = sum(len(img["payload"]) for img in inline_images)
+    if total_bytes > max_total_bytes:
+        raise HTTPException(status_code=413, detail="正文图片总大小超过限制")
+    for item in upload_attachments:
+        size = len(item["payload"])
+        if size > max_file_bytes or total_bytes + size > max_total_bytes:
+            raise HTTPException(status_code=413, detail=f"附件过大或总大小超过限制：{item['filename']}")
+        total_bytes += size
+        filtered_uploads.append(item)
+
+    cs_name = "utf-8"
     ch = _ec.Charset(cs_name)
     ch.body_encoding = _ec.QP
     ch.header_encoding = _ec.QP
     subject_ch = _ec.Charset("utf-8")
     subject_ch.header_encoding = _ec.BASE64
 
-    root = MIMEMultipart("alternative")
-    if to_emails:
-        root["To"] = ", ".join(to_emails)
-    root["Subject"] = Header(subject or "", subject_ch, header_name="Subject").encode()
-    root["Date"] = formatdate(localtime=True)
+    def _set_common_headers(root_msg) -> None:
+        if to_emails:
+            root_msg["To"] = ", ".join(to_emails)
+        root_msg["Subject"] = Header(subject or "", subject_ch, header_name="Subject").encode()
+        root_msg["Date"] = formatdate(localtime=True)
 
-    # 包一层与页面编辑器一致的基准字体/字号/行高/颜色(编辑器靠页面 CSS 渲染，innerHTML 不含这些)，
-    # 保证存进 eml、在邮件客户端/发送系统里看到的与页面所见一致。
     _font_css = "font-family:Arial,'Microsoft YaHei',sans-serif;font-size:14px;line-height:1.6;color:#172033;"
     styled_html = (
         "<html><head>"
         f'<meta http-equiv="Content-Type" content="text/html; charset={cs_name}">'
-        "<style>body{" + _font_css + "margin:0;} p{margin:0 0 10px;}</style>"
+        "<style>body{" + _font_css + "margin:0;} p{margin:0 0 10px;} img{max-width:100%;height:auto;}</style>"
         "</head><body>"
-        f'<div style="{_font_css}">' + (body_html or "") + "</div>"
+        f'<div style="{_font_css}">' + html_body + "</div>"
         "</body></html>"
     )
+
     p_text = MIMENonMultipart("text", "plain")
     p_text.set_payload(text_body or "", ch)
     p_html = MIMENonMultipart("text", "html")
     p_html.set_payload(styled_html, ch)
-    root.attach(p_text)
-    root.attach(p_html)
+
+    if inline_images:
+        related = MIMEMultipart("related")
+        related.attach(p_html)
+        for image in inline_images:
+            maintype, _, subtype = image["content_type"].partition("/")
+            if maintype == "image" and subtype:
+                part = MIMEImage(image["payload"], _subtype=subtype)
+            else:
+                part = MIMEBase(maintype or "application", subtype or "octet-stream")
+                part.set_payload(image["payload"])
+                _encoders.encode_base64(part)
+            part.add_header("Content-ID", f"<{image['cid']}>")
+            part.add_header("Content-Disposition", "inline", filename=("utf-8", "", image["filename"]))
+            related.attach(part)
+        html_container = related
+    else:
+        html_container = p_html
+
+    alternative = MIMEMultipart("alternative")
+    alternative.attach(p_text)
+    alternative.attach(html_container)
+
+    if filtered_uploads:
+        root = MIMEMultipart("mixed")
+        _set_common_headers(root)
+        root.attach(alternative)
+        for item in filtered_uploads:
+            maintype, _, subtype = item["content_type"].partition("/")
+            part = MIMEBase(maintype or "application", subtype or "octet-stream")
+            part.set_payload(item["payload"])
+            _encoders.encode_base64(part)
+            if item["disposition"] == "inline" and item.get("cid"):
+                part.add_header("Content-ID", f"<{item['cid']}>")
+            part.add_header("Content-Disposition", item["disposition"], filename=("utf-8", "", item["filename"]))
+            root.attach(part)
+    else:
+        root = alternative
+        _set_common_headers(root)
+
     raw = root.as_bytes()
-    # 统一为邮件标准 CRLF：Python 默认输出 LF，老发送/解码器遇到 QP 软换行 =\n(而非 =\r\n)
-    # 会解不动，导致汉字字节漏成原始 hex(乱码)。先归一到 LF 再转 CRLF，保证全文含 QP 软换行均为 \r\n。
     raw = raw.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
     return raw
 
@@ -18417,10 +18547,12 @@ def send_mail_customer_suite(
     for suite_step in steps:
         saved = saved_edits.get(int(suite_step))
         prov = provided_drafts.get(int(suite_step))
+        mail_attachments = []
         if prov and str(prov.get("body_html") or "").strip():
             # 直接用页面当前显示/编辑后的内容(已含签名与清洗)，不再调大模型
             final_subject = str(prov.get("subject") or "").strip()
             final_body_html = str(prov.get("body_html") or "")
+            mail_attachments = prov.get("attachments") if isinstance(prov.get("attachments"), list) else []
         elif saved is not None and saved.subject and saved.body_html:
             # 次选:已保存内容，同样不调大模型
             final_subject = saved.subject
@@ -18467,7 +18599,7 @@ def send_mail_customer_suite(
         spqueue_rowid = None
         try:
             import mail_sftp
-            eml_bytes = _build_mail_eml_bytes(sender_email, sender_name, recipient_emails, final_subject, final_body_html)
+            eml_bytes = _build_mail_eml_bytes(sender_email, sender_name, recipient_emails, final_subject, final_body_html, mail_attachments)
             ok, eml_ftp_path = mail_sftp.upload_eml_bytes(eml_bytes)
             if not ok or not eml_ftp_path:
                 step_status = "eml_upload_failed"
@@ -18569,16 +18701,23 @@ def list_mail_customer_suite_feedback(
     customer_id: str | None = Query(None),
     scenario: str | None = Query(None),
     suite_step: int | None = Query(None, ge=1, le=4),
+    handled: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
     """查询独立客户套装邮件页反馈记录，供邮件质检页验证反馈、模板和客户联系人。"""
     q = db.query(MailCustomerSuiteFeedback)
+    handled_norm = (handled or "").strip().lower()
     filters = {
         "limit": limit,
         "customer_id": customer_id,
         "scenario": scenario,
         "suite_step": suite_step,
+        "handled": handled_norm or None,
     }
+    if handled_norm in ("1", "true", "yes", "handled"):
+        q = q.filter(MailCustomerSuiteFeedback.handled.is_(True))
+    elif handled_norm in ("0", "false", "no", "unhandled"):
+        q = q.filter(MailCustomerSuiteFeedback.handled.is_(False))
     if customer_id:
         q = q.filter(MailCustomerSuiteFeedback.customer_id == sanitize_text(customer_id).strip())
     if scenario:
@@ -18598,6 +18737,33 @@ def list_mail_customer_suite_feedback(
         "items": [_serialize_mail_customer_suite_feedback(row) for row in rows],
         "real_sending_enabled": False,
     }
+
+
+class MailCustomerSuiteFeedbackPatchRequest(BaseModel):
+    conclusion: str | None = None
+    handled: bool | None = None
+
+
+@app.patch("/api/v1/mail/customer-suite-feedback/{feedback_id}")
+def patch_mail_customer_suite_feedback(
+    feedback_id: str,
+    payload: MailCustomerSuiteFeedbackPatchRequest,
+    db: Session = Depends(get_db),
+):
+    """质检页对某条反馈记录改"结论"或勾"已处理"(leave 保存)。只改这两列, 不动原始反馈内容。"""
+    fid = sanitize_text(feedback_id).strip()
+    if not fid:
+        raise HTTPException(status_code=422, detail="feedback_id is required")
+    row = db.query(MailCustomerSuiteFeedback).filter(MailCustomerSuiteFeedback.feedback_id == fid).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"反馈记录不存在: {fid}")
+    if payload.conclusion is not None:
+        row.conclusion = sanitize_text(payload.conclusion).strip()[:20000] or None
+    if payload.handled is not None:
+        row.handled = bool(payload.handled)
+    db.commit()
+    db.refresh(row)
+    return {"ok": True, "record": _serialize_mail_customer_suite_feedback(row)}
 
 
 def _mail_ai_stats_llm_call(prompt: str) -> dict:
@@ -31688,3 +31854,4 @@ async def caselib_regenerate_iteration_summary(run_id: str):
         }
     finally:
         db.close()
+
