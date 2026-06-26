@@ -3549,12 +3549,12 @@
                         <td class="px-2 py-2 text-slate-500 whitespace-nowrap">${escapeHtml(dateOnly)}</td>
                         <td class="px-2 py-2 whitespace-nowrap font-mono text-[11px] text-slate-900">${escapeHtml(item.customer_id || '（空）')}</td>
                         <td class="px-2 py-2 whitespace-nowrap"><span class="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">${escapeHtml(sceneStep)}</span></td>
-                        <td class="px-2 py-2 max-w-[360px]"><div style="${clampStyle}" title="${escapeHtml(feedbackText)}">${escapeHtml(feedbackText)}</div></td>
-                        <td class="px-2 py-2 max-w-[260px]">
-                            <input type="text" value="${escapeHtml(conclusion)}" onblur="saveMailFeedbackConclusion('${fid}', this.value)" placeholder="填写结论…" title="${escapeHtml(conclusion)}" class="w-full rounded border border-slate-300 px-2 py-1 text-[11px]" />
+                        <td class="px-2 py-2 max-w-[320px]"><div style="${clampStyle}" title="${escapeHtml(feedbackText)}">${escapeHtml(feedbackText)}</div></td>
+                        <td class="px-2 py-2 min-w-[360px]">
+                            <input type="text" value="${escapeHtml(conclusion)}" onblur="saveMailFeedbackConclusion('${fid}', this.value, this)" placeholder="填写结论…" title="${escapeHtml(conclusion)}" class="w-full min-w-[340px] rounded border border-slate-300 px-2 py-1 text-[11px]" />
                         </td>
                         <td class="px-2 py-2 text-center">
-                            <input type="checkbox" ${item.handled ? 'checked' : ''} onchange="saveMailFeedbackHandled('${fid}', this.checked)" title="勾上表示这条反馈已处理" />
+                            <input type="checkbox" ${item.handled ? 'checked' : ''} onchange="saveMailFeedbackHandled('${fid}', this.checked, this)" title="勾上表示这条反馈已处理" />
                         </td>
                         <td class="px-2 py-2 text-center">
                             <button type="button" onclick="openMailCustomerSuiteFeedbackDetail(${idx})" class="rounded border border-cyan-300 bg-white px-2 py-1 text-[11px] font-bold text-cyan-700 hover:bg-cyan-100" title="展开完整反馈、对应邮件正文和客户信息。">查看详情</button>
@@ -3564,40 +3564,57 @@
             }).join('');
         }
 
+        // 统一 PATCH 反馈记录某条的 结论/已处理
+        async function patchMailFeedbackRow(feedbackId, body) {
+            const resp = await fetch(`${window.location.origin}/api/v1/mail/customer-suite-feedback/${encodeURIComponent(feedbackId)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                credentials: 'include',
+            });
+            const txt = await resp.text();
+            if (!resp.ok) {
+                let detail = txt.slice(0, 160);
+                try { detail = (JSON.parse(txt).detail) || detail; } catch (e) {}
+                if (resp.status === 404 || resp.status === 405) {
+                    detail = `后端还没更新(${resp.status})。结论/已处理是新功能, 需要重启后端服务后才能保存。`;
+                }
+                throw new Error(detail);
+            }
+        }
+        function flashMailFeedbackField(el, ok) {
+            if (!el) return;
+            const color = ok ? '#10b981' : '#ef4444';
+            const prev = el.style.borderColor;
+            el.style.borderColor = color;
+            el.style.boxShadow = `0 0 0 2px ${ok ? 'rgba(16,185,129,.25)' : 'rgba(239,68,68,.25)'}`;
+            setTimeout(() => { el.style.borderColor = prev; el.style.boxShadow = ''; }, 1200);
+        }
         // 反馈记录: 保存"结论"(leave 保存)
-        async function saveMailFeedbackConclusion(feedbackId, value) {
+        async function saveMailFeedbackConclusion(feedbackId, value, el) {
             if (!feedbackId) return;
             try {
-                const resp = await fetch(`${window.location.origin}/api/v1/mail/customer-suite-feedback/${encodeURIComponent(feedbackId)}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ conclusion: value || '' }),
-                    credentials: 'include',
-                });
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                await patchMailFeedbackRow(feedbackId, { conclusion: value || '' });
                 const rec = mailCustomerSuiteFeedbackRecords.find(x => x.feedback_id === feedbackId);
                 if (rec) rec.conclusion = value || '';
+                flashMailFeedbackField(el, true);
             } catch (err) {
+                flashMailFeedbackField(el, false);
                 alert(`结论保存失败：${err.message}`);
             }
         }
         // 反馈记录: 勾选"已处理"
-        async function saveMailFeedbackHandled(feedbackId, checked) {
+        async function saveMailFeedbackHandled(feedbackId, checked, el) {
             if (!feedbackId) return;
             try {
-                const resp = await fetch(`${window.location.origin}/api/v1/mail/customer-suite-feedback/${encodeURIComponent(feedbackId)}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ handled: !!checked }),
-                    credentials: 'include',
-                });
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                await patchMailFeedbackRow(feedbackId, { handled: !!checked });
                 const rec = mailCustomerSuiteFeedbackRecords.find(x => x.feedback_id === feedbackId);
                 if (rec) rec.handled = !!checked;
                 // 若当前正在按"未处理/已处理"筛选, 勾选后该行可能需移出当前视图, 重新拉取
                 const handledFilter = document.getElementById('mail-feedback-filter-handled')?.value || '';
                 if (handledFilter) loadMailCustomerSuiteFeedbackRecords();
             } catch (err) {
+                if (el) el.checked = !checked;  // 失败回滚勾选状态
                 alert(`标记保存失败：${err.message}`);
             }
         }
