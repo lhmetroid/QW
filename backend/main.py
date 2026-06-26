@@ -7101,6 +7101,17 @@ def _serialize_mail_customer_suite_feedback(row) -> dict[str, Any]:
 _MAIL_SUITE_DEFAULT_SEND_TIME = "09:00"
 
 
+def _mail_suite_default_send_interval_time(scenario: str, suite_step: int, now_bj: datetime | None = None) -> tuple[int, str]:
+    """默认发送时间：第 1 封为当前北京时间 +10 分钟，其余封保持原 09:00。"""
+    step = int(suite_step or 0)
+    if step == 1:
+        base = now_bj or (datetime.utcnow() + timedelta(hours=8))
+        target = base + timedelta(minutes=10)
+        day_delta = max(0, (target.date() - base.date()).days)
+        return day_delta, target.strftime("%H:%M")
+    return _mail_sequence_default_send_interval_days(scenario, step), _MAIL_SUITE_DEFAULT_SEND_TIME
+
+
 def _serialize_mail_customer_suite_draft_edit(row) -> dict[str, Any]:
     return {
         "draft_edit_id": str(row.draft_edit_id) if getattr(row, "draft_edit_id", None) else None,
@@ -17748,18 +17759,18 @@ def get_mail_customer_suite(
     }
 
     def _suite_step_send_settings(step: int, saved) -> dict[str, Any]:
-        default_interval = _mail_sequence_default_send_interval_days(scenario_norm, int(step))
+        default_interval, default_send_time = _mail_suite_default_send_interval_time(scenario_norm, int(step))
         if saved is not None and saved.get("send_interval_days") is not None:
             interval = int(saved["send_interval_days"])
         else:
             interval = default_interval
-        send_time = saved.get("send_time") if (saved is not None and saved.get("send_time")) else _MAIL_SUITE_DEFAULT_SEND_TIME
+        send_time = saved.get("send_time") if (saved is not None and saved.get("send_time")) else default_send_time
         included = bool(saved.get("included")) if saved is not None else True
         return {
             "send_interval_days": interval,
             "default_send_interval_days": default_interval,
             "send_time": send_time,
-            "default_send_time": _MAIL_SUITE_DEFAULT_SEND_TIME,
+            "default_send_time": default_send_time,
             "included": included,
         }
 
@@ -18582,9 +18593,10 @@ def send_mail_customer_suite(
             if saved and saved.body_html:
                 draft["final_body_html"] = saved.body_html
             final_body_html = _apply_mail_suite_signature(draft.get("final_body_html") or "", signature_html)
-        # 计划发送时间 = (今天 + 间隔天) 当天的 send_time
-        interval = int(saved.send_interval_days) if (saved and saved.send_interval_days is not None) else _mail_sequence_default_send_interval_days(scenario, int(suite_step))
-        send_time = (saved.send_time if (saved and saved.send_time) else _MAIL_SUITE_DEFAULT_SEND_TIME) or "09:00"
+        # 计划发送时间 = (今天 + 间隔天) 当天的 send_time；第 1 封默认当前北京时间 +10 分钟。
+        default_interval, default_send_time = _mail_suite_default_send_interval_time(scenario, int(suite_step), now_bj)
+        interval = int(saved.send_interval_days) if (saved and saved.send_interval_days is not None) else default_interval
+        send_time = (saved.send_time if (saved and saved.send_time) else default_send_time) or "09:00"
         try:
             hh, mm = [int(x) for x in send_time.split(":")]
         except Exception:
