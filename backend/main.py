@@ -8506,6 +8506,7 @@ def _build_mail_generate_draft_response(
         llm_status=assembled.llm_status,
         llm_model_used=assembled.llm_model_used,
         llm_error=assembled.llm_error,
+        llm_prompt=assembled.llm_prompt,
         review_metadata=assembled.review_metadata,
         safety_guardrail=MailSafetyGuardrail(
             overall_outcome=overall_outcome,
@@ -18316,7 +18317,16 @@ def _build_mail_eml_bytes(
         total_bytes += size
         filtered_uploads.append(item)
 
-    cs_name = "utf-8"
+    def _pick_body_charset(value: str) -> str:
+        for candidate in ("gb2312", "gbk", "gb18030"):
+            try:
+                value.encode(candidate)
+                return candidate
+            except Exception:
+                continue
+        return "utf-8"
+
+    cs_name = _pick_body_charset((text_body or "") + (html_body or ""))
     ch = _ec.Charset(cs_name)
     ch.body_encoding = _ec.QP
     ch.header_encoding = _ec.QP
@@ -31854,4 +31864,3 @@ async def caselib_regenerate_iteration_summary(run_id: str):
         }
     finally:
         db.close()
-

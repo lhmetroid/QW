@@ -449,6 +449,52 @@
       outline: none;
     }
     .body-html.rte:focus { border-color: var(--brand); }
+    .attachment-panel {
+      margin-top: 8px;
+      padding: 9px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+    .attachment-hint {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .attachment-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 7px;
+    }
+    .attachment-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 6px 8px;
+      border: 1px solid #dbe3ef;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 12px;
+    }
+    .attachment-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 700;
+    }
+    .attachment-meta {
+      flex: 0 0 auto;
+      color: var(--muted);
+    }
+    .attachment-remove {
+      flex: 0 0 auto;
+      padding: 3px 7px;
+      font-size: 12px;
+      color: var(--bad);
+    }
     .send-config { margin-top: 14px; }
     .send-config-row {
       display: flex;
@@ -564,6 +610,9 @@
     let mailDraftLlmRuntimeConfig = null;
     // 已生成套装缓存: scenario -> 接口返回数据. 计算过的场景直接读取,不再重新调大模型.
     const suiteCache = {};
+    const MAIL_ATTACHMENT_MAX_FILE_BYTES = 8 * 1024 * 1024;
+    const MAIL_ATTACHMENT_MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+    const mailDraftAttachments = new Map();
     // 套装场景列表从后端动态加载，新增场景只需改后端，前端自动跟上
     let SUITE_SCENARIOS = [];
     async function loadSuiteScenarios() {
@@ -832,11 +881,18 @@
               <button type="button" title="上标" onmousedown="rteCmd(event,'superscript')">x²</button>
               <button type="button" title="下标" onmousedown="rteCmd(event,'subscript')">x₂</button>
               <button type="button" title="插入链接" onmousedown="rteLink(event)" hidden>链接</button>
-              <button type="button" title="插入图片" onmousedown="rteImage(event)" hidden>图片</button>
+              <button type="button" title="插入图片" onmousedown="chooseInlineImage(event, ${esc(item.suite_step)})">图片</button>
+              <button type="button" title="添加附件" onmousedown="chooseAttachment(event, ${esc(item.suite_step)})">附件</button>
               <button type="button" title="分割线" onmousedown="rteCmd(event,'insertHorizontalRule')">―</button>
               <button type="button" title="清除格式" onmousedown="rteCmd(event,'removeFormat')">清除格式</button>
             </div>
             <div id="body-${esc(item.suite_step)}" class="body-html rte" contenteditable="true" onblur="saveDraftField(${esc(item.suite_step)})">${draft.final_body_html || ''}</div>
+            <input id="inline-image-${esc(item.suite_step)}" type="file" accept="image/*" hidden onchange="handleInlineImageFiles(${esc(item.suite_step)}, this.files); this.value = ''">
+            <input id="attachment-input-${esc(item.suite_step)}" type="file" multiple hidden onchange="handleAttachmentFiles(${esc(item.suite_step)}, this.files); this.value = ''">
+            <div class="attachment-panel">
+              <div class="attachment-hint">附件和正文图片仅随本次发送写入邮件；单个文件不超过 8MB，单封邮件合计不超过 20MB。</div>
+              <div id="attachment-list-${esc(item.suite_step)}" class="attachment-list"></div>
+            </div>
             <div id="prompt-panel-${esc(item.suite_step)}" class="prompt-panel" hidden>
               <div class="prompt-panel-title">真实大模型 prompt（<span id="prompt-count-${esc(item.suite_step)}">0</span> 字符）</div>
               <pre id="prompt-text-${esc(item.suite_step)}"></pre>
@@ -866,9 +922,12 @@
         `;
         wrap.appendChild(details);
       }
-      // 渲染后初始化各封"发送具体日期"浮动提示
+      // 渲染后初始化各封"发送具体日期"浮动提示和附件列表
       for (const item of data.drafts || []) {
-        if (item.status === 'success' && item.draft) updateSendDatePreview(item.suite_step);
+        if (item.status === 'success' && item.draft) {
+          updateSendDatePreview(item.suite_step);
+          renderAttachmentList(item.suite_step);
+        }
       }
     }
 
@@ -933,10 +992,174 @@
       if (url) rteExec('createLink', url);
     }
 
-    function rteImage(event) {
+    function formatBytes(bytes) {
+      const value = Number(bytes) || 0;
+      if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)}MB`;
+      if (value >= 1024) return `${(value / 1024).toFixed(1)}KB`;
+      return `${value}B`;
+    }
+
+    function dataUrlBytes(dataUrl) {
+      const payload = String(dataUrl || '').split(',', 2)[1] || '';
+      if (!payload) return 0;
+      const padding = payload.endsWith('==') ? 2 : (payload.endsWith('=') ? 1 : 0);
+      return Math.max(0, Math.floor(payload.length * 3 / 4) - padding);
+    }
+
+    function inlineImageBytes(step) {
+      const bodyEl = document.getElementById(`body-${step}`);
+      if (!bodyEl) return 0;
+      let total = 0;
+      for (const img of Array.from(bodyEl.querySelectorAll('img'))) {
+        const src = img.getAttribute('src') || '';
+        if (/^data:image\//i.test(src)) total += dataUrlBytes(src);
+      }
+      return total;
+    }
+
+    function attachmentBytes(step) {
+      return (mailDraftAttachments.get(Number(step)) || []).reduce((sum, item) => sum + (Number(item.size) || 0), 0);
+    }
+
+    function totalDraftFileBytes(step, extraBytes = 0) {
+      return inlineImageBytes(step) + attachmentBytes(step) + (Number(extraBytes) || 0);
+    }
+
+    function setDraftStatus(step, text, isError = false) {
+      const status = document.getElementById(`draft-status-${step}`);
+      if (!status) return;
+      status.textContent = text;
+      status.className = isError ? 'feedback-status err' : 'feedback-status ok';
+    }
+
+    function checkFileLimit(step, file, extraBytes = 0) {
+      if (!file) return false;
+      if (file.size > MAIL_ATTACHMENT_MAX_FILE_BYTES) {
+        const msg = `文件过大：${file.name}（${formatBytes(file.size)}）。单个文件不能超过 ${formatBytes(MAIL_ATTACHMENT_MAX_FILE_BYTES)}。`;
+        alert(msg);
+        setDraftStatus(step, msg, true);
+        return false;
+      }
+      const total = totalDraftFileBytes(step, file.size + extraBytes);
+      if (total > MAIL_ATTACHMENT_MAX_TOTAL_BYTES) {
+        const msg = `第 ${step} 封邮件文件合计 ${formatBytes(total)}，超过 ${formatBytes(MAIL_ATTACHMENT_MAX_TOTAL_BYTES)}。请删除部分附件或压缩图片后再发送。`;
+        alert(msg);
+        setDraftStatus(step, msg, true);
+        return false;
+      }
+      return true;
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error(`读取文件失败：${file.name}`));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function chooseInlineImage(event, step) {
       event.preventDefault();
-      const url = prompt('请输入图片地址（含 http:// 或 https://）');
-      if (url) rteExec('insertImage', url);
+      rteRestore();
+      const input = document.getElementById(`inline-image-${step}`);
+      if (input) input.click();
+    }
+
+    async function handleInlineImageFiles(step, files) {
+      const file = files && files[0];
+      if (!file) return;
+      if (!/^image\//i.test(file.type || '')) {
+        alert('请选择图片文件。');
+        return;
+      }
+      if (!checkFileLimit(step, file)) return;
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        rteExec('insertImage', dataUrl);
+        setDraftStatus(step, `已插入图片 ${file.name}（${formatBytes(file.size)}），发送时会转为标准内嵌图片。`);
+      } catch (err) {
+        setDraftStatus(step, err.message, true);
+      }
+    }
+
+    function chooseAttachment(event, step) {
+      event.preventDefault();
+      const input = document.getElementById(`attachment-input-${step}`);
+      if (input) input.click();
+    }
+
+    async function handleAttachmentFiles(step, files) {
+      const selected = Array.from(files || []);
+      if (!selected.length) return;
+      let stagedExtra = 0;
+      const existing = mailDraftAttachments.get(Number(step)) || [];
+      const next = [...existing];
+      for (const file of selected) {
+        if (!checkFileLimit(step, file, stagedExtra)) break;
+        stagedExtra += file.size;
+        try {
+          const dataUrl = await readFileAsDataUrl(file);
+          next.push({
+            filename: file.name || 'attachment',
+            content_type: file.type || 'application/octet-stream',
+            size: file.size,
+            data: dataUrl,
+            disposition: 'attachment',
+          });
+        } catch (err) {
+          setDraftStatus(step, err.message, true);
+          break;
+        }
+      }
+      mailDraftAttachments.set(Number(step), next);
+      renderAttachmentList(step);
+      if (next.length) {
+        setDraftStatus(step, `已添加 ${next.length} 个附件，附件合计 ${formatBytes(attachmentBytes(step))}。`);
+      }
+    }
+
+    function removeAttachment(step, index) {
+      const current = mailDraftAttachments.get(Number(step)) || [];
+      current.splice(index, 1);
+      mailDraftAttachments.set(Number(step), current);
+      renderAttachmentList(step);
+      setDraftStatus(step, current.length ? `已删除附件，当前附件合计 ${formatBytes(attachmentBytes(step))}。` : '已删除全部附件。');
+    }
+
+    function renderAttachmentList(step) {
+      const list = document.getElementById(`attachment-list-${step}`);
+      if (!list) return;
+      const items = mailDraftAttachments.get(Number(step)) || [];
+      if (!items.length) {
+        list.innerHTML = '<div class="attachment-hint">当前没有附件。</div>';
+        return;
+      }
+      list.innerHTML = items.map((item, index) => `
+        <div class="attachment-item">
+          <span class="attachment-name" title="${esc(item.filename)}">${esc(item.filename)}</span>
+          <span class="attachment-meta">${formatBytes(item.size)}</span>
+          <button type="button" class="attachment-remove" onclick="removeAttachment(${Number(step)}, ${index})">删除</button>
+        </div>
+      `).join('');
+    }
+
+    function rteImage(event) {
+      chooseInlineImage(event, 0);
+    }
+
+    function stripTransientImagesForSave(html) {
+      const div = document.createElement('div');
+      div.innerHTML = html || '';
+      for (const img of Array.from(div.querySelectorAll('img'))) {
+        const src = img.getAttribute('src') || '';
+        if (/^data:image\//i.test(src)) {
+          const marker = document.createElement('span');
+          marker.textContent = '[图片仅随本次发送内嵌]';
+          img.replaceWith(marker);
+        }
+      }
+      return div.innerHTML;
     }
 
     function readDraftFields(step) {
@@ -946,7 +1169,7 @@
       const timeEl = document.getElementById(`sendtime-${step}`);
       const fields = {};
       if (subjectEl) fields.subject = subjectEl.value;
-      if (bodyEl) fields.body_html = bodyEl.innerHTML;
+      if (bodyEl) fields.body_html = stripTransientImagesForSave(bodyEl.innerHTML);
       if (intervalEl && intervalEl.value !== '') fields.send_interval_days = Number(intervalEl.value);
       if (timeEl && timeEl.value) fields.send_time = timeEl.value;
       return fields;
@@ -1142,15 +1365,45 @@
         if (status) { status.textContent = '请先填写客户邮箱'; status.className = 'feedback-status err'; }
         return;
       }
-      if (!confirm(`【真实发送】将把第 ${steps.join(',')} 封写入发送队列，由系统按计划时间真实发出。\n收件人：\n${emails.join(', ')}\n\n请确认收件人无误，确认发送？`)) return;
+      for (const step of steps) {
+        const total = totalDraftFileBytes(step);
+        if (total > MAIL_ATTACHMENT_MAX_TOTAL_BYTES) {
+          const msg = `第 ${step} 封邮件文件合计 ${formatBytes(total)}，超过 ${formatBytes(MAIL_ATTACHMENT_MAX_TOTAL_BYTES)}。请删除部分附件或图片后再发送。`;
+          if (status) { status.textContent = msg; status.className = 'feedback-status err'; }
+          alert(msg);
+          return;
+        }
+        for (const item of (mailDraftAttachments.get(Number(step)) || [])) {
+          if ((Number(item.size) || 0) > MAIL_ATTACHMENT_MAX_FILE_BYTES) {
+            const msg = `附件过大：${item.filename}。单个文件不能超过 ${formatBytes(MAIL_ATTACHMENT_MAX_FILE_BYTES)}。`;
+            if (status) { status.textContent = msg; status.className = 'feedback-status err'; }
+            alert(msg);
+            return;
+          }
+        }
+      }
+      const fileSummary = steps.map(step => {
+        const count = (mailDraftAttachments.get(Number(step)) || []).length;
+        const total = totalDraftFileBytes(step);
+        return total ? `第${step}封：${count}个附件/图片合计${formatBytes(total)}` : `第${step}封：无附件/图片`;
+      }).join('\n');
+      if (!confirm(`【真实发送】将把第 ${steps.join(',')} 封写入发送队列，由系统按计划时间真实发出。\n收件人：\n${emails.join(', ')}\n\n文件：\n${fileSummary}\n\n请确认收件人和附件无误，确认发送？`)) return;
       // 带上页面当前显示/编辑后的每封内容，后端直接用，不再调大模型重生成(避免覆盖你的编辑)
       const draftsPayload = steps.map(s => {
         const subjEl = document.getElementById(`subject-${s}`);
         const bodyEl = document.getElementById(`body-${s}`);
+        const attachments = (mailDraftAttachments.get(Number(s)) || []).map(item => ({
+          filename: item.filename,
+          content_type: item.content_type,
+          size: item.size,
+          data: item.data,
+          disposition: 'attachment',
+        }));
         return {
           suite_step: s,
           subject: subjEl ? subjEl.value : '',
           body_html: bodyEl ? bodyEl.innerHTML : '',
+          attachments,
         };
       });
       btn.disabled = true;
