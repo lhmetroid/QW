@@ -70,6 +70,8 @@ from database import (
     MailSequenceTemplate, MailCustomerSuiteFeedback, MailContractCase,
     MailGoldSeedReview, MailCustomerSuiteDraftEdit, WecomRuntimeConfig,
     MailCustomerSuiteRecipient, MailCustomerSuiteSendPlan, MailCustomSuite,
+    MailAutosendConfig, MailAutosendSuiteRule, MailAutosendRun, MailAutosendPlanItem,
+    MailContactSuiteHistory,
 )
 from worker import start_job
 from knowledge_governance import (
@@ -3467,8 +3469,8 @@ def _hit_log_to_dict(log: KnowledgeHitLog, redact: bool = False) -> dict:
         "hit_chunk_ids": log.hit_chunk_ids,
         "scores": log.scores,
         "hit_snapshot_available": bool(getattr(log, "hit_chunks_snapshot", None)),
-        "hit_detail_source": "recorded_retrieval_snapshot" if getattr(log, "hit_chunks_snapshot", None) else "current_lookup_by_recorded_id",
-        "hit_detail_warning": None if getattr(log, "hit_chunks_snapshot", None) else "历史日志未记录命中正文快照；当前明细仅按历史 chunk_id 查询当前知识库内容，不能等同当时传给后续流程的原文。",
+        "hit_detail_source": "recorded_retrieval_snapshot" if getattr(log, "hit_chunks_snapshot", None) else "not_loaded",
+        "hit_detail_warning": None,
         "no_hit_reason": log.no_hit_reason,
         "status": log.status,
         "retrieval_quality": log.retrieval_quality,
@@ -3538,13 +3540,13 @@ def _chunk_to_hit_dict(chunk: KnowledgeChunk, *, score=None, hit_rank: int | Non
         "status": chunk.status,
     }
 
-def _snapshot_hit_to_dict(hit: dict, *, index: int, redact: bool = False) -> dict:
+def _snapshot_hit_to_dict(hit: dict, *, index: int, redact: bool = False, source: str = "recorded_retrieval_snapshot") -> dict:
     row = dict(hit or {})
     if redact:
         row["title"] = _redact_value(row.get("title"))
         row["content"] = _redact_value(row.get("content"))
     row["hit_rank"] = row.get("hit_rank") or index + 1
-    row["snapshot_source"] = "recorded_retrieval_snapshot"
+    row["snapshot_source"] = source
     row["snapshot_available"] = True
     row["is_original_retrieval_snapshot"] = True
     row["knowledge_type_label"] = row.get("knowledge_type_label") or label_for("knowledge_type", row.get("knowledge_type"))
@@ -3552,6 +3554,56 @@ def _snapshot_hit_to_dict(hit: dict, *, index: int, redact: bool = False) -> dic
     row["business_line_label"] = row.get("business_line_label") or label_for("business_line", row.get("business_line"))
     row["service_scope_label"] = row.get("service_scope_label") or label_for("service_scope", row.get("service_scope"))
     return row
+
+def _knowledge_hits_from_payload(payload, *, expected_log_id: str | None = None) -> tuple[list[dict], dict | None]:
+    if not isinstance(payload, dict):
+        return [], None
+    knowledge = payload.get("knowledge_v2")
+    if not isinstance(knowledge, dict) and isinstance(payload.get("step4_knowledge"), dict):
+        knowledge = payload["step4_knowledge"].get("knowledge_v2")
+    if not isinstance(knowledge, dict):
+        return [], None
+    if expected_log_id:
+        payload_log_id = knowledge.get("log_id") or knowledge.get("knowledge_log_id")
+        if payload_log_id and str(payload_log_id) != str(expected_log_id):
+            return [], None
+    hits = knowledge.get("hits")
+    return (hits if isinstance(hits, list) else []), knowledge
+
+def _hit_log_chain_snapshot_hits(db: Session, log: KnowledgeHitLog) -> tuple[list[dict], str | None]:
+    log_id = str(log.log_id)
+    snapshot = db.query(ReplyChainSnapshot).filter(
+        ReplyChainSnapshot.knowledge_log_id == log_id
+    ).order_by(ReplyChainSnapshot.updated_at.desc()).first()
+    hits, _knowledge = _knowledge_hits_from_payload(
+        {"knowledge_v2": snapshot.knowledge_v2} if snapshot else None,
+        expected_log_id=log_id,
+    )
+    if hits:
+        return hits, "reply_chain_snapshot"
+
+    summary = db.query(IntentSummary).filter(
+        IntentSummary.knowledge_log_id == log_id
+    ).order_by(IntentSummary.summarized_at.desc(), IntentSummary.id.desc()).first()
+    hits, _knowledge = _knowledge_hits_from_payload(
+        {"knowledge_v2": summary.knowledge_v2} if summary else None,
+        expected_log_id=log_id,
+    )
+    if hits:
+        return hits, "intent_summary_snapshot"
+
+    inv_query = db.query(ApiAssistInvocation)
+    if log.request_id:
+        inv_query = inv_query.filter(ApiAssistInvocation.request_id == log.request_id)
+    elif log.session_id:
+        inv_query = inv_query.filter(ApiAssistInvocation.session_id == log.session_id)
+    else:
+        return [], None
+    for inv in inv_query.order_by(ApiAssistInvocation.triggered_at.desc()).limit(80).all():
+        hits, _knowledge = _knowledge_hits_from_payload(inv.result_payload, expected_log_id=log_id)
+        if hits:
+            return hits, "api_assist_invocation_snapshot"
+    return [], None
 
 def _hit_log_snapshot_hits(log: KnowledgeHitLog) -> list[dict]:
     snapshot = getattr(log, "hit_chunks_snapshot", None)
@@ -3565,7 +3617,11 @@ def _hit_log_snapshot_hits(log: KnowledgeHitLog) -> list[dict]:
 def _hit_log_hit_chunks(db: Session, log: KnowledgeHitLog, *, redact: bool = False) -> list[dict]:
     snapshot_hits = _hit_log_snapshot_hits(log)
     if snapshot_hits:
-        return [_snapshot_hit_to_dict(hit, index=index, redact=redact) for index, hit in enumerate(snapshot_hits)]
+        return [_snapshot_hit_to_dict(hit, index=index, redact=redact, source="recorded_retrieval_snapshot") for index, hit in enumerate(snapshot_hits)]
+
+    chain_hits, chain_source = _hit_log_chain_snapshot_hits(db, log)
+    if chain_hits:
+        return [_snapshot_hit_to_dict(hit, index=index, redact=redact, source=chain_source or "chain_snapshot") for index, hit in enumerate(chain_hits)]
 
     hit_chunk_ids = _normalize_hit_chunk_ids(log.hit_chunk_ids)
     if not hit_chunk_ids:
@@ -13967,7 +14023,16 @@ async def list_kb_hit_logs(
     rows = [_hit_log_to_dict(log, redact=redact) for log in logs]
     if include_hits:
         for row, log in zip(rows, logs):
-            row["hit_chunks"] = _hit_log_hit_chunks(db, log, redact=redact)
+            hit_chunks = _hit_log_hit_chunks(db, log, redact=redact)
+            row["hit_chunks"] = hit_chunks
+            source = next((hit.get("snapshot_source") for hit in hit_chunks if isinstance(hit, dict) and hit.get("snapshot_source")), None)
+            is_original = any(bool(hit.get("is_original_retrieval_snapshot")) for hit in hit_chunks if isinstance(hit, dict))
+            row["hit_snapshot_available"] = bool(is_original)
+            row["hit_detail_source"] = source or row.get("hit_detail_source") or "not_loaded"
+            if source == "current_lookup_by_recorded_id":
+                row["hit_detail_warning"] = "未在 knowledge_hit_logs 或实时链路快照中找到当时命中正文；以下仅按历史 chunk_id 查询当前知识库内容，不能等同当时传给后续流程的原文。"
+            elif source in {"recorded_retrieval_snapshot", "reply_chain_snapshot", "intent_summary_snapshot", "api_assist_invocation_snapshot"}:
+                row["hit_detail_warning"] = None
     return rows
 
 @app.get("/api/kb/hit_logs/chunk_stats")
@@ -13992,6 +14057,9 @@ async def get_kb_hit_log_chunk_stats(
     total_hits = 0
     for log in logs:
         snapshot_hits = _hit_log_snapshot_hits(log)
+        snapshot_source = "recorded_retrieval_snapshot" if snapshot_hits else None
+        if not snapshot_hits:
+            snapshot_hits, snapshot_source = _hit_log_chain_snapshot_hits(db, log)
         snapshot_by_id = {
             str(hit.get("chunk_id")): hit
             for hit in snapshot_hits
@@ -14008,12 +14076,14 @@ async def get_kb_hit_log_chunk_stats(
                 "score_count": 0,
                 "latest_snapshot": None,
                 "snapshot_count": 0,
+                "latest_snapshot_source": None,
             })
             item["hit_count"] += 1
             created_at = log.created_at.isoformat() if log.created_at else None
             if created_at and (not item["latest_hit_at"] or created_at > item["latest_hit_at"]):
                 item["latest_hit_at"] = created_at
                 item["latest_snapshot"] = snapshot_by_id.get(chunk_id)
+                item["latest_snapshot_source"] = snapshot_source if snapshot_by_id.get(chunk_id) else None
             if snapshot_by_id.get(chunk_id):
                 item["snapshot_count"] += 1
             query_text = (log.query_text or "").strip()
@@ -14040,11 +14110,11 @@ async def get_kb_hit_log_chunk_stats(
             "avg_score": (item["score_sum"] / item["score_count"]) if item["score_count"] else None,
             "missing": chunk is None,
             "snapshot_count": item.get("snapshot_count") or 0,
-            "hit_detail_source": "recorded_retrieval_snapshot" if item.get("latest_snapshot") else "current_lookup_by_recorded_id",
+            "hit_detail_source": item.get("latest_snapshot_source") if item.get("latest_snapshot") else "current_lookup_by_recorded_id",
             "hit_detail_warning": None if item.get("latest_snapshot") else "该聚合行没有原始命中快照；标题/正文仅按 chunk_id 查询当前知识库内容。",
         }
         if item.get("latest_snapshot"):
-            row.update(_snapshot_hit_to_dict(item["latest_snapshot"], index=0, redact=True))
+            row.update(_snapshot_hit_to_dict(item["latest_snapshot"], index=0, redact=True, source=item.get("latest_snapshot_source") or "chain_snapshot"))
             row["missing"] = False
         elif chunk:
             row.update(_chunk_to_hit_dict(
@@ -19343,6 +19413,132 @@ def autosend_dry_run(payload: AutosendDryRunRequest, db: Session = Depends(get_d
         "day_load": result["day_load"],
         "note": "dry-run 仅计算排期, 未生成草稿、未写 CRM、未入库。",
     }
+
+
+def _autosend_parse_interval_csv(csv: str) -> list[int]:
+    out = []
+    for x in str(csv or "").split(","):
+        x = x.strip()
+        if x.lstrip("-").isdigit():
+            out.append(int(x))
+    return out or [0]
+
+
+def _autosend_serialize_config(row) -> dict:
+    return {
+        "sort_rule": row.sort_rule,
+        "only_valid_email": bool(row.only_valid_email),
+        "interval_days_csv": row.interval_days_csv,
+        "interval_days": _autosend_parse_interval_csv(row.interval_days_csv),
+        "daily_cap": int(row.daily_cap or 10),
+        "fallback_enabled": bool(row.fallback_enabled),
+        "dedup_by_history": bool(row.dedup_by_history),
+    }
+
+
+def _autosend_get_or_create_config(db: Session):
+    row = db.query(MailAutosendConfig).order_by(MailAutosendConfig.config_id).first()
+    if row is None:
+        row = MailAutosendConfig()
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def _autosend_serialize_rule(row) -> dict:
+    return {
+        "rule_id": str(row.rule_id),
+        "priority": int(row.priority or 0),
+        "scenario": row.scenario,
+        "scenario_label_cn": _get_scenario_label_cn(row.scenario) or row.scenario,
+        "conditions": row.conditions or [],
+        "match_mode": row.match_mode or "and",
+        "enabled": bool(row.enabled),
+    }
+
+
+class AutosendConfigRequest(BaseModel):
+    sort_rule: str | None = None
+    only_valid_email: bool | None = None
+    interval_days: list[int] | None = None
+    interval_days_csv: str | None = None
+    daily_cap: int | None = None
+    fallback_enabled: bool | None = None
+    dedup_by_history: bool | None = None
+
+
+@app.get("/api/v1/mail/autosend/config")
+def get_autosend_config(db: Session = Depends(get_db)):
+    return {"ok": True, "config": _autosend_serialize_config(_autosend_get_or_create_config(db))}
+
+
+@app.put("/api/v1/mail/autosend/config")
+def put_autosend_config(payload: AutosendConfigRequest, db: Session = Depends(get_db)):
+    row = _autosend_get_or_create_config(db)
+    if payload.sort_rule is not None:
+        row.sort_rule = sanitize_text(payload.sort_rule).strip()[:40] or "default"
+    if payload.only_valid_email is not None:
+        row.only_valid_email = bool(payload.only_valid_email)
+    if payload.interval_days is not None:
+        row.interval_days_csv = ",".join(str(int(x)) for x in payload.interval_days) or "0"
+    elif payload.interval_days_csv is not None:
+        row.interval_days_csv = ",".join(str(x) for x in _autosend_parse_interval_csv(payload.interval_days_csv))
+    if payload.daily_cap is not None:
+        row.daily_cap = max(1, int(payload.daily_cap))
+    if payload.fallback_enabled is not None:
+        row.fallback_enabled = bool(payload.fallback_enabled)
+    if payload.dedup_by_history is not None:
+        row.dedup_by_history = bool(payload.dedup_by_history)
+    row.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return {"ok": True, "config": _autosend_serialize_config(row)}
+
+
+@app.get("/api/v1/mail/autosend/suite-rules")
+def list_autosend_suite_rules(db: Session = Depends(get_db)):
+    rows = db.query(MailAutosendSuiteRule).order_by(MailAutosendSuiteRule.priority, MailAutosendSuiteRule.updated_at).all()
+    return {"ok": True, "rules": [_autosend_serialize_rule(r) for r in rows]}
+
+
+class AutosendRuleIn(BaseModel):
+    scenario: str
+    conditions: list[dict] = []
+    match_mode: str = "and"
+    enabled: bool = True
+
+
+class AutosendRulesReplaceRequest(BaseModel):
+    rules: list[AutosendRuleIn] = []
+
+
+@app.put("/api/v1/mail/autosend/suite-rules")
+def replace_autosend_suite_rules(payload: AutosendRulesReplaceRequest, db: Session = Depends(get_db)):
+    """整组替换套装优先级规则: 前端发完整有序列表, 顺序即 priority(0,1,2...), 末位为兜底。"""
+    db.query(MailAutosendSuiteRule).delete()
+    for idx, r in enumerate(payload.rules):
+        scenario = sanitize_text(r.scenario).strip()
+        if not scenario:
+            continue
+        db.add(MailAutosendSuiteRule(
+            priority=idx,
+            scenario=scenario[:80],
+            conditions=[c for c in (r.conditions or []) if isinstance(c, dict)],
+            match_mode=("or" if str(r.match_mode).lower() == "or" else "and"),
+            enabled=bool(r.enabled),
+        ))
+    db.commit()
+    rows = db.query(MailAutosendSuiteRule).order_by(MailAutosendSuiteRule.priority).all()
+    return {"ok": True, "rules": [_autosend_serialize_rule(r) for r in rows]}
+
+
+@app.get("/api/v1/mail/autosend/sales-staff-names")
+def get_autosend_sales_staff_names(ids: str = Query("")):
+    """把逗号分隔的销售工号解析成中文名(给 UI 显示)。"""
+    id_list = [s.strip() for s in re.split(r"[,;，、\s]+", ids or "") if s.strip()]
+    names = _resolve_mail_staff_names(id_list) if id_list else {}
+    return {"ok": True, "names": names, "priority_staff_ids": list(_MAIL_SUITE_OWNER_PRIORITY_STAFF_IDS)}
 
 
 def _autosend_existing_crm_load(staff_ids: list[str], start_date) -> dict:

@@ -1705,3 +1705,17 @@ regenerate_mail_customer_suite_draft() 生成后立即 _apply_mail_suite_signatu
 - 接口: POST /api/v1/mail/autosend/dry-run (demo/contacts/sales_staff_ids 三选一, 返回 items+skipped+day_load)。
 - 本地纯函数验证(scratch): 26联系人 cap10 周期[0,5] -> 第25人第1封第2天、第2封第7天; 第7天占满则跳第8天, 与用户示例完全一致。
 - 待办 Step2: 配置/规则 CRUD + 自动发送 UI + dry-run 预览表; Step3: 接真生成草稿+写 spQueueSend+历史去重。需重启后端建表/上线接口。
+
+## 2026-06-26 17:56:56 知识库命中详情链路快照交接
+- 用户指出实时智能页面今天的记录已经显示过知识库检索命中详情。已按此修正，不能再把旧记录一概判断为无法还原，也不能用当前表回查冒充当时传给后续流程的内容。
+- 当前实现：命中日志详情优先读取 hit_logs 自带快照；没有时按 log_id 关联 reply_chain_snapshot、intent_summaries，并按 request_id/session_id 检索 api_assist_invocation.result_payload 中的 knowledge_v2.hits；只有这些都找不到时才按 hit_chunk_ids 查当前 knowledge_chunk，并返回明确 warning。
+- 新写入日志仍会保存 hit_chunks_snapshot，减少后续跨表恢复依赖。旧记录若链路快照仍在，可以恢复当时 hits；若链路快照和 hit_logs 快照都没有，才只能降级为当前表辅助查看。
+- 验证通过：后端 py_compile、前端内联脚本 node --check、定向 diff-check。
+
+## 2026-06-26 自动群发 Step2: 配置/规则 CRUD + UI + dry-run 预览 交接
+
+- 后端 main.py: 模型 import 补 5 表; 新增接口 GET/PUT /api/v1/mail/autosend/config(排序/周期/上限/兜底/去重单行配置)、GET/PUT /api/v1/mail/autosend/suite-rules(整组替换, 顺序即priority末位兜底)、GET /api/v1/mail/autosend/sales-staff-names(工号->中文名)。序列化/解析辅助函数齐备。
+- 前端 index.html: 质量诊断后新增"自动发送"子标签 + mail-autosend-panel(区1联系人范围+排序; 区2套装优先级可增删改上下移+条件且/或; 区3周期/每日上限/开始日期+保存配置/预览排期); switchMailWorkspaceTab 接 autosend; 全套 autosend* JS(加载配置/规则/场景、规则增删改、保存、dry-run、渲染排期表/跳过/每日封数)。
+- dry-run: 留空销售工号走 demo; 填工号走 CRM 取数。仅预览不写CRM。
+- 验证: backend ast.parse 通过; 新增前端 JS 块 node --check 通过。需重启后端上线接口+建表。
+- 待办 Step3: 接真生成草稿+写 spQueueSend+历史去重+后台任务进度。
