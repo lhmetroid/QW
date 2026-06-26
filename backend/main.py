@@ -1089,6 +1089,7 @@ async def startup_event():
     try:
         import mail_sequence_strategy as _mss
         _mss.set_dynamic_scenario_loader(_load_single_custom_suite_from_db)
+        _apply_mail_scenario_label_overrides()
         _startup_db = SessionLocal()
         _load_custom_suites_into_registry(_startup_db)
         _startup_db.close()
@@ -6114,6 +6115,55 @@ _MAIL_SCENARIO_CHINESE = {
 # 用户自建套装的中文标签和步骤标签，运行时动态填充（重启后从 DB 重新加载）
 _DYNAMIC_SCENARIO_CHINESE: dict[str, str] = {}
 _DYNAMIC_STEP_LABELS: dict[tuple[str, int], str] = {}
+
+
+def _mail_runtime_settings_path() -> str:
+    import os
+    return os.path.join(os.path.dirname(__file__), "runtime_llm_settings.json")
+
+
+def _load_mail_scenario_label_overrides() -> dict[str, str]:
+    """读取内置场景的中文名覆盖(用户对老的 3 个场景改的名字), 存在 runtime_llm_settings.json。"""
+    import os, json
+    path = _mail_runtime_settings_path()
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        ov = data.get("scenario_label_overrides") if isinstance(data, dict) else None
+        return {str(k): str(v) for k, v in ov.items()} if isinstance(ov, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_mail_scenario_label_override(scenario: str, label: str) -> None:
+    """持久化内置场景改名(scenario 代码不变, 仅显示名), 重启后由 _apply 重新载入。"""
+    import os, json
+    path = _mail_runtime_settings_path()
+    data: dict[str, Any] = {}
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                data = loaded
+        except Exception:
+            data = {}
+    ov = data.get("scenario_label_overrides")
+    if not isinstance(ov, dict):
+        ov = {}
+    ov[scenario] = label
+    data["scenario_label_overrides"] = ov
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _apply_mail_scenario_label_overrides() -> None:
+    """启动时把改名覆盖应用到内置场景中文名(只覆盖已知内置场景, 不新增)。"""
+    for scenario, label in _load_mail_scenario_label_overrides().items():
+        if scenario in _MAIL_SCENARIO_CHINESE and str(label).strip():
+            _MAIL_SCENARIO_CHINESE[scenario] = str(label).strip()
 
 
 def _get_scenario_label_cn(scenario: str) -> str | None:
@@ -16887,6 +16937,8 @@ async def get_mail_crm_mock_profiles():
 @app.get("/api/v1/mail/sequence-templates")
 def list_mail_sequence_templates(db: Session = Depends(get_db)):
     """返回三大邮件场景 × 4 阶段的可编辑脚本模板。"""
+    # 多进程下其他 worker 改的内置场景名也能即时生效(从磁盘重载改名覆盖)
+    _apply_mail_scenario_label_overrides()
     degraded_error = None
     try:
         rows = _ensure_mail_sequence_templates(db)
@@ -17401,6 +17453,7 @@ def _apply_mail_suite_signature(body_html: str, signature_html: str) -> str:
 @app.get("/api/v1/mail/suite-scenario-options")
 def get_mail_suite_scenario_options(db: Session = Depends(get_db)):
     """返回所有已注册的套装场景选项（value + 中文 label），供前端下拉动态渲染。"""
+    _apply_mail_scenario_label_overrides()
     from mail_sequence_strategy import _STRATEGY_REGISTRY, _DYNAMIC_REGISTRY
     scenarios = []
     for s in list(_STRATEGY_REGISTRY) + [k for k in _DYNAMIC_REGISTRY if k not in _STRATEGY_REGISTRY]:
@@ -17488,12 +17541,30 @@ class MailCustomSuiteRenameRequest(BaseModel):
 
 @app.put("/api/v1/mail/custom-suites/{scenario}")
 def rename_mail_custom_suite(scenario: str, payload: MailCustomSuiteRenameRequest, db: Session = Depends(get_db)):
-    """重命名自建套装(只改中文名 label_cn; scenario 代码不变, 故其他页面/已存草稿不受影响)。"""
-    if not (scenario or "").startswith("custom_"):
-        raise HTTPException(status_code=422, detail="只能重命名自建套装(custom_*)")
+    """重命名套装(只改中文显示名; scenario 代码不变, 故生成流程/已存草稿都不受影响)。
+
+    支持两类:
+    - 自建套装(custom_*): 改 MailCustomSuite.label_cn + 模板行 + 动态注册。
+    - 内置老场景(re_activation 等): 改名持久化到 runtime_llm_settings.json 并热更内存中文名, 不影响 scenario 代码与生成逻辑。
+    """
+    scenario = (scenario or "").strip()
     label = sanitize_text(payload.label_cn).strip()[:100]
     if not label:
         raise HTTPException(status_code=422, detail="label_cn 不能为空")
+    # 内置老场景改名: 仅改显示名, 不动 scenario 代码、不改步骤数、不影响生成
+    if not scenario.startswith("custom_"):
+        if scenario not in _MAIL_SCENARIO_CHINESE:
+            raise HTTPException(status_code=404, detail=f"场景不存在: {scenario}")
+        _MAIL_SCENARIO_CHINESE[scenario] = label
+        try:
+            _save_mail_scenario_label_override(scenario, label)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"保存改名失败: {exc}")
+        # 同步各阶段模板行的场景中文名, 让模板/下拉显示新名
+        for t in db.query(MailSequenceTemplate).filter(MailSequenceTemplate.scenario == scenario).all():
+            t.scenario_label_cn = label
+        db.commit()
+        return {"ok": True, "scenario": scenario, "label_cn": label, "kind": "builtin"}
     row = db.query(MailCustomSuite).filter(MailCustomSuite.scenario == scenario).first()
     if row is None:
         raise HTTPException(status_code=404, detail=f"套装不存在: {scenario}")
@@ -18154,11 +18225,13 @@ def _build_mail_eml_bytes(sender_email: str, sender_name: str, to_emails: list[s
     ch = _ec.Charset(cs_name)
     ch.body_encoding = _ec.QP
     ch.header_encoding = _ec.QP
+    subject_ch = _ec.Charset("utf-8")
+    subject_ch.header_encoding = _ec.BASE64
 
     root = MIMEMultipart("alternative")
     if to_emails:
         root["To"] = ", ".join(to_emails)
-    root["Subject"] = Header(subject or "", ch).encode()
+    root["Subject"] = Header(subject or "", subject_ch, header_name="Subject").encode()
     root["Date"] = formatdate(localtime=True)
 
     # 包一层与页面编辑器一致的基准字体/字号/行高/颜色(编辑器靠页面 CSS 渲染，innerHTML 不含这些)，

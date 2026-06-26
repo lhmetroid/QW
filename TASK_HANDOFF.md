@@ -1653,3 +1653,11 @@
 - 前端 mail-suite.html: loadSuite/fetchSuite 读 ?test=1&step=N&scenario=, 测试模式不读不写缓存、Accept:application/json、加测试横幅; 新增 TEST_MODE/ONLY_STEP 全局与 .test-banner 样式。
 - 后端 main.py GET /api/v1/mail/customer-suite: 新增 step、test 两个 query 参; test=1 时 saved_edits 置空强制重生成(反映脚本最新改动)且跳过自动写库; step=N 时只生成该封。生成读取的是 scenario 共享模板(_get_mail_sequence_template_for_prompt customer_key=""), 所以任意测试客户+同场景即可验证改后的脚本。
 - 验证: backend/main.py ast.parse 通过。未启动真实发信; 未改密钥。
+
+## 2026-06-26 内置老场景也支持改名(不影响使用)交接
+
+- 用户需求: 老的 3 个内置场景(老客户激活/老客户其他业务介绍/新客户开发介绍, 含印刷报价后跟进)也能改显示名, 且不影响生成与已存草稿。
+- 后端 main.py: 新增 _load/_save/_apply_mail_scenario_label_overrides(), 改名持久化到 runtime_llm_settings.json 的 scenario_label_overrides, 启动时 + 列模板/套装选项接口处热载入(兼容多 worker); PUT /api/v1/mail/custom-suites/{scenario} 放开内置场景分支(只改内存中文名 _MAIL_SCENARIO_CHINESE + 覆盖文件 + 模板行 scenario_label_cn, scenario 代码不变)。
+- 前端 index.html: syncMailSuiteNameInput/saveMailSuiteName 取消"仅自建套装可改名"限制, 选中任一套装即可改名。
+- 不影响使用: 生成流程/场景路由/已存草稿都以 scenario 代码为准, 仅显示名变化。
+- 验证: ast.parse 通过。提醒: 截图为旧缓存页, 需 Ctrl+F5 才能看到上一轮新版 UI。

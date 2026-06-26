@@ -1970,21 +1970,19 @@
                 .join('');
         }
 
-        // 顶部"套装名称"输入框: 仅自建套装(custom_*)可改名; 标准场景禁用并提示。
+        // 顶部"套装名称"输入框: 自建套装和内置老场景都可改名(只改显示名, 不影响生成)。
         function syncMailSuiteNameInput(scenario, label) {
             const input = document.getElementById('mql-suite-name-input');
             const btn = document.getElementById('mql-suite-name-save');
             if (!input || !btn) return;
-            const isCustom = String(scenario || '').startsWith('custom_');
+            const editable = !!String(scenario || '').trim();
             input.value = label || '';
             input.dataset.scenario = scenario || '';
-            input.disabled = !isCustom;
-            btn.disabled = !isCustom;
-            btn.classList.toggle('opacity-50', !isCustom);
-            btn.classList.toggle('cursor-not-allowed', !isCustom);
-            input.title = isCustom
-                ? '修改当前自建套装的名称。scenario 代码不变，保存后下拉同步显示新名，已生成草稿不受影响。'
-                : '仅自建套装(custom_*)可改名；标准场景名称固定。';
+            input.disabled = !editable;
+            btn.disabled = !editable;
+            btn.classList.toggle('opacity-50', !editable);
+            btn.classList.toggle('cursor-not-allowed', !editable);
+            input.title = '修改这套邮件的显示名称。只改名字，不影响生成流程和已存草稿。';
         }
 
         async function saveMailSuiteName() {
@@ -1993,8 +1991,8 @@
             if (!input) return;
             const scenario = input.dataset.scenario || '';
             const label = (input.value || '').trim();
-            if (!scenario.startsWith('custom_')) {
-                if (statusEl) { statusEl.textContent = '仅自建套装可改名'; statusEl.className = 'text-[11px] text-amber-700 font-bold'; }
+            if (!scenario) {
+                if (statusEl) { statusEl.textContent = '请先选中一套邮件再改名'; statusEl.className = 'text-[11px] text-amber-700 font-bold'; }
                 return;
             }
             if (!label) {
