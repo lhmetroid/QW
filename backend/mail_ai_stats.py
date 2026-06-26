@@ -25,6 +25,13 @@ _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 # 我方企业邮箱域(回信发件人不该是我们自己)
 _OUR_DOMAINS = ("speed-asia.com",)
 _MAIL_AI_USE_RANGE = "宣传邮件-AI"
+# 邮件统计只看这 5 个销售；其他销售即使有 AI 邮件，也不进入本页统计口径。
+_ALLOWED_STATS_STAFF_IDS = ("0017", "0141", "1607", "0002", "0188")
+_ALLOWED_STATS_STAFF_SET = set(_ALLOWED_STATS_STAFF_IDS)
+
+
+def _is_allowed_stats_staff(staff_id: str) -> bool:
+    return (staff_id or "").strip() in _ALLOWED_STATS_STAFF_SET
 
 
 def bj_date(dt) -> date | None:
@@ -538,7 +545,10 @@ def _bucket_counts(db: Session, start: date, end: date):
     def add(d, staff, key, n=1):
         if d is None or d < start or d > end:
             return
-        for s in dict.fromkeys([(staff or ""), ""]):  # 该销售 + 全体(''); 去重避免 staff 为空时重复累加
+        staff_norm = (staff or "").strip()
+        if not _is_allowed_stats_staff(staff_norm):
+            return
+        for s in (staff_norm, ""):  # 该销售 + 白名单全体汇总
             cell = agg.setdefault((d, s), {"generated": 0, "sent": 0, "reply": 0, "valuable": 0, "feedback": 0})
             cell[key] += n
 
@@ -669,6 +679,8 @@ def refresh_all(db: Session, llm_call, lookback_days: int = 120) -> dict:
 # ---------------------------------------------------------------------------
 def query_daily(db: Session, start: date, end: date, staff_id: str | None) -> list[dict]:
     staff = (staff_id or "").strip()
+    if staff and not _is_allowed_stats_staff(staff):
+        return []
     rows = db.execute(text(
         "SELECT stat_date, generated_count, sent_count, reply_count, valuable_count, feedback_count, is_final "
         "FROM mail_ai_daily_stats WHERE stat_date>=:s AND stat_date<=:e AND staff_id=:st "
@@ -682,32 +694,38 @@ def query_daily(db: Session, start: date, end: date, staff_id: str | None) -> li
 
 
 def query_daily_by_staff(db: Session, day: date) -> list[dict]:
-    """某一天 各销售(staff_id 非空) 的 5 指标, 按生成数降序。供"按销售单日统计"表格。"""
+    """某一天固定 5 个销售的 5 指标；其他销售不进入本页统计口径。"""
     rows = db.execute(text(
         "SELECT staff_id, generated_count, sent_count, reply_count, valuable_count, feedback_count, is_final "
-        "FROM mail_ai_daily_stats WHERE stat_date=:d AND staff_id<>'' "
-        "ORDER BY generated_count DESC, sent_count DESC, staff_id"
-    ), {"d": day}).fetchall()
-    return [{
-        "staff_id": r[0],
-        "generated_count": r[1], "sent_count": r[2], "reply_count": r[3],
-        "valuable_count": r[4], "feedback_count": r[5], "is_final": bool(r[6]),
-    } for r in rows]
+        "FROM mail_ai_daily_stats WHERE stat_date=:d AND staff_id=ANY(:staff_ids)"
+    ), {"d": day, "staff_ids": list(_ALLOWED_STATS_STAFF_IDS)}).fetchall()
+    by_staff = {str(r[0]): r for r in rows}
+    out = []
+    for staff_id in _ALLOWED_STATS_STAFF_IDS:
+        r = by_staff.get(staff_id)
+        out.append({
+            "staff_id": staff_id,
+            "generated_count": int(r[1] or 0) if r else 0,
+            "sent_count": int(r[2] or 0) if r else 0,
+            "reply_count": int(r[3] or 0) if r else 0,
+            "valuable_count": int(r[4] or 0) if r else 0,
+            "feedback_count": int(r[5] or 0) if r else 0,
+            "is_final": bool(r[6]) if r else (day < (datetime.utcnow() + BJ_OFFSET).date()),
+        })
+    return out
 
 
 def list_staff(db: Session) -> list[str]:
-    rows = db.execute(text(
-        "SELECT DISTINCT inputer_staff_id FROM mail_customer_suite_send_plan "
-        "WHERE status='enqueued' AND inputer_staff_id IS NOT NULL AND inputer_staff_id<>'' "
-        "ORDER BY inputer_staff_id"
-    )).fetchall()
-    return [r[0] for r in rows]
+    return list(_ALLOWED_STATS_STAFF_IDS)
 
 
 def detail_rows(db: Session, metric: str, day: date, staff_id: str | None) -> list[dict]:
     """某天某指标的明细邮件清单(含联系人/主题/正文; 反馈/价值内容有才显示)。day 为北京日期。"""
     staff = (staff_id or "").strip()
-    staff_clause = " AND inputer_staff_id=:st" if staff else ""
+    if staff and not _is_allowed_stats_staff(staff):
+        return []
+    allowed_staff_ids = list(_ALLOWED_STATS_STAFF_IDS)
+    staff_clause = " AND inputer_staff_id=:st" if staff else " AND inputer_staff_id=ANY(:allowed_staff_ids)"
     # 本地 UTC 时间窗 = 北京当天[00:00,24:00) - 8h
     bj_start = datetime(day.year, day.month, day.day) - BJ_OFFSET
     bj_end = bj_start + timedelta(days=1)
@@ -716,7 +734,7 @@ def detail_rows(db: Session, metric: str, day: date, staff_id: str | None) -> li
         q = ("SELECT customer_id, to_emails, subject, body_html, scenario, suite_step, crm_send_status "
              "FROM mail_customer_suite_send_plan WHERE status='enqueued' "
              "AND created_at>=:a AND created_at<:b" + staff_clause + " ORDER BY created_at DESC")
-        rows = db.execute(text(q), {"a": bj_start, "b": bj_end, "st": staff}).fetchall()
+        rows = db.execute(text(q), {"a": bj_start, "b": bj_end, "st": staff, "allowed_staff_ids": allowed_staff_ids}).fetchall()
         return [{"customer_id": r[0], "contact": r[1], "subject": r[2], "body_html": r[3],
                  "scenario": r[4], "suite_step": r[5], "send_status": r[6]} for r in rows]
 
@@ -727,28 +745,32 @@ def detail_rows(db: Session, metric: str, day: date, staff_id: str | None) -> li
         q = ("SELECT customer_id, to_emails, subject, body_html, scenario, suite_step, crm_fact_send_time "
              "FROM mail_customer_suite_send_plan WHERE status='enqueued' AND crm_send_status='SendSuccess' "
              "AND crm_fact_send_time>=:a AND crm_fact_send_time<:b" + staff_clause + " ORDER BY crm_fact_send_time DESC")
-        rows = db.execute(text(q), {"a": cstart, "b": cend, "st": staff}).fetchall()
+        rows = db.execute(text(q), {"a": cstart, "b": cend, "st": staff, "allowed_staff_ids": allowed_staff_ids}).fetchall()
         return [{"customer_id": r[0], "contact": r[1], "subject": r[2], "body_html": r[3],
                  "scenario": r[4], "suite_step": r[5], "fact_send_time": r[6].isoformat() if r[6] else None} for r in rows]
 
     if metric in ("reply", "valuable"):
         cstart = datetime(day.year, day.month, day.day)
         cend = cstart + timedelta(days=1)
-        staff_clause2 = " AND staff_id=:st" if staff else ""
+        staff_clause2 = " AND staff_id=:st" if staff else " AND staff_id=ANY(:allowed_staff_ids)"
         val_clause = " AND is_valuable=TRUE" if metric == "valuable" else ""
         q = ("SELECT customer_id, reply_sender, reply_subject, reply_body, reply_received_at, "
              "is_valuable, value_reason FROM mail_ai_reply_analysis "
              "WHERE reply_received_at>=:a AND reply_received_at<:b" + staff_clause2 + val_clause +
              " ORDER BY reply_received_at DESC")
-        rows = db.execute(text(q), {"a": cstart, "b": cend, "st": staff}).fetchall()
+        rows = db.execute(text(q), {"a": cstart, "b": cend, "st": staff, "allowed_staff_ids": allowed_staff_ids}).fetchall()
         return [{"customer_id": r[0], "contact": r[1], "subject": r[2], "body_text": r[3],
                  "received_at": r[4].isoformat() if r[4] else None,
                  "is_valuable": r[5], "value_reason": r[6]} for r in rows]
 
     if metric == "feedback":
-        q = ("SELECT customer_id, contact_email, final_subject, final_body_html, feedback_text, scenario, suite_step "
-             "FROM mail_customer_suite_feedback WHERE created_at>=:a AND created_at<:b ORDER BY created_at DESC")
-        rows = db.execute(text(q), {"a": bj_start, "b": bj_end}).fetchall()
+        feedback_staff_clause = " AND p.inputer_staff_id=:st" if staff else " AND p.inputer_staff_id=ANY(:allowed_staff_ids)"
+        q = ("SELECT f.customer_id, f.contact_email, f.final_subject, f.final_body_html, f.feedback_text, f.scenario, f.suite_step "
+             "FROM mail_customer_suite_feedback f WHERE f.created_at>=:a AND f.created_at<:b "
+             "AND EXISTS (SELECT 1 FROM mail_customer_suite_send_plan p "
+             "WHERE p.status='enqueued' AND p.customer_id=f.customer_id" + feedback_staff_clause + ") "
+             "ORDER BY f.created_at DESC")
+        rows = db.execute(text(q), {"a": bj_start, "b": bj_end, "st": staff, "allowed_staff_ids": allowed_staff_ids}).fetchall()
         return [{"customer_id": r[0], "contact": r[1], "subject": r[2], "body_html": r[3],
                  "feedback_text": r[4], "scenario": r[5], "suite_step": r[6]} for r in rows]
 
