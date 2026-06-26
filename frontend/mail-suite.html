@@ -546,8 +546,6 @@
       <div id="page-badge" class="badge">等待客户编号</div>
     </div>
 
-    <div id="test-banner" class="test-banner" hidden></div>
-
     <div id="status" class="status"><span class="spinner"></span><span id="status-text">正在读取参数...</span></div>
 
     <section id="customer-panel" class="panel" hidden>
@@ -1321,16 +1319,7 @@
       ONLY_STEP = stepRaw && /^\d+$/.test(stepRaw) ? parseInt(stepRaw, 10) : null;
       const urlScenario = (params.get('scenario') || '').trim();
       currentId = id;
-      if (TEST_MODE) {
-        document.body.classList.add('test-mode');
-        const banner = document.getElementById('test-banner');
-        if (banner) {
-          banner.hidden = false;
-          banner.textContent = ONLY_STEP != null
-            ? `测试预览 · 只看第 ${ONLY_STEP} 封 · 实时重生成、不入库、不发送`
-            : '测试套装预览 · 全部实时重生成、不入库、不发送';
-        }
-      }
+      if (TEST_MODE) document.body.classList.add('test-mode');
       await loadMailDraftLlmRuntimeConfig();
       await loadSuiteScenarios();
       buildSuitePicker();

@@ -153,31 +153,31 @@
 <body class="h-screen flex flex-col text-slate-800 overflow-hidden">
 
     <header class="shrink-0 bg-white border-b border-slate-200">
-        <div class="px-6 py-2 flex flex-wrap items-center justify-between gap-4">
+        <div class="px-6 py-1 flex flex-wrap items-center justify-between gap-4">
             <div class="flex items-center gap-1.5">
-                <div class="text-lg font-bold text-slate-900">智能销售辅助工作台</div>
+                <div class="text-base font-bold text-slate-900">智能销售辅助工作台</div>
                 <span class="text-slate-400 cursor-help text-sm" title="左侧为企业微信实时意图分析，右侧为知识库导入、审核、发布和检索治理。">ⓘ</span>
             </div>
             <div class="flex flex-wrap items-center justify-end gap-3">
                 <nav class="grid grid-cols-1 md:grid-cols-6 gap-2 min-w-[980px]">
-                    <button id="main-tab-wecom" onclick="switchMainApp('wecom')" title="进入企业微信实时智能页面，用于查看真实会话、提取销售意图、生成建议话术。（会话同步、意图识别、客户画像、销售建议）" aria-label="企微实时智能：进入真实会话分析页面" class="rounded-xl border px-4 py-2 text-center transition bg-blue-600 text-white border-blue-600 shadow-sm">
+                    <button id="main-tab-wecom" onclick="switchMainApp('wecom')" title="进入企业微信实时智能页面，用于查看真实会话、提取销售意图、生成建议话术。（会话同步、意图识别、客户画像、销售建议）" aria-label="企微实时智能：进入真实会话分析页面" class="rounded-xl border px-4 py-1 text-center transition bg-blue-600 text-white border-blue-600 shadow-sm">
                         <div class="text-sm font-bold">企微实时智能</div>
                     </button>
-                    <button id="main-tab-analytics" onclick="switchMainApp('analytics')" title="进入企微智能回复统计分析页面，用于按触发逐次查看7步链路、耗时、评分与人工回复。（按触发逐条查看步骤内容、耗时、质量分与人工回复）" aria-label="企微智能回复统计分析：进入逐触发统计分析页面" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300">
+                    <button id="main-tab-analytics" onclick="switchMainApp('analytics')" title="进入企微智能回复统计分析页面，用于按触发逐次查看7步链路、耗时、评分与人工回复。（按触发逐条查看步骤内容、耗时、质量分与人工回复）" aria-label="企微智能回复统计分析：进入逐触发统计分析页面" class="rounded-xl border px-4 py-1 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300">
                         <div class="text-sm font-bold">企微智能回复统计分析</div>
                     </button>
-                    <button id="main-tab-kb" onclick="switchMainApp('kb')" title="进入知识库管理页面，用于导入、查看、审核、发布、检索和质量治理。（导入、查看、审核、发布、检索、质量治理）" aria-label="知识库管理：进入知识库管理页面" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300">
+                    <button id="main-tab-kb" onclick="switchMainApp('kb')" title="进入知识库管理页面，用于导入、查看、审核、发布、检索和质量治理。（导入、查看、审核、发布、检索、质量治理）" aria-label="知识库管理：进入知识库管理页面" class="rounded-xl border px-4 py-1 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300">
                         <div class="text-sm font-bold">知识库管理</div>
                     </button>
                     <!-- v1.7.186: 原"经典案例迭代优化"单按钮拆成两个 sub-tab 按钮(① 迭代记录 / ② 案例库),
                          section 内部不再重复显示标题与子页 tab。 -->
-                    <button id="main-tab-caselib-list" onclick="switchMainApp('caselib','list')" title="经典案例迭代优化 → 迭代记录：历次迭代统计 + 最近一次得分分析 + AI 下一步迭代步骤。" aria-label="经典案例迭代优化 - 迭代记录" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300">
+                    <button id="main-tab-caselib-list" onclick="switchMainApp('caselib','list')" title="经典案例迭代优化 → 迭代记录：历次迭代统计 + 最近一次得分分析 + AI 下一步迭代步骤。" aria-label="经典案例迭代优化 - 迭代记录" class="rounded-xl border px-4 py-1 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300">
                         <div class="text-sm font-bold">① 迭代记录</div>
                     </button>
-                    <button id="main-tab-caselib-cases" onclick="switchMainApp('caselib','cases')" title="经典案例迭代优化 → 案例库（60案例）：只读浏览 60 个核心案例的元信息、核心对话和背景上文。" aria-label="经典案例迭代优化 - 案例库（60案例）" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300">
+                    <button id="main-tab-caselib-cases" onclick="switchMainApp('caselib','cases')" title="经典案例迭代优化 → 案例库（60案例）：只读浏览 60 个核心案例的元信息、核心对话和背景上文。" aria-label="经典案例迭代优化 - 案例库（60案例）" class="rounded-xl border px-4 py-1 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300">
                         <div class="text-sm font-bold">② 案例库（60案例）</div>
                     </button>
-                    <button id="main-tab-mail-quality" onclick="switchMainApp('mailQuality')" title="进入邮件质量诊断面板，用于后续承载邮件草稿质量、Few-Shot、Sequence、安全门与人工纠偏诊断，独立于企微工作流。" aria-label="邮件质量诊断：进入邮件独立诊断面板" class="rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-indigo-200">
+                    <button id="main-tab-mail-quality" onclick="switchMainApp('mailQuality')" title="进入邮件质量诊断面板，用于后续承载邮件草稿质量、Few-Shot、Sequence、安全门与人工纠偏诊断，独立于企微工作流。" aria-label="邮件质量诊断：进入邮件独立诊断面板" class="rounded-xl border px-4 py-1 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-indigo-200">
                         <div class="text-sm font-bold">邮件质量诊断</div>
                     </button>
                 </nav>
@@ -356,13 +356,12 @@
 
     <main id="app-mail-quality" class="hidden flex-1 flex flex-col bg-slate-50 overflow-hidden">
         <div class="shrink-0 border-b bg-white">
-            <div class="px-6 pt-5 pb-4 flex flex-wrap items-end justify-between gap-4">
+            <div class="px-6 pt-2 pb-2 flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <div class="text-[11px] font-bold tracking-wide text-indigo-700">邮件工作台</div>
-                    <h1 class="text-xl font-bold text-slate-900 mt-1" title="在这里编辑邮件写作脚本、生成测试邮件、查看邮件成效，专门做邮件，不影响企微实时对话。">邮件质量诊断</h1>
+                    <h1 class="text-lg font-bold text-slate-900" title="在这里编辑邮件写作脚本、生成测试邮件、查看邮件成效，专门做邮件，不影响企微实时对话。">邮件质量诊断</h1>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    <label class="flex items-center gap-2 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-violet-800" title="选择用哪个 AI 来写邮件。选好后，本页和测试预览页都用这个 AI。">
+                    <label class="flex items-center gap-2 rounded-lg border border-violet-200 bg-white px-3 py-1 text-xs font-bold text-violet-800" title="选择用哪个 AI 来写邮件。选好后，本页和测试预览页都用这个 AI。">
                         <span>生成邮件模型</span>
                         <select id="mail-generation-model-select" onchange="saveMailGenerationModel(this.value)" class="rounded border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-900 outline-none focus:ring-2 focus:ring-violet-200">
                             <option value="deepseek-v4-flash">deepseek-v4-flash（默认）</option>
@@ -371,14 +370,14 @@
                         </select>
                         <span id="mail-generation-model-status" class="text-[10px] text-slate-500">未加载</span>
                     </label>
-                    <button id="mail-subtab-stats" type="button" onclick="switchMailWorkspaceTab('stats')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="看 AI 邮件的成效：每天生成多少、实际发了多少、收到多少回信、多少有价值。可按日期和销售筛选，双击数字看明细。">邮件统计</button>
-                    <button id="mail-subtab-quality" type="button" onclick="switchMailWorkspaceTab('quality')" class="px-4 py-2 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold" title="编辑邮件写作脚本、生成测试邮件看效果的主面板。">质量诊断</button>
-                    <button id="mail-subtab-iteration" type="button" onclick="switchMailWorkspaceTab('iteration')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="批量试跑：一次把当前几个案例的每封邮件都生成并打分，方便对比每次脚本调整后的质量变化。">邮件迭代记录</button>
-                    <button id="mail-subtab-goldlib" type="button" onclick="switchMailWorkspaceTab('goldlib')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="优质邮件范例库。AI 写邮件时会参考这里的好例子。">黄金范例库</button>
-                    <button id="mail-subtab-contractcases" type="button" onclick="switchMailWorkspaceTab('contractcases')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="查看 CRM 里最近的合同案例，供参考分析，只看不改。">合同案例库</button>
-                    <button id="mail-subtab-feedback" type="button" onclick="switchMailWorkspaceTab('feedback')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="查看销售在邮件页填写过的反馈，可展开看对应的邮件脚本和客户信息。">反馈记录</button>
-                    <button id="mail-subtab-config" type="button" onclick="switchMailWorkspaceTab('config')" class="px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件全局设置面板（展示用）。">邮件配置</button>
-                    <button onclick="switchMainApp('wecom')" class="px-4 py-2 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">返回企微实时智能</button>
+                    <button id="mail-subtab-stats" type="button" onclick="switchMailWorkspaceTab('stats')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="看 AI 邮件的成效：每天生成多少、实际发了多少、收到多少回信、多少有价值。可按日期和销售筛选，双击数字看明细。">邮件统计</button>
+                    <button id="mail-subtab-quality" type="button" onclick="switchMailWorkspaceTab('quality')" class="px-4 py-1 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold" title="编辑邮件写作脚本、生成测试邮件看效果的主面板。">质量诊断</button>
+                    <button id="mail-subtab-iteration" type="button" onclick="switchMailWorkspaceTab('iteration')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="批量试跑：一次把当前几个案例的每封邮件都生成并打分，方便对比每次脚本调整后的质量变化。">邮件迭代记录</button>
+                    <button id="mail-subtab-goldlib" type="button" onclick="switchMailWorkspaceTab('goldlib')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="优质邮件范例库。AI 写邮件时会参考这里的好例子。">黄金范例库</button>
+                    <button id="mail-subtab-contractcases" type="button" onclick="switchMailWorkspaceTab('contractcases')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="查看 CRM 里最近的合同案例，供参考分析，只看不改。">合同案例库</button>
+                    <button id="mail-subtab-feedback" type="button" onclick="switchMailWorkspaceTab('feedback')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="查看销售在邮件页填写过的反馈，可展开看对应的邮件脚本和客户信息。">反馈记录</button>
+                    <button id="mail-subtab-config" type="button" onclick="switchMailWorkspaceTab('config')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="邮件全局设置面板（展示用）。">邮件配置</button>
+                    <button onclick="switchMainApp('wecom')" class="px-4 py-1 rounded-lg border bg-white text-slate-700 text-xs font-bold hover:bg-slate-50">返回企微实时智能</button>
                 </div>
             </div>
         </div>
@@ -460,15 +459,15 @@
                 <div class="rounded-lg border border-emerald-200 bg-white p-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
-                            <button type="button" id="mql-demo-contacts-toggle" onclick="toggleMailDemoContactsCollapsed()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50" title="点这里展开或收起下面的测试案例卡片。">▼ 折叠</button>
+                            <button type="button" id="mql-demo-contacts-toggle" onclick="toggleMailDemoContactsCollapsed()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50" title="点这里展开或收起下面的测试案例卡片。">▶ 展开</button>
                             <div class="text-xs font-bold text-slate-800" title="三个常用客户案例，点一下就切换到对应的邮件脚本。">真实测试案例切换（3 选 1：老客户其他业务介绍 / 老客户激活 / 新客户开发介绍）</div>
                         </div>
                         <div class="flex items-center gap-2">
-                            <span id="mql-demo-contacts-status" class="text-[11px] text-slate-500">加载中……</span>
+                            <span id="mql-demo-contacts-status" class="hidden text-[11px] text-slate-500">加载中……</span>
                             <button type="button" onclick="reloadMailDemoContacts()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50" title="重新拉取最新的测试案例。">刷新案例</button>
                         </div>
                     </div>
-                    <div id="mql-demo-contacts-collapsible">
+                    <div id="mql-demo-contacts-collapsible" class="hidden">
                         <div id="mql-demo-contacts-grid" class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2"></div>
                         <div id="mql-demo-contact-detail" class="mt-3 hidden rounded border border-emerald-100 bg-emerald-50 p-3 text-[11px] text-slate-700"></div>
                     </div>
@@ -1788,7 +1787,7 @@
         // 手动从下拉选择(如 印刷报价后跟进 独立模板)后置为该 key, 点上方案例联系人会重新联动覆盖。
         let mailTemplateSelectedCaseKey = null;
         let mailDemoSuiteTotalSteps = 4;  // 由 GET demo-contacts 的 suite_total_steps 字段动态填充，默认 4
-        let mailDemoContactsCollapsed = false;
+        let mailDemoContactsCollapsed = true;  // 默认折叠"真实测试案例切换"
         let mailTemplateCurrentScenario = '';  // 模板编辑区当前选中场景, 供"生成测试套装/测试邮件"按钮使用
 
         // 测试客户编号: 保存到 localStorage, 默认取案例一的客户编号。
@@ -5668,11 +5667,11 @@
                 const listActive = (activeSub === 'list' || activeSub === 'detail');
                 const casesActive = (activeSub === 'cases');
                 caselibListTab.className = listActive
-                    ? 'rounded-xl border px-4 py-2 text-center transition bg-purple-600 text-white border-purple-600 shadow-sm'
-                    : 'rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+                    ? 'rounded-xl border px-4 py-1 text-center transition bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'rounded-xl border px-4 py-1 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
                 caselibCasesTab.className = casesActive
-                    ? 'rounded-xl border px-4 py-2 text-center transition bg-purple-600 text-white border-purple-600 shadow-sm'
-                    : 'rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+                    ? 'rounded-xl border px-4 py-1 text-center transition bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'rounded-xl border px-4 py-1 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
             }
             if (mailQualityTab) {
                 mailQualityTab.className = normalized === 'mailQuality'
@@ -6001,11 +6000,11 @@
                 const listActive = (name === 'list' || name === 'detail');
                 const casesActive = (name === 'cases');
                 navList.className = listActive
-                    ? 'rounded-xl border px-4 py-2 text-center transition bg-purple-600 text-white border-purple-600 shadow-sm'
-                    : 'rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+                    ? 'rounded-xl border px-4 py-1 text-center transition bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'rounded-xl border px-4 py-1 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
                 navCases.className = casesActive
-                    ? 'rounded-xl border px-4 py-2 text-center transition bg-purple-600 text-white border-purple-600 shadow-sm'
-                    : 'rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+                    ? 'rounded-xl border px-4 py-1 text-center transition bg-purple-600 text-white border-purple-600 shadow-sm'
+                    : 'rounded-xl border px-4 py-1 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
             }
             // 老的 section header 内 sub-tab 按钮已删, 下面的 if 永远不会命中 (null-safe)。保留代码不影响新结构。
             const tabList = document.getElementById('caselib-sub-tab-list');
@@ -11819,8 +11818,8 @@
                 analyticsTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300';
                 kbTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-emerald-600 text-white border-emerald-600 shadow-sm';
             }
-            if (caselibListTab) caselibListTab.className = 'rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
-            if (caselibCasesTab) caselibCasesTab.className = 'rounded-xl border px-4 py-2 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+            if (caselibListTab) caselibListTab.className = 'rounded-xl border px-4 py-1 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
+            if (caselibCasesTab) caselibCasesTab.className = 'rounded-xl border px-4 py-1 text-center transition bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300';
             if (mailQualityTab) {
                 mailQualityTab.className = 'rounded-2xl border px-5 py-3 text-left transition bg-white text-slate-700 border-slate-200 hover:bg-indigo-200';
             }

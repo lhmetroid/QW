@@ -1661,3 +1661,9 @@
 - 前端 index.html: syncMailSuiteNameInput/saveMailSuiteName 取消"仅自建套装可改名"限制, 选中任一套装即可改名。
 - 不影响使用: 生成流程/场景路由/已存草稿都以 scenario 代码为准, 仅显示名变化。
 - 验证: ast.parse 通过。提醒: 截图为旧缓存页, 需 Ctrl+F5 才能看到上一轮新版 UI。
+
+## 2026-06-26 邮件诊断页头部精简交接
+
+- 用户需求: 测试预览页黄色横幅去掉; 邮件诊断页隐藏"邮件工作台"面包屑与右上"已加载N案例"状态文字; "真实测试案例切换"默认折叠; 顶部"智能销售辅助工作台"与"邮件质量诊断"两行高度压一半。
+- mail-suite.html: 移除 #test-banner 及其填充逻辑(仅留 body.test-mode class)。
+- index.html: 删 邮件工作台 面包屑; #mql-demo-contacts-status 加 hidden; 案例切换默认折叠(mailDemoContactsCollapsed=true + collapsible 加 hidden + 按钮 展开); 顶部 header py-2->py-1、标题 text-lg->base、主导航按钮 py-2->py-1; 邮件诊断头 pt-5 pb-4->pt-2 pb-2、items-end->center、h1 text-xl->lg、子标签与模型选择 py-2->py-1。
