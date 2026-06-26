@@ -6239,10 +6239,10 @@ def _load_single_custom_suite_from_db(scenario: str) -> bool:
 _MAIL_PRINT_QUOTE_FOLLOWUP_SCENARIO = "print_quote_followup"
 _MAIL_PRINT_QUOTE_FOLLOWUP_CUSTOMER_KEY = "PRINT-QUOTE-FOLLOWUP"
 
-# CRM 生命周期阶段(crm_profile._get_customer_lifecycle_stage 的 3 个取值)→ 套装场景映射:
-#   熟联系人(近1年≥3销售合同) → 老客户其他业务介绍
-#   老联系人(历史有销售合同)   → 老客户激活
-#   新联系人(无销售合同)       → 新客户开发介绍
+# CRM 生命周期阶段(crm_profile._get_customer_lifecycle_stage 的 3 个取值, 按联系人维度)→ 套装场景映射:
+#   熟联系人(该联系人近1年≥3销售合同) → 老客户其他业务介绍
+#   老联系人(该联系人历史有销售合同)   → 老客户激活
+#   新联系人(该联系人无销售合同)       → 新客户开发介绍
 _MAIL_LIFECYCLE_STAGE_TO_SCENARIO = {
     "熟联系人": "new_business_promotion",
     "老联系人": "re_activation",

@@ -268,65 +268,36 @@ def _get_method_display_name(method: str, msg_io: int) -> str:
 
 
 def _get_customer_lifecycle_stage(contact_id, db: Session) -> Optional[str]:
-    """按当前业务口径计算客户生命周期。
+    """按联系人(ContactId)维度计算生命周期 — 只看这个人自己的销售合同, 不按公司汇总。
+
+    同一家公司里不同联系人也按各自的合同数区分新人/老人, 不管公司, 只管人。
 
     规则：
-    - 熟联系人：客户/公司近 1 年有 3 个及以上销售合同。
-    - 老联系人：客户/公司历史上有过销售合同，不受 6 个月窗口限制。
-    - 新联系人：客户/公司没有过销售合同。
-
-    优先用 ContactId 找到 CustomerId 后按客户/公司维度统计；找不到 CustomerId 时退回 ContactId。
+    - 熟联系人：该联系人近 1 年有 3 个及以上销售合同。
+    - 老联系人：该联系人历史上有过销售合同，不受窗口限制。
+    - 新联系人：该联系人没有过销售合同。
     """
     try:
         if not contact_id:
             return None
 
-        contact_row = db.execute(
+        one_year_ago = datetime.now().replace(microsecond=0) - timedelta(days=365)
+        params = {"contact_id": contact_id, "one_year_ago": one_year_ago}
+        counts = db.execute(
             text("""
-                SELECT TOP 1 CustomerId
-                FROM usrCustomerContact
+                SELECT
+                    ISNULL(COUNT(DISTINCT ContractId), 0) AS total_contracts,
+                    ISNULL(COUNT(DISTINCT CASE
+                        WHEN COALESCE(ContractTime, StartTime, InputTime, DeadLine) >= :one_year_ago
+                        THEN ContractId
+                    END), 0) AS recent_contracts
+                FROM usrContract
                 WHERE Deleter IS NULL
+                  AND ContractType = '销售合同'
                   AND ContactId = :contact_id
             """),
-            {"contact_id": contact_id},
+            params,
         ).fetchone()
-        customer_id = contact_row[0] if contact_row and contact_row[0] else None
-        one_year_ago = datetime.now().replace(microsecond=0) - timedelta(days=365)
-
-        if customer_id:
-            params = {"customer_id": customer_id, "one_year_ago": one_year_ago}
-            counts = db.execute(
-                text("""
-                    SELECT
-                        ISNULL(COUNT(DISTINCT ContractId), 0) AS total_contracts,
-                        ISNULL(COUNT(DISTINCT CASE
-                            WHEN COALESCE(ContractTime, StartTime, InputTime, DeadLine) >= :one_year_ago
-                            THEN ContractId
-                        END), 0) AS recent_contracts
-                    FROM usrContract
-                    WHERE Deleter IS NULL
-                      AND ContractType = '销售合同'
-                      AND CustomerId = :customer_id
-                """),
-                params,
-            ).fetchone()
-        else:
-            params = {"contact_id": contact_id, "one_year_ago": one_year_ago}
-            counts = db.execute(
-                text("""
-                    SELECT
-                        ISNULL(COUNT(DISTINCT ContractId), 0) AS total_contracts,
-                        ISNULL(COUNT(DISTINCT CASE
-                            WHEN COALESCE(ContractTime, StartTime, InputTime, DeadLine) >= :one_year_ago
-                            THEN ContractId
-                        END), 0) AS recent_contracts
-                    FROM usrContract
-                    WHERE Deleter IS NULL
-                      AND ContractType = '销售合同'
-                      AND ContactId = :contact_id
-                """),
-                params,
-            ).fetchone()
 
         total_contracts = int(counts[0] or 0) if counts else 0
         recent_contracts = int(counts[1] or 0) if counts else 0

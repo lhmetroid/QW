@@ -1674,3 +1674,11 @@
 - 后端: mail_customer_suite_feedback 加 conclusion TEXT + handled BOOLEAN(DDL ALTER + database.py 模型 + 序列化); GET 加 handled 筛选参数; 新增 PATCH /api/v1/mail/customer-suite-feedback/{id} 改结论/已处理。
 - 前端 index.html: 反馈表头重排(时间/联系人编号/场景阶段/反馈摘要/结论/已处理/操作); 渲染用 -webkit-line-clamp:2 截断+title 浮动全文; 日期 slice(0,10); 场景阶段 whitespace-nowrap 显示"场景- N"; 结论 input onblur PATCH; 已处理 checkbox onchange PATCH; 新增 handled 筛选下拉; 隐藏 p 说明与 mail-feedback-status(内联 display:none); saveMailFeedbackConclusion/saveMailFeedbackHandled。
 - 验证: ast.parse 通过。新列由启动 DDL 自动补; 需重启后端生效。
+
+## 2026-06-26 生命周期阶段改按联系人维度交接
+
+- 需求: 生命周期(熟/老/新联系人)按"人"算, 不按公司汇总; 同公司不同联系人也分新老。
+- crm_profile._get_customer_lifecycle_stage: 去掉先查 CustomerId 再按公司统计的逻辑, 一律按 ContactId 统计该联系人自己的销售合同(usrContract.ContractType=销售合同, 未删)。规则不变: 近1年>=3->熟, 历史有->老, 无->新。
+- main.py 注释同步改为按联系人维度。所有调用方(行4568/4884 等)都走此函数, 改动全覆盖。
+- 注意: 依赖 usrContract.ContactId 落数; 若公司合同未挂到具体联系人, 该联系人会判为新联系人(符合"按人"诉求)。需重启后端生效。
+- 验证: ast.parse 通过。
