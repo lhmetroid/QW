@@ -475,7 +475,7 @@
                 <div class="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex flex-wrap items-center gap-2">
-                            <button type="button" id="mql-template-toggle" onclick="toggleMailSequenceTemplatesCollapsed()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100" title="点这里展开或收起下面每封邮件的写作脚本。">▶ 展开</button>
+                            <button type="button" id="mql-template-toggle" onclick="toggleMailSequenceTemplatesCollapsed()" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100" title="点这里展开或收起下面每封邮件的写作脚本。">▼ 折叠</button>
                             <div class="text-xs font-bold text-indigo-950" title="这里编辑每封邮件交给 AI 的写作要求和发送间隔。改完保存，下次生成邮件就按新要求来。">场景全阶段脚本模板</div>
                             <select id="mql-template-case-select" onchange="onMailTemplateCaseChange(this.value)" class="rounded border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700" title="选择要编辑哪一套邮件脚本。默认跟着上方选中的客户案例走，也可以手动切换。"></select>
                             <input id="mql-suite-name-input" type="text" class="w-44 rounded border border-indigo-300 px-2 py-1 text-[11px] font-bold text-indigo-900" placeholder="套装名称" title="给自建的这套邮件起个名字，方便以后认。只有自己新建的套装能改名。" />
@@ -492,7 +492,7 @@
                             <span id="mql-template-status" style="display:none" class="text-[11px] text-slate-500">未加载</span>
                         </div>
                     </div>
-                    <div id="mql-template-collapsible" class="hidden mt-3">
+                    <div id="mql-template-collapsible" class="mt-3">
                         <div id="mql-template-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-3"></div>
                     </div>
                 </div>
@@ -1835,7 +1835,7 @@
             2: '客户编号 KH02659-011。历史合作或沉默老客户激活，逐步恢复关系并引入可合作方向。',
             3: '客户编号 KH13770-006。新客户/新联系人开发介绍，强调公司介绍、行业经验、服务范围和转介绍。',
         };
-        let mailSequenceTemplatesCollapsed = true;
+        let mailSequenceTemplatesCollapsed = false;  // 默认展开"场景全阶段脚本模板"
         let mailSequenceTemplateCache = {};
 
         function mailDemoCaseLabel(demoIndex, fallback) {
@@ -1924,7 +1924,13 @@
             const activeContact = mailDemoContactCache.find(x => x.demo_index === mailDemoContactActiveIndex) || mailDemoContactCache[0] || null;
             // 默认跟随上方案例联系人; 若手动在下拉选了某分组(且该分组仍存在)则用手选值。
             const followKey = (activeContact && (activeContact.real_customer_key || activeContact.customer_key)) || (caseOrder[0] || '');
-            const selectedCustomerKey = (mailTemplateSelectedCaseKey && byCase[mailTemplateSelectedCaseKey]) ? mailTemplateSelectedCaseKey : followKey;
+            let selectedCustomerKey = (mailTemplateSelectedCaseKey && byCase[mailTemplateSelectedCaseKey]) ? mailTemplateSelectedCaseKey : followKey;
+            // 容错: 选中分组不存在或没有模板时, 回退到第一个有模板的分组, 避免加载完仍空白(需切换才出脚本)
+            if (!byCase[selectedCustomerKey] || !((byCase[selectedCustomerKey].templates || []).length)) {
+                const firstWithTpl = caseOrder.find(k => byCase[k] && (byCase[k].templates || []).length)
+                    || Object.keys(byCase).find(k => byCase[k] && (byCase[k].templates || []).length);
+                if (firstWithTpl) selectedCustomerKey = firstWithTpl;
+            }
             const selectedCase = byCase[selectedCustomerKey] || {};
             const templates = selectedCase.templates || [];
             // 记录当前选中场景, 供"生成测试套装邮件"按钮使用
@@ -2437,6 +2443,7 @@
             // 如果用户已经在 mail-quality 路由，立即加载
             if (window.location.hash === '#mail-quality') {
                 setTimeout(loadMailDemoContacts, 200);
+                setTimeout(loadMailSequenceTemplates, 200);
             }
         });
 
@@ -5625,6 +5632,9 @@
                 if (typeof loadMailDemoContacts === 'function') {
                     setTimeout(() => loadMailDemoContacts(), 150);
                 }
+                if (typeof loadMailSequenceTemplates === 'function') {
+                    setTimeout(() => loadMailSequenceTemplates(), 150);
+                }
             }
         }
 
@@ -5691,8 +5701,12 @@
                 // 进入邮件质量诊断时自动加载当前 3 个测试案例（mail_demo_contact / 当前客户编号覆盖视图）
                 if (typeof loadMailDraftLlmRuntimeConfig === 'function') {
                     setTimeout(() => loadMailDraftLlmRuntimeConfig(), 80);
-                }                if (typeof loadMailDemoContacts === 'function') {
+                }
+                if (typeof loadMailDemoContacts === 'function') {
                     setTimeout(() => loadMailDemoContacts(), 150);
+                }
+                if (typeof loadMailSequenceTemplates === 'function') {
+                    setTimeout(() => loadMailSequenceTemplates(), 150);
                 }
             } else {
                 history.replaceState(null, '', window.location.pathname);
