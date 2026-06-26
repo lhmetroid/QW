@@ -1531,9 +1531,9 @@
 
 - 用户反馈：邮件质量诊断页新增套装后刷新仍不在模板下拉显示；单独 mail-suite.html 页面已显示；同时要求每封邮件标题可修改。
 - 已完成：backend/main.py 将自建套装模板纳入 /api/v1/mail/sequence-templates 返回，新增 	emplate_group_key，动态套装以 scenario 分组；保存接口允许动态 scenario，并支持保存 step_label_cn。
-- 已完成：rontend/index.html 模板区下拉读取动态分组；每封模板阶段标题可编辑保存；质量诊断页单封和整套生成结果里的邮件主题改为输入框可人工修改。
+- 已完成：frontend/index.html 模板区下拉读取动态分组；每封模板阶段标题可编辑保存；质量诊断页单封和整套生成结果里的邮件主题改为输入框可人工修改。
 - 验证：后端 py_compile、前端内联脚本 node --check、定向 diff-check、自建套装序列化冒烟均通过。
-- 注意：本轮没有启用真实发信，没有访问或输出任何密钥；工作区原本已有大量未提交/未跟踪文件，本轮只处理 backend/main.py 与 rontend/index.html，并为前端脚本检查生成了 scratch/frontend-index-scripts-check.js 临时校验文件。
+- 注意：本轮没有启用真实发信，没有访问或输出任何密钥；工作区原本已有大量未提交/未跟踪文件，本轮只处理 backend/main.py 与 frontend/index.html，并为前端脚本检查生成了 scratch/frontend-index-scripts-check.js 临时校验文件。
 
 ## 2026-06-24 10:40:58 知识库命中日志双击查看交接
 
@@ -1623,7 +1623,8 @@
 - 用户反馈 URL：/static/mail-suite.html?id=KH00362-425，问题包括刷新后脚本为空、再次进入疑似不是重刷版本、重刷后签名档仍无。
 - 已确认昨日记录确实修过相关方向：13:23 单封重刷与真实 prompt 查看、13:34/13:40 模板命中与旧保存稿说明、14:22 签名稳定性。
 - 今日复现原因不是“昨天完全没修”，而是修复没有覆盖完整闭环：自动保存未落 llm_prompt；保存稿读取未回填 llm_prompt；重刷接口未在返回和落库前注入套装签名；负责人签名取不到时缺固定兜底。
-- 本轮改动：backend/main.py 补齐 llm_prompt schema patch、序列化、自动保存、保存稿读取；新增 _mail_suite_fallback_signature_html() 和 _mail_suite_signature_html_for_customer()；regenerate_mail_customer_suite_draft() 生成后立即 _apply_mail_suite_signature() 再保存/返回。
+- 本轮改动：backend/main.py 补齐 llm_prompt schema patch、序列化、自动保存、保存稿读取；新增 _mail_suite_fallback_signature_html() 和 _mail_suite_signature_html_for_customer()；
+regenerate_mail_customer_suite_draft() 生成后立即 _apply_mail_suite_signature() 再保存/返回。
 - 验证结果：AST 语法解析通过；定向 diff-check 通过；python -m py_compile 被 backend/__pycache__ / 临时 pycache rename 权限阻断。
 - 线上确认：静态页 HEAD 返回 200，Last-Modified=Wed, 24 Jun 2026 09:52:05 GMT；当前 shell 调 API JSON 受本地 127.0.0.1 代理不可用影响未能拿到响应。部署本轮后需重启后端，再打开该客户点“重刷”验证 prompt_len > 0 且正文含 mail-signature。
 
@@ -1682,3 +1683,25 @@
 - main.py 注释同步改为按联系人维度。所有调用方(行4568/4884 等)都走此函数, 改动全覆盖。
 - 注意: 依赖 usrContract.ContactId 落数; 若公司合同未挂到具体联系人, 该联系人会判为新联系人(符合"按人"诉求)。需重启后端生效。
 - 验证: ast.parse 通过。
+
+## 2026-06-26 16:20:03 知识库命中详情与统计交接
+- 用户需求：1）知识库命中日志双击命中数时弹窗没有详细信息；2）新增按每个知识库切片命中个数统计的页面，可选择统计时间范围。
+- 已完成：backend/main.py 为 /api/kb/hit_logs 补齐 include_hits 参数和 hit_chunks 详情；新增 /api/kb/hit_logs/chunk_stats 按真实命中日志聚合切片命中次数；frontend/index.html 新增“命中统计”标签页、日期筛选、统计表，并补充 #kb-hit_stats hash 映射。
+- 验证：python -m py_compile backend\main.py 通过；抽取内联脚本后 node --check scratch\frontend-index-scripts-check.js 通过；定向 git diff --check -- backend/main.py frontend/index.html scratch/frontend-index-scripts-check.js 通过。
+- 注意：本轮未读取或输出 .env 中的凭据；未处理工作区中原有其它未提交和未跟踪文件。部署后需重启后端并强刷前端静态页。
+
+## 2026-06-26 17:30:49 知识库命中快照审计交接
+- 用户指出：按历史 chunk_id 重新查询当前知识库会误导排查，因为当时给后续回复生成流程的可能是旧正文/旧排序/旧字段，当前重查不能代表当时输入。
+- 已修正：backend/database.py 增加 KnowledgeHitLog.hit_chunks_snapshot；backend/main.py 启动 DDL 补列；backend/intent_engine.py 在知识库检索写日志时保存当时的完整命中快照。
+- 前端修正：frontend/index.html 的命中日志详情明确区分“原始检索快照”和“当前切片”；统计页也显示“有原始快照 / 当前表回查”，历史日志缺快照时展示警告。
+- 说明：旧日志不是报错没成功，而是旧 schema 只记录了 hit_chunk_ids/scores，没有记录当时正文快照；旧数据无法还原当时原文，只能从新日志开始审计准确。
+
+## 2026-06-26 自动群发 Step1: 排期引擎+5表+dry-run 交接
+
+- 范围: 只做排期引擎(纯函数)+数据表+dry-run 预览, 完全不碰 CRM 写入、不生成草稿、不入库。
+- database.py 新增 5 表: mail_autosend_config / mail_autosend_suite_rule / mail_autosend_run / mail_autosend_plan_item / mail_contact_suite_history; main.py auto_patch_db 补 DDL(启动自动建)。
+- 引擎(main.py): _autosend_cond_eval/_rule_matches/_pick_suite(命中且没发过->兜底最后一个->都发过则跳过提示)/_schedule(逐人逐封, 第k封=第k-1封实际落日+周期, 每日上限含CRM已有量顺延, 9:00每5分钟)/_sort_contacts(6种排序)。
+- CRM 读取(只读): _autosend_load_contacts_for_sales(按销售取名下有有效邮箱联系人, 聚合历史累计销售合同额Money1+2+3/末次合作/业务线BusinessType, ContractType=销售合同 按ContactId)、_autosend_existing_crm_load(spQueueSend 按 InputerStaffId+PlanSendTime 计已有待发量)。
+- 接口: POST /api/v1/mail/autosend/dry-run (demo/contacts/sales_staff_ids 三选一, 返回 items+skipped+day_load)。
+- 本地纯函数验证(scratch): 26联系人 cap10 周期[0,5] -> 第25人第1封第2天、第2封第7天; 第7天占满则跳第8天, 与用户示例完全一致。
+- 待办 Step2: 配置/规则 CRUD + 自动发送 UI + dry-run 预览表; Step3: 接真生成草稿+写 spQueueSend+历史去重。需重启后端建表/上线接口。

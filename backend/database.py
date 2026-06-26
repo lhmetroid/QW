@@ -544,6 +544,8 @@ class KnowledgeHitLog(Base):
 
     scores = Column(JSON, nullable=True)
 
+    hit_chunks_snapshot = Column(JSON, nullable=True)
+
     no_hit_reason = Column(Text, nullable=True)
 
     status = Column(String(50), nullable=False, default="not_started")
@@ -2085,6 +2087,95 @@ class MailCustomerSuiteFeedback(Base):
         Index("idx_mcsf_scenario_step", "scenario", "suite_step"),
 
     )
+
+
+class MailAutosendConfig(Base):
+    """自动群发全局配置(单行 config_id=1): 联系人排序规则 + 统一周期 + 每日上限 + 兜底/去重开关。"""
+
+    __tablename__ = "mail_autosend_config"
+
+    config_id = Column(Integer, primary_key=True, autoincrement=True)
+    sort_rule = Column(String(40), nullable=False, default="default")          # default/amount_desc/amount_asc/last_far/last_near/random
+    only_valid_email = Column(Boolean, nullable=False, default=True)
+    interval_days_csv = Column(String(120), nullable=False, default="0")        # 统一周期, 按封天数列表, 逗号分隔, 如 0,5,7,14
+    daily_cap = Column(Integer, nullable=False, default=10)                     # 每个销售每日上限
+    fallback_enabled = Column(Boolean, nullable=False, default=True)            # 全不命中时兜底最后一个套装
+    dedup_by_history = Column(Boolean, nullable=False, default=True)            # 同联系人已发过的套装本次跳过
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class MailAutosendSuiteRule(Base):
+    """套装优先级规则: 一行一个套装 + 条件组(JSON) + 且/或; priority 小的优先。"""
+
+    __tablename__ = "mail_autosend_suite_rule"
+
+    rule_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    priority = Column(Integer, nullable=False, default=0)
+    scenario = Column(String(80), nullable=False)
+    conditions = Column(JSON, nullable=True)        # [{type:amount|last_coop_days|business_line, op:</>|has|not, value:...}]
+    match_mode = Column(String(8), nullable=False, default="and")   # and/or
+    enabled = Column(Boolean, nullable=False, default=True)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    __table_args__ = (Index("idx_masr_priority", "priority"),)
+
+
+class MailAutosendRun(Base):
+    """一次自动群发(或 dry-run)的运行记录。"""
+
+    __tablename__ = "mail_autosend_run"
+
+    run_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    status = Column(String(30), nullable=False, default="dry_run")   # dry_run/running/done/failed
+    start_date = Column(Date, nullable=True)
+    sales_staff_ids = Column(String(500), nullable=True)
+    daily_cap = Column(Integer, nullable=True)
+    sort_rule = Column(String(40), nullable=True)
+    interval_days_csv = Column(String(120), nullable=True)
+    total_contacts = Column(Integer, default=0)
+    total_items = Column(Integer, default=0)
+    skipped_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class MailAutosendPlanItem(Base):
+    """自动群发逐(联系人 x 封)排期明细。dry-run 只算不入 CRM; 真发时回填 crm_send_id。"""
+
+    __tablename__ = "mail_autosend_plan_item"
+
+    item_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    run_id = Column(UUID(as_uuid=False), nullable=False)
+    contact_id = Column(String(120), nullable=False)
+    owner_staff_id = Column(String(120), nullable=True)
+    scenario = Column(String(80), nullable=False)
+    suite_step = Column(Integer, nullable=False)
+    plan_date = Column(Date, nullable=True)
+    plan_time = Column(String(8), nullable=True)
+    seq_in_day = Column(Integer, nullable=True)
+    recipient_email = Column(String(255), nullable=True)
+    subject = Column(String(500), nullable=True)
+    status = Column(String(30), nullable=False, default="planned")
+    crm_send_id = Column(String(80), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    __table_args__ = (Index("idx_masp_run", "run_id"),)
+
+
+class MailContactSuiteHistory(Base):
+    """联系人用过哪些套装/哪些封, 用于去重和回查。"""
+
+    __tablename__ = "mail_contact_suite_history"
+
+    history_id = Column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    contact_id = Column(String(120), nullable=False)
+    owner_staff_id = Column(String(120), nullable=True)
+    scenario = Column(String(80), nullable=False)
+    suite_step = Column(Integer, nullable=True)
+    run_id = Column(UUID(as_uuid=False), nullable=True)
+    planned_send_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    __table_args__ = (Index("idx_mcsh_contact", "contact_id"),)
 
 
 class MailCustomerSuiteDraftEdit(Base):

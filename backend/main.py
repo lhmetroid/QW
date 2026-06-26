@@ -24,7 +24,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 from urllib.parse import quote, urlparse
-from sqlalchemy import and_, or_, text, func
+from sqlalchemy import and_, or_, text, func, bindparam
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, defer
 from pydantic import BaseModel
@@ -584,6 +584,7 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS final_response TEXT;"))
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS manual_feedback JSON;"))
         db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS feedback_status VARCHAR(50);"))
+        db.execute(text("ALTER TABLE knowledge_hit_logs ADD COLUMN IF NOT EXISTS hit_chunks_snapshot JSON;"))
         db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS visible_message_ids JSON;"))
         db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS latest_dialog_count INTEGER DEFAULT 0;"))
         db.execute(text("ALTER TABLE reply_chain_snapshot ADD COLUMN IF NOT EXISTS fast_track JSON;"))
@@ -745,6 +746,78 @@ def auto_patch_db():
         # 反馈记录的人工"结论"和"已处理"标记(质检页可改, leave 保存)
         db.execute(text("ALTER TABLE mail_customer_suite_feedback ADD COLUMN IF NOT EXISTS conclusion TEXT;"))
         db.execute(text("ALTER TABLE mail_customer_suite_feedback ADD COLUMN IF NOT EXISTS handled BOOLEAN NOT NULL DEFAULT FALSE;"))
+        # ===== 自动群发(autosend): 配置 + 套装规则 + 运行 + 逐封排期 + 联系人历史 =====
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_autosend_config ("
+            "config_id SERIAL PRIMARY KEY,"
+            "sort_rule VARCHAR(40) NOT NULL DEFAULT 'default',"
+            "only_valid_email BOOLEAN NOT NULL DEFAULT TRUE,"
+            "interval_days_csv VARCHAR(120) NOT NULL DEFAULT '0',"
+            "daily_cap INTEGER NOT NULL DEFAULT 10,"
+            "fallback_enabled BOOLEAN NOT NULL DEFAULT TRUE,"
+            "dedup_by_history BOOLEAN NOT NULL DEFAULT TRUE,"
+            "updated_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_autosend_suite_rule ("
+            "rule_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "priority INTEGER NOT NULL DEFAULT 0,"
+            "scenario VARCHAR(80) NOT NULL,"
+            "conditions JSON,"
+            "match_mode VARCHAR(8) NOT NULL DEFAULT 'and',"
+            "enabled BOOLEAN NOT NULL DEFAULT TRUE,"
+            "updated_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_masr_priority ON mail_autosend_suite_rule (priority);"))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_autosend_run ("
+            "run_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "status VARCHAR(30) NOT NULL DEFAULT 'dry_run',"
+            "start_date DATE,"
+            "sales_staff_ids VARCHAR(500),"
+            "daily_cap INTEGER,"
+            "sort_rule VARCHAR(40),"
+            "interval_days_csv VARCHAR(120),"
+            "total_contacts INTEGER DEFAULT 0,"
+            "total_items INTEGER DEFAULT 0,"
+            "skipped_count INTEGER DEFAULT 0,"
+            "created_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_autosend_plan_item ("
+            "item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "run_id UUID NOT NULL,"
+            "contact_id VARCHAR(120) NOT NULL,"
+            "owner_staff_id VARCHAR(120),"
+            "scenario VARCHAR(80) NOT NULL,"
+            "suite_step INTEGER NOT NULL,"
+            "plan_date DATE,"
+            "plan_time VARCHAR(8),"
+            "seq_in_day INTEGER,"
+            "recipient_email VARCHAR(255),"
+            "subject VARCHAR(500),"
+            "status VARCHAR(30) NOT NULL DEFAULT 'planned',"
+            "crm_send_id VARCHAR(80),"
+            "created_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_masp_run ON mail_autosend_plan_item (run_id);"))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_contact_suite_history ("
+            "history_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "contact_id VARCHAR(120) NOT NULL,"
+            "owner_staff_id VARCHAR(120),"
+            "scenario VARCHAR(80) NOT NULL,"
+            "suite_step INTEGER,"
+            "run_id UUID,"
+            "planned_send_at TIMESTAMP,"
+            "created_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcsh_contact ON mail_contact_suite_history (contact_id);"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS mail_customer_suite_draft_edit ("
             "draft_edit_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -3393,6 +3466,9 @@ def _hit_log_to_dict(log: KnowledgeHitLog, redact: bool = False) -> dict:
         "filters_used": log.filters_used,
         "hit_chunk_ids": log.hit_chunk_ids,
         "scores": log.scores,
+        "hit_snapshot_available": bool(getattr(log, "hit_chunks_snapshot", None)),
+        "hit_detail_source": "recorded_retrieval_snapshot" if getattr(log, "hit_chunks_snapshot", None) else "current_lookup_by_recorded_id",
+        "hit_detail_warning": None if getattr(log, "hit_chunks_snapshot", None) else "历史日志未记录命中正文快照；当前明细仅按历史 chunk_id 查询当前知识库内容，不能等同当时传给后续流程的原文。",
         "no_hit_reason": log.no_hit_reason,
         "status": log.status,
         "retrieval_quality": log.retrieval_quality,
@@ -3405,6 +3481,141 @@ def _hit_log_to_dict(log: KnowledgeHitLog, redact: bool = False) -> dict:
         "latency_ms": log.latency_ms,
         "created_at": log.created_at,
     }
+
+def _normalize_hit_chunk_ids(hit_chunk_ids) -> list[str]:
+    normalized: list[str] = []
+    if not isinstance(hit_chunk_ids, list):
+        return normalized
+    for item in hit_chunk_ids:
+        chunk_id = None
+        if isinstance(item, dict):
+            chunk_id = item.get("chunk_id") or item.get("id")
+        else:
+            chunk_id = item
+        if chunk_id:
+            normalized.append(str(chunk_id))
+    return normalized
+
+def _score_for_hit(scores, chunk_id: str, index: int):
+    if isinstance(scores, dict):
+        value = scores.get(chunk_id) or scores.get(str(index + 1)) or scores.get(index)
+    elif isinstance(scores, list) and index < len(scores):
+        item = scores[index]
+        if isinstance(item, dict):
+            value = item.get("score") or item.get("similarity") or item.get("final_score")
+        else:
+            value = item
+    else:
+        value = None
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+def _chunk_to_hit_dict(chunk: KnowledgeChunk, *, score=None, hit_rank: int | None = None, document: KnowledgeDocument | None = None, redact: bool = False) -> dict:
+    content = chunk.content
+    title = chunk.title
+    if redact:
+        content = _redact_value(content)
+        title = _redact_value(title)
+    return {
+        "chunk_id": str(chunk.chunk_id),
+        "document_id": str(chunk.document_id) if chunk.document_id else None,
+        "document_title": document.title if document else None,
+        "source_ref": document.source_ref if document else None,
+        "hit_rank": hit_rank,
+        "score": score,
+        "title": title,
+        "content": content,
+        "chunk_type": chunk.chunk_type,
+        "chunk_type_label": label_for("chunk_type", chunk.chunk_type),
+        "knowledge_type": chunk.knowledge_type,
+        "knowledge_type_label": label_for("knowledge_type", chunk.knowledge_type),
+        "business_line": chunk.business_line,
+        "business_line_label": label_for("business_line", chunk.business_line),
+        "service_scope": chunk.service_scope,
+        "service_scope_label": label_for("service_scope", chunk.service_scope),
+        "status": chunk.status,
+    }
+
+def _snapshot_hit_to_dict(hit: dict, *, index: int, redact: bool = False) -> dict:
+    row = dict(hit or {})
+    if redact:
+        row["title"] = _redact_value(row.get("title"))
+        row["content"] = _redact_value(row.get("content"))
+    row["hit_rank"] = row.get("hit_rank") or index + 1
+    row["snapshot_source"] = "recorded_retrieval_snapshot"
+    row["snapshot_available"] = True
+    row["is_original_retrieval_snapshot"] = True
+    row["knowledge_type_label"] = row.get("knowledge_type_label") or label_for("knowledge_type", row.get("knowledge_type"))
+    row["chunk_type_label"] = row.get("chunk_type_label") or label_for("chunk_type", row.get("chunk_type"))
+    row["business_line_label"] = row.get("business_line_label") or label_for("business_line", row.get("business_line"))
+    row["service_scope_label"] = row.get("service_scope_label") or label_for("service_scope", row.get("service_scope"))
+    return row
+
+def _hit_log_snapshot_hits(log: KnowledgeHitLog) -> list[dict]:
+    snapshot = getattr(log, "hit_chunks_snapshot", None)
+    if isinstance(snapshot, dict):
+        hits = snapshot.get("hits")
+        return hits if isinstance(hits, list) else []
+    if isinstance(snapshot, list):
+        return snapshot
+    return []
+
+def _hit_log_hit_chunks(db: Session, log: KnowledgeHitLog, *, redact: bool = False) -> list[dict]:
+    snapshot_hits = _hit_log_snapshot_hits(log)
+    if snapshot_hits:
+        return [_snapshot_hit_to_dict(hit, index=index, redact=redact) for index, hit in enumerate(snapshot_hits)]
+
+    hit_chunk_ids = _normalize_hit_chunk_ids(log.hit_chunk_ids)
+    if not hit_chunk_ids:
+        return []
+    chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.chunk_id.in_(hit_chunk_ids)).all()
+    chunk_map = {str(chunk.chunk_id): chunk for chunk in chunks}
+    doc_ids = [str(chunk.document_id) for chunk in chunks if chunk.document_id]
+    docs = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id.in_(doc_ids)).all() if doc_ids else []
+    doc_map = {str(doc.document_id): doc for doc in docs}
+    result = []
+    for index, chunk_id in enumerate(hit_chunk_ids):
+        chunk = chunk_map.get(chunk_id)
+        if not chunk:
+            result.append({
+                "chunk_id": chunk_id,
+                "hit_rank": index + 1,
+                "missing": True,
+                "snapshot_source": "current_lookup_by_recorded_id",
+                "snapshot_available": False,
+                "is_original_retrieval_snapshot": False,
+            })
+            continue
+        row = _chunk_to_hit_dict(
+            chunk,
+            score=_score_for_hit(log.scores, chunk_id, index),
+            hit_rank=index + 1,
+            document=doc_map.get(str(chunk.document_id)),
+            redact=redact,
+        )
+        row.update({
+            "snapshot_source": "current_lookup_by_recorded_id",
+            "snapshot_available": False,
+            "is_original_retrieval_snapshot": False,
+            "audit_warning": "历史日志未记录命中正文快照；这是按历史 chunk_id 查询到的当前切片内容，不保证等同当时传给后续流程的原文。",
+        })
+        result.append(row)
+    return result
+def _parse_kb_stats_datetime(value: str | None, *, end_of_day: bool = False) -> datetime | None:
+    if not value:
+        return None
+    text_value = str(value).strip()
+    try:
+        if len(text_value) == 10:
+            parsed = datetime.strptime(text_value, "%Y-%m-%d")
+            if end_of_day:
+                parsed = parsed + timedelta(days=1)
+            return parsed
+        return datetime.fromisoformat(text_value.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid datetime: {value}")
 
 def _candidate_to_dict(candidate: KnowledgeCandidate) -> dict:
     return {
@@ -13741,6 +13952,7 @@ async def list_kb_hit_logs(
     session_id: str | None = None,
     request_id: str | None = None,
     redact: bool = False,
+    include_hits: bool = False,
     limit: int = 100,
     db: Session = Depends(get_db),
 ):
@@ -13752,7 +13964,106 @@ async def list_kb_hit_logs(
     if request_id:
         query = query.filter(KnowledgeHitLog.request_id == request_id)
     logs = query.order_by(KnowledgeHitLog.created_at.desc()).limit(max(1, min(limit, 500))).all()
-    return [_hit_log_to_dict(log, redact=redact) for log in logs]
+    rows = [_hit_log_to_dict(log, redact=redact) for log in logs]
+    if include_hits:
+        for row, log in zip(rows, logs):
+            row["hit_chunks"] = _hit_log_hit_chunks(db, log, redact=redact)
+    return rows
+
+@app.get("/api/kb/hit_logs/chunk_stats")
+async def get_kb_hit_log_chunk_stats(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    status: str | None = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    start_dt = _parse_kb_stats_datetime(start_date)
+    end_dt = _parse_kb_stats_datetime(end_date, end_of_day=True)
+    query = db.query(KnowledgeHitLog)
+    if start_dt:
+        query = query.filter(KnowledgeHitLog.created_at >= start_dt)
+    if end_dt:
+        query = query.filter(KnowledgeHitLog.created_at < end_dt)
+    if status:
+        query = query.filter(KnowledgeHitLog.status == status)
+    logs = query.order_by(KnowledgeHitLog.created_at.desc()).limit(5000).all()
+    counters: dict[str, dict] = {}
+    total_hits = 0
+    for log in logs:
+        snapshot_hits = _hit_log_snapshot_hits(log)
+        snapshot_by_id = {
+            str(hit.get("chunk_id")): hit
+            for hit in snapshot_hits
+            if isinstance(hit, dict) and hit.get("chunk_id")
+        }
+        for index, chunk_id in enumerate(_normalize_hit_chunk_ids(log.hit_chunk_ids)):
+            total_hits += 1
+            item = counters.setdefault(chunk_id, {
+                "chunk_id": chunk_id,
+                "hit_count": 0,
+                "latest_hit_at": None,
+                "queries": [],
+                "score_sum": 0.0,
+                "score_count": 0,
+                "latest_snapshot": None,
+                "snapshot_count": 0,
+            })
+            item["hit_count"] += 1
+            created_at = log.created_at.isoformat() if log.created_at else None
+            if created_at and (not item["latest_hit_at"] or created_at > item["latest_hit_at"]):
+                item["latest_hit_at"] = created_at
+                item["latest_snapshot"] = snapshot_by_id.get(chunk_id)
+            if snapshot_by_id.get(chunk_id):
+                item["snapshot_count"] += 1
+            query_text = (log.query_text or "").strip()
+            if query_text and query_text not in item["queries"] and len(item["queries"]) < 5:
+                item["queries"].append(query_text)
+            score = _score_for_hit(log.scores, chunk_id, index)
+            if score is not None:
+                item["score_sum"] += score
+                item["score_count"] += 1
+    chunk_ids = list(counters.keys())
+    chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.chunk_id.in_(chunk_ids)).all() if chunk_ids else []
+    chunk_map = {str(chunk.chunk_id): chunk for chunk in chunks}
+    doc_ids = [str(chunk.document_id) for chunk in chunks if chunk.document_id]
+    docs = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id.in_(doc_ids)).all() if doc_ids else []
+    doc_map = {str(doc.document_id): doc for doc in docs}
+    rows = []
+    for chunk_id, item in counters.items():
+        chunk = chunk_map.get(chunk_id)
+        row = {
+            "chunk_id": chunk_id,
+            "hit_count": item["hit_count"],
+            "latest_hit_at": item["latest_hit_at"],
+            "sample_queries": item["queries"],
+            "avg_score": (item["score_sum"] / item["score_count"]) if item["score_count"] else None,
+            "missing": chunk is None,
+            "snapshot_count": item.get("snapshot_count") or 0,
+            "hit_detail_source": "recorded_retrieval_snapshot" if item.get("latest_snapshot") else "current_lookup_by_recorded_id",
+            "hit_detail_warning": None if item.get("latest_snapshot") else "该聚合行没有原始命中快照；标题/正文仅按 chunk_id 查询当前知识库内容。",
+        }
+        if item.get("latest_snapshot"):
+            row.update(_snapshot_hit_to_dict(item["latest_snapshot"], index=0, redact=True))
+            row["missing"] = False
+        elif chunk:
+            row.update(_chunk_to_hit_dict(
+                chunk,
+                document=doc_map.get(str(chunk.document_id)),
+                redact=True,
+            ))
+        rows.append(row)
+    rows.sort(key=lambda item: (int(item.get("hit_count") or 0), item.get("latest_hit_at") or ""), reverse=True)
+    max_rows = max(1, min(limit, 1000))
+    return {
+        "status": "success",
+        "start_date": start_date,
+        "end_date": end_date,
+        "log_count": len(logs),
+        "total_hit_count": total_hits,
+        "unique_chunk_count": len(counters),
+        "rows": rows[:max_rows],
+    }
 
 @app.get("/api/kb/hit_logs/stats")
 async def get_kb_hit_log_stats(db: Session = Depends(get_db)):
@@ -18786,6 +19097,408 @@ def patch_mail_customer_suite_feedback(
     db.commit()
     db.refresh(row)
     return {"ok": True, "record": _serialize_mail_customer_suite_feedback(row)}
+
+
+# ============================================================================
+# 自动群发排期引擎(纯函数, 不碰 CRM) + dry-run 预览
+# ============================================================================
+
+def _autosend_scenario_step_count(scenario: str) -> int:
+    """套装封数: 自建套装按其封数, 内置场景固定 4。"""
+    try:
+        from mail_sequence_strategy import get_dynamic_scenario_step_count
+        n = get_dynamic_scenario_step_count(scenario)
+        if n:
+            return int(n)
+    except Exception:
+        pass
+    return len(ALL_MAIL_SEQUENCE_STEPS)
+
+
+def _autosend_cond_eval(contact: dict, cond: dict) -> bool:
+    """单条条件判定(都按联系人维度)。amount=历史累计销售合同额; last_coop_days=距上次合作天数(无合作=最远=inf)。"""
+    ctype = str(cond.get("type") or "").strip()
+    op = str(cond.get("op") or "").strip()
+    val = cond.get("value")
+    if ctype == "amount":
+        amt = float(contact.get("amount") or 0)
+        v = float(val or 0)
+        return amt < v if op == "<" else (amt > v if op == ">" else False)
+    if ctype == "last_coop_days":
+        days = contact.get("last_coop_days")
+        days = float("inf") if days is None else float(days)   # 无合作=最远
+        v = float(val or 0)
+        return days < v if op == "<" else (days > v if op == ">" else False)
+    if ctype == "business_line":
+        target = str(val or "").strip()
+        lines = [str(x) for x in (contact.get("business_lines") or [])]
+        has = bool(target) and any(target in bl or bl in target for bl in lines)
+        return has if op == "has" else (not has)   # has=合作过, not=没合作过
+    return False
+
+
+def _autosend_rule_matches(contact: dict, rule: dict) -> bool:
+    conds = rule.get("conditions") or []
+    if not conds:
+        return True  # 无条件 = 命中所有(可作为兜底行)
+    mode = str(rule.get("match_mode") or "and").lower()
+    results = [_autosend_cond_eval(contact, c) for c in conds]
+    return all(results) if mode == "and" else any(results)
+
+
+def _autosend_pick_suite(contact: dict, rules: list[dict], used_scenarios: set, fallback_enabled: bool) -> tuple[str | None, str]:
+    """按优先级给联系人挑套装: 第一个'命中且没发过'的; 都没有则兜底最后一个套装; 兜底也发过则不发。"""
+    if not rules:
+        return None, "no_rules"
+    for rule in rules:
+        if _autosend_rule_matches(contact, rule):
+            sc = rule.get("scenario")
+            if sc and sc not in used_scenarios:
+                return sc, "matched"
+            # 命中但已发过 -> 继续往下找
+    if fallback_enabled:
+        fb = rules[-1].get("scenario")
+        if fb and fb not in used_scenarios:
+            return fb, "fallback"
+    return None, "all_used"  # 兜底也发过
+
+
+def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: list[int],
+                       daily_cap: int, start_date, existing_load: dict | None = None,
+                       fallback_enabled: bool = True) -> dict:
+    """逐人逐封排期。返回 {items, skipped, day_load}。纯计算, 不写任何库。
+
+    - 第1封目标日 = 开始日 + interval[0]; 第k封 = 第k-1封实际落日 + interval[k-1]。
+    - 目标日该销售已满(>=上限, 含 existing_load 的 CRM 已有量)则整天跳过, 向后找首个未满天。
+    - 当天时间 = 09:00 + 5 分钟 x 当天该销售第几封。
+    """
+    intervals = [int(x) for x in (interval_days or [0])] or [0]
+    cap = max(1, int(daily_cap or 1))
+
+    def gap(step_idx: int) -> int:  # step_idx: 0-based
+        return intervals[step_idx] if step_idx < len(intervals) else intervals[-1]
+
+    load = dict(existing_load or {})  # {(owner, 'YYYY-MM-DD'): count}
+    items: list[dict] = []
+    skipped: list[dict] = []
+    for c in contacts:
+        owner = str(c.get("owner_staff_id") or "")
+        used = set(c.get("used_scenarios") or [])
+        scenario, reason = _autosend_pick_suite(c, rules, used, fallback_enabled)
+        if scenario is None:
+            skipped.append({
+                "contact_id": c.get("contact_id"),
+                "owner_staff_id": owner,
+                "reason": reason,
+                "detail": "符合的套装都已发过(含兜底), 本次不发" if reason == "all_used" else "无可用套装规则",
+            })
+            continue
+        step_count = _autosend_scenario_step_count(scenario)
+        prev_actual = None
+        for step in range(1, step_count + 1):
+            if step == 1:
+                desired = start_date + timedelta(days=gap(0))
+            else:
+                desired = prev_actual + timedelta(days=gap(step - 1))
+            day = desired
+            while load.get((owner, day.isoformat()), 0) >= cap:
+                day = day + timedelta(days=1)
+            seq = load.get((owner, day.isoformat()), 0)
+            minute_total = 9 * 60 + 5 * seq
+            hh, mm = divmod(minute_total, 60)
+            load[(owner, day.isoformat())] = seq + 1
+            items.append({
+                "contact_id": c.get("contact_id"),
+                "owner_staff_id": owner,
+                "email": c.get("email"),
+                "scenario": scenario,
+                "scenario_label_cn": _get_scenario_label_cn(scenario) or scenario,
+                "suite_step": step,
+                "plan_date": day.isoformat(),
+                "plan_time": f"{hh:02d}:{mm:02d}",
+                "seq_in_day": seq,
+                "pick_reason": reason,
+            })
+            prev_actual = day
+    # 排期后每销售每天的封数汇总(便于核对上限/顺延)
+    day_load = [
+        {"owner_staff_id": k[0], "date": k[1], "count": v}
+        for k, v in sorted(load.items())
+    ]
+    return {"items": items, "skipped": skipped, "day_load": day_load}
+
+
+def _autosend_sort_contacts(contacts: list[dict], sort_rule: str) -> list[dict]:
+    """按排序规则给联系人排序(决定谁先排、谁先被顶满顺延)。无合作: 金额=0, 末次=最远。"""
+    rule = str(sort_rule or "default").lower()
+
+    def amt(c):
+        return float(c.get("amount") or 0)
+
+    def last(c):
+        d = c.get("last_coop_days")
+        return float("inf") if d is None else float(d)
+
+    if rule == "amount_desc":
+        return sorted(contacts, key=amt, reverse=True)
+    if rule == "amount_asc":
+        return sorted(contacts, key=amt)
+    if rule == "last_far":    # 末次合作远->近: 越久远越靠前
+        return sorted(contacts, key=last, reverse=True)
+    if rule == "last_near":   # 末次合作近->远: 越近越靠前
+        return sorted(contacts, key=last)
+    if rule == "random":
+        import random as _r
+        cc = list(contacts)
+        _r.shuffle(cc)
+        return cc
+    return list(contacts)     # default: 保持现有顺序
+
+
+def _autosend_demo_contacts(n: int) -> list[dict]:
+    """合成 n 个同销售联系人, 用于验证'第25个联系人顺延'这类排期, 不碰 CRM。"""
+    return [
+        {"contact_id": f"DEMO-{i+1:03d}", "owner_staff_id": "DEMO", "amount": 0,
+         "last_coop_days": None, "business_lines": [], "email": f"demo{i+1}@example.com", "used_scenarios": []}
+        for i in range(max(1, int(n)))
+    ]
+
+
+class AutosendDryRunRequest(BaseModel):
+    start_date: str | None = None          # YYYY-MM-DD, 缺省=今天(北京)
+    daily_cap: int = 10
+    interval_days: list[int] = [0]
+    sort_rule: str = "default"             # default/amount_desc/amount_asc/last_far/last_near/random
+    rules: list[dict] = []                  # [{scenario, conditions, match_mode}], 顺序即优先级
+    fallback_enabled: bool = True
+    contacts: list[dict] | None = None      # 内联联系人(验证算法用), 缺省时按 sales_staff_ids 从 CRM 取
+    sales_staff_ids: list[str] | None = None
+    consider_existing_crm_queue: bool = True
+    demo: bool = False
+    demo_count: int = 26
+
+
+@app.post("/api/v1/mail/autosend/dry-run")
+def autosend_dry_run(payload: AutosendDryRunRequest, db: Session = Depends(get_db)):
+    """自动群发排期预览(dry-run): 只算排期表, 不生成草稿、不写 CRM、不入任何库。
+
+    三种取联系人方式: demo(合成) > contacts(内联) > sales_staff_ids(从 CRM 取该销售名下有效邮箱联系人)。
+    """
+    # 开始日期
+    now_bj = datetime.utcnow() + timedelta(hours=8)
+    if payload.start_date:
+        try:
+            start_date = datetime.strptime(payload.start_date.strip(), "%Y-%m-%d").date()
+        except Exception:
+            raise HTTPException(status_code=422, detail="start_date 格式应为 YYYY-MM-DD")
+    else:
+        start_date = now_bj.date()
+
+    # 取联系人
+    source = ""
+    if payload.demo:
+        contacts = _autosend_demo_contacts(payload.demo_count)
+        source = "demo"
+        rules = payload.rules or [{"scenario": "re_activation", "conditions": [], "match_mode": "and"}]
+    elif payload.contacts:
+        contacts = payload.contacts
+        source = "inline"
+        rules = payload.rules
+    elif payload.sales_staff_ids:
+        contacts = _autosend_load_contacts_for_sales(payload.sales_staff_ids, only_valid_email=True)
+        source = "crm_sales"
+        rules = payload.rules
+    else:
+        raise HTTPException(status_code=422, detail="请提供 demo / contacts / sales_staff_ids 之一")
+
+    if not rules:
+        raise HTTPException(status_code=422, detail="rules 不能为空(至少一个套装规则, 末位作兜底)")
+
+    # 按排序规则排序(demo 保持合成顺序, 不排序)
+    if source != "demo":
+        contacts = _autosend_sort_contacts(contacts, payload.sort_rule)
+
+    # 已有 CRM 待发排期占用(按销售按天)
+    existing_load = {}
+    if payload.consider_existing_crm_queue and source == "crm_sales":
+        owners = sorted({str(c.get("owner_staff_id") or "") for c in contacts if c.get("owner_staff_id")})
+        existing_load = _autosend_existing_crm_load(owners, start_date)
+
+    result = _autosend_schedule(
+        contacts, rules, payload.interval_days, payload.daily_cap, start_date,
+        existing_load=existing_load, fallback_enabled=payload.fallback_enabled,
+    )
+    return {
+        "ok": True,
+        "mode": "dry_run",
+        "source": source,
+        "start_date": start_date.isoformat(),
+        "daily_cap": payload.daily_cap,
+        "interval_days": payload.interval_days,
+        "contacts_count": len(contacts),
+        "scheduled_count": len(result["items"]),
+        "skipped_count": len(result["skipped"]),
+        "items": result["items"],
+        "skipped": result["skipped"],
+        "day_load": result["day_load"],
+        "note": "dry-run 仅计算排期, 未生成草稿、未写 CRM、未入库。",
+    }
+
+
+def _autosend_existing_crm_load(staff_ids: list[str], start_date) -> dict:
+    """读 CRM spQueueSend 已有待发量, 按 (销售, 计划日) 计数, 作为每日上限的起始占用。失败返回 {}。"""
+    load: dict = {}
+    staff_ids = [s for s in (staff_ids or []) if s]
+    if not staff_ids:
+        return load
+    try:
+        from crm_database import CRMSessionLocal
+        crm_db = CRMSessionLocal()
+        try:
+            rows = crm_db.execute(
+                text(
+                    "SELECT InputerStaffId, CONVERT(varchar(10), PlanSendTime, 23) AS d, COUNT(*) AS n "
+                    "FROM spQueueSend "
+                    "WHERE MessageType='Email' AND PlanSendTime >= :start "
+                    "AND InputerStaffId IN :ids "
+                    "GROUP BY InputerStaffId, CONVERT(varchar(10), PlanSendTime, 23)"
+                ).bindparams(bindparam("ids", expanding=True)),
+                {"start": datetime.combine(start_date, datetime.min.time()), "ids": staff_ids},
+            ).fetchall()
+            for r in rows:
+                owner = str(r[0] or ""); d = str(r[1] or ""); n = int(r[2] or 0)
+                if owner and d:
+                    load[(owner, d)] = n
+        finally:
+            crm_db.close()
+    except Exception:
+        logger.exception("AUTOSEND_EXISTING_CRM_LOAD_FAILED staff=%s", staff_ids)
+    return load
+
+
+def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bool = True) -> list[dict]:
+    """从 CRM 取指定销售名下、有有效邮箱的联系人, 并按人聚合历史累计销售合同额/末次合作/业务线。
+
+    口径(均按联系人 ContactId):
+    - 金额 = SUM(Money1+Money2+Money3) over ContractType='销售合同'。
+    - 末次合作 = MAX(COALESCE(ContractTime,StartTime,InputTime)); 距今天数; 无合作=None(最远)。
+    - 业务线 = DISTINCT BusinessType。
+    - 有效邮箱 = usrCustomerContactCommunicateNo(ContactEmail, IsCollect='正确')。
+    """
+    staff_ids = [s for s in (staff_ids or []) if s]
+    if not staff_ids:
+        return []
+    out: list[dict] = []
+    try:
+        from crm_database import CRMSessionLocal
+        crm_db = CRMSessionLocal()
+        try:
+            # 1) 取该销售名下联系人(Owner 含该工号; Owner 可能是多工号拼接, 用 LIKE 粗筛再 Python 拆 token 精确)
+            like_clauses = " OR ".join([f"CAST(c.Owner AS NVARCHAR(240)) LIKE :p{i}" for i in range(len(staff_ids))])
+            params = {f"p{i}": f"%{sid}%" for i, sid in enumerate(staff_ids)}
+            contact_rows = crm_db.execute(
+                text(
+                    "SELECT DISTINCT c.ContactId, CAST(ISNULL(c.Owner,'') AS NVARCHAR(240)) AS Owner "
+                    "FROM usrCustomerContact c "
+                    "WHERE c.Deleter IS NULL AND ISNULL(CAST(c.Owner AS NVARCHAR(240)),'')<>'' "
+                    f"AND ({like_clauses})"
+                ),
+                params,
+            ).fetchall()
+            staff_set = set(staff_ids)
+            contacts_map: dict[str, str] = {}  # contact_id -> matched owner staff id
+            for cid, owner_raw in contact_rows:
+                cid = str(cid or "").strip()
+                if not cid:
+                    continue
+                tokens = [t.strip() for t in re.split(r"[,;，、\s]+", str(owner_raw or "")) if t.strip()]
+                owner = next((t for t in tokens if t in staff_set), None)
+                if owner:
+                    contacts_map.setdefault(cid, owner)
+            if not contacts_map:
+                return []
+            contact_ids = list(contacts_map.keys())
+
+            def _chunks(seq, n=500):
+                for i in range(0, len(seq), n):
+                    yield seq[i:i + n]
+
+            # 2) 有效邮箱(取最新一个)
+            email_map: dict[str, str] = {}
+            for chunk in _chunks(contact_ids):
+                rows = crm_db.execute(
+                    text(
+                        "SELECT ContactId, CommunicateNo, InputTime FROM usrCustomerContactCommunicateNo "
+                        "WHERE CommunicateType='ContactEmail' AND ISNULL(IsCollect,'')='正确' "
+                        "AND ContactId IN :ids ORDER BY InputTime DESC"
+                    ).bindparams(bindparam("ids", expanding=True)),
+                    {"ids": chunk},
+                ).fetchall()
+                for cid, no, _t in rows:
+                    cid = str(cid or "").strip(); no = str(no or "").strip()
+                    if cid and no and "@" in no and "/" not in no and " " not in no:
+                        email_map.setdefault(cid, no)
+
+            # 3) 合同聚合: 金额 + 末次合作
+            agg_map: dict[str, dict] = {}
+            for chunk in _chunks(contact_ids):
+                rows = crm_db.execute(
+                    text(
+                        "SELECT ContactId, "
+                        " SUM(ISNULL(Money1,0)+ISNULL(Money2,0)+ISNULL(Money3,0)) AS amt, "
+                        " MAX(COALESCE(ContractTime, StartTime, InputTime)) AS last_t "
+                        "FROM usrContract WHERE Deleter IS NULL AND ContractType='销售合同' "
+                        "AND ContactId IN :ids GROUP BY ContactId"
+                    ).bindparams(bindparam("ids", expanding=True)),
+                    {"ids": chunk},
+                ).fetchall()
+                for cid, amt, last_t in rows:
+                    agg_map[str(cid or "").strip()] = {"amount": float(amt or 0), "last_t": last_t}
+
+            # 4) 业务线
+            line_map: dict[str, set] = {}
+            for chunk in _chunks(contact_ids):
+                rows = crm_db.execute(
+                    text(
+                        "SELECT DISTINCT ContactId, CAST(ISNULL(BusinessType,'') AS NVARCHAR(200)) AS bt "
+                        "FROM usrContract WHERE Deleter IS NULL AND ContractType='销售合同' "
+                        "AND ContactId IN :ids"
+                    ).bindparams(bindparam("ids", expanding=True)),
+                    {"ids": chunk},
+                ).fetchall()
+                for cid, bt in rows:
+                    bt = str(bt or "").strip()
+                    if bt:
+                        line_map.setdefault(str(cid or "").strip(), set()).add(bt)
+
+            today = (datetime.utcnow() + timedelta(hours=8)).date()
+            for cid, owner in contacts_map.items():
+                email = email_map.get(cid)
+                if only_valid_email and not email:
+                    continue
+                agg = agg_map.get(cid) or {}
+                last_t = agg.get("last_t")
+                last_days = None
+                if last_t is not None:
+                    try:
+                        last_days = max(0, (today - (last_t.date() if hasattr(last_t, "date") else last_t)).days)
+                    except Exception:
+                        last_days = None
+                out.append({
+                    "contact_id": cid,
+                    "owner_staff_id": owner,
+                    "email": email,
+                    "amount": float(agg.get("amount") or 0),
+                    "last_coop_days": last_days,
+                    "business_lines": sorted(line_map.get(cid, set())),
+                    "used_scenarios": [],  # step 3 再接历史去重
+                })
+        finally:
+            crm_db.close()
+    except Exception:
+        logger.exception("AUTOSEND_LOAD_CONTACTS_FAILED staff=%s", staff_ids)
+        return []
+    return out
 
 
 def _mail_ai_stats_llm_call(prompt: str) -> dict:
