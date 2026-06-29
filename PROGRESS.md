@@ -1097,3 +1097,32 @@
   - 每封卡片改两列(lg:grid-cols-2); 标题+发送间隔同一行(其他); AI指令文本框加高至2倍(16rem); 三个保存合并为一个"保存"按钮(saveMailSequenceTemplateAll 一次提交三字段)。
 - 验证: 后端 py_compile + 实调 PUT(custom 合并保存 OK / 标准场景 OK)+ 重命名 OK; 前端内联 JS 通过。
 - 注意: 测试 PUT 时误覆盖了 custom_0904af93 第1封内容, 已恢复标题/间隔, AI指令按截取内容恢复(尾部需人工核对补全)。需重启后端生效。
+
+## 2026-06-26 16:20:03 知识库命中详情与命中统计
+- 修复知识库管理 > 命中日志双击无详情：后端 /api/kb/hit_logs 新增 include_hits=true 处理，会按真实 knowledge_hit_logs.hit_chunk_ids 查询 knowledge_chunk 并返回 hit_chunks，前端弹窗可展示切片标题、类型、分数、chunk_id 与正文。
+- 新增知识库管理 > 命中统计：后端新增 /api/kb/hit_logs/chunk_stats，支持 start_date / end_date 统计每个知识库切片在时间范围内的命中次数、最近命中、均分和样例 Query；前端新增“命中统计”页和日期筛选。
+- 验证：python -m py_compile backend\main.py、抽取 frontend/index.html 内联脚本后 node --check scratch\frontend-index-scripts-check.js、git diff --check -- backend/main.py frontend/index.html scratch/frontend-index-scripts-check.js 均通过。
+
+## 2026-06-26 17:30:49 知识库命中日志审计口径修正
+- 纠正上一轮“按历史 chunk_id 补查当前切片详情”的口径：这不能证明当时传给后续企微回复生成流程的原文，只能作为历史 ID 的当前表回查辅助查看。
+- 新增 knowledge_hit_logs.hit_chunks_snapshot，从现在开始每次企微知识库检索会在写日志时保存当时的 hits / replyable_hits / human_only_hits / supporting / related 快照，用于追溯当时实际提供给后续流程的知识内容。
+- 命中日志详情页改为优先展示“原始检索快照”；历史日志没有快照时明确显示“历史日志缺少原始快照 / 当前表回查”，避免误导。
+
+## 2026-06-26 17:56:56 知识库命中日志链路快照修正
+- 按用户指出修正：旧 knowledge_hit_logs 表本身可能只有 hit_chunk_ids，但企微实时智能链路中的 ReplyChainSnapshot / IntentSummary / ApiAssistInvocation 可能已经保存了当时 knowledge_v2.hits，不能直接跳到当前知识库表回查。
+- /api/kb/hit_logs?include_hits=true 现在优先级为：knowledge_hit_logs.hit_chunks_snapshot -> reply_chain_snapshot.knowledge_v2 -> intent_summaries.knowledge_v2 -> api_assist_invocation.result_payload.knowledge_v2 -> 最后才按 chunk_id 查当前 knowledge_chunk，并在最后一种情况明确警告。
+- 命中统计页同样会优先使用可恢复的原始链路快照标记来源；前端显示 hit_logs 原始快照 / 回复链路快照 / 摘要链路快照 / API调用快照 / 当前表回查。
+- 验证：python -m py_compile backend\main.py backend\intent_engine.py backend\database.py、node --check scratch\frontend-index-scripts-check.js、定向 git diff --check 均通过。
+
+## 2026-06-29 10:17:32 后台一键启动改为 detached 防控制台阻塞
+- 按用户反馈，定位一键启动后台窗口被选中/滚动暂停时会阻塞 uvicorn stdout/stderr，导致 Webhook 请求长时间卡住。
+- 已新增 start_backend_detached.ps1，由一键启动后台.bat 调用隐藏 PowerShell 后台进程运行 start_backend.ps1 -NoConsoleLog，并将 stdout/stderr 重定向到 backend/logs/backend_8071_*.stdout.log / stderr.log。
+- 新的一键启动窗口只做启动与健康检查，不再承接后端实时控制台输出，选中或滚动该窗口不会冻结后台服务。
+- 验证：start_backend_detached.ps1 PowerShell 语法检查通过；git diff --check -- 一键启动后台.bat start_backend_detached.ps1 通过；未实际重启当前后台。
+
+## 2026-06-29 10:23:02 邮件套装富文本工具栏：图片插入失效修复 + 分割线按钮 + 一行显示
+- 修复"图片"插入后不立即显示：原用 document.execCommand('insertImage')，文件选择框关闭后 contenteditable 已失焦，新版 Chrome 下该命令静默失败。改为 handleInlineImageFiles 构造 img 节点，调用新增 insertNodeIntoBody(step,node) 显式 focus 正文区并按保存的 Range 直接插入，插入后光标移到节点之后，保证立即可见。
+- "——"按钮原为水平分割线(insertHorizontalRule)，标签 ― 易混淆，改为文字"分割线"并把 title 改为"插入水平分割线"。
+- 工具栏尽量一行显示：.rte-toolbar 改 flex-wrap:nowrap + overflow-x:auto，子项 flex:0 0 auto，按钮 padding/font 收紧(4px 7px / 12px / nowrap)，超宽时横向滚动而非换行。
+- 附件流程(chooseAttachment/handleAttachmentFiles/renderAttachmentList)核查无误，添加后即时渲染附件列表。
+- 验证：抽取前端内联脚本 node --check 通过(无浏览器侧实跑)。

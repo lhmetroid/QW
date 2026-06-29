@@ -401,14 +401,18 @@
     .subject-input:focus { border-color: var(--brand); outline: none; }
     .rte-toolbar {
       display: flex;
-      gap: 4px;
-      flex-wrap: wrap;
+      gap: 3px;
+      flex-wrap: nowrap;
+      overflow-x: auto;
       margin-bottom: 6px;
+      padding-bottom: 2px;
     }
+    .rte-toolbar > * { flex: 0 0 auto; }
     .rte-toolbar button {
-      padding: 4px 9px;
-      font-size: 13px;
+      padding: 4px 7px;
+      font-size: 12px;
       line-height: 1.2;
+      white-space: nowrap;
     }
     .rte-toolbar select {
       height: 28px;
@@ -883,7 +887,7 @@
               <button type="button" title="插入链接" onmousedown="rteLink(event)" hidden>链接</button>
               <button type="button" title="插入图片" onmousedown="chooseInlineImage(event, ${esc(item.suite_step)})">图片</button>
               <button type="button" title="添加附件" onmousedown="chooseAttachment(event, ${esc(item.suite_step)})">附件</button>
-              <button type="button" title="分割线" onmousedown="rteCmd(event,'insertHorizontalRule')">―</button>
+              <button type="button" title="插入水平分割线" onmousedown="rteCmd(event,'insertHorizontalRule')">分割线</button>
               <button type="button" title="清除格式" onmousedown="rteCmd(event,'removeFormat')">清除格式</button>
             </div>
             <div id="body-${esc(item.suite_step)}" class="body-html rte" contenteditable="true" onblur="saveDraftField(${esc(item.suite_step)})">${draft.final_body_html || ''}</div>
@@ -1076,11 +1080,43 @@
       if (!checkFileLimit(step, file)) return;
       try {
         const dataUrl = await readFileAsDataUrl(file);
-        rteExec('insertImage', dataUrl);
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.style.maxWidth = '100%';
+        img.style.height = 'auto';
+        if (!insertNodeIntoBody(step, img)) {
+          setDraftStatus(step, '插入图片失败：未找到正文编辑区。', true);
+          return;
+        }
         setDraftStatus(step, `已插入图片 ${file.name}（${formatBytes(file.size)}），发送时会转为标准内嵌图片。`);
       } catch (err) {
         setDraftStatus(step, err.message, true);
       }
+    }
+
+    // 把节点插入到指定正文编辑区的光标处。文件选择/弹窗会让编辑区失焦,
+    // 直接 execCommand 会静默失败,所以这里显式 focus 后用 Range 插入,保证立即显示。
+    function insertNodeIntoBody(step, node) {
+      const bodyEl = document.getElementById(`body-${step}`);
+      if (!bodyEl) return false;
+      bodyEl.focus();
+      const sel = window.getSelection();
+      let range;
+      if (rteSavedRange && bodyEl.contains(rteSavedRange.startContainer)) {
+        range = rteSavedRange.cloneRange();
+      } else {
+        range = document.createRange();
+        range.selectNodeContents(bodyEl);
+      }
+      range.collapse(false);
+      range.insertNode(node);
+      // 光标移到刚插入的节点之后,便于继续输入
+      range.setStartAfter(node);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      rteSavedRange = range.cloneRange();
+      return true;
     }
 
     function chooseAttachment(event, step) {
