@@ -1458,7 +1458,12 @@
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
-        const lines = (data.prepared || []).map(p => `第${p.suite_step}封 · ${p.plan_send_time} · ${p.status}${p.error ? '（' + p.error + '）' : ''}`).join('\n');
+        const lines = (data.prepared || []).map(p => {
+          const att = (p.attachment_count != null) ? `${p.attachment_count}个附件` : '';
+          const sz = (p.eml_bytes ? formatBytes(p.eml_bytes) : '');
+          const extra = [att, sz ? `eml ${sz}` : ''].filter(Boolean).join(' / ');
+          return `第${p.suite_step}封 · ${p.plan_send_time} · ${p.status}${extra ? '（' + extra + '）' : ''}${p.error ? '【' + p.error + '】' : ''}`;
+        }).join('\n');
         const enq = data.enqueued_count != null ? data.enqueued_count : data.prepared_count;
         if (status) {
           status.textContent = `已入队 ${enq}/${data.prepared_count} 封`;

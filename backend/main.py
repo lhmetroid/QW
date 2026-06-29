@@ -19074,9 +19074,16 @@ def send_mail_customer_suite(
         step_status = "enqueued"
         step_error = None
         spqueue_rowid = None
+        att_count = len(mail_attachments) if isinstance(mail_attachments, list) else 0
+        eml_size = 0
         try:
             import mail_sftp
             eml_bytes = _build_mail_eml_bytes(sender_email, sender_name, recipient_emails, final_subject, final_body_html, mail_attachments)
+            eml_size = len(eml_bytes)
+            logger.info(
+                "MAIL_SUITE_SEND_EML customer=%s step=%s attachments=%d eml_bytes=%d",
+                sanitize_text(customer_id), suite_step, att_count, eml_size,
+            )
             ok, eml_ftp_path = mail_sftp.upload_eml_bytes(eml_bytes)
             if not ok or not eml_ftp_path:
                 step_status = "eml_upload_failed"
@@ -19111,6 +19118,8 @@ def send_mail_customer_suite(
             "status": step_status,
             "spqueue_rowid": spqueue_rowid,
             "error": step_error,
+            "attachment_count": att_count,
+            "eml_bytes": eml_size,
         })
     db.commit()
     enqueued = sum(1 for p in prepared if p["status"] == "enqueued")

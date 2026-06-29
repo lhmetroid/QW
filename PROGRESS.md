@@ -1170,3 +1170,10 @@
 - 修复: _is_supported_scenario 增强为内置/动态命中外, 对 custom_* 走 _load_single_custom_suite_from_db 惰性加载再判定(解决多进程不同步); 新增 _is_valid_suite_step(custom 允许 1..8, 固定场景 1..4)。
 - 将 customer-suite-draft(保存草稿)、/regenerate、recipient(收件邮箱)、send(发送)、feedback(创建/列表) 六处守卫由直查内置字典改为 _is_supported_scenario / _is_valid_suite_step。
 - 验证: python -m py_compile backend/main.py 通过。需重启后端生效。
+
+## 2026-06-29 14:10:00 验证套装发送附件链路 + 加可观测证据
+- 用户反馈: 套装发送后 CRM 邮件客户端预览里"附件"栏为空, 怀疑附件没进邮件。
+- 验证: 直接调用 main._build_mail_eml_bytes 用两个样例附件(jpg/txt)+1张内嵌png构造 .eml 并解析, 结果 top=multipart/mixed, 内含 inline-image-1.png(inline) 与 新年快乐.jpg/配置逻辑.txt(Content-Disposition: attachment)。证明后端确实把附件写进 .eml, 发送链路无误。
+- 判断: 截图客户端预览很可能只按 spQueueSend 库字段(Subject/EmailContent)重建视图, 不解析 .eml 附件; 附件在真投递时仍随 .eml 带出。
+- 为给可观测证据: 发送接口对每封记录 attachment_count + eml_bytes, 写 logger.info(MAIL_SUITE_SEND_EML ...), 并在返回 prepared 与前端"已入队"弹窗里展示"N个附件 / eml 大小", 下次发送即可直接确认附件已嵌入。
+- 验证: python -m py_compile backend/main.py + 前端内联 JS node --check 均通过。需重启后端生效。
