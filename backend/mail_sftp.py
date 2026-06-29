@@ -40,8 +40,11 @@ def _open_transport() -> paramiko.Transport:
     return t
 
 
-def upload_eml_bytes(content: bytes) -> tuple[bool, str]:
-    """把 .eml 字节流上传到 SFTP 的 `年/月/日/<uuid>`，返回 (是否成功, EmlFtpPath 反斜杠相对路径)。"""
+def upload_bytes(content: bytes) -> tuple[bool, str]:
+    """把任意字节流上传到 SFTP 的 `年/月/日/<uuid>`，返回 (是否成功, 反斜杠相对路径)。
+
+    .eml 正文与附件文件都走这个口径(与老 C# uploadfiledirect 一致)。
+    """
     t = None
     sftp = None
     try:
@@ -77,6 +80,11 @@ def upload_eml_bytes(content: bytes) -> tuple[bool, str]:
         finally:
             if t:
                 t.close()
+
+
+def upload_eml_bytes(content: bytes) -> tuple[bool, str]:
+    """把 .eml 字节流上传到 SFTP，返回 (是否成功, EmlFtpPath 反斜杠相对路径)。"""
+    return upload_bytes(content)
 
 
 def verify_connection() -> dict:

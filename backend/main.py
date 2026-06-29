@@ -988,6 +988,8 @@ def auto_patch_db():
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_api_ai_session_triggered ON api_assist_invocation (session_id, triggered_at DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_api_ai_anchor_triggered ON api_assist_invocation (session_id, anchor_message_id, triggered_at DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_api_ai_quality_status ON api_assist_invocation (quality_status, triggered_at DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_api_ai_triggered_at ON api_assist_invocation (triggered_at DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_api_ai_source_triggered ON api_assist_invocation (trigger_source, triggered_at DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_wtr_triggered ON wecom_trigger_record (triggered_at DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_wtr_source_triggered ON wecom_trigger_record (trigger_source, triggered_at DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_wtr_session_triggered ON wecom_trigger_record (session_id, triggered_at DESC);"))
@@ -1005,6 +1007,8 @@ def auto_patch_db():
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kc_effect_score ON knowledge_chunk (status, effect_score DESC, useful_score DESC);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_kcand_source ON knowledge_candidate (source_type, source_ref);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_efa_fewshot_admission ON email_fragment_asset (status, publishable, allowed_for_generation, usable_for_reply, useful_score DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_efa_mail_gold_seed_lookup ON email_fragment_asset (source_type, scenario_label, function_fragment, status, useful_score DESC, effect_score DESC, updated_at DESC);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mgsr_status_fragment ON mail_gold_seed_review (review_status, fragment_id);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_khl_status_created ON knowledge_hit_logs (status, created_at DESC);"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS wecom_raw_import ("
@@ -4018,7 +4022,7 @@ def _mail_approved_full_email_gold_seed_rows(
     ).order_by(
         EmailFragmentAsset.useful_score.desc(),
         EmailFragmentAsset.updated_at.desc(),
-    ).limit(2000).all()
+    ).limit(max(int(limit) * 20, 40)).all()
     approved = [row for row in rows if str(row.fragment_id) in approved_ids]
     return approved[:max(int(limit), 1)]
 
@@ -4048,7 +4052,7 @@ def _mail_full_email_gold_examples_for_prompt(
         EmailFragmentAsset.useful_score.desc(),
         EmailFragmentAsset.effect_score.desc(),
         EmailFragmentAsset.updated_at.desc(),
-    ).limit(200).all()
+    ).limit(max(int(limit) * 20, 60)).all()
     rows = sorted(
         rows,
         key=lambda item: (
@@ -14093,14 +14097,14 @@ async def get_kb_hit_log_chunk_stats(
     end_date: str | None = None,
     status: str | None = None,
     limit: int = 200,
-    scan_limit: int = 1000,
+    scan_limit: int = 200,
     include_chain_snapshots: bool = False,
     db: Session = Depends(get_db),
 ):
     timing_started = perf_counter()
     start_dt = _parse_kb_stats_datetime(start_date)
     end_dt = _parse_kb_stats_datetime(end_date, end_of_day=True)
-    max_scan = max(1, min(int(scan_limit or 1000), 5000))
+    max_scan = max(1, min(int(scan_limit or 200), 5000))
     query = db.query(KnowledgeHitLog)
     if start_dt:
         query = query.filter(KnowledgeHitLog.created_at >= start_dt)
@@ -18125,6 +18129,7 @@ def get_mail_customer_suite(
     scenario: str | None = Query(None),
     step: int | None = Query(None),
     test: bool = Query(False),
+    generate: bool = Query(True, description="是否自动生成缺失草稿；false=只读客户信息和已保存草稿"),
     db: Session = Depends(get_db),
 ):
     """独立客户套装邮件页数据源：按客户编号真生成套装草稿。
@@ -18367,6 +18372,42 @@ def get_mail_customer_suite(
         saved_edits.get(int(s), {}).get("subject") and saved_edits.get(int(s), {}).get("body_html")
         for s in suite_steps
     )
+    if not bool(generate) and not test_mode:
+        drafts = []
+        for s in suite_steps:
+            saved = saved_edits.get(int(s))
+            if saved and saved.get("subject") and saved.get("body_html"):
+                drafts.append(_generate_one_suite_draft(int(s)))
+            else:
+                drafts.append({
+                    "suite_step": int(s),
+                    "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(s)),
+                    "status": "deferred",
+                    "error": "首屏只加载客户信息和已保存草稿；点击重刷生成这一封。",
+                    "draft": None,
+                    "send_settings": _suite_step_send_settings(int(s), saved),
+                })
+        return {
+            "status": "success" if any(item.get("status") == "success" for item in drafts) else "deferred",
+            "source": "crm_sql_customer_suite_id",
+            "customer_id": customer_id,
+            "scenario": scenario_norm,
+            "scenario_label_cn": _MAIL_SCENARIO_CHINESE.get(scenario_norm, scenario_norm),
+            "scenario_basis": scenario_basis,
+            "customer_lifecycle_stage": lifecycle_stage or "未识别",
+            "customer_profile": customer_profile,
+            "drafts": drafts,
+            "suite_total": len(drafts),
+            "sender_email": sender_email,
+            "sender_name": sender_name,
+            "recipient_emails": recipient_emails,
+            "recipient_emails_source": recipient_emails_source,
+            "crm_valid_emails": valid_emails,
+            "generation_deferred": True,
+            "real_sending_enabled": False,
+            "note": "首屏只加载客户信息和已保存草稿；未生成草稿可逐封重刷。",
+        }
+
     if not _all_cached:
         # 并发前先在主线程预热模板(建表/补列 DDL + 默认模板播种)一次, 串行完成:
         # 避免 4 个并发线程各自触发同一句 DDL 互相抢表锁导致 LockNotAvailable(锁超时)。
@@ -18869,9 +18910,47 @@ def _build_mail_eml_bytes(
 _MAIL_AI_USE_RANGE = "宣传邮件-AI"
 
 
+def _upload_suite_attachments_to_ftp(attachments: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """把本封附件逐个上传到 SFTP, 返回 [{ftp_path, filename, size}] 供写 spQueueSendFile(FileType=0)。
+
+    与老 C# 一致: 每个附件单独上传一个 FTP 文件, CRM 客户端按 spQueueSendFile 行显示附件。
+    上传失败的附件跳过(不阻断发送, .eml 内已内嵌一份)。
+    """
+    import base64 as _b64
+    import mail_sftp
+    out: list[dict[str, Any]] = []
+    for item in (attachments or []):
+        if not isinstance(item, dict):
+            continue
+        raw = str(item.get("data") or item.get("base64") or "")
+        if not raw:
+            continue
+        if raw.startswith("data:"):
+            raw = raw.partition(",")[2]
+        try:
+            payload = _b64.b64decode(raw, validate=True)
+        except Exception:
+            logger.warning("MAIL_SUITE_ATTACHMENT_DECODE_FAILED filename=%s", item.get("filename"))
+            continue
+        if not payload:
+            continue
+        filename = str(item.get("filename") or item.get("name") or "attachment")
+        try:
+            ok, ftp_path = mail_sftp.upload_bytes(payload)
+        except Exception:
+            logger.exception("MAIL_SUITE_ATTACHMENT_UPLOAD_FAILED filename=%s", filename)
+            ok, ftp_path = False, ""
+        if ok and ftp_path:
+            out.append({"ftp_path": ftp_path, "filename": filename, "size": len(payload)})
+        else:
+            logger.error("MAIL_SUITE_ATTACHMENT_UPLOAD_NOPATH filename=%s", filename)
+    return out
+
+
 def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, sender_email: str,
                              send_address: str, receiver: str, staff_id: str, eml_ftp_path: str,
-                             email_text: str) -> str | None:
+                             email_text: str,
+                             attachment_files: list[dict[str, Any]] | None = None) -> str | None:
     """把一封邮件写入 CRM spQueueSend(待发队列)，由发送系统按 PlanSendTime 真发。
 
     返回 CRM 触发器为该行生成的 SendId(如 Mal_S260622-000003)：它是 spQueueSend 行真发后落到
@@ -18911,6 +18990,21 @@ def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, se
         ),
         {"ftpdir": eml_ftp_path, "queuerowid": row_guid},
     )
+    # 每个附件单独一行 FileType=0(对齐老 C# uploadfiledirect: 附件已上传 FTP, 这里登记供 CRM 显示/投递)。
+    for af in (attachment_files or []):
+        crm_db.execute(
+            text(
+                "INSERT INTO spQueueSendFile "
+                "(RowId, SendId, FtpDir, FileType, FileName, FileSize, CustomerWildCard, QueueRowId) "
+                "VALUES (NEWID(), NULL, :ftpdir, 0, :filename, :filesize, 0, :queuerowid)"
+            ),
+            {
+                "ftpdir": af.get("ftp_path") or "",
+                "filename": (str(af.get("filename") or "attachment"))[:255],
+                "filesize": int(af.get("size") or 0),
+                "queuerowid": row_guid,
+            },
+        )
     crm_db.commit()
     # 触发器在 insert 时已生成 SendId，回读用于本地落库(统计关联键)
     try:
@@ -19078,7 +19172,9 @@ def send_mail_customer_suite(
         eml_size = 0
         try:
             import mail_sftp
-            eml_bytes = _build_mail_eml_bytes(sender_email, sender_name, recipient_emails, final_subject, final_body_html, mail_attachments)
+            # 正文 .eml 只含正文+内嵌图; 文件附件不内嵌(改走 spQueueSendFile FileType=0 由发送系统组装),
+            # 否则会与 FileType=0 重复(CRM 原生口径: 附件独立上传一次/多封复用, 每封正文 eml 各自生成)。
+            eml_bytes = _build_mail_eml_bytes(sender_email, sender_name, recipient_emails, final_subject, final_body_html, None)
             eml_size = len(eml_bytes)
             logger.info(
                 "MAIL_SUITE_SEND_EML customer=%s step=%s attachments=%d eml_bytes=%d",
@@ -19089,6 +19185,13 @@ def send_mail_customer_suite(
                 step_status = "eml_upload_failed"
                 step_error = "SFTP 上传失败"
             else:
+                # 每个附件单独上传 FTP, 供 CRM 客户端按 spQueueSendFile(FileType=0) 显示(对齐老 C#)
+                attachment_files = _upload_suite_attachments_to_ftp(mail_attachments)
+                if att_count and len(attachment_files) < att_count:
+                    logger.warning(
+                        "MAIL_SUITE_ATTACHMENT_PARTIAL customer=%s step=%s want=%d got=%d",
+                        sanitize_text(customer_id), suite_step, att_count, len(attachment_files),
+                    )
                 spqueue_rowid = str(_uuid.uuid4())
                 from crm_database import CRMSessionLocal
                 crm_db = CRMSessionLocal()
@@ -19098,6 +19201,7 @@ def send_mail_customer_suite(
                         sender_email=sender_email, send_address=send_address_serialized,
                         receiver=receiver_serialized, staff_id=(owner_staff_id or ""),
                         eml_ftp_path=eml_ftp_path, email_text=body_text,
+                        attachment_files=attachment_files,
                     )
                 finally:
                     crm_db.close()
@@ -26540,6 +26644,7 @@ async def get_wecom_trigger_analytics(
 ):
     db = SessionLocal()
     try:
+        total_started = perf_counter()
         today = datetime.now().date()
         parsed_start = datetime.fromisoformat(str(start_date or today.isoformat())[:10])
         parsed_end = datetime.fromisoformat(str(end_date or str(start_date or today.isoformat()))[:10])
@@ -26554,10 +26659,19 @@ async def get_wecom_trigger_analytics(
         } or {"api", "web_manual", "test"}
 
         rows: list[dict] = []
-        api_items = db.query(ApiAssistInvocation).filter(
+        api_started = perf_counter()
+        api_query = db.query(ApiAssistInvocation).filter(
             ApiAssistInvocation.triggered_at >= day_start,
             ApiAssistInvocation.triggered_at < day_end,
-        ).order_by(ApiAssistInvocation.triggered_at.desc()).all()
+        )
+        if source_values:
+            api_source_filters = []
+            if "api" in source_values:
+                api_source_filters.append(ApiAssistInvocation.trigger_source.is_(None))
+            api_source_filters.append(ApiAssistInvocation.trigger_source.in_(list(source_values)))
+            api_query = api_query.filter(or_(*api_source_filters))
+        api_items = api_query.order_by(ApiAssistInvocation.triggered_at.desc()).limit(limit).all()
+        api_load_ms = round((perf_counter() - api_started) * 1000, 2)
         for item in api_items:
             normalized_source = _normalize_trigger_source(item.trigger_source, default="api")
             if normalized_source not in source_values:
@@ -26587,10 +26701,15 @@ async def get_wecom_trigger_analytics(
                 quality_annotations=item.quality_annotations,
             ))
 
-        trigger_items = db.query(WecomTriggerRecord).filter(
+        trigger_started = perf_counter()
+        trigger_query = db.query(WecomTriggerRecord).filter(
             WecomTriggerRecord.triggered_at >= day_start,
             WecomTriggerRecord.triggered_at < day_end,
-        ).order_by(WecomTriggerRecord.triggered_at.desc()).all()
+        )
+        if source_values:
+            trigger_query = trigger_query.filter(WecomTriggerRecord.trigger_source.in_(list(source_values)))
+        trigger_items = trigger_query.order_by(WecomTriggerRecord.triggered_at.desc()).limit(limit).all()
+        trigger_load_ms = round((perf_counter() - trigger_started) * 1000, 2)
         for item in trigger_items:
             normalized_source = _normalize_trigger_source(item.trigger_source, default="web_manual")
             if normalized_source not in source_values:
@@ -26622,6 +26741,15 @@ async def get_wecom_trigger_analytics(
 
         rows.sort(key=lambda item: str(item.get("triggered_at") or ""), reverse=True)
         rows = rows[:limit]
+        total_ms = round((perf_counter() - total_started) * 1000, 2)
+        logger.info(
+            "WECOM_TRIGGER_ANALYTICS_DONE api_count=%s trigger_count=%s row_count=%s limit=%s timings_ms=%s",
+            len(api_items),
+            len(trigger_items),
+            len(rows),
+            limit,
+            {"api_load": api_load_ms, "trigger_load": trigger_load_ms, "total": total_ms},
+        )
         return {
             "status": "success",
             "filters": {

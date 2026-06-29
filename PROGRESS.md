@@ -1192,3 +1192,24 @@
 - 直接从 SFTP 下载用户那封实际发送的 .eml(custom_0904af93/KH33103-015/step1, EmlFtpPath=2026\06\29\34f24c2bc35646e095829a469c5b5f32, 5.1MB)并解析: top=multipart/mixed, 含 2 个 attachment(新年快乐.jpg/配置逻辑.txt)+1 内嵌图。证明发送链路完全正确, 附件真进了 .eml 并上传 FTP、写入 CRM 队列。
 - 截图 CRM 邮件客户端"附件栏"为空属显示层问题: 我们只往 spQueueSendFile 写了 1 条 FileType=1(正文 .eml), 未为每个附件单独插行。若该客户端按 spQueueSendFile 表列附件则会显示空; 真投递读 .eml 仍带附件。
 - 待人工确认: CRM 客户端附件栏的数据来源(解析 .eml 还是读 spQueueSendFile), 再决定是否为每个附件补写 spQueueSendFile 行。
+
+## 2026-06-29 慢页面轻量首屏改造
+
+- 已按“详细内容可以后置，确保数据能显示”调整首屏请求策略。
+- 企微回复统计分析：前端首屏 limit 从 300 降到 80；后端已将 `/api/wecom/trigger_analytics` 的 source/limit 下推到 SQL，并记录 `WECOM_TRIGGER_ANALYTICS_DONE`。
+- 知识库命中统计：前端请求改为 `limit=100&scan_limit=200`，后端默认 `scan_limit=200`，避免首屏扫过多日志和大 JSON。
+- 邮件套装独立页：`/api/v1/mail/customer-suite` 新增 `generate=false`，前端首屏默认只加载客户信息和已保存草稿；缺失草稿显示待生成，用户点击重刷再逐封生成，避免打开页面直接触发 4 封 LLM/保存链路。
+- 本地 API 超时从 3.5 秒放宽到 15 秒，避免可返回的数据被前端过早 abort。
+- 验证：`python -m py_compile backend\main.py`、`node --check scratch\frontend-index-scripts-check.js`、`node --check scratch\frontend-mail-suite-scripts-check.js`、`git diff --check -- backend/main.py frontend/index.html frontend/mail-suite.html` 均通过。
+
+## 2026-06-29 邮件草稿 QueryCanceled 慢查询处理
+- 定位：草稿生成前的 email_fragment_asset Few-Shot/黄金范例查询触发数据库 statement_timeout，不是保存草稿失败，也不是首要由并发导致。
+- 已处理：补 idx_efa_mail_gold_seed_lookup、idx_mgsr_status_fragment；full_email 候选从 2000/200 收窄为按 limit 派生的小候选集。
+- 验证：python -m py_compile backend\\main.py backend\\database.py 通过。
+
+## 2026-06-29 15:10:00 套装附件对齐 CRM 原生口径(spQueueSendFile FileType=0)
+- 用户提供老 C# 附件逻辑: 每个附件单独 uploadftp + 写 spQueueSendFile(FileType=0, FtpDir=附件ftp路径, FileName=原名, FileSize=字节)。
+- 查 CRM 原生历史: 同一附件文件(公司简介.pdf, FtpDir=2023\02\02\..)被 5 封不同邮件复用, 每封正文 eml(FileType=1)各自生成 => 发送系统是"正文eml + FileType=0附件"现场组装, 不是把附件塞进每封 eml。
+- 因此修正: 正文 .eml 只含正文+内嵌图(传 attachments=None), 文件附件改走 FileType=0; 避免内嵌+FileType=0 双份导致收件人重复附件。
+- 新增 mail_sftp.upload_bytes(通用字节上传, upload_eml_bytes 改为其别名); 新增 _upload_suite_attachments_to_ftp(逐个附件解码上传, 返回 ftp_path/filename/size); _insert_spqueue_send_row 增加 attachment_files 参数, 为每个附件插一条 FileType=0 行。
+- 验证: py_compile 通过; 单测 _build_mail_eml_bytes(attachments=None) => top=multipart/alternative, 文件附件0/内嵌图1。需重启后端并真发一封自测(确认附件出现且不重复、CRM客户端可见)。
