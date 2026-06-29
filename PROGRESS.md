@@ -1177,3 +1177,18 @@
 - 判断: 截图客户端预览很可能只按 spQueueSend 库字段(Subject/EmailContent)重建视图, 不解析 .eml 附件; 附件在真投递时仍随 .eml 带出。
 - 为给可观测证据: 发送接口对每封记录 attachment_count + eml_bytes, 写 logger.info(MAIL_SUITE_SEND_EML ...), 并在返回 prepared 与前端"已入队"弹窗里展示"N个附件 / eml 大小", 下次发送即可直接确认附件已嵌入。
 - 验证: python -m py_compile backend/main.py + 前端内联 JS node --check 均通过。需重启后端生效。
+
+## 2026-06-29 日志复查与慢节点修复
+
+- 已读取用户提供的 C:\Users\Admin\Desktop\backend_8071_20260629_134512.stdout.log 和 .stderr.log。
+- 结论：截图中 /api/sessions 提示不是本次日志里的主失败点；日志中 /api/sessions 在 14:01:40 返回 200 OK。真正反复 500 的是 /api/wecom/trigger_analytics，查询 pi_assist_invocation 当日数据时拉取全量大字段并按 Python 过滤，24 秒左右触发 PostgreSQL statement_timeout。
+- 已修复 /api/wecom/trigger_analytics：新增 idx_api_ai_triggered_at、idx_api_ai_source_triggered；source 过滤和 limit 下推到 SQL；新增 WECOM_TRIGGER_ANALYTICS_DONE 计时日志。
+- 知识库命中统计 /api/kb/hit_logs/chunk_stats 在日志中仍耗时 40 秒，内部 KB_HIT_STATS_DONE 显示 log_count=1000、logs_load≈7.6s、total≈15.9s；本轮将默认 scan_limit 进一步降为 500。
+- 邮件套装相关接口仍有 16-40 秒慢请求，主要是 /api/v1/mail/customer-suite 和 /api/v1/mail/customer-suite-draft；下一轮建议给邮件套装接口内部 CRM/模板/LLM/保存阶段补分段日志并减少自动保存并发。
+- 验证：python -m py_compile backend\main.py、node --check scratch\frontend-index-scripts-check.js、git diff --check -- backend/main.py frontend/index.html 均通过。
+
+
+## 2026-06-29 14:35:00 FTP 实测确认套装发送附件已进 .eml
+- 直接从 SFTP 下载用户那封实际发送的 .eml(custom_0904af93/KH33103-015/step1, EmlFtpPath=2026\06\29\34f24c2bc35646e095829a469c5b5f32, 5.1MB)并解析: top=multipart/mixed, 含 2 个 attachment(新年快乐.jpg/配置逻辑.txt)+1 内嵌图。证明发送链路完全正确, 附件真进了 .eml 并上传 FTP、写入 CRM 队列。
+- 截图 CRM 邮件客户端"附件栏"为空属显示层问题: 我们只往 spQueueSendFile 写了 1 条 FileType=1(正文 .eml), 未为每个附件单独插行。若该客户端按 spQueueSendFile 表列附件则会显示空; 真投递读 .eml 仍带附件。
+- 待人工确认: CRM 客户端附件栏的数据来源(解析 .eml 还是读 spQueueSendFile), 再决定是否为每个附件补写 spQueueSendFile 行。
