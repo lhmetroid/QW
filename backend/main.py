@@ -22,7 +22,7 @@ from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import quote, urlparse
 from sqlalchemy import and_, or_, text, func, bindparam
 from sqlalchemy.exc import SQLAlchemyError
@@ -14378,12 +14378,15 @@ def _execute_regression_cases(payload: KnowledgeRegressionRunRequest, report: An
         query_features = dict(case.get("query_features") or {})
         if payload.min_score is not None:
             query_features["min_score"] = payload.min_score
-        result = IntentEngine.retrieve_knowledge_v2(
+        ai_settings = IntentEngine.get_ai_settings()
+        kb_choice = ai_settings.get("WECOM_KB_PRIMARY", "kb2")
+        result = _retrieve_knowledge_routed(
             query_text=case.get("query_text") or "",
             query_features=query_features,
             top_k=max(1, min(payload.top_k, 20)),
             request_id=request_id,
             session_id=run_id,
+            kb_choice=kb_choice,
         )
         evaluation = _evaluate_regression_case(case, result)
         hit_summary = [
@@ -14980,6 +14983,39 @@ def _search_sales_kb_api(query_text: str | None, top_k: int = 5) -> dict:
             "error": sanitize_text(str(exc)),
             "how": "直接调用销售知识库 API 的 POST /kb-units/qa-retrieve 接口，返回候选销售回复。",
         }
+
+
+def _retrieve_knowledge_routed(
+    query_text: str,
+    query_features: Optional[dict] = None,
+    top_k: int = 5,
+    request_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    kb_choice: str = "kb2",
+) -> dict:
+    choice = str(kb_choice or "kb2").strip().lower()
+    if choice == "kb3":
+        return IntentEngine.retrieve_service_knowledge_v3(
+            query_text,
+            query_features=query_features,
+            top_k=top_k,
+            request_id=request_id,
+            session_id=session_id,
+        )
+    elif choice == "kb1":
+        return _search_sales_kb_api(
+            query_text,
+            top_k=top_k,
+        )
+    else:
+        return IntentEngine.retrieve_knowledge_v2(
+            query_text,
+            query_features=query_features,
+            top_k=top_k,
+            request_id=request_id,
+            session_id=session_id,
+        )
+
 
 def _public_endpoint_map() -> dict[str, str]:
     base_url = _external_api_base_url()
@@ -16408,12 +16444,15 @@ async def rollback_kb_import_batch(import_batch: str, db: Session = Depends(get_
 async def retrieve_kb(payload: KnowledgeRetrieveRequest):
     """知识库 V2 检索接口：只返回知识证据包，不生成回复。"""
     top_k = max(1, min(payload.top_k, 20))
-    result = IntentEngine.retrieve_knowledge_v2(
+    ai_settings = IntentEngine.get_ai_settings()
+    kb_choice = getattr(payload, "kb_choice", None) or ai_settings.get("WECOM_KB_PRIMARY", "kb2")
+    result = _retrieve_knowledge_routed(
         query_text=payload.query_text,
         query_features=payload.query_features or {},
         top_k=top_k,
         request_id=payload.request_id,
         session_id=payload.session_id,
+        kb_choice=kb_choice,
     )
     for hit in (result.get("hits", []) + result.get("supporting_chunks", []) + result.get("related_chunks", [])):
         hit["knowledge_class_label"] = label_for("knowledge_class", hit.get("knowledge_class"))
@@ -19388,8 +19427,9 @@ def _autosend_cond_eval(contact: dict, cond: dict) -> bool:
         return days < v if op == "<" else (days > v if op == ">" else False)
     if ctype == "business_line":
         target = str(val or "").strip()
+        targets = [x.strip() for x in re.split(r"[,;，、\s]+", target) if x.strip()]
         lines = [str(x) for x in (contact.get("business_lines") or [])]
-        has = bool(target) and any(target in bl or bl in target for bl in lines)
+        has = bool(targets) and any(any(t in bl or bl in t for bl in lines) for t in targets)
         return has if op == "has" else (not has)   # has=合作过, not=没合作过
     return False
 
@@ -24942,12 +24982,15 @@ def refresh_snapshot_knowledge_task(session_id: str, snapshot_id: str, channel: 
             if snapshot.core_demand:
                 try:
                     started = perf_counter()
-                    knowledge = IntentEngine.retrieve_knowledge_v2(
+                    ai_settings = IntentEngine.get_ai_settings()
+                    kb_choice = ai_settings.get("WECOM_KB_PRIMARY", "kb2")
+                    knowledge = _retrieve_knowledge_routed(
                         retrieval_query,
                         query_features=query_features,
                         top_k=5,
                         request_id=f"snapshot_k1_{snapshot_id[:12]}",
                         session_id=session_id,
+                        kb_choice=kb_choice,
                     )
                     knowledge_parts_ms["knowledge_v2_ms"] = round((perf_counter() - started) * 1000, 2)
                     knowledge["thread_business_fact"] = thread_fact_payload
@@ -25152,12 +25195,15 @@ def refresh_session_knowledge_task(user_id: str, channel: str, analytics_record_
             if summary.core_demand:
                 try:
                     started = perf_counter()
-                    knowledge = IntentEngine.retrieve_knowledge_v2(
+                    ai_settings = IntentEngine.get_ai_settings()
+                    kb_choice = ai_settings.get("WECOM_KB_PRIMARY", "kb2")
+                    knowledge = _retrieve_knowledge_routed(
                         retrieval_query,
                         query_features=query_features,
                         top_k=5,
                         request_id=f"manual_k1_{uuid.uuid4().hex[:12]}",
                         session_id=user_id,
+                        kb_choice=kb_choice,
                     )
                     knowledge_parts_ms["knowledge_v2_ms"] = round((perf_counter() - started) * 1000, 2)
                     knowledge["thread_business_fact"] = thread_fact_payload
@@ -27717,13 +27763,17 @@ async def sidebar_assist(
                 thread_fact_payload = _thread_fact_to_dict(thread_fact)
                 query_features = IntentEngine.infer_query_features(summary_json, crm_context, thread_fact_payload)
                 retrieval_query = IntentEngine.build_retrieval_query(summary_json, thread_fact_payload)
+                ai_settings = IntentEngine.get_ai_settings()
+                kb_primary = ai_settings.get("WECOM_KB_PRIMARY", "kb2")
+                kb_compare = ai_settings.get("WECOM_KB_COMPARE", "kb1")
                 knowledge_v2 = await asyncio.to_thread(
-                    lambda: IntentEngine.retrieve_knowledge_v2(
+                    lambda: _retrieve_knowledge_routed(
                         retrieval_query,
                         query_features=query_features,
                         top_k=5,
                         request_id=f"sidebar_{uuid.uuid4().hex[:12]}",
                         session_id=session_id,
+                        kb_choice=kb_primary,
                     )
                 )
                 knowledge_v2["thread_business_fact"] = thread_fact_payload
@@ -27731,7 +27781,16 @@ async def sidebar_assist(
                 knowledge_parts_ms["knowledge_v2_ms"] = round((perf_counter() - stage_started) * 1000, 2)
                 if api_kb2_enabled:
                     stage_started = perf_counter()
-                    external_knowledge = await asyncio.to_thread(_search_sales_kb_api, retrieval_query, top_k=5)
+                    external_knowledge = await asyncio.to_thread(
+                        lambda: _retrieve_knowledge_routed(
+                            retrieval_query,
+                            query_features=query_features,
+                            top_k=5,
+                            request_id=f"sidebar_compare_{uuid.uuid4().hex[:12]}",
+                            session_id=session_id,
+                            kb_choice=kb_compare,
+                        )
+                    )
                     knowledge_parts_ms["knowledge_external_api_ms"] = round((perf_counter() - stage_started) * 1000, 2)
                 else:
                     external_knowledge = {"status": "skipped_kb2_disabled", "hits": []}
@@ -28166,13 +28225,16 @@ async def sidebar_assist(
                     }
                     query_features = IntentEngine.infer_query_features(summary_payload, crm_context, thread_fact_payload)
                     retrieval_query = IntentEngine.build_retrieval_query(summary_payload, thread_fact_payload)
+                    ai_settings = IntentEngine.get_ai_settings()
+                    kb_primary = ai_settings.get("WECOM_KB_PRIMARY", "kb2")
                     knowledge_v2 = await asyncio.to_thread(
-                        lambda: IntentEngine.retrieve_knowledge_v2(
+                        lambda: _retrieve_knowledge_routed(
                             retrieval_query,
                             query_features=query_features,
                             top_k=5,
                             request_id=f"sidebar_cache_{uuid.uuid4().hex[:12]}",
                             session_id=session_id,
+                            kb_choice=kb_primary,
                         )
                     )
                     knowledge_v2["thread_business_fact"] = thread_fact_payload

@@ -1213,3 +1213,9 @@
 - 因此修正: 正文 .eml 只含正文+内嵌图(传 attachments=None), 文件附件改走 FileType=0; 避免内嵌+FileType=0 双份导致收件人重复附件。
 - 新增 mail_sftp.upload_bytes(通用字节上传, upload_eml_bytes 改为其别名); 新增 _upload_suite_attachments_to_ftp(逐个附件解码上传, 返回 ftp_path/filename/size); _insert_spqueue_send_row 增加 attachment_files 参数, 为每个附件插一条 FileType=0 行。
 - 验证: py_compile 通过; 单测 _build_mail_eml_bytes(attachments=None) => top=multipart/alternative, 文件附件0/内嵌图1。需重启后端并真发一封自测(确认附件出现且不重复、CRM客户端可见)。
+
+## 2026-06-29 16:42:00 修复后端启动 NameError: Optional 未导入
+- 重启后端报 NameError: name 'Optional' is not defined (main.py:14990 _retrieve_knowledge_routed 形参注解)。
+- 根因: main.py 用了 Optional[dict] 3 处但只 from typing import Any, 且无 from __future__ import annotations(形参注解在 def 时即求值)。属早就潜伏的 bug(HEAD~5 起即如此), 此前服务进程一直没重启故未暴露, 本次重启才触发。
+- 修复: from typing import Any -> from typing import Any, Optional。
+- 验证: python -c "import main" 实测 IMPORT_OK(py_compile 抓不到此类 NameError)。
