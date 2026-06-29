@@ -1148,3 +1148,25 @@
 ## 2026-06-29 10:40:00 邮件套装单封文件合计上限 20MB -> 50MB
 - 按用户要求放宽单封邮件文件合计上限：前端 MAIL_ATTACHMENT_MAX_TOTAL_BYTES 20MB->50MB、附件提示文案同步改 50MB；后端 main.py 发送校验 max_total_bytes 20MB->50MB。单文件上限仍 8MB 不变。
 - 验证：python -m py_compile backend/main.py 通过。
+
+## 2026-06-29 11:38:05 训练AI超时日志补调用上下文
+- 用户提供服务器日志：刷新首页后出现 TRAIN_AI_TIMEOUT，但原日志只有 model/latency/error，无法判断属于哪个请求或哪个业务链路。
+- 已增强 backend/main.py：_train_ai_chat 增加 call_context 参数；TRAIN_AI_START/SUCCESS/FAILED/TIMEOUT/ERROR 日志追加 context；企微回复候选生成路径传入 source=reply_style_candidates 和 runtime_key。
+- 说明：/api/system/ai_scripts 本身只读配置，不调用训练AI；TRAIN_AI_TIMEOUT 更可能来自并发中的企微回复候选/自动辅助链路。新增 context 后可在服务器日志中直接归属。
+- 验证：python -m py_compile backend/main.py 通过；git diff --check -- backend/main.py 通过。
+
+## 2026-06-29 页面加载卡住排障日志与知识库统计优化
+
+- 已确认截图中后台未死，慢点是接口自身耗时：/api/kb/hit_logs/chunk_stats 曾耗时约 176 秒，/api/v1/mail/customer-suite 曾耗时约 194 秒。
+- backend/main.py 新增 REQUEST_IN_FLIGHT 运行中日志：所有 /api/* 请求超过 SLOW_REQUEST_MS 仍未结束时，会先打出 path/method/request_id/query/elapsed_ms，之后每 30 秒续报，避免只能等请求结束才知道卡在哪个接口。
+- /api/kb/hit_logs/chunk_stats 默认扫描上限从 5000 降为 1000，并将历史链路快照逐条回溯改为 include_chain_snapshots=true 时才启用；默认统计只用命中日志自身快照和当前切片表，避免 N+1 回查拖慢页面。接口新增 KB_HIT_STATS_DONE，记录 log_count/total_hits/unique_chunks/scan_limit/chain_lookup_count/timings_ms。
+- frontend/index.html 为知识库命中统计增加 try/catch 错误落地；案例库 fetch、邮件模板、测试案例、邮件模型配置读取改为 rawFetchWithTimeout，避免页面无限停留在加载中。
+- 验证：python -m py_compile backend\main.py、node --check scratch\frontend-index-scripts-check.js、git diff --check -- backend/main.py frontend/index.html 均通过。
+
+
+## 2026-06-29 11:05:00 修复自建套装(custom_*)保存/发送报 unsupported scenario
+- 现象: 自建套装页(scenario=custom_0904af93)保存逐封字段、保存收件邮箱、保存反馈、发送等均报 "unsupported scenario: custom_xxx"。
+- 根因: 这些接口直接用 `scenario not in _MAIL_SCENARIO_CHINESE` 校验, 只认内置场景, 不认自建 custom_*; 且本 worker 进程可能尚未注册该自建套装。
+- 修复: _is_supported_scenario 增强为内置/动态命中外, 对 custom_* 走 _load_single_custom_suite_from_db 惰性加载再判定(解决多进程不同步); 新增 _is_valid_suite_step(custom 允许 1..8, 固定场景 1..4)。
+- 将 customer-suite-draft(保存草稿)、/regenerate、recipient(收件邮箱)、send(发送)、feedback(创建/列表) 六处守卫由直查内置字典改为 _is_supported_scenario / _is_valid_suite_step。
+- 验证: python -m py_compile backend/main.py 通过。需重启后端生效。

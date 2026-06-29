@@ -391,6 +391,9 @@ async def request_observability_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
     # 暴露给 handler(如 sidebar_assist 把它落到 ApiAssistInvocation.request_id, 便于双向对账)。
     request.state.request_id = request_id
+    started = perf_counter()
+    request_done = False
+    watchdog_task = None
     if request.url.path.startswith("/api/"):
         logger.info(
             "REQUEST_START 请求开始 path=%s method=%s request_id=%s query=%s",
@@ -399,7 +402,23 @@ async def request_observability_middleware(request: Request, call_next):
             request_id,
             sanitize_text(str(request.url.query or ""))[:500],
         )
-    started = perf_counter()
+
+        async def _request_inflight_watchdog():
+            await asyncio.sleep(max(1.0, settings.SLOW_REQUEST_MS / 1000.0))
+            while not request_done:
+                elapsed_ms = round((perf_counter() - started) * 1000)
+                logger.warning(
+                    "REQUEST_IN_FLIGHT 请求仍在执行 path=%s method=%s request_id=%s elapsed_ms=%s threshold_ms=%s query=%s",
+                    request.url.path,
+                    request.method,
+                    request_id,
+                    elapsed_ms,
+                    settings.SLOW_REQUEST_MS,
+                    sanitize_text(str(request.url.query or ""))[:500],
+                )
+                await asyncio.sleep(30)
+
+        watchdog_task = asyncio.create_task(_request_inflight_watchdog())
     try:
         response = await call_next(request)
     except Exception:
@@ -413,6 +432,10 @@ async def request_observability_middleware(request: Request, call_next):
             elapsed_ms,
         )
         raise
+    finally:
+        request_done = True
+        if watchdog_task is not None:
+            watchdog_task.cancel()
     elapsed_ms = round((perf_counter() - started) * 1000)
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Response-Time-Ms"] = str(elapsed_ms)
@@ -6450,7 +6473,28 @@ def _get_scenario_label_cn(scenario: str) -> str | None:
 
 
 def _is_supported_scenario(scenario: str) -> bool:
-    return scenario in _MAIL_SCENARIO_CHINESE or scenario in _DYNAMIC_SCENARIO_CHINESE
+    scenario = (scenario or "").strip()
+    if scenario in _MAIL_SCENARIO_CHINESE or scenario in _DYNAMIC_SCENARIO_CHINESE:
+        return True
+    # 自建套装(custom_*): 本 worker 进程可能尚未注册, 按需从 DB 惰性加载再判定,
+    # 避免"创建套装的进程注册了、当前请求落在另一进程"导致误报 unsupported scenario。
+    if scenario.startswith("custom_"):
+        try:
+            return _load_single_custom_suite_from_db(scenario)
+        except Exception:
+            return False
+    return False
+
+
+def _is_valid_suite_step(scenario: str, suite_step: int) -> bool:
+    """固定场景限 1..4; 自建套装(custom_*)允许 1..8(与编辑接口一致)。"""
+    try:
+        step = int(suite_step)
+    except Exception:
+        return False
+    if (scenario or "").startswith("custom_"):
+        return 1 <= step <= 8
+    return step in ALL_MAIL_SEQUENCE_STEPS
 
 
 def _load_custom_suites_into_registry(db) -> None:
@@ -14049,10 +14093,14 @@ async def get_kb_hit_log_chunk_stats(
     end_date: str | None = None,
     status: str | None = None,
     limit: int = 200,
+    scan_limit: int = 1000,
+    include_chain_snapshots: bool = False,
     db: Session = Depends(get_db),
 ):
+    timing_started = perf_counter()
     start_dt = _parse_kb_stats_datetime(start_date)
     end_dt = _parse_kb_stats_datetime(end_date, end_of_day=True)
+    max_scan = max(1, min(int(scan_limit or 1000), 5000))
     query = db.query(KnowledgeHitLog)
     if start_dt:
         query = query.filter(KnowledgeHitLog.created_at >= start_dt)
@@ -14060,14 +14108,17 @@ async def get_kb_hit_log_chunk_stats(
         query = query.filter(KnowledgeHitLog.created_at < end_dt)
     if status:
         query = query.filter(KnowledgeHitLog.status == status)
-    logs = query.order_by(KnowledgeHitLog.created_at.desc()).limit(5000).all()
+    logs = query.order_by(KnowledgeHitLog.created_at.desc()).limit(max_scan).all()
+    logs_loaded_ms = round((perf_counter() - timing_started) * 1000, 2)
     counters: dict[str, dict] = {}
     total_hits = 0
+    chain_snapshot_lookup_count = 0
     for log in logs:
         snapshot_hits = _hit_log_snapshot_hits(log)
         snapshot_source = "recorded_retrieval_snapshot" if snapshot_hits else None
-        if not snapshot_hits:
+        if include_chain_snapshots and not snapshot_hits:
             snapshot_hits, snapshot_source = _hit_log_chain_snapshot_hits(db, log)
+            chain_snapshot_lookup_count += 1
         snapshot_by_id = {
             str(hit.get("chunk_id")): hit
             for hit in snapshot_hits
@@ -14101,6 +14152,7 @@ async def get_kb_hit_log_chunk_stats(
             if score is not None:
                 item["score_sum"] += score
                 item["score_count"] += 1
+    aggregate_ms = round((perf_counter() - timing_started) * 1000 - logs_loaded_ms, 2)
     chunk_ids = list(counters.keys())
     chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.chunk_id.in_(chunk_ids)).all() if chunk_ids else []
     chunk_map = {str(chunk.chunk_id): chunk for chunk in chunks}
@@ -14133,13 +14185,27 @@ async def get_kb_hit_log_chunk_stats(
         rows.append(row)
     rows.sort(key=lambda item: (int(item.get("hit_count") or 0), item.get("latest_hit_at") or ""), reverse=True)
     max_rows = max(1, min(limit, 1000))
+    total_ms = round((perf_counter() - timing_started) * 1000, 2)
+    logger.info(
+        "KB_HIT_STATS_DONE log_count=%s total_hits=%s unique_chunks=%s scan_limit=%s include_chain_snapshots=%s chain_lookup_count=%s timings_ms=%s",
+        len(logs),
+        total_hits,
+        len(counters),
+        max_scan,
+        include_chain_snapshots,
+        chain_snapshot_lookup_count,
+        {"logs_load": logs_loaded_ms, "aggregate": aggregate_ms, "total": total_ms},
+    )
     return {
         "status": "success",
         "start_date": start_date,
         "end_date": end_date,
         "log_count": len(logs),
+        "scan_limit": max_scan,
+        "include_chain_snapshots": include_chain_snapshots,
         "total_hit_count": total_hits,
         "unique_chunk_count": len(counters),
+        "timings_ms": {"logs_load": logs_loaded_ms, "aggregate": aggregate_ms, "total": total_ms},
         "rows": rows[:max_rows],
     }
 
@@ -18421,9 +18487,9 @@ def upsert_mail_customer_suite_draft(
     scenario = sanitize_text(payload.scenario).strip()
     if not customer_id:
         raise HTTPException(status_code=422, detail="customer_id is required")
-    if scenario not in _MAIL_SCENARIO_CHINESE:
+    if not _is_supported_scenario(scenario):
         raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
-    if payload.suite_step not in ALL_MAIL_SEQUENCE_STEPS:
+    if not _is_valid_suite_step(scenario, payload.suite_step):
         raise HTTPException(status_code=422, detail=f"unsupported suite_step: {payload.suite_step}")
     if payload.send_interval_days is not None and int(payload.send_interval_days) < 0:
         raise HTTPException(status_code=422, detail="send_interval_days must be >= 0")
@@ -18485,9 +18551,9 @@ def regenerate_mail_customer_suite_draft(
     suite_step = int(payload.suite_step or 0)
     if not customer_id:
         raise HTTPException(status_code=422, detail="customer_id is required")
-    if scenario not in _MAIL_SCENARIO_CHINESE:
+    if not _is_supported_scenario(scenario):
         raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
-    if suite_step not in ALL_MAIL_SEQUENCE_STEPS:
+    if not _is_valid_suite_step(scenario, suite_step):
         raise HTTPException(status_code=422, detail=f"unsupported suite_step: {suite_step}")
 
     crm_profile = _lookup_mail_crm_profile(customer_id, "")
@@ -18569,7 +18635,7 @@ def upsert_mail_customer_suite_recipient(
     scenario = sanitize_text(payload.scenario).strip()
     if not customer_id:
         raise HTTPException(status_code=422, detail="customer_id is required")
-    if scenario not in _MAIL_SCENARIO_CHINESE:
+    if not _is_supported_scenario(scenario):
         raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
     # 邮箱不能走 sanitize_text(会被脱敏成 ***EMAIL***)；这里是收件人地址，原样解析
     raw = str(payload.emails or "")
@@ -18871,7 +18937,7 @@ def send_mail_customer_suite(
     scenario = sanitize_text(payload.scenario).strip()
     if not customer_id:
         raise HTTPException(status_code=422, detail="customer_id is required")
-    if scenario not in _MAIL_SCENARIO_CHINESE:
+    if not _is_supported_scenario(scenario):
         raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
 
     # 1) 发件人 = 在职销售签名企业邮箱
@@ -19072,9 +19138,9 @@ def create_mail_customer_suite_feedback(
     feedback_text = sanitize_text(payload.feedback_text).strip()
     if not customer_id:
         raise HTTPException(status_code=422, detail="customer_id is required")
-    if scenario not in _MAIL_SCENARIO_CHINESE:
+    if not _is_supported_scenario(scenario):
         raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario}")
-    if payload.suite_step not in ALL_MAIL_SEQUENCE_STEPS:
+    if not _is_valid_suite_step(scenario, payload.suite_step):
         raise HTTPException(status_code=422, detail=f"unsupported suite_step: {payload.suite_step}")
     if not feedback_text:
         raise HTTPException(status_code=422, detail="feedback_text is required")
@@ -19133,7 +19199,7 @@ def list_mail_customer_suite_feedback(
         q = q.filter(MailCustomerSuiteFeedback.customer_id == sanitize_text(customer_id).strip())
     if scenario:
         scenario_norm = sanitize_text(scenario).strip()
-        if scenario_norm not in _MAIL_SCENARIO_CHINESE:
+        if not _is_supported_scenario(scenario_norm):
             raise HTTPException(status_code=422, detail=f"unsupported scenario: {scenario_norm}")
         q = q.filter(MailCustomerSuiteFeedback.scenario == scenario_norm)
     if suite_step is not None:
