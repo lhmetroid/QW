@@ -512,6 +512,9 @@ def _ensure_wecom_runtime_config_schema(db: Session) -> None:
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS wecom_recent_message_limit INTEGER NOT NULL DEFAULT 10;"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS api_kb2_enabled BOOLEAN NOT NULL DEFAULT true;"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS wecom_auto_assist_on_customer_message BOOLEAN NOT NULL DEFAULT false;"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS wecom_kb_primary VARCHAR(20) NOT NULL DEFAULT 'kb1';"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS wecom_kb_compare VARCHAR(20) NOT NULL DEFAULT 'kb2';"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS wecom_kb3_confirmed_only BOOLEAN NOT NULL DEFAULT false;"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS system_prompt_llm1 TEXT;"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS system_prompt_llm2 TEXT;"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS reply_style_options JSON;"))
@@ -523,6 +526,9 @@ def _ensure_wecom_runtime_config_schema(db: Session) -> None:
     db.execute(text("UPDATE wecom_runtime_config SET wecom_recent_message_limit = 10 WHERE wecom_recent_message_limit IS NULL;"))
     db.execute(text("UPDATE wecom_runtime_config SET api_kb2_enabled = true WHERE api_kb2_enabled IS NULL;"))
     db.execute(text("UPDATE wecom_runtime_config SET wecom_auto_assist_on_customer_message = false WHERE wecom_auto_assist_on_customer_message IS NULL;"))
+    db.execute(text("UPDATE wecom_runtime_config SET wecom_kb_primary = 'kb1' WHERE wecom_kb_primary IS NULL;"))
+    db.execute(text("UPDATE wecom_runtime_config SET wecom_kb_compare = 'kb2' WHERE wecom_kb_compare IS NULL;"))
+    db.execute(text("UPDATE wecom_runtime_config SET wecom_kb3_confirmed_only = false WHERE wecom_kb3_confirmed_only IS NULL;"))
 # 初始化数据库结构
 def auto_patch_db():
     try:
@@ -4071,10 +4077,17 @@ def _mail_full_email_gold_examples_for_prompt(
     return items
 
 
+def _mail_text_supports_manual_case(value: str | None) -> bool:
+    text_value = sanitize_text(value or "")
+    return bool(re.search(r"产品手册|操作手册|说明书|使用手册|技术手册|手册翻译|手册修改", text_value))
+
+
 def _mail_contract_case_examples_for_prompt(
     db: Session,
     *,
     industry: str,
+    scenario: str | None = None,
+    profile_text: str | None = None,
     limit: int = 5,
 ) -> list[dict[str, Any]]:
     rows = db.query(MailContractCase).filter(
@@ -4085,17 +4098,23 @@ def _mail_contract_case_examples_for_prompt(
         MailContractCase.contract_time.desc().nullslast(),
     ).limit(300).all()
     industry_text = sanitize_text(industry)
+    scenario_norm = sanitize_text(scenario or "")
+    manual_supported = _mail_text_supports_manual_case(profile_text)
     if "工业" in industry_text or "设备" in industry_text or "制造" in industry_text:
-        tokens = ("设备", "手册", "说明", "操作", "培训", "技术", "制造", "工业", "维修", "安装")
+        tokens = ("设备", "说明", "操作", "培训", "技术", "制造", "工业", "维修", "安装")
+        if manual_supported:
+            tokens = ("手册",) + tokens
     elif "医疗" in industry_text or "生命科学" in industry_text:
         tokens = ("医疗", "医学", "器械", "培训", "会议", "患者", "医生", "说明")
     elif "金融" in industry_text:
         tokens = ("金融", "基金", "银行", "会议", "资料", "路演", "报告")
     else:
-        tokens = ("资料", "会议", "手册", "培训", "多媒体", "展会", "印刷")
+        tokens = ("资料", "会议", "培训", "多媒体", "展会", "印刷")
+        if manual_supported:
+            tokens = ("手册",) + tokens
 
-    def rank(row: MailContractCase) -> tuple[int, int, float]:
-        text_value = " ".join(
+    def row_text(row: MailContractCase) -> str:
+        return " ".join(
             sanitize_text(value) or ""
             for value in [
                 row.mail_case_text,
@@ -4105,13 +4124,22 @@ def _mail_contract_case_examples_for_prompt(
                 row.industry_inferred,
             ]
         )
+
+    def should_skip(row: MailContractCase) -> bool:
+        text_value = row_text(row)
+        if scenario_norm == "re_activation" and not manual_supported and _mail_text_supports_manual_case(text_value):
+            return True
+        return False
+
+    def rank(row: MailContractCase) -> tuple[int, int, float]:
+        text_value = row_text(row)
         token_hits = sum(1 for token in tokens if token and token in text_value)
         business_line = sanitize_text(row.business_line_inferred)
         line_score = 1 if business_line in {"translation", "multimedia", "printing", "interpretation", "exhibition"} else 0
         amount = float(row.total_money or 0)
         return (token_hits, line_score, amount)
 
-    ranked = sorted(rows, key=rank, reverse=True)
+    ranked = sorted((row for row in rows if not should_skip(row)), key=rank, reverse=True)
     selected = []
     seen_texts: set[str] = set()
     for row in ranked:
@@ -4124,7 +4152,6 @@ def _mail_contract_case_examples_for_prompt(
         if len(selected) >= max(int(limit), 1):
             break
     return [_local_contract_case_to_dict(row) for row in selected]
-
 
 def _mail_fewshot_rank(item: EmailFragmentAsset, suite_step: int) -> tuple:
     title = sanitize_text(getattr(item, "title", "") or "")
@@ -7353,6 +7380,31 @@ def _mail_brand_display_text(value: str | None) -> str:
     return text_value.replace("SpeedAsia", "事必达").replace("SPEED", "事必达")
 
 
+
+def _mail_is_own_company_name(value: str | None) -> bool:
+    text_value = sanitize_text(value or "").strip()
+    if not text_value:
+        return False
+    return any(token in text_value for token in ("事必达", "上海赛蒂", "上海嘉赛", "SpeedAsia", "speed-asia"))
+
+
+def _mail_customer_company_display_name(
+    row_company: str | None,
+    profile: dict[str, Any] | None,
+    customer_id: str | None = None,
+) -> str:
+    profile = profile or {}
+    candidates = [
+        profile.get("crm_company_name"),
+        profile.get("company_name"),
+        profile.get("company_name_masked"),
+        row_company,
+    ]
+    for candidate in candidates:
+        text_value = sanitize_text(candidate or "").strip()
+        if text_value and not _mail_is_own_company_name(text_value):
+            return text_value
+    return sanitize_text(customer_id or "").strip()
 def _serialize_mail_sequence_template(row) -> dict[str, Any]:
     customer_key = sanitize_text(getattr(row, "customer_key", "") or "").strip().upper()
     scenario = sanitize_text(getattr(row, "scenario", "") or "").strip()
@@ -7390,11 +7442,12 @@ def _serialize_mail_sequence_template(row) -> dict[str, Any]:
 def _serialize_mail_customer_suite_feedback(row) -> dict[str, Any]:
     profile = row.customer_profile or {}
     draft = row.draft_payload or {}
+    company_display = _mail_customer_company_display_name(row.company_name, profile, row.customer_id)
     return {
         "feedback_id": str(row.feedback_id) if getattr(row, "feedback_id", None) else None,
         "customer_id": row.customer_id,
         "contact_email": row.contact_email,
-        "company_name": row.company_name,
+        "company_name": company_display,
         "scenario": row.scenario,
         "scenario_label_cn": _MAIL_SCENARIO_CHINESE.get(row.scenario, row.scenario),
         "suite_step": row.suite_step,
@@ -7411,7 +7464,7 @@ def _serialize_mail_customer_suite_feedback(row) -> dict[str, Any]:
         "customer_profile": profile,
         "customer_contact_info": {
             "customer_id": row.customer_id,
-            "company_name": row.company_name or profile.get("company_name") or profile.get("company_name_masked"),
+            "company_name": company_display,
             "contact_email": row.contact_email or profile.get("contact_email"),
             "contact_name": profile.get("contact_name") or profile.get("contact_name_masked") or profile.get("recipient_name"),
             "industry": profile.get("company_industry") or profile.get("industry"),
@@ -8069,7 +8122,7 @@ def _mail_prompt_contract_case_examples(profile: MailDraftIntentProfile, limit: 
         raw_text = sanitize_text(item.get("case_text_raw") if isinstance(item, dict) else "")
         main_text = case_text or raw_text or "无案例摘要"
         examples.append(
-            f"{len(examples) + 1}）合同案例 {contract_id or '未编号'}｜{business_type or '业务类型未标注'}｜{product_name or '产品未标注'}｜{business_line or '业务线未标注'}\n"
+            f"{len(examples) + 1}）外部脱敏合同案例（不是当前客户历史） {contract_id or '未编号'}｜{business_type or '业务类型未标注'}｜{product_name or '产品未标注'}｜{business_line or '业务线未标注'}\n"
             f"{_mail_prompt_fact(main_text, 320)}"
         )
     return examples
@@ -8183,15 +8236,18 @@ def _mail_prompt_customer_salutation(profile: MailDraftIntentProfile) -> str:
 
 def _mail_prompt_company_short_name(profile: MailDraftIntentProfile) -> str:
     company = sanitize_text(profile.company_name or "").strip()
-    if not company:
+    if not company or _mail_is_own_company_name(company):
         return "贵司"
     company = re.sub(r"[（(].*?[）)]", "", company)
     company = re.sub(r"(股份)?有限公司|有限责任公司|集团|中国|上海|北京|广州|深圳|科技|技术|贸易|实业", "", company)
+    company = company.replace("医疗用品", "医疗")
     company = company.strip(" -_，,；;")
     short = company or sanitize_text(profile.company_name or "").strip() or "贵司"
-    # 公司名最多保留 4 个字符（含 4），避免邮件抬头过长
-    return short[:4]
-
+    if len(short) <= 6:
+        return short
+    if "医疗" in short:
+        return short[: short.find("医疗") + 2]
+    return short[:6]
 
 def _mail_prompt_history_summary(profile: MailDraftIntentProfile, crm_history: str) -> str:
     source = "；".join(
@@ -8598,6 +8654,12 @@ def _build_mail_generate_draft_response(
     intent_profile.prompt_contract_case_examples = _mail_contract_case_examples_for_prompt(
         db,
         industry=_mail_generation_industry_for_prompt(intent_profile),
+        scenario=payload.scenario,
+        profile_text="\n".join([
+            intent_profile.recent_opportunities or "",
+            intent_profile.ongoing_contracts or "",
+            intent_profile.contact_recent_followup or "",
+        ]),
         limit=5,
     )
     assembled = _assemble_mail_draft_from_intent_profile(intent_profile)
@@ -18757,8 +18819,8 @@ def _build_mail_eml_bytes(
     subject: str,
     body_html: str,
     attachments: list[dict[str, Any]] | None = None,
-) -> bytes:
-    """生成标准 UTF-8 .eml，供 SFTP 上传后由发送系统投递。
+) -> tuple[bytes, list[dict[str, Any]]]:
+    """生成标准 UTF-8 .eml，供 SFTP 上传后由发送系统投递。返回 (eml字节, 内嵌图列表)。
 
     无附件时保持 multipart/alternative；有附件或内嵌图片时使用 multipart/mixed。
     主题、正文、附件文件名全部使用 UTF-8，避免旧 gbk/eucgb2312_cn 邮件头兼容问题。
@@ -18824,16 +18886,18 @@ def _build_mail_eml_bytes(
                 payload_bytes = _base64.b64decode(data, validate=True)
             except Exception:
                 return match.group(0)
-            cid = make_msgid(domain="speed-asia.com").strip("<>")
             ext = (_mimetypes.guess_extension(mime) or ".png").lstrip(".")
+            # cid 直接用文件名: 既作为 eml 内嵌图的 Content-ID(真实收件人渲染),
+            # 又作为 spQueueSendFile.FileName(CRM 客户端按 cid=文件名 匹配解析显示)。
+            filename = f"inline-image-{len(inline_images) + 1}.{ext}"
             inline_images.append({
-                "filename": f"inline-image-{len(inline_images) + 1}.{ext}",
+                "filename": filename,
                 "content_type": mime,
                 "payload": payload_bytes,
                 "disposition": "inline",
-                "cid": cid,
+                "cid": filename,
             })
-            return f"src={quote}cid:{cid}{quote}"
+            return f"src={quote}cid:{filename}{quote}"
 
         pattern_img = _re.compile(r"src\s*=\s*(['\"])data:(image/[A-Za-z0-9.+-]+);base64,([^'\"]+)\1", _re.I)
         return pattern_img.sub(_replace, html or ""), inline_images
@@ -18941,7 +19005,9 @@ def _build_mail_eml_bytes(
 
     raw = root.as_bytes()
     raw = raw.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
-    return raw
+    # 同时返回内嵌图(含 cid=文件名/payload), 供发送侧登记为 spQueueSendFile(FileType=0),
+    # 让 CRM 客户端按 cid=FileName 匹配解析显示(正文 eml 已内嵌一份, 真实收件人也能渲染)。
+    return raw, inline_images
 
 
 # 套装页 AI 邮件在 CRM 的统一标识(UseRange)。发送系统不按 UseRange 决定是否发送(该字段只是分类标签)，
@@ -19213,7 +19279,7 @@ def send_mail_customer_suite(
             import mail_sftp
             # 正文 .eml 只含正文+内嵌图; 文件附件不内嵌(改走 spQueueSendFile FileType=0 由发送系统组装),
             # 否则会与 FileType=0 重复(CRM 原生口径: 附件独立上传一次/多封复用, 每封正文 eml 各自生成)。
-            eml_bytes = _build_mail_eml_bytes(sender_email, sender_name, recipient_emails, final_subject, final_body_html, None)
+            eml_bytes, inline_images = _build_mail_eml_bytes(sender_email, sender_name, recipient_emails, final_subject, final_body_html, None)
             eml_size = len(eml_bytes)
             logger.info(
                 "MAIL_SUITE_SEND_EML customer=%s step=%s attachments=%d eml_bytes=%d",
@@ -19231,6 +19297,24 @@ def send_mail_customer_suite(
                         "MAIL_SUITE_ATTACHMENT_PARTIAL customer=%s step=%s want=%d got=%d",
                         sanitize_text(customer_id), suite_step, att_count, len(attachment_files),
                     )
+                # 正文内嵌图: 也登记为 FileType=0(FileName=cid), CRM 客户端据此把 cid 解析成图片显示;
+                # 这些是从正文 HTML 提取的, 不进前端附件栏(系统附件栏不显示)。
+                for _img in (inline_images or []):
+                    _payload = _img.get("payload") or b""
+                    _name = _img.get("cid") or _img.get("filename") or "inline-image.png"
+                    try:
+                        _iok, _ipath = mail_sftp.upload_bytes(_payload)
+                    except Exception:
+                        logger.exception("MAIL_SUITE_INLINE_UPLOAD_FAILED cid=%s", _img.get("cid"))
+                        _iok, _ipath = False, ""
+                    if _iok and _ipath:
+                        attachment_files.append({"ftp_path": _ipath, "filename": _name, "size": len(_payload)})
+                    else:
+                        logger.error("MAIL_SUITE_INLINE_UPLOAD_NOPATH cid=%s", _img.get("cid"))
+                logger.info(
+                    "MAIL_SUITE_SEND_FILES customer=%s step=%s 附件=%d 内嵌图=%d",
+                    sanitize_text(customer_id), suite_step, len(attachment_files) - len(inline_images or []), len(inline_images or []),
+                )
                 spqueue_rowid = str(_uuid.uuid4())
                 from crm_database import CRMSessionLocal
                 crm_db = CRMSessionLocal()
@@ -19959,13 +20043,14 @@ def get_mail_ai_stats_summary(
     start_d = _parse_stat_date(start, end_d - _dt.timedelta(days=29))
     if start_d > end_d:
         start_d, end_d = end_d, start_d
+    effective_refresh = bool(refresh) or (start_d <= today_bj <= end_d)
     refresh_result = None
     try:
-        if refresh:
+        if effective_refresh:
             refresh_result = _stats.refresh_all(db, _mail_ai_stats_llm_call,
                                                 lookback_days=max(1, (today_bj - start_d).days + 1))
         else:
-            # 当天实时: 仅用本地缓存重算日表(纯本地 SQL, 不碰 CRM/FTP/LLM)
+            # 历史日只用本地日表重算；查询区间包含当天时，上方强制等同“从 CRM 刷新”。
             _stats.compute_and_store_daily(db, start_d, end_d)
     except Exception as exc:
         logger.exception("MAIL_AI_STATS_SUMMARY_COMPUTE_FAILED")
@@ -19986,7 +20071,7 @@ def get_mail_ai_stats_summary(
         "staff_options": _stats.list_staff(db),
         "totals": totals,
         "daily": daily,
-        "refreshed": bool(refresh),
+        "refreshed": bool(effective_refresh),
         "refresh_result": refresh_result,
     }
 
@@ -20056,9 +20141,10 @@ def get_mail_ai_stats_by_staff(
     import datetime as _dt
     today_bj = (_dt.datetime.utcnow() + _dt.timedelta(hours=8)).date()
     day_d = _parse_stat_date(day, today_bj - _dt.timedelta(days=1))  # 默认上一天
+    effective_refresh = bool(refresh) or (day_d == today_bj)
     refresh_result = None
     try:
-        if refresh:
+        if effective_refresh:
             refresh_result = _stats.refresh_all(db, _mail_ai_stats_llm_call,
                                                 lookback_days=max(1, (today_bj - day_d).days + 1))
         else:
@@ -20083,7 +20169,7 @@ def get_mail_ai_stats_by_staff(
         "is_final": (day_d < today_bj),
         "rows": rows,
         "totals": totals,
-        "refreshed": bool(refresh),
+        "refreshed": bool(effective_refresh),
         "refresh_result": refresh_result,
     }
 
@@ -20447,6 +20533,12 @@ def _run_one_mail_iteration_draft(
         intent_profile.prompt_contract_case_examples = _mail_contract_case_examples_for_prompt(
             db,
             industry=_mail_generation_industry_for_prompt(intent_profile),
+            scenario=payload.scenario,
+            profile_text="\n".join([
+                intent_profile.recent_opportunities or "",
+                intent_profile.ongoing_contracts or "",
+                intent_profile.contact_recent_followup or "",
+            ]),
             limit=5,
         )
         assembled = _assemble_mail_draft_from_intent_profile(intent_profile)
@@ -21500,6 +21592,9 @@ def _wecom_runtime_config_payload(row: WecomRuntimeConfig) -> dict[str, Any]:
         "WECOM_RECENT_MESSAGE_LIMIT": _clamp_wecom_recent_message_limit(row.wecom_recent_message_limit),
         "API_KB2_ENABLED": bool(row.api_kb2_enabled),
         "WECOM_AUTO_ASSIST_ON_CUSTOMER_MESSAGE": bool(row.wecom_auto_assist_on_customer_message),
+        "WECOM_KB_PRIMARY": getattr(row, "wecom_kb_primary", "kb1") or "kb1",
+        "WECOM_KB_COMPARE": getattr(row, "wecom_kb_compare", "kb2") or "kb2",
+        "WECOM_KB3_CONFIRMED_ONLY": bool(getattr(row, "wecom_kb3_confirmed_only", False)),
         "SYSTEM_PROMPT_LLM1": row.system_prompt_llm1 or "",
         "SYSTEM_PROMPT_LLM2": row.system_prompt_llm2 or "",
         "REPLY_STYLE_OPTIONS": row.reply_style_options or [],
@@ -21523,6 +21618,15 @@ def _backfill_empty_wecom_runtime_config(row: WecomRuntimeConfig, defaults: dict
         changed = True
     if not row.fast_track_rules and isinstance(defaults.get("FAST_TRACK_RULES"), list):
         row.fast_track_rules = defaults.get("FAST_TRACK_RULES")
+        changed = True
+    if getattr(row, "wecom_kb_primary", None) is None and defaults.get("WECOM_KB_PRIMARY"):
+        row.wecom_kb_primary = str(defaults.get("WECOM_KB_PRIMARY"))
+        changed = True
+    if getattr(row, "wecom_kb_compare", None) is None and defaults.get("WECOM_KB_COMPARE"):
+        row.wecom_kb_compare = str(defaults.get("WECOM_KB_COMPARE"))
+        changed = True
+    if getattr(row, "wecom_kb3_confirmed_only", None) is None and defaults.get("WECOM_KB3_CONFIRMED_ONLY") is not None:
+        row.wecom_kb3_confirmed_only = _coerce_bool_setting(defaults.get("WECOM_KB3_CONFIRMED_ONLY"), default=False)
         changed = True
     if changed:
         row.updated_by = "api_backfill_from_files"
@@ -21581,6 +21685,12 @@ async def save_ai_scripts(payload: dict):
             row.api_kb2_enabled = _coerce_bool_setting(incoming.get("API_KB2_ENABLED"), default=True)
         if "WECOM_AUTO_ASSIST_ON_CUSTOMER_MESSAGE" in incoming:
             row.wecom_auto_assist_on_customer_message = _coerce_bool_setting(incoming.get("WECOM_AUTO_ASSIST_ON_CUSTOMER_MESSAGE"), default=False)
+        if "WECOM_KB_PRIMARY" in incoming:
+            row.wecom_kb_primary = str(incoming.get("WECOM_KB_PRIMARY") or "kb1")
+        if "WECOM_KB_COMPARE" in incoming:
+            row.wecom_kb_compare = str(incoming.get("WECOM_KB_COMPARE") or "kb2")
+        if "WECOM_KB3_CONFIRMED_ONLY" in incoming:
+            row.wecom_kb3_confirmed_only = _coerce_bool_setting(incoming.get("WECOM_KB3_CONFIRMED_ONLY"), default=False)
         if "SYSTEM_PROMPT_LLM1" in incoming:
             row.system_prompt_llm1 = str(incoming.get("SYSTEM_PROMPT_LLM1") or "")
         if "SYSTEM_PROMPT_LLM2" in incoming:

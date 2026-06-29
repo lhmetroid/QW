@@ -1219,3 +1219,10 @@
 - 根因: main.py 用了 Optional[dict] 3 处但只 from typing import Any, 且无 from __future__ import annotations(形参注解在 def 时即求值)。属早就潜伏的 bug(HEAD~5 起即如此), 此前服务进程一直没重启故未暴露, 本次重启才触发。
 - 修复: from typing import Any -> from typing import Any, Optional。
 - 验证: python -c "import main" 实测 IMPORT_OK(py_compile 抓不到此类 NameError)。
+
+## 2026-06-29 18:15:00 正文内嵌图自动登记为 spQueueSendFile(FileType=0) 修复红叉
+- 现象: 套装发送后 CRM 客户端正文内嵌图显示红叉; 用户要求"插入图片同时把图片加到附件即可显示, 但前端附件栏不显示"。
+- 根因: 我们把 data: 图转成随机 cid 内嵌进 eml, CRM 客户端解析不了 cid -> 红叉(签名/模板图是 http 故正常)。CRM 原生靠 spQueueSendFile(FileType=0) 文件 + 正文 cid=FileName 匹配显示内嵌图。
+- 按用户意见(不走公网链接): 内嵌图 cid 改用稳定文件名(inline-image-N.ext); _build_mail_eml_bytes 返回 (eml, inline_images); 发送时把每张内嵌图也上传 FTP 并写一条 FileType=0 行, FileName=cid。这样 CRM 客户端按 cid=FileName 解析显示, 真实收件人仍从 eml 内嵌 cid 渲染。
+- 内嵌图从正文 HTML 提取, 不进 mailDraftAttachments, 故前端"系统附件栏"不显示(满足要求)。
+- 验证: import main OK; 单测 _build_mail_eml_bytes 返回 inline cid==FileName=="inline-image-1.png", body src=cid:inline-image-1.png, eml Content-ID=<inline-image-1.png>。需重启后端 + 真发自测(确认正文图显示且不再红叉)。
