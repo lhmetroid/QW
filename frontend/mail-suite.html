@@ -615,7 +615,7 @@
     // 已生成套装缓存: scenario -> 接口返回数据. 计算过的场景直接读取,不再重新调大模型.
     const suiteCache = {};
     const MAIL_ATTACHMENT_MAX_FILE_BYTES = 8 * 1024 * 1024;
-    const MAIL_ATTACHMENT_MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+    const MAIL_ATTACHMENT_MAX_TOTAL_BYTES = 50 * 1024 * 1024;
     const mailDraftAttachments = new Map();
     // 套装场景列表从后端动态加载，新增场景只需改后端，前端自动跟上
     let SUITE_SCENARIOS = [];
@@ -894,7 +894,7 @@
             <input id="inline-image-${esc(item.suite_step)}" type="file" accept="image/*" hidden onchange="handleInlineImageFiles(${esc(item.suite_step)}, this.files); this.value = ''">
             <input id="attachment-input-${esc(item.suite_step)}" type="file" multiple hidden onchange="handleAttachmentFiles(${esc(item.suite_step)}, this.files); this.value = ''">
             <div class="attachment-panel">
-              <div class="attachment-hint">附件和正文图片仅随本次发送写入邮件；单个文件不超过 8MB，单封邮件合计不超过 20MB。</div>
+              <div class="attachment-hint">附件和正文图片仅随本次发送写入邮件；单个文件不超过 8MB，单封邮件合计不超过 50MB。</div>
               <div id="attachment-list-${esc(item.suite_step)}" class="attachment-list"></div>
             </div>
             <div id="prompt-panel-${esc(item.suite_step)}" class="prompt-panel" hidden>

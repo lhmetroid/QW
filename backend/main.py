@@ -391,6 +391,14 @@ async def request_observability_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
     # 暴露给 handler(如 sidebar_assist 把它落到 ApiAssistInvocation.request_id, 便于双向对账)。
     request.state.request_id = request_id
+    if request.url.path.startswith("/api/"):
+        logger.info(
+            "REQUEST_START 请求开始 path=%s method=%s request_id=%s query=%s",
+            request.url.path,
+            request.method,
+            request_id,
+            sanitize_text(str(request.url.query or ""))[:500],
+        )
     started = perf_counter()
     try:
         response = await call_next(request)
@@ -18694,7 +18702,7 @@ def _build_mail_eml_bytes(
     ]
 
     max_file_bytes = 8 * 1024 * 1024
-    max_total_bytes = 20 * 1024 * 1024
+    max_total_bytes = 50 * 1024 * 1024
     for image in inline_images:
         if len(image["payload"]) > max_file_bytes:
             raise HTTPException(status_code=413, detail=f"图片过大或总大小超过限制：{image['filename']}")

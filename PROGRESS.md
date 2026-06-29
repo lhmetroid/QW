@@ -1126,3 +1126,25 @@
 - 工具栏尽量一行显示：.rte-toolbar 改 flex-wrap:nowrap + overflow-x:auto，子项 flex:0 0 auto，按钮 padding/font 收紧(4px 7px / 12px / nowrap)，超宽时横向滚动而非换行。
 - 附件流程(chooseAttachment/handleAttachmentFiles/renderAttachmentList)核查无误，添加后即时渲染附件列表。
 - 验证：抽取前端内联脚本 node --check 通过(无浏览器侧实跑)。
+
+## 2026-06-29 10:41:57 后台启动保留可见日志窗口
+- 按用户反馈，完全隐藏后台日志不利于值守排障；已把启动结构改为“隐藏后端进程 + 独立可见日志查看窗口”。
+- 新增 start_backend_log_viewer.ps1，跟踪 backend/logs/app.log、本次 stdout/stderr 文件，并在默认 600 秒无新日志时输出静默提醒。
+- 一键启动后台.bat 仍启动 detached 后端，但会自动打开日志查看窗口；选中或滚动日志窗口不会冻结后端服务，只会影响日志查看器本身。
+- 验证：start_backend_detached.ps1 与 start_backend_log_viewer.ps1 PowerShell 语法检查通过；定向 git diff --check 通过；未实际重启当前后台。
+
+## 2026-06-29 10:59:27 后台启动单实例与关闭行为说明
+- 补强 start_backend_detached.ps1：同端口启动前会读取 backend/logs/backend_8071_log_viewer.pid，若旧日志查看窗口仍存在则先关闭，避免重复双击后堆多个日志窗口。
+- 新启动会写 backend/logs/backend_8071.pid 和 backend/logs/backend_8071_log_viewer.pid；后端端口唯一性仍由 start_backend.ps1 -KillPortOwner 保证。
+- 行为确认：关闭启动器窗口或日志查看窗口不会连带关闭隐藏后端进程；这是为了避免误关监控窗口导致服务停掉。隐藏后端异常退出时，可见日志窗口会从 stdout/stderr/app.log 显示错误并提示 backend process 不再运行。
+- 验证：start_backend_detached.ps1 / start_backend_log_viewer.ps1 PowerShell 语法检查通过；定向 git diff --check 通过；未实际重启当前后台。
+
+## 2026-06-29 11:18:14 首页刷新卡住排查：补请求开始日志
+- 用户反馈：启动后日志停在 favicon.ico 404，刷新网页仍会卡住，询问后面在做什么。
+- 分析：默认首页 bootstrapApp 在 /api/system/ai_scripts 后会进入 fetchSessions()，下一步应请求 /api/sessions；uvicorn 访问日志只有请求完成才打印，若 /api/sessions 正在卡住，日志会停在上一个已完成请求，造成误导。
+- 已在 backend/main.py 的 request_observability_middleware 增加 API 入口 REQUEST_START 日志，请求刚进入时即打印 path/method/request_id/query，后续再卡住可直接看到正在执行的接口。
+- 验证：python -m py_compile backend/main.py 通过；git diff --check -- backend/main.py 通过。当前沙箱无法访问用户正在运行的 localhost:8071，未做在线接口复测。
+
+## 2026-06-29 10:40:00 邮件套装单封文件合计上限 20MB -> 50MB
+- 按用户要求放宽单封邮件文件合计上限：前端 MAIL_ATTACHMENT_MAX_TOTAL_BYTES 20MB->50MB、附件提示文案同步改 50MB；后端 main.py 发送校验 max_total_bytes 20MB->50MB。单文件上限仍 8MB 不变。
+- 验证：python -m py_compile backend/main.py 通过。
