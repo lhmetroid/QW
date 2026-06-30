@@ -1,5 +1,18 @@
 # PROGRESS
 
+## 2026-06-30 迭代记录页改"直接读先出+逐天回填", 根治反复 timeout
+
+- 用户原则: 能直接读的先显示, 要计算的逐个算完再显示。盘点该页:
+  - 直接读(秒出): v1..v18 真实迭代轮次 —— 平均分/最低最高/耗时/备份都是 CaseIterationRun 存好的列, _caselib_serialize_run 只读列。
+  - 临时计算(唯一慢源/timeout 元凶): 顶部 5 行"实时验证"每日统计(count/平均分/平均耗时), 没存表, 每次现算: 扫 ApiAssistInvocation + 逐条解析大 JSON result_payload。一次算 5 天, 远端库一慢就过前端 15s。
+  - 顶部速览卡片在浏览器用已返回行算, 便宜, 不动。
+- 改造:
+  1. 后端 `/api/case_lib/iterations`: 前端改用 `include_daily_stats=false`, 每日行只返回 stats_pending 骨架(count/avg=null), 列表秒出。
+  2. 新增 `GET /api/case_lib/daily_validation_stats/{date}`(async+to_thread): 只算单天, 扫描量是 5 天的 1/5, 复用带 9s wall-clock 预算与 8s 单语句 timeout 的 _get_daily_validation_stats_range, 单天必秒级。
+  3. 前端 loadCaselibList 拿到骨架先 render, 再 `caselibLoadDailyStatsProgressive()` 按天串行请求, 算完一行回填一行重渲染; seq 令牌防刷新/切页后旧回填污染; 行内 count/平均分未回填时占位"计算中…", 失败显"计算失败"。
+- 效果: 列表不再有"过一会又 timeout"——初始请求只读存好的列, 必快; 每日数字是 5 个独立单天小请求, 各自秒级且互不阻塞(threadpool)。
+- 部署: 需重启后端(新端点)+ 浏览器强刷前端。验证: `python -m py_compile backend/main.py` 通过。
+
 ## 2026-06-30 迭代详情页"加载失败:timeout"修复(详情端点改同步走 threadpool)
 
 - 现象: 点"详情 →"进迭代详情页, 仍整屏"加载失败：timeout"。查 backend/logs/app.log: 真实迭代轮次详情 `/api/case_lib/iterations/{run_id}` 从未触发 >1s 计时日志(快), 慢的是日常"实时验证"详情 `/api/case_lib/daily_validation/{date}?view=api`(query_invocations_ms 约 3.7s 拉 ~300 行大 JSON result_payload, total ~4s)。单条 4-5s 本不该撞 15s。

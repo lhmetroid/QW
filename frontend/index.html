@@ -386,9 +386,10 @@
             <section id="mail-stats-panel" class="hidden rounded-lg border border-slate-300 bg-white p-5">
                 <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
                     <div>
-                        <div class="text-[11px] font-bold tracking-wide text-indigo-700">邮件统计 · 转入CRM的AI邮件成效</div>
-                        <h2 class="text-base font-bold text-slate-900 mt-1">AI 邮件转入与成效统计（按天）</h2>
-                        <p class="text-xs text-slate-500 mt-1">统计通过套装页 <code>/static/mail-suite.html</code> 转入 CRM 的 AI 邮件及发送/回信/反馈情况。当天实时计算，历史日已固化入库读取提速。时间口径为北京时间。</p>
+                        <h2 class="text-base font-bold text-slate-900 mt-1">
+                            AI 邮件转入与成效统计（按天）
+                            <span class="ml-1 cursor-help text-xs text-slate-400" title="邮件统计 · 转入CRM的AI邮件成效。统计通过套装页 /static/mail-suite.html 转入 CRM 的 AI 邮件及发送、回信、反馈情况。当天实时计算，历史日已固化入库读取提速。时间口径为北京时间。">ⓘ</span>
+                        </h2>
                     </div>
                     <div class="flex flex-wrap items-end gap-2">
                         <label class="text-xs text-slate-600">起<input type="date" id="mail-stats-start" class="ml-1 rounded border border-slate-300 px-2 py-1 text-xs"></label>
@@ -405,7 +406,7 @@
                 <!-- 按销售单日统计(默认上一天, 加载在按天总表之上) -->
                 <div class="mt-4 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div class="text-xs font-bold text-indigo-700">按销售单日统计<span class="ml-2 font-normal text-[11px] text-slate-500">默认上一天，选日期后点查询/刷新；销售显示中文名，列与下表一致，双击数字看该销售当天明细。</span></div>
+                        <div class="text-xs font-bold text-indigo-700">按销售单日统计<span class="ml-1 cursor-help text-[11px] text-slate-400" title="默认上一天，选日期后点查询/刷新；销售显示中文名，列与下表一致，双击数字看该销售当天明细。">ⓘ</span></div>
                         <div class="flex items-center gap-2">
                             <label class="text-xs text-slate-600">日期<input type="date" id="mail-stats-staff-day" class="ml-1 rounded border border-slate-300 px-2 py-1 text-xs"></label>
                             <button type="button" onclick="loadMailAiStatsByStaff(false)" class="rounded border border-indigo-300 bg-white px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100" title="按该日期重算各销售指标(当天实时, 历史日读已固化)。">查询</button>
@@ -445,7 +446,7 @@
                         <tbody id="mail-stats-tbody"></tbody>
                     </table>
                 </div>
-                <p class="mt-2 text-[11px] text-slate-400">提示：双击任意数字单元格可查看该天该指标对应的具体邮件清单（含联系人、主题、正文，有反馈/价值理由才显示）。</p>
+                <span class="mt-2 inline-block cursor-help text-[11px] text-slate-400" title="双击任意数字单元格可查看该天该指标对应的具体邮件清单（含联系人、主题、正文，有反馈/价值理由才显示）。">ⓘ</span>
             </section>
             <div id="mail-stats-detail-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
                 <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col">
@@ -715,9 +716,10 @@
                                 <th class="px-2 py-1 text-left">联系人</th>
                                 <th class="px-2 py-1 text-left">销售</th>
                                 <th class="px-2 py-1 text-left">套装</th>
-                                <th class="px-2 py-1 text-center">第几封</th>
-                                <th class="px-2 py-1 text-left">计划日期</th>
-                                <th class="px-2 py-1 text-left">时间</th>
+                                <th class="px-2 py-1 text-left">第1封</th>
+                                <th class="px-2 py-1 text-left">第2封</th>
+                                <th class="px-2 py-1 text-left">第3封</th>
+                                <th class="px-2 py-1 text-left">第4封</th>
                             </tr></thead>
                             <tbody id="as-result-tbody"></tbody>
                         </table>
@@ -990,6 +992,7 @@
                             </button>
                         </div>
                     </div>
+                    <div id="mail-runtime-model-config-editor" class="rounded-lg border border-violet-200 bg-violet-50 p-4 text-xs"></div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
                         <!-- Left Column: WeChat Config -->
                         <div class="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-3">
@@ -1401,7 +1404,7 @@
         let API_BASE = '';
         const RAW_FETCH = window.fetch.bind(window);
         const API_BASE_STORAGE_KEY = 'qw_api_base_preferred';
-        const LOCAL_API_TIMEOUT_MS = 3500;
+        const LOCAL_API_TIMEOUT_MS = 15000;
         const REMOTE_API_TIMEOUT_MS = 15000;
         let currentFrontendUser = '';
         let currentFrontendRole = 'admin';
@@ -1741,6 +1744,34 @@
         };
         let mailDraftLlmRuntimeConfig = null;
         let mailDraftLlmRuntimeStatus = '未加载';
+        let mailGenerationModelRuntimeValue = 'deepseek-v4-flash';
+        const MAIL_DEEPSEEK_MODEL_CONFIG_DEFAULTS = {
+            'deepseek-v4-flash': {
+                thinking_type: 'disabled',
+                reasoning_effort: 'high',
+                temperature: 0.35,
+                top_p: '',
+                max_tokens: 2400,
+                response_format: 'json_object',
+                stop: '',
+                logprobs: false,
+                top_logprobs: 0,
+                user_id: ''
+            },
+            'deepseek-v4-pro': {
+                thinking_type: 'disabled',
+                reasoning_effort: 'high',
+                temperature: 0.35,
+                top_p: '',
+                max_tokens: 2400,
+                response_format: 'json_object',
+                stop: '',
+                logprobs: false,
+                top_logprobs: 0,
+                user_id: ''
+            }
+        };
+        let mailDeepseekModelConfigState = JSON.parse(JSON.stringify(MAIL_DEEPSEEK_MODEL_CONFIG_DEFAULTS));
         const MAIL_CONFIG_AUDIT_MOCK_DEFAULTS = {
             reviewer: 'mail_config_reviewer',
             scope_filter: 'all_mail_config',
@@ -1947,7 +1978,7 @@
                 statusEl.className = 'text-[11px] text-slate-500';
             }
             try {
-                const resp = await fetch(`${window.location.origin}/api/v1/mail/sequence-templates`, { credentials: 'include' });
+                const resp = await rawFetchWithTimeout(`${window.location.origin}/api/v1/mail/sequence-templates`, { credentials: 'include' }, LOCAL_API_TIMEOUT_MS);
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const data = await resp.json();
                 mailSequenceTemplateCache = data.templates || {};
@@ -2241,7 +2272,7 @@
             if (detailEl) { detailEl.classList.add('hidden'); detailEl.innerHTML = ''; }
 
             try {
-                const resp = await fetch(`${window.location.origin}/api/v1/mail/demo-contacts`, { credentials: 'include' });
+                const resp = await rawFetchWithTimeout(`${window.location.origin}/api/v1/mail/demo-contacts`, { credentials: 'include' }, LOCAL_API_TIMEOUT_MS);
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const data = await resp.json();
                 const contacts = (data && data.contacts) || [];
@@ -3428,6 +3459,10 @@
             const p = (n) => String(n).padStart(2, '0');
             return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
         }
+        function mailStatsQueryNeedsCrmRefresh(startDate, endDate) {
+            const today = mailStatsLocalDate();
+            return Boolean(startDate && endDate && startDate <= today && today <= endDate);
+        }
         function mailStatsScenarioCn(s) {
             return ({ re_activation: '老客户激活', new_business_promotion: '老客户其他业务介绍', new_contact_intro: '新客户开发介绍' })[s] || s || '';
         }
@@ -3441,8 +3476,9 @@
             if (!startEl.value) { const d = new Date(); d.setDate(d.getDate() - 29); startEl.value = mailStatsLocalDate(d); }
             const params = new URLSearchParams({ start: startEl.value, end: endEl.value });
             if (staffEl && staffEl.value) params.set('staff_id', staffEl.value);
-            if (refresh) params.set('refresh', '1');
-            if (statusEl) { statusEl.textContent = refresh ? '正在从 CRM 同步真发状态 + FTP 解析回信 + deepseek 价值判定，请稍候…' : '加载中…'; statusEl.className = 'mt-3 text-xs text-slate-500'; }
+            const effectiveRefresh = Boolean(refresh) || mailStatsQueryNeedsCrmRefresh(startEl.value, endEl.value);
+            if (effectiveRefresh) params.set('refresh', '1');
+            if (statusEl) { statusEl.textContent = effectiveRefresh ? '正在从 CRM 同步真发状态 + FTP 解析回信 + deepseek 价值判定，请稍候…' : '加载中…'; statusEl.className = 'mt-3 text-xs text-slate-500'; }
             try {
                 const resp = await fetch(`${window.location.origin}/api/v1/mail/ai-stats/summary?${params.toString()}`);
                 const data = await resp.json().catch(() => ({}));
@@ -3507,8 +3543,9 @@
             if (!dayEl) return;
             if (!dayEl.value) dayEl.value = mailStatsYesterday();
             const params = new URLSearchParams({ day: dayEl.value });
-            if (refresh) params.set('refresh', '1');
-            if (statusEl) { statusEl.textContent = refresh ? '正在从 CRM 同步后按销售统计该天…' : '加载中…'; statusEl.className = 'mt-2 text-[11px] text-slate-500'; }
+            const effectiveRefresh = Boolean(refresh) || dayEl.value === mailStatsLocalDate();
+            if (effectiveRefresh) params.set('refresh', '1');
+            if (statusEl) { statusEl.textContent = effectiveRefresh ? '正在从 CRM 同步后按销售统计该天…' : '加载中…'; statusEl.className = 'mt-2 text-[11px] text-slate-500'; }
             try {
                 const resp = await fetch(`${window.location.origin}/api/v1/mail/ai-stats/by-staff?${params.toString()}`);
                 const data = await resp.json().catch(() => ({}));
@@ -3801,6 +3838,25 @@
             } catch (e) { autosendRules = []; }
             autosendRenderRules();
         }
+        const AUTOSEND_BUSINESS_LINE_OPTIONS = [
+            '笔译', '口译', '同传设备租赁', '设计印刷', '印刷', '输入排版', '多媒体译制', '礼品', '复印装订', '运输'
+        ];
+        function autosendBusinessLineSelectedValues(value) {
+            return String(value || '').split(/[,;，、\s]+/).map(x => x.trim()).filter(Boolean);
+        }
+        function autosendBusinessLineLabel(value) {
+            const values = autosendBusinessLineSelectedValues(value);
+            return values.length ? values.join('、') : '选择业务线';
+        }
+        function autosendToggleBusinessLine(i, j, value, checked) {
+            const c = autosendRules?.[i]?.conditions?.[j];
+            if (!c) return;
+            const selected = new Set(autosendBusinessLineSelectedValues(c.value));
+            if (checked) selected.add(value); else selected.delete(value);
+            c.value = Array.from(selected).join(';');
+            const summary = document.getElementById(`autosend-business-summary-${i}-${j}`);
+            if (summary) summary.textContent = autosendBusinessLineLabel(c.value);
+        }
         function autosendCondRowHtml(i, j, c) {
             const t = c.type || 'amount';
             const typeOpts = [['amount', '合作金额'], ['last_coop_days', '上次合作天数'], ['business_line', '业务线']]
@@ -3808,8 +3864,12 @@
             let opOpts;
             if (t === 'business_line') opOpts = [['has', '合作过'], ['not', '没合作过']].map(([v, l]) => `<option value="${v}" ${c.op === v ? 'selected' : ''}>${l}</option>`).join('');
             else opOpts = [['<', '小于'], ['>', '大于']].map(([v, l]) => `<option value="${v}" ${c.op === v ? 'selected' : ''}>${l}</option>`).join('');
+            const selectedBusinessLines = new Set(autosendBusinessLineSelectedValues(c.value));
+            const businessLineOptions = AUTOSEND_BUSINESS_LINE_OPTIONS
+                .map(v => `<label class="flex items-center gap-1 px-2 py-1 hover:bg-slate-50"><input type="checkbox" ${selectedBusinessLines.has(v) ? 'checked' : ''} onchange='autosendToggleBusinessLine(${i},${j},${JSON.stringify(v)},this.checked)'><span>${escapeHtml(v)}</span></label>`)
+                .join('');
             const valInput = t === 'business_line'
-                ? `<input value="${escapeHtml(c.value == null ? '' : String(c.value))}" onchange="autosendRules[${i}].conditions[${j}].value=this.value" placeholder="如 翻译/印刷" class="rounded border border-slate-300 px-2 py-1 w-32">`
+                ? `<details class="relative min-w-[170px]"><summary id="autosend-business-summary-${i}-${j}" class="list-none cursor-pointer rounded border border-slate-300 bg-white px-2 py-1 pr-6 text-slate-700 shadow-sm">${escapeHtml(autosendBusinessLineLabel(c.value))}</summary><div class="absolute z-[1200] mt-1 max-h-56 min-w-[180px] overflow-auto rounded border border-slate-200 bg-white py-1 shadow-lg">${businessLineOptions}</div></details>`
                 : `<input type="number" value="${c.value == null ? '' : escapeHtml(String(c.value))}" onchange="autosendRules[${i}].conditions[${j}].value=parseFloat(this.value)" placeholder="${t === 'amount' ? '金额' : '天数'}" class="rounded border border-slate-300 px-2 py-1 w-28">`;
             return `<div class="flex items-center gap-2 text-[11px] mt-1">
                 <select onchange="autosendOnCondTypeChange(${i},${j},this.value)" class="rounded border border-slate-300 px-2 py-1">${typeOpts}</select>
@@ -3925,15 +3985,35 @@
             wrap.classList.remove('hidden');
             document.getElementById('as-result-summary').textContent =
                 `数据源：${d.source} · 开始日 ${d.start_date} · 每日上限 ${d.daily_cap} · 周期 [${(d.interval_days || []).join(',')}] · 联系人 ${d.contacts_count} · 排期 ${d.scheduled_count} 封 · 跳过 ${d.skipped_count} 人`;
-            tbody.innerHTML = (d.items || []).map(it => `
-                <tr class="border-t border-slate-100">
-                    <td class="px-2 py-1 font-mono">${escapeHtml(it.contact_id || '')}</td>
-                    <td class="px-2 py-1">${escapeHtml(it.owner_staff_id || '')}</td>
-                    <td class="px-2 py-1">${escapeHtml(it.scenario_label_cn || it.scenario || '')}${it.pick_reason === 'fallback' ? ' <span class=\"text-[10px] text-amber-600\">(兜底)</span>' : ''}</td>
-                    <td class="px-2 py-1 text-center">${it.suite_step}</td>
-                    <td class="px-2 py-1">${escapeHtml(it.plan_date || '')}</td>
-                    <td class="px-2 py-1">${escapeHtml(it.plan_time || '')}</td>
-                </tr>`).join('') || '<tr><td colspan="6" class="px-2 py-3 text-center text-slate-400">无排期</td></tr>';
+            const grouped = new Map();
+            (d.items || []).forEach(it => {
+                const key = `${it.contact_id || ''}::${it.owner_staff_id || ''}::${it.scenario || ''}`;
+                if (!grouped.has(key)) grouped.set(key, {
+                    contact_id: it.contact_id || '',
+                    owner_staff_id: it.owner_staff_id || '',
+                    scenario: it.scenario || '',
+                    scenario_label_cn: it.scenario_label_cn || it.scenario || '',
+                    pick_reason: it.pick_reason || '',
+                    steps: {}
+                });
+                grouped.get(key).steps[Number(it.suite_step)] = it;
+            });
+            const groupedRows = Array.from(grouped.values());
+            tbody.innerHTML = groupedRows.map(row => {
+                const stepCell = (n) => {
+                    const it = row.steps[n];
+                    return it ? `${escapeHtml(it.plan_date || '')} <span class="text-slate-400">${escapeHtml(it.plan_time || '')}</span>` : '<span class="text-slate-300">-</span>';
+                };
+                return `<tr class="border-t border-slate-100">
+                    <td class="px-2 py-1 font-mono">${escapeHtml(row.contact_id)}</td>
+                    <td class="px-2 py-1">${escapeHtml(row.owner_staff_id)}</td>
+                    <td class="px-2 py-1">${escapeHtml(row.scenario_label_cn)}${row.pick_reason === 'fallback' ? ' <span class="text-[10px] text-amber-600">(兜底)</span>' : ''}</td>
+                    <td class="px-2 py-1 whitespace-nowrap">${stepCell(1)}</td>
+                    <td class="px-2 py-1 whitespace-nowrap">${stepCell(2)}</td>
+                    <td class="px-2 py-1 whitespace-nowrap">${stepCell(3)}</td>
+                    <td class="px-2 py-1 whitespace-nowrap">${stepCell(4)}</td>
+                </tr>`;
+            }).join('') || '<tr><td colspan="7" class="px-2 py-3 text-center text-slate-400">无排期</td></tr>';
             const skipped = d.skipped || [];
             document.getElementById('as-skipped').innerHTML = skipped.length
                 ? `<b>跳过 ${skipped.length} 人：</b>` + skipped.map(s => `${escapeHtml(s.contact_id || '')}(${escapeHtml(s.detail || s.reason || '')})`).join('；')
@@ -3999,6 +4079,103 @@
         }
 
 
+        function normalizeMailDeepseekModelConfigs(raw) {
+            const source = raw && typeof raw === 'object' ? raw : {};
+            const normalized = JSON.parse(JSON.stringify(MAIL_DEEPSEEK_MODEL_CONFIG_DEFAULTS));
+            Object.keys(normalized).forEach(modelKey => {
+                const incoming = source[modelKey] && typeof source[modelKey] === 'object' ? source[modelKey] : {};
+                const target = normalized[modelKey];
+                target.thinking_type = ['enabled', 'disabled'].includes(String(incoming.thinking_type || '').toLowerCase()) ? String(incoming.thinking_type).toLowerCase() : target.thinking_type;
+                target.reasoning_effort = ['high', 'max'].includes(String(incoming.reasoning_effort || '').toLowerCase()) ? String(incoming.reasoning_effort).toLowerCase() : target.reasoning_effort;
+                const temperature = Number(incoming.temperature);
+                target.temperature = Number.isFinite(temperature) ? Math.max(0, Math.min(2, temperature)) : target.temperature;
+                const topP = incoming.top_p === null || incoming.top_p === '' || typeof incoming.top_p === 'undefined' ? '' : Number(incoming.top_p);
+                target.top_p = Number.isFinite(topP) ? Math.max(0, Math.min(1, topP)) : '';
+                const maxTokens = Number.parseInt(incoming.max_tokens, 10);
+                target.max_tokens = Number.isFinite(maxTokens) ? Math.max(256, Math.min(8192, maxTokens)) : target.max_tokens;
+                target.response_format = ['json_object', 'text'].includes(String(incoming.response_format || '').toLowerCase()) ? String(incoming.response_format).toLowerCase() : target.response_format;
+                target.stop = String(incoming.stop || '');
+                target.logprobs = Boolean(incoming.logprobs);
+                const topLogprobs = Number.parseInt(incoming.top_logprobs, 10);
+                target.top_logprobs = Number.isFinite(topLogprobs) ? Math.max(0, Math.min(20, topLogprobs)) : 0;
+                target.user_id = String(incoming.user_id || '').slice(0, 120);
+            });
+            return normalized;
+        }
+
+        function serializeMailDeepseekModelConfigs() {
+            const normalized = normalizeMailDeepseekModelConfigs(mailDeepseekModelConfigState);
+            Object.keys(normalized).forEach(modelKey => {
+                if (normalized[modelKey].top_p === '') normalized[modelKey].top_p = null;
+            });
+            return normalized;
+        }
+
+        function updateMailRuntimeDeepseekParam(modelKey, field, rawValue) {
+            mailDeepseekModelConfigState = normalizeMailDeepseekModelConfigs(mailDeepseekModelConfigState);
+            const cfg = mailDeepseekModelConfigState[modelKey];
+            if (!cfg) return;
+            if (field === 'logprobs') cfg[field] = Boolean(rawValue);
+            else if (field === 'temperature') cfg[field] = Math.max(0, Math.min(2, Number(rawValue) || 0));
+            else if (field === 'top_p') cfg[field] = rawValue === '' ? '' : Math.max(0, Math.min(1, Number(rawValue) || 0));
+            else if (field === 'max_tokens') cfg[field] = Math.max(256, Math.min(8192, Number.parseInt(rawValue, 10) || 2400));
+            else if (field === 'top_logprobs') cfg[field] = Math.max(0, Math.min(20, Number.parseInt(rawValue, 10) || 0));
+            else cfg[field] = String(rawValue || '');
+            renderMailRuntimeDeepseekConfig();
+        }
+
+        function renderMailRuntimeDeepseekConfig() {
+            const host = document.getElementById('mail-runtime-model-config-editor');
+            if (!host) return;
+            mailDeepseekModelConfigState = normalizeMailDeepseekModelConfigs(mailDeepseekModelConfigState);
+            const modelOptions = [
+                {value: 'deepseek-v4-flash', label: 'deepseek-v4-flash（默认）'},
+                {value: 'deepseek-v4-pro', label: 'deepseek-v4-pro'},
+                {value: 'chatgpt', label: 'chatgpt'}
+            ];
+            const deepseekCards = ['deepseek-v4-flash', 'deepseek-v4-pro'].map(modelKey => {
+                const cfg = mailDeepseekModelConfigState[modelKey];
+                const active = mailGenerationModelRuntimeValue === modelKey;
+                return `
+                    <div class="rounded-lg border ${active ? 'border-violet-400 bg-white' : 'border-violet-100 bg-white/80'} p-3 space-y-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <div>
+                                <div class="font-bold text-slate-900">${escapeHtml(modelKey)}</div>
+                                <div class="mt-1 text-[10px] text-slate-500">DeepSeek 参数，保存后邮件生成即时读取</div>
+                            </div>
+                            <span class="rounded-full px-2 py-0.5 text-[10px] font-bold ${active ? 'bg-violet-100 text-violet-800' : 'bg-slate-100 text-slate-500'}">${active ? '当前模型' : '备用配置'}</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                            <label class="block"><span class="font-bold text-slate-700">thinking</span><select onchange="updateMailRuntimeDeepseekParam('${modelKey}','thinking_type',this.value)" class="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5"><option value="disabled" ${cfg.thinking_type === 'disabled' ? 'selected' : ''}>disabled</option><option value="enabled" ${cfg.thinking_type === 'enabled' ? 'selected' : ''}>enabled</option></select></label>
+                            <label class="block"><span class="font-bold text-slate-700">reasoning_effort</span><select onchange="updateMailRuntimeDeepseekParam('${modelKey}','reasoning_effort',this.value)" class="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5"><option value="high" ${cfg.reasoning_effort === 'high' ? 'selected' : ''}>high</option><option value="max" ${cfg.reasoning_effort === 'max' ? 'selected' : ''}>max</option></select></label>
+                            <label class="block"><span class="font-bold text-slate-700">response_format</span><select onchange="updateMailRuntimeDeepseekParam('${modelKey}','response_format',this.value)" class="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5"><option value="json_object" ${cfg.response_format === 'json_object' ? 'selected' : ''}>json_object</option><option value="text" ${cfg.response_format === 'text' ? 'selected' : ''}>text</option></select></label>
+                            <label class="block"><span class="font-bold text-slate-700">temperature</span><input type="number" min="0" max="2" step="0.05" value="${Number(cfg.temperature)}" onchange="updateMailRuntimeDeepseekParam('${modelKey}','temperature',this.value)" class="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-right font-mono"></label>
+                            <label class="block"><span class="font-bold text-slate-700">top_p（可空）</span><input type="number" min="0" max="1" step="0.01" value="${cfg.top_p === '' ? '' : Number(cfg.top_p)}" onchange="updateMailRuntimeDeepseekParam('${modelKey}','top_p',this.value)" class="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-right font-mono"></label>
+                            <label class="block"><span class="font-bold text-slate-700">max_tokens</span><input type="number" min="256" max="8192" step="128" value="${Number(cfg.max_tokens)}" onchange="updateMailRuntimeDeepseekParam('${modelKey}','max_tokens',this.value)" class="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-right font-mono"></label>
+                            <label class="block sm:col-span-2"><span class="font-bold text-slate-700">stop（每行一个）</span><textarea rows="2" onchange="updateMailRuntimeDeepseekParam('${modelKey}','stop',this.value)" class="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 font-mono">${escapeHtml(cfg.stop || '')}</textarea></label>
+                            <label class="block"><span class="font-bold text-slate-700">user_id</span><input type="text" value="${escapeHtml(cfg.user_id || '')}" onchange="updateMailRuntimeDeepseekParam('${modelKey}','user_id',this.value)" class="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 font-mono"></label>
+                            <label class="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-2 py-2"><input type="checkbox" ${cfg.logprobs ? 'checked' : ''} onchange="updateMailRuntimeDeepseekParam('${modelKey}','logprobs',this.checked)"><span class="font-bold text-slate-700">logprobs</span></label>
+                            <label class="block"><span class="font-bold text-slate-700">top_logprobs</span><input type="number" min="0" max="20" step="1" value="${Number(cfg.top_logprobs || 0)}" onchange="updateMailRuntimeDeepseekParam('${modelKey}','top_logprobs',this.value)" class="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-right font-mono"></label>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            host.innerHTML = `
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <div class="font-bold text-violet-900">邮件生成 LLM 选择与 DeepSeek 参数</div>
+                        <div class="mt-1 text-slate-600">这里保存到数据库字段，所有邮件草稿生成会按当前模型和对应参数走；不影响企微。</div>
+                    </div>
+                    <label class="flex items-center gap-2 font-bold text-slate-700">生成邮件模型
+                        <select id="mail-runtime-generation-model-select" onchange="mailGenerationModelRuntimeValue=this.value; renderMailRuntimeDeepseekConfig();" class="rounded border border-violet-300 bg-white px-3 py-2 font-mono text-xs">
+                            ${modelOptions.map(item => `<option value="${item.value}" ${mailGenerationModelRuntimeValue === item.value ? 'selected' : ''}>${item.label}</option>`).join('')}
+                        </select>
+                    </label>
+                </div>
+                <div class="mt-3 grid grid-cols-1 xl:grid-cols-2 gap-3">${deepseekCards}</div>
+                <div class="mt-3 rounded border border-violet-100 bg-white p-2 text-[11px] text-slate-600">说明：thinking=disabled 时 temperature/top_p 生效，更适合邮件 JSON 草稿；response_format=text 可能导致后端无法解析 subject/paragraphs，默认保留 json_object。</div>
+            `;
+        }
         async function loadRuntimeLlmSettings() {
             const statusBadge = document.getElementById('runtime-llm-settings-status');
             if (statusBadge) {
@@ -4014,6 +4191,15 @@
                 document.getElementById('wecom-system-prompt-input').value = data.wecom_system_prompt ?? '';
                 document.getElementById('mail-temperature-input').value = data.mail_temperature ?? 0.7;
                 document.getElementById('mail-system-prompt-input').value = data.mail_system_prompt ?? '';
+                mailGenerationModelRuntimeValue = data.mail_generation_model || 'deepseek-v4-flash';
+                mailDeepseekModelConfigState = normalizeMailDeepseekModelConfigs(data.mail_deepseek_model_configs);
+                mailDraftLlmRuntimeConfig = {
+                    ...(mailDraftLlmRuntimeConfig || {}),
+                    active_model: mailGenerationModelRuntimeValue,
+                    mail_deepseek_model_configs: mailDeepseekModelConfigState
+                };
+                renderMailRuntimeDeepseekConfig();
+                syncMailGenerationModelSelector();
 
                 if (statusBadge) {
                     statusBadge.textContent = '加载成功';
@@ -4059,7 +4245,9 @@
                         wecom_system_prompt: wecomPrompt,
                         wecom_temperature: wecomTemp,
                         mail_system_prompt: mailPrompt,
-                        mail_temperature: mailTemp
+                        mail_temperature: mailTemp,
+                        mail_generation_model: mailGenerationModelRuntimeValue || 'deepseek-v4-flash',
+                        mail_deepseek_model_configs: serializeMailDeepseekModelConfigs()
                     })
                 });
                 if (!res.ok) {
@@ -4067,6 +4255,16 @@
                     throw new Error(errData.detail || `HTTP ${res.status}`);
                 }
                 const data = await res.json();
+                const savedSettings = data.settings || {};
+                mailGenerationModelRuntimeValue = savedSettings.mail_generation_model || mailGenerationModelRuntimeValue || 'deepseek-v4-flash';
+                mailDeepseekModelConfigState = normalizeMailDeepseekModelConfigs(savedSettings.mail_deepseek_model_configs || mailDeepseekModelConfigState);
+                mailDraftLlmRuntimeConfig = {
+                    ...(mailDraftLlmRuntimeConfig || {}),
+                    active_model: mailGenerationModelRuntimeValue,
+                    mail_deepseek_model_configs: mailDeepseekModelConfigState
+                };
+                renderMailRuntimeDeepseekConfig();
+                syncMailGenerationModelSelector();
                 if (statusBadge) {
                     statusBadge.textContent = '保存成功！已立即生效';
                     statusBadge.className = 'text-xs font-bold px-2 py-1 rounded bg-emerald-50 text-emerald-700';
@@ -4228,7 +4426,7 @@
                 mailDraftLlmRuntimeStatus = '正在读取后端配置...';
                 renderMailDraftLlmProviderConfig();
                 syncMailGenerationModelSelector();
-                const resp = await fetch(`${window.location.origin}/api/v1/mail/draft-llm-config`, {credentials: 'include'});
+                const resp = await rawFetchWithTimeout(`${window.location.origin}/api/v1/mail/draft-llm-config`, {credentials: 'include'}, LOCAL_API_TIMEOUT_MS);
                 const data = await resp.json();
                 if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
                 mailDraftLlmRuntimeConfig = data;
@@ -4255,6 +4453,9 @@
                 const data = await resp.json();
                 if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
                 mailDraftLlmRuntimeConfig = data;
+                mailGenerationModelRuntimeValue = data.active_model || modelKey;
+                mailDeepseekModelConfigState = normalizeMailDeepseekModelConfigs(data.mail_deepseek_model_configs || mailDeepseekModelConfigState);
+                renderMailRuntimeDeepseekConfig();
                 mailDraftLlmRuntimeStatus = `已保存 ${data.active_model || modelKey}`;
             } catch (err) {
                 mailDraftLlmRuntimeStatus = `保存失败：${err.message}`;
@@ -6212,7 +6413,7 @@
         // 经典案例迭代是本机特性，不能走 api.speedasia.net（那里没有这些表/端点）。
         async function caselibFetch(path, init) {
             const url = `${window.location.origin}${path}`;
-            const res = await RAW_FETCH(url, init || {});
+            const res = await rawFetchWithTimeout(url, init || {}, LOCAL_API_TIMEOUT_MS);
             if (!res.ok) {
                 throw new Error(`HTTP ${res.status} ${path}`);
             }
@@ -6366,13 +6567,47 @@
         async function loadCaselibList(force) {
             loadTrainAiModels();
             try {
-                const res = await caselibFetch(`/api/case_lib/iterations?limit=100&include_daily_stats=true`);
+                // include_daily_stats=false: 真实迭代轮次(分数都是存好的列)+每日"实时验证"骨架秒出,
+                // 不在这一个请求里现算 5 天日常统计(那是之前 timeout 的根因)。
+                const res = await caselibFetch(`/api/case_lib/iterations?limit=100&include_daily_stats=false`);
                 const data = await res.json();
                 caselibState.iterations = data.iterations || [];
                 renderCaselibList(caselibState.iterations);
+                // 每日统计要现算且慢 -> 渲染完列表后, 按天逐个请求回填, 算完一行刷新一行。
+                caselibLoadDailyStatsProgressive();
             } catch (e) {
                 document.getElementById('caselib-list-table').innerHTML =
                     `<div class="p-8 text-center text-sm text-red-500">加载失败：${(e && e.message) || e}</div>`;
+            }
+        }
+
+        // 逐个计算每日"实时验证"统计并回填。串行(逐天)而非并发, 既符合"算完一个显示一个",
+        // 也避免 5 个慢请求同时压远端库。用 seq 令牌防止"刷新列表/切走"后旧回填污染新数据。
+        async function caselibLoadDailyStatsProgressive() {
+            const seq = (caselibState.dailyStatsSeq = (caselibState.dailyStatsSeq || 0) + 1);
+            const pending = (caselibState.iterations || []).filter(
+                r => r.run_id && r.run_id.startsWith('daily_') && r.stats_pending);
+            for (const row of pending) {
+                if (seq !== caselibState.dailyStatsSeq) return;  // 已被新一次加载取代
+                const ymd = row.run_id.slice(6);                 // daily_YYYYMMDD
+                const date = `${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;
+                try {
+                    const res = await caselibFetch(`/api/case_lib/daily_validation_stats/${date}`);
+                    const data = await res.json();
+                    if (seq !== caselibState.dailyStatsSeq) return;
+                    row.total_cases = data.count;
+                    row.completed_cases = data.count;
+                    row.success_cases = data.count;
+                    row.avg_quality_score = data.avg_score;
+                    row.avg_latency_ms = data.avg_latency;
+                    row.stats_pending = false;
+                } catch (e) {
+                    if (seq !== caselibState.dailyStatsSeq) return;
+                    row.stats_pending = false;
+                    row.stats_error = true;
+                }
+                // 只在仍停留于列表子页时重渲染(详情/案例库页不打扰)。
+                if (caselibState.subTab === 'list') renderCaselibList(caselibState.iterations);
             }
         }
 
@@ -6467,6 +6702,13 @@
                 const selectedCls = caselibState.selectedRunId === r.run_id
                     ? 'bg-purple-50 ring-2 ring-purple-300 ring-inset' : 'hover:bg-purple-50';
                 const isDaily = r.run_id && r.run_id.startsWith('daily_');
+                // 每日"实时验证"的进度/平均分是现算的: 未回填时占位"计算中…", 失败显"计算失败"。
+                const progressCell = (isDaily && r.stats_pending)
+                    ? '<span class="text-slate-400 animate-pulse">计算中…</span>'
+                    : (isDaily && r.stats_error)
+                        ? '<span class="text-red-400" title="该日统计计算失败，可点刷新列表重试">计算失败</span>'
+                        : `${r.completed_cases}/${r.total_cases}`;
+                const avgCell = (isDaily && (r.stats_pending || r.stats_error)) ? '…' : avg;
                 const verStr = isDaily ? r.version_no : `v${r.version_no}`;
                 const verTitle = isDaily ? '日常实时验证' : `第 ${r.version_no} 轮迭代`;
                 const codeVerSha = isDaily ? '-' : shortSha;
@@ -6477,8 +6719,8 @@
                     <td class="px-3 py-2 font-mono text-[11px] text-slate-700" title="完整 git commit SHA：${r.git_commit_sha || '-'}\n分支：${r.git_branch || '-'}">${codeVerSha}${dirtyIndicator}</td>
                     <td class="px-3 py-2 text-slate-700 max-w-[280px] truncate" title="${escapeHtml(r.change_summary || '（未填写）')}">${escapeHtml(sumTxt) || '<span class="text-slate-400">（未填写）</span>'}</td>
                     <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${stCls}" title="迭代整体运行状态：${stLabel}">${stLabel}</span></td>
-                    <td class="px-3 py-2 text-right" title="已完成 ${r.completed_cases} 个 / 共 ${r.total_cases} 个案例">${r.completed_cases}/${r.total_cases}</td>
-                    <td class="px-3 py-2 text-right font-bold text-purple-700" title="${r.status === 'success' ? '本轮平均质量分（满分100）' : '尚未完成或失败，分数不可信'}">${avg}</td>
+                    <td class="px-3 py-2 text-right" title="${isDaily && r.stats_pending ? '该日统计正在后台计算' : `已完成 ${r.completed_cases} 个 / 共 ${r.total_cases} 个案例`}">${progressCell}</td>
+                    <td class="px-3 py-2 text-right font-bold text-purple-700" title="${r.status === 'success' ? '本轮平均质量分（满分100）' : '尚未完成或失败，分数不可信'}">${avgCell}</td>
                     <td class="px-3 py-2 text-right text-[11px] text-slate-500" title="最低分 ${mn} / 最高分 ${mx}（满分100）">${mn} / ${mx}</td>
                     <td class="px-3 py-2 text-right text-[11px] text-slate-500" title="单案例 7 步链路平均耗时">${lat}</td>
                     <td class="px-3 py-2 font-mono text-[11px] text-slate-600" title="${escapeHtml(backupTip)}">${backup}</td>
@@ -9135,7 +9377,7 @@
                     start_date: startDate,
                     end_date: endDate,
                     sources: sources || 'api,web_manual,test',
-                    limit: '300',
+                    limit: '80',
                 });
                 const res = await apiFetch(`${API_BASE}/api/wecom/trigger_analytics?${query.toString()}`);
                 const data = await res.json();
@@ -11394,6 +11636,33 @@
                         </label>
                         <div class="text-[11px] text-slate-500 mt-2 ml-7">打开：收到会话存档回调或拉取到的一对一外部联系人客户文字消息后，后端自动触发智能回复；同一批多条按最后客户文字锚点打包。群聊、内部员工会话、销售消息、纯语音/文件/图片/视频占位不触发。关闭：保持现有由侧边栏/API 调用触发的逻辑。</div>
                     </div>
+                    <div class="border border-slate-200 rounded-lg p-4 bg-slate-50">
+                        <div class="font-bold text-slate-700 mb-3">🗄️ 微信侧知识库召回配置</div>
+                        <div class="grid grid-cols-2 gap-4 mb-3">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">主用知识库 (Primary KB)</label>
+                                <select id="set_wecom_kb_primary" class="w-full text-xs p-2 border border-slate-300 rounded bg-white">
+                                    <option value="kb1" ${data.WECOM_KB_PRIMARY === 'kb1' ? 'selected' : ''}>私域问答库 API (KB1)</option>
+                                    <option value="kb2" ${data.WECOM_KB_PRIMARY === 'kb2' ? 'selected' : ''}>历史切片检索库 (KB2)</option>
+                                    <option value="kb3" ${data.WECOM_KB_PRIMARY === 'kb3' ? 'selected' : ''}>新版服务知识库 (KB3)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">对比知识库 (Compare KB)</label>
+                                <select id="set_wecom_kb_compare" class="w-full text-xs p-2 border border-slate-300 rounded bg-white">
+                                    <option value="" ${!data.WECOM_KB_COMPARE ? 'selected' : ''}>不对比/禁用</option>
+                                    <option value="kb1" ${data.WECOM_KB_COMPARE === 'kb1' ? 'selected' : ''}>私域问答库 API (KB1)</option>
+                                    <option value="kb2" ${data.WECOM_KB_COMPARE === 'kb2' ? 'selected' : ''}>历史切片检索库 (KB2)</option>
+                                    <option value="kb3" ${data.WECOM_KB_COMPARE === 'kb3' ? 'selected' : ''}>新版服务知识库 (KB3)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <label class="flex items-center gap-3 cursor-pointer select-none mt-3">
+                            <input id="set_wecom_kb3_confirmed_only" type="checkbox" class="w-4 h-4 accent-indigo-600" ${data.WECOM_KB3_CONFIRMED_ONLY === true ? 'checked' : ''}>
+                            <span class="text-sm text-slate-700 font-medium">新版服务知识库 (KB3) 仅检索已确认单元</span>
+                        </label>
+                        <div class="text-[11px] text-slate-500 mt-1 ml-7">勾选后，检索 KB3 时只筛选 is_confirmed = true 的数据，排除草稿状态的知识单元。</div>
+                    </div>
                     <div>
                         <label class="block font-bold text-slate-700 mb-2">▶️ 第一阶段：结构化特征提取与格式约束</label>
                         <textarea id="set_prompt1" class="w-full text-xs font-mono p-3 border border-indigo-200 rounded-md focus:ring-2 focus:ring-indigo-500 h-[150px] leading-relaxed bg-indigo-50/30">${data.SYSTEM_PROMPT_LLM1 || ''}</textarea>
@@ -11426,6 +11695,9 @@
                     WECOM_RECENT_MESSAGE_LIMIT: clampWecomRecentMessageLimit(document.getElementById('set_recent_message_limit').value),
                     API_KB2_ENABLED: document.getElementById('set_api_kb2_enabled').checked,
                     WECOM_AUTO_ASSIST_ON_CUSTOMER_MESSAGE: document.getElementById('set_wecom_auto_assist_on_customer_message').checked,
+                    WECOM_KB_PRIMARY: document.getElementById('set_wecom_kb_primary').value,
+                    WECOM_KB_COMPARE: document.getElementById('set_wecom_kb_compare').value,
+                    WECOM_KB3_CONFIRMED_ONLY: document.getElementById('set_wecom_kb3_confirmed_only').checked,
                     SYSTEM_PROMPT_LLM1: document.getElementById('set_prompt1').value,
                     SYSTEM_PROMPT_LLM2: document.getElementById('set_prompt2').value,
                     REPLY_STYLE_OPTIONS: JSON.parse(document.getElementById('set_reply_styles').value),
@@ -15561,12 +15833,15 @@
             const endInput = document.getElementById('kb-hit-stats-end');
             const startDate = startInput?.value || kbStatsDefaultDate(-6);
             const endDate = endInput?.value || kbStatsDefaultDate(0);
-            const params = new URLSearchParams({start_date: startDate, end_date: endDate, limit: '300'});
-            const res = await apiFetch(`${API_BASE}/api/kb/hit_logs/chunk_stats?${params.toString()}`);
-            const data = await res.json();
-            if (!res.ok) return showApiError(data, '加载命中统计失败');
-            const rows = Array.isArray(data.rows) ? data.rows : [];
-            document.getElementById('kb-body').innerHTML = `
+            const bodyEl = document.getElementById('kb-body');
+            const params = new URLSearchParams({start_date: startDate, end_date: endDate, limit: '100', scan_limit: '200'});
+            try {
+                const res = await apiFetch(`${API_BASE}/api/kb/hit_logs/chunk_stats?${params.toString()}`);
+                const data = await res.json();
+                if (!res.ok) return showApiError(data, '加载命中统计失败');
+                const rows = Array.isArray(data.rows) ? data.rows : [];
+                if (!bodyEl) return;
+                bodyEl.innerHTML = `
                 <div class="h-full overflow-y-auto p-4 bg-slate-50">
                     <div class="bg-white border rounded p-3 mb-3 flex flex-wrap items-end gap-3 text-xs">
                         <label class="block"><span class="block mb-1 text-slate-500">开始日期</span><input id="kb-hit-stats-start" type="date" class="border rounded px-2 py-1" value="${safeAttr(startDate)}"></label>
@@ -15585,6 +15860,19 @@
                         </table>
                     </div>
                 </div>`;
+            } catch (err) {
+                if (bodyEl) {
+                    bodyEl.innerHTML = `
+                <div class="h-full overflow-y-auto p-4 bg-slate-50">
+                    <div class="bg-white border rounded p-3 mb-3 flex flex-wrap items-end gap-3 text-xs">
+                        <label class="block"><span class="block mb-1 text-slate-500">开始日期</span><input id="kb-hit-stats-start" type="date" class="border rounded px-2 py-1" value="${safeAttr(startDate)}"></label>
+                        <label class="block"><span class="block mb-1 text-slate-500">结束日期</span><input id="kb-hit-stats-end" type="date" class="border rounded px-2 py-1" value="${safeAttr(endDate)}"></label>
+                        <button type="button" onclick="loadKbHitStats()" class="rounded bg-emerald-600 px-3 py-1.5 font-bold text-white hover:bg-emerald-700">重试统计</button>
+                    </div>
+                    <div class="rounded border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">命中统计加载失败：${safeText(err.message || err)}</div>
+                </div>`;
+                }
+            }
         }
 
         function kbHitDetailSourceLabel(source) {

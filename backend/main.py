@@ -31803,9 +31803,18 @@ def _caselib_list_iterations_sync(limit: int, include_daily_stats: bool) -> dict
             day_start_bj = datetime(curr.year, curr.month, curr.day)
             day_end_bj = day_start_bj + timedelta(days=1)
 
-            count, avg_score, avg_latency = daily_stats_map.get(date_str, (0, None, None))
+            # 直接读 vs 临时计算的分界: 真实迭代轮次的分数是存好的列(秒出); 每日"实时验证"
+            # 三个数(count/avg/latency)要现算且慢。include_daily_stats=False 时这里不算,
+            # 给前端一个 stats_pending 骨架, 由 /daily_validation_stats/{date} 逐天回填。
+            if include_daily_stats:
+                count, avg_score, avg_latency = daily_stats_map.get(date_str, (0, None, None))
+                stats_pending = False
+            else:
+                count, avg_score, avg_latency = None, None, None
+                stats_pending = True
 
             daily_rows.append({
+                "stats_pending": stats_pending,
                 "run_id": f"daily_{date_str.replace('-', '')}",
                 "version_no": "实时验证",
                 "git_commit_sha": "",
@@ -31824,7 +31833,7 @@ def _caselib_list_iterations_sync(limit: int, include_daily_stats: bool) -> dict
                 "min_quality_score": None,
                 "max_quality_score": None,
                 "avg_latency_ms": avg_latency,
-                "improvement_analysis": "日常真实会话统计" if include_daily_stats else "日常真实会话入口；本次请求未统计每日轮次",
+                "improvement_analysis": "日常真实会话统计",
                 "ai_next_step_plan": "",
                 "analysis_codex": "",
                 "analysis_antigravity": "",
@@ -31863,6 +31872,39 @@ async def caselib_list_iterations(
     # 不在事件循环主线程上跑; 否则单个慢请求(可达 ~189s)会卡死所有并发请求
     # (详情页/train_ai/models 等会一起排队冻住), 表现为"整站加载卡死"。
     return await asyncio.to_thread(_caselib_list_iterations_sync, limit, include_daily_stats)
+
+
+def _caselib_daily_validation_stats_sync(date: str) -> dict:
+    db = SessionLocal()
+    try:
+        d = datetime.fromisoformat(date[:10])
+        start_bj = datetime(d.year, d.month, d.day)
+        end_bj = start_bj + timedelta(days=1)
+        stats_map = _get_daily_validation_stats_range(db, start_bj, end_bj)
+        count, avg_score, avg_latency = stats_map.get(d.date().isoformat(), (0, None, None))
+        return {
+            "status": "success",
+            "date": d.date().isoformat(),
+            "run_id": f"daily_{d.date().isoformat().replace('-', '')}",
+            "count": count,
+            "avg_score": avg_score,
+            "avg_latency": avg_latency,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/case_lib/daily_validation_stats/{date}")
+async def caselib_daily_validation_stats(date: str):
+    # 逐个计算: 列表用 include_daily_stats=false 秒出可读骨架后, 前端按天逐个打本接口
+    # 回填每日"实时验证"的 count/平均分/平均耗时。单天范围 -> 扫描量/大 JSON 量是 5 天的 1/5,
+    # 且整段统计本就带 9s wall-clock 预算与 8s 单语句 timeout(见 _get_daily_validation_stats_range),
+    # 单天必然秒级返回, 不会再撞前端 15s。同步逻辑丢 threadpool, 不占事件循环。
+    try:
+        datetime.fromisoformat(date[:10])
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid date format, use YYYY-MM-DD")
+    return await asyncio.to_thread(_caselib_daily_validation_stats_sync, date)
 
 
 @app.get("/api/case_lib/daily_validation/{date}")
