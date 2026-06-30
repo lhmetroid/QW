@@ -26,7 +26,7 @@ from typing import Any, Optional
 from urllib.parse import quote, urlparse
 from sqlalchemy import and_, or_, text, func, bindparam
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session, defer, load_only
+from sqlalchemy.orm import Session, defer
 from pydantic import BaseModel
 from config import settings
 from logging_config import setup_logging, sanitize_text
@@ -14191,129 +14191,112 @@ async def get_kb_hit_log_chunk_stats(
     timing_started = perf_counter()
     start_dt = _parse_kb_stats_datetime(start_date)
     end_dt = _parse_kb_stats_datetime(end_date, end_of_day=True)
-    max_scan = max(1, min(int(scan_limit or 200), 5000))
-    # 只取统计真正用到的列, 不再整行加载 final_response/query_features/filters_used/
-    # manual_feedback 等大字段(实测 logs_load 占总耗时 ~70%), 大幅加快命中统计.
-    query = db.query(KnowledgeHitLog).options(load_only(
-        KnowledgeHitLog.log_id,
-        KnowledgeHitLog.request_id,
-        KnowledgeHitLog.session_id,
-        KnowledgeHitLog.created_at,
-        KnowledgeHitLog.query_text,
-        KnowledgeHitLog.hit_chunk_ids,
-        KnowledgeHitLog.scores,
-        KnowledgeHitLog.hit_chunks_snapshot,
-        KnowledgeHitLog.status,
-    ))
+    max_rows = max(1, min(int(limit or 200), 1000))
+
+    # 用户诉求: 命中统计要快、别再超时。原实现整行加载最多 scan_limit 条日志(每行含 ~7KB 的
+    # hit_chunks_snapshot 大 JSON), 远端网络下要搬运 >1MB 才在 Python 里聚合, 直接 15s 超时。
+    # 改为在 Postgres 内对 hit_chunk_ids/scores 两个 JSON 数组做 LATERAL unnest + GROUP BY,
+    # 只回传聚合后的 top-N 行, 不再搬运任何快照正文; 同时覆盖全时间范围(不再 200 条采样截断)。
+    where = ["kl.hit_chunk_ids IS NOT NULL"]
+    params: dict = {"limit": max_rows}
     if start_dt:
-        query = query.filter(KnowledgeHitLog.created_at >= start_dt)
+        where.append("kl.created_at >= :start_dt")
+        params["start_dt"] = start_dt
     if end_dt:
-        query = query.filter(KnowledgeHitLog.created_at < end_dt)
+        where.append("kl.created_at < :end_dt")
+        params["end_dt"] = end_dt
     if status:
-        query = query.filter(KnowledgeHitLog.status == status)
-    logs = query.order_by(KnowledgeHitLog.created_at.desc()).limit(max_scan).all()
-    logs_loaded_ms = round((perf_counter() - timing_started) * 1000, 2)
-    counters: dict[str, dict] = {}
-    total_hits = 0
-    chain_snapshot_lookup_count = 0
-    for log in logs:
-        snapshot_hits = _hit_log_snapshot_hits(log)
-        snapshot_source = "recorded_retrieval_snapshot" if snapshot_hits else None
-        if include_chain_snapshots and not snapshot_hits:
-            snapshot_hits, snapshot_source = _hit_log_chain_snapshot_hits(db, log)
-            chain_snapshot_lookup_count += 1
-        snapshot_by_id = {
-            str(hit.get("chunk_id")): hit
-            for hit in snapshot_hits
-            if isinstance(hit, dict) and hit.get("chunk_id")
-        }
-        for index, chunk_id in enumerate(_normalize_hit_chunk_ids(log.hit_chunk_ids)):
-            total_hits += 1
-            item = counters.setdefault(chunk_id, {
-                "chunk_id": chunk_id,
-                "hit_count": 0,
-                "latest_hit_at": None,
-                "queries": [],
-                "score_sum": 0.0,
-                "score_count": 0,
-                "latest_snapshot": None,
-                "snapshot_count": 0,
-                "latest_snapshot_source": None,
-            })
-            item["hit_count"] += 1
-            created_at = log.created_at.isoformat() if log.created_at else None
-            if created_at and (not item["latest_hit_at"] or created_at > item["latest_hit_at"]):
-                item["latest_hit_at"] = created_at
-                item["latest_snapshot"] = snapshot_by_id.get(chunk_id)
-                item["latest_snapshot_source"] = snapshot_source if snapshot_by_id.get(chunk_id) else None
-            if snapshot_by_id.get(chunk_id):
-                item["snapshot_count"] += 1
-            query_text = (log.query_text or "").strip()
-            if query_text and query_text not in item["queries"] and len(item["queries"]) < 5:
-                item["queries"].append(query_text)
-            score = _score_for_hit(log.scores, chunk_id, index)
-            if score is not None:
-                item["score_sum"] += score
-                item["score_count"] += 1
-    aggregate_ms = round((perf_counter() - timing_started) * 1000 - logs_loaded_ms, 2)
-    chunk_ids = list(counters.keys())
-    # chunk_id 列是 UUID 类型, 历史命中日志里可能混入 KB3 旧版数字 id(如 "976"),
-    # 直接 in_() 会让 Postgres 把 "976" 强转 UUID 抛 DataError -> 500 Internal Server Error.
-    # 这里只用合法 UUID 去查 knowledge_chunk, 数字 id 自动走快照/missing 分支, 不再崩溃.
+        where.append("kl.status = :status")
+        params["status"] = status
+    where_sql = " AND ".join(where)
+
+    agg_sql = text(f"""
+        SELECT chunk_id, hit_count, latest_hit_at, avg_score, sample_queries
+        FROM (
+            SELECT
+                c.chunk_id AS chunk_id,
+                COUNT(*) AS hit_count,
+                MAX(kl.created_at) AS latest_hit_at,
+                AVG(NULLIF(s.score, '')::double precision) AS avg_score,
+                (array_agg(DISTINCT NULLIF(btrim(kl.query_text), ''))
+                    FILTER (WHERE NULLIF(btrim(kl.query_text), '') IS NOT NULL))[1:5] AS sample_queries
+            FROM knowledge_hit_logs kl
+            CROSS JOIN LATERAL jsonb_array_elements_text(kl.hit_chunk_ids::jsonb)
+                WITH ORDINALITY AS c(chunk_id, ord)
+            LEFT JOIN LATERAL jsonb_array_elements_text(kl.scores::jsonb)
+                WITH ORDINALITY AS s(score, sord) ON s.sord = c.ord
+            WHERE {where_sql}
+            GROUP BY c.chunk_id
+        ) agg
+        ORDER BY hit_count DESC, latest_hit_at DESC
+        LIMIT :limit
+    """)
+    agg_rows = db.execute(agg_sql, params).fetchall()
+    aggregate_ms = round((perf_counter() - timing_started) * 1000, 2)
+
+    totals_sql = text(f"""
+        SELECT COUNT(*) AS total_hits,
+               COUNT(DISTINCT c.chunk_id) AS unique_chunks,
+               COUNT(DISTINCT kl.log_id) AS log_count
+        FROM knowledge_hit_logs kl
+        CROSS JOIN LATERAL jsonb_array_elements_text(kl.hit_chunk_ids::jsonb) AS c(chunk_id)
+        WHERE {where_sql}
+    """)
+    totals = db.execute(totals_sql, params).fetchone()
+    total_hits = int(totals.total_hits or 0) if totals else 0
+    unique_chunks = int(totals.unique_chunks or 0) if totals else 0
+    log_count = int(totals.log_count or 0) if totals else 0
+
+    # 仅为展示的 top-N 行补标题/类型/业务线等元数据。chunk_id 列是 UUID 类型,
+    # 历史日志可能混入 KB3 旧版数字 id(如 "976"), 先过滤合法 UUID 再查, 避免 UUID 强转崩溃;
+    # 数字 id 不在 knowledge_chunk, 标 missing(前端显示"知识切片已不存在")。
+    chunk_ids = [str(r.chunk_id) for r in agg_rows]
     uuid_chunk_ids = [cid for cid in chunk_ids if _is_uuid_like(cid)]
     chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.chunk_id.in_(uuid_chunk_ids)).all() if uuid_chunk_ids else []
     chunk_map = {str(chunk.chunk_id): chunk for chunk in chunks}
     doc_ids = [str(chunk.document_id) for chunk in chunks if chunk.document_id]
     docs = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id.in_(doc_ids)).all() if doc_ids else []
     doc_map = {str(doc.document_id): doc for doc in docs}
+
     rows = []
-    for chunk_id, item in counters.items():
+    for r in agg_rows:
+        chunk_id = str(r.chunk_id)
         chunk = chunk_map.get(chunk_id)
         row = {
             "chunk_id": chunk_id,
-            "hit_count": item["hit_count"],
-            "latest_hit_at": item["latest_hit_at"],
-            "sample_queries": item["queries"],
-            "avg_score": (item["score_sum"] / item["score_count"]) if item["score_count"] else None,
+            "hit_count": int(r.hit_count or 0),
+            "latest_hit_at": r.latest_hit_at.isoformat() if r.latest_hit_at else None,
+            "sample_queries": list(r.sample_queries or []),
+            "avg_score": float(r.avg_score) if r.avg_score is not None else None,
             "missing": chunk is None,
-            "snapshot_count": item.get("snapshot_count") or 0,
-            "hit_detail_source": item.get("latest_snapshot_source") if item.get("latest_snapshot") else "current_lookup_by_recorded_id",
-            "hit_detail_warning": None if item.get("latest_snapshot") else "该聚合行没有原始命中快照；标题/正文仅按 chunk_id 查询当前知识库内容。",
+            "snapshot_count": 0,
+            "hit_detail_source": "current_lookup_by_recorded_id",
+            "hit_detail_warning": "命中统计为聚合视图；标题/正文按 chunk_id 查询当前知识库内容, 不等同当时命中原文。",
         }
-        if item.get("latest_snapshot"):
-            row.update(_snapshot_hit_to_dict(item["latest_snapshot"], index=0, redact=True, source=item.get("latest_snapshot_source") or "chain_snapshot"))
-            row["missing"] = False
-        elif chunk:
-            row.update(_chunk_to_hit_dict(
-                chunk,
-                document=doc_map.get(str(chunk.document_id)),
-                redact=True,
-            ))
+        if chunk:
+            row.update(_chunk_to_hit_dict(chunk, document=doc_map.get(str(chunk.document_id)), redact=True))
         rows.append(row)
-    rows.sort(key=lambda item: (int(item.get("hit_count") or 0), item.get("latest_hit_at") or ""), reverse=True)
-    max_rows = max(1, min(limit, 1000))
+
     total_ms = round((perf_counter() - timing_started) * 1000, 2)
     logger.info(
-        "KB_HIT_STATS_DONE log_count=%s total_hits=%s unique_chunks=%s scan_limit=%s include_chain_snapshots=%s chain_lookup_count=%s timings_ms=%s",
-        len(logs),
+        "KB_HIT_STATS_DONE log_count=%s total_hits=%s unique_chunks=%s returned_rows=%s timings_ms=%s",
+        log_count,
         total_hits,
-        len(counters),
-        max_scan,
-        include_chain_snapshots,
-        chain_snapshot_lookup_count,
-        {"logs_load": logs_loaded_ms, "aggregate": aggregate_ms, "total": total_ms},
+        unique_chunks,
+        len(rows),
+        {"aggregate": aggregate_ms, "total": total_ms},
     )
     return {
         "status": "success",
         "start_date": start_date,
         "end_date": end_date,
-        "log_count": len(logs),
-        "scan_limit": max_scan,
+        "log_count": log_count,
+        "scan_limit": max_rows,
         "include_chain_snapshots": include_chain_snapshots,
         "total_hit_count": total_hits,
-        "unique_chunk_count": len(counters),
-        "timings_ms": {"logs_load": logs_loaded_ms, "aggregate": aggregate_ms, "total": total_ms},
-        "rows": rows[:max_rows],
+        "unique_chunk_count": unique_chunks,
+        "timings_ms": {"aggregate": aggregate_ms, "total": total_ms},
+        "rows": rows,
     }
 
 @app.get("/api/kb/hit_logs/stats")
@@ -18507,7 +18490,7 @@ def get_mail_customer_suite(
                 "send_settings": _suite_step_send_settings(int(suite_step), saved),
             }
 
-    # 缺失草稿并发补齐: 每个请求最多 2 路打到 LLM，避免 4 封同时压垮 DeepSeek 导致超时/空返回; ex.map 保持原有步序; timeout=180s 防挂死
+    # 缺失草稿并发补齐: 内置套装最多 4 路并发生成; ex.map 保持原有步序; timeout=180s 防挂死
     # 用户自建套装按其实际封数生成，内置场景固定 4 封
     from mail_sequence_strategy import get_dynamic_scenario_step_count
     _custom_step_count = get_dynamic_scenario_step_count(scenario_norm)
@@ -18564,7 +18547,7 @@ def get_mail_customer_suite(
         except Exception:
             logger.exception("MAIL_CUSTOMER_SUITE_TEMPLATE_PREWARM_FAILED customer_id=%s", sanitize_text(customer_id))
     try:
-        with ThreadPoolExecutor(max_workers=min(2, max(1, len(suite_steps))), thread_name_prefix="mail-suite") as executor:
+        with ThreadPoolExecutor(max_workers=min(4, max(1, len(suite_steps))), thread_name_prefix="mail-suite") as executor:
             drafts = list(executor.map(_generate_one_suite_draft, suite_steps, timeout=180))
     except Exception as _exc:
         if "TimeoutError" not in type(_exc).__name__:
