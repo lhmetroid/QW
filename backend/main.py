@@ -8128,9 +8128,27 @@ def _call_llm2_json_for_mail_draft(prompt: str, timeout_seconds: int = 35, force
             "temperature": cfg["temperature"],
             "max_tokens": cfg["max_tokens"],
         }
+        deepseek_params = cfg.get("deepseek_params") or {}
+        if provider == "deepseek":
+            thinking_type = str(deepseek_params.get("thinking_type") or "disabled").strip().lower()
+            payload["thinking"] = {"type": "enabled" if thinking_type == "enabled" else "disabled"}
+            if thinking_type == "enabled" and deepseek_params.get("reasoning_effort") in {"high", "max"}:
+                payload["reasoning_effort"] = deepseek_params.get("reasoning_effort")
+            if deepseek_params.get("top_p") is not None:
+                payload["top_p"] = deepseek_params.get("top_p")
+            if str(deepseek_params.get("stop") or "").strip():
+                payload["stop"] = [item.strip() for item in str(deepseek_params.get("stop") or "").split("\n") if item.strip()]
+            if deepseek_params.get("logprobs"):
+                payload["logprobs"] = True
+                top_logprobs = int(deepseek_params.get("top_logprobs") or 0)
+                if top_logprobs > 0:
+                    payload["top_logprobs"] = top_logprobs
+            if str(deepseek_params.get("user_id") or "").strip():
+                payload["user_id"] = str(deepseek_params.get("user_id") or "").strip()
         # Do not force response_format JSON if it's Claude model or Anthropic provider,
         # as standard proxy APIs might fail or reject JSON schema formatting parameters
-        if force_json and not ("claude" in model.lower() or "anthropic" in provider):
+        response_format = str(deepseek_params.get("response_format") or "json_object").strip().lower()
+        if force_json and response_format == "json_object" and not ("claude" in model.lower() or "anthropic" in provider):
             payload["response_format"] = {"type": "json_object"}
 
     raw_text = ""
@@ -22032,9 +22050,9 @@ def _wecom_runtime_config_payload(row: WecomRuntimeConfig) -> dict[str, Any]:
         "SYSTEM_PROMPT_LLM2": row.system_prompt_llm2 or "",
         "REPLY_STYLE_OPTIONS": row.reply_style_options or [],
         "FAST_TRACK_RULES": row.fast_track_rules or [],
-        
         "MAIL_GENERATION_MODEL": _normalize_mail_generation_model(getattr(row, "mail_generation_model", None)),
-        "MAIL_DEEPSEEK_MODEL_CONFIGS": _normalize_mail_deepseek_model_configs(getattr(row, "mail_deepseek_model_configs", None)),"_storage": "database",
+        "MAIL_DEEPSEEK_MODEL_CONFIGS": _normalize_mail_deepseek_model_configs(getattr(row, "mail_deepseek_model_configs", None)),
+        "_storage": "database",
         "_table": "wecom_runtime_config",
         "_updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
@@ -22065,8 +22083,11 @@ def _backfill_empty_wecom_runtime_config(row: WecomRuntimeConfig, defaults: dict
         changed = True
     if not getattr(row, "mail_generation_model", None):
         row.mail_generation_model = _normalize_mail_generation_model(defaults.get("mail_generation_model") or defaults.get("MAIL_GENERATION_MODEL"))
-        changed = True`r`n    if not getattr(row, "mail_deepseek_model_configs", None):`r`n        row.mail_deepseek_model_configs = _normalize_mail_deepseek_model_configs(defaults.get("mail_deepseek_model_configs") or defaults.get("MAIL_DEEPSEEK_MODEL_CONFIGS"))
-        changed = True`r`n    if changed:
+        changed = True
+    if not getattr(row, "mail_deepseek_model_configs", None):
+        row.mail_deepseek_model_configs = _normalize_mail_deepseek_model_configs(defaults.get("mail_deepseek_model_configs") or defaults.get("MAIL_DEEPSEEK_MODEL_CONFIGS"))
+        changed = True
+    if changed:
         row.updated_by = "api_backfill_from_files"
     return changed
 
@@ -22090,15 +22111,14 @@ def _get_or_create_wecom_runtime_config(db: Session) -> WecomRuntimeConfig:
         system_prompt_llm2=defaults.get("SYSTEM_PROMPT_LLM2"),
         reply_style_options=defaults.get("REPLY_STYLE_OPTIONS") if isinstance(defaults.get("REPLY_STYLE_OPTIONS"), list) else [],
         fast_track_rules=defaults.get("FAST_TRACK_RULES") if isinstance(defaults.get("FAST_TRACK_RULES"), list) else [],
-        
         mail_generation_model=_normalize_mail_generation_model(defaults.get("mail_generation_model") or defaults.get("MAIL_GENERATION_MODEL")),
-        mail_deepseek_model_configs=_normalize_mail_deepseek_model_configs(defaults.get("mail_deepseek_model_configs") or defaults.get("MAIL_DEEPSEEK_MODEL_CONFIGS")),updated_by="api_seed_from_files",
+        mail_deepseek_model_configs=_normalize_mail_deepseek_model_configs(defaults.get("mail_deepseek_model_configs") or defaults.get("MAIL_DEEPSEEK_MODEL_CONFIGS")),
+        updated_by="api_seed_from_files",
     )
     db.add(row)
     db.commit()
     db.refresh(row)
     return row
-
 
 @app.get("/api/system/ai_scripts")
 async def get_ai_scripts():
@@ -31846,13 +31866,18 @@ async def caselib_list_iterations(
 
 
 @app.get("/api/case_lib/daily_validation/{date}")
-async def get_daily_validation_detail(
+def get_daily_validation_detail(
     date: str,
     view: str = Query(default="api"),
     limit: int = Query(default=300, ge=1, le=1000),
     db: Session = Depends(get_db),
 ):
-    """获取指定日期的日常实时验证明细列表，格式与 iterations/{run_id} 结果对齐"""
+    """获取指定日期的日常实时验证明细列表，格式与 iterations/{run_id} 结果对齐。
+
+    同步端点(非 async): 端内是阻塞式 DB I/O(单次可达数秒拉 ~300 行大 JSON result_payload)。
+    写成 async def 会阻塞事件循环, 与详情页并发的其他请求互相饿死, 整体拖过前端 15s abort
+    -> "加载失败：timeout"。改 def 让 FastAPI 在 threadpool 跑, 各请求真正并发, 互不阻塞。
+    """
     total_started = perf_counter()
     timings_ms: dict[str, float] = {}
 
@@ -32360,7 +32385,11 @@ async def get_daily_validation_detail(
 
 
 @app.get("/api/case_lib/iterations/{run_id}")
-async def caselib_get_iteration_detail(run_id: str):
+def caselib_get_iteration_detail(run_id: str):
+    # 同步端点(非 async): FastAPI 会把它丢进 threadpool 跑, 不占事件循环。
+    # 全是阻塞式 psycopg2 DB I/O, 若写成 async def 会在事件循环主线程上阻塞, 详情页同时并发
+    # 发起的多个请求(详情/模型/分析)会被串行排队, 任一慢请求就把本请求挤过前端 15s abort
+    # 阈值 -> "加载失败：timeout"。详见列表端点 _caselib_list_iterations_sync 同款教训。
     db = SessionLocal()
     total_started = perf_counter()
     timings_ms: dict[str, float] = {}
@@ -33639,17 +33668,3 @@ async def caselib_regenerate_iteration_summary(run_id: str):
         }
     finally:
         db.close()
-
-
-
-
-
-
-
-
-
-
-
-
-
-

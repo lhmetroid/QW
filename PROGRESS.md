@@ -1,5 +1,12 @@
 # PROGRESS
 
+## 2026-06-30 迭代详情页"加载失败:timeout"修复(详情端点改同步走 threadpool)
+
+- 现象: 点"详情 →"进迭代详情页, 仍整屏"加载失败：timeout"。查 backend/logs/app.log: 真实迭代轮次详情 `/api/case_lib/iterations/{run_id}` 从未触发 >1s 计时日志(快), 慢的是日常"实时验证"详情 `/api/case_lib/daily_validation/{date}?view=api`(query_invocations_ms 约 3.7s 拉 ~300 行大 JSON result_payload, total ~4s)。单条 4-5s 本不该撞 15s。
+- 根因: 两个详情端点都写成 `async def` 却跑纯阻塞 psycopg2 DB I/O, 占着事件循环主线程。详情页一打开并发发起多个请求(详情/模型/分析), 在单线程事件循环上串行排队, 任一慢请求就把用户等的详情请求挤过前端 15s abort 阈值 -> timeout。与列表端点当初同款教训(那时用 asyncio.to_thread 解决)。
+- 修复 (backend/main.py): 把 `caselib_get_iteration_detail` 和 `get_daily_validation_detail` 由 `async def` 改成普通 `def`。FastAPI 对同步端点会自动丢进 threadpool 跑, 不再占事件循环, 各请求真正并发、互不阻塞。两端体内均无 await, 转换安全; `get_db` 为同步依赖, threadpool 模型干净。
+- 验证: `python -m py_compile backend/main.py` 通过。需重启后端生效。
+
 ## 2026-06-30 迭代记录页"加载失败:timeout"修复(日常验证统计降级)
 
 - 现象: "① 迭代记录" tab 打开后整屏红框"加载失败：timeout"。根因是 `GET /api/case_lib/iterations` 慢于前端 `caselibFetch` 15s 的 AbortController 预算(见 frontend/index.html:1406 LOCAL_API_TIMEOUT_MS)。慢点在 `_get_daily_validation_stats_range`: 扫近 5 天 `ApiAssistInvocation` 轻量列 + 分批补取大 JSON `result_payload`。一旦它慢, 真实迭代轮次(rows)也跟着全军覆没。
@@ -1265,3 +1272,10 @@
 - 单封重刷接口改为生成 DB session 与保存 DB session 分离，避免 FastAPI 请求注入的 session 跨长 LLM 调用持有事务。
 - 验证：python -m py_compile backend\main.py、当前 frontend/mail-suite.html 内联脚本抽取后
 ode --check、git diff --check -- backend/main.py frontend/mail-suite.html 均通过。
+
+## 2026-06-30 15:05:05 邮件配置页 DeepSeek 生成参数真保存
+
+- 邮件配置页顶部新增邮件生成 LLM 选择与 DeepSeek 参数面板，覆盖 deepseek-v4-flash / deepseek-v4-pro 两套参数。
+- 参数包含 thinking、reasoning_effort、temperature、top_p、max_tokens、response_format、stop、logprobs、top_logprobs、user_id；保存后通过 /api/v1/system/runtime-llm-settings 写入数据库并即时生效。
+- 后端 wecom_runtime_config 新增 mail_generation_model 与 mail_deepseek_model_configs 字段，保留 runtime_llm_settings.json 兼容写入；邮件草稿生成链路按当前模型读取对应 DeepSeek 参数组装请求体。
+- 验证：python -m py_compile backend\main.py backend\database.py；抽取 frontend/index.html 内联脚本后 node --check；git diff --check -- backend/main.py backend/database.py frontend/index.html 均通过。
