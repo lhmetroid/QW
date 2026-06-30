@@ -29,9 +29,55 @@ _MAIL_AI_USE_RANGE = "宣传邮件-AI"
 _ALLOWED_STATS_STAFF_IDS = ("0017", "0141", "1607", "0002", "0188")
 _ALLOWED_STATS_STAFF_SET = set(_ALLOWED_STATS_STAFF_IDS)
 
+_VALUE_HARD_NEGATIVE_RE = re.compile(
+    r"(退订|取消订阅|unsubscribe|do not contact|不要再(发|联系)|别再(发|联系)|停止发送|垃圾邮件|退信|undeliver|delivery failed|mail delivery)",
+    re.I,
+)
+_VALUE_REFERRAL_SIGNAL_RE = re.compile(
+    r"(找|联系|对接|转给|转发给|推荐给|介绍给|问一下).{0,18}(业务相关|相关业务|相关负责人|负责人|相关同事|业务同事|对应同事|采购|市场|项目|销售|商务|部门|团队|人士|人员)",
+    re.I,
+)
+_VALUE_WRONG_CONTACT_RE = re.compile(
+    r"(我这边|本人|我司|我们这边).{0,18}(不负责|不相关|无关|相差.{0,6}远|不是.{0,8}业务|已经是.{0,18}销售)",
+    re.I,
+)
+# 变体: 客户让你"去找对方/别人对接"(裸"人"也算), 而严格转介绍正则要求"人士/负责人/业务相关"等会漏判。
+_VALUE_FIND_OTHER_PEOPLE_RE = re.compile(
+    r"(最好找|你?去找|建议你?找|改?找|另?找|联系).{0,12}(的人|别人|其他人|他们的人|对方)",
+    re.I,
+)
+# 变体: 客户自述业务不对口/相差很远("我这只是""相差很远"这类不被 WRONG_CONTACT 命中的措辞)。
+_VALUE_BIZ_MISMATCH_RE = re.compile(
+    r"(相差.{0,6}远|业务.{0,8}(不|无)关|不是我.{0,8}业务|不(负责|对口|归我)|我(这|只)?(这)?只是.{0,12}(销售|负责))",
+    re.I,
+)
+
 
 def _is_allowed_stats_staff(staff_id: str) -> bool:
     return (staff_id or "").strip() in _ALLOWED_STATS_STAFF_SET
+
+
+def _local_value_override(subject: str, body: str) -> dict | None:
+    """本地高置信覆盖规则，修正 LLM 容易漏判的可推进回信。
+
+    典型场景：当前联系人说自己不负责/业务不匹配，但明确建议找业务相关人员。
+    这不是强意向，却给了下一步联系人路径，应计为有价值回信。
+    """
+    text_value = f"{subject or ''}\n{body or ''}".strip()
+    if not text_value:
+        return None
+    if _VALUE_HARD_NEGATIVE_RE.search(text_value):
+        return None
+    if _VALUE_REFERRAL_SIGNAL_RE.search(text_value):
+        reason = "客户虽非当前负责人，但指向业务相关人员/部门，可继续请求转介绍或确认对接路径"
+        if _VALUE_WRONG_CONTACT_RE.search(text_value):
+            reason = "客户说明当前联系人业务不匹配，但建议联系业务相关人士，属于可推进转介绍线索"
+        return {"is_valuable": True, "reason": reason}
+    # 变体: 自述业务不对口 + 让你去找对方的人/别人对接(裸"人"措辞), 两个信号同时命中才生效, 避免误伤。
+    if _VALUE_FIND_OTHER_PEOPLE_RE.search(text_value) and _VALUE_BIZ_MISMATCH_RE.search(text_value):
+        return {"is_valuable": True,
+                "reason": "客户自述业务不对口/相差较远，但建议去找对方相关人员对接，属于可推进转介绍线索"}
+    return None
 
 
 def bj_date(dt) -> date | None:
@@ -274,9 +320,13 @@ def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
                     # SendId 不在 spSendInfo: 仍在队列待发 或 已被删除。缺 SendId 的未来计划保持空状态, 等后续真发后再反查。
                     if r[1]:
                         db.execute(text(
-                            "UPDATE mail_customer_suite_send_plan "
-                            "SET crm_send_status=COALESCE(crm_send_status,'pending_or_deleted'), status_synced_at=now() "
-                            "WHERE plan_id=:pid"
+                            "WITH target AS ("
+                            "  SELECT plan_id FROM mail_customer_suite_send_plan "
+                            "  WHERE plan_id=:pid FOR UPDATE SKIP LOCKED"
+                            ") "
+                            "UPDATE mail_customer_suite_send_plan p "
+                            "SET crm_send_status=COALESCE(p.crm_send_status,'pending_or_deleted'), status_synced_at=now() "
+                            "FROM target WHERE p.plan_id=target.plan_id"
                         ), {"pid": plan_id})
                     continue
                 status_v = (str(rec[1]) if rec[1] else "").strip()
@@ -285,10 +335,14 @@ def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
                 deleted = rec[4] is not None
                 final_status = "deleted" if deleted else status_v
                 db.execute(text(
-                    "UPDATE mail_customer_suite_send_plan "
-                    "SET crm_send_id=COALESCE(crm_send_id,:sid), crm_send_status=:st, "
+                    "WITH target AS ("
+                    "  SELECT plan_id FROM mail_customer_suite_send_plan "
+                    "  WHERE plan_id=:pid FOR UPDATE SKIP LOCKED"
+                    ") "
+                    "UPDATE mail_customer_suite_send_plan p "
+                    "SET crm_send_id=COALESCE(p.crm_send_id,:sid), crm_send_status=:st, "
                     "crm_fact_send_time=:ft, crm_eml_ftp_dir=:ed, status_synced_at=now() "
-                    "WHERE plan_id=:pid"
+                    "FROM target WHERE p.plan_id=target.plan_id"
                 ), {"sid": recovered_send_id, "st": final_status, "ft": fact, "ed": eml_dir, "pid": plan_id})
                 if status_v == "SendSuccess" and not deleted:
                     sent += 1
@@ -298,7 +352,12 @@ def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
                         mid = _norm_msgid(hdr.get("message_id"))
                         if mid:
                             db.execute(text(
-                                "UPDATE mail_customer_suite_send_plan SET crm_message_id=:m WHERE plan_id=:pid"
+                                "WITH target AS ("
+                                "  SELECT plan_id FROM mail_customer_suite_send_plan "
+                                "  WHERE plan_id=:pid FOR UPDATE SKIP LOCKED"
+                                ") "
+                                "UPDATE mail_customer_suite_send_plan p "
+                                "SET crm_message_id=:m FROM target WHERE p.plan_id=target.plan_id"
                             ), {"m": mid, "pid": plan_id})
         db.commit()
     finally:
@@ -485,7 +544,8 @@ def discover_replies(db: Session, lookback_days: int = 120, max_fetch: int = 400
 _VALUE_PROMPT = (
     "你是B2B外贸销售助理。下面是客户对我方一封开发/营销邮件的回信。请判断这封回信是否\"有价值\"。\n"
     "有价值 = 客户表达了真实意向/需求/问题/可推进的合作信号(如询价、要资料、约时间、提出具体问题、表示感兴趣)。\n"
-    "无价值 = 自动回复/休假回复、退订、明确拒绝且无后续、纯礼貌客套无信息、退信、与业务无关、垃圾邮件。\n"
+    "客户说当前联系人不负责、业务不匹配，但建议找业务相关人士/相关部门/负责人/其他同事，也算有价值，因为可继续请求转介绍或确认对接路径。\n"
+    "无价值 = 自动回复/休假回复、退订、明确拒绝且无后续、纯礼貌客套无信息、退信、完全与业务无关且没有任何可推进路径、垃圾邮件。\n"
     "只输出JSON: {\"is_valuable\": true/false, \"reason\": \"一句话中文理由\"}。\n\n"
     "回信主题: {subject}\n回信正文:\n{body}\n"
 )
@@ -500,8 +560,18 @@ def analyze_values(db: Session, llm_call, limit: int = 60) -> dict:
     done = 0
     valuable = 0
     for r in rows:
+        subject = (r[1] or "")[:300]
         body = (r[2] or "")[:4000]
-        prompt = _VALUE_PROMPT.replace("{subject}", (r[1] or "")[:300]).replace("{body}", body)
+        override = _local_value_override(subject, body)
+        if override:
+            db.execute(text(
+                "UPDATE mail_ai_reply_analysis SET is_valuable=TRUE, value_reason=:r, "
+                "value_model='local_referral_signal_rule', analyzed_at=now() WHERE reply_id=:id"
+            ), {"r": override["reason"], "id": r[0]})
+            done += 1
+            valuable += 1
+            continue
+        prompt = _VALUE_PROMPT.replace("{subject}", subject).replace("{body}", body)
         try:
             res = llm_call(prompt)
         except Exception as exc:
@@ -513,6 +583,11 @@ def analyze_values(db: Session, llm_call, limit: int = 60) -> dict:
         is_val = bool(parsed.get("is_valuable"))
         reason = str(parsed.get("reason") or "")[:1000]
         model = str((res or {}).get("model") or "")[:120]
+        override = None if is_val else _local_value_override(subject, body)
+        if override:
+            is_val = True
+            reason = override["reason"]
+            model = f"{model}+local_referral_signal_rule"[:120]
         db.execute(text(
             "UPDATE mail_ai_reply_analysis SET is_valuable=:v, value_reason=:r, value_model=:m, analyzed_at=now() "
             "WHERE reply_id=:id"
@@ -522,6 +597,27 @@ def analyze_values(db: Session, llm_call, limit: int = 60) -> dict:
             valuable += 1
     db.commit()
     return {"analyzed": done, "valuable": valuable}
+
+
+def reconcile_local_value_overrides(db: Session, limit: int = 500) -> dict:
+    """修正旧缓存中的高置信误判；不重新调用 LLM。"""
+    rows = db.execute(text(
+        "SELECT reply_id, reply_subject, reply_body FROM mail_ai_reply_analysis "
+        "WHERE is_valuable=FALSE ORDER BY reply_received_at DESC NULLS LAST LIMIT :lim"
+    ), {"lim": limit}).fetchall()
+    corrected = 0
+    for r in rows:
+        override = _local_value_override((r[1] or "")[:300], (r[2] or "")[:4000])
+        if not override:
+            continue
+        db.execute(text(
+            "UPDATE mail_ai_reply_analysis SET is_valuable=TRUE, value_reason=:r, "
+            "value_model=COALESCE(NULLIF(value_model,''),'unknown') || '+local_referral_signal_rule', "
+            "analyzed_at=now() WHERE reply_id=:id"
+        ), {"r": override["reason"], "id": r[0]})
+        corrected += 1
+    db.commit()
+    return {"checked": len(rows), "corrected": corrected}
 
 
 # ---------------------------------------------------------------------------
@@ -668,10 +764,11 @@ def refresh_all(db: Session, llm_call, lookback_days: int = 120) -> dict:
     r1 = sync_send_status(db, lookback_days=lookback_days)
     r2 = discover_replies(db, lookback_days=lookback_days)
     r3 = analyze_values(db, llm_call)
+    r4 = reconcile_local_value_overrides(db)
     today_bj = (datetime.utcnow() + BJ_OFFSET).date()
     start = today_bj - timedelta(days=lookback_days)
     compute_and_store_daily(db, start, today_bj)
-    return {"send_status": r1, "replies": r2, "values": r3}
+    return {"send_status": r1, "replies": r2, "values": r3, "local_value_overrides": r4}
 
 
 # ---------------------------------------------------------------------------
