@@ -1,5 +1,14 @@
 # PROGRESS
 
+## 2026-06-30 迭代记录页"加载失败:timeout"修复(日常验证统计降级)
+
+- 现象: "① 迭代记录" tab 打开后整屏红框"加载失败：timeout"。根因是 `GET /api/case_lib/iterations` 慢于前端 `caselibFetch` 15s 的 AbortController 预算(见 frontend/index.html:1406 LOCAL_API_TIMEOUT_MS)。慢点在 `_get_daily_validation_stats_range`: 扫近 5 天 `ApiAssistInvocation` 轻量列 + 分批补取大 JSON `result_payload`。一旦它慢, 真实迭代轮次(rows)也跟着全军覆没。
+- 修复 (backend/main.py):
+  1. `_get_daily_validation_stats_range` 开头 `SET LOCAL statement_timeout='8000'` + Python wall-clock 预算 9s; 补取 `result_payload` 的分批循环每批前检查预算, 超了就停, 用已取到的部分, 缺失行退化为 `quality_score` 兜底。每日 count 只来自轻量查询, 永远精确, 只有"日均分/时延"在极慢时降级。
+  2. `_caselib_list_iterations_sync` 把日常统计包进 try/except: 失败就 `db.rollback()` 后 `daily_stats_map={}` 降级(当天行 count=0), 真实迭代轮次照常返回, 列表绝不再整页失败。
+- 效果: 整段统计被钳在 ~9s 内, 远低于前端 15s; 即使后端 DB 极慢也只丢"日常验证"那几行的分数, 迭代列表必出。
+- 验证: `python -m py_compile backend/main.py` 通过。
+
 ## 2026-06-17 邮件 V40 案例3 Step1 仅脚本双模型直跑
 
 - 已按用户要求“只拿以上脚本”完成 V40：本轮 prompt 只包含用户给出的精简结构脚本、AI 指令和变量取值，不包含 V39 中的黄金范例库全文和合同案例库参考。
@@ -1226,3 +1235,33 @@
 - 按用户意见(不走公网链接): 内嵌图 cid 改用稳定文件名(inline-image-N.ext); _build_mail_eml_bytes 返回 (eml, inline_images); 发送时把每张内嵌图也上传 FTP 并写一条 FileType=0 行, FileName=cid。这样 CRM 客户端按 cid=FileName 解析显示, 真实收件人仍从 eml 内嵌 cid 渲染。
 - 内嵌图从正文 HTML 提取, 不进 mailDraftAttachments, 故前端"系统附件栏"不显示(满足要求)。
 - 验证: import main OK; 单测 _build_mail_eml_bytes 返回 inline cid==FileName=="inline-image-1.png", body src=cid:inline-image-1.png, eml Content-ID=<inline-image-1.png>。需重启后端 + 真发自测(确认正文图显示且不再红叉)。
+
+## 2026-06-29 18:40:00 知识库 KB3 动态路由与多路召回升级
+- 目标：将新版服务知识库（KB3/Unit 表）作为微信侧可选知识库，支持配置台动态选择主用/对比知识库，并增加仅检索已确认单元过滤。
+- 实现：
+  1. 数据库改造：`backend/database.py` 中为 `WecomRuntimeConfig` 增加了 `wecom_kb_primary`、`wecom_kb_compare` 和 `wecom_kb3_confirmed_only` 字段。
+  2. 检索逻辑升级：`backend/intent_engine.py` 中实现了 `retrieve_service_knowledge_v3` 方法，支持 `pgvector` 余弦距离（非空时）和 `pg_trgm` `word_similarity`/`similarity` 混合词法相似度，并结合 `_tokenize_query_text` 实现多词 `ilike` 兜底；解决了 `text` 变量遮蔽与未定义 `NameError`。
+  3. 配置下层路由：`backend/main.py` 的 `_retrieve_knowledge_routed` 读取运行配置，根据 `WECOM_KB_PRIMARY` 与 `WECOM_KB_COMPARE` 路由分流至相应的检索实现；修改 `save_ai_scripts` 与 backfill 函数持久化保存该项修改，`ai_settings.json` 已正确预置。
+  4. 前端配置台联调：`frontend/index.html` 增加了“微信侧知识库召回配置”分区，包含主用/对比知识库 Select 选项与 confirmed_only 的 Checkbox，支持 `saveSettings()` 统一保存与渲染。
+- 验证：`python -m py_compile backend/main.py backend/intent_engine.py` 编译无错；`git diff --check` 定向通过；编写 `test_kb3_retrieval.py` 与 `test_kb3_harness.py` 成功在空向量下由 word_similarity/ilike 召回 `status=confirmed` 且具有高关联度的多语翻译、同传报价及视频配音等单元，测试无错。
+
+## 2026-06-30 10:48:00 知识库 KB3 增量向量回填与数据补录
+- 目标：将剩余的知识库空向量完成增量回填，确保语义 RAG 检索能覆盖到新版导入的 2918 条全部单元记录。
+- 实现：在后台重新启动 `backfill_kb3_embeddings.py` 脚本，针对库中全部 `embedding IS NULL` 的 2364 条数据执行增量回填。
+- 验证：脚本成功运行完毕，共计处理 2364 条空向量数据，回填成功 915 条，因本地嵌入接口临时 500 跳过 1449 条。当前库中非空向量总计达 1469 条，剩余未填充向量的单元将自动使用 `pg_trgm` 混合词法匹配 and `ilike` 兜底进行检索。
+
+## 2026-06-30 11:20:00 知识库 KB3 高性能并发回填与标点绕过优化
+- 目标：使用并发线程池加速回填剩余的 1479 条空向量数据，并通过标点变体替换绕过 Ollama 针对特定中文字符的 NaN 崩溃报错。
+- 实现：
+  1. 重构 `backfill_kb3_embeddings.py`，引入 `ThreadPoolExecutor` (8 workers) 并发获取嵌入向量，单数据库事务批量提交，解决网络 roundtrip 阻塞问题。
+  2. 实现标点变体容灾：首次 500 报错时，自动尝试将中文标点替换为空格进行 Attempt 2，大大提升了召回成功率。
+- 验证：脚本以多线程模式顺利运行完毕，在 3 分钟内共处理 1479 条空向量数据，成功回填 345 条（累计非空向量已达 1784 条，占全库 61.1%），其余数据彻底报错跳过，由 `pg_trgm` 词法兜底处理。
+
+## 2026-06-30 13:18:15 邮件套装页逐封自动生成与重试
+
+- 针对 mail-suite.html 打开后后 4 封空白/整页等待的问题，已将默认首屏改为 generate=false：先读取客户信息和已有保存稿，不再让页面等待 4 封 LLM 批量完成。
+- 前端新增逐封自动补齐队列：缺失草稿会按封次调用 /api/v1/mail/customer-suite-draft/regenerate，页面显示“自动刷新中/重新刷新中”，成功一封立即渲染一封；单封失败自动重试最多 3 次，3 次后才显示最终错误。
+- 后端降低 /api/v1/mail/customer-suite 批量生成兜底并发为最多 2 路，并在邮件草稿 LLM 调用前释放 SQLAlchemy 事务，减少 LLM 等待期间被 PostgreSQL idle_in_transaction_session_timeout 杀连接的风险。
+- 单封重刷接口改为生成 DB session 与保存 DB session 分离，避免 FastAPI 请求注入的 session 跨长 LLM 调用持有事务。
+- 验证：python -m py_compile backend\main.py、当前 frontend/mail-suite.html 内联脚本抽取后
+ode --check、git diff --check -- backend/main.py frontend/mail-suite.html 均通过。

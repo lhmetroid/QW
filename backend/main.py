@@ -503,6 +503,8 @@ def _ensure_wecom_runtime_config_schema(db: Session) -> None:
         "system_prompt_llm2 TEXT,"
         "reply_style_options JSON,"
         "fast_track_rules JSON,"
+        "mail_generation_model VARCHAR(50) NOT NULL DEFAULT 'deepseek-v4-flash',"
+        "mail_deepseek_model_configs JSON,"
         "updated_by VARCHAR(120),"
         "created_at TIMESTAMP DEFAULT now(),"
         "updated_at TIMESTAMP DEFAULT now()"
@@ -519,6 +521,8 @@ def _ensure_wecom_runtime_config_schema(db: Session) -> None:
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS system_prompt_llm2 TEXT;"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS reply_style_options JSON;"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS fast_track_rules JSON;"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS mail_generation_model VARCHAR(50) NOT NULL DEFAULT 'deepseek-v4-flash';"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS mail_deepseek_model_configs JSON;"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS updated_by VARCHAR(120);"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT now();"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();"))
@@ -529,6 +533,7 @@ def _ensure_wecom_runtime_config_schema(db: Session) -> None:
     db.execute(text("UPDATE wecom_runtime_config SET wecom_kb_primary = 'kb1' WHERE wecom_kb_primary IS NULL;"))
     db.execute(text("UPDATE wecom_runtime_config SET wecom_kb_compare = 'kb2' WHERE wecom_kb_compare IS NULL;"))
     db.execute(text("UPDATE wecom_runtime_config SET wecom_kb3_confirmed_only = false WHERE wecom_kb3_confirmed_only IS NULL;"))
+    db.execute(text("UPDATE wecom_runtime_config SET mail_generation_model = 'deepseek-v4-flash' WHERE mail_generation_model IS NULL OR mail_generation_model = '';"))
 # 初始化数据库结构
 def auto_patch_db():
     try:
@@ -1745,6 +1750,7 @@ class RuntimeLlmSettings(BaseModel):
     mail_system_prompt: str | None = None
     mail_temperature: float | None = None
     mail_generation_model: str | None = None
+    mail_deepseek_model_configs: dict[str, Any] | None = None
 
     class Config:
         extra = "forbid"
@@ -7773,13 +7779,28 @@ def _load_runtime_settings_with_defaults() -> dict[str, Any]:
     if not isinstance(data, dict):
         data = {}
 
-    return {
+    result = {
         "wecom_system_prompt": data.get("wecom_system_prompt") or default_wecom_prompt,
         "wecom_temperature": data.get("wecom_temperature") if data.get("wecom_temperature") is not None else default_wecom_temp,
         "mail_system_prompt": data.get("mail_system_prompt") or default_mail_prompt,
         "mail_temperature": data.get("mail_temperature") if data.get("mail_temperature") is not None else default_mail_temp,
         "mail_generation_model": _normalize_mail_generation_model(data.get("mail_generation_model")),
+        "mail_deepseek_model_configs": _normalize_mail_deepseek_model_configs(data.get("mail_deepseek_model_configs")),
     }
+
+    try:
+        db = SessionLocal()
+        try:
+            row = _get_or_create_wecom_runtime_config(db)
+            result["mail_generation_model"] = _normalize_mail_generation_model(getattr(row, "mail_generation_model", None) or result["mail_generation_model"])
+            db_configs = getattr(row, "mail_deepseek_model_configs", None)
+            if db_configs:
+                result["mail_deepseek_model_configs"] = _normalize_mail_deepseek_model_configs(db_configs)
+        finally:
+            db.close()
+    except Exception:
+        pass
+    return result
 
 
 _MAIL_DRAFT_LLM_SYSTEM_PROMPT = (
@@ -7822,6 +7843,82 @@ def _normalize_mail_generation_model(value: str | None) -> str:
     return aliases.get(key, "deepseek-v4-flash")
 
 
+
+
+def _default_mail_deepseek_model_configs() -> dict[str, dict[str, Any]]:
+    base = {
+        "thinking_type": "disabled",
+        "reasoning_effort": "high",
+        "temperature": 0.35,
+        "top_p": None,
+        "max_tokens": 2400,
+        "response_format": "json_object",
+        "stop": "",
+        "logprobs": False,
+        "top_logprobs": 0,
+        "user_id": "",
+    }
+    return {
+        "deepseek-v4-flash": dict(base),
+        "deepseek-v4-pro": dict(base),
+    }
+
+
+def _normalize_mail_deepseek_config_item(value: Any) -> dict[str, Any]:
+    source = value if isinstance(value, dict) else {}
+    defaults = _default_mail_deepseek_model_configs()["deepseek-v4-flash"]
+    thinking_type = sanitize_text(source.get("thinking_type") or source.get("thinking") or defaults["thinking_type"]).strip().lower()
+    if thinking_type not in {"enabled", "disabled"}:
+        thinking_type = defaults["thinking_type"]
+    reasoning_effort = sanitize_text(source.get("reasoning_effort") or defaults["reasoning_effort"]).strip().lower()
+    if reasoning_effort not in {"high", "max"}:
+        reasoning_effort = defaults["reasoning_effort"]
+    response_format = sanitize_text(source.get("response_format") or defaults["response_format"]).strip().lower()
+    if response_format not in {"json_object", "text"}:
+        response_format = defaults["response_format"]
+
+    def _float_or_none(raw: Any, min_value: float, max_value: float) -> float | None:
+        if raw in (None, ""):
+            return None
+        try:
+            number = float(raw)
+        except (TypeError, ValueError):
+            return None
+        return max(min_value, min(max_value, number))
+
+    def _float_or_default(raw: Any, default: float, min_value: float, max_value: float) -> float:
+        value = _float_or_none(raw, min_value, max_value)
+        return default if value is None else value
+
+    def _int_or_default(raw: Any, default: int, min_value: int, max_value: int) -> int:
+        try:
+            number = int(raw)
+        except (TypeError, ValueError):
+            number = default
+        return max(min_value, min(max_value, number))
+
+    return {
+        "thinking_type": thinking_type,
+        "reasoning_effort": reasoning_effort,
+        "temperature": round(_float_or_default(source.get("temperature"), float(defaults["temperature"]), 0.0, 2.0), 3),
+        "top_p": _float_or_none(source.get("top_p"), 0.0, 1.0),
+        "max_tokens": _int_or_default(source.get("max_tokens"), int(defaults["max_tokens"]), 256, 8192),
+        "response_format": response_format,
+        "stop": sanitize_text(source.get("stop") or "")[:500],
+        "logprobs": _coerce_bool_setting(source.get("logprobs"), default=False),
+        "top_logprobs": _int_or_default(source.get("top_logprobs"), 0, 0, 20),
+        "user_id": sanitize_text(source.get("user_id") or "")[:120],
+    }
+
+
+def _normalize_mail_deepseek_model_configs(value: Any) -> dict[str, dict[str, Any]]:
+    defaults = _default_mail_deepseek_model_configs()
+    incoming = value if isinstance(value, dict) else {}
+    return {
+        key: _normalize_mail_deepseek_config_item(incoming.get(key) or defaults[key])
+        for key in ("deepseek-v4-flash", "deepseek-v4-pro")
+    }
+
 def _save_mail_generation_model(model_key: str) -> None:
     import os, json
 
@@ -7835,7 +7932,19 @@ def _save_mail_generation_model(model_key: str) -> None:
                 data = loaded
         except Exception:
             data = {}
-    data["mail_generation_model"] = _normalize_mail_generation_model(model_key)
+    normalized_model = _normalize_mail_generation_model(model_key)
+    data["mail_generation_model"] = normalized_model
+    try:
+        db = SessionLocal()
+        try:
+            row = _get_or_create_wecom_runtime_config(db)
+            row.mail_generation_model = normalized_model
+            row.updated_by = "api/v1/mail/draft-llm-config"
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"保存邮件生成模型数据库配置失败: {exc}")
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -7862,6 +7971,9 @@ def _mail_draft_llm_config(provider: str | None = None) -> dict[str, Any]:
     model_key = _normalize_mail_generation_model(requested) if requested else _normalize_mail_generation_model(_load_runtime_settings_with_defaults().get("mail_generation_model"))
     option = _MAIL_GENERATION_MODEL_OPTIONS[model_key]
     provider_key = option["provider"]
+    runtime_settings = _load_runtime_settings_with_defaults()
+    deepseek_model_configs = _normalize_mail_deepseek_model_configs(runtime_settings.get("mail_deepseek_model_configs"))
+    deepseek_params = deepseek_model_configs.get(model_key) or deepseek_model_configs["deepseek-v4-flash"]
     if provider_key == "openai":
         api_url = (
             getattr(settings, "MAIL_DRAFT_OPENAI_API_URL", "")
@@ -7877,7 +7989,6 @@ def _mail_draft_llm_config(provider: str | None = None) -> dict[str, Any]:
         api_key = getattr(settings, "LLM2_API_KEY", "")
         model = option["model"] or getattr(settings, "LLM2_MODEL", "")
         timeout = int(getattr(settings, "LLM2_TIMEOUT_SECONDS", 100) or 100)
-    runtime_settings = _load_runtime_settings_with_defaults()
     dyn_temp = runtime_settings.get("mail_temperature")
     if dyn_temp is not None:
         try:
@@ -7894,8 +8005,9 @@ def _mail_draft_llm_config(provider: str | None = None) -> dict[str, Any]:
         "api_key": api_key or "",
         "model": model or "",
         "timeout_seconds": timeout,
-        "temperature": temperature,
-        "max_tokens": int(getattr(settings, "MAIL_DRAFT_LLM_MAX_TOKENS", 1800) or 1800),
+        "temperature": float(deepseek_params.get("temperature") if provider_key == "deepseek" else temperature),
+        "max_tokens": int(deepseek_params.get("max_tokens") if provider_key == "deepseek" else (getattr(settings, "MAIL_DRAFT_LLM_MAX_TOKENS", 1800) or 1800)),
+        "deepseek_params": deepseek_params if provider_key == "deepseek" else None,
     }
 
 
@@ -7913,6 +8025,7 @@ def _mail_draft_llm_public_config() -> dict[str, Any]:
             "api_url": cfg["api_url"],
             "model": cfg["model"],
             "active": model_key == active_model,
+            "deepseek_params": cfg.get("deepseek_params"),
         })
     return {
         "version": "mail_draft_llm_config.v2",
@@ -7920,6 +8033,7 @@ def _mail_draft_llm_public_config() -> dict[str, Any]:
         "active_provider": active_provider,
         "providers": model_options,
         "model_options": model_options,
+        "mail_deepseek_model_configs": _normalize_mail_deepseek_model_configs(_load_runtime_settings_with_defaults().get("mail_deepseek_model_configs")),
         "real_sending_enabled": False,
         "wecom_impact": "none",
     }
@@ -8705,6 +8819,10 @@ def _build_mail_generate_draft_response(
         ]),
         limit=5,
     )
+    try:
+        db.rollback()
+    except Exception:
+        pass
     assembled = _assemble_mail_draft_from_intent_profile(intent_profile)
     delivery_sla_guardrail = _evaluate_and_calibrate_mail_delivery_sla_guardrail(assembled.body_html)
     if delivery_sla_guardrail:
@@ -15897,24 +16015,38 @@ def get_runtime_llm_settings():
 def update_runtime_llm_settings(payload: RuntimeLlmSettings):
     import os, json
     existing = _load_runtime_settings_with_defaults()
-    if payload.wecom_system_prompt is not None:
-        existing["wecom_system_prompt"] = payload.wecom_system_prompt
-        db = SessionLocal()
-        try:
-            row = _get_or_create_wecom_runtime_config(db)
+    db = SessionLocal()
+    try:
+        row = _get_or_create_wecom_runtime_config(db)
+        if payload.wecom_system_prompt is not None:
+            existing["wecom_system_prompt"] = payload.wecom_system_prompt
             row.system_prompt_llm2 = payload.wecom_system_prompt
-            row.updated_by = "api/v1/system/runtime-llm-settings"
-            db.commit()
-        finally:
-            db.close()
-    if payload.wecom_temperature is not None:
-        existing["wecom_temperature"] = payload.wecom_temperature
-    if payload.mail_system_prompt is not None:
-        existing["mail_system_prompt"] = payload.mail_system_prompt
-    if payload.mail_temperature is not None:
-        existing["mail_temperature"] = payload.mail_temperature
-    if payload.mail_generation_model is not None:
-        existing["mail_generation_model"] = _normalize_mail_generation_model(payload.mail_generation_model)
+        if payload.wecom_temperature is not None:
+            existing["wecom_temperature"] = payload.wecom_temperature
+        if payload.mail_system_prompt is not None:
+            existing["mail_system_prompt"] = payload.mail_system_prompt
+        if payload.mail_temperature is not None:
+            existing["mail_temperature"] = payload.mail_temperature
+        if payload.mail_generation_model is not None:
+            normalized_model = _normalize_mail_generation_model(payload.mail_generation_model)
+            existing["mail_generation_model"] = normalized_model
+            row.mail_generation_model = normalized_model
+        if payload.mail_deepseek_model_configs is not None:
+            normalized_configs = _normalize_mail_deepseek_model_configs(payload.mail_deepseek_model_configs)
+            existing["mail_deepseek_model_configs"] = normalized_configs
+            row.mail_deepseek_model_configs = normalized_configs
+        elif not getattr(row, "mail_deepseek_model_configs", None):
+            row.mail_deepseek_model_configs = _normalize_mail_deepseek_model_configs(existing.get("mail_deepseek_model_configs"))
+        row.updated_by = "api/v1/system/runtime-llm-settings"
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"保存数据库运行配置失败: {exc}") from exc
+    finally:
+        db.close()
 
     path = os.path.join(os.path.dirname(__file__), "runtime_llm_settings.json")
     try:
@@ -15922,8 +16054,7 @@ def update_runtime_llm_settings(payload: RuntimeLlmSettings):
             json.dump(existing, f, ensure_ascii=False, indent=2)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存 runtime_llm_settings.json 失败: {e}")
-    return {"status": "success", "settings": existing}
-
+    return {"status": "success", "settings": _load_runtime_settings_with_defaults()}
 
 _TRAIN_AI_MODELS_CACHE = {"at_epoch": 0.0, "items": None}
 _TRAIN_AI_MODELS_CACHE_TTL_SECONDS = 300  # 5 分钟; 模型列表很少变, 没必要每次刷新都打外部接口
@@ -18498,7 +18629,7 @@ def get_mail_customer_suite(
                 "send_settings": _suite_step_send_settings(int(suite_step), saved),
             }
 
-    # 缺失草稿并发补齐: 内置套装最多 4 路并发生成; ex.map 保持原有步序; timeout=180s 防挂死
+    # 缺失草稿批量补齐兜底：前端默认逐封刷新；直接调用本接口生成时最多 2 路，避免 4 封同时抢 LLM/DB。
     # 用户自建套装按其实际封数生成，内置场景固定 4 封
     from mail_sequence_strategy import get_dynamic_scenario_step_count
     _custom_step_count = get_dynamic_scenario_step_count(scenario_norm)
@@ -18555,7 +18686,7 @@ def get_mail_customer_suite(
         except Exception:
             logger.exception("MAIL_CUSTOMER_SUITE_TEMPLATE_PREWARM_FAILED customer_id=%s", sanitize_text(customer_id))
     try:
-        with ThreadPoolExecutor(max_workers=min(4, max(1, len(suite_steps))), thread_name_prefix="mail-suite") as executor:
+        with ThreadPoolExecutor(max_workers=min(2, max(1, len(suite_steps))), thread_name_prefix="mail-suite") as executor:
             drafts = list(executor.map(_generate_one_suite_draft, suite_steps, timeout=180))
     except Exception as _exc:
         if "TimeoutError" not in type(_exc).__name__:
@@ -18723,7 +18854,6 @@ def upsert_mail_customer_suite_draft(
 @app.post("/api/v1/mail/customer-suite-draft/regenerate")
 def regenerate_mail_customer_suite_draft(
     payload: MailCustomerSuiteDraftRegenerateRequest,
-    db: Session = Depends(get_db),
 ):
     """强制单封套装邮件重新跑真实生成链路，并覆盖该封已保存稿。"""
     customer_id = sanitize_text(payload.customer_id).strip()
@@ -18753,44 +18883,57 @@ def regenerate_mail_customer_suite_draft(
         current_seller_name="事必达销售",
         current_seller_signature="事必达销售",
     )
-    response = _build_mail_generate_draft_response(db, request_payload, precomputed_crm_profile=crm_profile)
+    generation_db = SessionLocal()
+    try:
+        response = _build_mail_generate_draft_response(generation_db, request_payload, precomputed_crm_profile=crm_profile)
+    finally:
+        generation_db.close()
     draft = response.model_dump() if hasattr(response, "model_dump") else response.dict()
     signature_html, _signature_fields, _owner_staff_id = _mail_suite_signature_html_for_customer(customer_id)
     draft["final_body_html"] = _apply_mail_suite_signature(draft.get("final_body_html") or "", signature_html)
-    row = (
-        db.query(MailCustomerSuiteDraftEdit)
-        .filter(
-            MailCustomerSuiteDraftEdit.customer_id == customer_id,
-            MailCustomerSuiteDraftEdit.scenario == scenario,
-            MailCustomerSuiteDraftEdit.suite_step == suite_step,
-        )
-        .one_or_none()
-    )
-    created = False
-    if row is None:
-        row = MailCustomerSuiteDraftEdit(
-            customer_id=customer_id[:120],
-            scenario=scenario,
-            suite_step=suite_step,
-            included=True,
-        )
-        db.add(row)
-        created = True
-    row.subject = (draft.get("final_subject") or "")[:500] or None
-    row.body_html = draft.get("final_body_html") or None
-    row.mail_uid = (draft.get("mail_uid") or "")[:120] or None
-    row.llm_prompt = (draft.get("llm_prompt") or "")[:20000] or None
-    db.commit()
-    db.refresh(row)
 
-    default_interval = _mail_sequence_default_send_interval_days(scenario, suite_step)
-    send_settings = {
-        "send_interval_days": int(row.send_interval_days) if row.send_interval_days is not None else default_interval,
-        "default_send_interval_days": default_interval,
-        "send_time": row.send_time or _MAIL_SUITE_DEFAULT_SEND_TIME,
-        "default_send_time": _MAIL_SUITE_DEFAULT_SEND_TIME,
-        "included": bool(row.included),
-    }
+    save_db = SessionLocal()
+    try:
+        row = (
+            save_db.query(MailCustomerSuiteDraftEdit)
+            .filter(
+                MailCustomerSuiteDraftEdit.customer_id == customer_id,
+                MailCustomerSuiteDraftEdit.scenario == scenario,
+                MailCustomerSuiteDraftEdit.suite_step == suite_step,
+            )
+            .one_or_none()
+        )
+        created = False
+        if row is None:
+            row = MailCustomerSuiteDraftEdit(
+                customer_id=customer_id[:120],
+                scenario=scenario,
+                suite_step=suite_step,
+                included=True,
+            )
+            save_db.add(row)
+            created = True
+        row.subject = (draft.get("final_subject") or "")[:500] or None
+        row.body_html = draft.get("final_body_html") or None
+        row.mail_uid = (draft.get("mail_uid") or "")[:120] or None
+        row.llm_prompt = (draft.get("llm_prompt") or "")[:20000] or None
+        save_db.commit()
+        save_db.refresh(row)
+
+        default_interval = _mail_sequence_default_send_interval_days(scenario, suite_step)
+        send_settings = {
+            "send_interval_days": int(row.send_interval_days) if row.send_interval_days is not None else default_interval,
+            "default_send_interval_days": default_interval,
+            "send_time": row.send_time or _MAIL_SUITE_DEFAULT_SEND_TIME,
+            "default_send_time": _MAIL_SUITE_DEFAULT_SEND_TIME,
+            "included": bool(row.included),
+        }
+        record = _serialize_mail_customer_suite_draft_edit(row)
+    except Exception:
+        save_db.rollback()
+        raise
+    finally:
+        save_db.close()
     return {
         "ok": True,
         "created": created,
@@ -18801,7 +18944,7 @@ def regenerate_mail_customer_suite_draft(
             "draft": draft,
             "send_settings": send_settings,
         },
-        "record": _serialize_mail_customer_suite_draft_edit(row),
+        "record": record,
         "real_sending_enabled": False,
     }
 
@@ -21889,7 +22032,9 @@ def _wecom_runtime_config_payload(row: WecomRuntimeConfig) -> dict[str, Any]:
         "SYSTEM_PROMPT_LLM2": row.system_prompt_llm2 or "",
         "REPLY_STYLE_OPTIONS": row.reply_style_options or [],
         "FAST_TRACK_RULES": row.fast_track_rules or [],
-        "_storage": "database",
+        
+        "MAIL_GENERATION_MODEL": _normalize_mail_generation_model(getattr(row, "mail_generation_model", None)),
+        "MAIL_DEEPSEEK_MODEL_CONFIGS": _normalize_mail_deepseek_model_configs(getattr(row, "mail_deepseek_model_configs", None)),"_storage": "database",
         "_table": "wecom_runtime_config",
         "_updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
@@ -21918,7 +22063,10 @@ def _backfill_empty_wecom_runtime_config(row: WecomRuntimeConfig, defaults: dict
     if getattr(row, "wecom_kb3_confirmed_only", None) is None and defaults.get("WECOM_KB3_CONFIRMED_ONLY") is not None:
         row.wecom_kb3_confirmed_only = _coerce_bool_setting(defaults.get("WECOM_KB3_CONFIRMED_ONLY"), default=False)
         changed = True
-    if changed:
+    if not getattr(row, "mail_generation_model", None):
+        row.mail_generation_model = _normalize_mail_generation_model(defaults.get("mail_generation_model") or defaults.get("MAIL_GENERATION_MODEL"))
+        changed = True`r`n    if not getattr(row, "mail_deepseek_model_configs", None):`r`n        row.mail_deepseek_model_configs = _normalize_mail_deepseek_model_configs(defaults.get("mail_deepseek_model_configs") or defaults.get("MAIL_DEEPSEEK_MODEL_CONFIGS"))
+        changed = True`r`n    if changed:
         row.updated_by = "api_backfill_from_files"
     return changed
 
@@ -21942,7 +22090,9 @@ def _get_or_create_wecom_runtime_config(db: Session) -> WecomRuntimeConfig:
         system_prompt_llm2=defaults.get("SYSTEM_PROMPT_LLM2"),
         reply_style_options=defaults.get("REPLY_STYLE_OPTIONS") if isinstance(defaults.get("REPLY_STYLE_OPTIONS"), list) else [],
         fast_track_rules=defaults.get("FAST_TRACK_RULES") if isinstance(defaults.get("FAST_TRACK_RULES"), list) else [],
-        updated_by="api_seed_from_files",
+        
+        mail_generation_model=_normalize_mail_generation_model(defaults.get("mail_generation_model") or defaults.get("MAIL_GENERATION_MODEL")),
+        mail_deepseek_model_configs=_normalize_mail_deepseek_model_configs(defaults.get("mail_deepseek_model_configs") or defaults.get("MAIL_DEEPSEEK_MODEL_CONFIGS")),updated_by="api_seed_from_files",
     )
     db.add(row)
     db.commit()
@@ -31492,6 +31642,17 @@ def _get_daily_validation_stats_range(
       2. 第二遍仅对去重命中的 invocation_id 批量补取 result_payload/quality_score。
     返回 {北京日期字符串: (count, avg_score, avg_latency)}。
     """
+    import time as _time
+    # 前端 caselibFetch 15s 后 abort(显示"加载失败：timeout"); 给本段统计一个比前端
+    # 更早的 wall-clock 预算, 即便慢也只让"日均分/时延"降级(每日 count 仍准, 它只来自
+    # 轻量查询), 绝不拖垮整张迭代列表。同时把本事务单条语句 timeout 收紧到远小于全局 20s,
+    # 防止某一条大 JSON 查询独占到前端 abort 之后。
+    _deadline = _time.monotonic() + 9.0
+    try:
+        db.execute(text("SET LOCAL statement_timeout = '8000'"))
+    except Exception:
+        pass
+
     range_start_utc = range_start_bj - timedelta(hours=8)
     range_end_utc = range_end_bj - timedelta(hours=8)
     sales_ids = ["alicehe", "davidXiaoMeiPeng", "HanHan", "joycesheng", "WangHuiYing"]
@@ -31535,8 +31696,17 @@ def _get_daily_validation_stats_range(
     selected_ids = [row.invocation_id for bucket in per_day.values() for (_rank, row) in bucket.values()]
     payload_by_id: dict[Any, tuple] = {}
     if selected_ids:
-        # 分批 IN 查询; chunk=50 避免大 JSON 列单批超 statement_timeout(20s)
+        # 分批 IN 查询; chunk=50 避免大 JSON 列单批超 statement_timeout。
+        # 每批前检查 wall-clock 预算: 超了就停止补取 result_payload, 用已拿到的部分,
+        # 缺失的行退化为 row.quality_score 兜底。count 不依赖 payload, 永远精确。
         for i in range(0, len(selected_ids), 50):
+            if _time.monotonic() > _deadline:
+                logger.warning(
+                    "daily validation stats: payload backfill hit %.1fs budget, "
+                    "returning partial scores for %d/%d ids",
+                    9.0, len(payload_by_id), len(selected_ids),
+                )
+                break
             chunk = selected_ids[i : i + 50]
             for inv_id, payload, qscore in db.query(
                 ApiAssistInvocation.invocation_id,
@@ -31594,7 +31764,18 @@ def _caselib_list_iterations_sync(limit: int, include_daily_stats: bool) -> dict
         if include_daily_stats:
             range_start_bj = datetime(start_date.year, start_date.month, start_date.day)
             range_end_bj = datetime(today.year, today.month, today.day) + timedelta(days=1)
-            daily_stats_map = _get_daily_validation_stats_range(db, range_start_bj, range_end_bj)
+            try:
+                daily_stats_map = _get_daily_validation_stats_range(db, range_start_bj, range_end_bj)
+            except Exception as e:
+                # 日常验证统计慢/超时绝不能拖垮整张迭代列表(前端会 abort 显示"加载失败:timeout")。
+                # 失败就降级: 当天行 count 显示 0, 真实的迭代轮次照常返回。被 cancel 的事务需 rollback
+                # 才能继续序列化 rows。
+                logger.warning("caselib daily validation stats skipped (degraded): %s", e)
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                daily_stats_map = {}
         curr = start_date
         while curr <= today:
             date_str = curr.isoformat()
@@ -33458,3 +33639,17 @@ async def caselib_regenerate_iteration_summary(run_id: str):
         }
     finally:
         db.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
