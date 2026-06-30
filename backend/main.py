@@ -22058,6 +22058,20 @@ def _wecom_runtime_config_payload(row: WecomRuntimeConfig) -> dict[str, Any]:
     }
 
 
+def _sync_wecom_runtime_config_to_local_file(row: WecomRuntimeConfig) -> None:
+    local_path = os.path.join(os.path.dirname(__file__), "ai_settings.local.json")
+    payload = _wecom_runtime_config_payload(row)
+    payload.pop("_storage", None)
+    payload.pop("_table", None)
+    payload.pop("_updated_at", None)
+    try:
+        with open(local_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        logger.info("Successfully serialized configuration changes to ai_settings.local.json")
+    except Exception as exc:
+        logger.error("Failed to write to ai_settings.local.json: %s", exc)
+
+
 def _backfill_empty_wecom_runtime_config(row: WecomRuntimeConfig, defaults: dict[str, Any]) -> bool:
     changed = False
     if not row.system_prompt_llm1 and defaults.get("SYSTEM_PROMPT_LLM1"):
@@ -22168,6 +22182,7 @@ async def save_ai_scripts(payload: dict):
         row.updated_by = "api/system/ai_scripts"
         db.commit()
         db.refresh(row)
+        _sync_wecom_runtime_config_to_local_file(row)
         effective = _wecom_runtime_config_payload(row)
         return {"status": "success", "saved": effective}
     except HTTPException:
@@ -22178,6 +22193,21 @@ async def save_ai_scripts(payload: dict):
         raise HTTPException(status_code=500, detail=f"保存 wecom_runtime_config 失败: {e}") from e
     finally:
         db.close()
+
+
+@app.on_event("startup")
+async def startup_event():
+    # v1.7.196: 在 FastAPI 服务启动时，强制把数据库里的 wecom_runtime_config 同步至 ai_settings.local.json，
+    # 确保 IntentEngine.get_ai_settings() 和后台真正生效的配置能够读取到最新的数据库保存值。
+    try:
+        db = SessionLocal()
+        row = db.query(WecomRuntimeConfig).filter(WecomRuntimeConfig.id == 1).first()
+        if row:
+            _sync_wecom_runtime_config_to_local_file(row)
+        db.close()
+    except Exception as exc:
+        logger.error("启动时同步数据库配置到本地文件失败: %s", exc)
+
 
 # --- 会话查询 API (供前端使用) ---
 
@@ -32069,6 +32099,25 @@ def get_daily_validation_detail(
             return None
         return inv_payload_by_id.get(inv.invocation_id, (None, None))[1]
 
+    # 背景上下文按"调用时刻固化"的 visible_message_ids 还原 —— 这是当时 AI 实际所见, 100% 对齐;
+    # 不再用"触发点前最近15条"的时间窗去重新猜(那会随 MessageLog 现状漂移)。一次性按 id 批量取。
+    stage_started = perf_counter()
+    snap_visible_ids: set = set()
+    for inv in invs:
+        if str(inv.session_id) in target_sessions:
+            for mid in (inv.visible_message_ids or []):
+                snap_visible_ids.add(mid)
+    snap_msg_by_id: dict = {}
+    if snap_visible_ids:
+        vid_list = list(snap_visible_ids)
+        for i in range(0, len(vid_list), 500):
+            chunk = vid_list[i : i + 500]
+            for m in db.query(
+                MessageLog.id, MessageLog.sender_type, MessageLog.content, MessageLog.timestamp,
+            ).filter(MessageLog.id.in_(chunk)).all():
+                snap_msg_by_id[m.id] = m
+    _mark_timing("query_snapshot_context_ms", stage_started)
+
     results = []
     run_id = f"daily_{date.replace('-', '')}"
 
@@ -32207,18 +32256,43 @@ def get_daily_validation_detail(
                     "content": m.content
                 })
 
+            # 固化优先: 命中行带 visible_message_ids 时, 背景改用"当时 AI 实际所见"还原(按 id, 排除
+            # 锚点=当前客户问), 100% 对齐调用时刻; 老记录无该字段才退回上面的时间窗重建。
+            if matched_inv and matched_inv.visible_message_ids:
+                _anchor_id = matched_inv.anchor_message_id
+                _snap_ctx = [
+                    snap_msg_by_id[mid] for mid in matched_inv.visible_message_ids
+                    if mid in snap_msg_by_id and mid != _anchor_id
+                ]
+                _snap_ctx.sort(key=lambda m: m.timestamp or datetime.min)
+                bg_count = len(_snap_ctx)
+                context_messages = [{
+                    "role": "customer" if m.sender_type == "customer" else "sales",
+                    "msg_time": _bj_iso(m.timestamp),
+                    "content": m.content,
+                } for m in _snap_ctx]
+
+            # 固化优先: 客户问取 anchor_message_text(当时锚点原文), 销售原始回复取 actual_sales_reply_text;
+            # 都是调用时刻固化的列, 而不是事后从 MessageLog 现状重拼, 保证"百分百还原当时结果"。
+            cust_text = (matched_inv.anchor_message_text if matched_inv and matched_inv.anchor_message_text
+                         else (cust["content"] if cust else "【当天销售发起】"))
+            sales_text = (matched_inv.actual_sales_reply_text if matched_inv and matched_inv.actual_sales_reply_text
+                          else (g["sales"]["content"] if g["sales"] else ""))
+            cust_ts = (matched_inv.anchor_message_time if matched_inv and matched_inv.anchor_message_time
+                       else (cust["timestamp"] if cust else None))
+
             core_dialog = []
-            if cust:
+            if cust or (matched_inv and matched_inv.anchor_message_text):
                 core_dialog.append({
                     "role": "customer",
-                    "msg_time": _bj_iso(cust["timestamp"]),
-                    "content": cust["content"]
+                    "msg_time": _bj_iso(cust_ts),
+                    "content": cust_text
                 })
-            if g["sales"]:
+            if sales_text:
                 core_dialog.append({
                     "role": "sales",
-                    "msg_time": _bj_iso(g["sales"]["timestamp"]),
-                    "content": g["sales"]["content"]
+                    "msg_time": _bj_iso(g["sales"]["timestamp"]) if g["sales"] else "",
+                    "content": sales_text
                 })
 
             result_id = str(matched_inv.invocation_id) if matched_inv else f"daily_turn_{uid}_{idx}"
@@ -32251,9 +32325,7 @@ def get_daily_validation_detail(
                 if isinstance(scores_payload, dict) and isinstance(sim_payload, dict):
                     scores_payload["reply_similarity"] = sim_payload
 
-            cust_text = cust["content"] if cust else "【当天销售发起】"
-            sales_text = g["sales"]["content"] if g["sales"] else ""
-
+            # cust_text / sales_text 已在上方按"固化优先"算好(锚点原文 + actual_sales_reply_text)。
             case_meta = {
                 "case_id": uid,
                 "scenario_code": "实时",

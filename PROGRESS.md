@@ -1,5 +1,25 @@
 # PROGRESS
 
+## 2026-06-30 每日详情字段改"读固化快照", 还原当时结果(不再现拼 MessageLog)
+
+- 用户质疑: 实时验证详情里哪些字段不是读 DB 而是重算的? 要求百分百还原当时结果。
+- 审计结论(get_daily_validation_detail):
+  - 一直读固化快照(忠实, 当时结果): AI生成回复 reply_reference、主线话题 topic、知识检索
+    knowledge_v2、客户画像 crm_info、AI质量分/原始回复分(reply_scores_v2)、相似分
+    (quality_similarity)、训练AI、耗时(timings_ms)、kb1/kb2 eval —— 全来自 result_payload。
+  - 之前是"看页面时现算"的(会随 MessageLog 现状漂移): 原客户问、销售原始回复、背景N条、
+    轮次配对/序号、链路状态、匹配关系 —— 都从当天 MessageLog 按时间窗重拼。
+  - ApiAssistInvocation 本就固化了 anchor_message_text(客户问)、actual_sales_reply_text
+    (销售回复)、visible_message_ids(当时 AI 实际所见上下文), 但详情没用, 反而去重拼。
+- 修复: 命中行优先读固化列 ——
+  - 原客户问 = anchor_message_text(回退重建); 销售原始回复 = actual_sales_reply_text(回退);
+  - 背景 = 按 visible_message_ids 还原(批量按 id 取 MessageLog, 排除锚点; 回退时间窗);
+  - 客户问时间 = anchor_message_time。AI 侧字段本就读快照, 不动。
+- 效果: 所见字段对齐调用时刻, 不再"重走一遍可能不一样"。仍残留视图层推导(轮次配对/序号、
+  success-vs-manual、匹配关系)——这些是把生产 invocation 拼成"轮次"的必要装配, 不影响每行
+  内容的忠实性; 若要连配对也固化需另存每轮快照(可后续评估)。
+- 部署: 重启后端 + 强刷前端。验证: `python -m py_compile backend/main.py` 通过。
+
 ## 2026-06-30 迭代/每日详情: 放宽超时+只拉命中行大JSON, 修点详情 timeout
 
 - 现象: 列表秒出了, 但点每日"实时验证"行的"详情→"仍 timeout。
