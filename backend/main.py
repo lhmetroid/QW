@@ -26,7 +26,7 @@ from typing import Any, Optional
 from urllib.parse import quote, urlparse
 from sqlalchemy import and_, or_, text, func, bindparam
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session, defer
+from sqlalchemy.orm import Session, defer, load_only
 from pydantic import BaseModel
 from config import settings
 from logging_config import setup_logging, sanitize_text
@@ -3524,6 +3524,16 @@ def _hit_log_to_dict(log: KnowledgeHitLog, redact: bool = False) -> dict:
         "latency_ms": log.latency_ms,
         "created_at": log.created_at,
     }
+
+def _is_uuid_like(value) -> bool:
+    """判断字符串是否为合法 UUID(用于隔离 KB3 旧版数字 chunk_id, 避免 UUID 列强转崩溃)。"""
+    if not value:
+        return False
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
 
 def _normalize_hit_chunk_ids(hit_chunk_ids) -> list[str]:
     normalized: list[str] = []
@@ -8430,7 +8440,9 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
     """
     full_prompt = _build_mail_draft_llm_full_prompt(profile)
 
-    llm_resp = _call_llm2_text_for_mail_draft(full_prompt, timeout_seconds=35)
+    cfg = _mail_draft_llm_config()
+    llm_timeout = max(120, int(cfg.get("timeout_seconds") or 120))
+    llm_resp = _call_llm2_text_for_mail_draft(full_prompt, timeout_seconds=llm_timeout)
     model_name = llm_resp.get("model") or "llm2"
     # v1.7.208 旧的 fallback_template 返回逻辑（已注释 — 用户禁止假装成功）:
     #   if llm_resp.get("error") or not llm_resp.get("parsed"):
@@ -8447,6 +8459,19 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
             )
     raw_text = llm_resp.get("raw_text") or ""
     subject, body_html, paragraphs, parse_meta = _mail_extract_subject_body_from_raw_llm_output(raw_text)
+    if not body_html and not paragraphs:
+        logger.warning("MAIL_DRAFT_LLM2_RETRY reason=missing body model=%s", model_name)
+        llm_resp = _call_llm2_text_for_mail_draft(full_prompt, timeout_seconds=llm_timeout)
+        model_name = llm_resp.get("model") or model_name
+        if llm_resp.get("error"):
+            err = llm_resp.get("error") or "LLM-2 返回空"
+            logger.warning("MAIL_DRAFT_LLM2_FAILED retry_reason=%s", err)
+            raise HTTPException(
+                status_code=503,
+                detail=f"LLM-2 (DeepSeek) 重试后仍调用失败（不返 fallback_template 兜底）: {sanitize_text(str(err))[:240]}",
+            )
+        raw_text = llm_resp.get("raw_text") or ""
+        subject, body_html, paragraphs, parse_meta = _mail_extract_subject_body_from_raw_llm_output(raw_text)
     # v1.7.208 旧的"缺 subject/paragraphs 返 fallback_template"逻辑（已注释）:
     #   if not subject or not paragraphs:
     #       logger.warning("MAIL_DRAFT_LLM2_FALLBACK reason=missing subject/paragraphs")
@@ -14167,7 +14192,19 @@ async def get_kb_hit_log_chunk_stats(
     start_dt = _parse_kb_stats_datetime(start_date)
     end_dt = _parse_kb_stats_datetime(end_date, end_of_day=True)
     max_scan = max(1, min(int(scan_limit or 200), 5000))
-    query = db.query(KnowledgeHitLog)
+    # 只取统计真正用到的列, 不再整行加载 final_response/query_features/filters_used/
+    # manual_feedback 等大字段(实测 logs_load 占总耗时 ~70%), 大幅加快命中统计.
+    query = db.query(KnowledgeHitLog).options(load_only(
+        KnowledgeHitLog.log_id,
+        KnowledgeHitLog.request_id,
+        KnowledgeHitLog.session_id,
+        KnowledgeHitLog.created_at,
+        KnowledgeHitLog.query_text,
+        KnowledgeHitLog.hit_chunk_ids,
+        KnowledgeHitLog.scores,
+        KnowledgeHitLog.hit_chunks_snapshot,
+        KnowledgeHitLog.status,
+    ))
     if start_dt:
         query = query.filter(KnowledgeHitLog.created_at >= start_dt)
     if end_dt:
@@ -14220,7 +14257,11 @@ async def get_kb_hit_log_chunk_stats(
                 item["score_count"] += 1
     aggregate_ms = round((perf_counter() - timing_started) * 1000 - logs_loaded_ms, 2)
     chunk_ids = list(counters.keys())
-    chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.chunk_id.in_(chunk_ids)).all() if chunk_ids else []
+    # chunk_id 列是 UUID 类型, 历史命中日志里可能混入 KB3 旧版数字 id(如 "976"),
+    # 直接 in_() 会让 Postgres 把 "976" 强转 UUID 抛 DataError -> 500 Internal Server Error.
+    # 这里只用合法 UUID 去查 knowledge_chunk, 数字 id 自动走快照/missing 分支, 不再崩溃.
+    uuid_chunk_ids = [cid for cid in chunk_ids if _is_uuid_like(cid)]
+    chunks = db.query(KnowledgeChunk).filter(KnowledgeChunk.chunk_id.in_(uuid_chunk_ids)).all() if uuid_chunk_ids else []
     chunk_map = {str(chunk.chunk_id): chunk for chunk in chunks}
     doc_ids = [str(chunk.document_id) for chunk in chunks if chunk.document_id]
     docs = db.query(KnowledgeDocument).filter(KnowledgeDocument.document_id.in_(doc_ids)).all() if doc_ids else []
@@ -18276,9 +18317,15 @@ def get_mail_customer_suite(
         shared_crm_profile = {**crm_profile, "customer_domains": tuple(sorted(_shared_domains))}
     else:
         shared_crm_profile = crm_profile
+    company_display_name = _mail_customer_company_display_name(
+        crm_profile.get("company_name"),
+        {"company_name": crm_profile.get("company_name")},
+        customer_id,
+    )
     customer_profile = {
         "customer_id": customer_id,
-        "company_name": sanitize_text(crm_profile.get("company_name")) or customer_id,
+        "company_name": company_display_name or customer_id,
+        "crm_company_name": company_display_name or "",
         "crm_contact_name": contact_name,
         "contact_name": contact_name,
         "contact_email": contact_email,
@@ -18460,7 +18507,7 @@ def get_mail_customer_suite(
                 "send_settings": _suite_step_send_settings(int(suite_step), saved),
             }
 
-    # 4 封相互独立, 并发生成: 墙钟时间由"4×单封"降到"≈1×单封"; ex.map 保持原有步序; timeout=90s 防 LLM 挂死
+    # 缺失草稿并发补齐: 每个请求最多 2 路打到 LLM，避免 4 封同时压垮 DeepSeek 导致超时/空返回; ex.map 保持原有步序; timeout=180s 防挂死
     # 用户自建套装按其实际封数生成，内置场景固定 4 封
     from mail_sequence_strategy import get_dynamic_scenario_step_count
     _custom_step_count = get_dynamic_scenario_step_count(scenario_norm)
@@ -18517,8 +18564,8 @@ def get_mail_customer_suite(
         except Exception:
             logger.exception("MAIL_CUSTOMER_SUITE_TEMPLATE_PREWARM_FAILED customer_id=%s", sanitize_text(customer_id))
     try:
-        with ThreadPoolExecutor(max_workers=max(1, len(suite_steps)), thread_name_prefix="mail-suite") as executor:
-            drafts = list(executor.map(_generate_one_suite_draft, suite_steps, timeout=90))
+        with ThreadPoolExecutor(max_workers=min(2, max(1, len(suite_steps))), thread_name_prefix="mail-suite") as executor:
+            drafts = list(executor.map(_generate_one_suite_draft, suite_steps, timeout=180))
     except Exception as _exc:
         if "TimeoutError" not in type(_exc).__name__:
             raise
@@ -18528,7 +18575,7 @@ def get_mail_customer_suite(
                 "suite_step": s,
                 "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(s)),
                 "status": "failed",
-                "error": "生成超时（>90s），请重试",
+                "error": "生成超时（>180s），请重试",
                 "draft": None,
                 "send_settings": _suite_step_send_settings(int(s), saved_edits.get(int(s))),
             }
@@ -19384,7 +19431,7 @@ def create_mail_customer_suite_feedback(
     row = MailCustomerSuiteFeedback(
         customer_id=customer_id[:120],
         contact_email=sanitize_text(payload.contact_email or "").strip()[:255] or None,
-        company_name=sanitize_text(payload.company_name or "").strip()[:255] or None,
+        company_name=(None if _mail_is_own_company_name(payload.company_name) else sanitize_text(payload.company_name or "").strip()[:255] or None),
         scenario=scenario,
         suite_step=int(payload.suite_step),
         mail_uid=sanitize_text(payload.mail_uid or "").strip()[:120] or None,
@@ -19451,6 +19498,258 @@ def list_mail_customer_suite_feedback(
         "real_sending_enabled": False,
     }
 
+
+
+def _mail_suite_record_iso(value) -> str | None:
+    return value.isoformat() if getattr(value, "isoformat", None) else None
+
+
+def _mail_suite_record_preview(value: str | None, limit: int = 180) -> str:
+    text_value = sanitize_text(value or "").strip()
+    if not text_value:
+        return ""
+    text_value = re.sub(r"\s+", " ", text_value)
+    return text_value[: max(int(limit), 1)]
+
+
+def _mail_suite_record_step_map(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for item in items:
+        step = item.get("suite_step")
+        if step is None:
+            continue
+        out[str(step)] = item
+    return out
+
+
+@app.get("/api/v1/mail/customer-suite-records")
+def get_mail_customer_suite_records(
+    contact_id: str = Query(..., min_length=1, description="联系人编号/客户编号，如 KH33599-011"),
+    include_body: bool = Query(False, description="是否返回正文 HTML；默认 false 只返回摘要，避免响应过大"),
+    limit: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    """按联系人编号只读查询该联系人已创建/保存、已排队/发送或自动排期过的邮件套装。"""
+    contact_key = sanitize_text(contact_id).strip()
+    if not contact_key:
+        raise HTTPException(status_code=422, detail="contact_id is required")
+
+    draft_rows = (
+        db.query(MailCustomerSuiteDraftEdit)
+        .filter(MailCustomerSuiteDraftEdit.customer_id == contact_key)
+        .order_by(MailCustomerSuiteDraftEdit.updated_at.desc(), MailCustomerSuiteDraftEdit.suite_step.asc())
+        .limit(limit)
+        .all()
+    )
+    send_rows = (
+        db.query(MailCustomerSuiteSendPlan)
+        .filter(MailCustomerSuiteSendPlan.customer_id == contact_key)
+        .order_by(MailCustomerSuiteSendPlan.created_at.desc(), MailCustomerSuiteSendPlan.suite_step.asc())
+        .limit(limit)
+        .all()
+    )
+    feedback_rows = (
+        db.query(MailCustomerSuiteFeedback)
+        .filter(MailCustomerSuiteFeedback.customer_id == contact_key)
+        .order_by(MailCustomerSuiteFeedback.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    autosend_rows = (
+        db.query(MailAutosendPlanItem)
+        .filter(MailAutosendPlanItem.contact_id == contact_key)
+        .order_by(MailAutosendPlanItem.created_at.desc(), MailAutosendPlanItem.suite_step.asc())
+        .limit(limit)
+        .all()
+    )
+    history_rows = (
+        db.query(MailContactSuiteHistory)
+        .filter(MailContactSuiteHistory.contact_id == contact_key)
+        .order_by(MailContactSuiteHistory.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    drafts = []
+    for row in draft_rows:
+        item = {
+            "draft_edit_id": str(row.draft_edit_id) if row.draft_edit_id else None,
+            "customer_id": row.customer_id,
+            "scenario": row.scenario,
+            "scenario_label_cn": _MAIL_SCENARIO_CHINESE.get(row.scenario, row.scenario),
+            "suite_step": int(row.suite_step),
+            "mail_uid": row.mail_uid,
+            "subject": row.subject,
+            "body_preview": _mail_suite_record_preview(row.body_html),
+            "send_interval_days": row.send_interval_days,
+            "send_time": row.send_time,
+            "included": bool(row.included),
+            "created_at": _mail_suite_record_iso(row.created_at),
+            "updated_at": _mail_suite_record_iso(row.updated_at),
+        }
+        if include_body:
+            item["body_html"] = row.body_html
+            item["llm_prompt"] = row.llm_prompt
+        drafts.append(item)
+
+    send_plans = []
+    for row in send_rows:
+        item = {
+            "plan_id": str(row.plan_id) if row.plan_id else None,
+            "batch_id": row.batch_id,
+            "customer_id": row.customer_id,
+            "scenario": row.scenario,
+            "scenario_label_cn": _MAIL_SCENARIO_CHINESE.get(row.scenario, row.scenario),
+            "suite_step": int(row.suite_step),
+            "sender_email": row.sender_email,
+            "sender_name": row.sender_name,
+            "to_emails": row.to_emails,
+            "subject": row.subject,
+            "body_preview": _mail_suite_record_preview(row.body_text or row.body_html),
+            "plan_send_time": _mail_suite_record_iso(row.plan_send_time),
+            "inputer_staff_id": row.inputer_staff_id,
+            "status": row.status,
+            "spqueue_rowid": row.spqueue_rowid,
+            "crm_send_id": row.crm_send_id,
+            "crm_send_status": row.crm_send_status,
+            "crm_fact_send_time": _mail_suite_record_iso(row.crm_fact_send_time),
+            "crm_message_id": row.crm_message_id,
+            "crm_eml_ftp_dir": row.crm_eml_ftp_dir,
+            "status_synced_at": _mail_suite_record_iso(row.status_synced_at),
+            "created_at": _mail_suite_record_iso(row.created_at),
+        }
+        if include_body:
+            item["body_html"] = row.body_html
+            item["body_text"] = row.body_text
+        send_plans.append(item)
+
+    feedback_items = [_serialize_mail_customer_suite_feedback(row) for row in feedback_rows]
+
+    autosend_items = []
+    for row in autosend_rows:
+        autosend_items.append({
+            "item_id": str(row.item_id) if row.item_id else None,
+            "run_id": str(row.run_id) if row.run_id else None,
+            "contact_id": row.contact_id,
+            "owner_staff_id": row.owner_staff_id,
+            "scenario": row.scenario,
+            "scenario_label_cn": _MAIL_SCENARIO_CHINESE.get(row.scenario, row.scenario),
+            "suite_step": int(row.suite_step),
+            "plan_date": row.plan_date.isoformat() if row.plan_date else None,
+            "plan_time": row.plan_time,
+            "seq_in_day": row.seq_in_day,
+            "recipient_email": row.recipient_email,
+            "subject": row.subject,
+            "status": row.status,
+            "crm_send_id": row.crm_send_id,
+            "created_at": _mail_suite_record_iso(row.created_at),
+        })
+
+    history_items = []
+    for row in history_rows:
+        history_items.append({
+            "history_id": str(row.history_id) if row.history_id else None,
+            "contact_id": row.contact_id,
+            "owner_staff_id": row.owner_staff_id,
+            "scenario": row.scenario,
+            "scenario_label_cn": _MAIL_SCENARIO_CHINESE.get(row.scenario, row.scenario),
+            "suite_step": int(row.suite_step) if row.suite_step is not None else None,
+            "run_id": str(row.run_id) if row.run_id else None,
+            "planned_send_at": _mail_suite_record_iso(row.planned_send_at),
+            "created_at": _mail_suite_record_iso(row.created_at),
+        })
+
+    suite_map: dict[str, dict[str, Any]] = {}
+
+    def ensure_suite(scenario: str | None) -> dict[str, Any]:
+        scenario_key = sanitize_text(scenario or "unknown") or "unknown"
+        if scenario_key not in suite_map:
+            suite_map[scenario_key] = {
+                "scenario": scenario_key,
+                "scenario_label_cn": _MAIL_SCENARIO_CHINESE.get(scenario_key, scenario_key),
+                "has_created_draft": False,
+                "has_send_plan": False,
+                "has_crm_send_id": False,
+                "has_sent_success": False,
+                "has_autosend_plan": False,
+                "has_feedback": False,
+                "draft_steps": [],
+                "send_plan_steps": [],
+                "autosend_steps": [],
+                "feedback_steps": [],
+                "latest_activity_at": None,
+            }
+        return suite_map[scenario_key]
+
+    def update_latest(suite: dict[str, Any], value: str | None) -> None:
+        if value and (not suite.get("latest_activity_at") or value > suite["latest_activity_at"]):
+            suite["latest_activity_at"] = value
+
+    for item in drafts:
+        suite = ensure_suite(item.get("scenario"))
+        suite["has_created_draft"] = True
+        if item.get("suite_step") not in suite["draft_steps"]:
+            suite["draft_steps"].append(item.get("suite_step"))
+        update_latest(suite, item.get("updated_at") or item.get("created_at"))
+    for item in send_plans:
+        suite = ensure_suite(item.get("scenario"))
+        suite["has_send_plan"] = True
+        suite["has_crm_send_id"] = suite["has_crm_send_id"] or bool(item.get("crm_send_id"))
+        suite["has_sent_success"] = suite["has_sent_success"] or (sanitize_text(item.get("crm_send_status")).lower() == "sendsuccess")
+        if item.get("suite_step") not in suite["send_plan_steps"]:
+            suite["send_plan_steps"].append(item.get("suite_step"))
+        update_latest(suite, item.get("crm_fact_send_time") or item.get("plan_send_time") or item.get("created_at"))
+    for item in autosend_items:
+        suite = ensure_suite(item.get("scenario"))
+        suite["has_autosend_plan"] = True
+        if item.get("suite_step") not in suite["autosend_steps"]:
+            suite["autosend_steps"].append(item.get("suite_step"))
+        update_latest(suite, item.get("created_at"))
+    for item in history_items:
+        suite = ensure_suite(item.get("scenario"))
+        suite["has_autosend_plan"] = True
+        if item.get("suite_step") is not None and item.get("suite_step") not in suite["autosend_steps"]:
+            suite["autosend_steps"].append(item.get("suite_step"))
+        update_latest(suite, item.get("planned_send_at") or item.get("created_at"))
+    for item in feedback_items:
+        suite = ensure_suite(item.get("scenario"))
+        suite["has_feedback"] = True
+        if item.get("suite_step") not in suite["feedback_steps"]:
+            suite["feedback_steps"].append(item.get("suite_step"))
+        update_latest(suite, item.get("created_at"))
+
+    suites = []
+    for suite in suite_map.values():
+        for key in ("draft_steps", "send_plan_steps", "autosend_steps", "feedback_steps"):
+            suite[key] = sorted(step for step in suite[key] if step is not None)
+        suite["drafts_by_step"] = _mail_suite_record_step_map([item for item in drafts if item.get("scenario") == suite["scenario"]])
+        suite["send_plans_by_step"] = _mail_suite_record_step_map([item for item in send_plans if item.get("scenario") == suite["scenario"]])
+        suites.append(suite)
+    suites.sort(key=lambda item: item.get("latest_activity_at") or "", reverse=True)
+
+    return {
+        "version": "mail_customer_suite_records.v1",
+        "source": "mail_customer_suite_draft_edit + mail_customer_suite_send_plan + mail_customer_suite_feedback + autosend tables",
+        "contact_id": contact_key,
+        "count": len(suites),
+        "summary": {
+            "suite_count": len(suites),
+            "draft_count": len(drafts),
+            "send_plan_count": len(send_plans),
+            "feedback_count": len(feedback_items),
+            "autosend_plan_count": len(autosend_items),
+            "history_count": len(history_items),
+        },
+        "suites": suites,
+        "drafts": drafts,
+        "send_plans": send_plans,
+        "feedback": feedback_items,
+        "autosend_plan_items": autosend_items,
+        "autosend_history": history_items,
+        "read_only": True,
+        "wrote_to_db": False,
+        "real_sending_enabled": False,
+    }
 
 class MailCustomerSuiteFeedbackPatchRequest(BaseModel):
     conclusion: str | None = None
