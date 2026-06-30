@@ -10,12 +10,26 @@ from fastapi import HTTPException
 from sqlalchemy import or_
 from config import settings
 from qywx_utils import QYWXUtils
-from database import SessionLocal, KnowledgeBase, IntentSummary, KnowledgeChunk, KnowledgeHitLog, PricingRule, ThreadBusinessFact, MessageLog
+from database import SessionLocal, KnowledgeBase, IntentSummary, KnowledgeChunk, KnowledgeHitLog, PricingRule, ThreadBusinessFact, MessageLog, record_knowledge_hit_events
 from embedding_service import EmbeddingService
 from logging_config import sanitize_text
 from knowledge_governance import validate_thread_state_consistency
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_bool_setting(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    text_val = str(value).strip().lower()
+    if text_val in {"1", "true", "yes", "on"}:
+        return True
+    if text_val in {"0", "false", "no", "off"}:
+        return False
+    return default
+
 
 class IntentEngine:
     """意图分析与提醒引擎"""
@@ -436,7 +450,10 @@ class IntentEngine:
         label: str = "LLM2",
         reply_style: dict | None = None,
     ) -> dict:
+        injection_prefix = knowledge_list.get("injection_prefix", "") if isinstance(knowledge_list, dict) else ""
         knowledge_context = cls.format_knowledge_context(knowledge_list)
+        if injection_prefix and knowledge_context:
+            knowledge_context = injection_prefix + knowledge_context
         prompt2 = cls.get_prompt2()
         api_url = api_url if api_url is not None else settings.LLM2_API_URL
         api_key = api_key if api_key is not None else settings.LLM2_API_KEY
@@ -1997,6 +2014,7 @@ class IntentEngine:
             )
             db.add(log)
             db.commit()
+            record_knowledge_hit_events(db, log, hits)
 
             return {
                 "status": status,
@@ -2023,6 +2041,402 @@ class IntentEngine:
             db.rollback()
             logger.error("知识库 V2 检索异常: %s", e)
             raise RuntimeError(f"知识库 V2 检索异常: {e}") from e
+        finally:
+            db.close()
+
+    @classmethod
+    def classify_service_category(cls, text: str) -> Optional[str]:
+        """根据 llm_service_taxonomy 的大类别名动态判断服务大类，实现全库同源"""
+        if not text:
+            return None
+        text_lower = text.lower()
+        from sqlalchemy import text as sa_text
+        db = SessionLocal()
+        try:
+            rows = db.execute(sa_text(
+                "SELECT category, category_aliases FROM llm_service_taxonomy GROUP BY category, category_aliases"
+            )).fetchall()
+            for cat, aliases in rows:
+                if aliases and isinstance(aliases, list):
+                    for alias in aliases:
+                        if alias and str(alias).lower() in text_lower:
+                            return cat
+                elif aliases and isinstance(aliases, str):
+                    try:
+                        alias_list = json.loads(aliases)
+                        if isinstance(alias_list, list):
+                            for alias in alias_list:
+                                if alias and str(alias).lower() in text_lower:
+                                    return cat
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.warning(f"从 llm_service_taxonomy 动态分类失败: {e}")
+        finally:
+            db.close()
+
+        fallback_map = [
+            ("网站本地化", ["网站", "网页", "site", "drupal", "sitecore"]),
+            ("培训课程本地化", ["培训", "课程", "课件", "storyline"]),
+            ("配音", ["配音", "voiceover", "dubbing", "录音"]),
+            ("配字幕", ["字幕", "subtitle", "压制"]),
+            ("展台搭建", ["展台", "展会", "搭建", "布展", "撤展", "特装"]),
+            ("礼品定制", ["礼品", "定制", "赠品", "台历", "笔记本", "杯子"]),
+            ("设计排版", ["设计", "排版", "dtp", "indesign", "cdr", "制版"]),
+            ("印刷", ["印刷", "印制", "样册", "画册", "样本", "纸张", "特种纸", "精装", "封套"]),
+            ("口译", ["口译", "同传", "交传", "同声", "陪同", "耳机", "设备"]),
+            ("笔译", ["笔译", "翻译", "文档", "文件", "资料", "合同", "报告"]),
+        ]
+        for cat, keywords in fallback_map:
+            if any(kw in text_lower for kw in keywords):
+                return cat
+        return None
+
+    @classmethod
+    def retrieve_service_knowledge_v3(
+        cls,
+        query_text: str,
+        query_features: Optional[Dict[str, Any]] = None,
+        top_k: int = 5,
+        request_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """新版服务知识 RAG 检索 (KB3)：pgvector 向量相似度与 pg_trgm 词法相似度混合，支持同源大类过滤"""
+        started = perf_counter()
+        features = query_features or {}
+
+        # Load configs
+        ai_settings = cls.get_ai_settings()
+        kb3_confirmed_only = _coerce_bool_setting(
+            ai_settings.get("WECOM_KB3_CONFIRMED_ONLY", settings.WECOM_KB3_CONFIRMED_ONLY),
+            default=False
+        )
+
+        filters_used = {
+            "status": "confirmed" if kb3_confirmed_only else "any",
+            "audience": "对外",
+            "candidate_limit": top_k,
+        }
+
+        db = SessionLocal()
+        try:
+            from sqlalchemy import func, text as sa_text
+            from database import LlmServiceKnowledgeUnit
+
+            # 1. 动态服务大类分类
+            rewritten_query = cls.rewrite_query_v2(db, query_text, session_id)
+            normalized_query_text = cls._normalize_query_with_alias_hints(db, rewritten_query)
+
+            service_category = cls.classify_service_category(normalized_query_text)
+            filters_used["service_category_detected"] = service_category
+            filters_used["normalized_query_text"] = normalized_query_text
+
+            # 2. 向量嵌入生成
+            qvec = cls.get_embedding(normalized_query_text)
+
+            # 3. 检查当前表内是否有任何非 null 的向量，来决定是否直接回退到纯词法检索
+            has_vectors = False
+            if qvec:
+                first_vector = db.query(LlmServiceKnowledgeUnit.unit_id).filter(
+                    LlmServiceKnowledgeUnit.embedding.isnot(None)
+                ).first()
+                if first_vector:
+                    has_vectors = True
+
+            filters_used["has_vectors_in_db"] = has_vectors
+
+            # 4. 执行召回
+            hits_by_id = {}
+
+            # 4.1 语义召回 (仅在有向量时运行)
+            if has_vectors and qvec:
+                try:
+                    sem_query = db.query(
+                        LlmServiceKnowledgeUnit,
+                        (1 - LlmServiceKnowledgeUnit.embedding.cosine_distance(qvec)).label("sem_score")
+                    ).filter(
+                        LlmServiceKnowledgeUnit.audience == "对外",
+                        LlmServiceKnowledgeUnit.embedding.isnot(None)
+                    )
+                    if kb3_confirmed_only:
+                        sem_query = sem_query.filter(LlmServiceKnowledgeUnit.status == "confirmed")
+                    else:
+                        sem_query = sem_query.filter(LlmServiceKnowledgeUnit.status.in_(["confirmed", "pending"]))
+
+                    if service_category:
+                        sem_query = sem_query.filter(
+                            or_(
+                                LlmServiceKnowledgeUnit.service_category == service_category,
+                                LlmServiceKnowledgeUnit.scope == "cross"
+                            )
+                        )
+
+                    sem_results = sem_query.order_by(
+                        LlmServiceKnowledgeUnit.embedding.cosine_distance(qvec)
+                    ).limit(50).all()
+
+                    for unit, score in sem_results:
+                        hits_by_id[unit.unit_id] = {
+                            "unit": unit,
+                            "semantic_score": float(score) if score is not None else 0.0,
+                            "keyword_score": 0.0,
+                            "final_score": float(score) if score is not None else 0.0
+                        }
+                except Exception as e:
+                    logger.warning(f"KB3 pgvector 检索失败，回退为文本匹配: {e}")
+
+            # 4.2 词法召回 (pg_trgm word_similarity 检索)
+            try:
+                word_sim = func.word_similarity(normalized_query_text, LlmServiceKnowledgeUnit.search_text)
+                char_sim = func.similarity(LlmServiceKnowledgeUnit.search_text, normalized_query_text)
+                score_expr = func.greatest(word_sim, char_sim).label("trgm_score")
+
+                trgm_query = db.query(
+                    LlmServiceKnowledgeUnit,
+                    score_expr
+                ).filter(
+                    LlmServiceKnowledgeUnit.audience == "对外"
+                )
+                if kb3_confirmed_only:
+                    trgm_query = trgm_query.filter(LlmServiceKnowledgeUnit.status == "confirmed")
+                else:
+                    trgm_query = trgm_query.filter(LlmServiceKnowledgeUnit.status.in_(["confirmed", "pending"]))
+
+                if service_category:
+                    trgm_query = trgm_query.filter(
+                        or_(
+                            LlmServiceKnowledgeUnit.service_category == service_category,
+                            LlmServiceKnowledgeUnit.scope == "cross"
+                        )
+                    )
+
+                # Token-based ilike fallback
+                tokens = cls._tokenize_query_text(normalized_query_text)
+                term_filters = [LlmServiceKnowledgeUnit.search_text.ilike(f"%{t}%") for t in tokens if len(t) >= 2]
+
+                trgm_query = trgm_query.filter(
+                    or_(
+                        func.greatest(word_sim, char_sim) > 0.18,
+                        LlmServiceKnowledgeUnit.search_text.ilike(f"%{normalized_query_text}%"),
+                        LlmServiceKnowledgeUnit.content.ilike(f"%{normalized_query_text}%"),
+                        *term_filters
+                    )
+                )
+
+                trgm_results = trgm_query.order_by(score_expr.desc()).limit(50).all()
+
+                for unit, score in trgm_results:
+                    val = float(score) if score is not None else 0.0
+                    if val <= 0.0:
+                        val = 0.20
+                    if unit.unit_id in hits_by_id:
+                        hits_by_id[unit.unit_id]["keyword_score"] = val
+                        hits_by_id[unit.unit_id]["final_score"] = (
+                            hits_by_id[unit.unit_id]["semantic_score"] * 0.7 + val * 0.3
+                        )
+                    else:
+                        hits_by_id[unit.unit_id] = {
+                            "unit": unit,
+                            "semantic_score": 0.0,
+                            "keyword_score": val,
+                            "final_score": val
+                        }
+            except Exception as e:
+                logger.warning(f"KB3 pg_trgm 检索失败: {e}")
+
+            # 4.3 兜底保障：若因为分类预过滤导致召回为空，自动关闭大类过滤重新全库检索一次
+            if not hits_by_id and service_category:
+                filters_used["prefilter_fallback_triggered"] = True
+                try:
+                    backup_query = db.query(LlmServiceKnowledgeUnit).filter(
+                        LlmServiceKnowledgeUnit.audience == "对外",
+                        or_(
+                            LlmServiceKnowledgeUnit.search_text.ilike(f"%{normalized_query_text}%"),
+                            LlmServiceKnowledgeUnit.content.ilike(f"%{normalized_query_text}%")
+                        )
+                    )
+                    if kb3_confirmed_only:
+                        backup_query = backup_query.filter(LlmServiceKnowledgeUnit.status == "confirmed")
+                    else:
+                        backup_query = backup_query.filter(LlmServiceKnowledgeUnit.status.in_(["confirmed", "pending"]))
+
+                    backup_results = backup_query.limit(top_k).all()
+                    for unit in backup_results:
+                        hits_by_id[unit.unit_id] = {
+                            "unit": unit,
+                            "semantic_score": 0.0,
+                            "keyword_score": 0.25,
+                            "final_score": 0.25
+                        }
+                except Exception as e:
+                    logger.warning(f"KB3 全库兜底检索失败: {e}")
+
+            # 5. 排序、重排与截断
+            sorted_candidates = sorted(hits_by_id.values(), key=lambda x: x["final_score"], reverse=True)
+            top_candidates = sorted_candidates[:top_k]
+
+            # 6. 对齐返回格式
+            hits = []
+            replyable_hits = []
+            for cand in top_candidates:
+                unit = cand["unit"]
+                score = cand["final_score"]
+                sem_score = cand["semantic_score"]
+                kw_score = cand["keyword_score"]
+
+                is_faq = unit.unit_type == "faq"
+                knowledge_class = "faq" if is_faq else "rule"
+
+                hit_dict = {
+                    "chunk_id": str(unit.unit_id),
+                    "document_id": "service_kb",
+                    "knowledge_class": knowledge_class,
+                    "knowledge_type": unit.knowledge_type or "产品知识",
+                    "chunk_type": unit.unit_type or "element",
+                    "title": unit.title,
+                    "content": unit.content,
+                    "score": score,
+                    "semantic_score": round(sem_score, 6),
+                    "keyword_score": round(kw_score, 6),
+                    "exact_phrase_score": 0.0,
+                    "intent_score": 0.0,
+                    "metadata_score": 0.0,
+                    "bm25_score": 0.0,
+                    "candidate_sources": ["service_kb3"],
+                    "library_type": "service_knowledge_unit",
+                    "allowed_for_generation": True,
+                    "usable_for_reply": True,
+                    "publishable": True,
+                    "useful_score": 1.0 if unit.status == "confirmed" else 0.5,
+                    "quality_notes": unit.note or "",
+                    "priority": int(unit.confidence * 100) if unit.confidence else 50,
+                    "business_line": unit.service_category or "general",
+                    "sub_service": unit.service_subcategory or "",
+                    "language_pair": None,
+                    "service_scope": unit.scope or "cross",
+                    "region": None,
+                    "customer_tier": None,
+                    "business_stage": None,
+                    "business_scenario_code": None,
+                    "embedding_model": "qwen3-embedding:0.6b",
+                    "embedding_dim": 1024,
+                    "pricing_rules": [],
+                    "pricing_rule_missing": False,
+                    "insufficient_info": False,
+                    "manual_review_required": False,
+                    "applicability": "matched",
+                }
+
+                hits.append(hit_dict)
+                replyable_hits.append(hit_dict)
+
+            evidence_context = {
+                "rules": [],
+                "faqs": [],
+                "cases": [],
+                "supporting": [],
+                "human_only": [],
+            }
+
+            # KB3 专属 Prompt 约束动态注入
+            injection_prefix = (
+                "【重要：参考知识源为新版服务知识库】\n"
+                "1. 若匹配项为 [FAQ型知识]，其为官方固化销售口径。你在生成回复时必须严格遵循其“答复”所表达的内容与范围进行润色和生成，绝对禁止编造任何政策、优惠或新承诺。\n"
+                "2. 若匹配项为 [规则型知识]，其为客观业务规范与案例，主要用于回答规格参数；若客户提供的信息中缺少这些规范中提到的必要成交要素（如语向、字数等），你必须基于此规范在微信答复中进行礼貌的主动反问引导客户提供。\n\n"
+            )
+
+            for hit in replyable_hits:
+                if hit["chunk_type"] == "faq":
+                    evidence_context["faqs"].append(hit)
+                elif hit["knowledge_type"] == "pricing" or hit["chunk_type"] == "element":
+                    evidence_context["rules"].append(hit)
+                else:
+                    evidence_context["cases"].append(hit)
+
+            confidence_score = hits[0]["score"] if hits else 0.0
+
+            if not hits:
+                status = "no_applicable_knowledge"
+                no_hit_reason = "新版服务知识库检索召回为 0"
+                retrieval_quality = "no_hit"
+                insufficient_info = True
+                manual_review_required = True
+            elif confidence_score < 0.18:
+                status = "low_confidence"
+                no_hit_reason = f"最高匹配分 {confidence_score} 低于软门槛 0.18"
+                retrieval_quality = "low_confidence"
+                insufficient_info = True
+                manual_review_required = True
+            else:
+                status = "ok"
+                no_hit_reason = None
+                retrieval_quality = "high_confidence"
+                insufficient_info = False
+                manual_review_required = False
+
+            latency_ms = round((perf_counter() - started) * 1000)
+
+            hit_chunks_snapshot = {
+                "schema_version": 1,
+                "source": "service_knowledge_v3_snapshot",
+                "captured_at": datetime.utcnow().isoformat(),
+                "query_text": query_text or "",
+                "filters_used": filters_used,
+                "hits": hits,
+                "replyable_hits": replyable_hits,
+                "human_only_hits": [],
+                "supporting_chunks": [],
+                "related_chunks": [],
+                "note": "KB3 service knowledge unit retrieval snapshot.",
+            }
+
+            log = KnowledgeHitLog(
+                request_id=request_id,
+                session_id=session_id,
+                query_text=query_text or "",
+                query_features=features,
+                filters_used=filters_used,
+                hit_chunk_ids=[hit["chunk_id"] for hit in hits],
+                scores=[hit["score"] for hit in hits],
+                hit_chunks_snapshot=hit_chunks_snapshot,
+                no_hit_reason=no_hit_reason,
+                status=status,
+                retrieval_quality=retrieval_quality,
+                confidence_score=confidence_score,
+                insufficient_info=insufficient_info,
+                manual_review_required=manual_review_required,
+                latency_ms=latency_ms,
+            )
+            db.add(log)
+            db.commit()
+            record_knowledge_hit_events(db, log, hits)
+
+            return {
+                "status": status,
+                "query_text": query_text,
+                "query_features": features,
+                "filters_used": filters_used,
+                "hits": hits,
+                "replyable_hits": replyable_hits,
+                "human_only_hits": [],
+                "supporting_chunks": [],
+                "related_chunks": [],
+                "evidence_context": evidence_context,
+                "evidence_refs": cls.build_evidence_refs({"hits": replyable_hits}),
+                "confidence_score": confidence_score,
+                "retrieval_quality": retrieval_quality,
+                "insufficient_info": insufficient_info,
+                "manual_review_required": manual_review_required,
+                "no_hit_reason": no_hit_reason,
+                "latency_ms": latency_ms,
+                "log_id": str(log.log_id),
+                "thread_business_fact": None,
+                "injection_prefix": injection_prefix,
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error("新版服务知识库 KB3 检索异常: %s", e)
+            raise RuntimeError(f"新版服务知识库 KB3 检索异常: {e}") from e
         finally:
             db.close()
 

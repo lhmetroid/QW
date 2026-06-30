@@ -2,7 +2,7 @@ from sqlalchemy import (
 
     create_engine, Column, Integer, String, Text, DateTime, Date, JSON, text, Boolean,
 
-    ForeignKey, Numeric, Index, UniqueConstraint
+    ForeignKey, Numeric, Index, UniqueConstraint, BigInteger, Float
 
 )
 
@@ -15,6 +15,12 @@ from sqlalchemy.orm import sessionmaker
 import datetime
 
 from config import settings
+
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    from sqlalchemy.types import NullType as Vector
+
 
 
 
@@ -143,6 +149,12 @@ class WecomRuntimeConfig(Base):
     wecom_recent_message_limit = Column(Integer, nullable=False, default=10)
 
     api_kb2_enabled = Column(Boolean, nullable=False, default=True)
+
+    wecom_kb_primary = Column(String(20), nullable=False, default="kb1")
+
+    wecom_kb_compare = Column(String(20), nullable=False, default="kb2")
+
+    wecom_kb3_confirmed_only = Column(Boolean, nullable=False, default=False)
 
     wecom_auto_assist_on_customer_message = Column(Boolean, nullable=False, default=False)
 
@@ -579,6 +591,82 @@ class KnowledgeHitLog(Base):
         Index("idx_khl_session", "session_id"),
 
     )
+
+
+
+class KnowledgeHitEvent(Base):
+
+    """知识命中事件(扁平化): knowledge_hit_logs 里每条命中拆成一行, 专供命中统计快速 GROUP BY。
+
+    chunk_id 用 String(不是 UUID), 既能存 knowledge_chunk 的 UUID, 也能存 KB3 旧版数字 id,
+    彻底避免 UUID 强转崩溃; created_at/score/query_text/status 从所属 log 冗余下来,
+    统计时无需回查 knowledge_hit_logs, 也无需解析任何 JSON。"""
+
+    __tablename__ = "knowledge_hit_event"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    log_id = Column(UUID(as_uuid=False), nullable=False)
+
+    chunk_id = Column(String(100), nullable=False)
+
+    hit_rank = Column(Integer, nullable=True)
+
+    score = Column(Float, nullable=True)
+
+    query_text = Column(Text, nullable=True)
+
+    status = Column(String(50), nullable=True)
+
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+
+        Index("idx_khe_created_at", "created_at"),
+
+        Index("idx_khe_chunk_created", "chunk_id", "created_at"),
+
+        Index("idx_khe_log", "log_id"),
+
+    )
+
+
+def record_knowledge_hit_events(db, log, hits):
+    """把一条命中日志的命中明细写入 knowledge_hit_event。失败只告警不影响主流程(事件可后续回填)。"""
+    try:
+        rows = []
+        for index, hit in enumerate(hits or []):
+            if not isinstance(hit, dict):
+                continue
+            chunk_id = hit.get("chunk_id") or hit.get("id")
+            if not chunk_id:
+                continue
+            score = hit.get("score")
+            try:
+                score = float(score) if score is not None else None
+            except (TypeError, ValueError):
+                score = None
+            rows.append(KnowledgeHitEvent(
+                log_id=str(log.log_id),
+                chunk_id=str(chunk_id),
+                hit_rank=index + 1,
+                score=score,
+                query_text=log.query_text,
+                status=log.status,
+                created_at=log.created_at,
+            ))
+        if rows:
+            db.add_all(rows)
+            db.commit()
+        return len(rows)
+    except Exception as exc:
+        db.rollback()
+        try:
+            import logging
+            logging.getLogger("database").warning("record_knowledge_hit_events 写入失败(可后续回填): %s", exc)
+        except Exception:
+            pass
+        return 0
 
 
 
@@ -1095,6 +1183,7 @@ class EmailFragmentAsset(Base):
         Index("idx_efa_status_quality", "status", "usable_for_reply", "useful_score"),
 
         Index("idx_efa_fewshot_admission", "status", "publishable", "allowed_for_generation", "usable_for_reply", "useful_score"),
+        Index("idx_efa_mail_gold_seed_lookup", "source_type", "scenario_label", "function_fragment", "status", "useful_score", "effect_score", "updated_at"),
 
     )
 
@@ -2420,6 +2509,55 @@ class MailGoldSeedReview(Base):
     reviewer = Column(String(120), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+
+class LlmServiceKnowledgeUnit(Base):
+    """新版服务知识库单元表"""
+    __tablename__ = "llm_service_knowledge_unit"
+
+    unit_id = Column(BigInteger, primary_key=True)
+    service_category = Column(Text, nullable=True)
+    service_subcategory = Column(Text, nullable=True)
+    knowledge_type = Column(Text, nullable=True)
+    unit_type = Column(Text, nullable=True)
+    scope = Column(Text, nullable=True)
+    title = Column(Text, nullable=False)
+    content = Column(Text, nullable=False)
+    note = Column(Text, nullable=True)
+    keywords = Column(JSON, nullable=True)
+    evidence = Column(JSON, nullable=True)
+    status = Column(Text, nullable=False, default="pending")
+    confidence = Column(Numeric, nullable=True)
+    search_text = Column(Text, nullable=True)
+    embedding = Column(Vector(1024), nullable=True)
+    content_hash = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=True)
+    review_comment = Column(Text, nullable=True)
+    review_tags = Column(JSON, nullable=True)
+    reviewer = Column(Text, nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    qc_flags = Column(JSON, nullable=True)
+    audience = Column(Text, nullable=True)
+
+
+class LlmServiceTaxonomy(Base):
+    """服务目录分类与别名表"""
+    __tablename__ = "llm_service_taxonomy"
+
+    id = Column(Integer, primary_key=True)
+    category = Column(Text, nullable=False)
+    subcategory = Column(Text, nullable=False)
+    cat_order = Column(Integer, nullable=False)
+    sub_order = Column(Integer, nullable=False)
+    is_cross = Column(Boolean, nullable=False, default=False)
+    category_aliases = Column(JSON, nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("category", "subcategory", name="uq_category_subcategory"),
+        Index("idx_taxonomy_category", "category"),
+    )
 
 
 # 初始化数据库连接

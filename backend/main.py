@@ -1098,6 +1098,24 @@ def auto_patch_db():
             "created_at TIMESTAMP DEFAULT now()"
             ");"
         ))
+        # 命中事件扁平表一次性回填: 表为空且已有历史命中日志时, 从 JSON 数组展开灌入;
+        # 之后由 record_knowledge_hit_events 在写命中日志时增量维护。单条 INSERT 原子, 安全幂等。
+        try:
+            has_events = db.execute(text("SELECT 1 FROM knowledge_hit_event LIMIT 1")).first()
+            if not has_events:
+                result = db.execute(text(
+                    "INSERT INTO knowledge_hit_event (log_id, chunk_id, hit_rank, score, query_text, status, created_at) "
+                    "SELECT kl.log_id, c.chunk_id, c.ord, NULLIF(s.score, '')::double precision, "
+                    "       kl.query_text, kl.status, kl.created_at "
+                    "FROM knowledge_hit_logs kl "
+                    "CROSS JOIN LATERAL jsonb_array_elements_text(kl.hit_chunk_ids::jsonb) WITH ORDINALITY AS c(chunk_id, ord) "
+                    "LEFT JOIN LATERAL jsonb_array_elements_text(kl.scores::jsonb) WITH ORDINALITY AS s(score, sord) ON s.sord = c.ord "
+                    "WHERE kl.hit_chunk_ids IS NOT NULL"
+                ))
+                logger.info("knowledge_hit_event 首次回填完成 rows=%s", getattr(result, "rowcount", "?"))
+        except Exception as backfill_exc:
+            db.rollback()
+            logger.warning("knowledge_hit_event 回填跳过/失败(可后续重试): %s", backfill_exc)
         db.commit()
         db.close()
         logger.info("数据库 Schema 自动检查/修复完成")
@@ -14193,41 +14211,32 @@ async def get_kb_hit_log_chunk_stats(
     end_dt = _parse_kb_stats_datetime(end_date, end_of_day=True)
     max_rows = max(1, min(int(limit or 200), 1000))
 
-    # 用户诉求: 命中统计要快、别再超时。原实现整行加载最多 scan_limit 条日志(每行含 ~7KB 的
-    # hit_chunks_snapshot 大 JSON), 远端网络下要搬运 >1MB 才在 Python 里聚合, 直接 15s 超时。
-    # 改为在 Postgres 内对 hit_chunk_ids/scores 两个 JSON 数组做 LATERAL unnest + GROUP BY,
-    # 只回传聚合后的 top-N 行, 不再搬运任何快照正文; 同时覆盖全时间范围(不再 200 条采样截断)。
-    where = ["kl.hit_chunk_ids IS NOT NULL"]
+    # 命中统计直接对扁平索引表 knowledge_hit_event 做 GROUP BY: 命中明细在写日志时已拆成单行,
+    # chunk_id/score/created_at/query_text/status 都是独立列(非 JSON), 走索引聚合, 稳定且最快;
+    # 不再搬运任何快照大 JSON, 也不在查询时解析 JSON。覆盖全时间范围(无 200 条采样截断)。
+    where = ["1=1"]
     params: dict = {"limit": max_rows}
     if start_dt:
-        where.append("kl.created_at >= :start_dt")
+        where.append("he.created_at >= :start_dt")
         params["start_dt"] = start_dt
     if end_dt:
-        where.append("kl.created_at < :end_dt")
+        where.append("he.created_at < :end_dt")
         params["end_dt"] = end_dt
     if status:
-        where.append("kl.status = :status")
+        where.append("he.status = :status")
         params["status"] = status
     where_sql = " AND ".join(where)
 
     agg_sql = text(f"""
-        SELECT chunk_id, hit_count, latest_hit_at, avg_score, sample_queries
-        FROM (
-            SELECT
-                c.chunk_id AS chunk_id,
-                COUNT(*) AS hit_count,
-                MAX(kl.created_at) AS latest_hit_at,
-                AVG(NULLIF(s.score, '')::double precision) AS avg_score,
-                (array_agg(DISTINCT NULLIF(btrim(kl.query_text), ''))
-                    FILTER (WHERE NULLIF(btrim(kl.query_text), '') IS NOT NULL))[1:5] AS sample_queries
-            FROM knowledge_hit_logs kl
-            CROSS JOIN LATERAL jsonb_array_elements_text(kl.hit_chunk_ids::jsonb)
-                WITH ORDINALITY AS c(chunk_id, ord)
-            LEFT JOIN LATERAL jsonb_array_elements_text(kl.scores::jsonb)
-                WITH ORDINALITY AS s(score, sord) ON s.sord = c.ord
-            WHERE {where_sql}
-            GROUP BY c.chunk_id
-        ) agg
+        SELECT he.chunk_id AS chunk_id,
+               COUNT(*) AS hit_count,
+               MAX(he.created_at) AS latest_hit_at,
+               AVG(he.score) AS avg_score,
+               (array_agg(DISTINCT NULLIF(btrim(he.query_text), ''))
+                   FILTER (WHERE NULLIF(btrim(he.query_text), '') IS NOT NULL))[1:5] AS sample_queries
+        FROM knowledge_hit_event he
+        WHERE {where_sql}
+        GROUP BY he.chunk_id
         ORDER BY hit_count DESC, latest_hit_at DESC
         LIMIT :limit
     """)
@@ -14236,10 +14245,9 @@ async def get_kb_hit_log_chunk_stats(
 
     totals_sql = text(f"""
         SELECT COUNT(*) AS total_hits,
-               COUNT(DISTINCT c.chunk_id) AS unique_chunks,
-               COUNT(DISTINCT kl.log_id) AS log_count
-        FROM knowledge_hit_logs kl
-        CROSS JOIN LATERAL jsonb_array_elements_text(kl.hit_chunk_ids::jsonb) AS c(chunk_id)
+               COUNT(DISTINCT he.chunk_id) AS unique_chunks,
+               COUNT(DISTINCT he.log_id) AS log_count
+        FROM knowledge_hit_event he
         WHERE {where_sql}
     """)
     totals = db.execute(totals_sql, params).fetchone()
