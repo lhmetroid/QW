@@ -6411,14 +6411,17 @@
         }
         // 强制走当前 origin (localhost:8071)，绕过 localStorage 缓存的外部 api_base。
         // 经典案例迭代是本机特性，不能走 api.speedasia.net（那里没有这些表/端点）。
-        async function caselibFetch(path, init) {
+        async function caselibFetch(path, init, timeoutMs) {
             const url = `${window.location.origin}${path}`;
-            const res = await rawFetchWithTimeout(url, init || {}, LOCAL_API_TIMEOUT_MS);
+            // 默认 15s; 重读类接口(迭代/每日详情=重算整天)显式传更长的 timeout, 别被低阈值误杀。
+            const res = await rawFetchWithTimeout(url, init || {}, timeoutMs || LOCAL_API_TIMEOUT_MS);
             if (!res.ok) {
                 throw new Error(`HTTP ${res.status} ${path}`);
             }
             return res;
         }
+        // 详情/每日详情是"重算整天"的慢读, 给它们 100s 预算(后端 statement_timeout 放到 110s 兜底)。
+        const CASELIB_DETAIL_TIMEOUT_MS = 100000;
 
         // 12 个销售场景的完整业务定义（用于 tooltip / 显示）
         const CASELIB_SCENARIO_DEFS = {
@@ -6592,7 +6595,7 @@
                 const ymd = row.run_id.slice(6);                 // daily_YYYYMMDD
                 const date = `${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;
                 try {
-                    const res = await caselibFetch(`/api/case_lib/daily_validation_stats/${date}`);
+                    const res = await caselibFetch(`/api/case_lib/daily_validation_stats/${date}`, undefined, 45000);
                     const data = await res.json();
                     if (seq !== caselibState.dailyStatsSeq) return;
                     row.total_cases = data.count;
@@ -7194,7 +7197,7 @@
                     const d = runId.slice(12, 14);
                     url = `/api/case_lib/daily_validation/${y}-${m}-${d}?view=api&limit=300`;
                 }
-                const res = await caselibFetch(url);
+                const res = await caselibFetch(url, undefined, CASELIB_DETAIL_TIMEOUT_MS);
                 const data = await res.json();
                 if (isDaily && data.results) {
                     data.results.forEach(r => { r.__full = true; });

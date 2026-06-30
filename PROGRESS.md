@@ -1,5 +1,22 @@
 # PROGRESS
 
+## 2026-06-30 迭代/每日详情: 放宽超时+只拉命中行大JSON, 修点详情 timeout
+
+- 现象: 列表秒出了, 但点每日"实时验证"行的"详情→"仍 timeout。
+- 原因(回答用户"读数据为什么还有问题"): 每日详情不是读存好的一行, 而是把整天重算一遍——从
+  MessageLog 重建当天所有会话 + 逐轮匹配 ApiAssistInvocation + 把每个命中行的大 JSON
+  result_payload 全量拉回来(6-24 日志: query_invocations 3.7s/217 行)。远端库一慢就过前端 15s。
+  (真实迭代轮次 v17 等的详情是读存好的列, 一直很快。)
+- 修复:
+  1. 放宽超时(用户明确要求不要卡太低): 前端详情请求 timeout 提到 100s(CASELIB_DETAIL_TIMEOUT_MS),
+     caselibFetch 支持按调用传 timeout; 每日单天统计回填给 45s。后端两个详情端点 SET LOCAL
+     statement_timeout=110s, 不让全局 20s 把重读提前掐成 500(端点在 threadpool, 慢也不阻塞别人)。
+  2. 少拉数据(真正的读优化): 每日详情候选查询 defer 掉 result_payload/quality_similarity 两个大
+     JSON 列, 只用轻量列做会话匹配; 匹配完成后只对"会命中的行"(session 属于 target_sessions)按 id
+     分批补取这两列, 构建循环改读批量结果(避免 defer 后逐行惰性加载 N+1)。非外部单聊的候选行
+     不再白拉大 JSON。
+- 部署: 重启后端 + 强刷前端。验证: `python -m py_compile backend/main.py` 通过。
+
 ## 2026-06-30 迭代记录页改"直接读先出+逐天回填", 根治反复 timeout
 
 - 用户原则: 能直接读的先显示, 要计算的逐个算完再显示。盘点该页:

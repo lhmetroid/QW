@@ -31931,6 +31931,14 @@ def get_daily_validation_detail(
     except Exception:
         raise HTTPException(status_code=400, detail="invalid date format, use YYYY-MM-DD")
 
+    # 这是把"整天会话"重算一遍的重读(重建会话+匹配+拉大 JSON), 不是简单取一行。别让全局
+    # 20s statement_timeout 提前掐断成 500; 本端点在 threadpool 跑, 慢也不阻塞别人。放宽到 110s,
+    # 配合前端详情请求的长 timeout。
+    try:
+        db.execute(text("SET LOCAL statement_timeout = '110000'"))
+    except Exception:
+        pass
+
     # v1.7.192: 修正历史误判 —— 服务器跑在 Beijing TZ, MessageLog.timestamp 由
     # archive_service datetime.fromtimestamp() 写入, 是"北京-naive", **不是 UTC**。
     # 之前 day_start 减 8 小时是按"MessageLog 是 UTC"的错误假设做的, 实际效果是把
@@ -31959,7 +31967,13 @@ def get_daily_validation_detail(
     api_fast_view = str(view or "").lower() == "api"
     invs: list[ApiAssistInvocation] = []
     if api_fast_view:
-        invs = db.query(ApiAssistInvocation).filter(
+        # 候选只取轻量列做匹配(session/anchor/triggered/quality), 把两个大 JSON 列
+        # result_payload / quality_similarity defer 掉; 真正命中的行稍后按 id 批量补取,
+        # 避免为最多 300 行候选(其中不少非外部单聊、根本用不到)整列拉大 JSON。
+        invs = db.query(ApiAssistInvocation).options(
+            defer(ApiAssistInvocation.result_payload),
+            defer(ApiAssistInvocation.quality_similarity),
+        ).filter(
             ApiAssistInvocation.triggered_at >= day_start_utc,
             ApiAssistInvocation.triggered_at < day_end_utc,
             ApiAssistInvocation.session_id.isnot(None),
@@ -32001,7 +32015,10 @@ def get_daily_validation_detail(
 
     if not api_fast_view:
         stage_started = perf_counter()
-        invs = db.query(ApiAssistInvocation).filter(
+        invs = db.query(ApiAssistInvocation).options(
+            defer(ApiAssistInvocation.result_payload),
+            defer(ApiAssistInvocation.quality_similarity),
+        ).filter(
             ApiAssistInvocation.session_id.in_(list(target_sessions.keys())) if target_sessions else False,
             ApiAssistInvocation.triggered_at >= day_start_utc - timedelta(hours=1),
             ApiAssistInvocation.triggered_at < day_end_utc + timedelta(hours=1)
@@ -32024,6 +32041,33 @@ def get_daily_validation_detail(
         if existing is None or _inv_rank(inv) >= _inv_rank(existing):
             inv_map[key] = inv
     _mark_timing("build_invocation_map_ms", stage_started)
+
+    # 批量补取大 JSON: 只对"会被匹配上"的候选(session 属于 target_sessions)按 id 分批拉
+    # result_payload / quality_similarity, 存进 dict 供下方构建循环读取。这样非外部单聊会话的
+    # 候选行就不再白白整列拉大 JSON; 也避开 defer 后逐行惰性加载的 N+1。
+    stage_started = perf_counter()
+    eligible_ids = [inv.invocation_id for inv in invs if str(inv.session_id) in target_sessions]
+    inv_payload_by_id: dict[Any, tuple] = {}
+    for i in range(0, len(eligible_ids), 50):
+        chunk = eligible_ids[i : i + 50]
+        for iid, rp, qs in db.query(
+            ApiAssistInvocation.invocation_id,
+            ApiAssistInvocation.result_payload,
+            ApiAssistInvocation.quality_similarity,
+        ).filter(ApiAssistInvocation.invocation_id.in_(chunk)).all():
+            inv_payload_by_id[iid] = (rp, qs)
+    _mark_timing("query_matched_payloads_ms", stage_started)
+
+    def _inv_payload(inv):
+        """命中行的 result_payload(dict 或 None)。从批量补取结果读, 不触发逐行惰性加载。"""
+        if not inv:
+            return None
+        return inv_payload_by_id.get(inv.invocation_id, (None, None))[0]
+
+    def _inv_similarity(inv):
+        if not inv:
+            return None
+        return inv_payload_by_id.get(inv.invocation_id, (None, None))[1]
 
     results = []
     run_id = f"daily_{date.replace('-', '')}"
@@ -32128,6 +32172,10 @@ def get_daily_validation_detail(
             if api_fast_view and not matched_inv:
                 continue
 
+            # 命中行的大 JSON 从批量补取结果取一次, 后续全用这两个局部变量(不再走 ORM 列, 不触发惰性加载)。
+            matched_payload = _inv_payload(matched_inv)
+            matched_similarity = _inv_similarity(matched_inv)
+
             ref_time = cust["timestamp"] if cust else (g["sales"]["timestamp"] if g["sales"] else None)
             history_msgs = []
             if ref_time:
@@ -32187,14 +32235,14 @@ def get_daily_validation_detail(
                 kb2_eval = float(matched_inv.kb2_eval_score) if matched_inv.kb2_eval_score is not None else None
 
                 # AI 质量分 + 原始回复分：取自 reply_scores_v2(7 维绝对质量)，AI 与原始同模型同维度
-                rs2 = _caselib_load_json((matched_inv.result_payload or {}).get("reply_scores_v2")) \
-                    if isinstance(matched_inv.result_payload, dict) else None
+                rs2 = _caselib_load_json((matched_payload or {}).get("reply_scores_v2")) \
+                    if isinstance(matched_payload, dict) else None
                 scores_payload = rs2 if isinstance(rs2, dict) else {}
                 ai_score = _caselib_ai_score_from_step7(scores_payload)
                 sales_score = _caselib_sales_score_from_step7(scores_payload)
 
                 # 相似分：贴合代理分(quality_similarity.best_score，即原 quality_score)
-                sim_payload = _caselib_load_json(matched_inv.quality_similarity) or {}
+                sim_payload = _caselib_load_json(matched_similarity) or {}
                 best_sim = sim_payload.get("best_score") if isinstance(sim_payload, dict) else None
                 if best_sim is None and matched_inv.quality_score is not None:
                     best_sim = float(matched_inv.quality_score)
@@ -32233,11 +32281,11 @@ def get_daily_validation_detail(
             }
 
             step1 = None
-            if matched_inv and matched_inv.result_payload:
+            if matched_payload:
                 step1 = {
-                    "topic": matched_inv.result_payload.get("topic") or "日常会话",
-                    "core_demand": matched_inv.result_payload.get("core_demand") or "",
-                    "status": matched_inv.result_payload.get("status") or "done"
+                    "topic": matched_payload.get("topic") or "日常会话",
+                    "core_demand": matched_payload.get("core_demand") or "",
+                    "status": matched_payload.get("status") or "done"
                 }
             elif cust:
                 step1 = {
@@ -32257,9 +32305,9 @@ def get_daily_validation_detail(
             kb_used_count = None
             step4_knowledge = None
             train_ai_payload = None
-            if matched_inv and matched_inv.result_payload:
-                kb_status = matched_inv.result_payload.get("knowledge_status") or "done"
-                kv2 = matched_inv.result_payload.get("knowledge_v2")
+            if matched_payload:
+                kb_status = matched_payload.get("knowledge_status") or "done"
+                kv2 = matched_payload.get("knowledge_v2")
                 if isinstance(kv2, dict):
                     kb_hit_count, kb_used_count = _caselib_kb_counts(kv2)
                     kb_hit_count = kb_hit_count or 0
@@ -32278,7 +32326,7 @@ def get_daily_validation_detail(
                             # 计数已由外层 r.kb_hit_count / r.kb_used_count 携带
                         },
                     }
-                ta = matched_inv.result_payload.get("training_ai")
+                ta = matched_payload.get("training_ai")
                 if isinstance(ta, dict):
                     train_ai_payload = ta
 
@@ -32286,8 +32334,8 @@ def get_daily_validation_detail(
             # 不在详情加载时实时查 CRM(SQL Server)，避免外连阻塞/拖慢甚至卡死整个加载。
             # 未匹配到 API 调用的轮次，画像列留空。
             crm_info = None
-            if matched_inv and matched_inv.result_payload:
-                crm_info = matched_inv.result_payload.get("crm_info")
+            if matched_payload:
+                crm_info = matched_payload.get("crm_info")
 
             # 耗时双行 (v1.7.193 重定义, 让两行不再恒等):
             #   第1行 fetch_to_output_ms = "主链路耗时" = pipeline_total_ms (LLM1+知识+LLM2+训练AI 全部跑完那一刻)
@@ -32298,8 +32346,8 @@ def get_daily_validation_detail(
             fetch_to_output_ms = None
             api_total_ms = None
             timings_payload = {}
-            if matched_inv and matched_inv.result_payload:
-                _timings = matched_inv.result_payload.get("timings_ms") or {}
+            if matched_payload:
+                _timings = matched_payload.get("timings_ms") or {}
                 timings_payload = _jsonable(_timings) if isinstance(_timings, dict) else {}
                 _total = _timings.get("total_ms")
                 _pipeline = _timings.get("pipeline_total_ms")
@@ -32327,7 +32375,7 @@ def get_daily_validation_detail(
                 "turn_no": idx + 1,
                 "step1_summary": step1,
                 "step2_crm_info": crm_info,
-                "step6_sales_advice": matched_inv.result_payload.get("reply_reference") if matched_inv else "",
+                "step6_sales_advice": matched_payload.get("reply_reference") if matched_payload else "",
                 # 训练AI(另一条途径)与当前流程并行,与第6步/分数列共用一列(分两行展示)。
                 # training_ai_score 暂为 None(独立打分后续完成)。
                 "training_ai_reply": (train_ai_payload.get("reply") if train_ai_payload else ""),
@@ -32338,7 +32386,7 @@ def get_daily_validation_detail(
                 "training_ai_score": (float(train_ai_payload["quality_score"]) if train_ai_payload and train_ai_payload.get("quality_score") is not None else None),
                 "training_ai_scores": (train_ai_payload.get("scores") if train_ai_payload else None),
                 "step7_reply_scores": scores_payload,
-                "stage_status": matched_inv.result_payload.get("stage_status") if matched_inv else {},
+                "stage_status": matched_payload.get("stage_status") if matched_payload else {},
                 "step4_knowledge": step4_knowledge,
                 "kb_status": kb_status,
                 "kb_hit_count": kb_hit_count,
@@ -32349,7 +32397,7 @@ def get_daily_validation_detail(
                 "kb1_eval_score": kb1_eval,
                 "kb2_eval_score": kb2_eval,
                 "quality_status": matched_inv.quality_status if matched_inv else "manual_success",
-                "latency_ms": int(matched_inv.result_payload.get("timings_ms", {}).get("total_ms", 0)) if matched_inv and matched_inv.result_payload else None,
+                "latency_ms": int(matched_payload.get("timings_ms", {}).get("total_ms", 0)) if matched_payload else None,
                 "fetch_to_output_ms": fetch_to_output_ms,
                 "api_total_ms": api_total_ms,
                 "timings_ms": timings_payload,
@@ -32440,6 +32488,12 @@ def caselib_get_iteration_detail(run_id: str):
         timings_ms[name] = round((perf_counter() - started_at) * 1000, 2)
 
     try:
+        # 详情是一次重读(可能拉不少行), 别让全局 20s statement_timeout 提前掐断; 本端点已在
+        # threadpool 里跑, 慢也不阻塞别人。放宽到 110s, 配合前端详情请求的长 timeout。
+        try:
+            db.execute(text("SET LOCAL statement_timeout = '110000'"))
+        except Exception:
+            pass
         stage_started = perf_counter()
         r = db.query(CaseIterationRun).filter(CaseIterationRun.run_id == run_id).first()
         _mark_timing("query_run_ms", stage_started)
