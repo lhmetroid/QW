@@ -849,6 +849,29 @@ def auto_patch_db():
             ");"
         ))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_masp_run ON mail_autosend_plan_item (run_id);"))
+        # ---- autosend 升级: 排期持久化 + 后台生成 + 转入CRM + 已发部分套装策略 所需新列 ----
+        db.execute(text("ALTER TABLE mail_autosend_config ADD COLUMN IF NOT EXISTS default_partial_sent_mode VARCHAR(20) NOT NULL DEFAULT 'remaining';"))
+        db.execute(text("ALTER TABLE mail_autosend_suite_rule ADD COLUMN IF NOT EXISTS partial_sent_mode VARCHAR(20) NOT NULL DEFAULT 'use_global';"))
+        # plan_item: 落库展示字段 + 生成内容 + 状态机(planned/drafting/drafted/sent/failed)
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS customer_id VARCHAR(120);"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS company_name VARCHAR(200);"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS contact_name VARCHAR(200);"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS scenario_label_cn VARCHAR(200);"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS pick_reason VARCHAR(20);"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS partial_sent_mode VARCHAR(20);"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS body_html TEXT;"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS llm_prompt TEXT;"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS send_time VARCHAR(10);"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS gen_error TEXT;"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS generated_at TIMESTAMP;"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS committed_at TIMESTAMP;"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_masp_owner_status ON mail_autosend_plan_item (owner_staff_id, status);"))
+        # run: 记录本次排期的锁定销售 + 新筛选参数(便于审计/复算)
+        db.execute(text("ALTER TABLE mail_autosend_run ADD COLUMN IF NOT EXISTS owner_staff_id VARCHAR(120);"))
+        db.execute(text("ALTER TABLE mail_autosend_run ADD COLUMN IF NOT EXISTS company_name_like VARCHAR(200);"))
+        db.execute(text("ALTER TABLE mail_autosend_run ADD COLUMN IF NOT EXISTS exclude_recent_suite_days INTEGER;"))
+        db.execute(text("ALTER TABLE mail_autosend_run ADD COLUMN IF NOT EXISTS gen_status VARCHAR(20);"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS mail_contact_suite_history ("
             "history_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -19448,8 +19471,16 @@ def send_mail_customer_suite(
             final_body_html = _apply_mail_suite_signature(draft.get("final_body_html") or "", signature_html)
         # 计划发送时间 = (今天 + 间隔天) 当天的 send_time；第 1 封默认当前北京时间 +10 分钟。
         default_interval, default_send_time = _mail_suite_default_send_interval_time(scenario, int(suite_step), now_bj)
-        interval = int(saved.send_interval_days) if (saved and saved.send_interval_days is not None) else default_interval
-        send_time = (saved.send_time if (saved and saved.send_time) else default_send_time) or "09:00"
+        if prov is not None and prov.get("send_interval_days") is not None:
+            interval = int(prov.get("send_interval_days") or 0)
+            if interval < 0:
+                raise HTTPException(status_code=422, detail="send_interval_days must be >= 0")
+        else:
+            interval = int(saved.send_interval_days) if (saved and saved.send_interval_days is not None) else default_interval
+        if prov is not None and prov.get("send_time"):
+            send_time = _normalize_suite_send_time(str(prov.get("send_time"))) or default_send_time
+        else:
+            send_time = (saved.send_time if (saved and saved.send_time) else default_send_time) or "09:00"
         try:
             hh, mm = [int(x) for x in send_time.split(":")]
         except Exception:
@@ -19978,34 +20009,120 @@ def _autosend_rule_matches(contact: dict, rule: dict) -> bool:
     return all(results) if mode == "and" else any(results)
 
 
-def _autosend_pick_suite(contact: dict, rules: list[dict], used_scenarios: set, fallback_enabled: bool) -> tuple[str | None, str]:
-    """按优先级给联系人挑套装: 第一个'命中且没发过'的; 都没有则兜底最后一个套装; 兜底也发过则不发。"""
+def _autosend_resolve_partial_mode(rule_mode: str | None, global_default: str | None) -> str:
+    """解析'已发部分套装'处理模式。rule 取 use_global 时回退全局默认。
+    remaining=只补未发封 / resend_all=全部重发 / skip=跳过该套装。"""
+    m = str(rule_mode or "use_global").strip().lower()
+    if m == "use_global":
+        m = str(global_default or "remaining").strip().lower()
+    return m if m in ("remaining", "resend_all", "skip") else "remaining"
+
+
+def _autosend_sent_map(db, contact_ids: list[str]) -> dict:
+    """每联系人每套装的已发封 + 最后一封日期。
+    来源: 本系统 plan_item(status='sent', 已转入CRM) + mail_contact_suite_history。
+    返回 {contact_id: {scenario: {'steps': set[int], 'last_at': date|None}}}。"""
+    out: dict = {}
+    ids = [str(c).strip() for c in (contact_ids or []) if str(c or "").strip()]
+    if not ids:
+        return out
+    rows: list = []
+    try:
+        for tbl, at_col in (
+            ("mail_autosend_plan_item", "COALESCE(committed_at, plan_date)"),
+            ("mail_contact_suite_history", "planned_send_at"),
+        ):
+            where = "status='sent' AND " if tbl == "mail_autosend_plan_item" else ""
+            rows += db.execute(
+                text(
+                    f"SELECT contact_id, scenario, suite_step, {at_col} AS at_v "
+                    f"FROM {tbl} WHERE {where}contact_id IN :ids"
+                ).bindparams(bindparam("ids", expanding=True)),
+                {"ids": ids},
+            ).fetchall()
+    except Exception:
+        logger.exception("AUTOSEND_SENT_MAP_FAILED")
+        return out
+    for cid, sc, step, at_v in rows:
+        cid = str(cid or "").strip(); sc = str(sc or "").strip()
+        if not cid or not sc:
+            continue
+        rec = out.setdefault(cid, {}).setdefault(sc, {"steps": set(), "last_at": None})
+        if step is not None:
+            try:
+                rec["steps"].add(int(step))
+            except Exception:
+                pass
+        if at_v is not None:
+            d = at_v.date() if hasattr(at_v, "date") else at_v
+            if d and (rec["last_at"] is None or d > rec["last_at"]):
+                rec["last_at"] = d
+    return out
+
+
+def _autosend_pick_suite(contact: dict, rules: list[dict], sent_for_contact: dict,
+                         fallback_enabled: bool, global_partial_default: str = "remaining"):
+    """按优先级给联系人挑套装并决定要排哪些封。
+    返回 (scenario, reason, steps:list[int]|None, anchor_last_at:date|None)。
+    reason: matched(全新) / remaining(补发未发封) / resend(全部重发) / fallback / none。
+    sent_for_contact: {scenario: {'steps': set, 'last_at': date|None}}。"""
+
+    def plan_for(rule: dict, is_fb: bool):
+        sc = rule.get("scenario")
+        if not sc:
+            return None
+        step_count = _autosend_scenario_step_count(sc)
+        rec = sent_for_contact.get(sc) or {}
+        sent = set(rec.get("steps") or set())
+        last_at = rec.get("last_at")
+        if not sent:
+            return (sc, "fallback" if is_fb else "matched", list(range(1, step_count + 1)), None)
+        mode = _autosend_resolve_partial_mode(rule.get("partial_sent_mode"), global_partial_default)
+        if mode == "skip":
+            return None
+        if mode == "resend_all":
+            return (sc, "resend", list(range(1, step_count + 1)), None)
+        remaining = [s for s in range(1, step_count + 1) if s not in sent]
+        if not remaining:
+            return None  # 全发过了, 没有可补
+        return (sc, "remaining", remaining, last_at)
+
     if not rules:
-        return None, "no_rules"
+        return None, "no_rules", None, None
     for rule in rules:
         if _autosend_rule_matches(contact, rule):
-            sc = rule.get("scenario")
-            if sc and sc not in used_scenarios:
-                return sc, "matched"
-            # 命中但已发过 -> 继续往下找
+            r = plan_for(rule, False)
+            if r:
+                return r
+            # 命中但该套装在本模式下无可发(skip/已全发) -> 继续往下找
     if fallback_enabled:
-        fb = rules[-1].get("scenario")
-        if fb and fb not in used_scenarios:
-            return fb, "fallback"
-    return None, "all_used"  # 兜底也发过
+        r = plan_for(rules[-1], True)
+        if r:
+            return r
+    return None, "all_used", None, None
 
 
 def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: list[int],
                        daily_cap: int, start_date, existing_load: dict | None = None,
-                       fallback_enabled: bool = True) -> dict:
+                       fallback_enabled: bool = True, sent_map: dict | None = None,
+                       global_partial_default: str = "remaining",
+                       exclude_recent_suite_days: int | None = None) -> dict:
     """逐人逐封排期。返回 {items, skipped, day_load}。纯计算, 不写任何库。
 
     - 第1封目标日 = 开始日 + interval[0]; 第k封 = 第k-1封实际落日 + interval[k-1]。
-    - 目标日该销售已满(>=上限, 含 existing_load 的 CRM 已有量)则整天跳过, 向后找首个未满天。
+    - 补发(remaining): 首封锚定该套装已发最后一封日期 + interval[首封序号-1], 顺延。
+    - 目标日该销售已满(>=上限, 含 existing_load 的已有量)则整天跳过, 向后找首个未满天。
     - 当天时间 = 09:00 + 5 分钟 x 当天该销售第几封。
+    - exclude_recent_suite_days: 该联系人任意套装最后一封在近 N 天内则整人跳过(默认 None=不生效)。
     """
     intervals = [int(x) for x in (interval_days or [0])] or [0]
     cap = max(1, int(daily_cap or 1))
+    sent_map = sent_map or {}
+    today = (datetime.utcnow() + timedelta(hours=8)).date()
+    try:
+        recent_days = int(exclude_recent_suite_days) if exclude_recent_suite_days else 0
+    except Exception:
+        recent_days = 0
 
     def gap(step_idx: int) -> int:  # step_idx: 0-based
         return intervals[step_idx] if step_idx < len(intervals) else intervals[-1]
@@ -20014,24 +20131,41 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
     items: list[dict] = []
     skipped: list[dict] = []
     for c in contacts:
+        cid = c.get("contact_id")
         owner = str(c.get("owner_staff_id") or "")
-        used = set(c.get("used_scenarios") or [])
-        scenario, reason = _autosend_pick_suite(c, rules, used, fallback_enabled)
-        if scenario is None:
+        sent_for_contact = sent_map.get(str(cid or ""), {})
+        # 近 N 天发过套装则整人跳过(按任意套装最后一封时间)
+        if recent_days and sent_for_contact:
+            last_any = max((rec.get("last_at") for rec in sent_for_contact.values() if rec.get("last_at")),
+                           default=None)
+            if last_any is not None:
+                try:
+                    if (today - last_any).days < recent_days:
+                        skipped.append({"contact_id": cid, "owner_staff_id": owner, "reason": "recent_suite",
+                                        "detail": f"近{recent_days}天内发过套装, 本次不发"})
+                        continue
+                except Exception:
+                    pass
+        scenario, reason, steps, anchor_last_at = _autosend_pick_suite(
+            c, rules, sent_for_contact, fallback_enabled, global_partial_default)
+        if scenario is None or not steps:
             skipped.append({
-                "contact_id": c.get("contact_id"),
+                "contact_id": cid,
                 "owner_staff_id": owner,
                 "reason": reason,
-                "detail": "符合的套装都已发过(含兜底), 本次不发" if reason == "all_used" else "无可用套装规则",
+                "detail": "符合的套装都已发过/跳过(含兜底), 本次不发" if reason == "all_used" else "无可用套装规则",
             })
             continue
-        step_count = _autosend_scenario_step_count(scenario)
         prev_actual = None
-        for step in range(1, step_count + 1):
-            if step == 1:
-                desired = start_date + timedelta(days=gap(0))
+        first = True
+        for step in steps:
+            if first and anchor_last_at is not None:
+                desired = anchor_last_at + timedelta(days=gap(step - 1))
+            elif prev_actual is None:
+                desired = start_date + timedelta(days=gap(step - 1 if step > 1 else 0))
             else:
                 desired = prev_actual + timedelta(days=gap(step - 1))
+            first = False
             day = desired
             while load.get((owner, day.isoformat()), 0) >= cap:
                 day = day + timedelta(days=1)
@@ -20040,8 +20174,11 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
             hh, mm = divmod(minute_total, 60)
             load[(owner, day.isoformat())] = seq + 1
             items.append({
-                "contact_id": c.get("contact_id"),
+                "contact_id": cid,
+                "customer_id": c.get("customer_id") or cid,
                 "owner_staff_id": owner,
+                "company_name": c.get("company_name") or "",
+                "contact_name": c.get("contact_name") or "",
                 "email": c.get("email"),
                 "scenario": scenario,
                 "scenario_label_cn": _get_scenario_label_cn(scenario) or scenario,
@@ -20101,11 +20238,14 @@ class AutosendDryRunRequest(BaseModel):
     daily_cap: int = 10
     interval_days: list[int] = [0]
     sort_rule: str = "default"             # default/amount_desc/amount_asc/last_far/last_near/random
-    rules: list[dict] = []                  # [{scenario, conditions, match_mode}], 顺序即优先级
+    rules: list[dict] = []                  # [{scenario, conditions, match_mode, partial_sent_mode}], 顺序即优先级
     fallback_enabled: bool = True
     contacts: list[dict] | None = None      # 内联联系人(验证算法用), 缺省时按 sales_staff_ids 从 CRM 取
     sales_staff_ids: list[str] | None = None
     consider_existing_crm_queue: bool = True
+    company_name_like: str = ""             # 公司名模糊筛选(默认空=不生效)
+    exclude_recent_suite_days: int | None = None   # 近N天发过套装则跳过(默认空=不生效)
+    partial_sent_default: str = "remaining"        # 已发部分套装的全局默认模式
     demo: bool = False
     demo_count: int = 26
 
@@ -20137,7 +20277,8 @@ def autosend_dry_run(payload: AutosendDryRunRequest, db: Session = Depends(get_d
         source = "inline"
         rules = payload.rules
     elif payload.sales_staff_ids:
-        contacts = _autosend_load_contacts_for_sales(payload.sales_staff_ids, only_valid_email=True)
+        contacts = _autosend_load_contacts_for_sales(
+            payload.sales_staff_ids, only_valid_email=True, company_name_like=payload.company_name_like)
         source = "crm_sales"
         rules = payload.rules
     else:
@@ -20150,15 +20291,23 @@ def autosend_dry_run(payload: AutosendDryRunRequest, db: Session = Depends(get_d
     if source != "demo":
         contacts = _autosend_sort_contacts(contacts, payload.sort_rule)
 
-    # 已有 CRM 待发排期占用(按销售按天)
+    # 已有 CRM 待发排期占用(按销售按天) + 含本地未转入 plan_item 占用
     existing_load = {}
     if payload.consider_existing_crm_queue and source == "crm_sales":
         owners = sorted({str(c.get("owner_staff_id") or "") for c in contacts if c.get("owner_staff_id")})
         existing_load = _autosend_existing_crm_load(owners, start_date)
+        _autosend_merge_local_plan_load(db, owners, start_date, existing_load)
+
+    # 已发明细(用于去重/补发/近N天跳过); demo/inline 不查库
+    sent_map = {}
+    if source == "crm_sales":
+        sent_map = _autosend_sent_map(db, [c.get("contact_id") for c in contacts])
 
     result = _autosend_schedule(
         contacts, rules, payload.interval_days, payload.daily_cap, start_date,
         existing_load=existing_load, fallback_enabled=payload.fallback_enabled,
+        sent_map=sent_map, global_partial_default=payload.partial_sent_default,
+        exclude_recent_suite_days=payload.exclude_recent_suite_days,
     )
     return {
         "ok": True,
@@ -20195,6 +20344,7 @@ def _autosend_serialize_config(row) -> dict:
         "daily_cap": int(row.daily_cap or 10),
         "fallback_enabled": bool(row.fallback_enabled),
         "dedup_by_history": bool(row.dedup_by_history),
+        "default_partial_sent_mode": getattr(row, "default_partial_sent_mode", None) or "remaining",
     }
 
 
@@ -20216,6 +20366,7 @@ def _autosend_serialize_rule(row) -> dict:
         "scenario_label_cn": _get_scenario_label_cn(row.scenario) or row.scenario,
         "conditions": row.conditions or [],
         "match_mode": row.match_mode or "and",
+        "partial_sent_mode": getattr(row, "partial_sent_mode", None) or "use_global",
         "enabled": bool(row.enabled),
     }
 
@@ -20228,6 +20379,7 @@ class AutosendConfigRequest(BaseModel):
     daily_cap: int | None = None
     fallback_enabled: bool | None = None
     dedup_by_history: bool | None = None
+    default_partial_sent_mode: str | None = None
 
 
 @app.get("/api/v1/mail/autosend/config")
@@ -20252,6 +20404,9 @@ def put_autosend_config(payload: AutosendConfigRequest, db: Session = Depends(ge
         row.fallback_enabled = bool(payload.fallback_enabled)
     if payload.dedup_by_history is not None:
         row.dedup_by_history = bool(payload.dedup_by_history)
+    if payload.default_partial_sent_mode is not None:
+        m = sanitize_text(payload.default_partial_sent_mode).strip().lower()
+        row.default_partial_sent_mode = m if m in ("remaining", "resend_all", "skip") else "remaining"
     row.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(row)
@@ -20268,6 +20423,7 @@ class AutosendRuleIn(BaseModel):
     scenario: str
     conditions: list[dict] = []
     match_mode: str = "and"
+    partial_sent_mode: str = "use_global"
     enabled: bool = True
 
 
@@ -20283,11 +20439,15 @@ def replace_autosend_suite_rules(payload: AutosendRulesReplaceRequest, db: Sessi
         scenario = sanitize_text(r.scenario).strip()
         if not scenario:
             continue
+        pmode = str(r.partial_sent_mode or "use_global").strip().lower()
+        if pmode not in ("use_global", "remaining", "resend_all", "skip"):
+            pmode = "use_global"
         db.add(MailAutosendSuiteRule(
             priority=idx,
             scenario=scenario[:80],
             conditions=[c for c in (r.conditions or []) if isinstance(c, dict)],
             match_mode=("or" if str(r.match_mode).lower() == "or" else "and"),
+            partial_sent_mode=pmode,
             enabled=bool(r.enabled),
         ))
     db.commit()
@@ -20301,6 +20461,513 @@ def get_autosend_sales_staff_names(ids: str = Query("")):
     id_list = [s.strip() for s in re.split(r"[,;，、\s]+", ids or "") if s.strip()]
     names = _resolve_mail_staff_names(id_list) if id_list else {}
     return {"ok": True, "names": names, "priority_staff_ids": list(_MAIL_SUITE_OWNER_PRIORITY_STAFF_IDS)}
+
+
+# ============================================================================
+# 自动群发: 销售锁定 + 排期持久化 + 后台生成 + 转入CRM + 日历(发送计划工作台)
+# ============================================================================
+
+_AUTOSEND_GEN_ACTIVE: set = set()   # 正在后台生成的销售工号(避免重复触发)
+
+_AUTOSEND_PENDING_STATUSES = ("planned", "drafting", "drafted", "failed")
+_AUTOSEND_PLAN_COLS = (
+    "item_id, run_id, contact_id, customer_id, owner_staff_id, company_name, contact_name, "
+    "scenario, scenario_label_cn, suite_step, plan_date, plan_time, send_time, seq_in_day, "
+    "recipient_email, subject, body_html, llm_prompt, pick_reason, partial_sent_mode, status, "
+    "crm_send_id, gen_error, generated_at, committed_at"
+)
+
+
+def _autosend_company_head(name: str, n: int = 6) -> str:
+    s = str(name or "").strip()
+    return s[:n]
+
+
+def _autosend_serialize_plan_row(r) -> dict:
+    plan_date = r[10].isoformat() if r[10] is not None and hasattr(r[10], "isoformat") else (str(r[10]) if r[10] else None)
+    return {
+        "item_id": str(r[0]),
+        "run_id": str(r[1]) if r[1] else None,
+        "contact_id": r[2],
+        "customer_id": r[3] or r[2],
+        "owner_staff_id": r[4],
+        "company_name": r[5] or "",
+        "company_head": _autosend_company_head(r[5]),
+        "contact_name": r[6] or "",
+        "scenario": r[7],
+        "scenario_label_cn": r[8] or r[7],
+        "suite_step": int(r[9]) if r[9] is not None else None,
+        "plan_date": plan_date,
+        "plan_time": r[11] or r[12] or None,
+        "send_time": r[12] or r[11] or None,
+        "seq_in_day": int(r[13]) if r[13] is not None else None,
+        "recipient_email": r[14],
+        "subject": r[15],
+        "has_body": bool(r[16]),
+        "pick_reason": r[18],
+        "partial_sent_mode": r[19],
+        "status": r[20],
+        "crm_send_id": r[21],
+        "gen_error": r[22],
+        "generated": r[20] in ("drafted", "sent"),
+    }
+
+
+def _autosend_merge_local_plan_load(db, owners: list[str], start_date, load: dict) -> None:
+    """把本地未转入 plan_item 的占用并入 existing_load(按 销售x天), 防止多次预排叠加重叠。"""
+    owners = [o for o in (owners or []) if o]
+    if not owners:
+        return
+    try:
+        rows = db.execute(
+            text(
+                "SELECT owner_staff_id, to_char(plan_date,'YYYY-MM-DD') AS d, COUNT(*) AS n "
+                "FROM mail_autosend_plan_item "
+                "WHERE status IN ('planned','drafting','drafted') AND plan_date >= :sd "
+                "AND owner_staff_id IN :ids "
+                "GROUP BY owner_staff_id, to_char(plan_date,'YYYY-MM-DD')"
+            ).bindparams(bindparam("ids", expanding=True)),
+            {"sd": start_date, "ids": owners},
+        ).fetchall()
+        for owner, d, n in rows:
+            if owner and d:
+                load[(str(owner), str(d))] = load.get((str(owner), str(d)), 0) + int(n or 0)
+    except Exception:
+        logger.exception("AUTOSEND_LOCAL_PLAN_LOAD_FAILED owners=%s", owners)
+
+
+@app.get("/api/v1/mail/autosend/current-staff")
+def get_autosend_current_staff():
+    """本期: 限定单个销售。优先环境变量 MAIL_AUTOSEND_STAFF_ID; 缺省返回空(前端用 ?staff= 或显示全部)。"""
+    import os as _os
+    sid = str(_os.environ.get("MAIL_AUTOSEND_STAFF_ID", "") or "").strip()
+    name = ""
+    if sid:
+        try:
+            name = _resolve_mail_staff_names([sid]).get(sid, "")
+        except Exception:
+            name = ""
+    return {"ok": True, "staff_id": sid, "staff_name": name}
+
+
+class AutosendPreviewRequest(BaseModel):
+    staff_id: str
+    start_date: str | None = None
+    daily_cap: int = 10
+    interval_days: list[int] = [0]
+    sort_rule: str = "default"
+    rules: list[dict] = []
+    fallback_enabled: bool = True
+    company_name_like: str = ""
+    exclude_recent_suite_days: int | None = None
+    partial_sent_default: str = "remaining"
+    consider_existing_crm_queue: bool = True
+
+
+def _autosend_list_plan(db, staff: str, statuses: tuple = _AUTOSEND_PENDING_STATUSES) -> list[dict]:
+    rows = db.execute(
+        text(
+            f"SELECT {_AUTOSEND_PLAN_COLS} FROM mail_autosend_plan_item "
+            "WHERE owner_staff_id = :s AND status IN :st "
+            "ORDER BY plan_date NULLS LAST, plan_time NULLS LAST, seq_in_day NULLS LAST"
+        ).bindparams(bindparam("st", expanding=True)),
+        {"s": staff, "st": list(statuses)},
+    ).fetchall()
+    return [_autosend_serialize_plan_row(r) for r in rows]
+
+
+@app.post("/api/v1/mail/autosend/preview")
+def autosend_preview(payload: AutosendPreviewRequest, db: Session = Depends(get_db)):
+    """预览并持久化排期(节点2 的'预览排期'): 按规则给该销售名下未在清单中的联系人挑套装、排期, 落库 status='planned'。
+
+    - 多次预排叠加: 已在未转入清单里的联系人本次不重复排; 已有占用并入每日上限, 不与既有重叠。
+    - 不生成草稿、不写 CRM。返回该销售当前完整未转入清单。
+    """
+    staff = sanitize_text(payload.staff_id).strip()
+    if not staff:
+        raise HTTPException(status_code=422, detail="staff_id is required(本期限定单个销售)")
+    rules = payload.rules or []
+    if not rules:
+        raise HTTPException(status_code=422, detail="rules 不能为空(至少一个套装规则, 末位作兜底)")
+    now_bj = datetime.utcnow() + timedelta(hours=8)
+    if payload.start_date:
+        try:
+            start_date = datetime.strptime(payload.start_date.strip(), "%Y-%m-%d").date()
+        except Exception:
+            raise HTTPException(status_code=422, detail="start_date 格式应为 YYYY-MM-DD")
+    else:
+        start_date = now_bj.date()
+
+    contacts = _autosend_load_contacts_for_sales([staff], only_valid_email=True,
+                                                 company_name_like=payload.company_name_like)
+    contacts = _autosend_sort_contacts(contacts, payload.sort_rule)
+    # 已在未转入清单里的联系人 -> 本次不重复排(叠加不重叠)
+    pending_cids = {
+        str(row[0]) for row in db.execute(
+            text("SELECT DISTINCT contact_id FROM mail_autosend_plan_item "
+                 "WHERE owner_staff_id = :s AND status IN ('planned','drafting','drafted')"),
+            {"s": staff},
+        ).fetchall()
+    }
+    fresh = [c for c in contacts if str(c.get("contact_id")) not in pending_cids]
+
+    existing_load: dict = {}
+    if payload.consider_existing_crm_queue:
+        existing_load = _autosend_existing_crm_load([staff], start_date)
+        _autosend_merge_local_plan_load(db, [staff], start_date, existing_load)
+    sent_map = _autosend_sent_map(db, [c.get("contact_id") for c in fresh])
+
+    result = _autosend_schedule(
+        fresh, rules, payload.interval_days, payload.daily_cap, start_date,
+        existing_load=existing_load, fallback_enabled=payload.fallback_enabled,
+        sent_map=sent_map, global_partial_default=payload.partial_sent_default,
+        exclude_recent_suite_days=payload.exclude_recent_suite_days,
+    )
+
+    run_id = db.execute(
+        text(
+            "INSERT INTO mail_autosend_run (status,start_date,sales_staff_ids,owner_staff_id,daily_cap,"
+            "sort_rule,interval_days_csv,total_contacts,total_items,skipped_count,company_name_like,"
+            "exclude_recent_suite_days,gen_status) "
+            "VALUES ('planned',:sd,:s,:s,:cap,:sr,:iv,:tc,:ti,:sk,:cl,:erd,'idle') RETURNING run_id"
+        ),
+        {"sd": start_date, "s": staff, "cap": payload.daily_cap, "sr": payload.sort_rule,
+         "iv": ",".join(str(int(x)) for x in (payload.interval_days or [0])),
+         "tc": len(fresh), "ti": len(result["items"]), "sk": len(result["skipped"]),
+         "cl": (payload.company_name_like or None), "erd": payload.exclude_recent_suite_days},
+    ).scalar()
+
+    for it in result["items"]:
+        db.execute(
+            text(
+                "INSERT INTO mail_autosend_plan_item "
+                "(run_id,contact_id,customer_id,owner_staff_id,company_name,contact_name,scenario,"
+                "scenario_label_cn,suite_step,plan_date,plan_time,send_time,seq_in_day,recipient_email,"
+                "pick_reason,partial_sent_mode,status) "
+                "VALUES (:run,:cid,:cust,:own,:co,:cn,:sc,:scl,:st,:pd,:pt,:pt,:sq,:re,:pr,:pm,'planned')"
+            ),
+            {"run": run_id, "cid": it["contact_id"], "cust": it.get("customer_id") or it["contact_id"],
+             "own": it["owner_staff_id"], "co": (it.get("company_name") or "")[:200],
+             "cn": (it.get("contact_name") or "")[:200], "sc": it["scenario"],
+             "scl": (it.get("scenario_label_cn") or "")[:200], "st": it["suite_step"],
+             "pd": it["plan_date"], "pt": it["plan_time"], "sq": it["seq_in_day"],
+             "re": it.get("email"), "pr": it.get("pick_reason"),
+             "pm": payload.partial_sent_default},
+        )
+    db.commit()
+
+    items = _autosend_list_plan(db, staff)
+    return {
+        "ok": True,
+        "run_id": str(run_id),
+        "staff_id": staff,
+        "start_date": start_date.isoformat(),
+        "new_scheduled": len(result["items"]),
+        "skipped": result["skipped"],
+        "skipped_count": len(result["skipped"]),
+        "items": items,
+        "total_pending": len(items),
+        "day_load": result["day_load"],
+    }
+
+
+@app.get("/api/v1/mail/autosend/plan")
+def get_autosend_plan(staff_id: str = Query(...), db: Session = Depends(get_db)):
+    """该销售当前未转入CRM的全部排期清单(关页重开恢复用)。"""
+    staff = sanitize_text(staff_id).strip()
+    if not staff:
+        raise HTTPException(status_code=422, detail="staff_id is required")
+    items = _autosend_list_plan(db, staff)
+    counts: dict = {}
+    for it in items:
+        counts[it["status"]] = counts.get(it["status"], 0) + 1
+    return {"ok": True, "staff_id": staff, "items": items, "counts": counts,
+            "running": staff in _AUTOSEND_GEN_ACTIVE}
+
+
+@app.delete("/api/v1/mail/autosend/plan")
+def clear_autosend_plan(staff_id: str = Query(...), db: Session = Depends(get_db)):
+    """清空该销售未转入CRM的排期(planned/drafting/drafted/failed)。不动已转入CRM(sent)的。"""
+    staff = sanitize_text(staff_id).strip()
+    if not staff:
+        raise HTTPException(status_code=422, detail="staff_id is required")
+    n = db.execute(
+        text("DELETE FROM mail_autosend_plan_item WHERE owner_staff_id = :s AND status IN :st")
+        .bindparams(bindparam("st", expanding=True)),
+        {"s": staff, "st": list(_AUTOSEND_PENDING_STATUSES)},
+    ).rowcount
+    db.commit()
+    return {"ok": True, "deleted": int(n or 0)}
+
+
+def _autosend_generate_one(customer_id: str, scenario: str, step: int) -> dict:
+    """复用套装生成链路真调一封, 返回 {subject, body_html, llm_prompt, recipient_email}。抛异常即失败。"""
+    crm_profile = _lookup_mail_crm_profile(customer_id, "")
+    contact_email = sanitize_text(crm_profile.get("contact_email"))
+    draft_contact_email = _mail_demo_contact_email_for_draft(contact_email) or _mail_review_only_draft_contact_email(customer_id, crm_profile)
+    contact_domain = _normalize_mail_recipient_domain(draft_contact_email)
+    if contact_domain:
+        shared = set(crm_profile.get("customer_domains") or ())
+        shared.add(contact_domain)
+        crm_profile = {**crm_profile, "customer_domains": tuple(sorted(shared))}
+    req = MailGenerateDraftRequest(
+        customer_key=customer_id, contact_email=draft_contact_email, scenario=scenario,
+        suite_step=step, current_seller_name="事必达销售", current_seller_signature="事必达销售")
+    gdb = SessionLocal()
+    try:
+        resp = _build_mail_generate_draft_response(gdb, req, precomputed_crm_profile=crm_profile)
+    finally:
+        gdb.close()
+    draft = resp.model_dump() if hasattr(resp, "model_dump") else resp.dict()
+    sig_html, _f, _o = _mail_suite_signature_html_for_customer(customer_id)
+    body = _apply_mail_suite_signature(draft.get("final_body_html") or "", sig_html)
+    return {"subject": draft.get("final_subject") or "", "body_html": body,
+            "llm_prompt": draft.get("llm_prompt") or "", "recipient_email": draft_contact_email}
+
+
+def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> None:
+    """后台逐封生成: 取 planned/failed 的 plan_item, 逐个真调生成, 写回 drafted/failed。"""
+    try:
+        db = SessionLocal()
+        try:
+            base = ("SELECT item_id, customer_id, contact_id, scenario, suite_step "
+                    "FROM mail_autosend_plan_item WHERE owner_staff_id = :s AND status IN ('planned','failed')")
+            if item_ids:
+                rows = db.execute(
+                    text(base + " AND item_id IN :ids").bindparams(bindparam("ids", expanding=True)),
+                    {"s": staff, "ids": item_ids},
+                ).fetchall()
+            else:
+                rows = db.execute(text(base), {"s": staff}).fetchall()
+        finally:
+            db.close()
+        for item_id, customer_id, contact_id, scenario, step in rows:
+            cid = (customer_id or contact_id)
+            d2 = SessionLocal()
+            try:
+                d2.execute(text("UPDATE mail_autosend_plan_item SET status='drafting', updated_at=now() WHERE item_id=:i"),
+                           {"i": str(item_id)})
+                d2.commit()
+            finally:
+                d2.close()
+            try:
+                gen = _autosend_generate_one(cid, scenario, int(step))
+                d3 = SessionLocal()
+                try:
+                    d3.execute(
+                        text("UPDATE mail_autosend_plan_item SET status='drafted', subject=:su, body_html=:b, "
+                             "llm_prompt=:p, recipient_email=COALESCE(NULLIF(recipient_email,''),:re), "
+                             "generated_at=now(), updated_at=now(), gen_error=NULL WHERE item_id=:i"),
+                        {"su": (gen["subject"] or "")[:500] or None, "b": gen["body_html"],
+                         "p": (gen["llm_prompt"] or "")[:20000] or None, "re": gen["recipient_email"],
+                         "i": str(item_id)},
+                    )
+                    d3.commit()
+                finally:
+                    d3.close()
+            except Exception as exc:
+                d4 = SessionLocal()
+                try:
+                    d4.execute(text("UPDATE mail_autosend_plan_item SET status='failed', gen_error=:e, updated_at=now() WHERE item_id=:i"),
+                               {"e": str(exc)[:2000], "i": str(item_id)})
+                    d4.commit()
+                finally:
+                    d4.close()
+                logger.exception("AUTOSEND_GEN_ITEM_FAILED item=%s", item_id)
+    except Exception:
+        logger.exception("AUTOSEND_GEN_WORKER_FAILED staff=%s", staff)
+    finally:
+        _AUTOSEND_GEN_ACTIVE.discard(staff)
+
+
+class AutosendGenerateRequest(BaseModel):
+    staff_id: str
+    item_ids: list[str] | None = None
+
+
+@app.post("/api/v1/mail/autosend/generate")
+def autosend_generate(payload: AutosendGenerateRequest, db: Session = Depends(get_db)):
+    """后台逐封生成草稿(节点2 的'后台生成')。立即返回, 前端轮询 generate-status; 每封点亮。"""
+    staff = sanitize_text(payload.staff_id).strip()
+    if not staff:
+        raise HTTPException(status_code=422, detail="staff_id is required")
+    if staff in _AUTOSEND_GEN_ACTIVE:
+        return {"ok": True, "started": False, "already_running": True}
+    pending = db.execute(
+        text("SELECT COUNT(*) FROM mail_autosend_plan_item WHERE owner_staff_id=:s AND status IN ('planned','failed')"),
+        {"s": staff},
+    ).scalar()
+    if not pending:
+        return {"ok": True, "started": False, "pending": 0, "note": "没有待生成的排期"}
+    _AUTOSEND_GEN_ACTIVE.add(staff)
+    threading.Thread(target=_autosend_generate_worker, args=(staff, payload.item_ids), daemon=True).start()
+    return {"ok": True, "started": True, "pending": int(pending or 0)}
+
+
+@app.get("/api/v1/mail/autosend/generate-status")
+def autosend_generate_status(staff_id: str = Query(...), db: Session = Depends(get_db)):
+    staff = sanitize_text(staff_id).strip()
+    rows = db.execute(
+        text("SELECT status, COUNT(*) FROM mail_autosend_plan_item WHERE owner_staff_id=:s GROUP BY status"),
+        {"s": staff},
+    ).fetchall()
+    counts = {str(r[0]): int(r[1]) for r in rows}
+    return {"ok": True, "staff_id": staff, "running": staff in _AUTOSEND_GEN_ACTIVE, "counts": counts}
+
+
+class AutosendMarkCommittedRequest(BaseModel):
+    item_ids: list[str]
+    crm_send_ids: dict[str, str] | None = None
+
+
+@app.post("/api/v1/mail/autosend/mark-committed")
+def autosend_mark_committed(payload: AutosendMarkCommittedRequest, db: Session = Depends(get_db)):
+    """前端用现有 /customer-suite-send 转入CRM成功后, 回标这些 plan_item 为 sent 并记历史(供去重)。"""
+    n = 0
+    for iid in (payload.item_ids or []):
+        row = db.execute(
+            text("SELECT contact_id, owner_staff_id, scenario, suite_step, plan_date "
+                 "FROM mail_autosend_plan_item WHERE item_id=:i AND status='drafted'"),
+            {"i": iid},
+        ).fetchone()
+        if not row:
+            continue
+        csid = (payload.crm_send_ids or {}).get(iid)
+        db.execute(text("UPDATE mail_autosend_plan_item SET status='sent', committed_at=now(), crm_send_id=:c, updated_at=now() WHERE item_id=:i"),
+                   {"c": csid, "i": iid})
+        try:
+            pa = datetime.combine(row[4], datetime.min.time()) if row[4] else None
+            db.execute(text("INSERT INTO mail_contact_suite_history (contact_id, owner_staff_id, scenario, suite_step, planned_send_at) "
+                            "VALUES (:cid,:own,:sc,:st,:pa)"),
+                       {"cid": row[0], "own": row[1], "sc": row[2], "st": row[3], "pa": pa})
+        except Exception:
+            logger.exception("AUTOSEND_HISTORY_INSERT_FAILED item=%s", iid)
+        n += 1
+    db.commit()
+    return {"ok": True, "committed": n}
+
+
+@app.get("/api/v1/mail/autosend/calendar")
+def autosend_calendar(staff_id: str = Query(...), days: int = Query(90), db: Session = Depends(get_db)):
+    """日历: 今天及以后, 每天 待发(CRM未实发) / 预排(本地未转入) 封数。"""
+    staff = sanitize_text(staff_id).strip()
+    if not staff:
+        raise HTTPException(status_code=422, detail="staff_id is required")
+    today = (datetime.utcnow() + timedelta(hours=8)).date()
+    res: dict = {}
+    # 预排(本地)
+    try:
+        rows = db.execute(
+            text("SELECT to_char(plan_date,'YYYY-MM-DD') d, COUNT(*) n FROM mail_autosend_plan_item "
+                 "WHERE owner_staff_id=:s AND status IN ('planned','drafting','drafted') AND plan_date>=:t "
+                 "GROUP BY to_char(plan_date,'YYYY-MM-DD')"),
+            {"s": staff, "t": today},
+        ).fetchall()
+        for d, n in rows:
+            if d:
+                res.setdefault(d, {"planned": 0, "pending": 0})["planned"] = int(n or 0)
+    except Exception:
+        logger.exception("AUTOSEND_CALENDAR_LOCAL_FAILED")
+    # 待发(CRM spQueueSend 宣传邮件-AI, 还在 OutBox = 未实发)
+    try:
+        from crm_database import CRMSessionLocal
+        crm_db = CRMSessionLocal()
+        try:
+            crows = crm_db.execute(
+                text("SELECT CONVERT(varchar(10), PlanSendTime, 23) d, COUNT(*) n FROM spQueueSend "
+                     "WHERE MessageType='Email' AND ISNULL(UseRange,'') LIKE '%宣传邮件-AI%' "
+                     "AND ISNULL(FolderId,'')='OutBox' AND InputerStaffId=:s AND PlanSendTime>=:t "
+                     "GROUP BY CONVERT(varchar(10), PlanSendTime, 23)"),
+                {"s": staff, "t": datetime.combine(today, datetime.min.time())},
+            ).fetchall()
+            for d, n in crows:
+                d = str(d or "")
+                if d:
+                    res.setdefault(d, {"planned": 0, "pending": 0})["pending"] = int(n or 0)
+        finally:
+            crm_db.close()
+    except Exception:
+        logger.exception("AUTOSEND_CALENDAR_CRM_FAILED")
+    days_out = [{"date": d, "planned": v["planned"], "pending": v["pending"]} for d, v in sorted(res.items())]
+    return {"ok": True, "staff_id": staff, "today": today.isoformat(), "days": days_out}
+
+
+@app.get("/api/v1/mail/autosend/plan-item")
+def get_autosend_plan_item(item_id: str = Query(...), db: Session = Depends(get_db)):
+    """取单条排期明细的完整内容(节点3 详情读取: 主题/正文/脚本)。"""
+    row = db.execute(
+        text(f"SELECT {_AUTOSEND_PLAN_COLS}, body_html, llm_prompt FROM mail_autosend_plan_item WHERE item_id=:i"),
+        {"i": sanitize_text(item_id).strip()},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="plan item not found")
+    item = _autosend_serialize_plan_row(row)
+    item["body_html"] = row[25]
+    item["llm_prompt"] = row[26]
+    return {"ok": True, "item": item}
+
+
+class AutosendPlanItemSaveRequest(BaseModel):
+    item_id: str
+    subject: str | None = None
+    body_html: str | None = None
+    recipient_email: str | None = None
+
+
+@app.put("/api/v1/mail/autosend/plan-item")
+def save_autosend_plan_item(payload: AutosendPlanItemSaveRequest, db: Session = Depends(get_db)):
+    """保存节点3 对未转入排期单封的人工编辑(主题/正文/收件人)。已转入CRM(sent)的不许在此改。"""
+    iid = sanitize_text(payload.item_id).strip()
+    row = db.execute(text("SELECT status FROM mail_autosend_plan_item WHERE item_id=:i"), {"i": iid}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="plan item not found")
+    if row[0] == "sent":
+        raise HTTPException(status_code=409, detail="已转入CRM, 请在日历里改并同步回CRM/FTP")
+    sets, params = [], {"i": iid}
+    if payload.subject is not None:
+        sets.append("subject=:su"); params["su"] = sanitize_text(payload.subject)[:500] or None
+    if payload.body_html is not None:
+        sets.append("body_html=:b"); params["b"] = payload.body_html or None
+    if payload.recipient_email is not None:
+        em = str(payload.recipient_email).strip()
+        sets.append("recipient_email=:re"); params["re"] = em or None
+    if not sets:
+        return {"ok": True, "updated": 0}
+    sets.append("updated_at=now()")
+    db.execute(text(f"UPDATE mail_autosend_plan_item SET {', '.join(sets)} WHERE item_id=:i"), params)
+    db.commit()
+    return {"ok": True, "updated": 1}
+
+
+@app.post("/api/v1/mail/autosend/plan-item/regenerate")
+def regenerate_autosend_plan_item(payload: AutosendPlanItemSaveRequest, db: Session = Depends(get_db)):
+    """节点3 单封'重刷': 同步真调生成链路覆盖该封(未转入CRM的)。"""
+    iid = sanitize_text(payload.item_id).strip()
+    row = db.execute(
+        text("SELECT customer_id, contact_id, scenario, suite_step, status FROM mail_autosend_plan_item WHERE item_id=:i"),
+        {"i": iid},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="plan item not found")
+    if row[4] == "sent":
+        raise HTTPException(status_code=409, detail="已转入CRM, 不能在此重刷")
+    cid = row[0] or row[1]
+    try:
+        gen = _autosend_generate_one(cid, row[2], int(row[3]))
+    except Exception as exc:
+        db.execute(text("UPDATE mail_autosend_plan_item SET status='failed', gen_error=:e, updated_at=now() WHERE item_id=:i"),
+                   {"e": str(exc)[:2000], "i": iid})
+        db.commit()
+        raise HTTPException(status_code=502, detail=f"重新生成失败: {sanitize_text(str(exc))[:200]}")
+    db.execute(
+        text("UPDATE mail_autosend_plan_item SET status='drafted', subject=:su, body_html=:b, llm_prompt=:p, "
+             "recipient_email=COALESCE(NULLIF(recipient_email,''),:re), generated_at=now(), updated_at=now(), gen_error=NULL WHERE item_id=:i"),
+        {"su": (gen["subject"] or "")[:500] or None, "b": gen["body_html"],
+         "p": (gen["llm_prompt"] or "")[:20000] or None, "re": gen["recipient_email"], "i": iid},
+    )
+    db.commit()
+    return {"ok": True, "item": {"item_id": iid, "subject": gen["subject"], "body_html": gen["body_html"],
+                                 "llm_prompt": gen["llm_prompt"], "recipient_email": gen["recipient_email"]}}
 
 
 def _autosend_existing_crm_load(staff_ids: list[str], start_date) -> dict:
@@ -20334,7 +21001,8 @@ def _autosend_existing_crm_load(staff_ids: list[str], start_date) -> dict:
     return load
 
 
-def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bool = True) -> list[dict]:
+def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bool = True,
+                                      company_name_like: str = "") -> list[dict]:
     """从 CRM 取指定销售名下、有有效邮箱的联系人, 并按人聚合历史累计销售合同额/末次合作/业务线。
 
     口径(均按联系人 ContactId):
@@ -20342,10 +21010,12 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
     - 末次合作 = MAX(COALESCE(ContractTime,StartTime,InputTime)); 距今天数; 无合作=None(最远)。
     - 业务线 = DISTINCT BusinessType。
     - 有效邮箱 = usrCustomerContactCommunicateNo(ContactEmail, IsCollect='正确')。
+    - company_name_like: 非空时按 usrCustomer.CompanyName 模糊匹配筛选(默认空=不生效)。
     """
     staff_ids = [s for s in (staff_ids or []) if s]
     if not staff_ids:
         return []
+    company_like = sanitize_text(company_name_like or "").strip()
     out: list[dict] = []
     try:
         from crm_database import CRMSessionLocal
@@ -20354,18 +21024,26 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
             # 1) 取该销售名下联系人(Owner 含该工号; Owner 可能是多工号拼接, 用 LIKE 粗筛再 Python 拆 token 精确)
             like_clauses = " OR ".join([f"CAST(c.Owner AS NVARCHAR(240)) LIKE :p{i}" for i in range(len(staff_ids))])
             params = {f"p{i}": f"%{sid}%" for i, sid in enumerate(staff_ids)}
+            if company_like:
+                params["cname"] = f"%{company_like}%"
             contact_rows = crm_db.execute(
                 text(
-                    "SELECT DISTINCT c.ContactId, CAST(ISNULL(c.Owner,'') AS NVARCHAR(240)) AS Owner "
+                    "SELECT DISTINCT c.ContactId, CAST(ISNULL(c.Owner,'') AS NVARCHAR(240)) AS Owner, "
+                    "CAST(ISNULL(c.ContactName,'') AS NVARCHAR(200)) AS ContactName, "
+                    "CAST(ISNULL(d.CompanyName,'') AS NVARCHAR(200)) AS CompanyName "
                     "FROM usrCustomerContact c "
+                    "LEFT JOIN usrCustomer d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL "
                     "WHERE c.Deleter IS NULL AND ISNULL(CAST(c.Owner AS NVARCHAR(240)),'')<>'' "
                     f"AND ({like_clauses})"
+                    + (" AND ISNULL(CAST(d.CompanyName AS NVARCHAR(200)),'') LIKE :cname" if company_like else "")
                 ),
                 params,
             ).fetchall()
             staff_set = set(staff_ids)
             contacts_map: dict[str, str] = {}  # contact_id -> matched owner staff id
-            for cid, owner_raw in contact_rows:
+            name_map: dict[str, str] = {}      # contact_id -> contact name
+            company_map: dict[str, str] = {}   # contact_id -> company name
+            for cid, owner_raw, cname, company in contact_rows:
                 cid = str(cid or "").strip()
                 if not cid:
                     continue
@@ -20373,6 +21051,8 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
                 owner = next((t for t in tokens if t in staff_set), None)
                 if owner:
                     contacts_map.setdefault(cid, owner)
+                    name_map.setdefault(cid, str(cname or "").strip())
+                    company_map.setdefault(cid, str(company or "").strip())
             if not contacts_map:
                 return []
             contact_ids = list(contacts_map.keys())
@@ -20444,12 +21124,15 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
                         last_days = None
                 out.append({
                     "contact_id": cid,
+                    "customer_id": cid,           # contact_id 即 KH 编号, 生成时直传 customer-suite
                     "owner_staff_id": owner,
+                    "company_name": company_map.get(cid, ""),
+                    "contact_name": name_map.get(cid, ""),
                     "email": email,
                     "amount": float(agg.get("amount") or 0),
                     "last_coop_days": last_days,
                     "business_lines": sorted(line_map.get(cid, set())),
-                    "used_scenarios": [],  # step 3 再接历史去重
+                    "used_scenarios": [],  # 兼容旧字段; 已发明细见 sent_map(按 scenario->steps)
                 })
         finally:
             crm_db.close()

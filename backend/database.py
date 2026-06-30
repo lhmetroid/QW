@@ -166,6 +166,10 @@ class WecomRuntimeConfig(Base):
 
     fast_track_rules = Column(JSON, nullable=True)
 
+    mail_generation_model = Column(String(50), nullable=False, default="deepseek-v4-flash")
+
+    mail_deepseek_model_configs = Column(JSON, nullable=True)
+
     updated_by = Column(String(120), nullable=True)
 
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
@@ -2190,6 +2194,7 @@ class MailAutosendConfig(Base):
     daily_cap = Column(Integer, nullable=False, default=10)                     # 每个销售每日上限
     fallback_enabled = Column(Boolean, nullable=False, default=True)            # 全不命中时兜底最后一个套装
     dedup_by_history = Column(Boolean, nullable=False, default=True)            # 同联系人已发过的套装本次跳过
+    default_partial_sent_mode = Column(String(20), nullable=False, default="remaining")  # 已发部分套装全局默认: remaining/resend_all/skip
     updated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -2203,6 +2208,7 @@ class MailAutosendSuiteRule(Base):
     scenario = Column(String(80), nullable=False)
     conditions = Column(JSON, nullable=True)        # [{type:amount|last_coop_days|business_line, op:</>|has|not, value:...}]
     match_mode = Column(String(8), nullable=False, default="and")   # and/or
+    partial_sent_mode = Column(String(20), nullable=False, default="use_global")  # use_global/remaining/resend_all/skip
     enabled = Column(Boolean, nullable=False, default=True)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
