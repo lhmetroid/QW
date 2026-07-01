@@ -20537,17 +20537,30 @@ def _autosend_merge_local_plan_load(db, owners: list[str], start_date, load: dic
 
 
 @app.get("/api/v1/mail/autosend/current-staff")
-def get_autosend_current_staff():
-    """本期: 限定单个销售。优先环境变量 MAIL_AUTOSEND_STAFF_ID; 缺省返回空(前端用 ?staff= 或显示全部)。"""
-    import os as _os
-    sid = str(_os.environ.get("MAIL_AUTOSEND_STAFF_ID", "") or "").strip()
+def get_autosend_current_staff(kh: str = Query("")):
+    """按 KH 编号解析归属销售(签名档同逻辑 _fetch_mail_contact_owner_staff_id), 作为该页锁定销售。
+
+    - kh: 客户/联系人 KH 编号。解析不到在职销售则返回空 staff_id。
+    - 缺省(无 kh)时回退环境变量 MAIL_AUTOSEND_STAFF_ID(便于本地联调)。
+    """
+    kh = sanitize_text(kh or "").strip()
+    sid = ""
+    if kh:
+        try:
+            sid = (_fetch_mail_contact_owner_staff_id(kh) or "").strip()
+        except Exception:
+            logger.exception("AUTOSEND_CURRENT_STAFF_RESOLVE_FAILED kh=%s", kh)
+            sid = ""
+    if not sid:
+        import os as _os
+        sid = str(_os.environ.get("MAIL_AUTOSEND_STAFF_ID", "") or "").strip()
     name = ""
     if sid:
         try:
             name = _resolve_mail_staff_names([sid]).get(sid, "")
         except Exception:
             name = ""
-    return {"ok": True, "staff_id": sid, "staff_name": name}
+    return {"ok": True, "kh": kh, "staff_id": sid, "staff_name": name}
 
 
 class AutosendPreviewRequest(BaseModel):

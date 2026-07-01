@@ -562,6 +562,11 @@
     .ms-node-tab.active { background:var(--brand); color:#fff; border-color:var(--brand); }
     .ms-sales-lock { font-size:12px; color:var(--muted); }
     .ms-sales-lock b { color:var(--text); }
+    .ms-pagetabs { display:flex; gap:8px; }
+    .ms-page-tab { border:1px solid var(--line); background:#fff; color:var(--muted); font-weight:800; font-size:14px; padding:7px 16px; border-radius:9px; cursor:pointer; }
+    .ms-page-tab:hover { background:#f1f5f9; }
+    .ms-page-tab.active { background:var(--brand); color:#fff; border-color:var(--brand); }
+    .suite-toolbar { border-bottom:1px solid #e2e8f0; position:sticky; top:56px; z-index:40; }
     .ms-node { background:var(--panel); border:1px solid var(--line); border-radius:12px; margin:14px 20px; overflow:hidden; }
     .ms-node-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px; cursor:pointer; background:#f8fafc; border-bottom:1px solid var(--line); user-select:none; }
     .ms-node-title { font-size:15px; font-weight:800; color:var(--text); }
@@ -575,8 +580,17 @@
   <link rel="stylesheet" href="tailwind.css">
 </head>
 <body>
+  <!-- ===== 第一层: 品牌 + 页切换 + 锁定销售 ===== -->
   <header class="appbar">
-    <div class="brand">智能销售辅助工作台<small>邮件套装生成</small></div>
+    <div class="brand">智能销售辅助工作台<small>发送计划</small></div>
+    <div class="ms-pagetabs">
+      <button type="button" id="pagetab-suite" class="ms-page-tab active" onclick="switchPage('suite')" title="原有: 按客户编号看单客户整套套装邮件, 逐封编辑/生成/发送">邮件套装生成</button>
+      <button type="button" id="pagetab-autosend" class="ms-page-tab" onclick="switchPage('autosend')" title="新页: 待发日历 + 按销售批量排期/后台生成/转入CRM">自动排期</button>
+    </div>
+    <div class="ms-sales-lock" title="发件人与签名按联系人归属销售解析(签名档同逻辑), 由 KH 编号解析, 不可手改">锁定销售：<b id="ms-sales-name">未限定</b></div>
+  </header>
+  <!-- ===== 第二层: 邮件套装生成 工具条(仅"邮件套装生成"页显示) ===== -->
+  <div id="suite-toolbar" class="appbar suite-toolbar">
     <div class="appbar-tools">
       <label class="suite-picker">
         <span class="suite-picker-label">套装场景</span>
@@ -604,16 +618,27 @@
       </div>
     </div>
     <div class="badge">免登录独立页</div>
-  </header>
-  <div class="ms-nodebar">
-    <div class="ms-nodebar-tabs">
-      <button type="button" class="ms-node-tab active" data-node="node1" onclick="switchNode('node1')" title="本销售名下联系人, 今天及以后每天待发/预排邮件日历">① 待发日历</button>
-      <button type="button" class="ms-node-tab" data-node="node2" onclick="switchNode('node2')" title="按规则给联系人挑套装、排期、后台生成、确认后转入CRM待发">② 自动发送排期</button>
-      <button type="button" class="ms-node-tab" data-node="node3" onclick="switchNode('node3')" title="单封邮件详情: 主题/正文/附件/重刷/保存/反馈, 与套装生成一致">③ 邮件详情</button>
-    </div>
-    <div class="ms-sales-lock" title="发件人与签名按联系人归属销售解析, 不可手改; 本期限定单个销售数据">锁定销售：<b id="ms-sales-name">全部(未限定)</b></div>
   </div>
   <main>
+    <!-- ===== 页1: 邮件套装生成(原有单客户套装) ===== -->
+    <div id="page-suite">
+      <div class="top" hidden>
+        <div>
+          <h1>客户套装邮件生成</h1>
+          <div class="sub">根据 URL 参数 <code>id</code> 读取 CRM 客户画像，自动判断场景并生成整套套装草稿。</div>
+        </div>
+        <div id="page-badge" class="badge">等待客户编号</div>
+      </div>
+      <div id="status" class="status"><span class="spinner"></span><span id="status-text">正在读取参数...</span></div>
+      <section id="customer-panel" class="panel" hidden>
+        <h2 style="margin:0 0 10px;font-size:16px;">客户信息</h2>
+        <div id="customer-grid" class="grid"></div>
+      </section>
+      <section id="drafts-panel" hidden></section>
+    </div>
+
+    <!-- ===== 页2: 自动排期(待发日历 + 自动发送 + 邮件详情) ===== -->
+    <div id="page-autosend" hidden>
     <!-- ===== 节点1: 待发日历 ===== -->
     <section id="ms-node1" class="ms-node">
       <div class="ms-node-head" onclick="toggleNode('node1')">
@@ -722,32 +747,18 @@
       </div>
     </section>
 
-    <!-- ===== 节点3: 邮件详情 (原单客户套装生成) ===== -->
+    <!-- ===== 节点3: 邮件详情 (自动排期单封, 默认空) ===== -->
     <section id="ms-node3" class="ms-node">
       <div class="ms-node-head" onclick="toggleNode('node3')">
-        <span class="ms-node-title">③ 邮件详情<small>单封邮件 主题/正文/附件/重刷/保存/反馈</small></span>
+        <span class="ms-node-title">③ 邮件详情<small>点开某封排期邮件后显示: 主题/正文/重刷/保存/转入</small></span>
         <span class="ms-node-toggle" id="ms-node3-toggle">折叠 ▲</span>
       </div>
       <div class="ms-node-body" id="ms-node3-body">
         <div id="as2-detail" hidden></div>
-        <div class="top" hidden>
-          <div>
-            <h1>客户套装邮件生成</h1>
-            <div class="sub">根据 URL 参数 <code>id</code> 读取 CRM 客户画像，自动判断场景并生成整套套装草稿。</div>
-          </div>
-          <div id="page-badge" class="badge">等待客户编号</div>
-        </div>
-
-        <div id="status" class="status"><span class="spinner"></span><span id="status-text">正在读取参数...</span></div>
-
-        <section id="customer-panel" class="panel" hidden>
-          <h2 style="margin:0 0 10px;font-size:16px;">客户信息</h2>
-          <div id="customer-grid" class="grid"></div>
-        </section>
-
-        <section id="drafts-panel" hidden></section>
+        <div id="as2-detail-empty" class="ms-hint">从 ① 待发日历 或 ② 自动发送排期 点开某封邮件后, 在此查看与编辑详情。</div>
       </div>
     </section>
+    </div><!-- /#page-autosend -->
   </main>
 
   <script>
@@ -1861,8 +1872,25 @@
       }
     }
 
-    // ===== 三节点工作台: 切换 / 折叠 / 销售锁定 =====
-    let MS_STAFF_ID = '';   // 本期限定的单个销售工号(?staff= 或后端 current-staff)
+    // ===== 页切换(套装生成 / 自动排期) / 节点折叠 / 销售锁定(按 KH 解析) =====
+    let MS_STAFF_ID = '';
+    let MS_STAFF_NAME = '';
+    let MS_KH = '';
+    let MS_PAGE = 'suite';
+    function switchPage(p) {
+      MS_PAGE = (p === 'autosend') ? 'autosend' : 'suite';
+      const ps = document.getElementById('page-suite');
+      const pa = document.getElementById('page-autosend');
+      const tb = document.getElementById('suite-toolbar');
+      if (ps) ps.hidden = MS_PAGE !== 'suite';
+      if (pa) pa.hidden = MS_PAGE !== 'autosend';
+      if (tb) tb.hidden = MS_PAGE !== 'suite';
+      const bs = document.getElementById('pagetab-suite');
+      const ba = document.getElementById('pagetab-autosend');
+      if (bs) bs.classList.toggle('active', MS_PAGE === 'suite');
+      if (ba) ba.classList.toggle('active', MS_PAGE === 'autosend');
+      try { localStorage.setItem('ms_page', MS_PAGE); } catch (e) {}
+    }
     function toggleNode(key) {
       const sec = document.getElementById('ms-' + key);
       if (!sec) return;
@@ -1878,13 +1906,10 @@
       const toggle = document.getElementById('ms-' + key + '-toggle');
       if (toggle) toggle.textContent = collapsed ? '展开 ▼' : '折叠 ▲';
     }
-    function switchNode(key) {
-      // 堆叠式: 点 tab 展开并滚动到该节点, 高亮对应 tab
+    function expandNode(key) {
+      // 展开某节点并滚动到位(用于点开邮件详情跳到节点3)
       setNodeCollapsed(key, false);
       try { localStorage.setItem('ms_node_collapsed_' + key, '0'); } catch (e) {}
-      document.querySelectorAll('.ms-node-tab').forEach((b) => {
-        b.classList.toggle('active', b.getAttribute('data-node') === key);
-      });
       const sec = document.getElementById('ms-' + key);
       if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -1896,27 +1921,26 @@
       });
     }
     async function resolveLockedStaff() {
-      // 本期: 限定单个销售. 优先 ?staff=, 否则问后端 current-staff(可空=全部).
+      // 销售身份 = 由 KH 编号(?id= 或 ?kh=)按签名档逻辑解析出的归属销售; 不再用工号
       const params = new URLSearchParams(window.location.search);
-      let staff = (params.get('staff') || '').trim();
-      if (!staff) {
+      const kh = (params.get('id') || params.get('kh') || '').trim();
+      MS_KH = kh;
+      let staff = '';
+      if (kh) {
         try {
-          const res = await fetch('/api/v1/mail/autosend/current-staff', { credentials: 'include' });
+          const res = await fetch('/api/v1/mail/autosend/current-staff?kh=' + encodeURIComponent(kh), { credentials: 'include' });
           if (res.ok) {
             const d = await res.json();
             staff = (d && (d.staff_id || '')).trim();
-            if (d && d.staff_name) { MS_STAFF_NAME = d.staff_name; }
+            MS_STAFF_NAME = (d && d.staff_name) || '';
           }
         } catch (e) {}
       }
       MS_STAFF_ID = staff;
       const nameEl = document.getElementById('ms-sales-name');
-      if (nameEl) {
-        nameEl.textContent = staff ? (MS_STAFF_NAME ? `${MS_STAFF_NAME}(${staff})` : staff) : '全部(未限定)';
-      }
+      if (nameEl) nameEl.textContent = staff ? (MS_STAFF_NAME ? `${MS_STAFF_NAME}(${staff})` : staff) : (kh ? '未解析到该KH归属销售' : '未限定(用 ?id=KH编号 打开)');
       return staff;
     }
-    let MS_STAFF_NAME = '';
 
     async function loadSuite() {
       const params = new URLSearchParams(window.location.search);
@@ -1968,7 +1992,7 @@
     async function as2Init() {
       AS2_STAFF = MS_STAFF_ID || '';
       const lbl = document.getElementById('as2-staff-label');
-      if (lbl) lbl.textContent = AS2_STAFF ? (MS_STAFF_NAME ? `${MS_STAFF_NAME}(${AS2_STAFF})` : AS2_STAFF) : '未限定(请用 ?staff=工号 指定)';
+      if (lbl) lbl.textContent = AS2_STAFF ? (MS_STAFF_NAME ? `${MS_STAFF_NAME}(${AS2_STAFF})` : AS2_STAFF) : '未限定(用 ?id=KH编号 打开)';
       const sd = document.getElementById('as2-start-date');
       if (sd && !sd.value) sd.value = new Date().toISOString().slice(0, 10);
       await as2LoadScenarios();
@@ -2104,7 +2128,7 @@
       };
     }
     async function as2Preview() {
-      if (!AS2_STAFF) { as2Status('未限定销售, 无法排期。请用 ?staff=工号 打开。', true); return; }
+      if (!AS2_STAFF) { as2Status('未限定销售, 无法排期。请用 ?id=KH编号 打开(据此解析归属销售)。', true); return; }
       if (!as2Rules.length) { as2Status('请先配置至少一条套装规则。', true); return; }
       as2Status('排期中...');
       try {
@@ -2277,9 +2301,12 @@
     async function as2OpenDetail(itemId) {
       const box = document.getElementById('as2-detail');
       if (!box) return;
+      const empty = document.getElementById('as2-detail-empty');
+      if (empty) empty.hidden = true;
       box.hidden = false;
       box.innerHTML = '<div class="ms-hint">加载中...</div>';
-      switchNode('node3');
+      switchPage('autosend');
+      expandNode('node3');
       try {
         const r = await fetch('/api/v1/mail/autosend/plan-item?item_id=' + encodeURIComponent(itemId), { credentials: 'include' });
         const d = await r.json();
@@ -2362,7 +2389,7 @@
       const grid = document.getElementById('cal1-grid');
       const st = document.getElementById('cal1-status');
       if (!grid) return;
-      if (!AS2_STAFF) { grid.innerHTML = ''; if (st) st.textContent = '未限定销售(用 ?staff=工号 打开)'; return; }
+      if (!AS2_STAFF) { grid.innerHTML = ''; if (st) st.textContent = '未限定销售(用 ?id=KH编号 打开)'; return; }
       if (st) st.textContent = '加载中...';
       try {
         const r = await fetch('/api/v1/mail/autosend/calendar?staff_id=' + encodeURIComponent(AS2_STAFF), { credentials: 'include' });
@@ -2403,9 +2430,10 @@
       await resolveLockedStaff();
       await as2Init();
       await cal1Reload();
-      const params = new URLSearchParams(window.location.search);
-      const id = (params.get('id') || '').trim();
-      if (id) { switchNode('node3'); } else { switchNode('node2'); }
+      // 默认页: 记忆上次; 无记忆时进"邮件套装生成"(保留原 ?id= 行为)
+      let last = 'suite';
+      try { last = localStorage.getItem('ms_page') || 'suite'; } catch (e) {}
+      switchPage(last);
     }
 
     initWorkbench();
