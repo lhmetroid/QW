@@ -20968,6 +20968,73 @@ def get_autosend_crm_mail(rowid: str = Query(...)):
                                  "receiver": r[3] or "", "plan_time": r[4] or "", "eml_ftp_path": r[5] or ""}}
 
 
+class AutosendCrmMailSaveRequest(BaseModel):
+    rowid: str
+    subject: str | None = None
+    recipient_email: str | None = None   # 只改收件邮箱(在序列化 Receiver 里整体替换旧邮箱)
+    plan_time: str | None = None         # YYYY-MM-DD HH:MM 或 YYYY-MM-DDTHH:MM
+
+
+_EMAIL_IN_RECEIVER_RE = re.compile(r"<([^<>@\s]+@[^<>\s]+)>")
+
+
+@app.put("/api/v1/mail/autosend/crm-mail")
+def save_autosend_crm_mail(payload: AutosendCrmMailSaveRequest, db: Session = Depends(get_db)):
+    """改回 CRM 待发邮件的 主题 / 收件邮箱 / 预计发送时间(spQueueSend 列)。
+
+    注意: 只更新 spQueueSend 数据库列; 正文 HTML(.eml on FTP) 的重生成/回写属后续 C6, 本接口不动 .eml。
+    """
+    rid = sanitize_text(payload.rowid).strip()
+    if not rid:
+        raise HTTPException(status_code=422, detail="rowid required")
+    try:
+        from crm_database import CRMSessionLocal
+        crm_db = CRMSessionLocal()
+        try:
+            cur = crm_db.execute(
+                text("SELECT ISNULL(Subject,''), ISNULL(CAST(Receiver AS NVARCHAR(MAX)),''), "
+                     "ISNULL(CAST(Receivers AS NVARCHAR(MAX)),'') FROM spQueueSend WHERE RowId=:r"),
+                {"r": rid},
+            ).fetchone()
+            if not cur:
+                raise HTTPException(status_code=404, detail="CRM待发邮件不存在(可能已发出)")
+            sets, params = [], {"r": rid}
+            if payload.subject is not None:
+                sets.append("Subject=:su"); params["su"] = sanitize_text(payload.subject)[:500]
+            if payload.plan_time is not None and str(payload.plan_time).strip():
+                pt = str(payload.plan_time).strip().replace("T", " ")
+                try:
+                    dt = datetime.strptime(pt[:16], "%Y-%m-%d %H:%M")
+                except Exception:
+                    raise HTTPException(status_code=422, detail="plan_time 格式应为 YYYY-MM-DD HH:MM")
+                sets.append("PlanSendTime=:pt"); params["pt"] = dt
+            if payload.recipient_email is not None and str(payload.recipient_email).strip():
+                new_email = str(payload.recipient_email).strip()
+                if "@" not in new_email:
+                    raise HTTPException(status_code=422, detail="收件邮箱格式不正确")
+                recv = str(cur[1] or ""); recvs = str(cur[2] or "")
+                m = _EMAIL_IN_RECEIVER_RE.search(recv)
+                old_email = m.group(1) if m else ""
+                if old_email and old_email != new_email:
+                    recv = recv.replace(old_email, new_email)
+                    recvs = recvs.replace(old_email, new_email) if recvs else recvs
+                    sets.append("Receiver=:rv"); params["rv"] = recv
+                    if recvs:
+                        sets.append("Receivers=:rvs"); params["rvs"] = recvs
+            if not sets:
+                return {"ok": True, "updated": 0}
+            crm_db.execute(text(f"UPDATE spQueueSend SET {', '.join(sets)} WHERE RowId=:r"), params)
+            crm_db.commit()
+        finally:
+            crm_db.close()
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("AUTOSEND_CRM_MAIL_SAVE_FAILED rowid=%s", rid)
+        raise HTTPException(status_code=502, detail="改回CRM失败")
+    return {"ok": True, "updated": 1, "note": "已更新 spQueueSend(主题/收件人/计划时间); 正文 .eml(FTP) 未改, 属后续 C6。"}
+
+
 @app.get("/api/v1/mail/autosend/plan-item")
 def get_autosend_plan_item(item_id: str = Query(...), db: Session = Depends(get_db)):
     """取单条排期明细的完整内容(节点3 详情读取: 主题/正文/脚本)。"""
@@ -20988,11 +21055,13 @@ class AutosendPlanItemSaveRequest(BaseModel):
     subject: str | None = None
     body_html: str | None = None
     recipient_email: str | None = None
+    plan_date: str | None = None    # YYYY-MM-DD
+    plan_time: str | None = None    # HH:MM
 
 
 @app.put("/api/v1/mail/autosend/plan-item")
 def save_autosend_plan_item(payload: AutosendPlanItemSaveRequest, db: Session = Depends(get_db)):
-    """保存节点3 对未转入排期单封的人工编辑(主题/正文/收件人)。已转入CRM(sent)的不许在此改。"""
+    """保存节点3 对未转入排期单封的人工编辑(主题/正文/收件人/预计发送日期时间)。已转入CRM(sent)的不许在此改。"""
     iid = sanitize_text(payload.item_id).strip()
     row = db.execute(text("SELECT status FROM mail_autosend_plan_item WHERE item_id=:i"), {"i": iid}).fetchone()
     if not row:
@@ -21007,6 +21076,15 @@ def save_autosend_plan_item(payload: AutosendPlanItemSaveRequest, db: Session = 
     if payload.recipient_email is not None:
         em = str(payload.recipient_email).strip()
         sets.append("recipient_email=:re"); params["re"] = em or None
+    if payload.plan_date is not None and str(payload.plan_date).strip():
+        try:
+            pd = datetime.strptime(str(payload.plan_date).strip(), "%Y-%m-%d").date()
+        except Exception:
+            raise HTTPException(status_code=422, detail="plan_date 格式应为 YYYY-MM-DD")
+        sets.append("plan_date=:pd"); params["pd"] = pd
+    if payload.plan_time is not None and str(payload.plan_time).strip():
+        pt = str(payload.plan_time).strip()[:5]
+        sets.append("plan_time=:pt"); sets.append("send_time=:pt"); params["pt"] = pt
     if not sets:
         return {"ok": True, "updated": 0}
     sets.append("updated_at=now()")

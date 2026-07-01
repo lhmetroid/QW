@@ -2468,28 +2468,58 @@
         } catch (err) { card.innerHTML = `<div class="text-xs" style="color:#dc2626">${idx + 1}. 读取失败: ${as2Esc(err.message)}</div>`; }
       }
     }
+    // 从序列化 Receiver 里取收件邮箱
+    function as2ReceiverEmail(raw) { const m = String(raw || '').match(/<([^<>@\s]+@[^<>\s]+)>/); return m ? m[1] : ''; }
     function as2CrmCardHtml(idx, it) {
-      const recv = as2CleanReceiver(it.receiver);
-      const recvName = recv.split('<')[0].trim() || recv;
-      return `<div class="text-xs font-bold text-slate-600 mb-1">${idx + 1}. CRM待发<span class="ms-info" title="当前显示为 CRM 数据库文本版正文; HTML 精确内容(FTP .eml)与编辑后改回 CRM/FTP 后续接入。">ⓘ</span></div>
-        <div class="flex items-end gap-3 mb-2">
-          <label class="text-xs flex-1 min-w-0"><span class="block mb-1 text-slate-500">主题</span><input class="w-full rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.subject || '')}" disabled></label>
-          <div class="text-[11px] text-slate-500 whitespace-nowrap pb-1" title="${as2Esc(recv)}">客户 <b>${as2Esc(recvName || '-')}</b> · 预计发送 <b>${as2Esc(it.plan_time || '')}</b></div>
+      const email = as2ReceiverEmail(it.receiver) || '';
+      const dtv = String(it.plan_time || '').replace(' ', 'T').slice(0, 16);
+      return `<div class="text-xs font-bold text-slate-600 mb-1">${idx + 1}. CRM待发<span class="ms-info" title="改回 CRM 只更新 spQueueSend(主题/收件邮箱/计划时间); 正文HTML(.eml FTP)重生成属后续。">ⓘ</span></div>
+        <div class="flex items-end gap-3 mb-2 flex-wrap">
+          <label class="text-xs flex-1 min-w-[220px]"><span class="block mb-1 text-slate-500">主题</span><input id="as2crm-subj-${idx}" class="w-full rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.subject || '')}"></label>
+          <label class="text-xs"><span class="block mb-1 text-slate-500">客户邮箱</span><input id="as2crm-email-${idx}" class="rounded border border-slate-300 px-2 py-1 w-56" value="${as2Esc(email)}"></label>
+          <label class="text-xs"><span class="block mb-1 text-slate-500">预计发送</span><input id="as2crm-time-${idx}" type="datetime-local" class="rounded border border-slate-300 px-2 py-1" value="${as2Esc(dtv)}"></label>
+          <button type="button" class="rounded bg-indigo-600 px-3 py-1 text-xs font-bold text-white hover:bg-indigo-700" onclick="as2SaveCrmMail(${idx},'${as2Esc(it.rowid)}')">保存</button>
+          <span id="as2crm-st-${idx}" class="text-[11px] text-slate-500 pb-1"></span>
         </div>
-        <div class="text-xs text-slate-500 mb-1">正文(CRM 当前文本版)</div>
+        <div class="text-xs text-slate-500 mb-1">正文(CRM 当前文本版, 只读)</div>
         <div class="rounded border border-slate-200 p-2 bg-white text-sm whitespace-pre-wrap max-h-[320px] overflow-auto">${as2Esc(it.body_text || '(无正文文本)')}</div>`;
+    }
+    async function as2SaveCrmMail(idx, rowid) {
+      const g = (s) => (document.getElementById(s) || {}).value || '';
+      const st = document.getElementById('as2crm-st-' + idx);
+      if (st) { st.textContent = '保存中...'; st.style.color = '#64748b'; }
+      try {
+        const r = await fetch('/api/v1/mail/autosend/crm-mail', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rowid: rowid, subject: g('as2crm-subj-' + idx), recipient_email: g('as2crm-email-' + idx), plan_time: g('as2crm-time-' + idx) }) });
+        const d = await r.json();
+        if (st) { st.textContent = r.ok ? '已改回CRM' : ('失败: ' + (d.detail || r.status)); st.style.color = r.ok ? '#059669' : '#dc2626'; }
+        if (r.ok) cal1Reload();
+      } catch (e) { if (st) { st.textContent = '失败: ' + e.message; st.style.color = '#dc2626'; } }
     }
     function as2LocalCardHtml(idx, it, id) {
       const client = `${it.company_head || ''} ${it.contact_name || it.contact_id || ''}`.trim();
       return `<div class="flex items-center justify-between gap-2 mb-1">
-          <div class="text-xs font-bold text-slate-600">${idx + 1}. 本地预排 · 第${it.suite_step}封 · ${as2Esc(it.status || '')}</div>
-          <button type="button" class="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50" onclick="as2OpenDetail('${id}')">编辑该封</button>
+          <div class="text-xs font-bold text-slate-600">${idx + 1}. 本地预排 · 第${it.suite_step}封 · ${as2Esc(it.status || '')} · ${as2Esc(client)}</div>
+          <button type="button" class="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50" onclick="as2OpenDetail('${id}')">编辑正文</button>
         </div>
-        <div class="flex items-end gap-3 mb-2">
-          <label class="text-xs flex-1 min-w-0"><span class="block mb-1 text-slate-500">主题</span><input class="w-full rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.subject || '(未生成)')}" disabled></label>
-          <div class="text-[11px] text-slate-500 whitespace-nowrap pb-1">客户 <b>${as2Esc(client || '-')}</b> · 预计发送 <b>${as2Esc(it.plan_date || '')} ${as2Esc(it.plan_time || '')}</b></div>
+        <div class="flex items-end gap-3 mb-2 flex-wrap">
+          <label class="text-xs flex-1 min-w-[220px]"><span class="block mb-1 text-slate-500">主题</span><input id="as2loc-subj-${idx}" class="w-full rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.subject || '')}"></label>
+          <label class="text-xs"><span class="block mb-1 text-slate-500">客户邮箱</span><input id="as2loc-email-${idx}" class="rounded border border-slate-300 px-2 py-1 w-56" value="${as2Esc(it.recipient_email || '')}"></label>
+          <label class="text-xs"><span class="block mb-1 text-slate-500">预计发送</span><span class="inline-flex gap-1"><input id="as2loc-date-${idx}" type="date" class="rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.plan_date || '')}"><input id="as2loc-time-${idx}" type="time" class="rounded border border-slate-300 px-2 py-1" value="${as2Esc(String(it.plan_time || '').slice(0, 5))}"></span></label>
+          <button type="button" class="rounded bg-indigo-600 px-3 py-1 text-xs font-bold text-white hover:bg-indigo-700" onclick="as2SaveLocalFields(${idx},'${id}')">保存</button>
+          <span id="as2loc-st-${idx}" class="text-[11px] text-slate-500 pb-1"></span>
         </div>
         <div class="rounded border border-slate-200 p-2 bg-white text-sm max-h-[320px] overflow-auto">${it.body_html || '<span class="text-slate-400">未生成正文, 到 ② 后台生成</span>'}</div>`;
+    }
+    async function as2SaveLocalFields(idx, id) {
+      const g = (s) => (document.getElementById(s) || {}).value || '';
+      const st = document.getElementById('as2loc-st-' + idx);
+      if (st) { st.textContent = '保存中...'; st.style.color = '#64748b'; }
+      try {
+        const r = await fetch('/api/v1/mail/autosend/plan-item', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item_id: id, subject: g('as2loc-subj-' + idx), recipient_email: g('as2loc-email-' + idx), plan_date: g('as2loc-date-' + idx), plan_time: g('as2loc-time-' + idx) }) });
+        const d = await r.json();
+        if (st) { st.textContent = r.ok ? '已保存' : ('失败: ' + (d.detail || r.status)); st.style.color = r.ok ? '#059669' : '#dc2626'; }
+        if (r.ok) { await as2LoadPlan(); cal1Reload(); }
+      } catch (e) { if (st) { st.textContent = '失败: ' + e.message; st.style.color = '#dc2626'; } }
     }
 
     async function initWorkbench() {
