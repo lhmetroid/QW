@@ -2569,8 +2569,36 @@
           ${rowRight}
           <span id="as2p-st-${ci}" class="text-[11px] text-slate-500 whitespace-nowrap"></span>
         </div>
-        <div class="text-[11px] text-slate-500 mb-1">正文${readonly ? '(只读)' : '(可直接编辑, 改完点“保存”生效)'}</div>
-        <div id="as2p-body-${ci}" class="rounded border border-slate-200 p-2 bg-white text-sm min-h-[160px] max-h-[340px] overflow-auto" ${readonly ? '' : 'contenteditable="true" style="outline:none"'}>${it.body_html || '<span class="text-slate-400">无正文</span>'}</div>`;
+        <div class="text-[11px] text-slate-500 mb-1">正文${readonly ? '(只读)' : '(可直接编辑, 支持字体/颜色/段落等; 改完点“保存”生效)'}</div>
+        ${readonly ? '' : as2RteToolbar()}
+        <div id="as2p-body-${ci}" class="body-html${readonly ? '' : ' rte'}" style="max-height:360px;overflow:auto" ${readonly ? '' : 'contenteditable="true"'}>${it.body_html || '<span class="text-slate-400">无正文</span>'}</div>`;
+    }
+    // 复用套装页富文本工具栏(rteCmd/rteExec/rteHilite 均对当前聚焦的 .rte 生效)
+    function as2RteToolbar() {
+      return `<div class="rte-toolbar">
+        <button type="button" title="撤销" onmousedown="rteCmd(event,'undo')">↶</button>
+        <button type="button" title="重做" onmousedown="rteCmd(event,'redo')">↷</button>
+        <span class="rte-sep"></span>
+        <select title="字体" onchange="rteExec('fontName', this.value); this.selectedIndex=0"><option value="">字体</option><option value="Microsoft YaHei">微软雅黑</option><option value="SimSun">宋体</option><option value="SimHei">黑体</option><option value="KaiTi">楷体</option><option value="Arial">Arial</option><option value="Times New Roman">Times New Roman</option></select>
+        <select title="字号" onchange="rteExec('fontSize', this.value); this.selectedIndex=0"><option value="">字号</option><option value="1">小</option><option value="2">较小</option><option value="3">正常</option><option value="4">较大</option><option value="5">大</option><option value="6">特大</option><option value="7">超大</option></select>
+        <select title="段落" onchange="rteExec('formatBlock', this.value); this.selectedIndex=0"><option value="">段落</option><option value="p">正文</option><option value="h1">标题1</option><option value="h2">标题2</option><option value="h3">标题3</option></select>
+        <span class="rte-sep"></span>
+        <button type="button" title="加粗" onmousedown="rteCmd(event,'bold')"><b>B</b></button>
+        <button type="button" title="斜体" onmousedown="rteCmd(event,'italic')"><i>I</i></button>
+        <button type="button" title="下划线" onmousedown="rteCmd(event,'underline')"><u>U</u></button>
+        <button type="button" title="删除线" onmousedown="rteCmd(event,'strikeThrough')"><s>S</s></button>
+        <label class="rte-color" title="字体颜色">A<input type="color" onchange="rteExec('foreColor', this.value)"></label>
+        <label class="rte-color" title="背景色">底<input type="color" onchange="rteHilite(this.value)"></label>
+        <span class="rte-sep"></span>
+        <button type="button" title="无序列表" onmousedown="rteCmd(event,'insertUnorderedList')">• 列表</button>
+        <button type="button" title="有序列表" onmousedown="rteCmd(event,'insertOrderedList')">1. 列表</button>
+        <button type="button" title="左对齐" onmousedown="rteCmd(event,'justifyLeft')">左</button>
+        <button type="button" title="居中对齐" onmousedown="rteCmd(event,'justifyCenter')">中</button>
+        <button type="button" title="右对齐" onmousedown="rteCmd(event,'justifyRight')">右</button>
+        <span class="rte-sep"></span>
+        <button type="button" title="分割线" onmousedown="rteCmd(event,'insertHorizontalRule')">分割线</button>
+        <button type="button" title="清除格式" onmousedown="rteCmd(event,'removeFormat')">清除格式</button>
+      </div>`;
     }
     function as2pSt(ci, m, ok) { const el = document.getElementById('as2p-st-' + ci); if (el) { el.textContent = m || ''; el.style.color = ok === true ? '#059669' : (ok === false ? '#dc2626' : '#64748b'); } }
     async function as2PersonSave(ci, id) {
