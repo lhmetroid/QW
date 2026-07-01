@@ -759,13 +759,17 @@
 
     <!-- ===== 节点3: 邮件详情 (自动排期单封, 默认空) ===== -->
     <section id="ms-node3" class="ms-node">
-      <div class="ms-node-head" onclick="toggleNode('node3')">
-        <span class="ms-node-title">③ 邮件详情<span class="ms-info" title="从 ① 待发日历 或 ② 自动发送排期 点开某封邮件后, 在此查看与编辑: 主题/正文/重刷/保存/转入CRM">ⓘ</span></span>
-        <span class="ms-node-toggle" id="ms-node3-toggle">折叠 ▲</span>
+      <div class="ms-node-head">
+        <span class="ms-node-title" onclick="toggleNode('node3')" style="cursor:pointer">③ 邮件详情<span id="as2-person-pos" class="text-slate-500 font-normal" style="margin-left:6px;font-size:12px"></span><span class="ms-info" title="按“联系人”显示该人已生成的所有邮件(一封一卡, 逐封读取, 仅读取不触发大模型, 除非点“重新生成”)。用“上一人/下一人”切换; 也可点排期清单里的联系人或已生成的封次打开。">ⓘ</span></span>
+        <div class="flex items-center gap-2">
+          <button type="button" class="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50" onclick="as2PersonPrev()">上一人</button>
+          <button type="button" class="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50" onclick="as2PersonNext()">下一人</button>
+          <span class="ms-node-toggle" id="ms-node3-toggle" onclick="toggleNode('node3')" style="cursor:pointer">折叠 ▲</span>
+        </div>
       </div>
       <div class="ms-node-body" id="ms-node3-body">
         <div id="as2-detail" hidden></div>
-        <div id="as2-detail-empty" class="ms-hint">（空）点开某封邮件后在此显示详情</div>
+        <div id="as2-detail-empty" class="ms-hint">（空）点排期清单里的联系人或某封已生成邮件, 在此按人显示</div>
       </div>
     </section>
     </div><!-- /#page-autosend -->
@@ -2241,9 +2245,13 @@
       tb.innerHTML = keys.map((k) => {
         const g = groups[k];
         const it = g.it;
+        const hasGen = Object.values(g.steps).some((s) => s && (s.status === 'drafted' || s.status === 'sent'));
+        const contactCell = hasGen
+          ? `<button type="button" class="text-indigo-600 underline" onclick="as2ShowPersonByContact('${as2Esc(it.contact_id)}','${as2Esc(it.scenario)}')" title="点开查看该联系人已生成的邮件">${as2Esc(it.contact_name || it.contact_id)}</button>`
+          : as2Esc(it.contact_name || it.contact_id);
         return `<tr class="border-t border-slate-100">
           <td class="px-2 py-1" title="${as2Esc(it.company_name)}">${as2Esc(it.company_head || '-')}</td>
-          <td class="px-2 py-1">${as2Esc(it.contact_name || it.contact_id)}</td>
+          <td class="px-2 py-1">${contactCell}</td>
           <td class="px-2 py-1">${as2Esc(it.scenario_label_cn)}</td>
           <td class="px-2 py-1">${as2StepBtn(g.steps[1])}</td>
           <td class="px-2 py-1">${as2StepBtn(g.steps[2])}</td>
@@ -2348,91 +2356,116 @@
     }
 
     // ============================================================
-    // 节点3: 排期单封详情(加载/编辑/重刷/保存/转入)
+    // 节点3: 邮件详情(按人显示, 上一人/下一人, 逐封读取, 仅读取不触发大模型)
     // ============================================================
-    let as2DetailItem = null;
-    async function as2OpenDetail(itemId) {
+    let as2Persons = [];      // [{contact_id, scenario, company_head, contact_name, scenario_label_cn, items:[plan item]}]
+    let as2PersonIdx = -1;
+    function as2BuildPersons() {
+      const map = new Map();
+      (as2PlanItems || []).forEach((it) => {
+        const key = it.contact_id + '::' + it.scenario;
+        if (!map.has(key)) map.set(key, { key, contact_id: it.contact_id, scenario: it.scenario, company_head: it.company_head, contact_name: it.contact_name, scenario_label_cn: it.scenario_label_cn, items: [] });
+        map.get(key).items.push(it);
+      });
+      as2Persons = Array.from(map.values());
+      as2Persons.forEach((p) => p.items.sort((a, b) => (a.suite_step || 0) - (b.suite_step || 0)));
+    }
+    function as2PersonPos() {
+      const el = document.getElementById('as2-person-pos');
+      if (el) el.textContent = as2Persons.length ? `${as2PersonIdx + 1}/${as2Persons.length}人` : '';
+    }
+    function as2PersonPrev() { if (as2PersonIdx > 0) as2ShowPerson(as2PersonIdx - 1); }
+    function as2PersonNext() { if (as2PersonIdx < as2Persons.length - 1) as2ShowPerson(as2PersonIdx + 1); }
+    // 点排期清单里的联系人/某封 -> 打开该人
+    function as2OpenDetail(itemId) {
+      const it = (as2PlanItems || []).find((x) => x.item_id === itemId);
+      if (it) as2ShowPersonByContact(it.contact_id, it.scenario);
+    }
+    async function as2ShowPersonByContact(contactId, scenario) {
+      as2BuildPersons();
+      let idx = as2Persons.findIndex((p) => p.contact_id === contactId && (!scenario || p.scenario === scenario));
+      if (idx < 0) idx = as2Persons.findIndex((p) => p.contact_id === contactId);
+      if (idx < 0) return;
+      await as2ShowPerson(idx);
+    }
+    async function as2ShowPerson(idx) {
+      if (!as2Persons.length) as2BuildPersons();
+      if (idx < 0 || idx >= as2Persons.length) return;
+      as2PersonIdx = idx;
+      as2PersonPos();
+      const p = as2Persons[idx];
       const box = document.getElementById('as2-detail');
-      if (!box) return;
       const empty = document.getElementById('as2-detail-empty');
+      switchPage('autosend'); expandNode('node3');
       if (empty) empty.hidden = true;
+      if (!box) return;
       box.hidden = false;
-      box.innerHTML = '<div class="ms-hint">加载中...</div>';
-      switchPage('autosend');
-      expandNode('node3');
-      try {
-        const r = await fetch('/api/v1/mail/autosend/plan-item?item_id=' + encodeURIComponent(itemId), { credentials: 'include' });
-        const d = await r.json();
-        if (!r.ok) { box.innerHTML = `<div class="ms-hint" style="color:#dc2626">加载失败: ${as2Esc(d.detail || r.status)}</div>`; return; }
-        as2DetailItem = d.item;
-        as2RenderDetail();
-      } catch (e) { box.innerHTML = `<div class="ms-hint" style="color:#dc2626">加载失败: ${as2Esc(e.message)}</div>`; }
+      const client = `${p.company_head || ''} ${p.contact_name || p.contact_id || ''}`.trim();
+      box.innerHTML = `<div class="text-sm font-bold text-slate-900 mb-2">${as2Esc(client)} · ${as2Esc(p.scenario_label_cn || '')}（${p.items.length}封，逐封读取）</div>` +
+        p.items.map((it, ci) => `<div id="as2-pcard-${ci}" class="rounded-lg border border-slate-200 p-3 mb-2"><div class="text-xs font-bold text-slate-600">第${it.suite_step}封 · ${as2Esc(it.status)}</div><div class="ms-hint mt-1">${(it.status === 'drafted' || it.status === 'sent') ? '读取中...' : '未生成(到 ② 后台生成)'}</div></div>`).join('');
+      // 仅读取已生成的(drafted/sent), 逐封; 未生成不读取, 不触发大模型
+      for (let ci = 0; ci < p.items.length; ci++) {
+        const it = p.items[ci];
+        const card = document.getElementById('as2-pcard-' + ci);
+        if (!card) continue;
+        if (it.status !== 'drafted' && it.status !== 'sent') continue;
+        try {
+          const r = await fetch('/api/v1/mail/autosend/plan-item?item_id=' + encodeURIComponent(it.item_id), { credentials: 'include' });
+          const d = await r.json();
+          if (!r.ok) { card.innerHTML = `<div class="text-xs" style="color:#dc2626">第${it.suite_step}封 读取失败: ${as2Esc(d.detail || r.status)}</div>`; continue; }
+          card.innerHTML = as2PersonCardHtml(ci, d.item || {}, it.item_id);
+        } catch (e) { card.innerHTML = `<div class="text-xs" style="color:#dc2626">第${it.suite_step}封 读取失败: ${as2Esc(e.message)}</div>`; }
+      }
     }
-    function as2RenderDetail() {
-      const it = as2DetailItem; if (!it) return;
-      const box = document.getElementById('as2-detail');
+    function as2PersonCardHtml(ci, it, id) {
       const readonly = it.status === 'sent';
-      box.innerHTML = `
-        <div class="rounded-lg border border-violet-200 bg-violet-50 p-3 mb-3">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="text-sm font-bold text-slate-900">排期邮件详情 · ${as2Esc(it.company_head || '')} ${as2Esc(it.contact_name || it.contact_id)} · ${as2Esc(it.scenario_label_cn)} 第${it.suite_step}封</div>
-            <span class="text-[11px] text-slate-500">状态: ${as2Esc(it.status)}${it.plan_date ? ' · 计划 ' + as2Esc(it.plan_date) + ' ' + as2Esc(it.plan_time || '') : ''}</span>
-          </div>
+      // 收件人 + 主题 + 按钮 同一行
+      const rowRight = readonly
+        ? '<span class="text-[11px] text-slate-500 whitespace-nowrap">已转入CRM</span>'
+        : `<button type="button" class="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 whitespace-nowrap" onclick="as2PersonRegen(${ci},'${id}')">重新生成</button>
+           <button type="button" class="rounded bg-indigo-600 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-700" onclick="as2PersonSave(${ci},'${id}')">保存</button>
+           <button type="button" class="rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700 whitespace-nowrap" onclick="as2PersonCommit(${ci},'${id}')">转入CRM(发送本封)</button>`;
+      return `<div class="flex flex-wrap items-center gap-2 mb-2">
+          <span class="text-xs font-bold text-slate-600 whitespace-nowrap">第${it.suite_step}封·${as2Esc(it.status || '')}</span>
+          <input id="as2p-email-${ci}" class="rounded border border-slate-300 px-2 py-1 text-xs w-52" value="${as2Esc(it.recipient_email || '')}" placeholder="收件人" ${readonly ? 'disabled' : ''}>
+          <input id="as2p-subj-${ci}" class="rounded border border-slate-300 px-2 py-1 text-xs flex-1 min-w-[180px]" value="${as2Esc(it.subject || '')}" placeholder="主题" ${readonly ? 'disabled' : ''}>
+          ${rowRight}
+          <span id="as2p-st-${ci}" class="text-[11px] text-slate-500 whitespace-nowrap"></span>
         </div>
-        <div class="space-y-2">
-          <label class="block text-xs"><span class="block mb-1 text-slate-500">收件人</span><input id="as2d-recipient" class="w-full rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.recipient_email || '')}" ${readonly ? 'disabled' : ''}></label>
-          <label class="block text-xs"><span class="block mb-1 text-slate-500">主题</span><input id="as2d-subject" class="w-full rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.subject || '')}" ${readonly ? 'disabled' : ''}></label>
-          <div class="text-xs"><span class="block mb-1 text-slate-500">正文</span>
-            <div id="as2d-body" class="rounded border border-slate-300 p-2 min-h-[180px] bg-white text-sm" ${readonly ? '' : 'contenteditable="true"'}>${it.body_html || '<span class=\'text-slate-400\'>尚未生成正文, 请先在节点2 后台生成或点下方重刷</span>'}</div>
-          </div>
-          <details class="text-[11px]"><summary class="cursor-pointer text-slate-500">查看大模型脚本(prompt)</summary><pre class="whitespace-pre-wrap bg-slate-50 p-2 rounded mt-1 max-h-[240px] overflow-auto">${as2Esc(it.llm_prompt || '(无)')}</pre></details>
-          <div class="flex flex-wrap items-center gap-2 pt-1">
-            ${readonly ? '<span class="text-[11px] text-slate-500">已转入CRM, 如需修改请到 ① 日历 双击当天改并同步回 CRM/FTP</span>' : `
-            <button type="button" onclick="as2DetailRegen()" class="rounded border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50">重刷(重新生成)</button>
-            <button type="button" onclick="as2DetailSave()" class="rounded bg-indigo-600 px-3 py-1 text-xs font-bold text-white hover:bg-indigo-700">保存</button>
-            <button type="button" onclick="as2DetailCommit()" class="rounded bg-emerald-600 px-3 py-1 text-xs font-bold text-white hover:bg-emerald-700">转入CRM(发送本封)</button>`}
-            <span id="as2d-status" class="text-[11px] text-slate-500"></span>
-          </div>
-        </div>`;
+        <div id="as2p-body-${ci}" class="rounded border border-slate-200 p-2 bg-white text-sm max-h-[300px] overflow-auto" ${readonly ? '' : 'contenteditable="true"'}>${it.body_html || '<span class="text-slate-400">无正文</span>'}</div>`;
     }
-    function as2dStatus(m, bad) { const el = document.getElementById('as2d-status'); if (el) { el.textContent = m || ''; el.style.color = bad ? '#dc2626' : '#64748b'; } }
-    async function as2DetailSave() {
-      if (!as2DetailItem) return;
-      const body = {
-        item_id: as2DetailItem.item_id,
-        subject: document.getElementById('as2d-subject').value,
-        body_html: document.getElementById('as2d-body').innerHTML,
-        recipient_email: document.getElementById('as2d-recipient').value,
-      };
+    function as2pSt(ci, m, ok) { const el = document.getElementById('as2p-st-' + ci); if (el) { el.textContent = m || ''; el.style.color = ok === true ? '#059669' : (ok === false ? '#dc2626' : '#64748b'); } }
+    async function as2PersonSave(ci, id) {
+      as2pSt(ci, '保存中...');
+      const g = (s) => (document.getElementById(s) || {});
+      const body = { item_id: id, subject: g('as2p-subj-' + ci).value || '', recipient_email: g('as2p-email-' + ci).value || '', body_html: g('as2p-body-' + ci).innerHTML || '' };
       try {
         const r = await fetch('/api/v1/mail/autosend/plan-item', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        as2dStatus(r.ok ? '已保存' : '保存失败', !r.ok);
-        if (r.ok) { as2DetailItem.subject = body.subject; as2DetailItem.body_html = body.body_html; as2DetailItem.recipient_email = body.recipient_email; await as2LoadPlan(); }
-      } catch (e) { as2dStatus('保存失败: ' + e.message, true); }
-    }
-    async function as2DetailRegen() {
-      if (!as2DetailItem) return;
-      as2dStatus('重新生成中...');
-      try {
-        const r = await fetch('/api/v1/mail/autosend/plan-item/regenerate', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item_id: as2DetailItem.item_id }) });
         const d = await r.json();
-        if (!r.ok) { as2dStatus('重刷失败: ' + (d.detail || r.status), true); return; }
-        const it = d.item || {};
-        as2DetailItem.subject = it.subject; as2DetailItem.body_html = it.body_html; as2DetailItem.llm_prompt = it.llm_prompt; as2DetailItem.status = 'drafted';
-        as2RenderDetail();
-        as2dStatus('已重新生成');
-        await as2LoadPlan();
-      } catch (e) { as2dStatus('重刷失败: ' + e.message, true); }
+        as2pSt(ci, r.ok ? '已保存' : ('失败: ' + (d.detail || r.status)), r.ok);
+        if (r.ok) await as2LoadPlan();
+      } catch (e) { as2pSt(ci, '失败: ' + e.message, false); }
     }
-    async function as2DetailCommit() {
-      if (!as2DetailItem) return;
-      if (as2DetailItem.status !== 'drafted') { as2dStatus('请先生成草稿再转入', true); return; }
-      await as2DetailSave();
-      as2dStatus('转入CRM中...');
-      const res = await as2CommitItems([as2DetailItem.item_id]);
-      as2dStatus(res.ok ? '已转入CRM' : '转入失败', !res.ok);
+    async function as2PersonRegen(ci, id) {
+      as2pSt(ci, '重新生成中...');
+      try {
+        const r = await fetch('/api/v1/mail/autosend/plan-item/regenerate', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item_id: id }) });
+        const d = await r.json();
+        if (!r.ok) { as2pSt(ci, '失败: ' + (d.detail || r.status), false); return; }
+        const it = d.item || {};
+        const se = document.getElementById('as2p-subj-' + ci); if (se) se.value = it.subject || '';
+        const be = document.getElementById('as2p-body-' + ci); if (be) be.innerHTML = it.body_html || '';
+        as2pSt(ci, '已重新生成', true);
+        await as2LoadPlan();
+      } catch (e) { as2pSt(ci, '失败: ' + e.message, false); }
+    }
+    async function as2PersonCommit(ci, id) {
+      await as2PersonSave(ci, id);
+      as2pSt(ci, '转入CRM中...');
+      const res = await as2CommitItems([id]);
+      as2pSt(ci, res.ok ? '已转入CRM' : '转入失败', res.ok > 0);
       await as2LoadPlan(); cal1Reload();
-      if (res.ok) { as2DetailItem.status = 'sent'; as2RenderDetail(); }
+      as2ShowPerson(as2PersonIdx);
     }
 
     // ============================================================
@@ -2500,7 +2533,6 @@
       const box = document.getElementById('as2-detail');
       const empty = document.getElementById('as2-detail-empty');
       switchPage('autosend'); expandNode('node3');
-      as2DetailItem = null;
       if (!box) return;
       if (!entries.length) {
         box.hidden = true;
