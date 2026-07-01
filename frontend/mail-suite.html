@@ -2469,22 +2469,26 @@
       }
     }
     function as2CrmCardHtml(idx, it) {
-      return `<div class="text-xs font-bold text-slate-600 mb-1">${idx + 1}. CRM待发</div>
-        <div class="text-[11px] text-slate-500 mb-2">计划 ${as2Esc(it.plan_time || '')} · 收件人 ${as2Esc(as2CleanReceiver(it.receiver))}</div>
-        <div class="text-xs text-slate-500 mb-1">主题</div>
-        <div class="rounded border border-slate-200 px-2 py-1 bg-slate-50 text-sm mb-2">${as2Esc(it.subject || '(无主题)')}</div>
+      const recv = as2CleanReceiver(it.receiver);
+      const recvName = recv.split('<')[0].trim() || recv;
+      return `<div class="text-xs font-bold text-slate-600 mb-1">${idx + 1}. CRM待发<span class="ms-info" title="当前显示为 CRM 数据库文本版正文; HTML 精确内容(FTP .eml)与编辑后改回 CRM/FTP 后续接入。">ⓘ</span></div>
+        <div class="flex items-end gap-3 mb-2">
+          <label class="text-xs flex-1 min-w-0"><span class="block mb-1 text-slate-500">主题</span><input class="w-full rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.subject || '')}" disabled></label>
+          <div class="text-[11px] text-slate-500 whitespace-nowrap pb-1" title="${as2Esc(recv)}">客户 <b>${as2Esc(recvName || '-')}</b> · 预计发送 <b>${as2Esc(it.plan_time || '')}</b></div>
+        </div>
         <div class="text-xs text-slate-500 mb-1">正文(CRM 当前文本版)</div>
-        <div class="rounded border border-slate-200 p-2 bg-white text-sm whitespace-pre-wrap max-h-[320px] overflow-auto">${as2Esc(it.body_text || '(无正文文本)')}</div>
-        <div class="text-[11px] text-amber-700 mt-1">HTML 精确内容(FTP)与编辑改回 CRM/FTP 后续接入。</div>`;
+        <div class="rounded border border-slate-200 p-2 bg-white text-sm whitespace-pre-wrap max-h-[320px] overflow-auto">${as2Esc(it.body_text || '(无正文文本)')}</div>`;
     }
     function as2LocalCardHtml(idx, it, id) {
-      return `<div class="flex items-center justify-between gap-2">
-          <div class="text-xs font-bold text-slate-600">${idx + 1}. 本地预排 · ${as2Esc(it.company_head || '')} ${as2Esc(it.contact_name || it.contact_id || '')} 第${it.suite_step}封</div>
+      const client = `${it.company_head || ''} ${it.contact_name || it.contact_id || ''}`.trim();
+      return `<div class="flex items-center justify-between gap-2 mb-1">
+          <div class="text-xs font-bold text-slate-600">${idx + 1}. 本地预排 · 第${it.suite_step}封 · ${as2Esc(it.status || '')}</div>
           <button type="button" class="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50" onclick="as2OpenDetail('${id}')">编辑该封</button>
         </div>
-        <div class="text-[11px] text-slate-500 my-1">状态 ${as2Esc(it.status || '')} · 计划 ${as2Esc(it.plan_date || '')} ${as2Esc(it.plan_time || '')}</div>
-        <div class="text-xs text-slate-500 mb-1">主题</div>
-        <div class="rounded border border-slate-200 px-2 py-1 bg-slate-50 text-sm mb-2">${as2Esc(it.subject || '(未生成)')}</div>
+        <div class="flex items-end gap-3 mb-2">
+          <label class="text-xs flex-1 min-w-0"><span class="block mb-1 text-slate-500">主题</span><input class="w-full rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.subject || '(未生成)')}" disabled></label>
+          <div class="text-[11px] text-slate-500 whitespace-nowrap pb-1">客户 <b>${as2Esc(client || '-')}</b> · 预计发送 <b>${as2Esc(it.plan_date || '')} ${as2Esc(it.plan_time || '')}</b></div>
+        </div>
         <div class="rounded border border-slate-200 p-2 bg-white text-sm max-h-[320px] overflow-auto">${it.body_html || '<span class="text-slate-400">未生成正文, 到 ② 后台生成</span>'}</div>`;
     }
 
