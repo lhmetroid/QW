@@ -2305,6 +2305,8 @@ class MailCustomerSuiteDraftEdit(Base):
 
     included = Column(Boolean, nullable=False, default=True)
 
+    llm_instance_id = Column(String(40), nullable=True)  # 8.2 关联本封当前 LLM 生成实例(比对人工改动)
+
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)

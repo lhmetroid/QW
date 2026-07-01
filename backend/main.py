@@ -873,6 +873,49 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE mail_autosend_run ADD COLUMN IF NOT EXISTS company_name_like VARCHAR(200);"))
         db.execute(text("ALTER TABLE mail_autosend_run ADD COLUMN IF NOT EXISTS exclude_recent_suite_days INTEGER;"))
         db.execute(text("ALTER TABLE mail_autosend_run ADD COLUMN IF NOT EXISTS gen_status VARCHAR(20);"))
+        # ---- LLM 生成质量分析: 人工修改记录 + 人工弃用记录(供后期分析改脚本) ----
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS llm_instance_id VARCHAR(40);"))
+        db.execute(text("ALTER TABLE mail_customer_suite_draft_edit ADD COLUMN IF NOT EXISTS llm_instance_id VARCHAR(40);"))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_llm_edit_record ("
+            "record_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "instance_id VARCHAR(40) NOT NULL,"          # 一次生成实例; 重新生成=新实例=新记录
+            "source VARCHAR(20) NOT NULL,"                # mail_suite / autosend
+            "customer_kh VARCHAR(120),"
+            "contact_id VARCHAR(120),"
+            "owner_staff_id VARCHAR(120),"
+            "scenario VARCHAR(80),"
+            "suite_step INTEGER,"
+            "orig_subject VARCHAR(500),"                  # 该次 LLM 原始生成, 之后不变
+            "orig_body_html TEXT,"
+            "final_subject VARCHAR(500),"                 # 人工最终版(多次改动只留最后)
+            "final_body_html TEXT,"
+            "edited BOOLEAN NOT NULL DEFAULT FALSE,"       # 人工是否改过(归一化比较后不同才为真)
+            "edit_count INTEGER NOT NULL DEFAULT 0,"
+            "generated_at TIMESTAMP DEFAULT now(),"
+            "last_edited_at TIMESTAMP,"
+            "created_at TIMESTAMP DEFAULT now(),"
+            "updated_at TIMESTAMP DEFAULT now(),"
+            "CONSTRAINT uq_mler_instance UNIQUE(instance_id)"
+            ");"
+        ))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mler_edited ON mail_llm_edit_record (edited, source, scenario, suite_step);"))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_llm_discard_record ("
+            "record_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "source VARCHAR(20) NOT NULL,"                # mail_suite / autosend
+            "customer_kh VARCHAR(120),"
+            "contact_id VARCHAR(120),"
+            "owner_staff_id VARCHAR(120),"
+            "scenario VARCHAR(80),"
+            "suite_step INTEGER,"
+            "subject VARCHAR(500),"
+            "body_html TEXT,"
+            "reason VARCHAR(200),"
+            "created_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mldr_src ON mail_llm_discard_record (source, scenario, suite_step);"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS mail_contact_suite_history ("
             "history_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -17997,6 +18040,82 @@ def _mail_get_email_valid_mode() -> str:
         return "collect"
 
 
+def _mail_norm_text(subject: str, body: str) -> str:
+    """归一化主题+正文(去HTML标签/空白/nbsp), 用于判断人工是否真改过(忽略纯格式差异)。"""
+    s = re.sub(r"\s+", " ", str(subject or "")).strip()
+    b = str(body or "")
+    b = re.sub(r"<[^>]+>", " ", b)
+    b = b.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    b = re.sub(r"\s+", " ", b).strip()
+    return s + "\n" + b
+
+
+def _mail_record_llm_generation(db, source: str, kh: str, contact_id: str, staff: str,
+                                scenario: str, step, orig_subject: str, orig_body: str) -> str:
+    """一次生成=新实例, 快照原始 LLM 结果(edited=false)。返回 instance_id。"""
+    import uuid as _uuid
+    iid = _uuid.uuid4().hex
+    try:
+        db.execute(
+            text("INSERT INTO mail_llm_edit_record (instance_id, source, customer_kh, contact_id, owner_staff_id, "
+                 "scenario, suite_step, orig_subject, orig_body_html, edited, edit_count, generated_at) "
+                 "VALUES (:iid,:src,:kh,:cid,:own,:sc,:st,:os,:ob,FALSE,0,now())"),
+            {"iid": iid, "src": source, "kh": kh, "cid": contact_id, "own": staff, "sc": scenario, "st": step,
+             "os": (orig_subject or "")[:500], "ob": orig_body or ""},
+        )
+        db.commit()
+    except Exception:
+        logger.exception("MAIL_LLM_GEN_RECORD_FAILED")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    return iid
+
+
+def _mail_record_llm_edit(db, instance_id: str, final_subject: str, final_body: str) -> None:
+    """人工保存时: 与该实例 orig 归一化比较, 不同才写 final + edited(多次改动只留最后+计数)。"""
+    iid = str(instance_id or "").strip()
+    if not iid:
+        return
+    try:
+        row = db.execute(text("SELECT orig_subject, orig_body_html, edit_count FROM mail_llm_edit_record WHERE instance_id=:i"),
+                         {"i": iid}).fetchone()
+        if not row:
+            return
+        if _mail_norm_text(final_subject, final_body) == _mail_norm_text(row[0], row[1]):
+            return  # 无改动, 不记录
+        db.execute(text("UPDATE mail_llm_edit_record SET final_subject=:fs, final_body_html=:fb, edited=TRUE, "
+                        "edit_count=:ec, last_edited_at=now(), updated_at=now() WHERE instance_id=:i"),
+                   {"fs": (final_subject or "")[:500], "fb": final_body or "", "ec": int(row[2] or 0) + 1, "i": iid})
+        db.commit()
+    except Exception:
+        logger.exception("MAIL_LLM_EDIT_RECORD_FAILED")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
+def _mail_record_llm_discard(db, source: str, kh: str, contact_id: str, staff: str,
+                             scenario: str, step, subject: str, body: str, reason: str = "") -> None:
+    """人工弃用(勾选不发送/清空排期)时记录主题+正文, 供分析。"""
+    try:
+        db.execute(
+            text("INSERT INTO mail_llm_discard_record (source, customer_kh, contact_id, owner_staff_id, scenario, "
+                 "suite_step, subject, body_html, reason) VALUES (:src,:kh,:cid,:own,:sc,:st,:su,:b,:rs)"),
+            {"src": source, "kh": kh, "cid": contact_id, "own": staff, "sc": scenario, "st": step,
+             "su": (subject or "")[:500], "b": body or "", "rs": (reason or "")[:200]},
+        )
+        db.commit()
+    except Exception:
+        logger.exception("MAIL_LLM_DISCARD_RECORD_FAILED")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 def _fetch_mail_contact_valid_emails(customer_key: str) -> list[str]:
     """只读取客户联系人当前有效(IsCollect='正确')的邮箱清单，来自 usrCustomerContactCommunicateNo。"""
     normalized_key = sanitize_text(customer_key).strip()
@@ -18904,6 +19023,17 @@ def upsert_mail_customer_suite_draft(
 
     db.commit()
     db.refresh(row)
+    # 8.2 套装页人工改动记录: subject/body 改动且有生成实例 -> 与 orig 比对
+    try:
+        if getattr(row, "llm_instance_id", None) and (payload.subject is not None or payload.body_html is not None):
+            _mail_record_llm_edit(db, row.llm_instance_id, row.subject or "", row.body_html or "")
+        # 取消勾选(不发送) -> 弃用记录
+        if payload.included is not None and not bool(payload.included):
+            _own = _fetch_mail_contact_owner_staff_id(customer_id)
+            _mail_record_llm_discard(db, "mail_suite", customer_id, "", _own, scenario,
+                                     int(payload.suite_step), row.subject or "", row.body_html or "", reason="取消勾选不发送")
+    except Exception:
+        logger.exception("MAIL_SUITE_LLM_RECORD_FAILED customer=%s step=%s", customer_id, payload.suite_step)
     return {
         "ok": True,
         "created": created,
@@ -18979,6 +19109,14 @@ def regenerate_mail_customer_suite_draft(
         row.body_html = draft.get("final_body_html") or None
         row.mail_uid = (draft.get("mail_uid") or "")[:120] or None
         row.llm_prompt = (draft.get("llm_prompt") or "")[:20000] or None
+        # 8.2 重新生成 = 新实例, 快照原始 LLM 结果, 存 instance_id
+        try:
+            _own = _fetch_mail_contact_owner_staff_id(customer_id)
+            _iid = _mail_record_llm_generation(save_db, "mail_suite", customer_id, "", _own, scenario, suite_step,
+                                               draft.get("final_subject") or "", draft.get("final_body_html") or "")
+            row.llm_instance_id = _iid
+        except Exception:
+            logger.exception("MAIL_SUITE_GEN_RECORD_FAILED customer=%s step=%s", customer_id, suite_step)
         save_db.commit()
         save_db.refresh(row)
 
@@ -20798,6 +20936,18 @@ def clear_autosend_plan(staff_id: str = Query(...), db: Session = Depends(get_db
     staff = sanitize_text(staff_id).strip()
     if not staff:
         raise HTTPException(status_code=422, detail="staff_id is required")
+    # 8.2 清空排期 = 人工弃用: 对已生成(drafted)的封记录弃用(主题+正文), 供分析
+    try:
+        drows = db.execute(
+            text("SELECT customer_id, contact_id, scenario, suite_step, subject, body_html "
+                 "FROM mail_autosend_plan_item WHERE owner_staff_id=:s AND status='drafted'"),
+            {"s": staff},
+        ).fetchall()
+        for dr in drows:
+            _mail_record_llm_discard(db, "autosend", dr[0] or dr[1], dr[1], staff, dr[2], dr[3],
+                                     dr[4] or "", dr[5] or "", reason="清空排期")
+    except Exception:
+        logger.exception("AUTOSEND_CLEAR_DISCARD_RECORD_FAILED staff=%s", staff)
     n = db.execute(
         text("DELETE FROM mail_autosend_plan_item WHERE owner_staff_id = :s AND status IN :st")
         .bindparams(bindparam("st", expanding=True)),
@@ -20869,6 +21019,11 @@ def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> 
                          "p": (gen["llm_prompt"] or "")[:20000] or None, "re": gen["recipient_email"],
                          "i": str(item_id)},
                     )
+                    # 8.2 记录本次 LLM 原始生成(新实例), 存 instance_id 供人工改动时比对
+                    iid = _mail_record_llm_generation(d3, "autosend", cid, contact_id, staff, scenario, step,
+                                                      gen["subject"], gen["body_html"])
+                    d3.execute(text("UPDATE mail_autosend_plan_item SET llm_instance_id=:iid WHERE item_id=:i"),
+                               {"iid": iid, "i": str(item_id)})
                     d3.commit()
                 finally:
                     d3.close()
@@ -21235,11 +21390,17 @@ class AutosendPlanItemSaveRequest(BaseModel):
 def save_autosend_plan_item(payload: AutosendPlanItemSaveRequest, db: Session = Depends(get_db)):
     """保存节点3 对未转入排期单封的人工编辑(主题/正文/收件人/预计发送日期时间)。已转入CRM(sent)的不许在此改。"""
     iid = sanitize_text(payload.item_id).strip()
-    row = db.execute(text("SELECT status FROM mail_autosend_plan_item WHERE item_id=:i"), {"i": iid}).fetchone()
+    row = db.execute(text("SELECT status, llm_instance_id, COALESCE(subject,''), COALESCE(body_html,'') "
+                          "FROM mail_autosend_plan_item WHERE item_id=:i"), {"i": iid}).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="plan item not found")
     if row[0] == "sent":
         raise HTTPException(status_code=409, detail="已转入CRM, 请在日历里改并同步回CRM/FTP")
+    # 8.2 人工改动记录: 用合并后的最终版(本次改的字段覆盖当前值)与该实例 orig 比对, 不同才记
+    if row[1] and (payload.subject is not None or payload.body_html is not None):
+        final_subj = payload.subject if payload.subject is not None else row[2]
+        final_body = payload.body_html if payload.body_html is not None else row[3]
+        _mail_record_llm_edit(db, row[1], final_subj or "", final_body or "")
     sets, params = [], {"i": iid}
     if payload.subject is not None:
         sets.append("subject=:su"); params["su"] = sanitize_text(payload.subject)[:500] or None
@@ -21270,7 +21431,7 @@ def regenerate_autosend_plan_item(payload: AutosendPlanItemSaveRequest, db: Sess
     """节点3 单封'重刷': 同步真调生成链路覆盖该封(未转入CRM的)。"""
     iid = sanitize_text(payload.item_id).strip()
     row = db.execute(
-        text("SELECT customer_id, contact_id, scenario, suite_step, status FROM mail_autosend_plan_item WHERE item_id=:i"),
+        text("SELECT customer_id, contact_id, scenario, suite_step, status, owner_staff_id FROM mail_autosend_plan_item WHERE item_id=:i"),
         {"i": iid},
     ).fetchone()
     if not row:
@@ -21285,15 +21446,116 @@ def regenerate_autosend_plan_item(payload: AutosendPlanItemSaveRequest, db: Sess
                    {"e": str(exc)[:2000], "i": iid})
         db.commit()
         raise HTTPException(status_code=502, detail=f"重新生成失败: {sanitize_text(str(exc))[:200]}")
+    # 8.2 重新生成 = 新实例新记录, 存 instance_id
+    new_iid = _mail_record_llm_generation(db, "autosend", cid, row[1], row[5], row[2], row[3],
+                                          gen["subject"], gen["body_html"])
     db.execute(
         text("UPDATE mail_autosend_plan_item SET status='drafted', subject=:su, body_html=:b, llm_prompt=:p, "
-             "recipient_email=COALESCE(NULLIF(recipient_email,''),:re), generated_at=now(), updated_at=now(), gen_error=NULL WHERE item_id=:i"),
+             "llm_instance_id=:iid, recipient_email=COALESCE(NULLIF(recipient_email,''),:re), generated_at=now(), updated_at=now(), gen_error=NULL WHERE item_id=:i"),
         {"su": (gen["subject"] or "")[:500] or None, "b": gen["body_html"],
-         "p": (gen["llm_prompt"] or "")[:20000] or None, "re": gen["recipient_email"], "i": iid},
+         "p": (gen["llm_prompt"] or "")[:20000] or None, "iid": new_iid, "re": gen["recipient_email"], "i": iid},
     )
     db.commit()
     return {"ok": True, "item": {"item_id": iid, "subject": gen["subject"], "body_html": gen["body_html"],
                                  "llm_prompt": gen["llm_prompt"], "recipient_email": gen["recipient_email"]}}
+
+
+# ---- 8.2 LLM 生成质量分析: 只读查询(人工修改/人工弃用) ----
+@app.get("/api/v1/mail/llm-edit-records")
+def list_mail_llm_edit_records(source: str | None = Query(None), scenario: str | None = Query(None),
+                               suite_step: int | None = Query(None), only_edited: int = Query(1),
+                               limit: int = Query(200), db: Session = Depends(get_db)):
+    """人工修改记录列表(默认只看真改过的)。供分析 LLM 生成哪里常被人工改。"""
+    where, p = ["1=1"], {}
+    if only_edited:
+        where.append("edited = TRUE")
+    if source:
+        where.append("source = :src"); p["src"] = sanitize_text(source).strip()
+    if scenario:
+        where.append("scenario = :sc"); p["sc"] = sanitize_text(scenario).strip()
+    if suite_step is not None:
+        where.append("suite_step = :st"); p["st"] = int(suite_step)
+    p["lim"] = min(1000, max(1, int(limit)))
+    rows = db.execute(
+        text("SELECT instance_id, source, customer_kh, contact_id, owner_staff_id, scenario, suite_step, "
+             "orig_subject, final_subject, edit_count, edited, "
+             "to_char(generated_at,'YYYY-MM-DD HH24:MI'), to_char(last_edited_at,'YYYY-MM-DD HH24:MI') "
+             "FROM mail_llm_edit_record WHERE " + " AND ".join(where) +
+             " ORDER BY COALESCE(last_edited_at, generated_at) DESC LIMIT :lim"),
+        p,
+    ).fetchall()
+    items = [{"instance_id": r[0], "source": r[1], "customer_kh": r[2], "contact_id": r[3], "owner_staff_id": r[4],
+              "scenario": r[5], "scenario_label_cn": _get_scenario_label_cn(r[5]) or r[5], "suite_step": r[6],
+              "orig_subject": r[7], "final_subject": r[8], "edit_count": r[9], "edited": bool(r[10]),
+              "generated_at": r[11], "last_edited_at": r[12]} for r in rows]
+    return {"ok": True, "count": len(items), "items": items}
+
+
+@app.get("/api/v1/mail/llm-edit-record")
+def get_mail_llm_edit_record(instance_id: str = Query(...), db: Session = Depends(get_db)):
+    """单条人工修改记录全文(原始 LLM vs 人工最终, 供对比看改了什么)。"""
+    r = db.execute(
+        text("SELECT instance_id, source, customer_kh, contact_id, owner_staff_id, scenario, suite_step, "
+             "orig_subject, orig_body_html, final_subject, final_body_html, edit_count, edited "
+             "FROM mail_llm_edit_record WHERE instance_id=:i"),
+        {"i": sanitize_text(instance_id).strip()},
+    ).fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="record not found")
+    return {"ok": True, "item": {"instance_id": r[0], "source": r[1], "customer_kh": r[2], "contact_id": r[3],
+                                 "owner_staff_id": r[4], "scenario": r[5], "suite_step": r[6],
+                                 "orig_subject": r[7], "orig_body_html": r[8], "final_subject": r[9],
+                                 "final_body_html": r[10], "edit_count": r[11], "edited": bool(r[12])}}
+
+
+@app.get("/api/v1/mail/llm-discard-records")
+def list_mail_llm_discard_records(source: str | None = Query(None), scenario: str | None = Query(None),
+                                  suite_step: int | None = Query(None), limit: int = Query(200),
+                                  db: Session = Depends(get_db)):
+    """人工弃用(不发送)记录列表。"""
+    where, p = ["1=1"], {}
+    if source:
+        where.append("source = :src"); p["src"] = sanitize_text(source).strip()
+    if scenario:
+        where.append("scenario = :sc"); p["sc"] = sanitize_text(scenario).strip()
+    if suite_step is not None:
+        where.append("suite_step = :st"); p["st"] = int(suite_step)
+    p["lim"] = min(1000, max(1, int(limit)))
+    rows = db.execute(
+        text("SELECT source, customer_kh, contact_id, owner_staff_id, scenario, suite_step, subject, reason, "
+             "to_char(created_at,'YYYY-MM-DD HH24:MI') FROM mail_llm_discard_record WHERE " + " AND ".join(where) +
+             " ORDER BY created_at DESC LIMIT :lim"),
+        p,
+    ).fetchall()
+    items = [{"source": r[0], "customer_kh": r[1], "contact_id": r[2], "owner_staff_id": r[3], "scenario": r[4],
+              "scenario_label_cn": _get_scenario_label_cn(r[4]) or r[4], "suite_step": r[5], "subject": r[6],
+              "reason": r[7], "created_at": r[8]} for r in rows]
+    return {"ok": True, "count": len(items), "items": items}
+
+
+@app.get("/api/v1/mail/llm-analysis-summary")
+def mail_llm_analysis_summary(db: Session = Depends(get_db)):
+    """按 套装×封 汇总: 生成数/被改数/改动率 + 弃用数。用于定位 LLM 脚本要改的地方。"""
+    edit_rows = db.execute(
+        text("SELECT scenario, suite_step, COUNT(*) AS gen_n, "
+             "SUM(CASE WHEN edited THEN 1 ELSE 0 END) AS edited_n, "
+             "COALESCE(AVG(CASE WHEN edited THEN edit_count END),0) AS avg_edits "
+             "FROM mail_llm_edit_record GROUP BY scenario, suite_step ORDER BY scenario, suite_step"),
+    ).fetchall()
+    dis_map = {}
+    for r in db.execute(text("SELECT scenario, suite_step, COUNT(*) FROM mail_llm_discard_record GROUP BY scenario, suite_step")).fetchall():
+        dis_map[(r[0], r[1])] = int(r[2] or 0)
+    rows = []
+    for r in edit_rows:
+        gen_n = int(r[2] or 0); edited_n = int(r[3] or 0)
+        rows.append({
+            "scenario": r[0], "scenario_label_cn": _get_scenario_label_cn(r[0]) or r[0], "suite_step": r[1],
+            "generated": gen_n, "edited": edited_n,
+            "edit_rate": round(edited_n / gen_n, 3) if gen_n else 0,
+            "avg_edits": round(float(r[4] or 0), 2),
+            "discarded": dis_map.get((r[0], r[1]), 0),
+        })
+    return {"ok": True, "rows": rows}
 
 
 def _autosend_existing_crm_load(staff_ids: list[str], start_date) -> dict:
