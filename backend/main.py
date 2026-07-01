@@ -21031,11 +21031,41 @@ def get_autosend_crm_day(staff_id: str = Query(...), date: str = Query(...)):
     return {"ok": True, "staff_id": staff, "date": d, "count": len(out), "items": out}
 
 
-@app.get("/api/v1/mail/autosend/crm-mail")
-def get_autosend_crm_mail(rowid: str = Query(...)):
-    """读一条 CRM 待发邮件当前内容(spQueueSend: 主题+正文文本+收件人+计划时间)。
+_EMAIL_IN_RECEIVER_RE = re.compile(r"<([^<>@\s]+@[^<>\s]+)>")
 
-    正文取 EmailContent(文本版); HTML .eml 在 FTP(EmlFtpPath), 精确 HTML 读取/回写后续接入。
+
+def _mail_eml_extract_html(eml_bytes: bytes) -> str:
+    """从 .eml 字节里取 text/html 正文(取不到回退 text/plain 包成 <pre>)。"""
+    import email as _email
+    try:
+        msg = _email.message_from_bytes(eml_bytes)
+        html = ""
+        textp = ""
+        for part in msg.walk():
+            ct = part.get_content_type()
+            if ct == "text/html" and not html:
+                pl = part.get_payload(decode=True)
+                if pl is not None:
+                    html = pl.decode(part.get_content_charset() or "utf-8", "replace")
+            elif ct == "text/plain" and not textp:
+                pl = part.get_payload(decode=True)
+                if pl is not None:
+                    textp = pl.decode(part.get_content_charset() or "utf-8", "replace")
+        if html:
+            return html
+        if textp:
+            return "<pre style='white-space:pre-wrap;font:inherit'>" + html.escape(textp) + "</pre>"
+        return ""
+    except Exception:
+        logger.exception("MAIL_EML_PARSE_FAILED")
+        return ""
+
+
+@app.get("/api/v1/mail/autosend/crm-mail")
+def get_autosend_crm_mail(rowid: str = Query(...), with_html: int = Query(1)):
+    """读一条 CRM 待发邮件当前内容(spQueueSend 列 + FTP .eml 里的 HTML 精确正文)。
+
+    body_text=EmailContent(库文本版); body_html=从 FTP .eml(EmlFtpPath) 解析出的 HTML 精确正文(读不到为空)。
     """
     rid = sanitize_text(rowid).strip()
     if not rid:
@@ -21058,8 +21088,22 @@ def get_autosend_crm_mail(rowid: str = Query(...)):
         raise HTTPException(status_code=502, detail="读取CRM邮件失败")
     if not r:
         raise HTTPException(status_code=404, detail="CRM待发邮件不存在(可能已发出)")
+    eml_path = r[5] or ""
+    body_html = ""
+    html_source = "none"
+    if with_html and eml_path:
+        try:
+            import mail_sftp
+            raw = mail_sftp.download_bytes(eml_path)
+            if raw:
+                body_html = _mail_eml_extract_html(raw)
+                if body_html:
+                    html_source = "ftp_eml"
+        except Exception:
+            logger.exception("AUTOSEND_CRM_MAIL_EML_READ_FAILED rowid=%s", rid)
     return {"ok": True, "item": {"rowid": str(r[0] or ""), "subject": r[1] or "", "body_text": r[2] or "",
-                                 "receiver": r[3] or "", "plan_time": r[4] or "", "eml_ftp_path": r[5] or ""}}
+                                 "body_html": body_html, "html_source": html_source,
+                                 "receiver": r[3] or "", "plan_time": r[4] or "", "eml_ftp_path": eml_path}}
 
 
 class AutosendCrmMailSaveRequest(BaseModel):
@@ -21067,34 +21111,39 @@ class AutosendCrmMailSaveRequest(BaseModel):
     subject: str | None = None
     recipient_email: str | None = None   # 只改收件邮箱(在序列化 Receiver 里整体替换旧邮箱)
     plan_time: str | None = None         # YYYY-MM-DD HH:MM 或 YYYY-MM-DDTHH:MM
-
-
-_EMAIL_IN_RECEIVER_RE = re.compile(r"<([^<>@\s]+@[^<>\s]+)>")
+    body_html: str | None = None         # 提供则重建 .eml 回传 FTP + 更新 EmailContent
 
 
 @app.put("/api/v1/mail/autosend/crm-mail")
 def save_autosend_crm_mail(payload: AutosendCrmMailSaveRequest, db: Session = Depends(get_db)):
-    """改回 CRM 待发邮件的 主题 / 收件邮箱 / 预计发送时间(spQueueSend 列)。
+    """改回 CRM 待发邮件: 主题/收件邮箱/计划时间(spQueueSend 列) + 正文(重建 .eml 回传 FTP)。
 
-    注意: 只更新 spQueueSend 数据库列; 正文 HTML(.eml on FTP) 的重生成/回写属后续 C6, 本接口不动 .eml。
+    正文 .eml: 优先原路径覆盖; 覆盖失败则上传新文件并把 EmlFtpPath + spQueueSendFile.FtpDir 改指新文件。
     """
     rid = sanitize_text(payload.rowid).strip()
     if not rid:
         raise HTTPException(status_code=422, detail="rowid required")
+    eml_note = ""
     try:
         from crm_database import CRMSessionLocal
         crm_db = CRMSessionLocal()
         try:
             cur = crm_db.execute(
                 text("SELECT ISNULL(Subject,''), ISNULL(CAST(Receiver AS NVARCHAR(MAX)),''), "
-                     "ISNULL(CAST(Receivers AS NVARCHAR(MAX)),'') FROM spQueueSend WHERE RowId=:r"),
+                     "ISNULL(CAST(Receivers AS NVARCHAR(MAX)),''), ISNULL(Content,''), "
+                     "ISNULL(CAST(SendAddress AS NVARCHAR(MAX)),''), ISNULL(EmlFtpPath,'') "
+                     "FROM spQueueSend WHERE RowId=:r"),
                 {"r": rid},
             ).fetchone()
             if not cur:
                 raise HTTPException(status_code=404, detail="CRM待发邮件不存在(可能已发出)")
+            cur_subject, cur_recv, cur_recvs, sender_email, send_addr, eml_path = \
+                str(cur[0] or ""), str(cur[1] or ""), str(cur[2] or ""), str(cur[3] or ""), str(cur[4] or ""), str(cur[5] or "")
             sets, params = [], {"r": rid}
+            new_subject = cur_subject
             if payload.subject is not None:
-                sets.append("Subject=:su"); params["su"] = sanitize_text(payload.subject)[:500]
+                new_subject = sanitize_text(payload.subject)[:500]
+                sets.append("Subject=:su"); params["su"] = new_subject
             if payload.plan_time is not None and str(payload.plan_time).strip():
                 pt = str(payload.plan_time).strip().replace("T", " ")
                 try:
@@ -21102,19 +21151,48 @@ def save_autosend_crm_mail(payload: AutosendCrmMailSaveRequest, db: Session = De
                 except Exception:
                     raise HTTPException(status_code=422, detail="plan_time 格式应为 YYYY-MM-DD HH:MM")
                 sets.append("PlanSendTime=:pt"); params["pt"] = dt
+            # 收件邮箱: 序列化串里整体替换旧邮箱; 并算出用于 .eml To 的最终收件邮箱
+            recip_email = ""
+            m0 = _EMAIL_IN_RECEIVER_RE.search(cur_recv)
+            old_email = m0.group(1) if m0 else ""
+            recip_email = old_email
             if payload.recipient_email is not None and str(payload.recipient_email).strip():
                 new_email = str(payload.recipient_email).strip()
                 if "@" not in new_email:
                     raise HTTPException(status_code=422, detail="收件邮箱格式不正确")
-                recv = str(cur[1] or ""); recvs = str(cur[2] or "")
-                m = _EMAIL_IN_RECEIVER_RE.search(recv)
-                old_email = m.group(1) if m else ""
+                recip_email = new_email
                 if old_email and old_email != new_email:
-                    recv = recv.replace(old_email, new_email)
-                    recvs = recvs.replace(old_email, new_email) if recvs else recvs
+                    recv = cur_recv.replace(old_email, new_email)
+                    recvs = cur_recvs.replace(old_email, new_email) if cur_recvs else cur_recvs
                     sets.append("Receiver=:rv"); params["rv"] = recv
                     if recvs:
                         sets.append("Receivers=:rvs"); params["rvs"] = recvs
+            # 正文: 重建 .eml 回传 FTP + 更新 EmailContent(文本版)
+            if payload.body_html is not None:
+                body_html = payload.body_html or ""
+                sender_name = (send_addr.split("<")[0].strip() if "<" in send_addr else "") or ""
+                to_list = [recip_email] if recip_email else []
+                try:
+                    eml_bytes, _imgs = _build_mail_eml_bytes(sender_email, sender_name, to_list, new_subject, body_html, None)
+                    import mail_sftp
+                    ok = False
+                    if eml_path:
+                        ok = mail_sftp.overwrite_bytes(eml_path, eml_bytes)
+                        eml_note = "原路径覆盖" if ok else ""
+                    if not ok:
+                        up_ok, new_path = mail_sftp.upload_eml_bytes(eml_bytes)
+                        if up_ok and new_path:
+                            sets.append("EmlFtpPath=:ep"); params["ep"] = new_path
+                            crm_db.execute(text("UPDATE spQueueSendFile SET FtpDir=:fd WHERE QueueRowId=:r AND FileType=1"),
+                                           {"fd": new_path, "r": rid})
+                            eml_path = new_path
+                            eml_note = "上传新文件并改DB指向"
+                        else:
+                            eml_note = "FTP写入失败(正文未回写)"
+                    sets.append("EmailContent=:ec"); params["ec"] = _mail_suite_html_to_text(body_html)
+                except Exception:
+                    logger.exception("AUTOSEND_CRM_MAIL_EML_WRITE_FAILED rowid=%s", rid)
+                    eml_note = "正文.eml重建失败"
             if not sets:
                 return {"ok": True, "updated": 0}
             crm_db.execute(text(f"UPDATE spQueueSend SET {', '.join(sets)} WHERE RowId=:r"), params)
@@ -21126,7 +21204,7 @@ def save_autosend_crm_mail(payload: AutosendCrmMailSaveRequest, db: Session = De
     except Exception:
         logger.exception("AUTOSEND_CRM_MAIL_SAVE_FAILED rowid=%s", rid)
         raise HTTPException(status_code=502, detail="改回CRM失败")
-    return {"ok": True, "updated": 1, "note": "已更新 spQueueSend(主题/收件人/计划时间); 正文 .eml(FTP) 未改, 属后续 C6。"}
+    return {"ok": True, "updated": 1, "eml": eml_note}
 
 
 @app.get("/api/v1/mail/autosend/plan-item")

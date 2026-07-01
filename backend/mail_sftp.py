@@ -87,6 +87,56 @@ def upload_eml_bytes(content: bytes) -> tuple[bool, str]:
     return upload_bytes(content)
 
 
+def download_bytes(remote_rel: str) -> bytes | None:
+    """按 EmlFtpPath(反斜杠或正斜杠相对路径)下载文件字节。失败返回 None。"""
+    rel = str(remote_rel or "").replace("\\", "/").strip().lstrip("/")
+    if not rel:
+        return None
+    t = None
+    sftp = None
+    try:
+        t = _open_transport()
+        sftp = paramiko.SFTPClient.from_transport(t)
+        with sftp.open(rel, "rb") as f:
+            return f.read()
+    except Exception:
+        logger.exception("MAIL_SFTP_DOWNLOAD_FAILED rel=%s", remote_rel)
+        return None
+    finally:
+        try:
+            if sftp:
+                sftp.close()
+        finally:
+            if t:
+                t.close()
+
+
+def overwrite_bytes(remote_rel: str, content: bytes) -> bool:
+    """把字节写回指定相对路径(原路径覆盖)。成功并大小一致返回 True, 否则 False。"""
+    rel = str(remote_rel or "").replace("\\", "/").strip().lstrip("/")
+    if not rel:
+        return False
+    t = None
+    sftp = None
+    try:
+        t = _open_transport()
+        sftp = paramiko.SFTPClient.from_transport(t)
+        with sftp.open(rel, "wb") as f:
+            f.write(content)
+        st = sftp.stat(rel)
+        return int(st.st_size) == len(content)
+    except Exception:
+        logger.exception("MAIL_SFTP_OVERWRITE_FAILED rel=%s", remote_rel)
+        return False
+    finally:
+        try:
+            if sftp:
+                sftp.close()
+        finally:
+            if t:
+                t.close()
+
+
 def verify_connection() -> dict:
     """只读连通性自检：登录 + 列根目录(不写文件)。"""
     t = None
