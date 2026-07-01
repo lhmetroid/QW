@@ -578,6 +578,10 @@
     .ms-hint { color:var(--muted); font-size:13px; }
     .ms-info { cursor:help; color:var(--muted); font-size:12px; font-weight:400; margin-left:5px; border:1px solid var(--line); border-radius:50%; padding:0 4px; }
     .ms-info:hover { background:#eef2ff; color:var(--brand); }
+    .as2-iconbtn { border:1px solid var(--line); background:#fff; border-radius:6px; width:24px; height:24px; line-height:1; display:inline-flex; align-items:center; justify-content:center; font-size:13px; cursor:pointer; color:var(--muted); padding:0; }
+    .as2-iconbtn:hover { background:#f1f5f9; }
+    .as2-iconbtn.danger { color:#dc2626; border-color:#fecaca; }
+    .as2-iconbtn.danger:hover { background:#fef2f2; }
   </style>
   <link rel="stylesheet" href="tailwind.css">
 </head>
@@ -691,31 +695,23 @@
             <div class="text-xs font-bold text-slate-700">② 套装优先级规则（自上而下，末位兜底）<span class="ms-info" title="自上而下匹配; 第一个'命中且可发'的套装即用; 末位为兜底。已发部分套装的处理统一用 ③ '已发部分默认'(不再逐条设置)。">ⓘ</span></div>
             <div class="flex items-center gap-2">
               <button type="button" onclick="as2AddRule()" class="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 hover:bg-emerald-100">+ 增加规则</button>
-              <button type="button" onclick="as2SaveRules()" title="全局统一一套规则(不分销售); 保存=整组覆盖(以当前列表为准, 后面的保存冲掉前面的)。排期时按此规则给所有名下联系人挑套装。" class="rounded bg-indigo-600 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-700">保存规则</button>
             </div>
           </div>
           <div id="as2-rules"></div>
         </div>
-        <!-- 3 周期/上限/日期/已发部分默认 -->
+        <!-- 3 周期/上限/日期 -->
         <div class="rounded-lg border border-slate-200 bg-white p-3 space-y-2 mb-3">
-          <div class="text-xs font-bold text-slate-700">③ 周期 / 每日上限 / 开始日期 / 已发部分套装默认<span class="ms-info" title="预览排期: 按规则给名下联系人排期并存入清单(不生成草稿、不写CRM, 关页可重开, 多次叠加不重叠); 后台生成: 逐封真调生成草稿, 生成后对应按钮点亮可查看; 勾选后转入CRM=发送。">ⓘ</span></div>
+          <div class="text-xs font-bold text-slate-700">③ 周期 / 每日上限 / 开始日期<span class="ms-info" title="预览排期: 按规则给名下联系人排期并存入清单(不生成草稿、不写CRM, 关页可重开, 多次叠加不重叠); 后台生成: 逐封真调生成草稿, 生成后对应按钮点亮可查看; 勾选后转入CRM=发送。已发部分套装默认按'补发未发封'处理。">ⓘ</span></div>
           <div class="flex flex-wrap items-center gap-3 text-xs">
-            <label class="flex items-center gap-1" title="一组按封天数, 覆盖各套装原间隔。第1封从开始日算, 之后每封按上一封实际落日+对应天数。">统一周期<input id="as2-intervals" class="rounded border border-slate-300 px-2 py-1 w-32" value="0,5,7,14"></label>
-            <label class="flex items-center gap-1" title="每个销售每天最多发多少封, 含已有占用。满了顺延到下一天。">每日上限<input id="as2-daily-cap" type="number" min="1" class="rounded border border-slate-300 px-2 py-1 w-20" value="10"></label>
+            <label class="flex items-center gap-1" title="一组按封天数, 覆盖各套装原间隔。第1封从开始日算, 之后每封按上一封实际落日+对应天数。">统一周期<input id="as2-intervals" class="rounded border border-slate-300 px-2 py-1 w-32" value="0,7,17,27"></label>
+            <label class="flex items-center gap-1" title="每个销售每天最多发多少封, 含已有占用。满了顺延到下一天。">每日上限<input id="as2-daily-cap" type="number" min="1" class="rounded border border-slate-300 px-2 py-1 w-20" value="50"></label>
             <label class="flex items-center gap-1">开始日期<input id="as2-start-date" type="date" class="rounded border border-slate-300 px-2 py-1"></label>
-            <label class="flex items-center gap-1" title="联系人匹配到的套装已发过部分时的全局默认处理(规则里选'走统一配置'时用本项)">已发部分默认
-              <select id="as2-partial-default" class="rounded border border-slate-300 px-2 py-1">
-                <option value="remaining">补发未发封</option>
-                <option value="resend_all">全部重发</option>
-                <option value="skip">跳过套装</option>
-              </select>
-            </label>
             <label class="flex items-center gap-1"><input type="checkbox" id="as2-fallback" checked>全不命中用兜底</label>
             <label class="flex items-center gap-1"><input type="checkbox" id="as2-consider-queue" checked>考虑已有排期</label>
-            <button type="button" onclick="as2SaveConfig()" class="rounded border border-slate-300 px-2 py-1 text-[11px] hover:bg-slate-50">保存配置</button>
-            <button type="button" onclick="as2Preview()" class="rounded bg-amber-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-amber-700">预览排期(入清单)</button>
-            <button type="button" onclick="as2Generate()" class="rounded bg-violet-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-violet-700">后台生成</button>
-            <button type="button" onclick="as2ClearPlan()" class="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-100">清空排期</button>
+            <button type="button" onclick="as2SaveConfig()" class="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">保存配置</button>
+            <button type="button" onclick="as2Preview()" class="rounded bg-amber-600 px-3 py-1 text-xs font-bold text-white hover:bg-amber-700">预览排期(入清单)</button>
+            <button type="button" onclick="as2Generate()" class="rounded bg-violet-600 px-3 py-1 text-xs font-bold text-white hover:bg-violet-700">后台生成</button>
+            <button type="button" onclick="as2ClearPlan()" class="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-bold text-rose-700 hover:bg-rose-100">清空排期</button>
           </div>
         </div>
         <!-- 排期清单 -->
@@ -2013,9 +2009,9 @@
         if (!r.ok) return; const d = await r.json(); const c = d.config || {};
         const set = (id, v) => { const el = document.getElementById(id); if (el != null && v != null) el.value = v; };
         set('as2-sort', c.sort_rule);
-        if (Array.isArray(c.interval_days)) set('as2-intervals', c.interval_days.join(','));
-        set('as2-daily-cap', c.daily_cap);
-        set('as2-partial-default', c.default_partial_sent_mode || 'remaining');
+        // 周期/每日上限: 只在已保存过"非平凡"配置时回填, 否则保留页面默认(0,7,17,27 / 50)
+        if (Array.isArray(c.interval_days) && c.interval_days.length > 1) set('as2-intervals', c.interval_days.join(','));
+        if (c.daily_cap && Number(c.daily_cap) !== 10) set('as2-daily-cap', c.daily_cap);
         const fb = document.getElementById('as2-fallback'); if (fb) fb.checked = c.fallback_enabled !== false;
       } catch (e) {}
     }
@@ -2055,7 +2051,7 @@
         </select>
         <select onchange="as2SetCond(${i},${j},'op',this.value)" class="${AS2_SEL}">${opOptions}</select>
         ${valPart}
-        <button type="button" onclick="as2RemoveCond(${i},${j})" class="text-rose-600 px-1 text-xs">删</button>
+        <button type="button" onclick="as2RemoveCond(${i},${j})" class="as2-iconbtn danger" title="删除条件">✕</button>
       </div>`;
     }
     function as2RenderRules() {
@@ -2070,9 +2066,9 @@
             <span class="font-bold text-slate-500">#${i + 1}${isLast ? ' (兜底)' : ''}</span>
             套装<select onchange="as2SetRule(${i},'scenario',this.value)" class="${AS2_SEL}">${as2ScenarioOptions(r.scenario)}</select>
             多条件<select onchange="as2SetRule(${i},'match_mode',this.value)" class="${AS2_SEL}"><option value="and"${r.match_mode === 'and' ? ' selected' : ''}>且</option><option value="or"${r.match_mode === 'or' ? ' selected' : ''}>或</option></select>
-            <button type="button" onclick="as2MoveRule(${i},-1)" class="px-1 text-xs">↑</button>
-            <button type="button" onclick="as2MoveRule(${i},1)" class="px-1 text-xs">↓</button>
-            <button type="button" onclick="as2RemoveRule(${i})" class="text-rose-600 px-1 text-xs">删规则</button>
+            <button type="button" onclick="as2MoveRule(${i},-1)" class="as2-iconbtn" title="上移">↑</button>
+            <button type="button" onclick="as2MoveRule(${i},1)" class="as2-iconbtn" title="下移">↓</button>
+            <button type="button" onclick="as2RemoveRule(${i})" class="as2-iconbtn danger" title="删除规则">🗑</button>
           </div>
           <div class="pl-2">${conds}<button type="button" onclick="as2AddCond(${i})" class="text-xs text-emerald-700">+ 条件</button></div>
         </div>`;
@@ -2110,9 +2106,8 @@
         const body = {
           sort_rule: document.getElementById('as2-sort').value,
           interval_days: as2Intervals(),
-          daily_cap: parseInt(document.getElementById('as2-daily-cap').value, 10) || 10,
+          daily_cap: parseInt(document.getElementById('as2-daily-cap').value, 10) || 50,
           fallback_enabled: document.getElementById('as2-fallback').checked,
-          default_partial_sent_mode: document.getElementById('as2-partial-default').value,
         };
         const r = await fetch('/api/v1/mail/autosend/config', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         as2Status(r.ok ? '配置已保存' : '配置保存失败', !r.ok);
@@ -2123,14 +2118,14 @@
       return {
         staff_id: AS2_STAFF,
         start_date: document.getElementById('as2-start-date').value || null,
-        daily_cap: parseInt(document.getElementById('as2-daily-cap').value, 10) || 10,
+        daily_cap: parseInt(document.getElementById('as2-daily-cap').value, 10) || 50,
         interval_days: as2Intervals(),
         sort_rule: document.getElementById('as2-sort').value,
-        rules: as2Rules.map((x) => ({ scenario: x.scenario, conditions: x.conditions, match_mode: x.match_mode, partial_sent_mode: x.partial_sent_mode })),
+        rules: as2Rules.map((x) => ({ scenario: x.scenario, conditions: x.conditions, match_mode: x.match_mode })),
         fallback_enabled: document.getElementById('as2-fallback').checked,
         company_name_like: (document.getElementById('as2-company-like').value || '').trim(),
         exclude_recent_suite_days: isNaN(ed) ? null : ed,
-        partial_sent_default: document.getElementById('as2-partial-default').value,
+        partial_sent_default: 'remaining',
         consider_existing_crm_queue: document.getElementById('as2-consider-queue').checked,
       };
     }
@@ -2422,69 +2417,75 @@
         if (st) st.textContent = `今天起${nDays}天 · 共预排 ${(d.days || []).reduce((a, b) => a + (b.planned || 0), 0)} / 待发 ${(d.days || []).reduce((a, b) => a + (b.pending || 0), 0)}`;
       } catch (e) { if (st) st.textContent = '加载失败: ' + e.message; }
     }
+    // 收件人显示清理: spQueueSend.Receiver 是 Name<email>[{meta...}] 序列化, 只取前面 Name<email>
+    function as2CleanReceiver(raw) { const s = String(raw || ''); const i = s.indexOf('['); return (i >= 0 ? s.slice(0, i) : s).trim(); }
     async function cal1Day(ds) {
       const box = document.getElementById('cal1-day-detail');
-      if (!box) return;
-      box.innerHTML = `<div class="text-xs font-bold text-slate-700 mb-1">${as2Esc(ds)} 当天清单加载中...</div>`;
-      // 本地预排
       const localItems = as2PlanItems.filter((it) => it.plan_date === ds);
-      // CRM 待发(读 spQueueSend)
       let crmItems = [];
       try {
         const r = await fetch('/api/v1/mail/autosend/crm-day?staff_id=' + encodeURIComponent(AS2_STAFF) + '&date=' + encodeURIComponent(ds), { credentials: 'include' });
         if (r.ok) { const d = await r.json(); crmItems = d.items || []; }
       } catch (e) {}
-      let html = `<div class="text-xs font-bold text-slate-700 mb-1">${as2Esc(ds)} · 待发(CRM) ${crmItems.length} · 预排(本地) ${localItems.length}</div>`;
-      if (!crmItems.length && !localItems.length) {
-        html += '<div class="ms-hint">当天没有待发/预排邮件。</div>';
-      } else {
-        if (crmItems.length) {
-          html += '<div class="text-[11px] text-rose-600 font-bold mt-1">CRM 待发(点开查看/编辑)</div><div class="space-y-1">' +
-            crmItems.map((it) => `<div class="flex items-center gap-2 text-xs"><button type="button" class="text-rose-700 underline text-left" onclick="as2OpenCrmMail('${as2Esc(it.rowid)}')">${as2Esc(it.plan_time || '')} · ${as2Esc(it.subject || '(无主题)')}</button><span class="text-slate-400">${as2Esc(it.receiver || '')}</span></div>`).join('') + '</div>';
-        }
-        if (localItems.length) {
-          html += '<div class="text-[11px] text-violet-600 font-bold mt-2">本地预排</div><div class="space-y-1">' +
-            localItems.map((it) => `<div class="flex items-center gap-2 text-xs"><button type="button" class="text-indigo-600 underline" onclick="as2OpenDetail('${it.item_id}')">${as2Esc(it.company_head)} ${as2Esc(it.contact_name || it.contact_id)} · 第${it.suite_step}封</button><span class="text-slate-400">${as2Esc(it.status)} ${as2Esc(it.plan_time || '')}</span></div>`).join('') + '</div>';
-        }
-      }
-      box.innerHTML = html;
-      // 定位并自动展开节点3, 自动打开当天第一封(有 CRM 待发优先, 否则本地预排)
-      expandNode('node3');
-      if (crmItems.length) as2OpenCrmMail(crmItems[0].rowid);
-      else if (localItems.length) as2OpenDetail(localItems[0].item_id);
-      else {
-        const b = document.getElementById('as2-detail'); const emp = document.getElementById('as2-detail-empty');
-        if (b) { b.hidden = true; } if (emp) { emp.hidden = false; emp.textContent = `${ds} 当天没有可查看的邮件。`; }
-      }
+      if (box) box.innerHTML = `<div class="text-xs font-bold text-slate-700">${as2Esc(ds)} · 待发(CRM) ${crmItems.length} · 预排(本地) ${localItems.length}</div><div class="text-[11px] text-slate-400">邮件已在下方 ③ 邮件详情 逐封展示</div>`;
+      const entries = [];
+      crmItems.forEach((it) => entries.push({ kind: 'crm', rowid: it.rowid }));
+      localItems.forEach((it) => entries.push({ kind: 'local', item_id: it.item_id }));
+      as2ShowDayEmails(ds, entries);
     }
-    // 读取 CRM 待发单封 -> 节点3 展示(当前 DB 文本正文; HTML/回写 FTP 后续接入)
-    async function as2OpenCrmMail(rowid) {
+    // 节点3: 当天邮件逐封加载显示(一封一卡, 加载中->内容, 好一封显示一封)
+    async function as2ShowDayEmails(ds, entries) {
       const box = document.getElementById('as2-detail');
-      if (!box) return;
       const empty = document.getElementById('as2-detail-empty');
+      switchPage('autosend'); expandNode('node3');
+      as2DetailItem = null;
+      if (!box) return;
+      if (!entries.length) {
+        box.hidden = true;
+        if (empty) { empty.hidden = false; empty.textContent = `${ds} 当天没有可查看的邮件。`; }
+        return;
+      }
       if (empty) empty.hidden = true;
       box.hidden = false;
-      box.innerHTML = '<div class="ms-hint">读取 CRM 待发邮件中...</div>';
-      switchPage('autosend'); expandNode('node3');
-      try {
-        const r = await fetch('/api/v1/mail/autosend/crm-mail?rowid=' + encodeURIComponent(rowid), { credentials: 'include' });
-        const d = await r.json();
-        if (!r.ok) { box.innerHTML = `<div class="ms-hint" style="color:#dc2626">读取失败: ${as2Esc(d.detail || r.status)}</div>`; return; }
-        const it = d.item || {};
-        as2DetailItem = null;
-        box.innerHTML = `
-          <div class="rounded-lg border border-rose-200 bg-rose-50 p-3 mb-3">
-            <div class="text-sm font-bold text-slate-900">CRM 待发邮件详情</div>
-            <div class="text-[11px] text-slate-500">计划 ${as2Esc(it.plan_time || '')} · 收件人 ${as2Esc(it.receiver || '')}</div>
-          </div>
-          <div class="space-y-2">
-            <label class="block text-xs"><span class="block mb-1 text-slate-500">主题</span><input class="w-full rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.subject || '')}" disabled></label>
-            <div class="text-xs"><span class="block mb-1 text-slate-500">正文(CRM 当前文本版)</span>
-              <div class="rounded border border-slate-300 p-2 min-h-[180px] bg-white text-sm whitespace-pre-wrap">${as2Esc(it.body_text || '(无正文文本)')}</div>
-            </div>
-            <div class="text-[11px] text-amber-700">当前显示为 CRM 数据库文本版正文。HTML 精确内容(FTP .eml)与"编辑后改回 CRM/FTP"在后续接入。</div>
-          </div>`;
-      } catch (e) { box.innerHTML = `<div class="ms-hint" style="color:#dc2626">读取失败: ${as2Esc(e.message)}</div>`; }
+      box.innerHTML = `<div class="text-sm font-bold text-slate-900 mb-2">${as2Esc(ds)} 当天邮件（共 ${entries.length} 封，逐封加载）</div>` +
+        entries.map((e, idx) => `<div id="as2-daycard-${idx}" class="rounded-lg border border-slate-200 p-3 mb-2"><div class="text-xs font-bold text-slate-600">${idx + 1}. ${e.kind === 'crm' ? 'CRM待发' : '本地预排'}</div><div class="ms-hint mt-1">加载中...</div></div>`).join('');
+      for (let idx = 0; idx < entries.length; idx++) {
+        const e = entries[idx];
+        const card = document.getElementById('as2-daycard-' + idx);
+        if (!card) continue;
+        try {
+          if (e.kind === 'crm') {
+            const r = await fetch('/api/v1/mail/autosend/crm-mail?rowid=' + encodeURIComponent(e.rowid), { credentials: 'include' });
+            const d = await r.json();
+            if (!r.ok) { card.innerHTML = `<div class="text-xs" style="color:#dc2626">${idx + 1}. 读取失败: ${as2Esc(d.detail || r.status)}</div>`; continue; }
+            card.innerHTML = as2CrmCardHtml(idx, d.item || {});
+          } else {
+            const r = await fetch('/api/v1/mail/autosend/plan-item?item_id=' + encodeURIComponent(e.item_id), { credentials: 'include' });
+            const d = await r.json();
+            if (!r.ok) { card.innerHTML = `<div class="text-xs" style="color:#dc2626">${idx + 1}. 读取失败: ${as2Esc(d.detail || r.status)}</div>`; continue; }
+            card.innerHTML = as2LocalCardHtml(idx, d.item || {}, e.item_id);
+          }
+        } catch (err) { card.innerHTML = `<div class="text-xs" style="color:#dc2626">${idx + 1}. 读取失败: ${as2Esc(err.message)}</div>`; }
+      }
+    }
+    function as2CrmCardHtml(idx, it) {
+      return `<div class="text-xs font-bold text-slate-600 mb-1">${idx + 1}. CRM待发</div>
+        <div class="text-[11px] text-slate-500 mb-2">计划 ${as2Esc(it.plan_time || '')} · 收件人 ${as2Esc(as2CleanReceiver(it.receiver))}</div>
+        <div class="text-xs text-slate-500 mb-1">主题</div>
+        <div class="rounded border border-slate-200 px-2 py-1 bg-slate-50 text-sm mb-2">${as2Esc(it.subject || '(无主题)')}</div>
+        <div class="text-xs text-slate-500 mb-1">正文(CRM 当前文本版)</div>
+        <div class="rounded border border-slate-200 p-2 bg-white text-sm whitespace-pre-wrap max-h-[320px] overflow-auto">${as2Esc(it.body_text || '(无正文文本)')}</div>
+        <div class="text-[11px] text-amber-700 mt-1">HTML 精确内容(FTP)与编辑改回 CRM/FTP 后续接入。</div>`;
+    }
+    function as2LocalCardHtml(idx, it, id) {
+      return `<div class="flex items-center justify-between gap-2">
+          <div class="text-xs font-bold text-slate-600">${idx + 1}. 本地预排 · ${as2Esc(it.company_head || '')} ${as2Esc(it.contact_name || it.contact_id || '')} 第${it.suite_step}封</div>
+          <button type="button" class="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50" onclick="as2OpenDetail('${id}')">编辑该封</button>
+        </div>
+        <div class="text-[11px] text-slate-500 my-1">状态 ${as2Esc(it.status || '')} · 计划 ${as2Esc(it.plan_date || '')} ${as2Esc(it.plan_time || '')}</div>
+        <div class="text-xs text-slate-500 mb-1">主题</div>
+        <div class="rounded border border-slate-200 px-2 py-1 bg-slate-50 text-sm mb-2">${as2Esc(it.subject || '(未生成)')}</div>
+        <div class="rounded border border-slate-200 p-2 bg-white text-sm max-h-[320px] overflow-auto">${it.body_html || '<span class="text-slate-400">未生成正文, 到 ② 后台生成</span>'}</div>`;
     }
 
     async function initWorkbench() {
