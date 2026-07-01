@@ -582,6 +582,16 @@
     .as2-iconbtn:hover { background:#f1f5f9; }
     .as2-iconbtn.danger { color:#dc2626; border-color:#fecaca; }
     .as2-iconbtn.danger:hover { background:#fef2f2; }
+    .cal1-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+    .cal1-hd { font-size:11px; font-weight:700; color:var(--muted); text-align:center; padding:2px 0; }
+    .cal1-hd.we { color:#dc2626; }
+    .cal1-cell { border:1px solid #eef1f5; border-radius:6px; padding:4px 6px; min-height:46px; cursor:pointer; background:#fff; }
+    .cal1-cell:hover { background:#f8fafc; }
+    .cal1-weekend { background:#fff7ed; }
+    .cal1-has { border-color:#c7d2fe; background:#eef2ff; }
+    .cal1-date { font-size:11px; font-weight:700; color:#475569; }
+    .cal1-num { font-size:16px; font-weight:800; color:#4f46e5; line-height:1.2; }
+    .cal1-cell.cal1-weekend .cal1-num { color:#ea580c; }
   </style>
   <link rel="stylesheet" href="tailwind.css">
 </head>
@@ -654,10 +664,10 @@
       <div class="ms-node-body" id="ms-node1-body">
         <div class="flex flex-wrap items-center gap-2 mb-2 text-xs">
           <button type="button" onclick="cal1Reload()" class="rounded bg-indigo-600 px-3 py-1 font-bold text-white hover:bg-indigo-700">刷新日历</button>
-          <label class="flex items-center gap-1" title="日历展示天数, 可改, 默认50">今天起<input id="cal1-days" type="number" min="1" max="180" value="50" class="rounded border border-slate-300 px-2 py-1 w-16" onchange="cal1Reload()">天</label>
+          <label class="flex items-center gap-1" title="日历展示天数, 可改, 默认30">今天起<input id="cal1-days" type="number" min="1" max="180" value="30" class="rounded border border-slate-300 px-2 py-1 w-16" onchange="cal1Reload()">天</label>
           <span id="cal1-status" class="text-slate-500"></span>
         </div>
-        <div id="cal1-grid" class="flex flex-wrap gap-1"></div>
+        <div id="cal1-grid" class="cal1-grid"></div>
         <div id="cal1-day-detail" class="mt-3"></div>
       </div>
     </section>
@@ -2387,7 +2397,9 @@
     // ============================================================
     // 节点1: 待发日历
     // ============================================================
-    function cal1Days() { const v = parseInt((document.getElementById('cal1-days') || {}).value, 10); return (!v || v < 1) ? 50 : Math.min(180, v); }
+    function cal1Days() { const v = parseInt((document.getElementById('cal1-days') || {}).value, 10); return (!v || v < 1) ? 30 : Math.min(180, v); }
+    // 本地日期格式化(避免 toISOString 转 UTC 导致回退一天)
+    function cal1Fmt(dt) { const y = dt.getFullYear(); const m = String(dt.getMonth() + 1).padStart(2, '0'); const d = String(dt.getDate()).padStart(2, '0'); return `${y}-${m}-${d}`; }
     async function cal1Reload() {
       const grid = document.getElementById('cal1-grid');
       const st = document.getElementById('cal1-status');
@@ -2400,21 +2412,30 @@
         const d = await r.json();
         if (!r.ok) { if (st) st.textContent = '加载失败: ' + (d.detail || r.status); return; }
         const map = {}; (d.days || []).forEach((x) => { map[x.date] = x; });
+        // 今天(北京时间, 后端给的 d.today)按本地构造, 不走 UTC
         const today = new Date(d.today + 'T00:00:00');
-        let html = '';
+        // 表头(周一为第一列)
+        const heads = ['一', '二', '三', '四', '五', '六', '日'];
+        let html = heads.map((h, k) => `<div class="cal1-hd ${k >= 5 ? 'we' : ''}">${h}</div>`).join('');
+        // 首行按今天星期补空: 周一=0 ... 周日=6
+        const startPad = (today.getDay() + 6) % 7;
+        for (let p = 0; p < startPad; p++) html += '<div></div>';
+        let totalAll = 0;
         for (let i = 0; i < nDays; i++) {
           const dt = new Date(today); dt.setDate(dt.getDate() + i);
-          const ds = dt.toISOString().slice(0, 10);
+          const ds = cal1Fmt(dt);
+          const dow = dt.getDay(); // 0=周日,6=周六
+          const weekend = (dow === 0 || dow === 6);
           const x = map[ds] || { planned: 0, pending: 0 };
-          const has = x.planned || x.pending;
-          html += `<div class="rounded border ${has ? 'border-indigo-200 bg-indigo-50' : 'border-slate-100 bg-white'} px-2 py-1 text-[11px] cursor-pointer" style="width:88px" ondblclick="cal1Day('${ds}')" title="双击看当天清单">
-            <div class="font-bold text-slate-600">${as2Esc(ds.slice(5))}</div>
-            <div class="text-rose-600">待发 ${x.pending || 0}</div>
-            <div class="text-violet-600">预排 ${x.planned || 0}</div>
+          const total = (x.planned || 0) + (x.pending || 0);
+          totalAll += total;
+          html += `<div class="cal1-cell ${weekend ? 'cal1-weekend' : ''} ${total ? 'cal1-has' : ''}" ondblclick="cal1Day('${ds}')" title="双击看当天邮件(待发${x.pending || 0}/预排${x.planned || 0})">
+            <div class="cal1-date">${as2Esc(ds.slice(5))}</div>
+            <div class="cal1-num">${total}</div>
           </div>`;
         }
         grid.innerHTML = html;
-        if (st) st.textContent = `今天起${nDays}天 · 共预排 ${(d.days || []).reduce((a, b) => a + (b.planned || 0), 0)} / 待发 ${(d.days || []).reduce((a, b) => a + (b.pending || 0), 0)}`;
+        if (st) st.textContent = `今天起${nDays}天 · 合计 ${totalAll} 封`;
       } catch (e) { if (st) st.textContent = '加载失败: ' + e.message; }
     }
     // 收件人显示清理: spQueueSend.Receiver 是 Name<email>[{meta...}] 序列化, 只取前面 Name<email>
