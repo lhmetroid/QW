@@ -20905,6 +20905,69 @@ def autosend_calendar(staff_id: str = Query(...), days: int = Query(90), db: Ses
     return {"ok": True, "staff_id": staff, "today": today.isoformat(), "days": days_out}
 
 
+@app.get("/api/v1/mail/autosend/crm-day")
+def get_autosend_crm_day(staff_id: str = Query(...), date: str = Query(...)):
+    """某销售某天的 CRM 待发(宣传邮件-AI, 未实发)清单: rowid/主题/收件人/计划时间。"""
+    staff = sanitize_text(staff_id).strip()
+    d = sanitize_text(date).strip()
+    if not staff or not d:
+        raise HTTPException(status_code=422, detail="staff_id and date required")
+    out: list[dict] = []
+    try:
+        from crm_database import CRMSessionLocal
+        crm_db = CRMSessionLocal()
+        try:
+            rows = crm_db.execute(
+                text("SELECT CAST(RowId AS NVARCHAR(64)) AS rid, ISNULL(Subject,'') AS subj, "
+                     "ISNULL(Receiver,'') AS rcv, CONVERT(varchar(16), PlanSendTime, 120) AS pt "
+                     "FROM spQueueSend WHERE MessageType='Email' AND ISNULL(UseRange,'') LIKE :ur "
+                     "AND ISNULL(FolderId,'')='OutBox' AND InputerStaffId=:s "
+                     "AND CONVERT(varchar(10), PlanSendTime, 23)=:d ORDER BY PlanSendTime"),
+                {"ur": f"%{_MAIL_AI_USE_RANGE}%", "s": staff, "d": d},
+            ).fetchall()
+            for r in rows:
+                pt = str(r[3] or "")
+                out.append({"rowid": str(r[0] or ""), "subject": r[1] or "", "receiver": r[2] or "",
+                            "plan_time": pt[11:] if len(pt) >= 16 else pt})
+        finally:
+            crm_db.close()
+    except Exception:
+        logger.exception("AUTOSEND_CRM_DAY_FAILED staff=%s date=%s", staff, d)
+        raise HTTPException(status_code=502, detail="读取CRM待发失败")
+    return {"ok": True, "staff_id": staff, "date": d, "count": len(out), "items": out}
+
+
+@app.get("/api/v1/mail/autosend/crm-mail")
+def get_autosend_crm_mail(rowid: str = Query(...)):
+    """读一条 CRM 待发邮件当前内容(spQueueSend: 主题+正文文本+收件人+计划时间)。
+
+    正文取 EmailContent(文本版); HTML .eml 在 FTP(EmlFtpPath), 精确 HTML 读取/回写后续接入。
+    """
+    rid = sanitize_text(rowid).strip()
+    if not rid:
+        raise HTTPException(status_code=422, detail="rowid required")
+    try:
+        from crm_database import CRMSessionLocal
+        crm_db = CRMSessionLocal()
+        try:
+            r = crm_db.execute(
+                text("SELECT CAST(RowId AS NVARCHAR(64)), ISNULL(Subject,''), "
+                     "ISNULL(CAST(EmailContent AS NVARCHAR(MAX)),''), ISNULL(Receiver,''), "
+                     "CONVERT(varchar(16), PlanSendTime, 120), ISNULL(EmlFtpPath,'') "
+                     "FROM spQueueSend WHERE RowId=:r"),
+                {"r": rid},
+            ).fetchone()
+        finally:
+            crm_db.close()
+    except Exception:
+        logger.exception("AUTOSEND_CRM_MAIL_FAILED rowid=%s", rid)
+        raise HTTPException(status_code=502, detail="读取CRM邮件失败")
+    if not r:
+        raise HTTPException(status_code=404, detail="CRM待发邮件不存在(可能已发出)")
+    return {"ok": True, "item": {"rowid": str(r[0] or ""), "subject": r[1] or "", "body_text": r[2] or "",
+                                 "receiver": r[3] or "", "plan_time": r[4] or "", "eml_ftp_path": r[5] or ""}}
+
+
 @app.get("/api/v1/mail/autosend/plan-item")
 def get_autosend_plan_item(item_id: str = Query(...), db: Session = Depends(get_db)):
     """取单条排期明细的完整内容(节点3 详情读取: 主题/正文/脚本)。"""
