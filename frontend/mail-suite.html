@@ -760,8 +760,10 @@
       <div class="ms-node-head">
         <span class="ms-node-title" onclick="toggleNode('node3')" style="cursor:pointer">③ 邮件详情<span id="as2-person-pos" class="text-slate-500 font-normal" style="margin-left:6px;font-size:12px"></span><span class="ms-info" title="按“联系人”显示该人已生成的所有邮件(一封一卡, 逐封读取, 仅读取不触发大模型, 除非点“重新生成”)。用“上一人/下一人”切换; 也可点排期清单里的联系人或已生成的封次打开。">ⓘ</span></span>
         <div class="flex items-center gap-2">
-          <button type="button" class="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50" onclick="as2PersonPrev()">上一人</button>
-          <button type="button" class="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50" onclick="as2PersonNext()">下一人</button>
+          <span id="as2-person-nav" class="flex items-center gap-2" style="display:none">
+            <button type="button" class="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50" onclick="as2PersonPrev()">上一人</button>
+            <button type="button" class="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50" onclick="as2PersonNext()">下一人</button>
+          </span>
           <span class="ms-node-toggle" id="ms-node3-toggle" onclick="toggleNode('node3')" style="cursor:pointer">折叠 ▲</span>
         </div>
       </div>
@@ -2259,7 +2261,8 @@
       }).join('');
     }
     function as2ToggleSelect(id) { if (as2Selected.has(id)) as2Selected.delete(id); else as2Selected.add(id); }
-    function as2SelectAll(on) {
+    async function as2SelectAll(on) {
+      if (on) { try { await as2LoadPlan(); } catch (e) {} }  // 先刷新到最新, 避免与后台生成时序竞争导致漏选
       as2Selected = new Set();
       if (on) as2PlanItems.filter((it) => it.status === 'drafted').forEach((it) => as2Selected.add(it.item_id));
       as2RenderPlan();
@@ -2344,13 +2347,12 @@
     async function as2Commit() {
       const ids = Array.from(as2Selected);
       if (!ids.length) { as2Status('请先勾选已生成的邮件。', true); return; }
-      if (!confirm(`确认把选中的 ${ids.length} 封转入CRM(发送)?`)) return;
-      as2Status('转入CRM中...');
+      as2Status(`转入CRM处理中... (共 ${ids.length} 封)`);
       const res = await as2CommitItems(ids);
       as2Selected = new Set();
       await as2LoadPlan();
       cal1Reload();
-      as2Status(`转入完成: 成功 ${res.ok} 封${res.fail ? `, 失败 ${res.fail} 封` : ''}。`);
+      as2Status(`导入成功 ${res.ok} 封${res.fail ? ` · 失败 ${res.fail} 封` : ''}。`, res.fail > 0);
     }
 
     // ============================================================
@@ -2372,6 +2374,13 @@
       const el = document.getElementById('as2-person-pos');
       if (el) el.textContent = as2Persons.length ? `${as2PersonIdx + 1}/${as2Persons.length}人` : '';
     }
+    // 按人视图才显示"X/XX人 + 上一人/下一人"; 日历日视图隐藏
+    function as2SetPersonNav(show) {
+      const nav = document.getElementById('as2-person-nav');
+      if (nav) nav.style.display = show ? '' : 'none';
+      const pos = document.getElementById('as2-person-pos');
+      if (pos && !show) pos.textContent = '';
+    }
     function as2PersonPrev() { if (as2PersonIdx > 0) as2ShowPerson(as2PersonIdx - 1); }
     function as2PersonNext() { if (as2PersonIdx < as2Persons.length - 1) as2ShowPerson(as2PersonIdx + 1); }
     // 点排期清单里的联系人/某封 -> 打开该人
@@ -2390,6 +2399,7 @@
       if (!as2Persons.length) as2BuildPersons();
       if (idx < 0 || idx >= as2Persons.length) return;
       as2PersonIdx = idx;
+      as2SetPersonNav(true);
       as2PersonPos();
       const p = as2Persons[idx];
       const box = document.getElementById('as2-detail');
@@ -2531,6 +2541,7 @@
       const box = document.getElementById('as2-detail');
       const empty = document.getElementById('as2-detail-empty');
       switchPage('autosend'); expandNode('node3');
+      as2SetPersonNav(false);
       if (!box) return;
       if (!entries.length) {
         box.hidden = true;
