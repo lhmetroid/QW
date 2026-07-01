@@ -2440,7 +2440,8 @@
           ${rowRight}
           <span id="as2p-st-${ci}" class="text-[11px] text-slate-500 whitespace-nowrap"></span>
         </div>
-        <div id="as2p-body-${ci}" class="rounded border border-slate-200 p-2 bg-white text-sm max-h-[300px] overflow-auto" ${readonly ? '' : 'contenteditable="true"'}>${it.body_html || '<span class="text-slate-400">无正文</span>'}</div>`;
+        <div class="text-[11px] text-slate-500 mb-1">正文${readonly ? '(只读)' : '(可直接编辑, 改完点“保存”生效)'}</div>
+        <div id="as2p-body-${ci}" class="rounded border border-slate-200 p-2 bg-white text-sm min-h-[160px] max-h-[340px] overflow-auto" ${readonly ? '' : 'contenteditable="true" style="outline:none"'}>${it.body_html || '<span class="text-slate-400">无正文</span>'}</div>`;
     }
     function as2pSt(ci, m, ok) { const el = document.getElementById('as2p-st-' + ci); if (el) { el.textContent = m || ''; el.style.color = ok === true ? '#059669' : (ok === false ? '#dc2626' : '#64748b'); } }
     async function as2PersonSave(ci, id) {
