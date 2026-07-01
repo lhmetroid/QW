@@ -851,6 +851,7 @@ def auto_patch_db():
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_masp_run ON mail_autosend_plan_item (run_id);"))
         # ---- autosend 升级: 排期持久化 + 后台生成 + 转入CRM + 已发部分套装策略 所需新列 ----
         db.execute(text("ALTER TABLE mail_autosend_config ADD COLUMN IF NOT EXISTS default_partial_sent_mode VARCHAR(20) NOT NULL DEFAULT 'remaining';"))
+        db.execute(text("ALTER TABLE mail_autosend_config ADD COLUMN IF NOT EXISTS email_valid_mode VARCHAR(20) NOT NULL DEFAULT 'collect';"))
         db.execute(text("ALTER TABLE mail_autosend_suite_rule ADD COLUMN IF NOT EXISTS partial_sent_mode VARCHAR(20) NOT NULL DEFAULT 'use_global';"))
         # plan_item: 落库展示字段 + 生成内容 + 状态机(planned/drafting/drafted/sent/failed)
         db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS customer_id VARCHAR(120);"))
@@ -17972,6 +17973,30 @@ def _fetch_mail_contact_owner_staff_id(customer_key: str) -> str:
         return ""
 
 
+def _mail_email_valid_where(mode: str) -> str:
+    """有效邮箱 WHERE 片段(纯常量, 无用户输入)。
+    collect: IsCollect='正确'(系统标记正确)。
+    manual : 人工判断——除'真人(非0000/admin)标记为错误'外都算有效; admin/0000 标的错误仍算有效。
+    标记人字段为 usrCustomerContactCommunicateNo.SignStaff。"""
+    if str(mode or "").strip() == "manual":
+        return "(ISNULL(IsCollect,'') <> '错误' OR ISNULL(SignStaff,'') IN ('', '0000', 'admin'))"
+    return "ISNULL(IsCollect,'') = '正确'"
+
+
+def _mail_get_email_valid_mode() -> str:
+    """跨页共享的有效邮箱判定模式(存 mail_autosend_config.email_valid_mode, 默认 collect)。只读。"""
+    try:
+        db = SessionLocal()
+        try:
+            v = db.execute(text("SELECT email_valid_mode FROM mail_autosend_config ORDER BY config_id LIMIT 1")).scalar()
+            m = str(v or "collect").strip()
+            return m if m in ("collect", "manual") else "collect"
+        finally:
+            db.close()
+    except Exception:
+        return "collect"
+
+
 def _fetch_mail_contact_valid_emails(customer_key: str) -> list[str]:
     """只读取客户联系人当前有效(IsCollect='正确')的邮箱清单，来自 usrCustomerContactCommunicateNo。"""
     normalized_key = sanitize_text(customer_key).strip()
@@ -18007,14 +18032,10 @@ def _fetch_mail_contact_valid_emails(customer_key: str) -> list[str]:
             contact_id = contact_row[0]
             rows = crm_db.execute(
                 text(
-                    """
-                    SELECT CommunicateNo
-                    FROM usrCustomerContactCommunicateNo
-                    WHERE ContactId = :cid
-                      AND CommunicateType = 'ContactEmail'
-                      AND ISNULL(IsCollect, '') = '正确'
-                    ORDER BY InputTime DESC
-                    """
+                    "SELECT CommunicateNo FROM usrCustomerContactCommunicateNo "
+                    "WHERE ContactId = :cid AND CommunicateType = 'ContactEmail' "
+                    "AND " + _mail_email_valid_where(_mail_get_email_valid_mode()) + " "
+                    "ORDER BY InputTime DESC"
                 ),
                 {"cid": contact_id},
             ).fetchall()
@@ -19905,6 +19926,14 @@ def get_mail_customer_suite_records(
     for suite in suite_map.values():
         for key in ("draft_steps", "send_plan_steps", "autosend_steps", "feedback_steps"):
             suite[key] = sorted(step for step in suite[key] if step is not None)
+        used_steps = sorted({
+            *suite["draft_steps"],
+            *suite["send_plan_steps"],
+            *suite["autosend_steps"],
+            *suite["feedback_steps"],
+        })
+        suite["used_steps"] = used_steps
+        suite["used_step_labels"] = [f"第{int(step)}封" for step in used_steps]
         suite["drafts_by_step"] = _mail_suite_record_step_map([item for item in drafts if item.get("scenario") == suite["scenario"]])
         suite["send_plans_by_step"] = _mail_suite_record_step_map([item for item in send_plans if item.get("scenario") == suite["scenario"]])
         suites.append(suite)
@@ -20278,7 +20307,8 @@ def autosend_dry_run(payload: AutosendDryRunRequest, db: Session = Depends(get_d
         rules = payload.rules
     elif payload.sales_staff_ids:
         contacts = _autosend_load_contacts_for_sales(
-            payload.sales_staff_ids, only_valid_email=True, company_name_like=payload.company_name_like)
+            payload.sales_staff_ids, only_valid_email=True, company_name_like=payload.company_name_like,
+            email_valid_mode=_mail_get_email_valid_mode())
         source = "crm_sales"
         rules = payload.rules
     else:
@@ -20345,6 +20375,7 @@ def _autosend_serialize_config(row) -> dict:
         "fallback_enabled": bool(row.fallback_enabled),
         "dedup_by_history": bool(row.dedup_by_history),
         "default_partial_sent_mode": getattr(row, "default_partial_sent_mode", None) or "remaining",
+        "email_valid_mode": getattr(row, "email_valid_mode", None) or "collect",
     }
 
 
@@ -20380,6 +20411,7 @@ class AutosendConfigRequest(BaseModel):
     fallback_enabled: bool | None = None
     dedup_by_history: bool | None = None
     default_partial_sent_mode: str | None = None
+    email_valid_mode: str | None = None
 
 
 @app.get("/api/v1/mail/autosend/config")
@@ -20407,6 +20439,9 @@ def put_autosend_config(payload: AutosendConfigRequest, db: Session = Depends(ge
     if payload.default_partial_sent_mode is not None:
         m = sanitize_text(payload.default_partial_sent_mode).strip().lower()
         row.default_partial_sent_mode = m if m in ("remaining", "resend_all", "skip") else "remaining"
+    if payload.email_valid_mode is not None:
+        em = sanitize_text(payload.email_valid_mode).strip().lower()
+        row.email_valid_mode = em if em in ("collect", "manual") else "collect"
     row.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(row)
@@ -20629,6 +20664,7 @@ class AutosendPreviewRequest(BaseModel):
     exclude_recent_suite_days: int | None = None
     partial_sent_default: str = "remaining"
     consider_existing_crm_queue: bool = True
+    email_valid_mode: str | None = None    # collect/manual; 缺省用已保存配置
 
 
 def _autosend_list_plan(db, staff: str, statuses: tuple = _AUTOSEND_PENDING_STATUSES) -> list[dict]:
@@ -20665,8 +20701,12 @@ def autosend_preview(payload: AutosendPreviewRequest, db: Session = Depends(get_
     else:
         start_date = now_bj.date()
 
+    evm = sanitize_text(payload.email_valid_mode or "").strip().lower()
+    if evm not in ("collect", "manual"):
+        evm = _mail_get_email_valid_mode()
     contacts = _autosend_load_contacts_for_sales([staff], only_valid_email=True,
-                                                 company_name_like=payload.company_name_like)
+                                                 company_name_like=payload.company_name_like,
+                                                 email_valid_mode=evm)
     contacts = _autosend_sort_contacts(contacts, payload.sort_rule)
     # 已在未转入清单里的联系人 -> 本次不重复排(叠加不重叠)
     pending_cids = {
@@ -21210,7 +21250,7 @@ def _autosend_existing_crm_load(staff_ids: list[str], start_date) -> dict:
 
 
 def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bool = True,
-                                      company_name_like: str = "") -> list[dict]:
+                                      company_name_like: str = "", email_valid_mode: str = "collect") -> list[dict]:
     """从 CRM 取指定销售名下、有有效邮箱的联系人, 并按人聚合历史累计销售合同额/末次合作/业务线。
 
     口径(均按联系人 ContactId):
@@ -21269,13 +21309,14 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
                 for i in range(0, len(seq), n):
                     yield seq[i:i + n]
 
-            # 2) 有效邮箱(取最新一个)
+            # 2) 有效邮箱(取最新一个); 判定模式 collect/manual
+            email_valid_frag = _mail_email_valid_where(email_valid_mode)
             email_map: dict[str, str] = {}
             for chunk in _chunks(contact_ids):
                 rows = crm_db.execute(
                     text(
                         "SELECT ContactId, CommunicateNo, InputTime FROM usrCustomerContactCommunicateNo "
-                        "WHERE CommunicateType='ContactEmail' AND ISNULL(IsCollect,'')='正确' "
+                        "WHERE CommunicateType='ContactEmail' AND " + email_valid_frag + " "
                         "AND ContactId IN :ids ORDER BY InputTime DESC"
                     ).bindparams(bindparam("ids", expanding=True)),
                     {"ids": chunk},

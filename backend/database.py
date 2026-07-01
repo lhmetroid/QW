@@ -2195,6 +2195,7 @@ class MailAutosendConfig(Base):
     fallback_enabled = Column(Boolean, nullable=False, default=True)            # 全不命中时兜底最后一个套装
     dedup_by_history = Column(Boolean, nullable=False, default=True)            # 同联系人已发过的套装本次跳过
     default_partial_sent_mode = Column(String(20), nullable=False, default="remaining")  # 已发部分套装全局默认: remaining/resend_all/skip
+    email_valid_mode = Column(String(20), nullable=False, default="collect")  # 有效邮箱判定: collect(IsCollect=正确) / manual(人工判断)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 

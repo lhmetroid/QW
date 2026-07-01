@@ -592,6 +592,57 @@
     .cal1-date { font-size:11px; font-weight:700; color:#475569; }
     .cal1-num { font-size:16px; font-weight:800; color:#4f46e5; line-height:1.2; }
     .cal1-cell.cal1-weekend .cal1-num { color:#ea580c; }
+    .suite-records-btn {
+      margin-left: 8px;
+      padding: 3px 7px;
+      font-size: 11px;
+      color: #4338ca;
+      border-color: #c7d2fe;
+      background: #eef2ff;
+      vertical-align: middle;
+    }
+    .suite-records-btn:hover { background: #e0e7ff; }
+    .suite-records-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, .42);
+    }
+    .suite-records-card {
+      width: min(760px, calc(100vw - 32px));
+      max-height: min(720px, calc(100vh - 48px));
+      overflow: auto;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, .18);
+    }
+    .suite-records-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fafc;
+    }
+    .suite-records-title { font-weight: 900; color: #0f172a; }
+    .suite-records-body { padding: 14px; }
+    .suite-records-suite {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      background: #fff;
+    }
+    .suite-records-suite-title { font-weight: 800; color: #172033; }
+    .suite-records-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .suite-records-tag { border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 800; background: #eef2ff; color: #3730a3; }
+    .suite-records-meta { color: var(--muted); font-size: 12px; margin-top: 6px; }
   </style>
   <link rel="stylesheet" href="tailwind.css">
 </head>
@@ -697,6 +748,10 @@
             </label>
             <label class="flex items-center gap-1" title="按公司名模糊匹配筛选联系人; 留空=不生效">公司名含<input id="as2-company-like" class="rounded border border-slate-300 px-2 py-1 w-32" placeholder="留空不限"></label>
             <label class="flex items-center gap-1" title="该联系人任意套装最后一封在近N天内则本次跳过(按套装最后一封计算); 留空=不生效">近<input id="as2-exclude-days" type="number" min="1" class="rounded border border-slate-300 px-2 py-1 w-16">天发过套装则跳过</label>
+            <span class="flex items-center gap-2" title="有效邮箱判定(二选一, 保存配置后其他页面也走这里)。系统标记正确=只取 IsCollect='正确'。人工判断=除'真人(非0000/admin)标记为错误'的邮箱外都算有效(admin/0000 标错的仍算有效)。仅只读CRM, 不改数据。">有效邮箱
+              <label class="flex items-center gap-1"><input type="radio" name="as2-evm" value="collect" checked>系统标记正确</label>
+              <label class="flex items-center gap-1"><input type="radio" name="as2-evm" value="manual">人工判断</label>
+            </span>
           </div>
         </div>
         <!-- 2 套装优先级规则 -->
@@ -775,6 +830,15 @@
     </div><!-- /#page-autosend -->
   </main>
 
+  <div id="suite-records-modal" class="suite-records-modal" hidden onclick="closeSuiteRecordsModal(event)">
+    <div class="suite-records-card" onclick="event.stopPropagation()">
+      <div class="suite-records-head">
+        <div class="suite-records-title" id="suite-records-title">已用套装</div>
+        <button type="button" class="mini-btn" onclick="closeSuiteRecordsModal()">关闭</button>
+      </div>
+      <div class="suite-records-body" id="suite-records-body">加载中...</div>
+    </div>
+  </div>
   <script>
     let suiteData = null;
     let currentId = '';
@@ -885,6 +949,65 @@
     function field(label, value) {
       return `<div class="kv"><b>${esc(label)}</b><span>${esc(value)}</span></div>`;
     }
+    function fieldHtml(label, html) {
+      return `<div class="kv"><b>${esc(label)}</b><span>${html || ''}</span></div>`;
+    }
+    function suiteRecordsButton(contactId) {
+      const id = String(contactId || '').trim();
+      if (!id) return '';
+      return `<button type="button" class="suite-records-btn" onclick="event.stopPropagation();openSuiteRecordsModal(decodeURIComponent('${encodeURIComponent(id)}'))" title="查看该联系人已经使用过哪些套装、哪些封次">已用套装</button>`;
+    }
+    function closeSuiteRecordsModal() {
+      const modal = document.getElementById('suite-records-modal');
+      if (modal) modal.hidden = true;
+    }
+    function suiteRecordsSources(suite) {
+      const parts = [];
+      if (suite.has_created_draft) parts.push('保存稿');
+      if (suite.has_send_plan) parts.push('套装页发送');
+      if (suite.has_autosend_plan) parts.push('自动排期/历史');
+      if (suite.has_feedback) parts.push('人工反馈');
+      if (suite.has_crm_send_id) parts.push('已转CRM');
+      return parts.join(' / ') || '无来源标记';
+    }
+    function suiteRecordsStepText(suite) {
+      const steps = Array.isArray(suite.used_steps) && suite.used_steps.length
+        ? suite.used_steps
+        : Array.from(new Set([...(suite.draft_steps || []), ...(suite.send_plan_steps || []), ...(suite.autosend_steps || []), ...(suite.feedback_steps || [])])).sort((a, b) => Number(a) - Number(b));
+      return steps.length ? steps.map((x) => `第${x}封`).join('、') : '未记录具体封次';
+    }
+    async function openSuiteRecordsModal(contactId) {
+      const id = String(contactId || '').trim();
+      if (!id) return;
+      const modal = document.getElementById('suite-records-modal');
+      const title = document.getElementById('suite-records-title');
+      const body = document.getElementById('suite-records-body');
+      if (!modal || !body) return;
+      if (title) title.textContent = `已用套装 · ${id}`;
+      body.innerHTML = '<div class="ms-hint">正在读取该联系人套装历史...</div>';
+      modal.hidden = false;
+      try {
+        const resp = await fetch('/api/v1/mail/customer-suite-records?contact_id=' + encodeURIComponent(id), { credentials: 'include', headers: { Accept: 'application/json' } });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+        const suites = data.suites || [];
+        if (!suites.length) {
+          body.innerHTML = `<div class="ms-hint">联系人 ${esc(id)} 暂无已保存、已排期、已转入 CRM 或反馈过的套装记录。</div>`;
+          return;
+        }
+        body.innerHTML = `
+          <div class="suite-records-meta">共 ${suites.length} 个套装；草稿 ${data.summary?.draft_count || 0} 封，发送/转入记录 ${data.summary?.send_plan_count || 0} 封，自动排期 ${data.summary?.autosend_plan_count || 0} 封。</div>
+          ${suites.map((suite) => `
+            <div class="suite-records-suite">
+              <div class="suite-records-suite-title">${esc(suite.scenario_label_cn || suite.scenario || '未知套装')}</div>
+              <div class="suite-records-tags"><span class="suite-records-tag">${esc(suiteRecordsStepText(suite))}</span></div>
+              <div class="suite-records-meta">来源：${esc(suiteRecordsSources(suite))}</div>
+              <div class="suite-records-meta">最近活动：${esc(suite.latest_activity_at || '无')}</div>
+            </div>`).join('')}`;
+      } catch (err) {
+        body.innerHTML = `<div class="feedback-status err">读取失败：${esc(err.message || err)}</div>`;
+      }
+    }
 
     // 把场景 value(可能是 custom_xxx 代码)映射成下拉里的中文名
     function scenarioNameByValue(v) {
@@ -936,7 +1059,7 @@
       document.getElementById('customer-grid').innerHTML = [
         field('客户编号', data.customer_id || ''),
         field('公司名称', profile.crm_company_name || profile.company_name || ''),
-        field('联系人', contactName || ''),
+        fieldHtml('联系人', `${esc(contactName || '')}${suiteRecordsButton(data.customer_id || currentId)}`),
         field('收件方式', '仅生成模板，不发邮件'),
         field('自动判断场景', `${profile.auto_scenario_label_cn || data.auto_scenario_label_cn || scenarioNameByValue(profile.auto_scenario || data.auto_scenario || data.scenario) || scenarioLabel(data)}`),
         field('判断依据', profile.auto_scenario_basis || data.auto_scenario_basis || `CRM 生命周期阶段=${data.customer_lifecycle_stage || '未识别'}`),
@@ -2053,8 +2176,11 @@
         if (Array.isArray(c.interval_days) && c.interval_days.length > 1) set('as2-intervals', c.interval_days.join(','));
         if (c.daily_cap && Number(c.daily_cap) !== 10) set('as2-daily-cap', c.daily_cap);
         const fb = document.getElementById('as2-fallback'); if (fb) fb.checked = c.fallback_enabled !== false;
+        const evm = (c.email_valid_mode === 'manual') ? 'manual' : 'collect';
+        document.querySelectorAll('input[name="as2-evm"]').forEach((r) => { r.checked = (r.value === evm); });
       } catch (e) {}
     }
+    function as2Evm() { const r = document.querySelector('input[name="as2-evm"]:checked'); return r ? r.value : 'collect'; }
     async function as2LoadRules() {
       try {
         const r = await fetch('/api/v1/mail/autosend/suite-rules', { credentials: 'include' });
@@ -2154,6 +2280,7 @@
           interval_days: as2Intervals(),
           daily_cap: parseInt(document.getElementById('as2-daily-cap').value, 10) || 50,
           fallback_enabled: document.getElementById('as2-fallback').checked,
+          email_valid_mode: as2Evm(),
         };
         const r = await fetch('/api/v1/mail/autosend/config', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         as2Status(r.ok ? '配置已保存' : '配置保存失败', !r.ok);
@@ -2172,6 +2299,7 @@
         company_name_like: (document.getElementById('as2-company-like').value || '').trim(),
         exclude_recent_suite_days: isNaN(ed) ? null : ed,
         partial_sent_default: 'remaining',
+        email_valid_mode: as2Evm(),
         consider_existing_crm_queue: document.getElementById('as2-consider-queue').checked,
       };
     }
@@ -2246,9 +2374,10 @@
         const g = groups[k];
         const it = g.it;
         const hasGen = Object.values(g.steps).some((s) => s && (s.status === 'drafted' || s.status === 'sent'));
-        const contactCell = hasGen
+        const contactBase = hasGen
           ? `<button type="button" class="text-indigo-600 underline" onclick="as2ShowPersonByContact('${as2Esc(it.contact_id)}','${as2Esc(it.scenario)}')" title="点开查看该联系人已生成的邮件">${as2Esc(it.contact_name || it.contact_id)}</button>`
           : as2Esc(it.contact_name || it.contact_id);
+        const contactCell = `${contactBase}${suiteRecordsButton(it.contact_id)}`;
         return `<tr class="border-t border-slate-100">
           <td class="px-2 py-1" title="${as2Esc(it.company_name)}">${as2Esc(it.company_head || '-')}</td>
           <td class="px-2 py-1">${contactCell}</td>
