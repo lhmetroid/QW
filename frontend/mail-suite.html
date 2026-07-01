@@ -702,7 +702,7 @@
         <!-- 2 套装优先级规则 -->
         <div class="rounded-lg border border-slate-200 bg-white p-3 space-y-2 mb-3">
           <div class="flex items-center justify-between gap-2">
-            <div class="text-xs font-bold text-slate-700">② 套装优先级规则（自上而下，末位兜底）<span class="ms-info" title="自上而下匹配; 第一个'命中且可发'的套装即用; 末位为兜底。已发部分套装的处理统一用 ③ '已发部分默认'(不再逐条设置)。">ⓘ</span></div>
+            <div class="text-xs font-bold text-slate-700">② 套装优先级规则（自上而下，末位兜底）<span class="ms-info" title="从上到下逐条匹配联系人; 第一条'条件命中且这套还能发'的套装就用它; 都不命中时用最后一条(兜底)。每条规则右侧的'已发部分'决定: 该联系人这套已发过一部分时, 是补发未发的、整套重发、还是跳过。">ⓘ</span></div>
             <div class="flex items-center gap-2">
               <button type="button" onclick="as2AddRule()" class="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 hover:bg-emerald-100">+ 增加规则</button>
             </div>
@@ -711,15 +711,18 @@
         </div>
         <!-- 3 周期/上限/日期 -->
         <div class="rounded-lg border border-slate-200 bg-white p-3 space-y-2 mb-3">
-          <div class="text-xs font-bold text-slate-700">③ 周期 / 每日上限 / 开始日期<span class="ms-info" title="预览排期: 按规则给名下联系人排期并存入清单(不生成草稿、不写CRM, 关页可重开, 多次叠加不重叠); 后台生成: 逐封真调生成草稿, 生成后对应按钮点亮可查看; 勾选后转入CRM=发送。已发部分套装默认按'补发未发封'处理。">ⓘ</span></div>
+          <div class="text-xs font-bold text-slate-700">③ 周期 / 每日上限 / 开始日期<span class="ms-info" title="统一周期: 每封间隔天数(第1封从开始日算, 之后每封按上一封落日+对应天数)。每日上限: 每个销售每天最多发多少封, 满了顺延到下一天。">ⓘ</span></div>
           <div class="flex flex-wrap items-center gap-3 text-xs">
             <label class="flex items-center gap-1" title="一组按封天数, 覆盖各套装原间隔。第1封从开始日算, 之后每封按上一封实际落日+对应天数。">统一周期<input id="as2-intervals" class="rounded border border-slate-300 px-2 py-1 w-32" value="0,7,17,27"></label>
             <label class="flex items-center gap-1" title="每个销售每天最多发多少封, 含已有占用。满了顺延到下一天。">每日上限<input id="as2-daily-cap" type="number" min="1" class="rounded border border-slate-300 px-2 py-1 w-20" value="50"></label>
             <label class="flex items-center gap-1">开始日期<input id="as2-start-date" type="date" class="rounded border border-slate-300 px-2 py-1"></label>
             <label class="flex items-center gap-1"><input type="checkbox" id="as2-fallback" checked>全不命中用兜底</label>
             <label class="flex items-center gap-1"><input type="checkbox" id="as2-consider-queue" checked>考虑已有排期</label>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs">
             <button type="button" onclick="as2SaveConfig()" class="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">保存配置</button>
             <button type="button" onclick="as2Preview()" class="rounded bg-amber-600 px-3 py-1 text-xs font-bold text-white hover:bg-amber-700">预览排期(入清单)</button>
+            <span class="ms-info" title="点击后, 系统按上面②的规则给这个销售名下的联系人排好发送日期, 放进下面的“排期清单”里(此时还没有生成邮件内容, 也没有写进CRM, 关掉网页再打开还在)。如果清单里已经有排好的邮件, 会弹窗问你: 点“确定”=先清空原来的、重新排; 点“取消”=在原来的基础上继续追加(不会重复排同一个人, 也不影响已有的)。">ⓘ</span>
             <button type="button" onclick="as2Generate()" class="rounded bg-violet-600 px-3 py-1 text-xs font-bold text-white hover:bg-violet-700">后台生成</button>
             <button type="button" onclick="as2ClearPlan()" class="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-bold text-rose-700 hover:bg-rose-100">清空排期</button>
           </div>
@@ -1927,11 +1930,34 @@
         if (v === '1') setNodeCollapsed(key, true);
       });
     }
-    async function resolveLockedStaff() {
-      // 销售身份 = 由 KH 编号(?id= 或 ?kh=)按签名档逻辑解析出的归属销售; 不再用工号
+    // 解析 KH 编号: 优先 ?e=(密文, 解密); 否则 ?id=/?kh=(明码, 用后立即换成密文隐藏地址栏)
+    async function resolveKh() {
       const params = new URLSearchParams(window.location.search);
-      const kh = (params.get('id') || params.get('kh') || '').trim();
+      const enc = (params.get('e') || '').trim();
+      let kh = '';
+      if (enc) {
+        try {
+          const r = await fetch('/api/v1/mail/autosend/kh-open?token=' + encodeURIComponent(enc), { credentials: 'include' });
+          if (r.ok) kh = ((await r.json()).kh || '').trim();
+        } catch (e) {}
+      } else {
+        kh = (params.get('id') || params.get('kh') || '').trim();
+        if (kh) {
+          try {
+            const r = await fetch('/api/v1/mail/autosend/kh-token?kh=' + encodeURIComponent(kh), { credentials: 'include' });
+            if (r.ok) {
+              const t = ((await r.json()).token || '').trim();
+              if (t) { const q = new URLSearchParams(window.location.search); q.delete('id'); q.delete('kh'); q.set('e', t); history.replaceState(null, '', window.location.pathname + '?' + q.toString()); }
+            }
+          } catch (e) {}
+        }
+      }
       MS_KH = kh;
+      return kh;
+    }
+    async function resolveLockedStaff() {
+      // 销售身份 = 由 KH 编号(MS_KH, 已解析)按签名档逻辑解析出的归属销售; 不再用工号
+      const kh = MS_KH;
       let staff = '';
       if (kh) {
         try {
@@ -1951,7 +1977,7 @@
 
     async function loadSuite() {
       const params = new URLSearchParams(window.location.search);
-      const id = (params.get('id') || '').trim();
+      const id = (MS_KH || params.get('id') || '').trim();
       if (!id) {
         // 工作台模式: 无客户编号, 节点3 处于待命态(由节点1/2 驱动加载), 不报错
         setStatus('从上方 ① 日历 或 ② 自动发送排期 选择邮件后, 在此查看与编辑详情。');
@@ -2031,7 +2057,7 @@
         if (!r.ok) return; const d = await r.json();
         as2Rules = (d.rules || []).map((x) => ({
           scenario: x.scenario, conditions: x.conditions || [], match_mode: x.match_mode || 'and',
-          partial_sent_mode: x.partial_sent_mode || 'use_global',
+          partial_sent_mode: (x.partial_sent_mode && x.partial_sent_mode !== 'use_global') ? x.partial_sent_mode : 'remaining',
         }));
         as2RenderRules();
       } catch (e) {}
@@ -2067,15 +2093,21 @@
     function as2RenderRules() {
       const wrap = document.getElementById('as2-rules');
       if (!wrap) return;
-      if (!as2Rules.length) { wrap.innerHTML = '<div class="text-xs text-slate-400">暂无规则, 点"增加规则"。末位为兜底。已发部分套装的处理统一用 ③ "已发部分默认"。</div>'; return; }
+      if (!as2Rules.length) { wrap.innerHTML = '<div class="text-xs text-slate-400">暂无规则, 点"增加规则"。末位为兜底。</div>'; return; }
       wrap.innerHTML = as2Rules.map((r, i) => {
         const conds = (r.conditions || []).map((c, j) => as2CondRow(i, j, c)).join('') || '<div class="text-xs text-slate-400 mb-1">无条件=命中所有(可作兜底)</div>';
         const isLast = i === as2Rules.length - 1;
+        const pm = r.partial_sent_mode || 'remaining';
         return `<div class="rounded border border-slate-200 p-2 mb-2 bg-slate-50">
           <div class="flex flex-wrap items-center gap-2 mb-1 text-xs">
             <span class="font-bold text-slate-500">#${i + 1}${isLast ? ' (兜底)' : ''}</span>
             套装<select onchange="as2SetRule(${i},'scenario',this.value)" class="${AS2_SEL}">${as2ScenarioOptions(r.scenario)}</select>
             多条件<select onchange="as2SetRule(${i},'match_mode',this.value)" class="${AS2_SEL}"><option value="and"${r.match_mode === 'and' ? ' selected' : ''}>且</option><option value="or"${r.match_mode === 'or' ? ' selected' : ''}>或</option></select>
+            <span title="联系人匹配到本套装但已发过其中部分封时怎么处理">已发部分<select onchange="as2SetRule(${i},'partial_sent_mode',this.value)" class="${AS2_SEL}">
+              <option value="remaining"${pm === 'remaining' ? ' selected' : ''}>补发未发封</option>
+              <option value="resend_all"${pm === 'resend_all' ? ' selected' : ''}>全部重发</option>
+              <option value="skip"${pm === 'skip' ? ' selected' : ''}>跳过套装</option>
+            </select></span>
             <button type="button" onclick="as2MoveRule(${i},-1)" class="as2-iconbtn" title="上移">↑</button>
             <button type="button" onclick="as2MoveRule(${i},1)" class="as2-iconbtn" title="下移">↓</button>
             <button type="button" onclick="as2RemoveRule(${i})" class="as2-iconbtn danger" title="删除规则">🗑</button>
@@ -2084,12 +2116,12 @@
         </div>`;
       }).join('');
     }
-    function as2AddRule() { as2Rules.push({ scenario: (AS2_SCENARIOS[0] || {}).value || '', conditions: [], match_mode: 'and', partial_sent_mode: 'use_global' }); as2RenderRules(); }
+    function as2AddRule() { as2Rules.push({ scenario: (AS2_SCENARIOS[0] || {}).value || '', conditions: [], match_mode: 'and', partial_sent_mode: 'remaining' }); as2RenderRules(); }
     function as2RemoveRule(i) { as2Rules.splice(i, 1); as2RenderRules(); }
     function as2MoveRule(i, d) { const j = i + d; if (j < 0 || j >= as2Rules.length) return; const t = as2Rules[i]; as2Rules[i] = as2Rules[j]; as2Rules[j] = t; as2RenderRules(); }
     function as2AddCond(i) { as2Rules[i].conditions = as2Rules[i].conditions || []; as2Rules[i].conditions.push({ type: 'amount', op: '>', value: 0 }); as2RenderRules(); }
     function as2RemoveCond(i, j) { as2Rules[i].conditions.splice(j, 1); as2RenderRules(); }
-    function as2SetRule(i, k, v) { as2Rules[i][k] = v; if (k === 'scenario' || k === 'match_mode') return; as2RenderRules(); }
+    function as2SetRule(i, k, v) { as2Rules[i][k] = v; if (k === 'scenario' || k === 'match_mode' || k === 'partial_sent_mode') return; as2RenderRules(); }
     function as2ToggleBL(i, j, val, checked) {
       const c = as2Rules[i].conditions[j];
       const set = new Set(String(c.value || '').split(';').filter(Boolean));
@@ -2131,7 +2163,7 @@
         daily_cap: parseInt(document.getElementById('as2-daily-cap').value, 10) || 50,
         interval_days: as2Intervals(),
         sort_rule: document.getElementById('as2-sort').value,
-        rules: as2Rules.map((x) => ({ scenario: x.scenario, conditions: x.conditions, match_mode: x.match_mode })),
+        rules: as2Rules.map((x) => ({ scenario: x.scenario, conditions: x.conditions, match_mode: x.match_mode, partial_sent_mode: x.partial_sent_mode || 'remaining' })),
         fallback_enabled: document.getElementById('as2-fallback').checked,
         company_name_like: (document.getElementById('as2-company-like').value || '').trim(),
         exclude_recent_suite_days: isNaN(ed) ? null : ed,
@@ -2142,8 +2174,17 @@
     async function as2Preview() {
       if (!AS2_STAFF) { as2Status('未限定销售, 无法排期。请用 ?id=KH编号 打开(据此解析归属销售)。', true); return; }
       if (!as2Rules.length) { as2Status('请先配置至少一条套装规则。', true); return; }
+      let clearFirst = false;
+      const existing = as2PlanItems.length;
+      if (existing > 0) {
+        clearFirst = confirm(`当前“排期清单”里已有 ${existing} 封未转入CRM的排期。\n\n点“确定”: 先清空这些原有排期, 再重新排。\n点“取消”: 保留原有, 在它基础上继续追加(不会重复排同一个人, 也不影响已有的)。`);
+      }
       as2Status('排期中...');
       try {
+        if (clearFirst) {
+          await fetch('/api/v1/mail/autosend/plan?staff_id=' + encodeURIComponent(AS2_STAFF), { method: 'DELETE', credentials: 'include' });
+          as2Selected = new Set();
+        }
         const r = await fetch('/api/v1/mail/autosend/preview', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(as2PreviewBody()) });
         const d = await r.json();
         if (!r.ok) { as2Status('排期失败: ' + (d.detail || r.status), true); return; }
@@ -2166,9 +2207,9 @@
     function as2RenderSkipped(skipped) {
       const el = document.getElementById('as2-skipped');
       if (!el) return;
-      if (!skipped.length) { el.textContent = ''; return; }
-      const head = skipped.slice(0, 30).map((s) => `${as2Esc(s.contact_id)}(${as2Esc(s.detail || s.reason)})`).join('、');
-      el.textContent = `跳过 ${skipped.length} 人: ${head}${skipped.length > 30 ? ' …' : ''}`;
+      if (!skipped.length) { el.innerHTML = ''; return; }
+      const detail = skipped.map((s) => `${s.contact_id}(${s.detail || s.reason})`).join('、');
+      el.innerHTML = `跳过 ${skipped.length} 人<span class="ms-info" title="${as2Esc(detail)}">ⓘ</span>`;
     }
     function as2StepBtn(it) {
       if (!it) return '<span class="text-slate-300">-</span>';
@@ -2545,6 +2586,7 @@
 
     async function initWorkbench() {
       restoreNodeCollapseState();
+      await resolveKh();
       await resolveLockedStaff();
       await as2Init();
       await cal1Reload();
@@ -2554,8 +2596,8 @@
       switchPage(last);
     }
 
-    initWorkbench();
-    loadSuite();
+    // 先解析 KH(设 MS_KH) 再加载套装页, 保证 loadSuite 用到解密后的编号
+    (async () => { await initWorkbench(); await loadSuite(); })();
   </script>
 </body>
 </html>

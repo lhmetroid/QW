@@ -20536,6 +20536,60 @@ def _autosend_merge_local_plan_load(db, owners: list[str], start_date, load: dic
         logger.exception("AUTOSEND_LOCAL_PLAN_LOAD_FAILED owners=%s", owners)
 
 
+def _mail_kh_keystream(n: int) -> bytes:
+    """由前端密钥派生的确定性 keystream(用于 KH 编号可逆混淆, 避免地址栏明码)。"""
+    seed = hashlib.sha256(b"mail-kh-obfuscate:" + _frontend_auth_secret()).digest()
+    out = b""
+    i = 0
+    while len(out) < n:
+        out += hashlib.sha256(seed + i.to_bytes(4, "big")).digest()
+        i += 1
+    return out[:n]
+
+
+def _mail_kh_encode(kh: str) -> str:
+    kh = str(kh or "").strip()
+    if not kh:
+        return ""
+    data = kh.encode("utf-8")
+    enc = bytes(a ^ b for a, b in zip(data, _mail_kh_keystream(len(data))))
+    return base64.urlsafe_b64encode(enc).decode("ascii").rstrip("=")
+
+
+def _mail_kh_decode(token: str) -> str:
+    token = str(token or "").strip()
+    if not token:
+        return ""
+    pad = "=" * (-len(token) % 4)
+    try:
+        enc = base64.urlsafe_b64decode(token + pad)
+    except Exception:
+        return ""
+    data = bytes(a ^ b for a, b in zip(enc, _mail_kh_keystream(len(enc))))
+    try:
+        return data.decode("utf-8")
+    except Exception:
+        return ""
+
+
+@app.get("/api/v1/mail/autosend/kh-token")
+def get_autosend_kh_token(kh: str = Query(...)):
+    """把 KH 编号编成一个不可读 token(放地址栏, 避免明码暴露客户编号)。"""
+    kh = sanitize_text(kh).strip()
+    if not kh:
+        raise HTTPException(status_code=422, detail="kh required")
+    return {"ok": True, "token": _mail_kh_encode(kh)}
+
+
+@app.get("/api/v1/mail/autosend/kh-open")
+def open_autosend_kh_token(token: str = Query(...)):
+    """把地址栏 token 还原成 KH 编号(页面加载时解密)。"""
+    kh = _mail_kh_decode(token)
+    if not kh:
+        raise HTTPException(status_code=422, detail="无效 token")
+    return {"ok": True, "kh": kh}
+
+
 @app.get("/api/v1/mail/autosend/current-staff")
 def get_autosend_current_staff(kh: str = Query("")):
     """按 KH 编号解析归属销售(签名档同逻辑 _fetch_mail_contact_owner_staff_id), 作为该页锁定销售。
