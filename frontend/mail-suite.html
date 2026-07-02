@@ -1247,15 +1247,20 @@
 
     function displaySendSettings(item) {
       const settings = item && item.send_settings || {};
+      const first = firstStepSendTimeFromNow();
       if (Number(item && item.suite_step) === 1) {
-        const first = firstStepSendTimeFromNow();
+        // 第1封: 间隔天数与时/分都按"当前时间+10分钟"; 跨天(不是当天/间隔不为0)时时分仍是 now+10, 不回落 9:00
         return {
           ...settings,
           send_interval_days: first.intervalDays,
           send_time: first.sendTime,
         };
       }
-      return settings;
+      // 第2/3/4封: 时/分跟随第1封(当前时间+10分钟), 只改时分; 间隔天数(月日)保持各自设置, 不再统一 9:00
+      return {
+        ...settings,
+        send_time: first.sendTime,
+      };
     }
     // 根据"距今天 N 天 + 时间"算出实际发送日期, 浮动显示在发送间隔行尾(如: 即 2026-06-23 周一 09:00 发送)
     function updateSendDatePreview(step) {
