@@ -2914,12 +2914,16 @@
       let click = '';
       if (it._kind === 'crm' && it.rowid) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'crm', rowid:'${as2Esc(it.rowid)}'}])"`;
       else if (it.item_id) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'local', item_id:'${as2Esc(it.item_id)}'}])"`;
-      // 本地预排期(未转入CRM)可在联系人清单里直接取消; 已转CRM待发(sent)与CRM行不在此取消
+      // 取消: 本地预排期(未转入CRM) -> 删本地; CRM待发(本系统AI入队, 未实发) -> 删CRM行; 已发送不可取消
       const st = String(it.status || '').toLowerCase();
-      const cancellable = it._kind !== 'crm' && it.item_id && !['sent', 'sent_done', 'crm_sent', 'send_success'].includes(st);
-      const cancelBtn = cancellable
-        ? `<button type="button" class="as2-iconbtn danger" style="width:18px;height:18px;font-size:11px" title="取消该预排期邮件(从排期清单移除, 不发送)" onclick="event.stopPropagation();cal1CancelLocal('${as2Esc(it.item_id)}','${as2Esc(as2MmDd(it.plan_date))}')">✕</button>`
-        : '';
+      const cancelLocal = it._kind !== 'crm' && it.item_id && !['sent', 'sent_done', 'crm_sent', 'send_success'].includes(st);
+      const cancelCrm = it._kind === 'crm' && it.rowid && !['sent_done', 'crm_sent', 'send_success'].includes(st);
+      let cancelBtn = '';
+      if (cancelLocal) {
+        cancelBtn = `<button type="button" class="as2-iconbtn danger" style="width:18px;height:18px;font-size:11px" title="取消该预排期邮件(从排期清单移除, 不发送)" onclick="event.stopPropagation();cal1CancelLocal('${as2Esc(it.item_id)}','${as2Esc(as2MmDd(it.plan_date))}')">✕</button>`;
+      } else if (cancelCrm) {
+        cancelBtn = `<button type="button" class="as2-iconbtn danger" style="width:18px;height:18px;font-size:11px" title="取消该CRM待发邮件(从CRM队列删除, 不再发送; 仅限本系统入队的AI待发)" onclick="event.stopPropagation();cal1CancelCrm('${as2Esc(it.rowid)}','${as2Esc(as2MmDd(it.plan_date))}')">✕</button>`;
+      }
       return `<span class="inline-flex items-center gap-1"><button type="button" class="rounded px-1.5 py-0.5 text-[11px] border ${state.cls}" title="${as2Esc(title)}"${click}>
         <span class="font-bold">${as2Esc(dateTime)}</span><span class="ml-1">${state.label}</span>
       </button>${cancelBtn}</span>`;
@@ -2935,6 +2939,23 @@
         // 就地刷新当前联系人清单(移除该封), 并刷新日历数字
         if (cal1LastContactTable) {
           cal1LastContactTable.items = (cal1LastContactTable.items || []).filter((x) => x.item_id !== itemId);
+          const box = document.getElementById('cal1-day-detail');
+          if (box) box.innerHTML = cal1RenderContactTable(cal1LastContactTable.title, cal1LastContactTable.items, cal1LastContactTable.emptyText, cal1LastContactTable.noteHtml);
+        }
+        cal1Reload();
+      } catch (e) { alert('取消失败: ' + e.message); }
+    }
+    async function cal1CancelCrm(rowid, label) {
+      if (!rowid) return;
+      if (!confirm(`确认取消该 CRM 待发邮件(${label || ''})? 将从 CRM 待发队列删除、不再发送(仅限本系统入队的“宣传邮件-AI”待发; 已发出的不可删)。`)) return;
+      try {
+        const url = '/api/v1/mail/autosend/crm-mail?rowid=' + encodeURIComponent(rowid) + (AS2_STAFF ? '&staff_id=' + encodeURIComponent(AS2_STAFF) : '');
+        const r = await fetch(url, { method: 'DELETE', credentials: 'include' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { alert('取消失败: ' + (d.detail || r.status)); return; }
+        // 就地移除该 rowid 的行, 并刷新日历数字
+        if (cal1LastContactTable) {
+          cal1LastContactTable.items = (cal1LastContactTable.items || []).filter((x) => x.rowid !== rowid);
           const box = document.getElementById('cal1-day-detail');
           if (box) box.innerHTML = cal1RenderContactTable(cal1LastContactTable.title, cal1LastContactTable.items, cal1LastContactTable.emptyText, cal1LastContactTable.noteHtml);
         }

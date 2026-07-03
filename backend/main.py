@@ -25,7 +25,7 @@ from time import perf_counter
 from typing import Any, Optional
 from urllib.parse import quote, urlparse
 from sqlalchemy import and_, or_, text, func, bindparam
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.orm import Session, defer
 from pydantic import BaseModel
 from config import settings
@@ -995,6 +995,18 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS crm_message_id VARCHAR(255);"))
         db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS crm_eml_ftp_dir VARCHAR(255);"))
         db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS status_synced_at TIMESTAMP;"))
+        # 发送入队幂等去重: dedup_key 唯一约束保证并发/重试/重启 只入队一次(跨进程原子, 由DB唯一键强制)
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_send_enqueue_dedup ("
+            "dedup_key VARCHAR(64) PRIMARY KEY,"
+            "spqueue_rowid VARCHAR(64),"
+            "customer_id VARCHAR(120),"
+            "scenario VARCHAR(80),"
+            "suite_step INTEGER,"
+            "plan_date DATE,"
+            "created_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
         # 邮件统计：每封 AI 回信的解析缓存(回信识别 + deepseek 价值判定)，按本地 send_plan + CRM 收件行去重
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS mail_ai_reply_analysis ("
@@ -19516,6 +19528,46 @@ def _spqueue_pending_duplicate_rowid(recipient_emails: list[str], subject: str, 
         return None
 
 
+def _enqueue_dedup_key(staff_id: str, recipient_key: str, subject: str, plan_dt) -> str:
+    """入队幂等键: 销售 + 收件人归一 + 主题 + 计划日 的 md5(定长, 作唯一约束键)。"""
+    import hashlib as _hl
+    d = plan_dt.date().isoformat() if hasattr(plan_dt, "date") else str(plan_dt)[:10]
+    raw = "|".join([str(staff_id or ""), str(recipient_key or "").lower(), (subject or "").strip(), d])
+    return _hl.md5(raw.encode("utf-8", "ignore")).hexdigest()
+
+
+def _try_claim_enqueue(db, dedup_key: str, customer_id: str, scenario: str, suite_step: int, plan_dt) -> bool:
+    """并发安全占位: 往 mail_send_enqueue_dedup 抢插 dedup_key(唯一键)。成功=首次(返回True, 可入队);
+    已存在(并发/重试/重启重跑)=IntegrityError -> 返回False(应跳过, 不重复入队)。savepoint 隔离不污染外层事务。"""
+    d = plan_dt.date() if hasattr(plan_dt, "date") else plan_dt
+    try:
+        with db.begin_nested():
+            db.execute(
+                text("INSERT INTO mail_send_enqueue_dedup (dedup_key, customer_id, scenario, suite_step, plan_date) "
+                     "VALUES (:k, :c, :s, :st, :d)"),
+                {"k": dedup_key, "c": (customer_id or "")[:120], "s": (scenario or "")[:80],
+                 "st": int(suite_step), "d": d},
+            )
+        return True
+    except IntegrityError:
+        return False
+    except Exception:
+        logger.exception("ENQUEUE_CLAIM_FAILED key=%s", dedup_key)
+        # 占位异常时保守放行(退回到 CRM 内容级查重兜底), 不因占位表故障阻断发送
+        return True
+
+
+def _release_enqueue_claim(db, dedup_key: str) -> None:
+    """入队失败时释放占位, 让合法重试可以再入队。"""
+    if not dedup_key:
+        return
+    try:
+        with db.begin_nested():
+            db.execute(text("DELETE FROM mail_send_enqueue_dedup WHERE dedup_key=:k"), {"k": dedup_key})
+    except Exception:
+        logger.exception("ENQUEUE_CLAIM_RELEASE_FAILED key=%s", dedup_key)
+
+
 def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, sender_email: str,
                              send_address: str, receiver: str, staff_id: str, eml_ftp_path: str,
                              email_text: str,
@@ -19822,13 +19874,16 @@ def send_mail_customer_suite(
             hh, mm = 9, 0
         plan_dt = (now_bj + timedelta(days=max(0, interval))).replace(hour=hh, minute=mm, second=0, microsecond=0)
         body_text = _mail_suite_html_to_text(final_body_html)
-        # 幂等去重: 该封"同收件人+同主题+同计划日"已在 CRM 待发队列时, 跳过本封(不再生成.eml/上传/入队),
-        # 防止 重复点发送/网络重试/后台报错重启重跑/自动排期重复commit 造成 CRM 里重复邮件。
+        # 幂等去重(两道): ① 内容级—同收件人+同主题+同计划日 已在 CRM 待发队列(含历史/跨重启)则跳过;
+        # ② 并发占位—抢 dedup_key 唯一键, 同一瞬间并发/重试只放一个。共同防 重复点/网络重试/报错重启重跑/自动排期重复commit。
+        recip_key = _autosend_receiver_key(",".join(recipient_emails)) if recipient_emails else ""
+        dedup_key = _enqueue_dedup_key(owner_staff_id or "", recip_key, final_subject, plan_dt)
         dup_rowid = _spqueue_pending_duplicate_rowid(recipient_emails, final_subject, plan_dt)
-        if dup_rowid:
-            logger.warning("MAIL_SUITE_SEND_DUP_SKIP customer=%s step=%s plan=%s subject=%s existing_rowid=%s",
+        claimed = (not dup_rowid) and _try_claim_enqueue(db, dedup_key, customer_id, scenario, int(suite_step), plan_dt)
+        if dup_rowid or not claimed:
+            logger.warning("MAIL_SUITE_SEND_DUP_SKIP customer=%s step=%s plan=%s subject=%s existing_rowid=%s claimed=%s",
                            sanitize_text(customer_id), suite_step, plan_dt.strftime("%Y-%m-%d"),
-                           sanitize_text(final_subject)[:40], dup_rowid)
+                           sanitize_text(final_subject)[:40], dup_rowid, claimed)
             dup_row = MailCustomerSuiteSendPlan(
                 batch_id=batch_id, customer_id=customer_id[:120], scenario=scenario, suite_step=int(suite_step),
                 sender_email=sender_email[:255], sender_name=(sender_name or "")[:255],
@@ -19884,6 +19939,7 @@ def send_mail_customer_suite(
             if not ok or not eml_ftp_path:
                 step_status = "eml_upload_failed"
                 step_error = "SFTP 上传失败"
+                _release_enqueue_claim(db, dedup_key)   # 未真正入队: 释放占位, 允许合法重试
             else:
                 # 每个附件单独上传 FTP, 供 CRM 客户端按 spQueueSendFile(FileType=0) 显示(对齐老 C#)
                 attachment_files = _upload_suite_attachments_to_ftp(mail_attachments)
@@ -19927,11 +19983,18 @@ def send_mail_customer_suite(
                 row.spqueue_rowid = spqueue_rowid
                 # 统计关联键：spSendInfo{销售}.SendId == 此 SendId(真发后据此确认 SendSuccess/FactSendTime)
                 row.crm_send_id = crm_send_id
+                # 占位登记指向真实 CRM 行(便于追溯); 失败不影响
+                try:
+                    db.execute(text("UPDATE mail_send_enqueue_dedup SET spqueue_rowid=:r WHERE dedup_key=:k"),
+                               {"r": spqueue_rowid, "k": dedup_key})
+                except Exception:
+                    pass
         except Exception as exc:
             logger.exception("MAIL_SUITE_SEND_ENQUEUE_FAILED customer=%s step=%s", sanitize_text(customer_id), suite_step)
             step_status = "enqueue_failed"
             step_error = sanitize_text(str(exc))[:200]
             row.status = step_status
+            _release_enqueue_claim(db, dedup_key)   # 入队失败释放占位, 允许重试
 
         prepared.append({
             "suite_step": int(suite_step),
@@ -21900,6 +21963,54 @@ def save_autosend_crm_mail(payload: AutosendCrmMailSaveRequest, db: Session = De
         logger.exception("AUTOSEND_CRM_MAIL_SAVE_FAILED rowid=%s", rid)
         raise HTTPException(status_code=502, detail="改回CRM失败")
     return {"ok": True, "updated": 1, "eml": eml_note}
+
+
+@app.delete("/api/v1/mail/autosend/crm-mail")
+def delete_autosend_crm_mail(rowid: str = Query(...), staff_id: str = Query("")):
+    """取消(删行)一封 CRM 待发邮件。安全限制: 只允许删"本系统入队的 AI 邮件 + 未实发"的行——
+    即 UseRange 含'宣传邮件-AI' 且 FolderId='OutBox' 且 MessageType='Email'; 其它一律拒绝(不可删),
+    避免误删非本系统或已发出的邮件。删除时连同 spQueueSendFile(.eml/附件登记行)一起删。"""
+    rid = sanitize_text(rowid).strip()
+    if not rid:
+        raise HTTPException(status_code=422, detail="rowid required")
+    staff = sanitize_text(staff_id).strip()
+    try:
+        from crm_database import CRMSessionLocal
+        crm_db = CRMSessionLocal()
+        try:
+            row = crm_db.execute(
+                text("SELECT ISNULL(CAST(UseRange AS NVARCHAR(200)),''), ISNULL(FolderId,''), "
+                     "ISNULL(MessageType,''), ISNULL(Subject,''), ISNULL(InputerStaffId,'') "
+                     "FROM spQueueSend WHERE RowId=:r"),
+                {"r": rid},
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="该待发邮件不存在(可能已发出或已删除)")
+            userange, folder, mtype, subj, inputer = (str(row[0] or ""), str(row[1] or ""),
+                                                       str(row[2] or ""), str(row[3] or ""), str(row[4] or ""))
+            if (_MAIL_AI_USE_RANGE not in userange) or (folder != "OutBox") or (mtype != "Email"):
+                raise HTTPException(status_code=403, detail="该邮件不是本系统入队的待发邮件(或已发出), 不允许删除")
+            if staff and inputer and inputer != staff:
+                raise HTTPException(status_code=403, detail="该邮件不属于当前销售, 不允许删除")
+            # 先删关联登记行, 再删队列行; 队列行 DELETE 再带一次安全条件, 原子防误删
+            nf = crm_db.execute(text("DELETE FROM spQueueSendFile WHERE QueueRowId=:r"), {"r": rid}).rowcount
+            nq = crm_db.execute(
+                text("DELETE FROM spQueueSend WHERE RowId=:r AND ISNULL(FolderId,'')='OutBox' "
+                     "AND ISNULL(CAST(UseRange AS NVARCHAR(200)),'') LIKE '%宣传邮件-AI%' AND MessageType='Email'"),
+                {"r": rid},
+            ).rowcount
+            crm_db.commit()
+        finally:
+            crm_db.close()
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("AUTOSEND_CRM_MAIL_DELETE_FAILED rowid=%s", rid)
+        raise HTTPException(status_code=502, detail="取消CRM待发失败")
+    if not nq:
+        raise HTTPException(status_code=409, detail="未删除(该邮件可能已发出或状态已变化)")
+    logger.warning("AUTOSEND_CRM_MAIL_DELETED rowid=%s files=%s subject=%s", rid, nf, sanitize_text(subj)[:40])
+    return {"ok": True, "deleted": int(nq or 0), "files_deleted": int(nf or 0), "subject": subj}
 
 
 @app.get("/api/v1/mail/autosend/plan-item")
