@@ -505,6 +505,7 @@ def _ensure_wecom_runtime_config_schema(db: Session) -> None:
         "fast_track_rules JSON,"
         "mail_generation_model VARCHAR(50) NOT NULL DEFAULT 'deepseek-v4-flash',"
         "mail_deepseek_model_configs JSON,"
+        "mail_quality_review_config JSON,"
         "updated_by VARCHAR(120),"
         "created_at TIMESTAMP DEFAULT now(),"
         "updated_at TIMESTAMP DEFAULT now()"
@@ -523,6 +524,7 @@ def _ensure_wecom_runtime_config_schema(db: Session) -> None:
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS fast_track_rules JSON;"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS mail_generation_model VARCHAR(50) NOT NULL DEFAULT 'deepseek-v4-flash';"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS mail_deepseek_model_configs JSON;"))
+    db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS mail_quality_review_config JSON;"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS updated_by VARCHAR(120);"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT now();"))
     db.execute(text("ALTER TABLE wecom_runtime_config ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();"))
@@ -1835,6 +1837,7 @@ class RuntimeLlmSettings(BaseModel):
     mail_temperature: float | None = None
     mail_generation_model: str | None = None
     mail_deepseek_model_configs: dict[str, Any] | None = None
+    mail_quality_review_config: dict[str, Any] | None = None
 
     class Config:
         extra = "forbid"
@@ -7870,6 +7873,7 @@ def _load_runtime_settings_with_defaults() -> dict[str, Any]:
         "mail_temperature": data.get("mail_temperature") if data.get("mail_temperature") is not None else default_mail_temp,
         "mail_generation_model": _normalize_mail_generation_model(data.get("mail_generation_model")),
         "mail_deepseek_model_configs": _normalize_mail_deepseek_model_configs(data.get("mail_deepseek_model_configs")),
+        "mail_quality_review_config": _normalize_mail_quality_review_config(data.get("mail_quality_review_config")),
     }
 
     try:
@@ -7880,6 +7884,9 @@ def _load_runtime_settings_with_defaults() -> dict[str, Any]:
             db_configs = getattr(row, "mail_deepseek_model_configs", None)
             if db_configs:
                 result["mail_deepseek_model_configs"] = _normalize_mail_deepseek_model_configs(db_configs)
+            db_quality_review_config = getattr(row, "mail_quality_review_config", None)
+            if db_quality_review_config:
+                result["mail_quality_review_config"] = _normalize_mail_quality_review_config(db_quality_review_config)
         finally:
             db.close()
     except Exception:
@@ -8003,6 +8010,120 @@ def _normalize_mail_deepseek_model_configs(value: Any) -> dict[str, dict[str, An
         for key in ("deepseek-v4-flash", "deepseek-v4-pro")
     }
 
+
+def _default_mail_quality_review_config() -> dict[str, Any]:
+    return {
+        "enabled": False,
+        "max_review_runs": 1,
+        "script": (
+            "你是邮件质检员。请只检查以下质检点，不要改写邮件。\n"
+            "当前质检点：1. 缺少邮件主题。\n"
+            "判断规则：如果 subject 为空、只有占位符、或不像可发送邮件主题，则不合格。\n"
+            "只输出 JSON：{\"passed\":true/false,\"failed_points\":[\"缺少邮件主题\"],\"reason\":\"简短原因\"}"
+        ),
+    }
+
+
+def _normalize_mail_quality_review_config(value: Any) -> dict[str, Any]:
+    defaults = _default_mail_quality_review_config()
+    source = value if isinstance(value, dict) else {}
+    enabled = _coerce_bool_setting(source.get("enabled"), default=defaults["enabled"])
+    try:
+        max_review_runs = int(source.get("max_review_runs", defaults["max_review_runs"]))
+    except (TypeError, ValueError):
+        max_review_runs = int(defaults["max_review_runs"])
+    max_review_runs = max(1, min(10, max_review_runs))
+    script = sanitize_text(source.get("script") or defaults["script"]).strip()
+    if not script:
+        script = defaults["script"]
+    return {
+        "enabled": enabled,
+        "max_review_runs": max_review_runs,
+        "script": script[:8000],
+    }
+
+
+def _mail_quality_review_prompt(config: dict[str, Any], assembled: MailDraftAssembledContent, attempt: int) -> str:
+    body_text = _mail_plain_text_from_html(assembled.body_html)
+    return (
+        f"{config.get('script') or _default_mail_quality_review_config()['script']}\n\n"
+        f"本次质检轮次：{attempt}\n"
+        "待质检邮件：\n"
+        f"Subject: {assembled.subject or ''}\n"
+        f"Body:\n{body_text[:6000]}\n\n"
+        "请严格只返回 JSON，不要输出 Markdown。"
+    )
+
+
+def _mail_local_quality_review(config: dict[str, Any], assembled: MailDraftAssembledContent, attempt: int) -> dict[str, Any]:
+    failed_points: list[str] = []
+    if _mail_subject_is_missing_or_placeholder(assembled.subject):
+        failed_points.append("缺少邮件主题")
+    return {
+        "passed": not failed_points,
+        "failed_points": failed_points,
+        "reason": "本地硬规则通过" if not failed_points else "；".join(failed_points),
+        "attempt": attempt,
+        "review_source": "local_required_guardrail",
+    }
+
+
+def _run_mail_quality_review(config: dict[str, Any], assembled: MailDraftAssembledContent, attempt: int) -> dict[str, Any]:
+    local_result = _mail_local_quality_review(config, assembled, attempt)
+    if not local_result["passed"]:
+        return local_result
+
+    cfg = _mail_draft_llm_config()
+    timeout_seconds = max(60, int(cfg.get("timeout_seconds") or 60))
+    llm_resp = _call_llm2_json_for_mail_draft(
+        _mail_quality_review_prompt(config, assembled, attempt),
+        timeout_seconds=timeout_seconds,
+        force_json=True,
+    )
+    model_name = llm_resp.get("model") or cfg.get("model") or "mail_quality_review_llm"
+    parsed = llm_resp.get("parsed") if isinstance(llm_resp.get("parsed"), dict) else None
+    if llm_resp.get("error") or not parsed:
+        return {
+            "passed": False,
+            "failed_points": ["质检脚本返回无效 JSON"],
+            "reason": sanitize_text(llm_resp.get("error") or "质检 LLM 未返回可解析 JSON")[:500],
+            "attempt": attempt,
+            "review_source": "llm_quality_review",
+            "model": model_name,
+            "raw_text_preview": sanitize_text(llm_resp.get("raw_text") or "")[:500],
+        }
+
+    failed_points_raw = parsed.get("failed_points") or parsed.get("failures") or []
+    if isinstance(failed_points_raw, str):
+        failed_points = [failed_points_raw]
+    elif isinstance(failed_points_raw, list):
+        failed_points = [sanitize_text(item).strip() for item in failed_points_raw if sanitize_text(item).strip()]
+    else:
+        failed_points = []
+    passed = _coerce_bool_setting(parsed.get("passed"), default=False) and not failed_points
+    return {
+        "passed": passed,
+        "failed_points": failed_points,
+        "reason": sanitize_text(parsed.get("reason") or parsed.get("summary") or ("质检通过" if passed else "质检不合格"))[:500],
+        "attempt": attempt,
+        "review_source": "llm_quality_review",
+        "model": model_name,
+        "raw": parsed,
+    }
+
+
+def _append_mail_quality_review_warning(response: MailGenerateDraftResponse, review_summary: dict[str, Any]) -> MailGenerateDraftResponse:
+    if not review_summary:
+        return response
+    response.review_metadata.crm_profile_signals = {
+        **(response.review_metadata.crm_profile_signals or {}),
+        "mail_quality_review": review_summary,
+    }
+    response.safety_guardrail.triggered_warnings = [
+        *response.safety_guardrail.triggered_warnings,
+        f"生成邮件质检已通过：共执行 {review_summary.get('attempts_used', 0)} 轮。",
+    ]
+    return response
 def _save_mail_generation_model(model_key: str) -> None:
     import os, json
 
@@ -8906,6 +9027,53 @@ def _assemble_mail_draft_from_intent_profile(profile: MailDraftIntentProfile) ->
         review_metadata=review_meta,
     )
 
+
+def _assemble_mail_draft_with_quality_review(profile: MailDraftIntentProfile) -> tuple[MailDraftAssembledContent, dict[str, Any]]:
+    config = _normalize_mail_quality_review_config(
+        _load_runtime_settings_with_defaults().get("mail_quality_review_config")
+    )
+    if not config.get("enabled"):
+        return _assemble_mail_draft_from_intent_profile(profile), {
+            "enabled": False,
+            "attempts_used": 0,
+            "passed": None,
+            "history": [],
+        }
+
+    max_runs = int(config.get("max_review_runs") or 1)
+    history: list[dict[str, Any]] = []
+    last_failed_points: list[str] = []
+    last_reason = ""
+    for attempt in range(1, max_runs + 1):
+        assembled = _assemble_mail_draft_from_intent_profile(profile)
+        review_result = _run_mail_quality_review(config, assembled, attempt)
+        history.append(review_result)
+        if review_result.get("passed"):
+            return assembled, {
+                "enabled": True,
+                "passed": True,
+                "attempts_used": attempt,
+                "max_review_runs": max_runs,
+                "history": history,
+            }
+        last_failed_points = [sanitize_text(item).strip() for item in (review_result.get("failed_points") or []) if sanitize_text(item).strip()]
+        last_reason = sanitize_text(review_result.get("reason") or "")[:500]
+        logger.warning(
+            "MAIL_QUALITY_REVIEW_REGENERATE attempt=%s/%s failed_points=%s reason=%s",
+            attempt,
+            max_runs,
+            last_failed_points,
+            last_reason,
+        )
+
+    failed_label = "、".join(last_failed_points) if last_failed_points else (last_reason or "质检脚本未返回明确失败点")
+    raise HTTPException(
+        status_code=422,
+        detail=(
+            f"生成邮件质检已开启，连续 {max_runs} 轮重新生成后仍不满足：{failed_label}。"
+            "请检查并调整当前质检脚本，或临时关闭生成邮件质检后再试。"
+        ),
+    )
 def _build_mail_generate_draft_response(
     db: Session,
     payload: MailGenerateDraftRequest,
@@ -16184,6 +16352,12 @@ def update_runtime_llm_settings(payload: RuntimeLlmSettings):
             row.mail_deepseek_model_configs = normalized_configs
         elif not getattr(row, "mail_deepseek_model_configs", None):
             row.mail_deepseek_model_configs = _normalize_mail_deepseek_model_configs(existing.get("mail_deepseek_model_configs"))
+        if payload.mail_quality_review_config is not None:
+            normalized_quality_config = _normalize_mail_quality_review_config(payload.mail_quality_review_config)
+            existing["mail_quality_review_config"] = normalized_quality_config
+            row.mail_quality_review_config = normalized_quality_config
+        elif not getattr(row, "mail_quality_review_config", None):
+            row.mail_quality_review_config = _normalize_mail_quality_review_config(existing.get("mail_quality_review_config"))
         row.updated_by = "api/v1/system/runtime-llm-settings"
         db.commit()
     except HTTPException:
@@ -20346,6 +20520,38 @@ def get_mail_customer_suite_records(
         suite["used_step_labels"] = [f"第{int(step)}封" for step in used_steps]
         suite["drafts_by_step"] = _mail_suite_record_step_map([item for item in drafts if item.get("scenario") == suite["scenario"]])
         suite["send_plans_by_step"] = _mail_suite_record_step_map([item for item in send_plans if item.get("scenario") == suite["scenario"]])
+        # 每封状态(与日历一致的3态): sent=已发送 / crm=已入CRM待发 / planned=预排期; 附对应时间
+        steps_status: dict[int, dict] = {}
+
+        def _consider(step, state, tm, rank):
+            if step is None:
+                return
+            s = int(step)
+            cur = steps_status.get(s)
+            if (not cur) or rank > cur["rank"] or (rank == cur["rank"] and tm and (not cur.get("time") or tm > cur["time"])):
+                steps_status[s] = {"state": state, "time": tm, "rank": rank}
+
+        for x in (item for item in send_plans if item.get("scenario") == suite["scenario"]):
+            st = sanitize_text(x.get("crm_send_status")).lower()
+            if st == "sendsuccess" or x.get("crm_fact_send_time"):
+                _consider(x.get("suite_step"), "sent", x.get("crm_fact_send_time") or x.get("plan_send_time"), 3)
+            elif x.get("crm_send_id") or x.get("status") == "enqueued":
+                _consider(x.get("suite_step"), "crm", x.get("plan_send_time"), 2)
+            else:
+                _consider(x.get("suite_step"), "planned", x.get("plan_send_time"), 1)
+        for x in (item for item in autosend_items if item.get("scenario") == suite["scenario"]):
+            tm = None
+            if x.get("plan_date"):
+                tm = x["plan_date"] + (("T" + x["plan_time"][:5]) if x.get("plan_time") else "")
+            if x.get("status") == "sent":
+                _consider(x.get("suite_step"), "crm", tm, 2)
+            elif x.get("status") in ("planned", "drafting", "drafted"):
+                _consider(x.get("suite_step"), "planned", tm, 1)
+        for x in (item for item in history_items if item.get("scenario") == suite["scenario"]):
+            _consider(x.get("suite_step"), "crm", x.get("planned_send_at"), 2)
+        for x in (item for item in drafts if item.get("scenario") == suite["scenario"]):
+            _consider(x.get("suite_step"), "planned", None, 1)
+        suite["steps_status"] = {str(k): {"state": v["state"], "time": v["time"]} for k, v in steps_status.items()}
         suites.append(suite)
     suites.sort(key=lambda item: item.get("latest_activity_at") or "", reverse=True)
 
@@ -21239,13 +21445,19 @@ def autosend_preview(payload: AutosendPreviewRequest, db: Session = Depends(get_
 
 
 @app.get("/api/v1/mail/autosend/plan")
-def get_autosend_plan(staff_id: str = Query(...), include_sent: int = Query(0), db: Session = Depends(get_db)):
-    """该销售当前排期清单；默认只返回未转入CRM项，日历可 include_sent=1 显示已入CRM项。"""
+def get_autosend_plan(staff_id: str = Query(...), include_sent: int = Query(0),
+                      company: str = Query(""), db: Session = Depends(get_db)):
+    """该销售当前排期清单；默认只返回未转入CRM项，日历可 include_sent=1 显示已入CRM项。company 可按公司名(多个逗号隔开)过滤。"""
     staff = sanitize_text(staff_id).strip()
     if not staff:
         raise HTTPException(status_code=422, detail="staff_id is required")
     statuses = _AUTOSEND_PENDING_STATUSES + (("sent",) if int(include_sent or 0) else tuple())
     items = _autosend_list_plan(db, staff, statuses=statuses)
+    company_tokens = [t.strip().lower() for t in re.split(r"[,，]", sanitize_text(company or "")) if t.strip()]
+    if company_tokens:
+        items = [it for it in items
+                 if any(t in str(it.get("company_name") or it.get("company_head") or "").lower()
+                        for t in company_tokens)]
     counts: dict = {}
     for it in items:
         counts[it["status"]] = counts.get(it["status"], 0) + 1
@@ -21699,7 +21911,8 @@ def get_autosend_crm_day(staff_id: str = Query(...), date: str = Query(...), db:
 
 
 @app.get("/api/v1/mail/autosend/crm-range")
-def get_autosend_crm_range(staff_id: str = Query(...), start: str = Query(...), days: int = Query(120), db: Session = Depends(get_db)):
+def get_autosend_crm_range(staff_id: str = Query(...), start: str = Query(...), days: int = Query(120),
+                           company: str = Query(""), db: Session = Depends(get_db)):
     """某销售从 start 起一段时间内的套装待发/已发清单。
 
     默认只读本地 mail_customer_suite_send_plan 索引，避免每次实时扫 CRM spQueueSend 导致清单长时间加载。
@@ -21717,14 +21930,26 @@ def get_autosend_crm_range(staff_id: str = Query(...), start: str = Query(...), 
     end_d = start_d + timedelta(days=days)
     start_dt = datetime.combine(start_d, datetime.min.time())
     end_dt = datetime.combine(end_d, datetime.min.time())
-    rows = (
+    q = (
         db.query(MailCustomerSuiteSendPlan)
         .filter(MailCustomerSuiteSendPlan.inputer_staff_id == staff)
         .filter(MailCustomerSuiteSendPlan.plan_send_time >= start_dt)
         .filter(MailCustomerSuiteSendPlan.plan_send_time < end_dt)
-        .order_by(MailCustomerSuiteSendPlan.plan_send_time.asc(), MailCustomerSuiteSendPlan.customer_id.asc(), MailCustomerSuiteSendPlan.suite_step.asc())
-        .all()
     )
+    # 公司过滤下推(可多个逗号隔开, 任一命中): 兼容 company_name 为空(未回填)的历史行, 同时匹配序列化收件人里的 {CompanyName}
+    company_tokens = [t.strip() for t in re.split(r"[,，]", sanitize_text(company or "")) if t.strip()]
+    if company_tokens:
+        ors = []
+        for t in company_tokens:
+            like = f"%{t}%"
+            ors.append(MailCustomerSuiteSendPlan.company_name.ilike(like))
+            ors.append(MailCustomerSuiteSendPlan.receiver_serialized.ilike(like))
+        q = q.filter(or_(*ors))
+    rows = q.order_by(
+        MailCustomerSuiteSendPlan.plan_send_time.asc(),
+        MailCustomerSuiteSendPlan.customer_id.asc(),
+        MailCustomerSuiteSendPlan.suite_step.asc(),
+    ).all()
     backfilled = _mail_suite_fill_missing_index_fields(db, rows)
     items = [_serialize_mail_suite_send_plan_calendar(r) for r in rows]
     return {"ok": True, "staff_id": staff, "start": start_d.isoformat(), "days": days,
@@ -24074,6 +24299,7 @@ def _wecom_runtime_config_payload(row: WecomRuntimeConfig) -> dict[str, Any]:
         "FAST_TRACK_RULES": row.fast_track_rules or [],
         "MAIL_GENERATION_MODEL": _normalize_mail_generation_model(getattr(row, "mail_generation_model", None)),
         "MAIL_DEEPSEEK_MODEL_CONFIGS": _normalize_mail_deepseek_model_configs(getattr(row, "mail_deepseek_model_configs", None)),
+        "MAIL_QUALITY_REVIEW_CONFIG": _normalize_mail_quality_review_config(getattr(row, "mail_quality_review_config", None)),
         "_storage": "database",
         "_table": "wecom_runtime_config",
         "_updated_at": row.updated_at.isoformat() if row.updated_at else None,
@@ -24123,6 +24349,9 @@ def _backfill_empty_wecom_runtime_config(row: WecomRuntimeConfig, defaults: dict
     if not getattr(row, "mail_deepseek_model_configs", None):
         row.mail_deepseek_model_configs = _normalize_mail_deepseek_model_configs(defaults.get("mail_deepseek_model_configs") or defaults.get("MAIL_DEEPSEEK_MODEL_CONFIGS"))
         changed = True
+    if not getattr(row, "mail_quality_review_config", None):
+        row.mail_quality_review_config = _normalize_mail_quality_review_config(defaults.get("mail_quality_review_config") or defaults.get("MAIL_QUALITY_REVIEW_CONFIG"))
+        changed = True
     if changed:
         row.updated_by = "api_backfill_from_files"
     return changed
@@ -24149,6 +24378,7 @@ def _get_or_create_wecom_runtime_config(db: Session) -> WecomRuntimeConfig:
         fast_track_rules=defaults.get("FAST_TRACK_RULES") if isinstance(defaults.get("FAST_TRACK_RULES"), list) else [],
         mail_generation_model=_normalize_mail_generation_model(defaults.get("mail_generation_model") or defaults.get("MAIL_GENERATION_MODEL")),
         mail_deepseek_model_configs=_normalize_mail_deepseek_model_configs(defaults.get("mail_deepseek_model_configs") or defaults.get("MAIL_DEEPSEEK_MODEL_CONFIGS")),
+        mail_quality_review_config=_normalize_mail_quality_review_config(defaults.get("mail_quality_review_config") or defaults.get("MAIL_QUALITY_REVIEW_CONFIG")),
         updated_by="api_seed_from_files",
     )
     db.add(row)

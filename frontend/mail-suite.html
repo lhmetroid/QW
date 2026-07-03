@@ -1001,6 +1001,18 @@
         : Array.from(new Set([...(suite.draft_steps || []), ...(suite.send_plan_steps || []), ...(suite.autosend_steps || []), ...(suite.feedback_steps || [])])).sort((a, b) => Number(a) - Number(b));
       return steps.length ? steps.map((x) => `第${x}封`).join('、') : '未记录具体封次';
     }
+    // 已用套装单封单元格: 时间 + 3态(与日历一致): sent=已发送 / crm=已入CRM待发 / planned=预排期
+    function suiteRecordStepCell(ss) {
+      if (!ss || !ss.state) return '<span class="text-slate-300">-</span>';
+      const map = {
+        sent: { label: '已发送', cls: 'border-emerald-400 bg-emerald-50 text-emerald-700' },
+        crm: { label: '已入CRM', cls: 'border-sky-400 bg-sky-50 text-sky-700' },
+        planned: { label: '预排期', cls: 'border-violet-300 bg-violet-50 text-violet-700' },
+      };
+      const m = map[ss.state] || map.planned;
+      const t = ss.time ? String(ss.time).replace('T', ' ').slice(5, 16) : '';   // MM-DD HH:MM
+      return `<span class="rounded px-1.5 py-0.5 text-[11px] border ${m.cls}" style="display:inline-block;white-space:nowrap">${t ? esc(t) + ' ' : ''}${m.label}</span>`;
+    }
     async function openSuiteRecordsModal(contactId) {
       const id = String(contactId || '').trim();
       if (!id) return;
@@ -1021,14 +1033,12 @@
           return;
         }
         body.innerHTML = `
-          <div class="suite-records-meta" style="margin-bottom:10px">共 ${suites.length} 个套装；草稿 ${data.summary?.draft_count || 0} 封，发送/转入记录 ${data.summary?.send_plan_count || 0} 封，自动排期 ${data.summary?.autosend_plan_count || 0} 封。</div>
+          <div class="suite-records-meta" style="margin-bottom:10px">共 ${suites.length} 个套装。每封显示对应发送时间与状态：<span class="text-emerald-700">已发送</span> / <span class="text-sky-700">已入CRM</span> / <span class="text-violet-700">预排期</span>。</div>
           <table class="suite-records-table">
-            <thead><tr><th>套装</th><th>已用封次</th><th>来源</th><th>最近活动</th></tr></thead>
+            <thead><tr><th>套装</th><th>第1封</th><th>第2封</th><th>第3封</th><th>第4封</th></tr></thead>
             <tbody>${suites.map((suite) => `<tr>
               <td>${esc(suite.scenario_label_cn || suite.scenario || '未知套装')}</td>
-              <td>${esc(suiteRecordsStepText(suite))}</td>
-              <td>${esc(suiteRecordsSources(suite))}</td>
-              <td>${esc(suite.latest_activity_at || '无')}</td>
+              ${[1, 2, 3, 4].map((n) => `<td>${suiteRecordStepCell((suite.steps_status || {})[n])}</td>`).join('')}
             </tr>`).join('')}</tbody>
           </table>`;
       } catch (err) {
@@ -2841,10 +2851,12 @@
       const range = new Set(cal1RangeDates(nDays));
       return (items || []).filter((it) => it.plan_date && range.has(it.plan_date));
     }
-    async function cal1FetchPlanItems(includeSent) {
+    async function cal1FetchPlanItems(includeSent, company) {
       if (!AS2_STAFF) return [];
       try {
-        const url = '/api/v1/mail/autosend/plan?staff_id=' + encodeURIComponent(AS2_STAFF) + (includeSent ? '&include_sent=1' : '');
+        const url = '/api/v1/mail/autosend/plan?staff_id=' + encodeURIComponent(AS2_STAFF)
+          + (includeSent ? '&include_sent=1' : '')
+          + (company ? '&company=' + encodeURIComponent(company) : '');
         const r = await fetch(url, { credentials: 'include' });
         if (!r.ok) return [];
         const d = await r.json();
@@ -2865,10 +2877,13 @@
     }
     function cal1ReceiverCompany(raw) {
       const s = String(raw || '');
-      const m = s.match(/"CompanyName"\s*:\s*"([^"]+)"/);
-      if (m) return m[1];
-      const m2 = s.match(/CompanyName['"]?\s*[:=]\s*['"]?([^,'"}\]]+)/);
-      return m2 ? m2[1].trim() : '';
+      // CRM 序列化 Receiver 实际格式: 名字<邮箱>[{MsgType}"Email",...,{CompanyName}"公司名",...]
+      let m = s.match(/\{CompanyName\}\s*"([^"]+)"/);
+      if (m) return m[1].trim();
+      m = s.match(/"CompanyName"\s*:\s*"([^"]+)"/);
+      if (m) return m[1].trim();
+      m = s.match(/CompanyName['"]?\s*[:=]\s*['"]?([^,'"}\]]+)/);
+      return m ? m[1].trim() : '';
     }
     function cal1CrmVirtualItems(dayItems) {
       const rows = [];
@@ -3127,9 +3142,9 @@
         if (!r.ok) return null;
         return await r.json();
       } catch (e) { return null; }
-    }    async function cal1FetchCrmRange(startDs, days) {
+    }    async function cal1FetchCrmRange(startDs, days, company) {
       try {
-        const r = await fetch('/api/v1/mail/autosend/crm-range?staff_id=' + encodeURIComponent(AS2_STAFF) + '&start=' + encodeURIComponent(startDs) + '&days=' + encodeURIComponent(days || 120), { credentials: 'include' });
+        const r = await fetch('/api/v1/mail/autosend/crm-range?staff_id=' + encodeURIComponent(AS2_STAFF) + '&start=' + encodeURIComponent(startDs) + '&days=' + encodeURIComponent(days || 120) + (company ? '&company=' + encodeURIComponent(company) : ''), { credentials: 'include' });
         if (!r.ok) return [];
         const d = await r.json();
         return d.items || [];
@@ -3142,14 +3157,16 @@
       box.innerHTML = '<div class="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-500">清单加载中...</div>';
       expandNode('node1');
       await cal1RecoverSuiteIndexOnce();
+      // 公司过滤下推到后端(crm-range/plan 直接按公司名筛), 只取该公司数据 -> 又快又不漏(不再依赖前端 enrichment 时序)
+      const cqRaw = ((document.getElementById('cal1-company-q') || {}).value || '').trim();
       const dates = cal1RangeDates(nDays);
       const startDs = dates[0] || cal1LastToday || cal1Fmt(new Date());
       const fetchStartDs = cal1DateAdd(startDs, -60);
-      const crmRangeRaw = await cal1FetchCrmRange(fetchStartDs, 180);
+      const crmRangeRaw = await cal1FetchCrmRange(fetchStartDs, 180, cqRaw);
       const crmAllItems = cal1CrmVirtualItems([{ ds: startDs, items: crmRangeRaw }]);
       const dateSet = new Set(dates);
       const crmRangeItems = crmAllItems.filter((it) => dateSet.has(it.plan_date));
-      const localAll = await cal1FetchPlanItems(true);
+      const localAll = await cal1FetchPlanItems(true, cqRaw);
       const localRangeItems = cal1RangeItemsFrom(localAll, nDays);
       const lockedKeys = new Set();
       crmRangeItems.forEach((it) => lockedKeys.add(cal1ItemGroupKey(it)));
