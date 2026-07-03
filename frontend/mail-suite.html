@@ -2998,7 +2998,11 @@
         const step = Number(it.suite_step || 0);
         if (step >= 1 && step <= 4) {
           const old = groups[key].steps[step];
-          if (!old || cal1StepPriority(it) > cal1StepPriority(old) || (!(old.company_name || '').trim() && (it.company_name || '').trim())) groups[key].steps[step] = it;
+          const replace = !old
+            || cal1StepPriority(it) > cal1StepPriority(old)
+            || (cal1StepPriority(it) === cal1StepPriority(old) && !!it.rowid && !old.rowid)   // 同状态优先取带CRM RowId的真实队列行, 保证待发送可取消(✕)
+            || (!(old.company_name || '').trim() && (it.company_name || '').trim());
+          if (replace) { if (old) groups[key].extra.push(old); groups[key].steps[step] = it; }
           else groups[key].extra.push(it);
         } else groups[key].extra.push(it);
       });
@@ -3220,7 +3224,10 @@
           </div>`;
         }
         grid.innerHTML = html;
-        const contactCount = (typeof d.contact_count === 'number') ? d.contact_count : cal1ContactCount(nDays);
+        // 顶部人数跟随勾选口径: 仅待发->待发联系人数; 仅排期->排期联系人数; 都不勾/都勾->合并总数
+        let contactCount = (typeof d.contact_count === 'number') ? d.contact_count : cal1ContactCount(nDays);
+        if (onlyPending && !onlyPlanned && typeof d.pending_contact_count === 'number') contactCount = d.pending_contact_count;
+        else if (onlyPlanned && !onlyPending && typeof d.planned_contact_count === 'number') contactCount = d.planned_contact_count;
         if (st) st.innerHTML = `合计 ${totalAll} 封 · 涉及 <button type="button" class="cal1-status-btn" onclick="cal1ShowRangePlan()" title="点击在日历下方查看当前周期内的 CRM待发 与本地预排清单">${contactCount}</button> 个联系人`;
       } catch (e) { if (st) st.textContent = '加载失败: ' + e.message; }
     }

@@ -8570,9 +8570,7 @@ def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile) -> str:
         "【输出格式硬性要求】\n"
         "1. 只输出一个 JSON 对象，不要 Markdown，不要代码块，不要解释。\n"
         "2. JSON 必须同时包含 subject 和 paragraphs 两个字段。\n"
-        "3. subject 必须是可直接发送给客户的中文邮件主题，不能为空，不能是“-”“无主题”“邮件主题”等占位内容，长度建议 12-36 个中文字符。\n"
-        "4. paragraphs 必须是正文段落数组；第 1 项为称呼段，后续为正文段，不要把主题写进正文。\n"
-        "5. 输出示例：{\"subject\":\"关于近期多语资料和活动支持的沟通\",\"paragraphs\":[\"王女士您好，\",\"正文段1\",\"正文段2\"]}"
+        "3. subject 必须是可直接发送给客户的中文邮件主题，不能为空，不能是“-”“无主题”“邮件主题”等占位内容，长度建议 12-36 个中文字符。"
     )
     return _mail_brand_display_text(
         "\n\n".join(
@@ -21512,8 +21510,12 @@ def autosend_calendar(staff_id: str = Query(...), days: int = Query(90), db: Ses
          "planned_contacts": v.get("planned_contacts", 0), "pending_contacts": v.get("pending_contacts", 0)}
         for d, v in sorted(res.items())
     ]
+    # 分口径联系人数: 排期(本地 local:) / 待发(CRM crm:), 供前端勾选"仅显示排期数/仅显示待发数"时同步顶部人数
+    planned_cc = sum(1 for k in contact_keys if str(k).startswith("local:"))
+    pending_cc = sum(1 for k in contact_keys if str(k).startswith("crm:"))
     return {"ok": True, "staff_id": staff, "today": today.isoformat(), "days": days_out,
-            "contact_count": len(contact_keys)}
+            "contact_count": len(contact_keys),
+            "planned_contact_count": planned_cc, "pending_contact_count": pending_cc}
 
 
 def _autosend_enrich_crm_queue_items(db: Session, items: list[dict]) -> list[dict]:
