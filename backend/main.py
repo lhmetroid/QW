@@ -20541,15 +20541,13 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
         pend_latest = (pending_latest_map or {}).get(str(cid or "")) if pending_latest_map else None
         for step in steps:
             if first:
-                # 首封目标日取以下候选里的最晚, 保证不与该联系人已有安排在同段重叠:
-                # 补发锚点+间隔 / 已有待发最晚+偏移 / 开始日+间隔
-                cands = []
+                # 首封目标日取候选里的最晚, 且始终以"开始日+首封间隔"为地板(不排到开始日之前):
+                # 开始日+间隔(地板) / 补发锚点+间隔 / 已有待发最晚+偏移
+                cands = [start_date + timedelta(days=gap(step - 1 if step > 1 else 0))]
                 if anchor_last_at is not None:
                     cands.append(anchor_last_at + timedelta(days=gap(step - 1)))
                 if pend_latest is not None:
                     cands.append(pend_latest + timedelta(days=_AUTOSEND_EXISTING_SUITE_OFFSET_DAYS))
-                if not cands:
-                    cands.append(start_date + timedelta(days=gap(step - 1 if step > 1 else 0)))
                 desired = max(cands)
             elif prev_actual is None:
                 desired = start_date + timedelta(days=gap(step - 1 if step > 1 else 0))

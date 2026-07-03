@@ -3150,6 +3150,10 @@
       </div>`;
       const titleTxt = cqTokens.length ? `公司「${cq}」· 联系人清单` : `今天起${nDays}天 · 联系人清单`;
       box.innerHTML = cal1RenderContactTable(titleTxt, items, cqTokens.length ? '该公司在当前周期内暂无联系人清单。' : '当前展示周期内暂无联系人清单。', note);
+      // 消歧义: 清单展开后, 把顶部数字改成与清单同源同口径(去重联系人 / 套装), 避免"顶部126联系人"与清单数字不一致
+      const grpsForStat = cal1ContactGroups(items);
+      const stEl = document.getElementById('cal1-status');
+      if (stEl) stEl.innerHTML = `本周期 ${cal1DistinctContactCount(grpsForStat)} 联系人 / ${Object.keys(grpsForStat).length} 套装（明细见下方清单）`;
     }
     async function cal1Reload() {
       const grid = document.getElementById('cal1-grid');
