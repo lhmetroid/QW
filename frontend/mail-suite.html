@@ -1863,12 +1863,38 @@
         };
       });
       btn.disabled = true;
-      // 点发送即转后台: 不等待结果、不前台转圈。用 keepalive 让请求在页面关闭后仍能完成。
+      // 顺序: ① 先做时间段重叠校验(同步等待) → ② 校验通过后确保转后台发送完整执行(不丢改动/CRM指令) → ③ 之后再关页
+      // ① 计算本次套装[第1封, 最后一封]日期区间, 调用重叠校验
+      const stepDates = steps.map(suiteStepDateStr).filter(Boolean).sort();
+      const newStart = stepDates[0] || '';
+      const newEnd = stepDates[stepDates.length - 1] || newStart;
+      if (status) { status.textContent = '校验时间段...'; status.className = 'feedback-status'; }
       try {
-        fetch('/api/v1/mail/customer-suite-send', {
+        const ck = await fetch('/api/v1/mail/customer-suite/overlap-check', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_id: suiteData.customer_id, scenario: suiteData.scenario,
+            start_date: newStart, end_date: newEnd,
+            recipient_emails: input ? input.value : '', contact_id: suiteData.customer_id,
+          }),
+        });
+        const cd = await ck.json().catch(() => ({}));
+        if (ck.ok && cd.conflict) {
+          const ex = cd.existing || {};
+          const label = ex.scenario_label || '已排套装';
+          const msg = `该联系人已有套装【${label}】排在 ${ex.first_date} ~ ${ex.last_date}，与本次套装(${newStart} ~ ${newEnd})时间段重叠。\n\n请修改本套装各封的发送时间段(避开上面区间)后再发送。`;
+          if (status) { status.textContent = `时间段与已有套装【${label}】(${ex.first_date}~${ex.last_date})重叠，请修改本套装时间段后再发`; status.className = 'feedback-status err'; }
+          alert(msg);
+          btn.disabled = false;
+          return;   // 停止发送、也不关闭页面
+        }
+      } catch (e) { /* 校验接口异常不硬拦截发送, 放行继续 */ }
+      // ② 校验通过: 等待发送完整执行(生成.eml/上传/写CRM待发队列都完成), 确保不丢改动与入CRM指令
+      if (status) { status.textContent = '正在提交后台发送...'; status.className = 'feedback-status'; }
+      try {
+        const resp = await fetch('/api/v1/mail/customer-suite-send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          keepalive: true,
           body: JSON.stringify({
             customer_id: suiteData.customer_id,
             scenario: suiteData.scenario,
@@ -1876,12 +1902,23 @@
             recipient_emails: input ? input.value : '',
             drafts: draftsPayload,
           }),
-        }).catch(() => {});
-      } catch (e) {}
-      // 立即尝试关闭本页(仅当本页是被脚本 window.open 打开时, 浏览器才允许关闭)
-      try { window.close(); } catch (e) {}
-      // 关不掉(地址栏/书签/链接直接打开时, 浏览器出于安全禁止脚本关闭): 整屏提示已转后台, 可手动关闭
-      setTimeout(() => { showSendDoneOverlay(steps.length); }, 150);
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+        // ③ 确认已完整入队后再关页: 先尝试脚本关闭(仅 window.open 打开的页可关), 关不掉给整屏"可关闭本页"提示
+        try { window.close(); } catch (e) {}
+        setTimeout(() => { showSendDoneOverlay(steps.length); }, 150);
+      } catch (err) {
+        if (status) { status.textContent = `发送失败：${err.message}`; status.className = 'feedback-status err'; }
+        btn.disabled = false;
+      }
+    }
+    // 计算某封的计划发送日期(YYYY-MM-DD): 今天 + 该封"距今天"间隔天数
+    function suiteStepDateStr(step) {
+      const iv = Math.max(0, parseInt((document.getElementById(`interval-${step}`) || {}).value, 10) || 0);
+      const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + iv);
+      const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dd}`;
     }
 
     // 发送已转后台的整屏提示(用于无法自动关闭标签页时)
@@ -2323,7 +2360,7 @@
             <span class="font-bold text-slate-500">#${i + 1}${(isLast && as2Rules.length > 1) ? ' (兜底)' : ''}</span>
             套装<select onchange="as2SetRule(${i},'scenario',this.value)" class="${AS2_SEL}">${as2ScenarioOptions(r.scenario)}</select>
             多条件<select onchange="as2SetRule(${i},'match_mode',this.value)" class="${AS2_SEL}"><option value="and"${r.match_mode === 'and' ? ' selected' : ''}>且</option><option value="or"${r.match_mode === 'or' ? ' selected' : ''}>或</option></select>
-            <span>已发部分<span class="ms-info" title="联系人匹配到本套装、但之前已经发过其中部分封时怎么处理:&#10;· 补发未发封: 只发还没发过的那几封(接着往下发)&#10;· 全部重发: 不管发没发过, 整套从第1封重新排一遍&#10;· 跳过套装: 这套已发过部分就整套跳过, 不再排">ⓘ</span><select onchange="as2SetRule(${i},'partial_sent_mode',this.value)" class="${AS2_SEL}">
+            <span>已发部分<span class="ms-info" title="联系人匹配到本套装、但之前已发过其中部分封时怎么处理:&#10;· 补发未发封: 只发这套里还没发过的封次&#10;· 全部重发: 不管发没发过, 整套从第1封重新排一遍&#10;· 跳过套装: 这套已发过部分就整套跳过, 不再排">ⓘ</span><select onchange="as2SetRule(${i},'partial_sent_mode',this.value)" class="${AS2_SEL}">
               <option value="remaining"${pm === 'remaining' ? ' selected' : ''}>补发未发封</option>
               <option value="resend_all"${pm === 'resend_all' ? ' selected' : ''}>全部重发</option>
               <option value="skip"${pm === 'skip' ? ' selected' : ''}>跳过套装</option>
@@ -3000,6 +3037,18 @@
     function cal1GroupMailCount(groups) {
       return Object.values(groups || {}).reduce((sum, g) => sum + Object.keys((g && g.steps) || {}).length, 0);
     }
+    // 去重后的"联系人"数(忽略套装/场景, 同一联系人多套装只算1个联系人); 与"联系人套装"分组数区分, 避免歧义
+    function cal1DistinctContactCount(groups) {
+      const set = new Set();
+      Object.values(groups || {}).forEach((g) => {
+        const it = (g && g.it) || {};
+        const key = String(it.contact_id || '').trim()
+          || (String(it.company_name || it.company_head || '').trim().toLowerCase() + '::' + String(it.contact_name || '').trim().toLowerCase())
+          || String(it.recipient_email || '').trim().toLowerCase();
+        if (key && key !== '::') set.add(key);
+      });
+      return set.size;
+    }
     function cal1RenderContactTable(title, items, emptyText, noteHtml) {
       cal1LastContactTable = { title, items: items || [], emptyText, noteHtml };
       const groups = cal1ContactGroups(items);
@@ -3012,7 +3061,7 @@
       </label>`;
       return `<div class="rounded-lg border border-slate-200 bg-white p-3">
         <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <div class="text-xs font-bold text-slate-700">${as2Esc(title || '联系人清单')} <span class="text-slate-500 font-normal">(${cal1GroupMailCount(groups)} 封 / ${Object.keys(groups).length} 个联系人套装)</span></div>
+          <div class="text-xs font-bold text-slate-700">${as2Esc(title || '联系人清单')} <span class="text-slate-500 font-normal">(${cal1GroupMailCount(groups)} 封 / ${cal1DistinctContactCount(groups)} 联系人 / ${Object.keys(groups).length} 套装)</span></div>
           ${sortOptions}
         </div>
         ${noteHtml || ''}

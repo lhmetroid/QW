@@ -7878,7 +7878,7 @@ def _load_runtime_settings_with_defaults() -> dict[str, Any]:
 _MAIL_DRAFT_LLM_SYSTEM_PROMPT = (
     "你是事必达的资深销售。写给客户的邮件要像真人发出的轻商务邮件：自然、具体、克制。\n"
     "不要写成营销文、服务清单、合规摘要或 AI 总结。\n"
-    "只输出 JSON，不要 Markdown：{\"subject\":\"\",\"paragraphs\":[\"称呼段\",\"正文段1\",\"正文段2\"]}"
+    "只输出 JSON，不要 Markdown：{\"subject\":\"关于近期业务支持的沟通\",\"paragraphs\":[\"称呼段\",\"正文段1\",\"正文段2\"]}"
 )
 
 _MAIL_GENERATION_MODEL_OPTIONS: dict[str, dict[str, str]] = {
@@ -8551,7 +8551,28 @@ def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile) -> str:
     if not template:
         template = sanitize_text(profile.sequence_template_script or "").strip()
     values = _mail_prompt_template_variable_values(profile, industry=industry, crm_history=crm_history)
-    return _mail_apply_prompt_template_variables(template, values)
+    rendered_script = _mail_apply_prompt_template_variables(template, values)
+    runtime_settings = _load_runtime_settings_with_defaults()
+    system_prompt = sanitize_text(runtime_settings.get("mail_system_prompt") or _MAIL_DRAFT_LLM_SYSTEM_PROMPT).strip()
+    output_contract = (
+        "【输出格式硬性要求】\n"
+        "1. 只输出一个 JSON 对象，不要 Markdown，不要代码块，不要解释。\n"
+        "2. JSON 必须同时包含 subject 和 paragraphs 两个字段。\n"
+        "3. subject 必须是可直接发送给客户的中文邮件主题，不能为空，不能是“-”“无主题”“邮件主题”等占位内容，长度建议 12-36 个中文字符。\n"
+        "4. paragraphs 必须是正文段落数组；第 1 项为称呼段，后续为正文段，不要把主题写进正文。\n"
+        "5. 输出示例：{\"subject\":\"关于近期多语资料和活动支持的沟通\",\"paragraphs\":[\"王女士您好，\",\"正文段1\",\"正文段2\"]}"
+    )
+    return _mail_brand_display_text(
+        "\n\n".join(
+            part
+            for part in [
+                system_prompt,
+                "【当前邮件脚本】\n" + rendered_script,
+                output_contract,
+            ]
+            if sanitize_text(part).strip()
+        )
+    )
 
 
 def _mail_normalize_llm_text(value: str | None) -> str:
@@ -8565,6 +8586,23 @@ def _mail_strip_markdown_label(value: str | None) -> str:
     text_value = re.sub(r"^\s*[-*#]+\s*", "", value or "")
     text_value = text_value.replace("**", "").replace("__", "")
     return text_value.strip()
+
+
+def _mail_subject_is_missing_or_placeholder(value: str | None) -> bool:
+    text_value = _mail_strip_markdown_artifacts(_mail_brand_display_text(value or "")).strip()
+    normalized = re.sub(r"\s+", "", text_value).strip("：:，,。；;!！")
+    normalized_lower = normalized.lower()
+    if not normalized:
+        return True
+    if normalized in {"-", "—", "--", "——", "_", "无", "空"}:
+        return True
+    if normalized_lower in {"n/a", "na", "none", "null", "subject", "title"}:
+        return True
+    if normalized in {"无主题", "未命名", "邮件主题", "主题", "标题", "待定", "暂无主题"}:
+        return True
+    if re.fullmatch(r"[\-—_./\\|]+", normalized):
+        return True
+    return False
 
 
 def _mail_text_to_body_html(value: str | None) -> str:
@@ -8681,8 +8719,11 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
             )
     raw_text = llm_resp.get("raw_text") or ""
     subject, body_html, paragraphs, parse_meta = _mail_extract_subject_body_from_raw_llm_output(raw_text)
-    if not body_html and not paragraphs:
-        logger.warning("MAIL_DRAFT_LLM2_RETRY reason=missing body model=%s", model_name)
+    missing_body = not body_html and not paragraphs
+    missing_subject = _mail_subject_is_missing_or_placeholder(subject)
+    if missing_body or missing_subject:
+        retry_reason = "missing subject" if missing_subject and not missing_body else "missing body" if missing_body else "missing subject/body"
+        logger.warning("MAIL_DRAFT_LLM2_RETRY reason=%s model=%s", retry_reason, model_name)
         llm_resp = _call_llm2_text_for_mail_draft(full_prompt, timeout_seconds=llm_timeout)
         model_name = llm_resp.get("model") or model_name
         if llm_resp.get("error"):
@@ -8703,6 +8744,12 @@ def _llm_generate_mail_intro_paragraphs(profile: MailDraftIntentProfile) -> dict
         raise HTTPException(
             status_code=502,
             detail="LLM-2 (DeepSeek) 返回内容为空或无法解析为邮件正文（v1.7.208 不再返 fallback_template 兜底）。",
+        )
+    if _mail_subject_is_missing_or_placeholder(subject):
+        logger.warning("MAIL_DRAFT_LLM2_FAILED reason=missing subject")
+        raise HTTPException(
+            status_code=502,
+            detail="LLM-2 (DeepSeek) 返回内容缺少可发送邮件主题；已拒绝保存占位主题，请重刷生成。",
         )
     return {
         "status": "success",
@@ -19508,6 +19555,99 @@ def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, se
         return None
 
 
+class SuiteOverlapCheckRequest(BaseModel):
+    customer_id: str
+    scenario: str
+    start_date: str            # 本次套装第1封 YYYY-MM-DD
+    end_date: str              # 本次套装最后一封 YYYY-MM-DD
+    recipient_emails: str | None = None
+    contact_id: str | None = None
+
+    class Config:
+        extra = "forbid"
+
+
+def _suite_existing_suite_ranges(db, customer_id: str, contact_id: str, recipient_emails: str,
+                                 exclude_scenario: str) -> list[dict]:
+    """该客户/联系人已有的套装安排时间段(第1封~最后一封)。
+    来源: 本地 mail_autosend_plan_item(按 scenario, planned/drafting/drafted/sent) + CRM spQueueSend 待发(整体)。
+    不含 exclude_scenario 的本地同套装(编辑重发同一套装自身不算冲突)。"""
+    ranges: list[dict] = []
+    ids = [i for i in {str(customer_id or "").strip(), str(contact_id or "").strip()} if i]
+    emails_local = [e.strip().lower() for e in re.split(r"[,;\s]+", str(recipient_emails or "")) if "@" in e]
+    if ids or emails_local:
+        try:
+            conds, params = [], {}
+            if ids:
+                conds.append("customer_id IN :ids OR contact_id IN :ids")
+                params["ids"] = ids
+            if emails_local:
+                conds.append("LOWER(COALESCE(recipient_email,'')) IN :emails")
+                params["emails"] = emails_local
+            stmt = text("SELECT scenario, MIN(plan_date), MAX(plan_date) FROM mail_autosend_plan_item "
+                        "WHERE (" + " OR ".join(conds) + ") "
+                        "AND status IN ('planned','drafting','drafted','sent') GROUP BY scenario")
+            if ids:
+                stmt = stmt.bindparams(bindparam("ids", expanding=True))
+            if emails_local:
+                stmt = stmt.bindparams(bindparam("emails", expanding=True))
+            rows = db.execute(stmt, params).fetchall()
+            for sc, mn, mx in rows:
+                sc = str(sc or "").strip()
+                if not sc or mn is None or mx is None or sc == str(exclude_scenario or "").strip():
+                    continue
+                ranges.append({"scenario": sc, "scenario_label": _get_scenario_label_cn(sc) or sc,
+                               "first": (mn.date() if hasattr(mn, "date") else mn),
+                               "last": (mx.date() if hasattr(mx, "date") else mx), "source": "local"})
+        except Exception:
+            logger.exception("SUITE_OVERLAP_LOCAL_FAILED")
+    emails = [e for e in re.split(r"[,;\s]+", str(recipient_emails or "")) if "@" in e]
+    if emails:
+        try:
+            from crm_database import CRMSessionLocal
+            crm_db = CRMSessionLocal()
+            try:
+                like = " OR ".join(f"CAST(ISNULL(Receiver,'') AS NVARCHAR(400)) LIKE :e{i}" for i in range(len(emails)))
+                params = {f"e{i}": f"%{em}%" for i, em in enumerate(emails)}
+                row = crm_db.execute(
+                    text("SELECT MIN(PlanSendTime), MAX(PlanSendTime), COUNT(*) FROM spQueueSend "
+                         "WHERE MessageType='Email' AND ISNULL(UseRange,'') LIKE '%宣传邮件-AI%' "
+                         "AND ISNULL(FolderId,'')='OutBox' AND PlanSendTime IS NOT NULL AND (" + like + ")"),
+                    params,
+                ).fetchone()
+                if row and row[0] is not None and int(row[2] or 0) > 0:
+                    ranges.append({"scenario": "", "scenario_label": "CRM待发套装",
+                                   "first": (row[0].date() if hasattr(row[0], "date") else row[0]),
+                                   "last": (row[1].date() if hasattr(row[1], "date") else row[1]), "source": "crm"})
+            finally:
+                crm_db.close()
+        except Exception:
+            logger.exception("SUITE_OVERLAP_CRM_FAILED")
+    return ranges
+
+
+@app.post("/api/v1/mail/customer-suite/overlap-check")
+def customer_suite_overlap_check(payload: SuiteOverlapCheckRequest, db: Session = Depends(get_db)):
+    """F: 套装发送前时间段重叠校验。该联系人已有其它套装(不同scenario)或CRM待发, 且其[第1封,最后一封]与本次重叠时返回 conflict。"""
+    try:
+        new_start = datetime.strptime(sanitize_text(payload.start_date).strip(), "%Y-%m-%d").date()
+        new_end = datetime.strptime(sanitize_text(payload.end_date).strip(), "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=422, detail="start_date/end_date 格式应为 YYYY-MM-DD")
+    if new_end < new_start:
+        new_start, new_end = new_end, new_start
+    ranges = _suite_existing_suite_ranges(db, payload.customer_id, payload.contact_id or "",
+                                          payload.recipient_emails or "", payload.scenario)
+    for r in ranges:
+        if r["first"] <= new_end and r["last"] >= new_start:
+            return {"conflict": True,
+                    "existing": {"scenario_label": r["scenario_label"],
+                                 "first_date": r["first"].isoformat(),
+                                 "last_date": r["last"].isoformat(), "source": r["source"]},
+                    "new_range": {"first_date": new_start.isoformat(), "last_date": new_end.isoformat()}}
+    return {"conflict": False}
+
+
 @app.post("/api/v1/mail/customer-suite-send")
 def send_mail_customer_suite(
     payload: MailCustomerSuiteSendRequest,
@@ -20282,7 +20422,8 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
                        daily_cap: int, start_date, existing_load: dict | None = None,
                        fallback_enabled: bool = True, sent_map: dict | None = None,
                        global_partial_default: str = "remaining",
-                       exclude_recent_suite_days: int | None = None) -> dict:
+                       exclude_recent_suite_days: int | None = None,
+                       pending_latest_map: dict | None = None) -> dict:
     """逐人逐封排期。返回 {items, skipped, day_load}。纯计算, 不写任何库。
 
     - 第1封目标日 = 开始日 + interval[0]; 第k封 = 第k-1封实际落日 + interval[k-1]。
@@ -20334,9 +20475,20 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
             continue
         prev_actual = None
         first = True
+        # 该联系人已有待发套装邮件的最晚日期(本地未转入/已转CRM/CRM待发), 用于本次首封顺延 +N 天
+        pend_latest = (pending_latest_map or {}).get(str(cid or "")) if pending_latest_map else None
         for step in steps:
-            if first and anchor_last_at is not None:
-                desired = anchor_last_at + timedelta(days=gap(step - 1))
+            if first:
+                # 首封目标日取以下候选里的最晚, 保证不与该联系人已有安排在同段重叠:
+                # 补发锚点+间隔 / 已有待发最晚+偏移 / 开始日+间隔
+                cands = []
+                if anchor_last_at is not None:
+                    cands.append(anchor_last_at + timedelta(days=gap(step - 1)))
+                if pend_latest is not None:
+                    cands.append(pend_latest + timedelta(days=_AUTOSEND_EXISTING_SUITE_OFFSET_DAYS))
+                if not cands:
+                    cands.append(start_date + timedelta(days=gap(step - 1 if step > 1 else 0)))
+                desired = max(cands)
             elif prev_actual is None:
                 desired = start_date + timedelta(days=gap(step - 1 if step > 1 else 0))
             else:
@@ -20653,6 +20805,8 @@ _AUTOSEND_GEN_ACTIVE: set = set()   # 正在后台生成的销售工号(避免�
 _AUTOSEND_GEN_LOCK = threading.Lock()
 
 _AUTOSEND_PENDING_STATUSES = ("planned", "drafting", "drafted", "failed")
+# 该联系人已有待发送套装邮件时, 本次套装第1封 = 该联系人已有最晚一封发送日 + 本偏移天数
+_AUTOSEND_EXISTING_SUITE_OFFSET_DAYS = 7
 
 
 def _autosend_is_running(staff: str) -> bool:
@@ -20905,12 +21059,15 @@ def autosend_preview(payload: AutosendPreviewRequest, db: Session = Depends(get_
         existing_load = _autosend_existing_crm_load([staff], start_date)
         _autosend_merge_local_plan_load(db, [staff], start_date, existing_load)
     sent_map = _autosend_sent_map(db, [c.get("contact_id") for c in fresh])
+    # G: 该联系人已有待发送套装邮件时, 本次首封 = 已有最晚一封 + N 天
+    pending_latest_map = _autosend_pending_latest_map(db, fresh, [staff])
 
     result = _autosend_schedule(
         fresh, rules, payload.interval_days, payload.daily_cap, start_date,
         existing_load=existing_load, fallback_enabled=payload.fallback_enabled,
         sent_map=sent_map, global_partial_default=payload.partial_sent_default,
         exclude_recent_suite_days=payload.exclude_recent_suite_days,
+        pending_latest_map=pending_latest_map,
     )
 
     run_id = db.execute(
@@ -21937,6 +22094,67 @@ def _autosend_existing_crm_load(staff_ids: list[str], start_date) -> dict:
     except Exception:
         logger.exception("AUTOSEND_EXISTING_CRM_LOAD_FAILED staff=%s", staff_ids)
     return load
+
+
+def _autosend_pending_latest_map(db, contacts: list[dict], staff_ids: list[str]) -> dict:
+    """每联系人"已有待发送套装邮件"的最晚发送日期。返回 {contact_id: date}。
+    来源: 本地 mail_autosend_plan_item(planned/drafting/drafted/sent) 最晚 plan_date
+          + CRM spQueueSend 待发(OutBox, 宣传邮件-AI) 该收件人最晚 PlanSendTime。
+    用于 G: 该联系人已有待发套装时, 本次套装第1封 = 最晚一封 + _AUTOSEND_EXISTING_SUITE_OFFSET_DAYS 天。"""
+    out: dict = {}
+    ids = list({str(c.get("contact_id") or "").strip() for c in (contacts or []) if str(c.get("contact_id") or "").strip()})
+    if ids:
+        try:
+            rows = db.execute(
+                text("SELECT contact_id, MAX(plan_date) FROM mail_autosend_plan_item "
+                     "WHERE contact_id IN :ids AND status IN ('planned','drafting','drafted','sent') "
+                     "GROUP BY contact_id").bindparams(bindparam("ids", expanding=True)),
+                {"ids": ids},
+            ).fetchall()
+            for cid, d in rows:
+                cid = str(cid or "").strip()
+                if not cid or d is None:
+                    continue
+                d = d.date() if hasattr(d, "date") else d
+                if d and (out.get(cid) is None or d > out[cid]):
+                    out[cid] = d
+        except Exception:
+            logger.exception("AUTOSEND_PENDING_LATEST_LOCAL_FAILED")
+    # CRM 待发按收件邮箱映射回联系人
+    email_to_cid: dict = {}
+    for c in (contacts or []):
+        m = re.search(r"([^<>\s,;]+@[^<>\s,;]+)", str(c.get("email") or "").strip().lower())
+        cid = str(c.get("contact_id") or "").strip()
+        if m and cid:
+            email_to_cid[m.group(1)] = cid
+    staff_ids = [s for s in (staff_ids or []) if s]
+    if email_to_cid and staff_ids:
+        try:
+            from crm_database import CRMSessionLocal
+            crm_db = CRMSessionLocal()
+            try:
+                rows = crm_db.execute(
+                    text("SELECT CAST(ISNULL(Receiver,'') AS NVARCHAR(400)) AS rcv, PlanSendTime "
+                         "FROM spQueueSend WHERE MessageType='Email' AND ISNULL(UseRange,'') LIKE '%宣传邮件-AI%' "
+                         "AND ISNULL(FolderId,'')='OutBox' AND InputerStaffId IN :ids AND PlanSendTime IS NOT NULL"
+                         ).bindparams(bindparam("ids", expanding=True)),
+                    {"ids": staff_ids},
+                ).fetchall()
+                for rcv, pt in rows:
+                    m = re.search(r"([^<>\s,;]+@[^<>\s,;]+)", str(rcv or "").lower())
+                    if not m:
+                        continue
+                    cid = email_to_cid.get(m.group(1))
+                    if not cid or pt is None:
+                        continue
+                    d = pt.date() if hasattr(pt, "date") else pt
+                    if d and (out.get(cid) is None or d > out[cid]):
+                        out[cid] = d
+            finally:
+                crm_db.close()
+        except Exception:
+            logger.exception("AUTOSEND_PENDING_LATEST_CRM_FAILED")
+    return out
 
 
 def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bool = True,
