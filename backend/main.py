@@ -19485,6 +19485,37 @@ def _upload_suite_attachments_to_ftp(attachments: list[dict[str, Any]] | None) -
     return out
 
 
+def _spqueue_pending_duplicate_rowid(recipient_emails: list[str], subject: str, plan_dt) -> str | None:
+    """幂等去重: 若 CRM 待发队列(OutBox, 宣传邮件-AI, 未实发)里已存在"同收件人 + 同主题 + 同计划日"的邮件, 返回其 RowId。
+    用于防止 重复点发送 / 网络重试 / 后台报错重启后重跑 / 自动排期重复 commit 造成同一封被入队多次。"""
+    emails = [e.strip().lower() for e in (recipient_emails or []) if e and "@" in e]
+    subj = (subject or "").strip()
+    if not emails or not subj:
+        return None
+    try:
+        d = plan_dt.date().isoformat() if hasattr(plan_dt, "date") else str(plan_dt)[:10]
+        from crm_database import CRMSessionLocal
+        crm_db = CRMSessionLocal()
+        try:
+            like = " OR ".join(f"LOWER(CAST(ISNULL(Receiver,'') AS NVARCHAR(400))) LIKE :e{i}" for i in range(len(emails)))
+            params = {f"e{i}": f"%{em}%" for i, em in enumerate(emails)}
+            params["subj"] = subj[:500]
+            params["d"] = d
+            row = crm_db.execute(
+                text("SELECT TOP 1 CAST(RowId AS NVARCHAR(60)) FROM spQueueSend "
+                     "WHERE MessageType='Email' AND ISNULL(UseRange,'') LIKE '%宣传邮件-AI%' "
+                     "AND ISNULL(FolderId,'')='OutBox' AND ISNULL(Subject,'')=:subj "
+                     "AND CONVERT(varchar(10), PlanSendTime, 23)=:d AND (" + like + ")"),
+                params,
+            ).fetchone()
+            return str(row[0]) if row and row[0] else None
+        finally:
+            crm_db.close()
+    except Exception:
+        logger.exception("SPQUEUE_DUP_CHECK_FAILED subject=%s", subj[:40])
+        return None
+
+
 def _insert_spqueue_send_row(crm_db, *, row_guid: str, plan_dt, subject: str, sender_email: str,
                              send_address: str, receiver: str, staff_id: str, eml_ftp_path: str,
                              email_text: str,
@@ -19791,6 +19822,33 @@ def send_mail_customer_suite(
             hh, mm = 9, 0
         plan_dt = (now_bj + timedelta(days=max(0, interval))).replace(hour=hh, minute=mm, second=0, microsecond=0)
         body_text = _mail_suite_html_to_text(final_body_html)
+        # 幂等去重: 该封"同收件人+同主题+同计划日"已在 CRM 待发队列时, 跳过本封(不再生成.eml/上传/入队),
+        # 防止 重复点发送/网络重试/后台报错重启重跑/自动排期重复commit 造成 CRM 里重复邮件。
+        dup_rowid = _spqueue_pending_duplicate_rowid(recipient_emails, final_subject, plan_dt)
+        if dup_rowid:
+            logger.warning("MAIL_SUITE_SEND_DUP_SKIP customer=%s step=%s plan=%s subject=%s existing_rowid=%s",
+                           sanitize_text(customer_id), suite_step, plan_dt.strftime("%Y-%m-%d"),
+                           sanitize_text(final_subject)[:40], dup_rowid)
+            dup_row = MailCustomerSuiteSendPlan(
+                batch_id=batch_id, customer_id=customer_id[:120], scenario=scenario, suite_step=int(suite_step),
+                sender_email=sender_email[:255], sender_name=(sender_name or "")[:255],
+                to_emails=",".join(recipient_emails), subject=final_subject[:500],
+                body_html=final_body_html, body_text=body_text,
+                plan_send_time=plan_dt, send_address_serialized=send_address_serialized,
+                receiver_serialized=receiver_serialized, inputer_staff_id=(owner_staff_id or "")[:120],
+                company_name=company_name[:255] if company_name else None,
+                contact_name=contact_name[:255] if contact_name else None,
+                recipient_email_key=_autosend_receiver_key(",".join(recipient_emails))[:255] if recipient_emails else None,
+                status="duplicate_skipped", spqueue_rowid=dup_rowid,
+            )
+            db.add(dup_row); db.flush()
+            prepared.append({
+                "suite_step": int(suite_step), "subject": final_subject,
+                "plan_send_time": plan_dt.strftime("%Y-%m-%d %H:%M"), "status": "duplicate_skipped",
+                "spqueue_rowid": dup_rowid, "crm_send_id": None, "error": None,
+                "attachment_count": len(mail_attachments) if isinstance(mail_attachments, list) else 0, "eml_bytes": 0,
+            })
+            continue
         row = MailCustomerSuiteSendPlan(
             batch_id=batch_id, customer_id=customer_id[:120], scenario=scenario, suite_step=int(suite_step),
             sender_email=sender_email[:255], sender_name=(sender_name or "")[:255],
@@ -19888,6 +19946,7 @@ def send_mail_customer_suite(
         })
     db.commit()
     enqueued = sum(1 for p in prepared if p["status"] == "enqueued")
+    dup_skipped = sum(1 for p in prepared if p["status"] == "duplicate_skipped")
     return {
         "ok": True,
         "batch_id": batch_id,
@@ -19895,9 +19954,12 @@ def send_mail_customer_suite(
         "recipient_emails": recipient_emails,
         "prepared_count": len(prepared),
         "enqueued_count": enqueued,
+        "duplicate_skipped_count": dup_skipped,
         "prepared": prepared,
         "real_sending_enabled": True,
-        "note": f"已写入 CRM spQueueSend 待发队列 {enqueued}/{len(prepared)} 封，由发送系统按计划时间真发。",
+        "note": f"已写入 CRM spQueueSend 待发队列 {enqueued}/{len(prepared)} 封"
+                + (f"，跳过重复 {dup_skipped} 封(已在待发队列, 未重复入队)" if dup_skipped else "")
+                + "，由发送系统按计划时间真发。",
     }
 
 

@@ -1906,8 +1906,10 @@
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
         // ③ 确认已完整入队后再关页: 先尝试脚本关闭(仅 window.open 打开的页可关), 关不掉给整屏"可关闭本页"提示
+        const enq = (data.enqueued_count != null) ? data.enqueued_count : steps.length;
+        const dup = data.duplicate_skipped_count || 0;
         try { window.close(); } catch (e) {}
-        setTimeout(() => { showSendDoneOverlay(steps.length); }, 150);
+        setTimeout(() => { showSendDoneOverlay(enq, dup); }, 150);
       } catch (err) {
         if (status) { status.textContent = `发送失败：${err.message}`; status.className = 'feedback-status err'; }
         btn.disabled = false;
@@ -1922,14 +1924,16 @@
     }
 
     // 发送已转后台的整屏提示(用于无法自动关闭标签页时)
-    function showSendDoneOverlay(n) {
+    function showSendDoneOverlay(n, dup) {
       if (document.getElementById('send-done-overlay')) return;
+      const dupTip = dup ? `<div style="color:#b45309;font-size:12px;margin:-2px 0 10px">另有 ${dup} 封已在待发队列(重复), 已自动跳过未重复入队。</div>` : '';
       const ov = document.createElement('div');
       ov.id = 'send-done-overlay';
       ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px;';
       ov.innerHTML = `<div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:420px;text-align:center;box-shadow:0 18px 48px rgba(15,23,42,.25)">
         <div style="font-size:44px;line-height:1">✅</div>
         <div style="font-weight:800;font-size:18px;margin:10px 0 6px;color:#0f172a">已转后台发送 ${n} 封</div>
+        ${dupTip}
         <div style="color:#475569;font-size:13px;margin-bottom:16px">邮件已进入后台发送队列，由系统按计划时间发出。可以关闭本页了。</div>
         <button type="button" onclick="try{window.close()}catch(e){};location.href='about:blank'" style="background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-weight:700;cursor:pointer">关闭本页</button>
       </div>`;
