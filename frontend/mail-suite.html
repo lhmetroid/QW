@@ -1094,11 +1094,7 @@
       document.getElementById('customer-panel').hidden = false;
     }
 
-    function renderDrafts(data) {
-      const wrap = document.getElementById('drafts-panel');
-      wrap.hidden = false;
-      wrap.innerHTML = '';
-      for (const item of data.drafts || []) {
+    function buildDraftCardElement(item, data) {
         const settings = displaySendSettings(item);
         const included = settings.included !== false;
         const interval = settings.send_interval_days != null ? settings.send_interval_days : (settings.default_send_interval_days || 0);
@@ -1133,8 +1129,7 @@
               <div id="draft-status-${esc(item.suite_step)}" class="status ${item.status === 'deferred' ? '' : 'error'}">${item.status === 'deferred' ? '这封草稿尚未生成，正在等待自动刷新...' : `这封草稿没有生成成功：${esc(item.error || '未知错误')}`}</div>
             </div>
           `;
-          wrap.appendChild(details);
-          continue;
+          return details;
         }
         const draft = item.draft || {};
         const details = document.createElement('details');
@@ -1244,8 +1239,13 @@
             </div>
           </div>
         `;
-        wrap.appendChild(details);
-      }
+        return details;
+    }
+    function renderDrafts(data) {
+      const wrap = document.getElementById('drafts-panel');
+      wrap.hidden = false;
+      wrap.innerHTML = '';
+      for (const item of data.drafts || []) wrap.appendChild(buildDraftCardElement(item, data));
       // 渲染后初始化各封"发送具体日期"浮动提示和附件列表
       for (const item of data.drafts || []) {
         if (item.status === 'success' && item.draft) {
@@ -1253,6 +1253,19 @@
           renderAttachmentList(item.suite_step);
         }
       }
+    }
+    // 只重绘某一封的卡片(该封重刷/补齐用), 不动其它封, 避免把已编辑的主题/正文/周期/收件人回滚
+    function renderSingleDraft(step) {
+      if (!suiteData) return null;
+      const item = getDraftItem(step);
+      if (!item) return null;
+      const el = buildDraftCardElement(item, suiteData);
+      const inc = document.getElementById(`include-${step}`);
+      const existing = inc ? inc.closest('details.mail') : null;
+      if (existing && existing.parentNode) existing.parentNode.replaceChild(el, existing);
+      else document.getElementById('drafts-panel')?.appendChild(el);
+      if (item.status === 'success' && item.draft) { updateSendDatePreview(step); renderAttachmentList(step); }
+      return el;
     }
 
     function firstStepSendTimeFromNow() {
@@ -1701,7 +1714,7 @@
             else suiteData.drafts = [...(suiteData.drafts || []), nextItem].sort((a, b) => Number(a.suite_step) - Number(b.suite_step));
             if (!TEST_MODE && suiteData.scenario) suiteCache[suiteData.scenario] = suiteData;
             if (wasPlaceholder) {
-              renderSuite(suiteData);
+              renderSingleDraft(step);
               setStatus(mailSuiteStatusText(suiteData, false));
             } else {
               applyDraftItemToDom(nextItem);
@@ -1850,11 +1863,12 @@
         };
       });
       btn.disabled = true;
-      if (status) { status.textContent = '处理中…'; status.className = 'feedback-status'; }
+      // 点发送即转后台: 不等待结果、不前台转圈。用 keepalive 让请求在页面关闭后仍能完成。
       try {
-        const resp = await fetch('/api/v1/mail/customer-suite-send', {
+        fetch('/api/v1/mail/customer-suite-send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          keepalive: true,
           body: JSON.stringify({
             customer_id: suiteData.customer_id,
             scenario: suiteData.scenario,
@@ -1862,31 +1876,27 @@
             recipient_emails: input ? input.value : '',
             drafts: draftsPayload,
           }),
-        });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
-        const lines = (data.prepared || []).map(p => {
-          const att = (p.attachment_count != null) ? `${p.attachment_count}个附件` : '';
-          const sz = (p.eml_bytes ? formatBytes(p.eml_bytes) : '');
-          const extra = [att, sz ? `eml ${sz}` : ''].filter(Boolean).join(' / ');
-          return `第${p.suite_step}封 · ${p.plan_send_time} · ${p.status}${extra ? '（' + extra + '）' : ''}${p.error ? '【' + p.error + '】' : ''}`;
-        }).join('\n');
-        const enq = data.enqueued_count != null ? data.enqueued_count : data.prepared_count;
-        if (status) {
-          status.textContent = `已入队 ${enq}/${data.prepared_count} 封，转后台发送中…`;
-          status.className = (enq === data.prepared_count) ? 'feedback-status ok' : 'feedback-status err';
-        }
-        // 直接发送 + 转后台: 不再弹结果确认框, 入队成功后自动关闭本页面
-        try { window.close(); } catch (e) {}
-        // 兜底: 部分浏览器禁止脚本关闭非脚本打开的标签页, 关不掉时给出提示
-        setTimeout(() => {
-          if (status) { status.textContent = `已转后台发送 ${enq}/${data.prepared_count} 封，可关闭本页`; }
-        }, 400);
-      } catch (err) {
-        if (status) { status.textContent = `发送失败：${err.message}`; status.className = 'feedback-status err'; }
-      } finally {
-        btn.disabled = false;
-      }
+        }).catch(() => {});
+      } catch (e) {}
+      // 立即尝试关闭本页(仅当本页是被脚本 window.open 打开时, 浏览器才允许关闭)
+      try { window.close(); } catch (e) {}
+      // 关不掉(地址栏/书签/链接直接打开时, 浏览器出于安全禁止脚本关闭): 整屏提示已转后台, 可手动关闭
+      setTimeout(() => { showSendDoneOverlay(steps.length); }, 150);
+    }
+
+    // 发送已转后台的整屏提示(用于无法自动关闭标签页时)
+    function showSendDoneOverlay(n) {
+      if (document.getElementById('send-done-overlay')) return;
+      const ov = document.createElement('div');
+      ov.id = 'send-done-overlay';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px;';
+      ov.innerHTML = `<div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:420px;text-align:center;box-shadow:0 18px 48px rgba(15,23,42,.25)">
+        <div style="font-size:44px;line-height:1">✅</div>
+        <div style="font-weight:800;font-size:18px;margin:10px 0 6px;color:#0f172a">已转后台发送 ${n} 封</div>
+        <div style="color:#475569;font-size:13px;margin-bottom:16px">邮件已进入后台发送队列，由系统按计划时间发出。可以关闭本页了。</div>
+        <button type="button" onclick="try{window.close()}catch(e){};location.href='about:blank'" style="background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-weight:700;cursor:pointer">关闭本页</button>
+      </div>`;
+      document.body.appendChild(ov);
     }
 
     async function copyMail(step, includeSubject) {
