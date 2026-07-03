@@ -305,6 +305,10 @@
     .body-html p {
       margin: 0 0 10px;
     }
+    /* tailwind preflight 会把 ul/ol 的 list-style 清成 none, 导致富文本"有序/无序列表"按钮看似失效; 在正文编辑区里恢复默认列表样式 */
+    .body-html ul { list-style: disc; margin: 0 0 10px; padding-left: 1.6em; }
+    .body-html ol { list-style: decimal; margin: 0 0 10px; padding-left: 1.6em; }
+    .body-html li { margin: 0 0 4px; }
     .actions {
       display: flex;
       flex-wrap: wrap;
@@ -560,6 +564,8 @@
     .ms-node-tab { border:1px solid var(--line); background:#fff; color:var(--muted); font-weight:700; font-size:13px; padding:6px 12px; border-radius:8px; cursor:pointer; }
     .ms-node-tab:hover { background:#f1f5f9; }
     .ms-node-tab.active { background:var(--brand); color:#fff; border-color:var(--brand); }
+    .ms-stepbar { display:flex; gap:8px; flex-wrap:wrap; margin:14px 20px 0; }
+    .ms-stepbar .ms-node-tab { font-size:14px; font-weight:800; padding:8px 16px; }
     .ms-sales-lock { font-size:12px; color:var(--muted); }
     .ms-sales-lock b { color:var(--text); }
     .ms-pagetabs { display:flex; gap:8px; }
@@ -646,6 +652,10 @@
     .suite-records-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .suite-records-tag { border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 800; background: #eef2ff; color: #3730a3; }
     .suite-records-meta { color: var(--muted); font-size: 12px; margin-top: 6px; }
+    .suite-records-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+    .suite-records-table th, .suite-records-table td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; vertical-align: top; }
+    .suite-records-table thead th { background: #f8fafc; color: #475569; font-weight: 800; white-space: nowrap; }
+    .suite-records-table td:first-child { font-weight: 700; color: #172033; }
   </style>
   <link rel="stylesheet" href="tailwind.css">
 </head>
@@ -709,16 +719,28 @@
 
     <!-- ===== 页2: 自动排期(待发日历 + 自动发送 + 邮件详情) ===== -->
     <div id="page-autosend" hidden>
+    <!-- 顶部步骤切换: 一次只显示一张卡; 顺序 ①自动发送排期 ②待发日历 ③邮件详情; 切换记住每张卡的滚动位置 -->
+    <div class="ms-stepbar" id="ms-stepbar">
+      <button type="button" id="ms-steptab-node2" class="ms-node-tab active" onclick="msSetStep('node2')">① 自动发送排期</button>
+      <button type="button" id="ms-steptab-node1" class="ms-node-tab" onclick="msSetStep('node1')">② 待发日历</button>
+      <button type="button" id="ms-steptab-node3" class="ms-node-tab" onclick="msSetStep('node3')">③ 邮件详情</button>
+    </div>
     <!-- ===== 节点1: 待发日历 ===== -->
     <section id="ms-node1" class="ms-node">
       <div class="ms-node-head" onclick="toggleNode('node1')">
-        <span class="ms-node-title">① 待发日历<span class="ms-info" title="今天及以后, 每天 待发X / 预排Y 封。待发=CRM 未实发(宣传邮件-AI); 预排=本系统已排未转入; 双击某天看当天清单">ⓘ</span></span>
+        <span class="ms-node-title">② 待发日历<span class="ms-info" title="今天及以后, 每天 待发X / 预排Y 封。待发=CRM 未实发(宣传邮件-AI); 预排=本系统已排未转入; 双击某天看当天清单">ⓘ</span></span>
         <span class="ms-node-toggle" id="ms-node1-toggle">折叠 ▲</span>
       </div>
       <div class="ms-node-body" id="ms-node1-body">
         <div class="flex flex-wrap items-center gap-2 mb-2 text-xs">
           <button type="button" onclick="cal1Reload()" class="rounded bg-indigo-600 px-3 py-1 font-bold text-white hover:bg-indigo-700">刷新日历</button>
           <label class="flex items-center gap-1" title="日历展示天数, 可改, 默认30">今天起<input id="cal1-days" type="number" min="1" max="180" value="30" class="rounded border border-slate-300 px-2 py-1 w-16" onchange="cal1Reload()">天</label>
+          <span class="flex items-center gap-2" title="勾选控制每格数字口径: 都不勾=待发+排期合并(当前); 仅勾一个=只显示该项数量; 两个都勾=仍合并">
+            <label class="flex items-center gap-1"><input type="checkbox" id="cal1-only-pending" onchange="cal1Reload()">仅显示待发数</label>
+            <label class="flex items-center gap-1"><input type="checkbox" id="cal1-only-planned" onchange="cal1Reload()">仅显示排期数</label>
+          </span>
+          <label class="flex items-center gap-1" title="按公司名查该周期内对应联系人清单; 可填多个逗号隔开, 模糊匹配; 留空=全部">公司<input id="cal1-company-q" class="rounded border border-slate-300 px-2 py-1 w-32" placeholder="公司名, 逗号隔开" onkeydown="if(event.key==='Enter')cal1ShowRangePlan()"></label>
+          <button type="button" onclick="cal1ShowRangePlan()" class="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50">按公司查清单</button>
           <span id="cal1-status" class="text-slate-500"></span>
         </div>
         <div id="cal1-grid" class="cal1-grid"></div>
@@ -729,7 +751,7 @@
     <!-- ===== 节点2: 自动发送排期 ===== -->
     <section id="ms-node2" class="ms-node">
       <div class="ms-node-head" onclick="toggleNode('node2')">
-        <span class="ms-node-title">② 自动发送排期<span class="ms-info" title="挑套装 → 预览排期(入清单) → 后台生成(逐封真调) → 勾选转入CRM(=发送)">ⓘ</span></span>
+        <span class="ms-node-title">① 自动发送排期<span class="ms-info" title="挑套装 → 预览排期(入清单) → 后台生成(逐封真调) → 勾选转入CRM(=发送)">ⓘ</span></span>
         <span class="ms-node-toggle" id="ms-node2-toggle">折叠 ▲</span>
       </div>
       <div class="ms-node-body" id="ms-node2-body">
@@ -749,7 +771,7 @@
                 <option value="random">随机</option>
               </select>
             </label>
-            <label class="flex items-center gap-1" title="按公司名模糊匹配筛选联系人; 留空=不生效">公司名含<input id="as2-company-like" class="rounded border border-slate-300 px-2 py-1 w-32" placeholder="留空不限"></label>
+            <label class="flex items-center gap-1" title="按公司名模糊匹配筛选联系人; 可填多个, 用逗号隔开(中英文逗号均可), 任一命中即选中(或的关系); 每个都是模糊匹配; 留空=不生效">公司名含<input id="as2-company-like" class="rounded border border-slate-300 px-2 py-1 w-40" placeholder="多个用逗号隔开, 留空不限"></label>
             <label class="flex items-center gap-1" title="该联系人任意套装最后一封在近N天内则本次跳过(按套装最后一封计算); 留空=不生效">近<input id="as2-exclude-days" type="number" min="1" class="rounded border border-slate-300 px-2 py-1 w-16">天发过套装则跳过</label>
             <span class="flex items-center gap-2" title="有效邮箱判定(二选一, 保存配置后其他页面也走这里)。系统标记正确=只取 IsCollect='正确'。人工判断=除'真人(非0000/admin)标记为错误'的邮箱外都算有效(admin/0000 标错的仍算有效)。仅只读CRM, 不改数据。">有效邮箱
               <label class="flex items-center gap-1"><input type="radio" name="as2-evm" value="collect" checked>系统标记正确</label>
@@ -774,7 +796,7 @@
             <label class="flex items-center gap-1" title="一组按封天数, 覆盖各套装原间隔。第1封从开始日算, 之后每封按上一封实际落日+对应天数。">统一周期<input id="as2-intervals" class="rounded border border-slate-300 px-2 py-1 w-28" value="0,7,17,27"></label>
             <label class="flex items-center gap-1" title="每个销售每天最多发多少封, 含已有占用。满了顺延到下一天。">每日上限<input id="as2-daily-cap" type="number" min="1" class="rounded border border-slate-300 px-2 py-1 w-16" value="50"></label>
             <label class="flex items-center gap-1">开始日期<input id="as2-start-date" type="date" class="rounded border border-slate-300 px-2 py-1"></label>
-            <label class="flex items-center gap-1"><input type="checkbox" id="as2-fallback" checked>全不命中用兜底</label>
+            <label class="flex items-center gap-1" title="勾上: 联系人一条规则都不命中时, 用最后一条(兜底)套装照发。默认不勾: 都不命中就跳过该联系人, 不发。"><input type="checkbox" id="as2-fallback">全不命中用兜底</label>
             <label class="flex items-center gap-1"><input type="checkbox" id="as2-consider-queue" checked>考虑已有排期</label>
             <button type="button" onclick="as2SaveConfig()" class="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">保存配置</button>
             <button type="button" onclick="as2Preview()" class="rounded bg-amber-600 px-3 py-1 text-xs font-bold text-white hover:bg-amber-700">预览排期(入清单)</button>
@@ -786,12 +808,12 @@
         <!-- 排期清单 -->
         <div class="rounded-lg border border-slate-200 bg-white p-3">
           <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <div class="text-xs font-bold text-slate-700">排期清单（未转入CRM） <span id="as2-plan-count" class="text-slate-500 font-normal"></span></div>
+            <div class="text-xs font-bold text-slate-700">排期清单<span class="ms-info" title="含: 待生成/已生成脚本(可勾选同步ERP)、以及已同步ERP系统(显示为 待发, 不再消失也不可再勾)。">ⓘ</span> <span id="as2-plan-count" class="text-slate-500 font-normal"></span></div>
             <div class="flex flex-wrap items-center gap-2 text-[11px]">
               <button type="button" onclick="as2SelectAll(true)" class="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50">全选(已生成)</button>
               <button type="button" onclick="as2SelectInvert()" class="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50">反选</button>
               <button type="button" onclick="as2SelectAll(false)" class="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50">清空选择</button>
-              <button type="button" onclick="as2Commit()" class="rounded bg-emerald-600 px-3 py-1 font-bold text-white hover:bg-emerald-700">转入CRM(发送)</button>
+              <button type="button" onclick="as2Commit()" class="rounded bg-emerald-600 px-3 py-1 font-bold text-white hover:bg-emerald-700" title="把勾选的已生成邮件同步保存进ERP(CRM)待发队列, 到点由系统按计划发送">同步保存ERP系统</button>
             </div>
           </div>
           <div class="overflow-auto max-h-[460px]">
@@ -999,14 +1021,16 @@
           return;
         }
         body.innerHTML = `
-          <div class="suite-records-meta">共 ${suites.length} 个套装；草稿 ${data.summary?.draft_count || 0} 封，发送/转入记录 ${data.summary?.send_plan_count || 0} 封，自动排期 ${data.summary?.autosend_plan_count || 0} 封。</div>
-          ${suites.map((suite) => `
-            <div class="suite-records-suite">
-              <div class="suite-records-suite-title">${esc(suite.scenario_label_cn || suite.scenario || '未知套装')}</div>
-              <div class="suite-records-tags"><span class="suite-records-tag">${esc(suiteRecordsStepText(suite))}</span></div>
-              <div class="suite-records-meta">来源：${esc(suiteRecordsSources(suite))}</div>
-              <div class="suite-records-meta">最近活动：${esc(suite.latest_activity_at || '无')}</div>
-            </div>`).join('')}`;
+          <div class="suite-records-meta" style="margin-bottom:10px">共 ${suites.length} 个套装；草稿 ${data.summary?.draft_count || 0} 封，发送/转入记录 ${data.summary?.send_plan_count || 0} 封，自动排期 ${data.summary?.autosend_plan_count || 0} 封。</div>
+          <table class="suite-records-table">
+            <thead><tr><th>套装</th><th>已用封次</th><th>来源</th><th>最近活动</th></tr></thead>
+            <tbody>${suites.map((suite) => `<tr>
+              <td>${esc(suite.scenario_label_cn || suite.scenario || '未知套装')}</td>
+              <td>${esc(suiteRecordsStepText(suite))}</td>
+              <td>${esc(suiteRecordsSources(suite))}</td>
+              <td>${esc(suite.latest_activity_at || '无')}</td>
+            </tr>`).join('')}</tbody>
+          </table>`;
       } catch (err) {
         body.innerHTML = `<div class="feedback-status err">读取失败：${esc(err.message || err)}</div>`;
       }
@@ -2056,13 +2080,26 @@
       const toggle = document.getElementById('ms-' + key + '-toggle');
       if (toggle) toggle.textContent = collapsed ? '展开 ▼' : '折叠 ▲';
     }
-    function expandNode(key) {
-      // 展开某节点并滚动到位(用于点开邮件详情跳到节点3)
-      setNodeCollapsed(key, false);
-      try { localStorage.setItem('ms_node_collapsed_' + key, '0'); } catch (e) {}
-      const sec = document.getElementById('ms-' + key);
-      if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // 顶部步骤切换: 一次只显示一张卡, 记住每张卡的滚动位置(切换时停在各自原有位置)
+    let msActiveStep = 'node2';
+    const msStepScroll = {};
+    function msSetStep(key) {
+      if (!['node1', 'node2', 'node3'].includes(key)) return;
+      try { msStepScroll[msActiveStep] = window.scrollY || 0; } catch (e) {}
+      msActiveStep = key;
+      ['node1', 'node2', 'node3'].forEach((k) => {
+        const sec = document.getElementById('ms-' + k);
+        if (sec) sec.style.display = (k === key) ? '' : 'none';
+        const tab = document.getElementById('ms-steptab-' + k);
+        if (tab) tab.classList.toggle('active', k === key);
+      });
+      setNodeCollapsed(key, false); // 当前步骤卡始终展开
+      try { localStorage.setItem('ms_active_step', key); } catch (e) {}
+      const y = msStepScroll[key];
+      window.scrollTo(0, typeof y === 'number' ? y : 0);
     }
+    // 兼容旧调用: 点联动改为切到对应步骤卡(不再强制滚动跳走, 停在该卡原有位置)
+    function expandNode(key) { msSetStep(key); }
     function restoreNodeCollapseState() {
       ['node1', 'node2', 'node3'].forEach((key) => {
         let v = null;
@@ -2273,10 +2310,10 @@
         const pm = r.partial_sent_mode || 'remaining';
         return `<div class="rounded border border-slate-200 p-2 mb-2 bg-slate-50">
           <div class="flex flex-wrap items-center gap-2 mb-1 text-xs">
-            <span class="font-bold text-slate-500">#${i + 1}${isLast ? ' (兜底)' : ''}</span>
+            <span class="font-bold text-slate-500">#${i + 1}${(isLast && as2Rules.length > 1) ? ' (兜底)' : ''}</span>
             套装<select onchange="as2SetRule(${i},'scenario',this.value)" class="${AS2_SEL}">${as2ScenarioOptions(r.scenario)}</select>
             多条件<select onchange="as2SetRule(${i},'match_mode',this.value)" class="${AS2_SEL}"><option value="and"${r.match_mode === 'and' ? ' selected' : ''}>且</option><option value="or"${r.match_mode === 'or' ? ' selected' : ''}>或</option></select>
-            <span title="联系人匹配到本套装但已发过其中部分封时怎么处理">已发部分<select onchange="as2SetRule(${i},'partial_sent_mode',this.value)" class="${AS2_SEL}">
+            <span>已发部分<span class="ms-info" title="联系人匹配到本套装、但之前已经发过其中部分封时怎么处理:&#10;· 补发未发封: 只发还没发过的那几封(接着往下发)&#10;· 全部重发: 不管发没发过, 整套从第1封重新排一遍&#10;· 跳过套装: 这套已发过部分就整套跳过, 不再排">ⓘ</span><select onchange="as2SetRule(${i},'partial_sent_mode',this.value)" class="${AS2_SEL}">
               <option value="remaining"${pm === 'remaining' ? ' selected' : ''}>补发未发封</option>
               <option value="resend_all"${pm === 'resend_all' ? ' selected' : ''}>全部重发</option>
               <option value="skip"${pm === 'skip' ? ' selected' : ''}>跳过套装</option>
@@ -2373,7 +2410,8 @@
     async function as2LoadPlan() {
       if (!AS2_STAFF) return;
       try {
-        const r = await fetch('/api/v1/mail/autosend/plan?staff_id=' + encodeURIComponent(AS2_STAFF), { credentials: 'include' });
+        // include_sent=1: 已"同步保存ERP系统"(committed/sent)的行也返回, 让它们不消失, 显示为"待发"
+        const r = await fetch('/api/v1/mail/autosend/plan?staff_id=' + encodeURIComponent(AS2_STAFF) + '&include_sent=1', { credentials: 'include' });
         if (!r.ok) return; const d = await r.json();
         as2PlanItems = d.items || [];
         as2RenderPlan();
@@ -2391,12 +2429,15 @@
       const date = as2MmDd(it.plan_date);
       const st = it.status;
       const checked = as2Selected.has(it.item_id) ? ' checked' : '';
+      const committed = (st === 'sent' || st === 'committed');
       let cls = 'rounded px-1 py-0.5 text-[11px] border ', label = date;
-      if (st === 'drafted') { cls += 'border-emerald-400 bg-emerald-50 text-emerald-700 font-bold'; label = '✓ ' + date; }
+      if (committed) { cls += 'border-sky-400 bg-sky-50 text-sky-700 font-bold'; label = date + '待发'; }
+      else if (st === 'drafted') { cls += 'border-emerald-400 bg-emerald-50 text-emerald-700 font-bold'; label = date; }
       else if (st === 'drafting') { cls += 'border-amber-300 bg-amber-50 text-amber-700'; label = '⏳ ' + date; }
       else if (st === 'failed') { cls += 'border-rose-300 bg-rose-50 text-rose-700'; label = '✗ ' + date; }
       else { cls += 'border-slate-200 bg-white text-slate-500'; label = '排 ' + date; }
       const reasonTag = it.pick_reason && it.pick_reason !== 'matched' ? `<span class="text-[10px] text-violet-500">${as2Esc({ remaining: '补', resend: '重', fallback: '兜' }[it.pick_reason] || '')}</span>` : '';
+      // 已同步ERP待发(committed/sent)不再显示勾选框; 仅"已生成脚本(drafted)"可勾选转入
       const chk = st === 'drafted' ? `<input type="checkbox"${checked} onchange="as2ToggleSelect('${it.item_id}')">` : '';
       return `<div class="flex items-center gap-1">${chk}<button type="button" class="${cls}" onclick="as2OpenDetail('${it.item_id}')" title="${as2Esc(it.subject || st)}">${label}</button>${reasonTag}</div>`;
     }
@@ -2637,21 +2678,22 @@
     function as2PersonCardHtml(ci, it, id) {
       const readonly = it.status === 'sent';
       // 收件人 + 主题 + 按钮 同一行
+      // 预排期邮件改为"离开即自动保存"(leave保存): 输入框/正文失焦自动保存, 不再需要手动"保存"按钮
+      const ob = readonly ? '' : ` onblur="as2PersonSave(${ci},'${id}')"`;
       const rowRight = readonly
         ? '<span class="text-[11px] text-slate-500 whitespace-nowrap">已转入CRM</span>'
         : `<button type="button" class="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 whitespace-nowrap" onclick="as2PersonRegen(${ci},'${id}')">重新生成</button>
-           <button type="button" class="rounded bg-indigo-600 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-700" onclick="as2PersonSave(${ci},'${id}')">保存</button>
-           <button type="button" class="rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700 whitespace-nowrap" onclick="as2PersonCommit(${ci},'${id}')">转入CRM(发送本封)</button>`;
+           <button type="button" class="rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700 whitespace-nowrap" onclick="as2PersonCommit(${ci},'${id}')">同步保存ERP系统(本封)</button>`;
       return `<div class="flex flex-wrap items-center gap-2 mb-2">
           <span class="text-xs font-bold text-slate-600 whitespace-nowrap">第${it.suite_step}封·${as2Esc(it.status || '')}</span>
-          <input id="as2p-email-${ci}" class="rounded border border-slate-300 px-2 py-1 text-xs w-52" value="${as2Esc(it.recipient_email || '')}" placeholder="收件人" ${readonly ? 'disabled' : ''}>
-          <input id="as2p-subj-${ci}" class="rounded border border-slate-300 px-2 py-1 text-xs flex-1 min-w-[180px]" value="${as2Esc(it.subject || '')}" placeholder="主题" ${readonly ? 'disabled' : ''}>
+          <input id="as2p-email-${ci}" class="rounded border border-slate-300 px-2 py-1 text-xs w-52" value="${as2Esc(it.recipient_email || '')}" placeholder="收件人" ${readonly ? 'disabled' : ''}${ob}>
+          <input id="as2p-subj-${ci}" class="rounded border border-slate-300 px-2 py-1 text-xs flex-1 min-w-[180px]" value="${as2Esc(it.subject || '')}" placeholder="主题" ${readonly ? 'disabled' : ''}${ob}>
           ${rowRight}
           <span id="as2p-st-${ci}" class="text-[11px] text-slate-500 whitespace-nowrap"></span>
         </div>
-        <div class="text-[11px] text-slate-500 mb-1">正文${readonly ? '(只读)' : '(可直接编辑, 支持字体/颜色/段落等; 改完点“保存”生效)'}</div>
+        <div class="text-[11px] text-slate-500 mb-1">正文${readonly ? '(只读)' : '(可直接编辑, 支持字体/颜色/段落等; 离开输入框/正文即自动保存)'}</div>
         ${readonly ? '' : as2RteToolbar()}
-        <div id="as2p-body-${ci}" class="body-html${readonly ? '' : ' rte'}" style="max-height:360px;overflow:auto" ${readonly ? '' : 'contenteditable="true"'}>${it.body_html || '<span class="text-slate-400">无正文</span>'}</div>`;
+        <div id="as2p-body-${ci}" class="body-html${readonly ? '' : ' rte'}" style="max-height:360px;overflow:auto" ${readonly ? '' : 'contenteditable="true"'}${ob}>${it.body_html || '<span class="text-slate-400">无正文</span>'}</div>`;
     }
     // 复用套装页富文本工具栏(rteCmd/rteExec/rteHilite 均对当前聚焦的 .rte 生效)
     function as2RteToolbar() {
@@ -2821,16 +2863,45 @@
       let click = '';
       if (it._kind === 'crm' && it.rowid) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'crm', rowid:'${as2Esc(it.rowid)}'}])"`;
       else if (it.item_id) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'local', item_id:'${as2Esc(it.item_id)}'}])"`;
-      return `<button type="button" class="rounded px-1.5 py-0.5 text-[11px] border ${state.cls}" title="${as2Esc(title)}"${click}>
+      // 本地预排期(未转入CRM)可在联系人清单里直接取消; 已转CRM待发(sent)与CRM行不在此取消
+      const st = String(it.status || '').toLowerCase();
+      const cancellable = it._kind !== 'crm' && it.item_id && !['sent', 'sent_done', 'crm_sent', 'send_success'].includes(st);
+      const cancelBtn = cancellable
+        ? `<button type="button" class="as2-iconbtn danger" style="width:18px;height:18px;font-size:11px" title="取消该预排期邮件(从排期清单移除, 不发送)" onclick="event.stopPropagation();cal1CancelLocal('${as2Esc(it.item_id)}','${as2Esc(as2MmDd(it.plan_date))}')">✕</button>`
+        : '';
+      return `<span class="inline-flex items-center gap-1"><button type="button" class="rounded px-1.5 py-0.5 text-[11px] border ${state.cls}" title="${as2Esc(title)}"${click}>
         <span class="font-bold">${as2Esc(dateTime)}</span><span class="ml-1">${state.label}</span>
-      </button>`;
+      </button>${cancelBtn}</span>`;
+    }
+    async function cal1CancelLocal(itemId, label) {
+      if (!itemId) return;
+      if (!confirm(`确认取消该预排期邮件(${label || ''})? 取消后从排期清单移除, 不会发送。`)) return;
+      try {
+        const r = await fetch('/api/v1/mail/autosend/plan-item?item_id=' + encodeURIComponent(itemId), { method: 'DELETE', credentials: 'include' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { alert('取消失败: ' + (d.detail || r.status)); return; }
+        await as2LoadPlan();
+        // 就地刷新当前联系人清单(移除该封), 并刷新日历数字
+        if (cal1LastContactTable) {
+          cal1LastContactTable.items = (cal1LastContactTable.items || []).filter((x) => x.item_id !== itemId);
+          const box = document.getElementById('cal1-day-detail');
+          if (box) box.innerHTML = cal1RenderContactTable(cal1LastContactTable.title, cal1LastContactTable.items, cal1LastContactTable.emptyText, cal1LastContactTable.noteHtml);
+        }
+        cal1Reload();
+      } catch (e) { alert('取消失败: ' + e.message); }
     }
     function cal1ItemGroupKey(it) {
       if (!it) return '';
       if (it._group_key) return it._group_key;
+      const scenario = String(it.scenario || '').trim();
+      const contactId = String(it.customer_id || it.contact_id || '').trim();
+      if (contactId && scenario && scenario !== 'crm_pending') return `local:${contactId}::${scenario}`;
+      const company = String(it.company_name || it.company_head || '').trim().toLowerCase();
+      const contact = String(it.contact_name || '').trim().toLowerCase();
+      if (company && contact && scenario && scenario !== 'crm_pending') return `name:${company}::${contact}::${scenario}`;
       const email = String(it.recipient_email || '').trim().toLowerCase();
       if (email && email.includes('@')) return `crm:${email}`;
-      return `local:${it.contact_id || ''}::${it.scenario || ''}`;
+      return `local:${contactId}::${scenario}`;
     }
     function cal1StepPriority(it) {
       const raw = String((it && it.status) || '').toLowerCase();
@@ -2997,14 +3068,25 @@
       localRangeItems.forEach((it) => lockedKeys.add(cal1ItemGroupKey(it)));
       const localLockedItems = (localAll || []).filter((it) => lockedKeys.has(cal1ItemGroupKey(it)));
       const crmLockedItems = crmAllItems.filter((it) => lockedKeys.has(cal1ItemGroupKey(it)));
-      const items = localLockedItems.concat(crmLockedItems);
+      let items = localLockedItems.concat(crmLockedItems);
+      // 按公司名查询筛选(可多个逗号隔开, 模糊匹配, 任一命中)
+      const cq = ((document.getElementById('cal1-company-q') || {}).value || '').trim();
+      const cqTokens = cq ? cq.split(/[,，]/).map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
+      if (cqTokens.length) {
+        items = items.filter((it) => {
+          const comp = String(it.company_name || it.company_head || '').toLowerCase();
+          return cqTokens.some((t) => comp.includes(t));
+        });
+      }
       const note = `<div class="text-[11px] text-slate-400 mb-2">
         <span class="inline-block rounded border border-emerald-400 bg-emerald-50 px-1 text-emerald-700">已发送</span>
         <span class="inline-block rounded border border-sky-400 bg-sky-50 px-1 text-sky-700 ml-1">待发送</span>
         <span class="inline-block rounded border border-violet-300 bg-violet-50 px-1 text-violet-700 ml-1">预排</span>
         <span class="ml-2">当前周期锁定 ${lockedKeys.size} 个联系人套装；行内显示这些联系人的全部已知封次，含周期外日期。</span>
+        ${cqTokens.length ? `<span class="ml-2 text-indigo-600">已按公司「${as2Esc(cq)}」筛选</span>` : ''}
       </div>`;
-      box.innerHTML = cal1RenderContactTable(`今天起${nDays}天 · 联系人清单`, items, '当前展示周期内暂无联系人清单。', note);
+      const titleTxt = cqTokens.length ? `公司「${cq}」· 联系人清单` : `今天起${nDays}天 · 联系人清单`;
+      box.innerHTML = cal1RenderContactTable(titleTxt, items, cqTokens.length ? '该公司在当前周期内暂无联系人清单。' : '当前展示周期内暂无联系人清单。', note);
     }
     async function cal1Reload() {
       const grid = document.getElementById('cal1-grid');
@@ -3028,6 +3110,14 @@
         // 首行按今天星期补空: 周一=0 ... 周日=6
         const startPad = (today.getDay() + 6) % 7;
         for (let p = 0; p < startPad; p++) html += '<div></div>';
+        // 数字口径: 都不勾=待发+排期合并; 仅勾待发=只待发; 仅勾排期=只排期; 两个都勾=合并
+        const onlyPending = !!(document.getElementById('cal1-only-pending') || {}).checked;
+        const onlyPlanned = !!(document.getElementById('cal1-only-planned') || {}).checked;
+        const calcTotal = (pend, plan) => {
+          if (onlyPending && !onlyPlanned) return pend;
+          if (onlyPlanned && !onlyPending) return plan;
+          return pend + plan;
+        };
         let totalAll = 0;
         for (let i = 0; i < nDays; i++) {
           const dt = new Date(today); dt.setDate(dt.getDate() + i);
@@ -3035,7 +3125,7 @@
           const dow = dt.getDay(); // 0=周日,6=周六
           const weekend = (dow === 0 || dow === 6);
           const x = map[ds] || { planned: 0, pending: 0 };
-          const total = (x.planned || 0) + (x.pending || 0);
+          const total = calcTotal(x.pending || 0, x.planned || 0);
           totalAll += total;
           html += `<div class="cal1-cell ${weekend ? 'cal1-weekend' : ''} ${total ? 'cal1-has' : ''}" onclick="cal1Day('${ds}')" title="点击看当天邮件(待发${x.pending || 0}/预排${x.planned || 0})">
             <div class="cal1-line"><span class="cal1-date">${as2Esc(ds.slice(5))}</span><span class="cal1-num">${total}</span></div>
@@ -3076,10 +3166,9 @@
         </div>`;
         box.innerHTML = cal1RenderContactTable(`${ds} · 联系人清单`, items, '当天暂无联系人清单。', note);
       }
-      const entries = [];
-      crmRawItems.forEach((it) => entries.push({ kind: 'crm', rowid: it.rowid }));
-      localDayItems.filter((it) => it.status !== 'sent').forEach((it) => entries.push({ kind: 'local', item_id: it.item_id }));
-      as2ShowDayEmails(ds, entries);
+      // 步骤切换模式: 点某天只在"② 待发日历"内展示当天联系人清单, 停在原位;
+      // 需要看/编辑具体某封时, 点清单里的封次(单封联动到"③ 邮件详情")。
+      expandNode('node1');
     }
     // 节点3: 当天邮件逐封加载显示(一封一卡, 加载中->内容, 好一封显示一封)
     async function as2ShowDayEmails(ds, entries) {
@@ -3155,10 +3244,10 @@
           <button type="button" class="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50" onclick="as2OpenDetail('${id}')">编辑正文</button>
         </div>
         <div class="flex items-end gap-3 mb-2 flex-wrap">
-          <label class="text-xs flex-1 min-w-[220px]"><span class="block mb-1 text-slate-500">主题</span><input id="as2loc-subj-${idx}" class="w-full rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.subject || '')}"></label>
-          <label class="text-xs"><span class="block mb-1 text-slate-500">客户邮箱</span><input id="as2loc-email-${idx}" class="rounded border border-slate-300 px-2 py-1 w-56" value="${as2Esc(it.recipient_email || '')}"></label>
-          <label class="text-xs"><span class="block mb-1 text-slate-500">预计发送</span><span class="inline-flex gap-1"><input id="as2loc-date-${idx}" type="date" class="rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.plan_date || '')}"><input id="as2loc-time-${idx}" type="time" class="rounded border border-slate-300 px-2 py-1" value="${as2Esc(String(it.plan_time || '').slice(0, 5))}"></span></label>
-          <button type="button" class="rounded bg-indigo-600 px-3 py-1 text-xs font-bold text-white hover:bg-indigo-700" onclick="as2SaveLocalFields(${idx},'${id}')">保存</button>
+          <label class="text-xs flex-1 min-w-[220px]"><span class="block mb-1 text-slate-500">主题</span><input id="as2loc-subj-${idx}" class="w-full rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.subject || '')}" onblur="as2SaveLocalFields(${idx},'${id}')"></label>
+          <label class="text-xs"><span class="block mb-1 text-slate-500">客户邮箱</span><input id="as2loc-email-${idx}" class="rounded border border-slate-300 px-2 py-1 w-56" value="${as2Esc(it.recipient_email || '')}" onblur="as2SaveLocalFields(${idx},'${id}')"></label>
+          <label class="text-xs"><span class="block mb-1 text-slate-500">预计发送</span><span class="inline-flex gap-1"><input id="as2loc-date-${idx}" type="date" class="rounded border border-slate-300 px-2 py-1" value="${as2Esc(it.plan_date || '')}" onblur="as2SaveLocalFields(${idx},'${id}')"><input id="as2loc-time-${idx}" type="time" class="rounded border border-slate-300 px-2 py-1" value="${as2Esc(String(it.plan_time || '').slice(0, 5))}" onblur="as2SaveLocalFields(${idx},'${id}')"></span></label>
+          <span class="text-[11px] text-slate-400 pb-1">改完离开即自动保存</span>
           <span id="as2loc-st-${idx}" class="text-[11px] text-slate-500 pb-1"></span>
         </div>
         <div class="rounded border border-slate-200 p-2 bg-white text-sm max-h-[320px] overflow-auto">${it.body_html || '<span class="text-slate-400">未生成正文, 到 ② 后台生成</span>'}</div>`;
@@ -3185,6 +3274,10 @@
       let last = 'suite';
       try { last = localStorage.getItem('ms_page') || 'suite'; } catch (e) {}
       switchPage(last);
+      // 步骤卡: 默认 ① 自动发送排期(node2), 记忆上次
+      let step = 'node2';
+      try { step = localStorage.getItem('ms_active_step') || 'node2'; } catch (e) {}
+      msSetStep(step);
     }
 
     // 先解析 KH(设 MS_KH) 再加载套装页, 保证 loadSuite 用到解密后的编号

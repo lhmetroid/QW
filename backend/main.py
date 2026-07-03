@@ -983,8 +983,13 @@ def auto_patch_db():
         ))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcssp_customer_scenario ON mail_customer_suite_send_plan (customer_id, scenario);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcssp_batch ON mail_customer_suite_send_plan (batch_id);"))
+        db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS company_name VARCHAR(255);"))
+        db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS contact_name VARCHAR(255);"))
+        db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS recipient_email_key VARCHAR(255);"))
         db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS crm_send_id VARCHAR(80);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcssp_send_id ON mail_customer_suite_send_plan (crm_send_id);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcssp_staff_time ON mail_customer_suite_send_plan (inputer_staff_id, plan_send_time);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mcssp_recipient_key ON mail_customer_suite_send_plan (recipient_email_key);"))
         db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS crm_send_status VARCHAR(40);"))
         db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS crm_fact_send_time TIMESTAMP;"))
         db.execute(text("ALTER TABLE mail_customer_suite_send_plan ADD COLUMN IF NOT EXISTS crm_message_id VARCHAR(255);"))
@@ -19653,6 +19658,9 @@ def send_mail_customer_suite(
             body_html=final_body_html, body_text=body_text,
             plan_send_time=plan_dt, send_address_serialized=send_address_serialized,
             receiver_serialized=receiver_serialized, inputer_staff_id=(owner_staff_id or "")[:120],
+            company_name=company_name[:255] if company_name else None,
+            contact_name=contact_name[:255] if contact_name else None,
+            recipient_email_key=_autosend_receiver_key(",".join(recipient_emails))[:255] if recipient_emails else None,
             status="prepared",
         )
         db.add(row)
@@ -19733,6 +19741,7 @@ def send_mail_customer_suite(
             "plan_send_time": plan_dt.strftime("%Y-%m-%d %H:%M"),
             "status": step_status,
             "spqueue_rowid": spqueue_rowid,
+            "crm_send_id": row.crm_send_id,
             "error": step_error,
             "attachment_count": att_count,
             "eml_bytes": eml_size,
@@ -20641,8 +20650,43 @@ def get_autosend_sales_staff_names(ids: str = Query("")):
 # ============================================================================
 
 _AUTOSEND_GEN_ACTIVE: set = set()   # 正在后台生成的销售工号(避免重复触发)
+_AUTOSEND_GEN_LOCK = threading.Lock()
 
 _AUTOSEND_PENDING_STATUSES = ("planned", "drafting", "drafted", "failed")
+
+
+def _autosend_is_running(staff: str) -> bool:
+    with _AUTOSEND_GEN_LOCK:
+        return staff in _AUTOSEND_GEN_ACTIVE
+
+
+def _autosend_mark_running(staff: str) -> bool:
+    """Return False when this staff already has an active in-process worker."""
+    with _AUTOSEND_GEN_LOCK:
+        if staff in _AUTOSEND_GEN_ACTIVE:
+            return False
+        _AUTOSEND_GEN_ACTIVE.add(staff)
+        return True
+
+
+def _autosend_mark_done(staff: str) -> None:
+    with _AUTOSEND_GEN_LOCK:
+        _AUTOSEND_GEN_ACTIVE.discard(staff)
+
+
+def _autosend_recover_orphan_drafting(db: Session, staff: str) -> int:
+    """A server stop kills the in-memory worker but can leave rows in drafting."""
+    if _autosend_is_running(staff):
+        return 0
+    n = db.execute(
+        text("UPDATE mail_autosend_plan_item SET status='planned', gen_error=:e, updated_at=now() "
+             "WHERE owner_staff_id=:s AND status='drafting'"),
+        {"s": staff, "e": "后台生成中断或服务重启，已恢复为待生成"},
+    ).rowcount
+    if n:
+        db.commit()
+    return int(n or 0)
+
 _AUTOSEND_PLAN_COLS = (
     "item_id, run_id, contact_id, customer_id, owner_staff_id, company_name, contact_name, "
     "scenario, scenario_label_cn, suite_step, plan_date, plan_time, send_time, seq_in_day, "
@@ -20917,18 +20961,18 @@ def autosend_preview(payload: AutosendPreviewRequest, db: Session = Depends(get_
 
 
 @app.get("/api/v1/mail/autosend/plan")
-def get_autosend_plan(staff_id: str = Query(...), db: Session = Depends(get_db)):
-    """该销售当前未转入CRM的全部排期清单(关页重开恢复用)。"""
+def get_autosend_plan(staff_id: str = Query(...), include_sent: int = Query(0), db: Session = Depends(get_db)):
+    """该销售当前排期清单；默认只返回未转入CRM项，日历可 include_sent=1 显示已入CRM项。"""
     staff = sanitize_text(staff_id).strip()
     if not staff:
         raise HTTPException(status_code=422, detail="staff_id is required")
-    items = _autosend_list_plan(db, staff)
+    statuses = _AUTOSEND_PENDING_STATUSES + (("sent",) if int(include_sent or 0) else tuple())
+    items = _autosend_list_plan(db, staff, statuses=statuses)
     counts: dict = {}
     for it in items:
         counts[it["status"]] = counts.get(it["status"], 0) + 1
     return {"ok": True, "staff_id": staff, "items": items, "counts": counts,
-            "running": staff in _AUTOSEND_GEN_ACTIVE}
-
+            "running": _autosend_is_running(staff)}
 
 @app.delete("/api/v1/mail/autosend/plan")
 def clear_autosend_plan(staff_id: str = Query(...), db: Session = Depends(get_db)):
@@ -21039,7 +21083,7 @@ def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> 
     except Exception:
         logger.exception("AUTOSEND_GEN_WORKER_FAILED staff=%s", staff)
     finally:
-        _AUTOSEND_GEN_ACTIVE.discard(staff)
+        _autosend_mark_done(staff)
 
 
 class AutosendGenerateRequest(BaseModel):
@@ -21053,28 +21097,34 @@ def autosend_generate(payload: AutosendGenerateRequest, db: Session = Depends(ge
     staff = sanitize_text(payload.staff_id).strip()
     if not staff:
         raise HTTPException(status_code=422, detail="staff_id is required")
-    if staff in _AUTOSEND_GEN_ACTIVE:
+    if _autosend_is_running(staff):
         return {"ok": True, "started": False, "already_running": True}
+    recovered = _autosend_recover_orphan_drafting(db, staff)
+    if not _autosend_mark_running(staff):
+        return {"ok": True, "started": False, "already_running": True, "recovered_drafting": recovered}
     pending = db.execute(
         text("SELECT COUNT(*) FROM mail_autosend_plan_item WHERE owner_staff_id=:s AND status IN ('planned','failed')"),
         {"s": staff},
     ).scalar()
     if not pending:
-        return {"ok": True, "started": False, "pending": 0, "note": "没有待生成的排期"}
-    _AUTOSEND_GEN_ACTIVE.add(staff)
+        _autosend_mark_done(staff)
+        return {"ok": True, "started": False, "pending": 0, "recovered_drafting": recovered, "note": "没有待生成的排期"}
     threading.Thread(target=_autosend_generate_worker, args=(staff, payload.item_ids), daemon=True).start()
-    return {"ok": True, "started": True, "pending": int(pending or 0)}
+    return {"ok": True, "started": True, "pending": int(pending or 0), "recovered_drafting": recovered}
 
 
 @app.get("/api/v1/mail/autosend/generate-status")
 def autosend_generate_status(staff_id: str = Query(...), db: Session = Depends(get_db)):
     staff = sanitize_text(staff_id).strip()
+    running = _autosend_is_running(staff)
+    recovered = 0 if running else _autosend_recover_orphan_drafting(db, staff)
     rows = db.execute(
         text("SELECT status, COUNT(*) FROM mail_autosend_plan_item WHERE owner_staff_id=:s GROUP BY status"),
         {"s": staff},
     ).fetchall()
     counts = {str(r[0]): int(r[1]) for r in rows}
-    return {"ok": True, "staff_id": staff, "running": staff in _AUTOSEND_GEN_ACTIVE, "counts": counts}
+    remaining = int(counts.get("planned", 0) + counts.get("drafting", 0) + counts.get("failed", 0))
+    return {"ok": True, "staff_id": staff, "running": running, "counts": counts, "remaining": remaining, "recovered_drafting": recovered}
 
 
 class AutosendMarkCommittedRequest(BaseModel):
@@ -21111,23 +21161,39 @@ def autosend_mark_committed(payload: AutosendMarkCommittedRequest, db: Session =
 
 @app.get("/api/v1/mail/autosend/calendar")
 def autosend_calendar(staff_id: str = Query(...), days: int = Query(90), db: Session = Depends(get_db)):
-    """日历: 今天及以后, 每天 待发(CRM未实发) / 预排(本地未转入) 封数。"""
+    """日历: 今天及以后, 每天 待发(CRM未实发) / 预排(本地未转入) 封数与涉及联系人。"""
     staff = sanitize_text(staff_id).strip()
     if not staff:
         raise HTTPException(status_code=422, detail="staff_id is required")
     today = (datetime.utcnow() + timedelta(hours=8)).date()
+    days = max(1, min(int(days or 90), 180))
+    end_date = today + timedelta(days=days)
     res: dict = {}
+    contact_keys: set[str] = set()
     # 预排(本地)
     try:
         rows = db.execute(
-            text("SELECT to_char(plan_date,'YYYY-MM-DD') d, COUNT(*) n FROM mail_autosend_plan_item "
-                 "WHERE owner_staff_id=:s AND status IN ('planned','drafting','drafted') AND plan_date>=:t "
+            text("SELECT to_char(plan_date,'YYYY-MM-DD') d, COUNT(*) n, COUNT(DISTINCT contact_id) c "
+                 "FROM mail_autosend_plan_item "
+                 "WHERE owner_staff_id=:s AND status IN ('planned','drafting','drafted') "
+                 "AND plan_date>=:t AND plan_date<:e "
                  "GROUP BY to_char(plan_date,'YYYY-MM-DD')"),
-            {"s": staff, "t": today},
+            {"s": staff, "t": today, "e": end_date},
         ).fetchall()
-        for d, n in rows:
+        for d, n, c in rows:
             if d:
-                res.setdefault(d, {"planned": 0, "pending": 0})["planned"] = int(n or 0)
+                slot = res.setdefault(d, {"planned": 0, "pending": 0, "planned_contacts": 0, "pending_contacts": 0})
+                slot["planned"] = int(n or 0)
+                slot["planned_contacts"] = int(c or 0)
+        crows = db.execute(
+            text("SELECT DISTINCT contact_id FROM mail_autosend_plan_item "
+                 "WHERE owner_staff_id=:s AND status IN ('planned','drafting','drafted') "
+                 "AND plan_date>=:t AND plan_date<:e"),
+            {"s": staff, "t": today, "e": end_date},
+        ).fetchall()
+        for (cid,) in crows:
+            if cid:
+                contact_keys.add(f"local:{cid}")
     except Exception:
         logger.exception("AUTOSEND_CALENDAR_LOCAL_FAILED")
     # 待发(CRM spQueueSend 宣传邮件-AI, 还在 OutBox = 未实发)
@@ -21136,26 +21202,189 @@ def autosend_calendar(staff_id: str = Query(...), days: int = Query(90), db: Ses
         crm_db = CRMSessionLocal()
         try:
             crows = crm_db.execute(
-                text("SELECT CONVERT(varchar(10), PlanSendTime, 23) d, COUNT(*) n FROM spQueueSend "
+                text("SELECT CONVERT(varchar(10), PlanSendTime, 23) d, COUNT(*) n, ISNULL(Receiver,'') rcv "
+                     "FROM spQueueSend "
                      "WHERE MessageType='Email' AND ISNULL(UseRange,'') LIKE '%宣传邮件-AI%' "
-                     "AND ISNULL(FolderId,'')='OutBox' AND InputerStaffId=:s AND PlanSendTime>=:t "
-                     "GROUP BY CONVERT(varchar(10), PlanSendTime, 23)"),
-                {"s": staff, "t": datetime.combine(today, datetime.min.time())},
+                     "AND ISNULL(FolderId,'')='OutBox' AND InputerStaffId=:s "
+                     "AND PlanSendTime>=:t AND PlanSendTime<:e "
+                     "GROUP BY CONVERT(varchar(10), PlanSendTime, 23), ISNULL(Receiver,'')"),
+                {"s": staff, "t": datetime.combine(today, datetime.min.time()),
+                 "e": datetime.combine(end_date, datetime.min.time())},
             ).fetchall()
-            for d, n in crows:
+            pending_by_day_contacts: dict[str, set[str]] = {}
+            for d, n, receiver in crows:
                 d = str(d or "")
-                if d:
-                    res.setdefault(d, {"planned": 0, "pending": 0})["pending"] = int(n or 0)
+                if not d:
+                    continue
+                receiver_key = _autosend_receiver_key(receiver) or f"row:{d}:{receiver}"
+                slot = res.setdefault(d, {"planned": 0, "pending": 0, "planned_contacts": 0, "pending_contacts": 0})
+                slot["pending"] += int(n or 0)
+                pending_by_day_contacts.setdefault(d, set()).add(receiver_key)
+                contact_keys.add(f"crm:{receiver_key}")
+            for d, contacts in pending_by_day_contacts.items():
+                res.setdefault(d, {"planned": 0, "pending": 0, "planned_contacts": 0, "pending_contacts": 0})["pending_contacts"] = len(contacts)
         finally:
             crm_db.close()
     except Exception:
         logger.exception("AUTOSEND_CALENDAR_CRM_FAILED")
-    days_out = [{"date": d, "planned": v["planned"], "pending": v["pending"]} for d, v in sorted(res.items())]
-    return {"ok": True, "staff_id": staff, "today": today.isoformat(), "days": days_out}
+    days_out = [
+        {"date": d, "planned": v["planned"], "pending": v["pending"],
+         "planned_contacts": v.get("planned_contacts", 0), "pending_contacts": v.get("pending_contacts", 0)}
+        for d, v in sorted(res.items())
+    ]
+    return {"ok": True, "staff_id": staff, "today": today.isoformat(), "days": days_out,
+            "contact_count": len(contact_keys)}
 
 
+def _autosend_enrich_crm_queue_items(db: Session, items: list[dict]) -> list[dict]:
+    """用本地邮件套装发送记录补齐 CRM 待发项的客户、套装、封次。"""
+    rowids = [str(x.get("rowid") or "").strip() for x in (items or []) if str(x.get("rowid") or "").strip()]
+    rowids_lower = [x.lower() for x in rowids if x]
+    send_ids = [str(x.get("crm_send_id") or "").strip() for x in (items or []) if str(x.get("crm_send_id") or "").strip()]
+    if not rowids_lower and not send_ids:
+        return items
+    try:
+        clauses = []
+        params: dict[str, Any] = {}
+        stmt = "SELECT spqueue_rowid, crm_send_id, customer_id, scenario, suite_step, plan_send_time, status, to_emails FROM mail_customer_suite_send_plan WHERE "
+        if rowids_lower:
+            clauses.append("lower(coalesce(spqueue_rowid,'')) IN :rowids")
+            params["rowids"] = rowids_lower
+        if send_ids:
+            clauses.append("coalesce(crm_send_id,'') IN :sendids")
+            params["sendids"] = send_ids
+        rows = db.execute(
+            text(stmt + " OR ".join(clauses))
+            .bindparams(*( [bindparam("rowids", expanding=True)] if rowids_lower else [] ),
+                         *( [bindparam("sendids", expanding=True)] if send_ids else [] )),
+            params,
+        ).fetchall()
+    except Exception:
+        logger.exception("AUTOSEND_CRM_QUEUE_LOCAL_MAP_FAILED")
+        return items
+    by_rowid = {str(r[0] or "").strip().lower(): r for r in rows if str(r[0] or "").strip()}
+    by_sendid = {str(r[1] or "").strip(): r for r in rows if str(r[1] or "").strip()}
+    profile_cache: dict[str, dict] = {}
+    for it in items:
+        rid = str(it.get("rowid") or "").strip().lower()
+        sid = str(it.get("crm_send_id") or "").strip()
+        r = by_rowid.get(rid) or by_sendid.get(sid)
+        if not r:
+            it["mapped"] = False
+            continue
+        customer_id = str(r[2] or "")
+        scenario = str(r[3] or "")
+        profile = profile_cache.get(customer_id)
+        if profile is None:
+            try:
+                profile = _lookup_mail_crm_profile(customer_id, "") if customer_id else {}
+            except Exception:
+                logger.exception("AUTOSEND_CRM_QUEUE_PROFILE_FAILED customer=%s", sanitize_text(customer_id))
+                profile = {}
+            profile_cache[customer_id] = profile
+        plan_dt = r[5]
+        if plan_dt is not None and hasattr(plan_dt, "strftime"):
+            it["date"] = plan_dt.strftime("%Y-%m-%d")
+            it["plan_time"] = plan_dt.strftime("%H:%M")
+        it.update({
+            "mapped": True,
+            "customer_id": customer_id,
+            "contact_id": customer_id,
+            "scenario": scenario,
+            "scenario_label_cn": _get_scenario_label_cn(scenario) or scenario,
+            "suite_step": int(r[4]) if r[4] is not None else None,
+            "send_plan_status": str(r[6] or ""),
+            "company_name": sanitize_text(profile.get("company_name") or ""),
+            "contact_name": sanitize_text(profile.get("contact_name") or "") or "",
+            "to_emails": str(r[7] or ""),
+            "local_spqueue_rowid": str(r[0] or ""),
+        })
+        if not it.get("contact_name"):
+            it["contact_name"] = str(it.get("receiver") or "")
+    return items
+
+
+def _mail_suite_calendar_status(row) -> str:
+    raw = sanitize_text(getattr(row, "crm_send_status", None) or getattr(row, "status", None) or "").strip().lower()
+    if raw in ("sendsuccess", "send_success", "sent_done", "success"):
+        return "send_success"
+    if raw in ("sendfail", "failed", "enqueue_failed", "eml_upload_failed"):
+        return "failed"
+    return "sent"
+
+
+def _serialize_mail_suite_send_plan_calendar(row) -> dict[str, Any]:
+    plan_dt = getattr(row, "plan_send_time", None)
+    date_s = plan_dt.strftime("%Y-%m-%d") if plan_dt is not None and hasattr(plan_dt, "strftime") else ""
+    time_s = plan_dt.strftime("%H:%M") if plan_dt is not None and hasattr(plan_dt, "strftime") else ""
+    company = sanitize_text(getattr(row, "company_name", None) or "")
+    contact = sanitize_text(getattr(row, "contact_name", None) or "")
+    if (not company or not contact) and getattr(row, "customer_id", None):
+        try:
+            profile = _lookup_mail_crm_profile(str(row.customer_id), "")
+            company = company or sanitize_text(profile.get("company_name") or "")
+            contact = contact or sanitize_text(profile.get("contact_name") or "")
+        except Exception:
+            logger.exception("MAIL_SUITE_CALENDAR_PROFILE_FAILED customer=%s", sanitize_text(str(row.customer_id)))
+    receiver = getattr(row, "receiver_serialized", None) or getattr(row, "to_emails", None) or ""
+    email_key = sanitize_text(getattr(row, "recipient_email_key", None) or "") or _autosend_receiver_key(receiver)
+    return {
+        "rowid": str(getattr(row, "spqueue_rowid", None) or ""),
+        "crm_send_id": str(getattr(row, "crm_send_id", None) or ""),
+        "mapped": True,
+        "customer_id": str(getattr(row, "customer_id", None) or ""),
+        "contact_id": str(getattr(row, "customer_id", None) or ""),
+        "company_name": company,
+        "company_head": _autosend_company_head(company),
+        "contact_name": contact,
+        "scenario": str(getattr(row, "scenario", None) or ""),
+        "scenario_label_cn": _get_scenario_label_cn(str(getattr(row, "scenario", None) or "")) or str(getattr(row, "scenario", None) or ""),
+        "suite_step": int(getattr(row, "suite_step", 0) or 0),
+        "date": date_s,
+        "plan_time": time_s,
+        "send_time": time_s,
+        "subject": str(getattr(row, "subject", None) or ""),
+        "status": _mail_suite_calendar_status(row),
+        "receiver": receiver,
+        "to_emails": str(getattr(row, "to_emails", None) or ""),
+        "recipient_email": email_key,
+        "source": "mail_customer_suite_send_plan",
+    }
+
+
+def _mail_suite_fill_missing_index_fields(db: Session, rows: list[MailCustomerSuiteSendPlan]) -> int:
+    changed = 0
+    profile_cache: dict[str, dict] = {}
+    for row in rows:
+        touched = False
+        cid = str(getattr(row, "customer_id", None) or "")
+        if cid and (not getattr(row, "company_name", None) or not getattr(row, "contact_name", None)):
+            profile = profile_cache.get(cid)
+            if profile is None:
+                try:
+                    profile = _lookup_mail_crm_profile(cid, "")
+                except Exception:
+                    logger.exception("MAIL_SUITE_BACKFILL_PROFILE_FAILED customer=%s", sanitize_text(cid))
+                    profile = {}
+                profile_cache[cid] = profile
+            if not getattr(row, "company_name", None) and profile.get("company_name"):
+                row.company_name = sanitize_text(profile.get("company_name"))[:255]
+                touched = True
+            if not getattr(row, "contact_name", None) and profile.get("contact_name"):
+                row.contact_name = sanitize_text(profile.get("contact_name"))[:255]
+                touched = True
+        if not getattr(row, "recipient_email_key", None):
+            key = _autosend_receiver_key(getattr(row, "to_emails", None) or getattr(row, "receiver_serialized", None) or "")
+            if key:
+                row.recipient_email_key = key[:255]
+                touched = True
+        if touched:
+            changed += 1
+    if changed:
+        db.commit()
+    return changed
 @app.get("/api/v1/mail/autosend/crm-day")
-def get_autosend_crm_day(staff_id: str = Query(...), date: str = Query(...)):
+def get_autosend_crm_day(staff_id: str = Query(...), date: str = Query(...), db: Session = Depends(get_db)):
     """某销售某天的 CRM 待发(宣传邮件-AI, 未实发)清单: rowid/主题/收件人/计划时间。"""
     staff = sanitize_text(staff_id).strip()
     d = sanitize_text(date).strip()
@@ -21168,7 +21397,7 @@ def get_autosend_crm_day(staff_id: str = Query(...), date: str = Query(...)):
         try:
             rows = crm_db.execute(
                 text("SELECT CAST(RowId AS NVARCHAR(64)) AS rid, ISNULL(Subject,'') AS subj, "
-                     "ISNULL(Receiver,'') AS rcv, CONVERT(varchar(16), PlanSendTime, 120) AS pt "
+                     "ISNULL(Receiver,'') AS rcv, CONVERT(varchar(16), PlanSendTime, 120) AS pt, ISNULL(CAST(SendId AS NVARCHAR(80)),'') AS sid "
                      "FROM spQueueSend WHERE MessageType='Email' AND ISNULL(UseRange,'') LIKE :ur "
                      "AND ISNULL(FolderId,'')='OutBox' AND InputerStaffId=:s "
                      "AND CONVERT(varchar(10), PlanSendTime, 23)=:d ORDER BY PlanSendTime"),
@@ -21177,16 +21406,110 @@ def get_autosend_crm_day(staff_id: str = Query(...), date: str = Query(...)):
             for r in rows:
                 pt = str(r[3] or "")
                 out.append({"rowid": str(r[0] or ""), "subject": r[1] or "", "receiver": r[2] or "",
-                            "plan_time": pt[11:] if len(pt) >= 16 else pt})
+                            "plan_time": pt[11:] if len(pt) >= 16 else pt, "crm_send_id": str(r[4] or "")})
         finally:
             crm_db.close()
     except Exception:
         logger.exception("AUTOSEND_CRM_DAY_FAILED staff=%s date=%s", staff, d)
         raise HTTPException(status_code=502, detail="读取CRM待发失败")
+    out = _autosend_enrich_crm_queue_items(db, out)
     return {"ok": True, "staff_id": staff, "date": d, "count": len(out), "items": out}
 
 
+@app.get("/api/v1/mail/autosend/crm-range")
+def get_autosend_crm_range(staff_id: str = Query(...), start: str = Query(...), days: int = Query(120), db: Session = Depends(get_db)):
+    """某销售从 start 起一段时间内的套装待发/已发清单。
+
+    默认只读本地 mail_customer_suite_send_plan 索引，避免每次实时扫 CRM spQueueSend 导致清单长时间加载。
+    历史缺失字段会在读取时轻量补齐，后续查询直接复用落库字段。
+    """
+    staff = sanitize_text(staff_id).strip()
+    start_s = sanitize_text(start).strip()
+    if not staff or not start_s:
+        raise HTTPException(status_code=422, detail="staff_id and start required")
+    try:
+        start_d = datetime.strptime(start_s[:10], "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=422, detail="start 格式应为 YYYY-MM-DD")
+    days = max(1, min(int(days or 120), 180))
+    end_d = start_d + timedelta(days=days)
+    start_dt = datetime.combine(start_d, datetime.min.time())
+    end_dt = datetime.combine(end_d, datetime.min.time())
+    rows = (
+        db.query(MailCustomerSuiteSendPlan)
+        .filter(MailCustomerSuiteSendPlan.inputer_staff_id == staff)
+        .filter(MailCustomerSuiteSendPlan.plan_send_time >= start_dt)
+        .filter(MailCustomerSuiteSendPlan.plan_send_time < end_dt)
+        .order_by(MailCustomerSuiteSendPlan.plan_send_time.asc(), MailCustomerSuiteSendPlan.customer_id.asc(), MailCustomerSuiteSendPlan.suite_step.asc())
+        .all()
+    )
+    backfilled = _mail_suite_fill_missing_index_fields(db, rows)
+    items = [_serialize_mail_suite_send_plan_calendar(r) for r in rows]
+    return {"ok": True, "staff_id": staff, "start": start_d.isoformat(), "days": days,
+            "count": len(items), "backfilled": backfilled, "source": "mail_customer_suite_send_plan", "items": items}
+
+
+@app.post("/api/v1/mail/autosend/recover-suite-index")
+def recover_autosend_suite_index(staff_id: str = Query(""), limit: int = Query(2000, ge=1, le=10000), db: Session = Depends(get_db)):
+    """一次性回收历史套装待发索引字段，避免日历清单每次重新拼 CRM/画像。"""
+    staff = sanitize_text(staff_id).strip()
+
+    def missing_filter(query):
+        query = query.filter(
+            (MailCustomerSuiteSendPlan.company_name.is_(None)) |
+            (MailCustomerSuiteSendPlan.company_name == "") |
+            (MailCustomerSuiteSendPlan.contact_name.is_(None)) |
+            (MailCustomerSuiteSendPlan.contact_name == "") |
+            (MailCustomerSuiteSendPlan.recipient_email_key.is_(None)) |
+            (MailCustomerSuiteSendPlan.recipient_email_key == "")
+        )
+        if staff:
+            query = query.filter(MailCustomerSuiteSendPlan.inputer_staff_id == staff)
+        return query
+
+    checked = 0
+    backfilled = 0
+    batch_size = 50
+    max_rows = int(limit or 2000)
+    while checked < max_rows:
+        rows = (
+            missing_filter(db.query(MailCustomerSuiteSendPlan))
+            .order_by(MailCustomerSuiteSendPlan.created_at.desc())
+            .limit(min(batch_size, max_rows - checked))
+            .all()
+        )
+        if not rows:
+            break
+        checked += len(rows)
+        try:
+            backfilled += _mail_suite_fill_missing_index_fields(db, rows)
+        except Exception:
+            db.rollback()
+            logger.exception("MAIL_SUITE_RECOVER_INDEX_BATCH_FAILED staff=%s checked=%s", staff, checked)
+            raise
+
+    remaining = missing_filter(db.query(MailCustomerSuiteSendPlan)).count()
+    return {"ok": True, "staff_id": staff or None, "checked": checked, "backfilled": backfilled,
+            "remaining_missing_index": int(remaining or 0), "batch_size": batch_size}
+
 _EMAIL_IN_RECEIVER_RE = re.compile(r"<([^<>@\s]+@[^<>\s]+)>")
+
+
+def _autosend_receiver_key(raw: str) -> str:
+    """归一化 CRM Receiver 字段, 用于统计同一收件人。"""
+    s = sanitize_text(raw or "").strip()
+    if not s:
+        return ""
+    i = s.index("[") if "[" in s else -1
+    if i >= 0:
+        s = s[:i].strip()
+    m = _EMAIL_IN_RECEIVER_RE.search(s)
+    if m:
+        return m.group(1).strip().lower()
+    m = re.search(r"([^<>\s,;，；]+@[^<>\s,;，；]+)", s)
+    if m:
+        return m.group(1).strip().lower()
+    return s.lower()
 
 
 def _mail_eml_extract_html(eml_bytes: bytes) -> str:
@@ -21426,6 +21749,33 @@ def save_autosend_plan_item(payload: AutosendPlanItemSaveRequest, db: Session = 
     return {"ok": True, "updated": 1}
 
 
+@app.delete("/api/v1/mail/autosend/plan-item")
+def delete_autosend_plan_item(item_id: str = Query(...), db: Session = Depends(get_db)):
+    """取消(删除)单条本地预排期。已转入CRM(sent)的不许在此删; drafted 的按人工弃用记录一次(供分析)。"""
+    iid = sanitize_text(item_id).strip()
+    if not iid:
+        raise HTTPException(status_code=422, detail="item_id is required")
+    row = db.execute(
+        text("SELECT status, customer_id, contact_id, scenario, suite_step, owner_staff_id, "
+             "COALESCE(subject,''), COALESCE(body_html,'') FROM mail_autosend_plan_item WHERE item_id=:i"),
+        {"i": iid},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="plan item not found")
+    if row[0] == "sent":
+        raise HTTPException(status_code=409, detail="已转入CRM(待发), 不能在此取消; 请到 CRM 待发处理")
+    if row[0] == "drafted":
+        try:
+            _mail_record_llm_discard(db, "autosend", row[1] or row[2], row[2], row[5] or "", row[3], row[4],
+                                     row[6] or "", row[7] or "", reason="联系人清单取消预排期")
+        except Exception:
+            logger.exception("AUTOSEND_CANCEL_DISCARD_RECORD_FAILED item=%s", iid)
+    n = db.execute(text("DELETE FROM mail_autosend_plan_item WHERE item_id=:i AND status <> 'sent'"),
+                   {"i": iid}).rowcount
+    db.commit()
+    return {"ok": True, "deleted": int(n or 0)}
+
+
 @app.post("/api/v1/mail/autosend/plan-item/regenerate")
 def regenerate_autosend_plan_item(payload: AutosendPlanItemSaveRequest, db: Session = Depends(get_db)):
     """节点3 单封'重刷': 同步真调生成链路覆盖该封(未转入CRM的)。"""
@@ -21604,6 +21954,8 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
     if not staff_ids:
         return []
     company_like = sanitize_text(company_name_like or "").strip()
+    # 支持多个公司名: 用中英文逗号隔开, 每个都做模糊(LIKE)匹配, 任一命中即选中(OR 关系)
+    company_tokens = [t for t in (s.strip() for s in re.split(r"[,，]", company_like)) if t] if company_like else []
     out: list[dict] = []
     try:
         from crm_database import CRMSessionLocal
@@ -21612,8 +21964,15 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
             # 1) 取该销售名下联系人(Owner 含该工号; Owner 可能是多工号拼接, 用 LIKE 粗筛再 Python 拆 token 精确)
             like_clauses = " OR ".join([f"CAST(c.Owner AS NVARCHAR(240)) LIKE :p{i}" for i in range(len(staff_ids))])
             params = {f"p{i}": f"%{sid}%" for i, sid in enumerate(staff_ids)}
-            if company_like:
-                params["cname"] = f"%{company_like}%"
+            company_clause = ""
+            if company_tokens:
+                for i, tok in enumerate(company_tokens):
+                    params[f"cname{i}"] = f"%{tok}%"
+                ors = " OR ".join(
+                    f"ISNULL(CAST(d.CompanyName AS NVARCHAR(200)),'') LIKE :cname{i}"
+                    for i in range(len(company_tokens))
+                )
+                company_clause = f" AND ({ors})"
             contact_rows = crm_db.execute(
                 text(
                     "SELECT DISTINCT c.ContactId, CAST(ISNULL(c.Owner,'') AS NVARCHAR(240)) AS Owner, "
@@ -21623,7 +21982,7 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
                     "LEFT JOIN usrCustomer d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL "
                     "WHERE c.Deleter IS NULL AND ISNULL(CAST(c.Owner AS NVARCHAR(240)),'')<>'' "
                     f"AND ({like_clauses})"
-                    + (" AND ISNULL(CAST(d.CompanyName AS NVARCHAR(200)),'') LIKE :cname" if company_like else "")
+                    + company_clause
                 ),
                 params,
             ).fetchall()
