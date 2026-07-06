@@ -799,10 +799,11 @@
             <label class="flex items-center gap-1" title="勾上: 联系人一条规则都不命中时, 用最后一条(兜底)套装照发。默认不勾: 都不命中就跳过该联系人, 不发。"><input type="checkbox" id="as2-fallback">全不命中用兜底</label>
             <label class="flex items-center gap-1"><input type="checkbox" id="as2-consider-queue" checked>考虑已有排期</label>
             <button type="button" onclick="as2SaveConfig()" class="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50">保存配置</button>
-            <button type="button" onclick="as2Preview()" class="rounded bg-amber-600 px-3 py-1 text-xs font-bold text-white hover:bg-amber-700">预览排期(入清单)</button>
+            <button type="button" id="as2-preview-btn" onclick="as2Preview()" class="rounded bg-amber-600 px-3 py-1 text-xs font-bold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">预览排期(入清单)</button>
             <span class="ms-info" title="点击后, 系统按上面②的规则给这个销售名下的联系人排好发送日期, 放进下面的“排期清单”里(此时还没有生成邮件内容, 也没有写进CRM, 关掉网页再打开还在)。如果清单里已经有排好的邮件, 会弹窗问你: 点“确定”=先清空原来的、重新排; 点“取消”=在原来的基础上继续追加(不会重复排同一个人, 也不影响已有的)。">ⓘ</span>
             <button type="button" id="as2-generate-btn" onclick="as2Generate()" class="rounded bg-violet-600 px-3 py-1 text-xs font-bold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60">后台生成</button>
-            <button type="button" onclick="as2ClearPlan()" class="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-bold text-rose-700 hover:bg-rose-100">清空排期</button>
+            <button type="button" id="as2-clear-btn" onclick="as2ClearPlan()" class="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-bold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">清空排期</button>
+            <span id="as2-op-status" class="text-[11px] text-slate-500"></span>
           </div>
         </div>
         <!-- 排期清单 -->
@@ -2267,6 +2268,8 @@
 
     function as2Esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
     function as2Status(msg, bad) { const el = document.getElementById('as2-status'); if (el) { el.textContent = msg || ''; el.style.color = bad ? '#dc2626' : '#64748b'; } }
+    // 就近提示: 显示在预览/清空按钮旁边(顶部 as2-status 太远), 同步写一份到顶部保持一致
+    function as2OpStatus(msg, bad) { const el = document.getElementById('as2-op-status'); if (el) { el.textContent = msg || ''; el.style.color = bad ? '#dc2626' : '#64748b'; } as2Status(msg, bad); }
     function as2ScenarioLabel(v) { const s = AS2_SCENARIOS.find((x) => x.value === v); return (s && s.label) || v; }
     function as2MmDd(d) { return d && d.length >= 10 ? d.slice(5) : (d || ''); }
     function as2SetGenerateBusy(on, label) {
@@ -2453,15 +2456,20 @@
         consider_existing_crm_queue: document.getElementById('as2-consider-queue').checked,
       };
     }
+    let as2PreviewBusy = false;
     async function as2Preview() {
-      if (!AS2_STAFF) { as2Status('未限定销售, 无法排期。请用 ?id=KH编号 打开(据此解析归属销售)。', true); return; }
-      if (!as2Rules.length) { as2Status('请先配置至少一条套装规则。', true); return; }
+      if (as2PreviewBusy) return;
+      if (!AS2_STAFF) { as2OpStatus('未限定销售, 无法排期。请用 ?id=KH编号 打开(据此解析归属销售)。', true); return; }
+      if (!as2Rules.length) { as2OpStatus('请先配置至少一条套装规则。', true); return; }
       let clearFirst = false;
       const existing = as2PlanItems.length;
       if (existing > 0) {
         clearFirst = confirm(`当前“排期清单”里已有 ${existing} 封未转入CRM的排期。\n\n点“确定”: 先清空这些原有排期, 再重新排。\n点“取消”: 保留原有, 在它基础上继续追加(不会重复排同一个人, 也不影响已有的)。`);
       }
-      as2Status('排期中...');
+      const btn = document.getElementById('as2-preview-btn');
+      as2PreviewBusy = true;
+      if (btn) { btn.disabled = true; btn.textContent = '排期中…'; }
+      as2OpStatus('排期中...');
       try {
         if (clearFirst) {
           await fetch('/api/v1/mail/autosend/plan?staff_id=' + encodeURIComponent(AS2_STAFF), { method: 'DELETE', credentials: 'include' });
@@ -2469,13 +2477,17 @@
         }
         const r = await fetch('/api/v1/mail/autosend/preview', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(as2PreviewBody()) });
         const d = await r.json();
-        if (!r.ok) { as2Status('排期失败: ' + (d.detail || r.status), true); return; }
+        if (!r.ok) { as2OpStatus('排期失败: ' + (d.detail || r.status), true); return; }
         as2PlanItems = d.items || [];
         as2RenderPlan();
         as2RenderSkipped(d.skipped || []);
-        as2Status(`本次新增排期 ${d.new_scheduled} 封, 跳过 ${d.skipped_count} 人; 当前清单共 ${d.total_pending} 封。`);
+        as2OpStatus(`本次新增排期 ${d.new_scheduled} 封, 跳过 ${d.skipped_count} 人; 当前清单共 ${d.total_pending} 封。`);
         cal1Reload();
-      } catch (e) { as2Status('排期失败: ' + e.message, true); }
+      } catch (e) { as2OpStatus('排期失败: ' + e.message, true); }
+      finally {
+        as2PreviewBusy = false;
+        if (btn) { btn.disabled = false; btn.textContent = '预览排期(入清单)'; }
+      }
     }
     async function as2LoadPlan() {
       if (!AS2_STAFF) return;
@@ -2620,18 +2632,28 @@
       tick();
       as2GenTimer = setInterval(tick, 2500);
     }
+    let as2ClearBusy = false;
     async function as2ClearPlan() {
+      if (as2ClearBusy) return;
       if (!AS2_STAFF) return;
       if (!confirm('清空当前未转入CRM的排期? 已转入CRM的不受影响。')) return;
+      const btn = document.getElementById('as2-clear-btn');
+      as2ClearBusy = true;
+      if (btn) { btn.disabled = true; btn.textContent = '清空中…'; }
+      as2OpStatus('清空中...');
       try {
         const r = await fetch('/api/v1/mail/autosend/plan?staff_id=' + encodeURIComponent(AS2_STAFF), { method: 'DELETE', credentials: 'include' });
         const d = await r.json();
         as2Selected = new Set();
         await as2LoadPlan();
         as2RenderSkipped([]);
-        as2Status(`已清空 ${d.deleted || 0} 封排期。`);
+        as2OpStatus(`已清空 ${d.deleted || 0} 封排期。`);
         cal1Reload();
-      } catch (e) { as2Status('清空失败: ' + e.message, true); }
+      } catch (e) { as2OpStatus('清空失败: ' + e.message, true); }
+      finally {
+        as2ClearBusy = false;
+        if (btn) { btn.disabled = false; btn.textContent = '清空排期'; }
+      }
     }
     function as2DaysFromToday(ds) {
       if (!ds || ds.length < 10) return 0;
