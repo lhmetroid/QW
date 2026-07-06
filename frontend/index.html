@@ -372,7 +372,8 @@
                     </label>
                     <button id="mail-subtab-stats" type="button" onclick="switchMailWorkspaceTab('stats')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="看 AI 邮件的成效：每天生成多少、实际发了多少、收到多少回信、多少有价值。可按日期和销售筛选，双击数字看明细。">邮件统计</button>
                     <button id="mail-subtab-quality" type="button" onclick="switchMailWorkspaceTab('quality')" class="px-4 py-1 rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-700 text-xs font-bold" title="编辑邮件写作脚本、生成测试邮件看效果的主面板。">质量诊断</button>
-                    <button id="mail-subtab-autosend" type="button" onclick="switchMailWorkspaceTab('autosend')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="按销售批量给联系人挑套装、排期、写入CRM待发队列。先排序联系人、配套装优先级和周期/每日上限，预览排期无误后再真发。">自动发送</button>
+                    <button id="mail-subtab-autosend" type="button" onclick="switchMailWorkspaceTab('autosend')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="按销售批量给联系人挑套装、排期、写入CRM待发队列。先排序联系人、配套装优先级和周期/每日上限，预览排期无误后再真发。">套装排期</button>
+                    <button id="mail-subtab-autosendrules" type="button" onclick="switchMailWorkspaceTab('autosendrules')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="自动发送框架：①按统一规则批量给联系人排期套装（A/B/C类筛选+套装范围+LLM优先级+邮箱/顺序/间隔规则）；②按销售动作(跟进/丢单)触发提示适合的套装。当前为框架占位，逐步接后端。">自动发送</button>
                     <button id="mail-subtab-iteration" type="button" onclick="switchMailWorkspaceTab('iteration')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="批量试跑：一次把当前几个案例的每封邮件都生成并打分，方便对比每次脚本调整后的质量变化。">邮件迭代记录</button>
                     <button id="mail-subtab-goldlib" type="button" onclick="switchMailWorkspaceTab('goldlib')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="优质邮件范例库。AI 写邮件时会参考这里的好例子。">黄金范例库</button>
                     <button id="mail-subtab-contractcases" type="button" onclick="switchMailWorkspaceTab('contractcases')" class="px-4 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="查看 CRM 里最近的合同案例，供参考分析，只看不改。">合同案例库</button>
@@ -713,6 +714,183 @@
                 </div>
                 <div id="mail-autosend-frame-grid" class="space-y-4"></div>
             </section>
+
+            <!-- ===== 自动发送(框架) : ①统一规则批量排期 ②销售动作触发提示 ; 纯前端框架, 动作接占位函数, 逐步接后端 ===== -->
+            <section id="mail-autosendrules-panel" class="hidden space-y-4">
+                <div class="rounded-lg border border-violet-300 bg-violet-50 p-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900 flex items-center gap-1">自动发送
+                                <span class="text-[11px] text-slate-400 cursor-help" title="整体框架已搭建, 具体后端接口/算法逐步接入。所有内容仅在本页, 不影响套装排期等现有流程。">ⓘ</span>
+                            </h2>
+                            <p class="mt-1 text-[11px] text-violet-700">框架占位版本。以下两种模式的配置项已就位, 生成/预排/确认等动作暂为占位, 待后端接口就绪后逐项接入。开放问题见 <code>邮件自动发送框架_开发记录.md</code>。</p>
+                        </div>
+                        <label id="mail-autosendrules-staff-wrap" class="flex items-center gap-1 text-xs">销售
+                            <select id="mail-autosendrules-staff" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs"></select>
+                        </label>
+                    </div>
+                    <!-- 模式切换 -->
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <button type="button" id="asr-mode-rules-btn" onclick="asrSwitchMode('rules')" class="px-3 py-1.5 rounded-lg border border-violet-300 bg-violet-100 text-violet-800 text-xs font-bold" title="按统一规则批量排期(对应需求15)">① 按统一规则批量排期</button>
+                        <button type="button" id="asr-mode-trigger-btn" onclick="asrSwitchMode('trigger')" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="按销售动作(跟进/丢单等)触发套装发送提示(对应需求14)">② 销售动作触发提示</button>
+                    </div>
+                </div>
+
+                <!-- ===== 模式①: 按统一规则批量排期 (需求15) ===== -->
+                <div id="asr-mode-rules" class="space-y-4">
+                    <!-- 1. 联系人范围 + 套装范围 -->
+                    <div class="rounded-lg border border-slate-300 bg-white p-4">
+                        <h3 class="text-sm font-bold text-slate-900">① 选择范围</h3>
+                        <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <div class="text-xs font-bold text-slate-700">联系人范围<span class="ml-1 cursor-help text-[11px] text-slate-400" title="定义 A/B/C 类联系人分类(类似现有条件筛选)。分类维度待确认, 见开发记录。">ⓘ</span></div>
+                                <div class="mt-2 space-y-2 text-xs">
+                                    <label class="flex items-center gap-2"><input type="checkbox" class="asr-contact-class h-4 w-4" value="A" checked> A 类联系人<span class="text-[11px] text-slate-400">(定义待配置)</span></label>
+                                    <label class="flex items-center gap-2"><input type="checkbox" class="asr-contact-class h-4 w-4" value="B"> B 类联系人<span class="text-[11px] text-slate-400">(定义待配置)</span></label>
+                                    <label class="flex items-center gap-2"><input type="checkbox" class="asr-contact-class h-4 w-4" value="C"> C 类联系人<span class="text-[11px] text-slate-400">(定义待配置)</span></label>
+                                    <div class="pt-1 text-[11px] text-slate-500">附加条件筛选(占位, 复用现有联系人筛选维度): <span class="text-slate-400">待接入</span></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="text-xs font-bold text-slate-700">套装范围<span class="ml-1 cursor-help text-[11px] text-slate-400" title="参与本次排期的候选套装。结合套装适用范围字段(需求16)由 LLM 判定优先级。">ⓘ</span></div>
+                                <select id="asr-suite-range" multiple size="5" class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs">
+                                    <option disabled>（框架占位：加载后按现有套装列表填充）</option>
+                                </select>
+                                <div class="mt-1 text-[11px] text-slate-500">多选。留空= 全部候选套装。</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. LLM 分析生成 -->
+                    <div class="rounded-lg border border-slate-300 bg-white p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <h3 class="text-sm font-bold text-slate-900">② LLM 分析建议</h3>
+                            <button type="button" onclick="asrGenerateSuggestion()" class="rounded border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-100" title="占位：结合联系人情况与套装适用范围, 由 LLM 给出每个联系人适合发送哪些套装及优先级。">生成建议</button>
+                        </div>
+                        <p class="mt-1 text-[11px] text-slate-500">结合套装适用范围, LLM 分析给出每个联系人适合发送的套装与优先级; 已发过的套装、已有排期自动排除。</p>
+                        <div class="mt-3 overflow-auto">
+                            <table class="min-w-full text-xs border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-600">
+                                        <th class="border border-slate-200 px-3 py-2 text-left">联系人</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-left">分类</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-left">适合套装(按优先级)</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-left">排除原因</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-center">采用</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="asr-suggestion-tbody">
+                                    <tr><td colspan="5" class="border border-slate-200 px-3 py-6 text-center text-slate-400">尚未生成。点"生成建议"后展示。</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 3. 排期规则 -->
+                    <div class="rounded-lg border border-slate-300 bg-white p-4">
+                        <h3 class="text-sm font-bold text-slate-900">③ 排期规则</h3>
+                        <div class="mt-3 space-y-4 text-xs">
+                            <!-- 规则1: 邮箱选择 -->
+                            <div>
+                                <div class="font-bold text-slate-700">1) 邮箱选择</div>
+                                <div class="mt-2 flex flex-col gap-1">
+                                    <label class="flex items-center gap-2"><input type="radio" name="asr-mailbox" value="personal_only" checked> 仅个人邮箱</label>
+                                    <label class="flex items-center gap-2"><input type="radio" name="asr-mailbox" value="public_only"> 仅公共邮箱</label>
+                                    <label class="flex items-center gap-2"><input type="radio" name="asr-mailbox" value="personal_first"> 个人邮箱优先, 当日不足用公共邮箱</label>
+                                </div>
+                                <div class="mt-1 text-[11px] text-slate-400">公共邮箱每日上限/分配规则见需求17, 待配置。</div>
+                            </div>
+                            <!-- 规则2: 发送顺序 -->
+                            <div>
+                                <div class="font-bold text-slate-700">2) 发送顺序</div>
+                                <div class="mt-2 flex flex-col gap-1">
+                                    <label class="flex items-center gap-2"><input type="radio" name="asr-order" value="contact_first" checked> 按联系人分类顺序, 靠前联系人优先发完其所有套装</label>
+                                    <label class="flex items-center gap-2"><input type="radio" name="asr-order" value="round_robin"> 轮询: 每个联系人先预排一个套装, 所有第一个套装完成后再从头预排第二个</label>
+                                </div>
+                            </div>
+                            <!-- 规则3: 间隔 -->
+                            <div>
+                                <div class="font-bold text-slate-700">3) 间隔配置</div>
+                                <div class="mt-2 flex flex-wrap items-center gap-4">
+                                    <label class="flex items-center gap-2">套装内每封邮件间隔
+                                        <input type="number" id="asr-gap-mail" min="0" value="2" class="w-16 rounded border border-slate-300 px-2 py-1 text-right"> 天
+                                    </label>
+                                    <label class="flex items-center gap-2">每个套装之间间隔
+                                        <input type="number" id="asr-gap-suite" min="0" value="7" class="w-16 rounded border border-slate-300 px-2 py-1 text-right"> 天
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 flex flex-wrap items-center gap-2">
+                            <button type="button" onclick="asrPreviewSchedule()" class="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100" title="占位：按上述规则生成排期预览(入待发清单, 不真发)。">预排预览</button>
+                            <span id="asr-rules-status" class="text-[11px] text-slate-500"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== 模式②: 销售动作触发提示 (需求14) ===== -->
+                <div id="asr-mode-trigger" class="hidden space-y-4">
+                    <div class="rounded-lg border border-slate-300 bg-white p-4">
+                        <h3 class="text-sm font-bold text-slate-900">① 触发规则配置<span class="ml-1 cursor-help text-[11px] text-slate-400" title="不同销售动作触发不同邮件套装。当前先支持 跟进/丢单, 后续扩展更多动作与动作→套装映射。">ⓘ</span></h3>
+                        <div class="mt-3 overflow-auto">
+                            <table class="min-w-full text-xs border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-600">
+                                        <th class="border border-slate-200 px-3 py-2 text-left">销售动作</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-center">启用触发</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-left">触发的套装(占位, 待配置映射)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="border border-slate-200 px-3 py-2">跟进</td>
+                                        <td class="border border-slate-200 px-3 py-2 text-center"><input type="checkbox" class="asr-trigger-action h-4 w-4" value="followup" checked></td>
+                                        <td class="border border-slate-200 px-3 py-2 text-slate-400">待配置</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="border border-slate-200 px-3 py-2">丢单</td>
+                                        <td class="border border-slate-200 px-3 py-2 text-center"><input type="checkbox" class="asr-trigger-action h-4 w-4" value="lost" checked></td>
+                                        <td class="border border-slate-200 px-3 py-2 text-slate-400">待配置</td>
+                                    </tr>
+                                    <tr class="text-slate-400">
+                                        <td class="border border-slate-200 px-3 py-2">+ 更多动作</td>
+                                        <td class="border border-slate-200 px-3 py-2 text-center">—</td>
+                                        <td class="border border-slate-200 px-3 py-2">后期开放配置</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="rounded-lg border border-slate-300 bg-white p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <h3 class="text-sm font-bold text-slate-900">② 触发计算与建议</h3>
+                            <button type="button" onclick="asrTriggerCompute()" class="rounded border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-100" title="占位：调用接口, 针对发生了所选动作的联系人, 计算其适合发送的套装(排除已发套装/已有排期), 供人工确认。">计算适合套装</button>
+                        </div>
+                        <p class="mt-1 text-[11px] text-slate-500">对发生了所选销售动作的联系人计算适合套装, 排除已发送套装与已有排期; 人工确认后返回后台自动生成。</p>
+                        <div class="mt-3 overflow-auto">
+                            <table class="min-w-full text-xs border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-600">
+                                        <th class="border border-slate-200 px-3 py-2 text-left">联系人</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-left">触发动作</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-left">建议套装</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-left">排除原因</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-center">确认发送</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="asr-trigger-tbody">
+                                    <tr><td colspan="5" class="border border-slate-200 px-3 py-6 text-center text-slate-400">尚未计算。点"计算适合套装"后展示。</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-4 flex flex-wrap items-center gap-2">
+                            <button type="button" onclick="asrTriggerConfirm()" class="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100" title="占位：人工确认后, 返回选中的套装到后台开始自动生成。">确认并后台生成</button>
+                            <span id="asr-trigger-status" class="text-[11px] text-slate-500"></span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <section id="mail-iteration-panel" class="hidden space-y-5">
                 <div class="rounded-lg border border-indigo-200 bg-white p-5">
                     <div class="flex flex-wrap items-start justify-between gap-4">
@@ -3867,8 +4045,49 @@
         function autosendSwitchStaffView() { autosendRenderFrames(); }
         function autosendRefreshFrame() { autosendRenderFrames(); }
 
+        // ===== 自动发送(框架) : 需求14 触发提示 + 需求15 统一规则排期 =====
+        // 当前为纯前端框架, 各动作先弹提示占位, 后端接口就绪后逐项接入(见 邮件自动发送框架_开发记录.md)。
+        let autosendRulesInited = false;
+        function autosendRulesInit() {
+            if (autosendRulesInited) return;
+            autosendRulesInited = true;
+            // 销售下拉复用套装排期已加载的销售名单(若已加载), 否则留占位。
+            const picker = document.getElementById('mail-autosendrules-staff');
+            const wrap = document.getElementById('mail-autosendrules-staff-wrap');
+            if (picker) {
+                if (autosendIsAdminView && autosendIsAdminView()) {
+                    const opts = (autosendStaffOptions || []);
+                    picker.innerHTML = '<option value="__all__">全部销售</option>' + opts.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name ? `${s.name}(${s.id})` : s.id)}</option>`).join('');
+                } else if (wrap) {
+                    wrap.style.display = 'none';
+                }
+            }
+            asrSwitchMode('rules');
+        }
+        function asrSwitchMode(mode) {
+            const isRules = mode !== 'trigger';
+            document.getElementById('asr-mode-rules')?.classList.toggle('hidden', !isRules);
+            document.getElementById('asr-mode-trigger')?.classList.toggle('hidden', isRules);
+            const activeCls = 'px-3 py-1.5 rounded-lg border border-violet-300 bg-violet-100 text-violet-800 text-xs font-bold';
+            const inactiveCls = 'px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50';
+            const rb = document.getElementById('asr-mode-rules-btn');
+            const tb = document.getElementById('asr-mode-trigger-btn');
+            if (rb) rb.className = isRules ? activeCls : inactiveCls;
+            if (tb) tb.className = isRules ? inactiveCls : activeCls;
+        }
+        function asrPlaceholder(statusId, msg) {
+            const el = document.getElementById(statusId);
+            if (el) el.textContent = msg;
+        }
+        // 需求15 占位动作
+        function asrGenerateSuggestion() { asrPlaceholder('asr-rules-status', '框架占位: 生成建议接口待接入(LLM 分析联系人×套装优先级)。'); }
+        function asrPreviewSchedule() { asrPlaceholder('asr-rules-status', '框架占位: 预排预览接口待接入(按邮箱/顺序/间隔规则生成待发清单)。'); }
+        // 需求14 占位动作
+        function asrTriggerCompute() { asrPlaceholder('asr-trigger-status', '框架占位: 触发计算接口待接入(按销售动作算适合套装, 排除已发/已排)。'); }
+        function asrTriggerConfirm() { asrPlaceholder('asr-trigger-status', '框架占位: 确认后台生成接口待接入。'); }
+
         function switchMailWorkspaceTab(tab) {
-            const validTabs = ['stats', 'quality', 'autosend', 'iteration', 'goldlib', 'contractcases', 'feedback', 'config'];
+            const validTabs = ['stats', 'quality', 'autosend', 'autosendrules', 'iteration', 'goldlib', 'contractcases', 'feedback', 'config'];
             let activeTab = validTabs.includes(tab) ? tab : 'quality';
             if (isMailQualityOnlyUser() && activeTab === 'config') activeTab = 'quality';
             const statsPanel = document.getElementById('mail-stats-panel');
@@ -3876,6 +4095,8 @@
             const qualityInfo = document.getElementById('mail-quality-panel-info');
             const autosendPanel = document.getElementById('mail-autosend-panel');
             const autosendBtn = document.getElementById('mail-subtab-autosend');
+            const autosendRulesPanel = document.getElementById('mail-autosendrules-panel');
+            const autosendRulesBtn = document.getElementById('mail-subtab-autosendrules');
             const iterationPanel = document.getElementById('mail-iteration-panel');
             const goldlibPanel = document.getElementById('mail-goldlib-panel');
             const contractCasesPanel = document.getElementById('mail-contractcases-panel');
@@ -3900,6 +4121,8 @@
             if (configPanel) configPanel.classList.toggle('hidden', activeTab !== 'config');
             if (autosendPanel) autosendPanel.classList.toggle('hidden', activeTab !== 'autosend');
             if (autosendBtn) autosendBtn.className = activeTab === 'autosend' ? activeClass : inactiveClass;
+            if (autosendRulesPanel) autosendRulesPanel.classList.toggle('hidden', activeTab !== 'autosendrules');
+            if (autosendRulesBtn) autosendRulesBtn.className = activeTab === 'autosendrules' ? activeClass : inactiveClass;
             if (qualityBtn) qualityBtn.className = activeTab === 'quality' ? activeClass : inactiveClass;
             if (iterationBtn) iterationBtn.className = activeTab === 'iteration' ? activeClass : inactiveClass;
             if (goldlibBtn) goldlibBtn.className = activeTab === 'goldlib' ? activeClass : inactiveClass;
@@ -3922,6 +4145,7 @@
             if (activeTab === 'contractcases' && typeof loadMailContractCaseCandidates === 'function') loadMailContractCaseCandidates();
             if (activeTab === 'feedback' && typeof loadMailCustomerSuiteFeedbackRecords === 'function') loadMailCustomerSuiteFeedbackRecords();
             if (activeTab === 'autosend' && typeof autosendInit === 'function') autosendInit();
+            if (activeTab === 'autosendrules' && typeof autosendRulesInit === 'function') autosendRulesInit();
             applyMailQualityOnlyVisibility();
         }
 
