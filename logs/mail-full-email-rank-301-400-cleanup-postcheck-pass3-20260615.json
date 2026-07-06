@@ -1,0 +1,688 @@
+{
+  "mode": "dry_run",
+  "target_range": [
+    301,
+    400
+  ],
+  "target_count_existing": 47,
+  "missing_ranks": [
+    304,
+    307,
+    309,
+    310,
+    311,
+    312,
+    313,
+    321,
+    322,
+    323,
+    324,
+    325,
+    326,
+    327,
+    328,
+    329,
+    330,
+    332,
+    333,
+    334,
+    337,
+    338,
+    339,
+    341,
+    342,
+    343,
+    346,
+    348,
+    351,
+    352,
+    354,
+    356,
+    357,
+    361,
+    363,
+    364,
+    378,
+    379,
+    380,
+    381,
+    382,
+    383,
+    384,
+    385,
+    386,
+    388,
+    389,
+    390,
+    391,
+    394,
+    395,
+    396,
+    400
+  ],
+  "changed_count": 0,
+  "residual_count": 0,
+  "manual_hold_count": 9,
+  "checked": [
+    {
+      "rank": 301,
+      "fragment_id": "cdd13643-5f56-44a6-967b-37309cd333fe",
+      "source_ref": "mail_gold_v2_301_scn_2026",
+      "scenario": "new_business_promotion",
+      "old_title": "事必达翻译 | 亚太区数字内容本地化及视频译制服务，某化工客户",
+      "new_title": "事必达翻译 | 亚太区数字内容本地化及视频译制服务，某化工客户",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 302,
+      "fragment_id": "06a9821c-8608-4641-b548-696dcc0fd24d",
+      "source_ref": "mail_gold_v2_302_scn_2026",
+      "scenario": "new_contact_intro",
+      "old_title": "事必达公司业务介绍（语言服务与展会支持",
+      "new_title": "事必达公司业务介绍（语言服务与展会支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 303,
+      "fragment_id": "0bb0fd61-ee5e-482e-b3b1-e65d96fe79b0",
+      "source_ref": "mail_gold_v2_303_scn_2026",
+      "scenario": "re_activation",
+      "old_title": "想请教某化工客户内部语言服务对接情况",
+      "new_title": "想请教某化工客户内部语言服务对接情况",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 305,
+      "fragment_id": "3b0f2276-a5a4-43a8-bb15-d57870d74914",
+      "source_ref": "mail_gold_v2_305_scn_2026",
+      "scenario": "re_activation",
+      "old_title": "与某化工客户——期待续写新篇",
+      "new_title": "与某化工客户——期待续写新篇",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 306,
+      "fragment_id": "f18e7247-fb10-4fb2-90e7-91003b43d8c9",
+      "source_ref": "mail_gold_v2_306_scn_2026",
+      "scenario": "new_contact_intro",
+      "old_title": "与贵司合作，重新问候——Speed Tech",
+      "new_title": "与贵司合作，重新问候——Speed Tech",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 308,
+      "fragment_id": "9c0dd65c-aa17-4677-a174-c113090fe114",
+      "source_ref": "mail_gold_v2_308_scn_2026",
+      "scenario": "new_contact_intro",
+      "old_title": "某制造业客户 - 医疗器械与化工翻译服务",
+      "new_title": "某制造业客户 - 医疗器械与化工翻译服务",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 314,
+      "fragment_id": "05085923-db21-49e7-8b98-2d98c89b2581",
+      "source_ref": "mail_gold_v2_314_scn_2026",
+      "scenario": "new_business_promotion",
+      "old_title": "翻译服务供应商",
+      "new_title": "翻译服务供应商",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 315,
+      "fragment_id": "b0b607a2-c547-4502-920f-c5c42c2b95e8",
+      "source_ref": "mail_gold_v2_315_scn_2026",
+      "scenario": "new_business_promotion",
+      "old_title": "跟你同步一下我们",
+      "new_title": "跟你同步一下我们",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 316,
+      "fragment_id": "60751684-b50a-4729-877d-529f0bb2fe03",
+      "source_ref": "mail_gold_v2_316_scn_2026",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 317,
+      "fragment_id": "a37e6951-fc2e-4af8-8705-c0da398e07cc",
+      "source_ref": "mail_gold_v2_317_scn_2026",
+      "scenario": "new_business_promotion",
+      "old_title": "关于经导管瓣膜医学内容与会议支持的合作探讨",
+      "new_title": "关于经导管瓣膜医学内容与会议支持的合作探讨",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 318,
+      "fragment_id": "26639b5c-e811-4516-871e-8c889226e693",
+      "source_ref": "mail_gold_v2_318_scn_2026",
+      "scenario": "new_business_promotion",
+      "old_title": "期待继续支持贵司后续国际化项目与行业活动",
+      "new_title": "期待继续支持贵司后续国际化项目与行业活动",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 319,
+      "fragment_id": "8ae50f16-1fc9-4be9-a097-a11d4b325c07",
+      "source_ref": "mail_gold_v2_319_scn_2026",
+      "scenario": "new_business_promotion",
+      "old_title": "让全球培训内容在中国真正“落地生根”",
+      "new_title": "让全球培训内容在中国真正“落地生根”",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 320,
+      "fragment_id": "bf3675e8-17f9-4b9b-b8fa-4ad8af21ad8f",
+      "source_ref": "mail_gold_v2_320_scn_2026",
+      "scenario": "new_contact_intro",
+      "old_title": "是否方便交流一下贵司海外资料是如何统一处理的？",
+      "new_title": "是否方便交流一下贵司海外资料是如何统一处理的？",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 331,
+      "fragment_id": "0a3b8290-f33d-4040-8763-ccd149666035",
+      "source_ref": "mail_gold_v2_331_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "TR报告翻译，英译中-某工业客户",
+      "new_title": "TR报告翻译，英译中-某工业客户",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 335,
+      "fragment_id": "51106de5-e8f4-40e0-8325-8f07008543f2",
+      "source_ref": "mail_gold_v2_335_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "翻译印刷长期协议",
+      "new_title": "翻译印刷长期协议",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 336,
+      "fragment_id": "a286e230-163d-445e-ac4d-da9c64afcc80",
+      "source_ref": "mail_gold_v2_336_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "DEI同传会议翻译",
+      "new_title": "DEI同传会议翻译",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 340,
+      "fragment_id": "65df7586-a165-4465-9f0d-d7059a9f7a03",
+      "source_ref": "mail_gold_v2_340_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 344,
+      "fragment_id": "ff0d0c21-9ac2-41d7-aa1f-256d0c15b8dc",
+      "source_ref": "mail_gold_v2_344_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "某客户活动翻译",
+      "new_title": "某客户活动翻译",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 345,
+      "fragment_id": "2a208211-d576-4bc4-8c0b-c37968c11d3f",
+      "source_ref": "mail_gold_v2_345_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "某工业客户 产品宣传资料",
+      "new_title": "某工业客户 产品宣传资料",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 347,
+      "fragment_id": "d3a0b4d2-4f0c-44e2-9e79-f275e1b9d724",
+      "source_ref": "mail_gold_v2_347_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "员工手册-某科技客户",
+      "new_title": "员工手册-某科技客户",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 349,
+      "fragment_id": "f79d17be-ffbe-4f79-89fb-5ba58ca88afe",
+      "source_ref": "mail_gold_v2_349_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 350,
+      "fragment_id": "cdf2b4aa-98c8-4408-96c4-bdee9166d1f6",
+      "source_ref": "mail_gold_v2_350_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 353,
+      "fragment_id": "aecb8df7-d28a-477d-88cb-d49c2e4c243b",
+      "source_ref": "mail_gold_v2_353_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "五大新服务升级",
+      "new_title": "五大新服务升级",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 355,
+      "fragment_id": "851494f1-2a66-43d8-a625-4000ee6a3926",
+      "source_ref": "mail_gold_v2_355_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 358,
+      "fragment_id": "a2d4a48b-5888-454d-a7f7-26a6f5d8a215",
+      "source_ref": "mail_gold_v2_358_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "SPEED合同模板和公司介绍",
+      "new_title": "SPEED合同模板和公司介绍",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 359,
+      "fragment_id": "df36f881-46b2-4cb4-aef8-02b3df9d1718",
+      "source_ref": "mail_gold_v2_359_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 360,
+      "fragment_id": "b736d1a7-e9c1-4bbd-9708-24255dfb6112",
+      "source_ref": "mail_gold_v2_360_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "SPEED",
+      "new_title": "SPEED",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 362,
+      "fragment_id": "f83a4c41-3e41-4a37-933c-aec6a46287f0",
+      "source_ref": "mail_gold_v2_362_scn_2025",
+      "scenario": "new_contact_intro",
+      "old_title": "某客户同传安全培训",
+      "new_title": "某客户同传安全培训",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 365,
+      "fragment_id": "349a86fd-3988-4ad0-aaad-80cc93036b87",
+      "source_ref": "mail_gold_v2_365_scn_2025",
+      "scenario": "new_contact_intro",
+      "old_title": "来自SpeedAsia的业务支持介绍",
+      "new_title": "来自SpeedAsia的业务支持介绍",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 366,
+      "fragment_id": "cbefc5a7-3013-4941-9952-8f45a1645e8b",
+      "source_ref": "mail_gold_v2_366_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "嘉赛SPEED公司介绍",
+      "new_title": "嘉赛SPEED公司介绍",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 367,
+      "fragment_id": "fe69da11-6cd8-4e85-8870-c96b05c14113",
+      "source_ref": "mail_gold_v2_367_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "来自SPEED的[发件人]，保持联系",
+      "new_title": "来自SPEED的[发件人]，保持联系",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 368,
+      "fragment_id": "7692bf1e-2e5f-4af0-b2c2-66053c0cb393",
+      "source_ref": "mail_gold_v2_368_scn_2025",
+      "scenario": "new_contact_intro",
+      "old_title": "来自SpeedAsia的业务支持介绍",
+      "new_title": "来自SpeedAsia的业务支持介绍",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 369,
+      "fragment_id": "c5b12606-ac8a-4310-a07d-09bb1f8d64a3",
+      "source_ref": "mail_gold_v2_369_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 370,
+      "fragment_id": "f8921843-636d-4639-b162-23b4b5b311a7",
+      "source_ref": "mail_gold_v2_370_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 371,
+      "fragment_id": "0473a76b-0cf1-45c0-aac2-a5f7a86e641b",
+      "source_ref": "mail_gold_v2_371_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 372,
+      "fragment_id": "3a162a53-b242-4cbb-b7fa-57bf05d688e8",
+      "source_ref": "mail_gold_v2_372_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 373,
+      "fragment_id": "17372e02-2f5d-4443-9cc0-bade3b441b52",
+      "source_ref": "mail_gold_v2_373_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 374,
+      "fragment_id": "96e7b6b8-bca7-4bd5-be98-bba71c45537a",
+      "source_ref": "mail_gold_v2_374_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 375,
+      "fragment_id": "f98a67f2-00c7-4724-861f-4c0bda17e1c2",
+      "source_ref": "mail_gold_v2_375_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 376,
+      "fragment_id": "182646a5-67c2-47af-84a2-06eb91e7ffd2",
+      "source_ref": "mail_gold_v2_376_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 377,
+      "fragment_id": "e6824733-9726-499a-b987-44f240b6b594",
+      "source_ref": "mail_gold_v2_377_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 387,
+      "fragment_id": "8d920a0f-abcd-4a0d-81fd-f1c39a388fe1",
+      "source_ref": "mail_gold_v2_387_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "同传翻译",
+      "new_title": "同传翻译",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 392,
+      "fragment_id": "298be1a0-060f-4dbf-8cbc-e0dfc0dfb75e",
+      "source_ref": "mail_gold_v2_392_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "Speed Tech",
+      "new_title": "Speed Tech",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 393,
+      "fragment_id": "56162b01-eee8-470f-b3d8-801f36ed38a7",
+      "source_ref": "mail_gold_v2_393_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 397,
+      "fragment_id": "5fe4b52e-ab0c-42b4-adf6-73fe69bd31fe",
+      "source_ref": "mail_gold_v2_397_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "企业会议同传",
+      "new_title": "企业会议同传",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 398,
+      "fragment_id": "245d2a63-b178-4190-9686-cacd032586a1",
+      "source_ref": "mail_gold_v2_398_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 399,
+      "fragment_id": "53944933-e5a2-49cd-bd14-1188bd0f78c8",
+      "source_ref": "mail_gold_v2_399_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    }
+  ],
+  "changed": [],
+  "residual": [],
+  "manual_hold": [
+    {
+      "rank": 335,
+      "fragment_id": "51106de5-e8f4-40e0-8325-8f07008543f2",
+      "source_ref": "mail_gold_v2_335_scn_2025",
+      "title": "翻译印刷长期协议",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 336,
+      "fragment_id": "a286e230-163d-445e-ac4d-da9c64afcc80",
+      "source_ref": "mail_gold_v2_336_scn_2025",
+      "title": "DEI同传会议翻译",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 345,
+      "fragment_id": "2a208211-d576-4bc4-8c0b-c37968c11d3f",
+      "source_ref": "mail_gold_v2_345_scn_2025",
+      "title": "某工业客户 产品宣传资料",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 350,
+      "fragment_id": "cdf2b4aa-98c8-4408-96c4-bdee9166d1f6",
+      "source_ref": "mail_gold_v2_350_scn_2025",
+      "title": "继续为您提供多业务支持",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 362,
+      "fragment_id": "f83a4c41-3e41-4a37-933c-aec6a46287f0",
+      "source_ref": "mail_gold_v2_362_scn_2025",
+      "title": "某客户同传安全培训",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 369,
+      "fragment_id": "c5b12606-ac8a-4310-a07d-09bb1f8d64a3",
+      "source_ref": "mail_gold_v2_369_scn_2025",
+      "title": "与您分享可参考的综合服务场景",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 370,
+      "fragment_id": "f8921843-636d-4639-b162-23b4b5b311a7",
+      "source_ref": "mail_gold_v2_370_scn_2025",
+      "title": "与您分享可参考的综合服务场景",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 397,
+      "fragment_id": "5fe4b52e-ab0c-42b4-adf6-73fe69bd31fe",
+      "source_ref": "mail_gold_v2_397_scn_2025",
+      "title": "企业会议同传",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 398,
+      "fragment_id": "245d2a63-b178-4190-9686-cacd032586a1",
+      "source_ref": "mail_gold_v2_398_scn_2025",
+      "title": "与您分享可参考的综合服务场景",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    }
+  ]
+}

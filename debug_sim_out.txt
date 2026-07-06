@@ -1,0 +1,5 @@
+Query: 画外音配字幕费用
+SearchText: 画外音内容与字幕显示保持一致 画外音即字幕上显示的内容，二者需保持一致，避免出入
+Similarity: 0.07317073
+Length of query: 8
+Length of SearchText: 40

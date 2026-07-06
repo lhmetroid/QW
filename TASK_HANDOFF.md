@@ -1719,3 +1719,245 @@ regenerate_mail_customer_suite_draft() 生成后立即 _apply_mail_suite_signatu
 - dry-run: 留空销售工号走 demo; 填工号走 CRM 取数。仅预览不写CRM。
 - 验证: backend ast.parse 通过; 新增前端 JS 块 node --check 通过。需重启后端上线接口+建表。
 - 待办 Step3: 接真生成草稿+写 spQueueSend+历史去重+后台任务进度。
+
+## 2026-06-29 10:17:32 交接：一键启动后台 detached 防冻结
+- 用户反馈：服务器端后台每次刚启动后，cmd 窗口会像卡住；选中窗口再点向下箭头后日志立刻继续。
+- 分析结论：Windows 控制台 QuickEdit/滚动暂停会阻塞 stdout/stderr，当前 start_backend.ps1 的控制台输出与 Tee-Object 可能使 uvicorn 请求处理被控制台 I/O 卡住。
+- 已完成：新增 start_backend_detached.ps1；一键启动后台.bat 改为调用 detached helper，真实后端跑在隐藏 PowerShell 中，stdout/stderr 写 backend/logs/backend_8071_*.stdout.log / stderr.log，业务日志仍看 backend/logs/app.log。
+- 验证：PowerShell PSParser 语法检查 OK；定向 git diff --check OK。未实际执行启动，避免影响当前运行的后台。
+
+## 2026-06-29 10:41:57 交接：detached 后端 + 可见日志查看窗口
+- 用户进一步要求：前台仍要可见日志，便于发现报错和十几分钟无日志的问题。
+- 当前方案：真实后端由 start_backend_detached.ps1 用隐藏 PowerShell 启动，并将 stdout/stderr 重定向到 backend/logs/backend_8071_*.stdout.log / stderr.log；同时打开 start_backend_log_viewer.ps1 可见窗口跟踪 app.log/stdout/stderr。
+- 关键边界：日志查看窗口可以被选中/滚动，最多只阻塞日志查看器输出，不会阻塞 uvicorn/FastAPI 后端进程。
+- 验证：两个 ps1 均 PSParser 语法 OK；一键启动后台.bat/start_backend_detached.ps1/start_backend_log_viewer.ps1 定向 diff-check OK；未实际启动后台。
+
+## 2026-06-29 10:59:27 交接：后台启动关闭/报错/重复双击行为
+- 关闭行为：关闭一键启动 bat 的前台窗口或日志查看窗口，不会关闭隐藏后端进程；停止后端应使用停止脚本或按端口/PID 停止。
+- 报错可见性：隐藏后端 stdout/stderr 已重定向到 backend/logs/backend_8071_*.stdout.log / stderr.log，日志查看窗口同时跟踪 app.log/stdout/stderr；后端进程退出时日志窗口会提示。
+- 重复双击：start_backend.ps1 -KillPortOwner 会清理 8071 端口旧后端；start_backend_detached.ps1 现在会通过 backend_8071_log_viewer.pid 先关闭旧日志查看窗口，再打开新的日志窗口，避免前台窗口重复堆积。
+- 验证：两个 ps1 均 PSParser 语法 OK；一键启动后台.bat/start_backend_detached.ps1/start_backend_log_viewer.ps1 定向 diff-check OK；本轮未实际启动后台。
+
+## 2026-06-29 11:18:14 交接：首页刷新卡住 REQUEST_START 观测补强
+- 当前判断：日志停在 favicon.ico 404 不代表后端在处理 favicon；前端默认流程后续应进入 /api/sessions 加载企微会话列表。若该请求未完成，旧日志机制不会显示它。
+- 本轮修改：backend/main.py 的 request_observability_middleware 在 /api/* 请求进入时先写 REQUEST_START，包含 path/method/request_id/query。
+- 预期效果：重启后再次卡住时，日志窗口最后的 REQUEST_START 行就是当前 in-flight 卡点；若看到 path=/api/sessions，优先排查 get_sessions 中 message_logs DISTINCT ON 查询、当日统计 _build_api_day_stats、会话标记 _build_api_session_marks。
+- 验证：py_compile 与定向 diff-check 通过；未实际重启后台，因当前沙箱 curl localhost:8071 返回 000。
+
+## 2026-06-29 11:38:05 交接：TRAIN_AI_TIMEOUT 归属日志
+- 问题：用户服务器日志在首页刷新期间出现 TRAIN_AI_TIMEOUT model=unsloth-qwen2.5-task-62，但没有 request/session/runtime_key 上下文。
+- 当前代码已补：_train_ai_chat(messages, ..., call_context=None)，日志追加 context；_generate_reply_style_candidates 调用处传 source=reply_style_candidates/runtime_key。
+- 后续判断：部署重启后若仍出现 TRAIN_AI_TIMEOUT，看同一行 context 字段。若 context 为空，说明来自其他 _train_ai_chat 调用点（例如自动辅助或案例链路），再给对应调用点补 call_context。
+- 验证：py_compile 与定向 diff-check 通过；未实际重启服务器。
+
+## 2026-06-29 页面加载卡住排障交接
+
+- 用户现象：后台窗口仍有日志，多个页面一直加载；截图显示 /api/kb/hit_logs/chunk_stats 耗时 176367ms，/api/v1/mail/customer-suite 耗时 194063ms，均最终 200 OK。
+- 已完成：新增全局 REQUEST_IN_FLIGHT 运行中日志，所有 /api/* 超过 SLOW_REQUEST_MS 未完成会显示具体 path、query、request_id、elapsed_ms；知识库命中统计默认避免逐条链路快照回溯并记录 KB_HIT_STATS_DONE 计时；前端几个加载入口增加超时和错误展示。
+- 服务器更新后看法：若再卡住，先看 REQUEST_IN_FLIGHT 的 path/query；若是知识库统计，看 KB_HIT_STATS_DONE 的 timings_ms 和 chain_lookup_count；若是 customer-suite，当前能明确到 /api/v1/mail/customer-suite 这一接口，下一步可再给该接口内部 CRM/模板/LLM/保存阶段加分段日志。
+- 验证：python -m py_compile backend\main.py、node --check scratch\frontend-index-scripts-check.js、git diff --check -- backend/main.py frontend/index.html 通过。
+
+
+## 2026-06-29 桌面后台日志慢节点交接
+
+- 日志文件可读：C:\Users\Admin\Desktop\backend_8071_20260629_134512.stdout.log、C:\Users\Admin\Desktop\backend_8071_20260629_134512.stderr.log。
+- 已定位主要失败：/api/wecom/trigger_analytics?start_date=2026-06-29...limit=300 两次约 24s 后 500，异常为 psycopg.errors.QueryCanceled: 由于语句执行超时，正在取消查询命令，SQL 是按 triggered_at 查 pi_assist_invocation 并全量 SELECT 大字段。
+- 已修改：get_wecom_trigger_analytics 改为 SQL 层过滤 source、limit；启动自动补 pi_assist_invocation(triggered_at DESC) 与 (trigger_source, triggered_at DESC) 索引；返回前记录 WECOM_TRIGGER_ANALYTICS_DONE。
+- 仍需后续关注：/api/kb/hit_logs/chunk_stats 仍慢，本轮默认 scan_limit 从 1000 降至 500；/api/v1/mail/customer-suite* 仍会慢，需要进一步分段日志和保存/生成链路优化。
+- 非问题项：/api/wecom/session_updates?wait=25 约 25s 是长轮询正常行为；本日志中 /api/sessions 返回 200 OK。
+- 验证：python -m py_compile backend\main.py、node --check scratch\frontend-index-scripts-check.js、git diff --check -- backend/main.py frontend/index.html 通过。
+
+
+## 2026-06-29 轻量首屏交接
+
+- 用户要求：慢页面不要为了详细计算卡住，详细内容可以后置，先确保数据能显示。
+- 已完成：统计分析 limit=80；知识库命中统计 limit=100/scan_limit=200；本地 API timeout=15000ms；mail-suite 首屏调用 /api/v1/mail/customer-suite?...&generate=false，后端只读客户信息和已保存草稿，不自动生成缺失草稿。
+- 后续验证点：服务器更新重启后，打开企微统计分析应先显示最近 80 条；知识库命中统计应只扫 200 条日志；邮件套装页应先显示客户信息和已保存草稿，未生成项提示可重刷。
+- 若仍慢：继续针对 /api/v1/mail/customer-suite-draft 和 /api/kb/hit_logs/chunk_stats 做数据库字段瘦身/分页，不再首屏拉详情。
+
+
+## 2026-06-29 轻量首屏交接
+
+- 用户要求：慢页面不要为了详细计算卡住，详细内容可以后置，先确保数据能显示。
+- 已完成：统计分析 `limit=80`；知识库命中统计 `limit=100&scan_limit=200`；本地 API timeout=15000ms；mail-suite 首屏调用 `/api/v1/mail/customer-suite?...&generate=false`，后端只读客户信息和已保存草稿，不自动生成缺失草稿。
+- 后续验证点：服务器更新重启后，打开企微统计分析应先显示最近 80 条；知识库命中统计应只扫 200 条日志；邮件套装页应先显示客户信息和已保存草稿，未生成项提示可重刷。
+- 若仍慢：继续针对 `/api/v1/mail/customer-suite-draft` 和 `/api/kb/hit_logs/chunk_stats` 做数据库字段瘦身/分页，不再首屏拉详情。
+
+## 2026-06-29 邮件草稿 QueryCanceled 交接
+用户反馈生成单封草稿时 email_fragment_asset 查询因 statement_timeout 被取消。判断为邮件 Few-Shot/黄金范例查询慢查询：缺少 source_type/scenario_label/function_fragment/status/useful_score 组合索引，且 approved full_email 分支曾拉取最多 2000 条整行大字段。已在 auto_patch_db 补 idx_efa_mail_gold_seed_lookup 与 idx_mgsr_status_fragment，并把 full_email 候选限制为 max(limit*20, 40/60)。重启后首次启动会自动建索引；若生产表很大，首次 CREATE INDEX 可能需要等待。
+
+## 2026-06-29 18:40:00 知识库 KB3 动态路由与多路召回升级交接
+- 目标：将新版服务知识库（KB3/Unit 表）作为微信侧可选知识库，支持配置台动态选择主用/对比知识库，并增加仅检索已确认单元过滤。
+- 已完成：
+  1. 数据库模型：`database.py` 中为 `WecomRuntimeConfig` 新定义 `wecom_kb_primary`、`wecom_kb_compare` 和 `wecom_kb3_confirmed_only` 字段。
+  2. 检索匹配：`intent_engine.py` 实现 `retrieve_service_knowledge_v3`，支持 `pgvector` 余弦相似度与 `pg_trgm` `word_similarity`/`similarity` 混合检索与 token 兜底。
+  3. 配置路由：`main.py` 扩展 `_retrieve_knowledge_routed` 以处理配置路由；扩展 `save_ai_scripts` 并持久化。
+  4. 前端对接：`index.html` 完成“微信侧知识库召回配置”UI 交互与 `saveSettings` 参数保存。
+- 后续验证：本地测试已通过。当服务器重启后，前端打开 Settings 能够成功显示和保存“主用知识库/对比知识库”设置。
+
+## 2026-06-30 13:18:15 交接：mail-suite 逐封自动刷新与 3 次重试
+
+- 用户问题：进入 mail-suite.html 后 4 封空白/整批生成等待；担心 4 封同步刷、多线程互相影响；希望前台好一封显示一封，失败自动重刷，3 次失败后停止报错。
+- 已处理：前端默认请求 /api/v1/mail/customer-suite?...&generate=false 快速读取保存稿，随后 utoGenerateMissingDrafts() 逐封调用 /api/v1/mail/customer-suite-draft/regenerate，每封最多 3 次重试，状态显示“自动刷新中/重新刷新中”。
+- 后端处理：_build_mail_generate_draft_response() 在完成 DB 取数、进入 LLM 组装前 db.rollback() 释放事务；单封 regenerate 接口不再使用请求注入 DB session 跑 LLM，改为 generation_db 与 save_db 分离；整套接口兜底并发从 4 降到 2。
+- 判断：部分失败主要来自 DeepSeek 返回空正文/解析不到正文，旧日志还叠加了 DB idle-in-transaction 超时；本轮不恢复 fallback_template 假成功，而是让前端自动重试并最终显示真实失败原因。
+- 验证通过：python -m py_compile backend\main.py；抽取当前 frontend/mail-suite.html script 后
+ode --check scratch\frontend-mail-suite-current-check.js；git diff --check -- backend/main.py frontend/mail-suite.html。
+- 后续上线注意：需重启后端并强刷 mail-suite.html 静态页；若仍有单封 3 次失败，重点看该封 MAIL_DRAFT_LLM2_FAILED 前的 raw/parse 日志和对应脚本输出格式。
+
+## 2026-06-30 15:05:05 交接：邮件配置页 DeepSeek 参数真接入
+
+- 用户要求：在邮件配置页面顶部增加邮件生成 LLM 选择，复用其它页面模型选择逻辑；新增 DeepSeek API 主要参数配置，对应 deepseek-v4-flash / deepseek-v4-pro，保存后后续生成按这里配置走，并新增数据库字段。
+- 已完成：backend/database.py 的 WecomRuntimeConfig 增加 mail_generation_model、mail_deepseek_model_configs；backend/main.py 的自动补表、运行时配置 GET/PUT、邮件模型配置和 LLM 请求体均已接入。
+- 前端：frontend/index.html 的邮件配置页新增 “邮件生成 LLM 选择与 DeepSeek 参数” 面板，可编辑两套 DeepSeek 参数并随“保存配置（立即生效）”提交。
+- 注意：stream/tools 这类会破坏当前 JSON 解析保存链路的能力未作为可启用项接入；当前接入的是邮件草稿链路可安全使用的 DeepSeek 参数。需重启后端使新增数据库字段自动补表生效，前端需强刷静态资源。
+- 验证：python -m py_compile backend\main.py backend\database.py；node --check scratch\frontend-index-current-check.js；git diff --check -- backend/main.py backend/database.py frontend/index.html。
+## 2026-06-30 18:22:48 交接：mail-suite 首封发送时间恢复当前时间+10分钟
+
+- 问题：邮件套装页第 1 封发送时间会被保存稿/默认值 09:00 覆盖，未保持“当前时间 +10 分钟”。
+- 已处理：frontend/mail-suite.html 第 1 封渲染统一走浏览器当前时间 +10 分钟；成功重刷后回填 DOM 也使用同一逻辑。点击发送时，前端把页面当前 send_interval_days/send_time 传给后端。
+- 后端同步：backend/main.py 发送接口优先使用前端传入的 send_interval_days/send_time 计算 plan_send_time，未传时才回退保存稿和默认值。
+- 验证：后端 py_compile、当前 mail-suite 内联脚本 node --check、定向 diff-check 均通过。未启用真实发信；未触碰 Task 79。
+- 注意：根目录缺少 AGENTS.md 要求读取的 邮件智能回复实现方案.md 和 文件创建要求.md，本轮已按现有任务/进展/交接文件恢复上下文继续完成局部修复。
+
+## 2026-07-01 11:35:58 交接：KB3 检索过滤与向量日志口径修复
+- 已修复 backend/intent_engine.py 的 KB3 检索实现：has_vectors_in_db 不再受 qvec 是否生成影响；新增 query_embedding_available/semantic_search_enabled 解释为什么退回词法检索。
+- 已将 query_features.knowledge_type 下推为 KB3 Unit SQL 过滤，覆盖 semantic/trgm/backup 三段召回。映射口径：faq -> unit_type=faq；process -> 流程规范/技术处理；capability -> 产品知识/案例；pricing -> 搜索文本含报价/价格/费用/付款/发票等价格结算词。
+- 验证通过：python -m py_compile backend\\intent_engine.py；git diff --check -- backend/intent_engine.py。手工 KB3 查询新增一条 manual_kb3_filter_check 命中日志，用于确认字段与过滤生效。
+- 注意：本次验证显示 Ollama embedding 调用失败 RemoteDisconnected，因此语义召回仍会关闭，但现在日志会准确显示为 query_embedding_available=false，而不是误导为库内没向量。
+
+## 2026-07-01 13:54:49 交接：KB3 笔译资质类业务重排
+- 在 backend/intent_engine.py 的 KB3 检索中新增 business_rerank，位置在召回完成后、top_k 截断前。
+- 重排目标：客户问资质/营业执照/翻译专用章/认证/盖章时，优先 FAQ/产品知识/流程规范中可直接回答的资质条目；降低字段统一、VAT/registration number、加急开票审批、销售技巧和案例类泛相关条目。
+- 验证结果：宽查询《审计报告和营业执照；客户询问保加利亚语翻译能力；保加利亚语翻译需求》top5=1547/348/82/349/48；资质问句 top3=1779/1154/878。Ollama embedding 正常 EMBEDDING_OK。
+- 后续如继续优化，可把 business_rerank 规则沉淀为可配置表或按 taxonomy 维护，不建议继续硬编码过多长尾规则。
+
+## 2026-07-01 交接：企微实时智能 02-05 链路 KB3-only 文档
+
+- 用户要求先不继续优化，整理从 02 强信号扫描到 05 知识库检索证据的实现文档，并要求知识库仅以 KB3 为准。
+- 已新增 docs/企微实时智能_02到05链路_KB3-only.md。内容包括：前端节点渲染、/api/wecom/sidebar_assist 请求字段、Fast-Track 规则来源、第一阶段 LLM-2/LLM-1 结构化提取、CRM 聚合画像读取字段、thread_business_fact、KB3 路由配置、KB3 SQL/向量/词法/重排/日志快照字段。
+- 本轮未修改 backend/main.py、backend/intent_engine.py 等业务代码；只新增文档和状态记录。
+- 验证：git diff --check -- docs/企微实时智能_02到05链路_KB3-only.md 通过。
+
+## 2026-07-01 17:44:19 交接：联系人已用套装查询与两处点击入口
+
+- 用户要求：做 API 和使用说明文档，根据联系人编号输出该联系人使用过的套装及套装哪几封；并在截图位置增加两个点击显示。
+- 已完成：增强 /api/v1/mail/customer-suite-records 返回 used_steps / used_step_labels；新增文档 docs/mail_customer_suite_records_api.md；在 frontend/mail-suite.html 的客户信息联系人旁、自动排期清单联系人旁增加“已用套装”按钮，弹窗读取真实接口显示已用套装、封次、来源、最近活动。
+- 数据来源：mail_customer_suite_draft_edit、mail_customer_suite_send_plan、mail_customer_suite_feedback、mail_autosend_plan_item、mail_contact_suite_history。接口只读，不生成草稿、不写 CRM、不真实发信。
+- 验证：python -m py_compile backend\main.py、node --check scratch\frontend-mail-suite-current-check.js、定向 git diff --check 均通过。
+- 后续：重启后端并强刷 /static/mail-suite.html 后生效。
+
+## 2026-07-02 13:06:38 交接：自动排期待发日历展示修复
+
+- 用户要求：去掉刷新日历后“今天起40天今天起40天”的重复文案；在合计封数后增加涉及联系人数量，点击后在下方按排期清单格式展示对应清单；日历格子如 07-02 8 改为一行显示。
+- 已完成：frontend/mail-suite.html 抽出排期清单表格渲染 helper；日历状态改为“合计 X 封 · 涉及 Y 个联系人”；联系人数量点击展示当前周期本地预排清单；日期格子改为单行日期+数量；日期格单击展示当天清单并继续加载 ③ 邮件详情。
+- 验证：当前 mail-suite 内联脚本抽取后 node --check 通过；git diff --check -- frontend/mail-suite.html 通过。
+- 注意：涉及联系人统计基于当前已加载的本地自动排期清单 as2PlanItems；CRM 待发明细仍按日期点击后在 ③ 邮件详情逐封读取。
+
+## 2026-07-02 13:22:19 交接：自动排期后台生成防重复与状态锁定
+
+- 用户问题：确认“后台生成”是否多次点击会重复任务、销售 A/B 是否互相等待或覆盖、服务器关闭后队列是否清空/是否继续，以及需要按钮生成中状态跨刷新锁住。
+- 代码结论：原逻辑按销售工号内存去重；同一销售重复点击返回 already_running，不会再起同一销售 worker；不同销售各起后台线程并发跑，不等待 A 全部完成才跑 B；写入按 owner_staff_id/item_id 更新，正常不互相覆盖。风险是 active 只在内存中，服务重启后会丢，且中断时 drafting 可能残留。
+- 已修复：新增后端锁和 helper，防同销售并发竞态；generate-status 计算 remaining；非 running 状态发现 orphan drafting 会恢复为 planned，避免服务重启后卡死。前端按钮跟随后端 running 状态，点击后立即禁用并显示“生成中...”，刷新/重开页面会继续查询状态并锁住。
+- 当前只读统计：0017 planned=120 还未生成；0188 drafted=160 已生成。当前本机 8071 连接失败，说明本地没有可查询的运行中后端进程，无法从内存确认 active worker。
+- 验证：backend/main.py py_compile 通过；当前 mail-suite 内联脚本 node --check 通过；定向 diff-check 通过。
+
+## 2026-07-02 14:07:16 交接：待发日历联系人与清单
+- 已完成：calendar 接口新增 days 窗口、contact_count、planned_contacts、pending_contacts；CRM Receiver 增加归一化统计。
+- 已完成：frontend/mail-suite.html 日历状态使用后端 contact_count；联系人数字和日期点击均渲染 CRM待发 + 本地预排合并清单。
+- 注意：合并清单中的 CRM 行通过 crm-day 接口读取 rowid/subject/receiver/plan_time，点击
+
+## 2026-07-02 14:31:25 交接：日历联系人清单表格
+- 已完成：/api/v1/mail/autosend/plan 增加 include_sent 参数，默认不影响现有排期清单；日历调用 include_sent=1。
+- 已完成：frontend/mail-suite.html 日历下方恢复为联系人套装四列格式，封次格显示 MM-DD HH:mm + 状态颜色。
+- 待办：后台生成队列后续按 3 个销售并发上限、清空排期取消旧 worker/防回写继续实现。
+
+## 2026-07-02 14:45:46 交接：日历 41/125 口径
+- 已完成：frontend/mail-suite.html 的联系人清单改为 CRM 待发锁定联系人套装，本地 include_sent 记录用于补齐该联系人全部封次。
+- 已完成：周期过滤只决定哪些联系人入表；入表后四封邮件按实际日期显示，周期外日期不再被隐藏。
+- 暂停：后台生成队列 3 销售上限、清空取消旧 worker/防回写逻辑尚未继续实现。
+
+## 2026-07-02 14:49:15 交接：联系人清单排序
+- 已完成：frontend/mail-suite.html 中 cal1RenderContactTable 增加排序选择；cal1SortedGroupKeys 按公司名/套装/第1封时间排序。
+- 默认排序为 company；切换排序只重绘当前已加载表格，不重新请求后端。
+
+## 2026-07-02 15:24:25 交接：邮件套装生成记录用于日历清单
+- 已完成：backend/main.py 新增 _autosend_enrich_crm_queue_items，并应用到 crm-day/crm-range。
+- 已完成：frontend/mail-suite.html 的 cal1CrmVirtualItems 优先使用 mapped customer/scenario/suite_step/company_name/contact_name；crm-range 读 120 天补齐第4封等周期外封次。
+- 已完成：customer-suite-send 返回 prepared[].crm_send_id，前端 as2CommitItems 读取 prepared[0].crm_send_id 后回标 autosend plan item。
+- 注意：历史 CRM 待发若没有 mail_customer_suite_send_plan.spqueue_rowid 记录，仍只能显示 CRM待发 兜底。
+
+## 2026-07-02 15:32:54 交接：CRM待发映射二次修复
+- 之前页面无变化的原因：只按 spqueue_rowid 精确匹配可能因大小写/RowId口径不一致失败。
+- 已完成：_autosend_enrich_crm_queue_items 同时按 lower(spqueue_rowid) 和 crm_send_id(SendId) 关联 mail_customer_suite_send_plan。
+- 已完成：crm-day/crm-range SQL 读取 SendId 并作为 crm_send_id 返回。
+- 注意：后端需要重启/部署后浏览器页面才会体现映射结果。
+
+## 2026-07-02 17:02:42 交接：邮件套装日历清单本地索引化
+- 已完成：backend/database.py 与 backend/main.py 为 mail_customer_suite_send_plan 增加 company_name/contact_name/recipient_email_key 字段和索引，发送入 CRM 时写入，历史可用 recover-suite-index 回收。
+- 已完成：/api/v1/mail/autosend/crm-range 不再默认扫 CRM spQueueSend，改读本地 send_plan，返回 mapped 套装字段，解决清单长期加载和每次拼凑慢的问题。
+- 已完成：frontend/mail-suite.html 联系人清单回看 60 天/覆盖 180 天，能显示已发送第一封、待发送后续封和周期外第4封；同联系人套装重复行合并，映射行显示已用套装按钮。
+- 验证通过：后端 py_compile、前端 node --check、定向 git diff --check。
+- 上线注意：需重启后端触发表字段补齐；上线后建议对销售 0017 执行 POST /api/v1/mail/autosend/recover-suite-index?staff_id=0017，然后刷新页面核对 357/125/第一封状态/重复行。
+
+## 2026-07-02 17:19:11 交接：历史 send_plan 索引回收状态
+- 本地已实现自动回收：页面打开周期清单或点击日期时，会先调用 recover-suite-index 当前销售，随后再读取 crm-range。
+- 本地已实现手动回收：POST /api/v1/mail/autosend/recover-suite-index?staff_id=0017&limit=5000，返回 checked/backfilled/remaining_missing_index。
+- 本地已实现查询兜底：crm-range 对返回范围内行执行 _mail_suite_fill_missing_index_fields。
+- 重要：生产已有数据尚未确认回收成功；刚才线上 POST recover-suite-index 超时，crm-range 仍超时。需部署/重启后再执行 recover-suite-index 并以返回 remaining_missing_index=0 或明显下降作为回收结果。
+
+
+## 2026-07-03 17:44:40 交接：生成邮件质检配置与 LLM 质检循环
+- 本轮改动范围：backend/main.py、backend/database.py、frontend/index.html；未启用真实发信，未修改企微会话链路。
+- 前端入口：邮件质量诊断 -> 邮件配置页顶部快捷入口“生成邮件质检”，面板默认折叠；字段为 enabled、max_review_runs、script，点击“保存质检配置”复用 /api/v1/system/runtime-llm-settings 保存。
+- 后端配置：wecom_runtime_config.mail_quality_review_config JSON，auto_patch_db 会自动补列；runtime_llm_settings.json 也会保存同名小写字段。
+- 生成逻辑：_assemble_mail_draft_with_quality_review 在 _build_mail_generate_draft_response 中替代单次 _assemble_mail_draft_from_intent_profile；质检关闭时行为等同旧逻辑；质检开启时每轮“生成 -> 本地主题硬规则 -> LLM JSON 质检”，失败则重新生成，超过 max_review_runs 返回 422，detail 会写明始终不满足的质检点。
+- 默认质检点：缺少邮件主题。后续人工可在脚本里继续追加其它质检点，但建议保持 JSON 输出契约 passed/failed_points/reason。
+- 验证通过：python -m py_compile backend\main.py backend\database.py；node --check scratch\frontend-index-quality-check.js；git diff --check -- backend/main.py backend/database.py frontend/index.html。
+
+## 2026-07-03 18:46:26 交接：生成邮件质检节点位置修正
+- 用户截图指出节点应位于邮件质量诊断页绿色区域中，在“场景全阶段脚本模板”折叠栏下方。
+- 已将 frontend/index.html 中生成邮件质检 section 移动到 mql-template-collapsible 后方，并移除邮件配置区快捷入口；后端质检配置与生成链路逻辑不变。
+- 验证：node --check scratch\frontend-index-quality-check.js；git diff --check -- frontend/index.html。
+
+## 2026-07-03 18:51:50 交接：生成邮件质检脚本默认内容修正
+- 用户要求“当前质检点”不要做单独节点，应放进质检脚本里，并且脚本框要有默认脚本。
+- 已完成：frontend/index.html 删除当前质检点独立卡片，保留开关与最大质检次数两列；textarea 默认脚本写入“当前质检点：1. 缺少邮件主题”。
+- 默认最大质检次数同步改为 1：frontend 默认与 backend _default_mail_quality_review_config 一致。
+- 质量诊断页切换到 quality tab 时调用 renderMailQualityReviewConfig() 和 loadRuntimeLlmSettings()，避免只打开邮件配置页才初始化脚本。
+- 验证通过：py_compile、前端 node --check、定向 diff-check。
+
+## 2026-07-06 14:55:16 交接：index 邮件质量诊断自动排期入口
+- 已改 frontend/index.html 的 mail-autosend-panel：旧“自动发送 dry-run”面板替换为销售视角选择 + iframe 复用 /static/mail-suite.html?staff_id=... 的自动排期节点。
+- admin：可选择“全部销售”或单个销售；全部销售按 /api/v1/mail/autosend/sales-staff-names 返回的 priority_staff_ids 渲染多个销售 iframe 共同查看。
+- hj/mail_quality_only：隐藏销售下拉并锁定到本人视角；当前写死前端映射 hj -> 0017，如 hj 对应销售工号变化，需要调整 MAIL_AUTOSEND_LOCKED_STAFF_BY_USER。
+- 已改 frontend/mail-suite.html 的 resolveLockedStaff：支持 ?staff_id= 或 ?staff= 直接锁定销售，仍保留原 KH 解析逻辑。
+- 验证已通过：node --check scratch\\frontend-index-autosend-check.js；node --check scratch\\frontend-mail-suite-autosend-check.js；git diff --check -- frontend/index.html frontend/mail-suite.html。
+
+## 2026-07-06 15:26:49 交接：自动排期嵌入页二次修正
+- 用户反馈截图中嵌入页顶部的“邮件套装生成 / 自动排期”行不要；已通过 embed=1 给 body 加 ms-embed，并隐藏 .ms-pagetabs 与 #suite-toolbar。
+- 用户要求“显示所有联系人不是这样，还是一个页面”；已将 frontend/index.html 全部销售模式改成一个 iframe，传 staff_id=__all__&staff_ids=...，frontend/mail-suite.html 内部对所有 staff_id 循环拉取并合并自动排期、计划清单、日历、CRM待发等数据。
+- 用户要求每个框高度不要限定且至少满屏；已将相关 max-h/max-height 改为 min-h 65vh，并保留滚动以避免正文编辑溢出。
+- 验证通过：node --check scratch\frontend-index-autosend-check.js；node --check scratch\frontend-mail-suite-autosend-check.js；git diff --check -- frontend/index.html frontend/mail-suite.html。
+
+## 2026-07-06 15:41:09 交接：自动排期外层说明收起
+- 用户要求“新窗口打开去掉，其他改为加浮动说明”。
+- 已删除 iframe header 中的新窗口链接。
+- 自动排期标题旁新增 info 图标，承载 admin/hj 权限说明。
+- mail-autosend-status 正常状态只显示 info 图标，具体内容放入 title；err=true 时仍显示错误文本，避免失败不可见。
+- 验证通过：node --check scratch\frontend-index-autosend-check.js；git diff --check -- frontend/index.html。
+
+## 2026-07-06 15:55:02 交接：全部销售不加销售编号过滤
+- 用户明确要求：新加的嵌入聚合能力不能影响原有页面；全部销售视图查询 SQL 不要加销售编号限制，数据要能查询出。
+- 已新增前端 as2ReadStaffIds()：AS2_STAFF='__all__' 时返回 ['']，读接口和预览排期用空 staff_id 请求；单销售仍返回具体工号。
+- 后端读接口 staff_id 默认空，空值代表全销售查询；单销售 staff_id 逻辑保持原过滤。
+- _autosend_load_contacts_for_sales([]) 已改为不追加 Owner LIKE 条件，联系人 owner_staff_id 从 CRM Owner 字段解析。
+- 写操作清空/生成仍按具体销售工号执行，避免空 staff_id 误清全量；预览排期空 staff_id 只是不加联系人销售过滤。
+- 验证通过：py_compile、前端 node --check、定向 diff-check。
+
+## 2026-07-06 16:29:58 交接：自动排期全部销售详情与已发送读取
+- 用户最新要求：新加操作按钮不要另起一行；已发送邮件点击后也能查看内容；解释并修复“全部销售(0)”；全部销售情况下 ①/② 表格增加销售中文名列，其他视图不变。
+- 已完成前端：frontend/mail-suite.html 中 as2CrmCardHtml 将 CRM 操作按钮并入主题/邮箱/时间同一行；已发送详情只读展示；cal1StepCell 对 send_success/crm_sent/sent_done 携带 send_id 和 staff_id 打开详情；as2ShowDayEmails 支持 kind=sent；as2Init 初始化 AS2_STAFF_IDS；as2PlanRowsHtml/cal1ContactRowsHtml 在全部销售下渲染销售列。
+- 已完成后端：backend/main.py 的 /api/v1/mail/autosend/crm-mail 支持 rowid 读取待发 spQueueSend，也支持 send_id+staff_id 读取 spSendInfo{staff} 已发送邮件；crm-range/crm-day 返回 inputer_staff_id/owner_staff_id 供前端定位销售。
+- 验证通过：node --check scratch\frontend-mail-suite-autosend-check.js；node --check scratch\frontend-index-autosend-check.js；python -m py_compile backend\main.py；git diff --check -- backend/main.py frontend/mail-suite.html frontend/index.html。
+- 注意：全部销售视图读接口继续使用空 staff_id，不加销售编号限制；生成/清空等写操作仍需具体销售，避免误清全量。

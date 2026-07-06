@@ -170,6 +170,8 @@ class WecomRuntimeConfig(Base):
 
     mail_deepseek_model_configs = Column(JSON, nullable=True)
 
+    mail_quality_review_config = Column(JSON, nullable=True)
+
     updated_by = Column(String(120), nullable=True)
 
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
@@ -2394,6 +2396,12 @@ class MailCustomerSuiteSendPlan(Base):
 
     inputer_staff_id = Column(String(120), nullable=True)
 
+    company_name = Column(String(255), nullable=True)
+
+    contact_name = Column(String(255), nullable=True)
+
+    recipient_email_key = Column(String(255), nullable=True)
+
     status = Column(String(40), nullable=False, default="prepared_pending_ftp")
 
     spqueue_rowid = Column(String(64), nullable=True)
@@ -2418,6 +2426,8 @@ class MailCustomerSuiteSendPlan(Base):
         Index("idx_mcssp_batch", "batch_id"),
 
         Index("idx_mcssp_send_id", "crm_send_id"),
+        Index("idx_mcssp_staff_time", "inputer_staff_id", "plan_send_time"),
+        Index("idx_mcssp_recipient_key", "recipient_email_key"),
 
     )
 

@@ -1,10 +1,7 @@
 import sys, os, io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.path.insert(0, os.path.dirname(__file__))
-
 def load_env(p):
     if not os.path.exists(p): return
-    for l in open(p):
+    for l in open(p, encoding='utf-8'):
         l = l.strip()
         if not l or l.startswith('#') or '=' not in l: continue
         k, v = l.split('=', 1)
@@ -15,6 +12,10 @@ from database import engine
 from sqlalchemy import text
 
 with engine.connect() as c:
+    exts = c.execute(text("SELECT extname FROM pg_extension")).fetchall()
+    print("Installed extensions:")
+    for (ext,) in exts:
+        print(f"  {ext}")
     tables = c.execute(text(
         "SELECT table_name FROM information_schema.tables "
         "WHERE table_schema='public' ORDER BY table_name"
@@ -33,6 +34,13 @@ with engine.connect() as c:
     # Sort by count descending
     table_counts.sort(key=lambda x: x[1], reverse=True)
     
-    print("\n--- Tables sorted by row count ---")
-    for t, count in table_counts[:30]:
-        print(f"  {t:40s} : {count:,} rows")
+    print("\n--- Columns of llm_service_knowledge_unit ---")
+    try:
+        cols = c.execute(text(
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_name='llm_service_knowledge_unit' ORDER BY ordinal_position"
+        )).fetchall()
+        for col_name, data_type in cols:
+            print(f"  {col_name:30s} : {data_type}")
+    except Exception as e:
+        print(f"Error: {e}")

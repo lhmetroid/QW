@@ -1,0 +1,781 @@
+{
+  "mode": "dry_run",
+  "target_range": [
+    401,
+    500
+  ],
+  "target_count_existing": 53,
+  "missing_ranks": [
+    401,
+    402,
+    403,
+    404,
+    405,
+    411,
+    413,
+    414,
+    417,
+    418,
+    419,
+    420,
+    422,
+    423,
+    424,
+    425,
+    426,
+    427,
+    429,
+    432,
+    433,
+    436,
+    437,
+    438,
+    439,
+    441,
+    443,
+    444,
+    445,
+    446,
+    449,
+    450,
+    454,
+    455,
+    456,
+    463,
+    464,
+    467,
+    470,
+    483,
+    484,
+    487,
+    488,
+    490,
+    492,
+    493,
+    496
+  ],
+  "changed_count": 0,
+  "residual_count": 0,
+  "manual_hold_count": 12,
+  "checked": [
+    {
+      "rank": 406,
+      "fragment_id": "5cd36ee9-532d-4c25-848e-44e970918519",
+      "source_ref": "mail_gold_v2_406_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "嘿，来和我们一起“视”界大冒险吧！",
+      "new_title": "嘿，来和我们一起“视”界大冒险吧！",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 407,
+      "fragment_id": "5b58cd88-2bbd-4d32-a1c3-b967e81ddaa9",
+      "source_ref": "mail_gold_v2_407_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "活动搭建摄影直播同传和设备一体化服务-From [发件人] of Speed",
+      "new_title": "活动搭建摄影直播同传和设备一体化服务-From [发件人] of Speed",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 408,
+      "fragment_id": "fa613dd3-d5b3-4861-bf20-2d7998157092",
+      "source_ref": "mail_gold_v2_408_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "机油单页印刷文件",
+      "new_title": "机油单页印刷文件",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 409,
+      "fragment_id": "163d6145-d316-430c-91ab-f7e7aed87877",
+      "source_ref": "mail_gold_v2_409_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "进博会-同传译员book",
+      "new_title": "进博会-同传译员book",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 410,
+      "fragment_id": "e1a37fcc-b0d7-49c7-ad7a-f7b714e180f0",
+      "source_ref": "mail_gold_v2_410_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 412,
+      "fragment_id": "f5363f15-ce88-41e7-b19e-20df9cdd6e72",
+      "source_ref": "mail_gold_v2_412_scn_2025",
+      "scenario": "new_contact_intro",
+      "old_title": "来自SpeedAsia[发件人]的问候",
+      "new_title": "来自SpeedAsia[发件人]的问候",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 415,
+      "fragment_id": "7f0e3a78-157a-4483-bca3-f705e50610c4",
+      "source_ref": "mail_gold_v2_415_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 416,
+      "fragment_id": "babcda08-097b-4ab2-9c04-cfe1a6e211cd",
+      "source_ref": "mail_gold_v2_416_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 421,
+      "fragment_id": "0a3667aa-dfb1-4873-9d37-30ba056b695b",
+      "source_ref": "mail_gold_v2_421_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "同传老师Book-&2",
+      "new_title": "同传老师Book-&2",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 428,
+      "fragment_id": "d21fdc80-7a6e-4c63-8af0-6c2b4535f340",
+      "source_ref": "mail_gold_v2_428_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 430,
+      "fragment_id": "3c3a3af6-e42f-4f8c-9f82-43ed80ef41a1",
+      "source_ref": "mail_gold_v2_430_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "AW: Chinese translation of SAN_TI_BCA141-01_EN_V01_San",
+      "new_title": "AW: Chinese translation of SAN_TI_BCA141-01_EN_V01_San",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 431,
+      "fragment_id": "d838497c-adb9-483d-aa02-73317a334655",
+      "source_ref": "mail_gold_v2_431_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 434,
+      "fragment_id": "6e8cfedd-5e62-40e4-9618-6925e22bb973",
+      "source_ref": "mail_gold_v2_434_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "Print for HRC Handbook CN v19.4",
+      "new_title": "Print for HRC Handbook CN v19.4",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 435,
+      "fragment_id": "65746a10-6500-4125-b59e-06a9a8c27561",
+      "source_ref": "mail_gold_v2_435_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 440,
+      "fragment_id": "10e4d737-43cd-4924-b08c-ec315625281b",
+      "source_ref": "mail_gold_v2_440_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "供您备查： SpeedAsia联系方式及业务概览存档",
+      "new_title": "供您备查： SpeedAsia联系方式及业务概览存档",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 442,
+      "fragment_id": "768fcf1b-9174-4553-b4b1-f1d2ab082cbe",
+      "source_ref": "mail_gold_v2_442_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "合作邀请： 为西卡市场部提供本地化与市场活动支持",
+      "new_title": "合作邀请： 为西卡市场部提供本地化与市场活动支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 447,
+      "fragment_id": "d82d3dec-cd1d-4de2-b000-6bb5d2e0fc1d",
+      "source_ref": "mail_gold_v2_447_scn_2025",
+      "scenario": "new_contact_intro",
+      "old_title": "上海嘉赛[发件人] - 很高兴今日与您通话，服务简介供参考",
+      "new_title": "上海嘉赛[发件人] - 很高兴今日与您通话，服务简介供参考",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 448,
+      "fragment_id": "f85787c2-831b-48ad-a72f-d5dbe712f5a6",
+      "source_ref": "mail_gold_v2_448_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 451,
+      "fragment_id": "b5538928-a925-4e12-9b01-ae7437f5eb4c",
+      "source_ref": "mail_gold_v2_451_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 452,
+      "fragment_id": "6ac4ec6a-e357-4d1f-b7eb-f8ee09fb0706",
+      "source_ref": "mail_gold_v2_452_scn_2025",
+      "scenario": "new_contact_intro",
+      "old_title": "问候与更新——SpeedAsia期待继续为您服务",
+      "new_title": "问候与更新——SpeedAsia期待继续为您服务",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 453,
+      "fragment_id": "0ddec0b5-f440-4974-bfb7-3e510cc7e999",
+      "source_ref": "mail_gold_v2_453_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "携手Syensqo｜来自某化工客户合作伙伴的一站式展台设计与展会服务方案",
+      "new_title": "携手Syensqo｜来自某化工客户合作伙伴的一站式展台设计与展会服务方案",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 457,
+      "fragment_id": "251dc169-c03a-438d-ad39-4b90729ba1fd",
+      "source_ref": "mail_gold_v2_457_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 458,
+      "fragment_id": "103f8122-3e87-4644-9922-ff5411a7ca3b",
+      "source_ref": "mail_gold_v2_458_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "—— 用设计讲好品牌故事，值得信赖的定制伙伴",
+      "new_title": "—— 用设计讲好品牌故事，值得信赖的定制伙伴",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 459,
+      "fragment_id": "0e8dfe21-f1e6-4329-b94b-bdf69958dcc7",
+      "source_ref": "mail_gold_v2_459_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 460,
+      "fragment_id": "1657bf26-d963-4661-be71-0f3a13d850ab",
+      "source_ref": "mail_gold_v2_460_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 461,
+      "fragment_id": "fce16912-2d66-4460-aa23-0c060ba575e9",
+      "source_ref": "mail_gold_v2_461_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "企业长期合作伙伴",
+      "new_title": "企业长期合作伙伴",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 462,
+      "fragment_id": "89df72f3-abf4-4af2-b19b-efe7a177fd05",
+      "source_ref": "mail_gold_v2_462_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "770页手册更轻便？ 看我们如何实现“减重不减质”",
+      "new_title": "770页手册更轻便？ 看我们如何实现“减重不减质”",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 465,
+      "fragment_id": "64e500ff-5409-4d19-810a-80fc79cacbf0",
+      "source_ref": "mail_gold_v2_465_scn_2025",
+      "scenario": "new_contact_intro",
+      "old_title": "Speed 一体化服务解决方案",
+      "new_title": "Speed 一体化服务解决方案",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 466,
+      "fragment_id": "9653bb6a-2fe1-4477-bb5e-1cad9fb9ab4f",
+      "source_ref": "mail_gold_v2_466_scn_2025",
+      "scenario": "new_contact_intro",
+      "old_title": "Speed专业同传",
+      "new_title": "Speed专业同传",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 468,
+      "fragment_id": "142ec855-9488-4e09-8ef0-9aed14bf9203",
+      "source_ref": "mail_gold_v2_468_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "定制笔记本方案",
+      "new_title": "定制笔记本方案",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 469,
+      "fragment_id": "cbb5146f-4fea-42ea-bd46-b3a4cf5872e8",
+      "source_ref": "mail_gold_v2_469_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "定制化解决方案+顶尖同传设备： 确保您的会议无后[客户称呼]之忧",
+      "new_title": "定制化解决方案+顶尖同传设备： 确保您的会议无后[客户称呼]之忧",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 471,
+      "fragment_id": "0b79c103-6b1a-4e29-aa99-c67970aa2a20",
+      "source_ref": "mail_gold_v2_471_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "公司信息变更",
+      "new_title": "公司信息变更",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 472,
+      "fragment_id": "5fb350fe-e7c1-4549-af68-b482d5df7e89",
+      "source_ref": "mail_gold_v2_472_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "关于技术文档翻译项目的跟进与服务支持",
+      "new_title": "关于技术文档翻译项目的跟进与服务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 473,
+      "fragment_id": "d666767d-5306-433f-88f9-ce8e0f9f2386",
+      "source_ref": "mail_gold_v2_473_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "关于罗马尼亚语翻译项目的跟进与服务支持",
+      "new_title": "关于罗马尼亚语翻译项目的跟进与服务支持",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 474,
+      "fragment_id": "c21c88d7-d187-44fa-93f4-0df2549edca1",
+      "source_ref": "mail_gold_v2_474_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "关于拖链综合样本KABELSLEPP印刷前的最终确认",
+      "new_title": "关于拖链综合样本KABELSLEPP印刷前的最终确认",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 475,
+      "fragment_id": "6a45102d-bcc9-41fc-81a9-5d02e50be9dc",
+      "source_ref": "mail_gold_v2_475_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "科勒展会翻译",
+      "new_title": "科勒展会翻译",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 476,
+      "fragment_id": "3d2333f5-8c7b-479d-b7f6-1c73094df62b",
+      "source_ref": "mail_gold_v2_476_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 477,
+      "fragment_id": "5e2a79de-720e-423f-be44-c5a6dcbf040f",
+      "source_ref": "mail_gold_v2_477_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 478,
+      "fragment_id": "80aaa315-8a68-487e-ac9f-273efacc7c3a",
+      "source_ref": "mail_gold_v2_478_scn_2025",
+      "scenario": "new_contact_intro",
+      "old_title": "来自SpeedAsia的业务支持介绍",
+      "new_title": "来自SpeedAsia的业务支持介绍",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 479,
+      "fragment_id": "70da80b7-6a3a-4fc0-92c2-bb45160e8007",
+      "source_ref": "mail_gold_v2_479_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "岁月印记，台历中的商业智慧",
+      "new_title": "岁月印记，台历中的商业智慧",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 480,
+      "fragment_id": "62b2d3a5-ee9c-4f3c-b0f0-5d047377f13c",
+      "source_ref": "mail_gold_v2_480_scn_2025",
+      "scenario": "re_activation",
+      "old_title": "通过高品质服务，我们成为众多外企的首选合作伙伴",
+      "new_title": "通过高品质服务，我们成为众多外企的首选合作伙伴",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 481,
+      "fragment_id": "cc381bf4-1dcf-4f2f-bef3-8284fd2f1b5a",
+      "source_ref": "mail_gold_v2_481_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "同传案例",
+      "new_title": "同传案例",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 482,
+      "fragment_id": "ca2429b3-25b9-46ed-a884-7e4be5e772d5",
+      "source_ref": "mail_gold_v2_482_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "外企的选择不只看价格，更看重我们的专业与效率",
+      "new_title": "外企的选择不只看价格，更看重我们的专业与效率",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 485,
+      "fragment_id": "e1666afa-92b9-42bb-a7b0-321eafa2e44c",
+      "source_ref": "mail_gold_v2_485_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "小空间，大效果——专业活动策划案例分享",
+      "new_title": "小空间，大效果——专业活动策划案例分享",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 486,
+      "fragment_id": "c45b3cc7-e404-467a-b763-af7c5ae1b13e",
+      "source_ref": "mail_gold_v2_486_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "一站式活动解决方案",
+      "new_title": "一站式活动解决方案",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 489,
+      "fragment_id": "9725ae9c-8d50-491f-81e1-62f8aadc28df",
+      "source_ref": "mail_gold_v2_489_scn_2025",
+      "scenario": "new_business_promotion",
+      "old_title": "与您分享可参考的综合服务场景",
+      "new_title": "与您分享可参考的综合服务场景",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 491,
+      "fragment_id": "21a5033f-2028-4872-b570-e2ce180108ad",
+      "source_ref": "mail_gold_v2_491_scn_2025",
+      "scenario": "new_contact_intro",
+      "old_title": "电话没有联系上您，我是SpeedAsia市场部的[发件人],关于视频制作招投标项目与您确认下",
+      "new_title": "电话没有联系上您，我是SpeedAsia市场部的[发件人],关于视频制作招投标项目与您确认下",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 494,
+      "fragment_id": "a96036a5-a830-4653-88f4-dda4e8d9fff3",
+      "source_ref": "mail_gold_v2_494_scn_2024",
+      "scenario": "new_contact_intro",
+      "old_title": "某化工客户---SpeedAsia合作",
+      "new_title": "某化工客户---SpeedAsia合作",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 495,
+      "fragment_id": "4dfeb93d-ced9-4fb1-9997-0905e368257d",
+      "source_ref": "mail_gold_v2_495_scn_2024",
+      "scenario": "new_contact_intro",
+      "old_title": "SpeedAsia业务交接",
+      "new_title": "SpeedAsia业务交接",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 497,
+      "fragment_id": "9c4cbe96-1069-454d-8288-30572981e72e",
+      "source_ref": "mail_gold_v2_497_scn_2024",
+      "scenario": "new_contact_intro",
+      "old_title": "谢谢您的电话沟通，我是交大SpeedAsia公司的[发件人]，劳驾发送下入库资料",
+      "new_title": "谢谢您的电话沟通，我是交大SpeedAsia公司的[发件人]，劳驾发送下入库资料",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 498,
+      "fragment_id": "4fb5e116-2e8a-4f3c-a921-4d574976b3ec",
+      "source_ref": "mail_gold_v2_498_scn_2024",
+      "scenario": "new_business_promotion",
+      "old_title": "关于通讯行业我们的成功案例，请查阅",
+      "new_title": "关于通讯行业我们的成功案例，请查阅",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 499,
+      "fragment_id": "26072b68-4fc9-40e9-aae1-628af6e0771f",
+      "source_ref": "mail_gold_v2_499_scn_2024",
+      "scenario": "new_contact_intro",
+      "old_title": "强生---SpeedAsia业务介绍",
+      "new_title": "强生---SpeedAsia业务介绍",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    },
+    {
+      "rank": 500,
+      "fragment_id": "de8dbbf0-7120-4815-9c38-0aad8173bc4a",
+      "source_ref": "mail_gold_v2_500_scn_2024",
+      "scenario": "new_business_promotion",
+      "old_title": "SpeedAsia 同传案例分享",
+      "new_title": "SpeedAsia 同传案例分享",
+      "changed": false,
+      "residual_flags": [],
+      "manual_hold_reasons": []
+    }
+  ],
+  "changed": [],
+  "residual": [],
+  "manual_hold": [
+    {
+      "rank": 408,
+      "fragment_id": "fa613dd3-d5b3-4861-bf20-2d7998157092",
+      "source_ref": "mail_gold_v2_408_scn_2025",
+      "title": "机油单页印刷文件",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 409,
+      "fragment_id": "163d6145-d316-430c-91ab-f7e7aed87877",
+      "source_ref": "mail_gold_v2_409_scn_2025",
+      "title": "进博会-同传译员book",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 416,
+      "fragment_id": "babcda08-097b-4ab2-9c04-cfe1a6e211cd",
+      "source_ref": "mail_gold_v2_416_scn_2025",
+      "title": "与您分享可参考的综合服务场景",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 428,
+      "fragment_id": "d21fdc80-7a6e-4c63-8af0-6c2b4535f340",
+      "source_ref": "mail_gold_v2_428_scn_2025",
+      "title": "与您分享可参考的综合服务场景",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 431,
+      "fragment_id": "d838497c-adb9-483d-aa02-73317a334655",
+      "source_ref": "mail_gold_v2_431_scn_2025",
+      "title": "与您分享可参考的综合服务场景",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 434,
+      "fragment_id": "6e8cfedd-5e62-40e4-9618-6925e22bb973",
+      "source_ref": "mail_gold_v2_434_scn_2025",
+      "title": "Print for HRC Handbook CN v19.4",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 471,
+      "fragment_id": "0b79c103-6b1a-4e29-aa99-c67970aa2a20",
+      "source_ref": "mail_gold_v2_471_scn_2025",
+      "title": "公司信息变更",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 475,
+      "fragment_id": "6a45102d-bcc9-41fc-81a9-5d02e50be9dc",
+      "source_ref": "mail_gold_v2_475_scn_2025",
+      "title": "科勒展会翻译",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 476,
+      "fragment_id": "3d2333f5-8c7b-479d-b7f6-1c73094df62b",
+      "source_ref": "mail_gold_v2_476_scn_2025",
+      "title": "与您分享可参考的综合服务场景",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 477,
+      "fragment_id": "5e2a79de-720e-423f-be44-c5a6dcbf040f",
+      "source_ref": "mail_gold_v2_477_scn_2025",
+      "title": "与您分享可参考的综合服务场景",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 491,
+      "fragment_id": "21a5033f-2028-4872-b570-e2ce180108ad",
+      "source_ref": "mail_gold_v2_491_scn_2025",
+      "title": "电话没有联系上您，我是SpeedAsia市场部的[发件人],关于视频制作招投标项目与您确认下",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    },
+    {
+      "rank": 494,
+      "fragment_id": "a96036a5-a830-4653-88f4-dda4e8d9fff3",
+      "source_ref": "mail_gold_v2_494_scn_2024",
+      "title": "某化工客户---SpeedAsia合作",
+      "reasons": [
+        "cleaned_content_too_short"
+      ]
+    }
+  ]
+}

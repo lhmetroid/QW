@@ -77,6 +77,9 @@ async def wecom_callback_trigger(
     (SPEEDCRMWeb 的 .ashx)占用,本端点实际由老 .ashx 收到企微事件后中转(relay)触发。
     无论老 .ashx 是透传企微真签名,还是仅发裸 ping,都能稳定唤醒同步,不再因缺参 422。
     """
+    if not settings.ENABLE_ARCHIVE_POLLING:
+        return PlainTextResponse("success")
+
     logger.info(
         "📡 收到企微官方新通信事件触发信号！(Webhook Ping) sig=%s ts=%s",
         msg_signature, timestamp,

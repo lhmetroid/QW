@@ -158,6 +158,11 @@ class Settings(BaseSettings):
     SALES_KB_API_BASE_URL: str = "https://knowledgebase.speedasia.net"
     SALES_KB_API_TIMEOUT_SECONDS: int = 8
 
+    # WeCom KB configuration (KB1 / KB2 / KB3 selection)
+    WECOM_KB_PRIMARY: str = "kb1"
+    WECOM_KB_COMPARE: str = "kb2"
+    WECOM_KB3_CONFIRMED_ONLY: bool = False
+
     # Mail Few-Shot retrieval admission.
     MAIL_FEWSHOT_MIN_USEFUL_SCORE: float = 0.60
 

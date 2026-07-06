@@ -1,0 +1,5 @@
+start
+connected
+logs_count=7799
+event_count=35094
+DONE

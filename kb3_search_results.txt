@@ -1,0 +1,33 @@
+Total units in LlmServiceKnowledgeUnit: 3378
+Confirmed units in LlmServiceKnowledgeUnit: 1038
+
+Testing retrieve_service_knowledge_v3 with query '付款':
+Status: ok
+Latency (ms): 912
+No hit reason: None
+Hits count: 5
+
+Hit 1:
+  Title: 笔译报价单标准条款（交期/付款/违约）
+  Score: 1.0
+  Content preview: 标准笔译报价单包含：稿件内容、语种、字数、单价、金额、交稿时间（确认后X个工作日，当天确认才计入，否则顺延）、交稿方式（Word/PPT等与原稿对应，排版参照原文含图片）、付款时间（交稿后通常30天内
+
+Hit 2:
+  Title: PO申请与供应商入库流程
+  Score: 1.0
+  Content preview: 客户联系人收到抄送邮件后帮忙申请PO，需由客户内部采购在系统中把供应商(我司)加入后才能开PO/付款；销售应抄送对接人并跟进采购是否已将供应商加入，确认入库后再推进PO。
+
+Hit 3:
+  Title: 付款条件常见档位
+  Score: 0.6666667
+  Content preview: 笔译付款条件按客户而定，常见:交稿后30天内付款(最常见);部分外企60天;预付+尾款模式(如开工前预付70%、交稿后3个工作日内付清30%，或文献/大单);分批稿件分批付款;政府类客户先预付款后交稿
+
+Hit 4:
+  Title: 付款清单上能不能别写翻译，写别的？
+  Score: 0.6666667
+  Content preview: 可以哈～给您写成线上材料包制作服务就行，需要抄送同事我也一起发～
+
+Hit 5:
+  Title: 开票收款信息与专票开具流程
+  Score: 0.6666667
+  Content preview: 向客户付款需提供乙方公司开户信息（公司名称、税号、人民币账号、开户行）；可按客户要求开具增值税专用发票；付款走内部流程后由财务打款。

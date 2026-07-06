@@ -1,0 +1,2481 @@
+{
+  "mode": "apply",
+  "target_count": 1318,
+  "changed_count": 9,
+  "residual_count": 261,
+  "changed": [
+    {
+      "fragment_id": "8f9dde83-5fb9-4acd-b123-8cda8c7b6756",
+      "source_ref": "mail_gold_v2_034_mail_promo_company_intro",
+      "scenario": "new_contact_intro",
+      "review_status": "needs_revision",
+      "review_comment": "去掉时间信息，在刚刚过去的新旧交替之际，我们一边整理着去年的“战绩\"，回顾2025年，2025年稳步前行，新的一年，祝您和家人新年安康",
+      "old_title": "What We've Been Building for You",
+      "new_title": "What We've Been Building for You",
+      "residual_flags": [],
+      "old_content": "Dear [客户称呼]\n\n在，我们一边整理着去年的“战绩\"，一边忍不住想对您说一声：\n衷心感谢！\n\n！\n\n！\n\n正是因为有您的信任、支持，我们团队才能稳步前行，不仅努力做好现有服务和品质，还持续把不少“不可能”变成了“已交付\"！\n\n您的托付化为我们前行的动力，团队携手完成了多项重要服务，每一份成果都凝聚着与您共同奋斗的印记：\n\n・ 完成大量各语种互译服务，精准传递多元信息:\n\n・ 交付近12+万+册产品手册、宣传样本、笔记本及台历的印刷订单，品质与效率双保障:\n\n・ 保障多场医学研讨、金融峰会、媒体活动等各类同传会议顺利举办，专业服务获广泛认可;\n\n・ 完成多场平方米展台、活动的设计搭建及组织运行工作，打造优质活动场景;\n\n・ 为国内、新加坡、香港等地客户提供5W+件活动、展会及商务礼品，助力客户商务往来与品牌传播；\n\n期待与您继续并肩，共赴新程！\n\n祝您和家人事业腾达、万事胜意！\n\n[发件人]\n\n大客户部\n\n上海嘉赛科技有限公司(事必达)\nPhone: [PHONE],[PHONE]\n[EMAIL]\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室\n\n企业微信\n\n视频号",
+      "new_content": "Dear [客户称呼]\n\n我们一边整理着去年的“战绩\"，一边忍不住想对您说一声：\n衷心感谢！\n\n正是因为有您的信任、支持，我们团队才能稳步前行，不仅努力做好现有服务和品质，还持续把不少“不可能”变成了“已交付\"！\n\n您的托付化为我们前行的动力，团队携手完成了多项重要服务，每一份成果都凝聚着与您共同奋斗的印记：\n\n・ 完成大量各语种互译服务，精准传递多元信息:\n\n・ 交付近12+万+册产品手册、宣传样本、笔记本及台历的印刷订单，品质与效率双保障:\n\n・ 保障多场医学研讨、金融峰会、媒体活动等各类同传会议顺利举办，专业服务获广泛认可;\n\n・ 完成多场平方米展台、活动的设计搭建及组织运行工作，打造优质活动场景;\n\n・ 为国内、新加坡、香港等地客户提供5W+件活动、展会及商务礼品，助力客户商务往来与品牌传播；\n\n期待与您继续并肩，共赴新程！\n\n祝您和家人事业腾达、万事胜意！\n\n[发件人]\n\n大客户部\n\n上海嘉赛科技有限公司(事必达)\nPhone: [PHONE],[PHONE]\n[EMAIL]\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室\n\n企业微信\n\n视频号"
+    },
+    {
+      "fragment_id": "2499a685-4a97-4a98-b436-27d152a74a48",
+      "source_ref": "mail_gold_v2_1014_scn_2017",
+      "scenario": "new_contact_intro",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "开票税号",
+      "new_title": "开票税号",
+      "residual_flags": [
+        "time_or_festival_left"
+      ],
+      "old_content": "许老师，中午好\n\n新规， 发票都需要填写税号， 麻烦您也发我下，谢谢啦。\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年先进企业。\n\n- ---- Original Message received on [PHONE]:\n17:\n12 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: RE: RE: GB翻译\n\n[PHONE]:\n16:\n41\n\nDear [客户称呼]\n\n请安排翻译，谢谢！\n\n许乐\n\nFrom: SPEED Tech. [mailto:\n[EMAIL]]\nSent:   9:\n23\nTo: xu, le [EMAIL]\nCc: [发件人] [EMAIL]\nSubject: Re: RE: RE: GB 翻译\n\nDear\n\n我们收到了您需要翻译的稿件，翻译报价如下 :\n稿件内容： ISO_5395-3_2013_Amd_1_2017(E)-Character_PDF_document.pdf\n页数： 10\n翻译语种：\n英译中\n数量： 2896 个中文字符\n单价： [AMOUNT] / 千中文字符\n翻译金额： RMB579.00\n交稿时间：\n若您于今天 17 点前确认，我方可在  交稿，否则顺延\n交稿方式： WORD 文件（排版参照原文，包括图片）\n付款时间：\n翻译交稿后 30 日内付款（上述支付日期及服务费金额不受翻译稿件是否需要甲方修改之影响。\n\n）\n违约责任：\n双方确认后，若客户方要求终止，则按照确认的翻译等服务单价，客户方需承担我方已经完成的相关工作的所有服务费用，以及支付未完成部分工作的服务费用的 30 ％作为违约补偿。\n\n烦请回复确认，我们会在收到您的确认后马上安排开始工作。\n若有任何疑问或问题，请随时与我们联系。\n谢谢您！\n\nLisa Deng 邓懿欣\nAssistant to [发件人]\nSales Department\nShanghai Jia Sai Information Technology Development CO., LTD.\nSuite 1409, Feidao International Masion, 1065 Zhaojiabang Road, Shanghai,200030, P,R,C.\nTel: [PHONE]\nFax: [PHONE]\n\n- ---- Original Message received on [PHONE]:\n46:\n44 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: RE: GB 翻译\n\n[PHONE]:\n46:\n20\n\n何小姐，你好！\n\n附件中的文件和上次翻译是同一标准，请报价。\n\n商祺！\n\n许乐\n\nFrom: [发件人] [ mailto:\n[EMAIL] ]\nSent:   10:\n52\nTo: xu, le [EMAIL]\nSubject: Fw: RE: GB 翻译\n\n好的，谢谢徐老师。\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年先进企业。\n\n- ---- Forwarded Message received on [PHONE]:\n37:\n12 -----\n\nFrom: [EMAIL]\n\nTo: [EMAIL]\n\nRE: GB 翻译\n\n[PHONE]:\n36:\n40\n\n何小姐，你好！\n\n已确认，请翻译。\n\n请安排好的老师翻，可能后续还有相关标准要翻。\n\n商祺！\n\n许乐\n\nFrom: [发件人] [ mailto:\n[EMAIL] ]\nSent:   9:\n55\nTo: xu, le [EMAIL]\nSubject: GB 翻译\n\n许先生，早上好\n\n多谢支持哦，具体报价如下：\n\n稿件内容： EN ISO 5395-3\n页数： 翻译 8-51 页\n翻译语种：\n英译中\n数量： 25204 个中文字符\n单价： [AMOUNT] / 中文字符\n\n翻译金额： RMB[PHONE] 月 25 日完成 )\n\n交稿方式：\n与原稿对应的 Office 文档，例如 Word 、 Excel 或 ppt 等文件（不含图片）\n付款时间：\n翻译交稿后 **30 天内 ** 付款（在贵方收到译稿后 30 天内，我方\n\n上述支付日期及服务费金额不受翻译稿件是否需我方修改之影响。\n\n）\n\n违约责任：\n双方确认后，若客户方要求终止，则客户需按确认的单价承担我方已完成部分的所有费用，以及支付未完成部分费用的 30 ％作为违约补偿。\n\n烦请回复确认 ，我们会在收到您的确认后马上安排开始工作。\n若有任何疑问或问题，请随时与我们联系，谢谢！\n\nSPEED 网上订单系统 [URL] 可方便的询价、下单、了解进展、反馈质量；我们支持 2G 大文件的上传和下载。\n\n推荐使用谷歌浏览器登陆我们的 SPEED 网上订单系统，谷歌浏览器官方下载链接： [URL]\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年被评为先进企业。\n\n- ---- Forwarded Message received on [PHONE]:\n22:\n14 -----\n\nFrom: [EMAIL]\n\nTo: [EMAIL]\n\nRE: RE: RE: 德英同传 -- 合同 -1.7 万\n\n[PHONE]:\n22:\n06\n\n何小姐，你好！\n\n附件中的标准要英翻中，只要翻 8-51 页，请报价，下周四要，谢谢！\n\n商祺！\n\n许乐\n\nFrom: [发件人] [ mailto:\n[EMAIL] ]\nSent:   16:\n48\nTo: xu, le [EMAIL]\nSubject: Re: RE: RE: 德英同传 -- 合同 -1.7 万\n\n许老师\n\n多谢您的协调沟通， 我们暂定费用 1.6 万 +1 千。 如果最终金额超过 2 万， 此 1 千将免除。\n\n麻烦先回复邮件确认一下，我先安排翻译周末加班把翻译做了，谢谢。\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年先进企业。\n\n- ---- Original Message received on [PHONE]:\n04:\n27 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: RE: 德英同传 -- 合同\n\n[PHONE]:\n02:\n48\n\n以下是客户寄来的安排\n\nFurther to below email, I rechecked, we may also have below translation way\n\nSpeech by Brose\n\nVG/Stoschek (10 min:\nGerman to English and German to Chinese), GV/Otto(English to Chinese, or: German to English/Chinese ), CN/Xiang(English to Chinese, or: Chinese to English/Chinese )\n\nSpeech by customer\n\nVW China/Stephan Beyse(English to Chinese, or, German to English/Chinese )\n\nSpeech by government\n\nInvited (Chinese to English)\n\n黑色是原计划，红色的还未定的。\n\n若有请翻译尽力，但要同提醒关小姐不能太长。\n\n我的手机是 [PHONE] ，我不在桌边，可打我手机。\n\n许乐\n\nFrom: [发件人] [ mailto:\n[EMAIL] ]\nSent:   13:\n30\nTo: xu, le [EMAIL]\nSubject: Re: RE: 德英同传 -- 合同\n\n许老师 , 您好\n\n附件是此次德英同传合同 , 请盖章回传 , 谢谢 .\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年先进企业。\n\n- ---- Original Message received on [PHONE]:\n49:\n32 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: 德英同传 -- 补充简历\n\n[PHONE]:\n47:\n54\n\nDear [客户称呼]\n\nBrose 已确认我们的报价。\n\n客户要金老师将附上的德文讲稿翻译成英文下周一给他们。\n\nAttached is the our German Speech draft. Please forward to the translator and ask him to provide the English version based on this with us WITHIN NEXT MONDAY.\n\n请能将翻译稿下周一中午前给我，谢谢！\n\nLe Xu | 许乐\n\n| Project Manager| Sales & Sourcing Services\n\nGerman Industry & Commerce Greater China | Shanghai\n25/F China Fortune Tower | 1568 Century Avenue | Shanghai 200122\n德中工商技术咨询服务 ( 太仓 ) 有限公司 | 上海分公司\n中国上海世纪大道 1568 号中建大厦 25 楼\nTel [PHONE] ext. 1639 | Fax [PHONE] ext. 5639\n[EMAIL] | [URL]\n\nA branch of German Industry & Commerce (Taicang) Co. Ltd. | Part of the Worldwide Network of German Chambers\nDEinternational? is a registered brand of the German Chamber Network, services are provided by GIC.\nDEinternational? 是德国驻外商会的服务商标，由德中工商技术咨询服务公司使用。\n\nFrom: [发件人] [ mailto:\n[EMAIL] ]\nSent:   10:\n17\nTo: xu, le [EMAIL]\nSubject: 德英同传 -- 补充简历\n\n许老师\n\n我联系到一位德英同传老师 , 时间是匹配的 , 报价如下 , 请参考 . ( 因老师在会上 , 等会议结束后发简历给您 )\n\n4/20 晚上 17:\n00-19:\n00 彩排 报价 [AMOUNT]\n\n会议 4/21 9:\n00-11:\n00, 报价 [AMOUNT]\n\n因上海一共只有 3 名老师可以胜任德英同传 , 如需要预定 , 请尽早通知 , 谢谢 .\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年先进企业。\n\n- ---- Original Message received on [PHONE]:\n31:\n05 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: 谢谢电话沟通，已经进驻中国的知名外资企业几乎都是我们公司的长期客户，希望有机会再能为您提供服务\n\n[PHONE]:\n29:\n24\n\n王小姐，你好！\n\n我已同贵公司[发件人] Sales Department 保持联系了，最好告知今后谁同我们联系。\n\n商祺！\n\nXu Le | 许乐\n\n| Project Manager| Sales & Sourcing Services\n\nGerman Industry & Commerce Greater China | Shanghai\n25/F China Fortune Tower | 1568 Century Avenue | Shanghai 200122\n德中工商技术咨询服务 ( 太仓 ) 有限公司 | 上海分公司\n中国上海世纪大道 1568 号中建大厦 25 楼\nTel [PHONE] ext. 1639 | Fax [PHONE] ext. 5639\n[EMAIL] | [URL]\n\nA branch of German Industry & Commerce (Taicang) Co. Ltd. | Part of the Worldwide Network of German Chambers\nDEinternational? is a registered brand of the German Chamber Network, services are provided by GIC.\nDEinternational? 是德国驻外商会的服务商标，由德中工商技术咨询服务公司使用。\n\nFrom: 事必达科技 [ mailto:\n[EMAIL] ]\nSent:   10:\n11\nTo: xu, le [EMAIL]\nSubject: 谢谢电话沟通，已经进驻中国的知名外资企业几乎都是我们公司的长期客户，希望有机会再能为您提供服务\n\n许乐先生，您好\n\n我是事必达公司的客户支持部的王萍芳，我们公司曾经为您和您的同事提供过大量的技术资料翻译和各类样本的印刷服务，有段时间没有联系了，刚才我打您电话，也没有联系上。\n\n在翻译行业，我们目前是上海规模最大、市场份额第 1 的专业公司。\n\n各个行业几乎所有最知名外资企业，我们都提供过翻译或印刷服务。\n\n像化工业的 某化工客户 、某化工客户，银行业的渣打银行、汇丰银行，医药行业的赛诺菲、拜耳等都是由我们提供服务的。\n\n特地为您整理了一份近期完成的项目清单。\n\n非常希望很快能再有机会为您提供翻译或印刷一体化的服务，附件是我们公司的详细介绍供您参考。\n\n如果您同事有需要的话，也拜托您帮忙推荐。\n\n诚挚感谢，并祝您工作顺利\n\n王萍芳\n\n客户支持部\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n' Phone: [PHONE] Fax: [PHONE]\n\n* Email: [EMAIL] , [EMAIL]\nAddress: Suite 149, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\nWebsite: [URL]\n\n- -------------------------------------------------------------------------------------------------------\n\n1. 我们为化工行业提供的服务如下：\n化工类工程改造方案翻译\n\n化工类 MSDS 资料翻译\n化工类检测类报告翻译\n\n化工类专利说明书翻译\n汽车催化剂分析文件的翻译\n\n催化剂部门的杂志翻译、制版、印刷一体化\n\n技术服务合同的翻译\n\n专业类的石油化工可燃性气体的国家标准的翻译\n\n某化工客户与中国绿色食品协会市场流通委员会战略合作协议翻译\n\n首届中国三聚氰胺技术开发与应用推进峰会通讯录资料翻译\n低臭性共聚物水性溶液及生产方法的专利申请文件资料翻译\n财务报告 CCG 2015 Annual Report 的翻译\n商业证明文件 某化工客户 Antwerpen N.V.-commercial register 翻译\n业务合作伙伴尽职调查问卷的翻译\n《面向制药行业的产品系列》设计印刷制版\n资产负债表的翻译\n股票招股说明书翻译\nCellasto brochure , 翻译 + 制版 + 印刷一体化\n品 Fibro 热电偶线资料翻译\n关于广州市人民政府办公厅关于印发通知的翻译\n媒体访谈资料翻译\n出境加工物权转让申请函翻译\n金属给农业银行的财务资料翻译\n某化工客户关于“海关出境加工货物管理操作流程”的翻译\n二异氰酸酯储罐设备使用指南的翻译\nFamily Day Agenda 设计印刷一体化\n审计报表的翻译\nL190 Armophe 操作规程的翻译\nL190 Plus 操作程序的翻译\n薪酬管理和员工福利管理制度的翻译\nMasterProtect 系列产品的翻译\n乙炔尾气制甲醇成达技术业绩表的翻译\n关于 Brand Ambassador Workshop_某化工客户.ppt 的翻译\n某化工客户漕泾化工 PTHF 和 THF 大型项目的技术资料翻译\n首届中国三聚氰胺技术开发与应用推进峰会通讯录资料翻译\n\n2. 为医药行业提供的服务如下\nXs 系列的血压血栓等方面的研究资料与研究报告\n泌尿系统与胃肠道系统的医药论文资料\n蛋白酶抑制剂等系列药剂使用说明\n有效降低慢性肾病患者的血压的产品的翻译及印刷\n处方药抗肿瘤、抗感染等系列的产品介绍与样本翻译及印刷\n高钙低脂类产品研究资料的翻译及印刷\n系列药品申报资料以及 Operator ’ s Manual forautoSCAN — 4 等医疗测试设备的操作手册的翻译\nCT 系列— PRESTO XE 、 SE ， MRI 系列— APERTO 、 AIRIS- 2 、 AIRISmat ， X 线系列— DR 专用数字化 X 线摄影装置移动式 X 线摄影装置等的技术资料和操作手册的翻译\nX 线照相和荧光显影设备，远程 X 线照相 Prestige II ，介入 X 线照相 Advantx TC+ 可移动 X 线照相设备等的技术资料以及产品手册的翻译\nFORTEKOR? FLAVOUR 5 mg 犬用片剂药理学和毒理学概要\n苯那普利药物临床前药理学及毒理学评价\n长期抑制血管紧张素转化酶有助于提高心力衰竭期间的心输出量及体液平衡报告\n研究清醒血压正常犬中血管紧张素转化酶抑制剂苯那普利的血液动力学效应\n全新血管紧张素转化酶抑制剂盐酸苯那普利的一般药理学性质分析\nCGS14824A: 在大鼠和犬中的吸收、分布、代谢和排泄研究报告\nARZNEIMITTEL-FORSCHUNG 药物研究\n小鼠、大鼠和犬中 5 天急性和 16-20 天亚急性经口毒性研究\n对大鼠静脉注射 CGS 14?824 A 的急性毒性研究\n对比格犬静脉注射 CGS 14 824 A 的急性耐受性研究\n对大鼠为期 13 周的口服亚急性毒性试验报告\n微生物致突变试验报告\n中国仓鼠体细胞间期细胞核异常试验\n为期 104 周的大鼠经口致癌性试验报告\nFORTEKOR FLAVOUR 犬用 5 毫克片剂药理学及毒理学评价\n慢性肾衰竭犬残肾中高血压的发展与盐酸苯那普利作用文案\n犬类模型中血管紧张素转化酶抑制剂苯那普利及其活性代谢产物苯那普利拉的药代动力学试验报告\nCIBA-GEIGY 动物保健试验生物学报告\n犬类模型中持续约 4 周的两期交叉设计生物等效性试验文案\n一项在长期治疗中比较苯那普利与安慰剂单药治疗或作为利尿剂和抗心律失常药的辅助治疗在患 II-IV 期心力衰竭受试犬中作用的多中心、随机、双盲、平行组设计 BEN 92-001 试验报告\n\n3 、为地铁行业提供的服务如下：\n\n上海 5 号线（莘闵线）制动控制电子装置（ BCE ） MVB 接口描述\nSATCO 阿根廷二期项目油压减震器例行试验报告\n阿根廷 105 辆项目例行试验大纲格式\n有轨电车转向架构架计算报告\n铰接连杆胶接培训\n轻轨驾驶舱车门的人机适应性规划书\n标准测试报告法维莱低底盘有轨电车乘客室内空调\n合肥 1 号线一二期工程信号通用技术要求\n北京市现代有轨电车西郊线工程车辆采购项目澄清及补遗文件\n北京市轨道交通香山线工程 100% 低地板轻轨车项目用户需求书\n牢固焊接机械零部件的焊接质量要求\n福州市轨道交通 1 号线一期工程牵引系统用户需求书\n无锡市轨道交通 2 号线工程车辆牵引系统技术规格书\n珠江三角洲穗莞深城际轨道交通项目（莞深段）及东莞至惠州城际轨道交通项目车辆（ 140kph ）采购项目用户需求书\nCTCS-3 级列控系统总体技术方案\n广州市地铁二 / 八号线车辆项目用户需求书册\n广佛车辆整车招标文件商务及技术部分交流稿\n台北都会区捷运系统工程一般条款\n武汉市轨道交通三号线一期工程车辆牵引系统采购项目需求书\n成都地铁 2 号线 ( 牵引） - 商务及技术部分\n珠江三角洲城际快速轨道交通广州至佛山段信号系统采购项目相关文件\n宁波一号线（牵引） - 商务及技术部分\n有轨电车示范线的服务水平，综合智能控制系统报告的翻译\n有轨电车（ LRT ）系统设计培训 PPT 的翻译\n深圳龙华有轨电车工程设备采购招标文件的翻译\n武汉市轨道交通 1 号线径河延伸线工程信号系统、设备部分、技术条件报告书的翻译\n武汉市东湖国家自主创新示范区有轨电车 T1 、 T2 线工程运营调度管理系统集成采购项目技术文件的翻译\n远程记轴预复位系统说明书摘要的翻译\n北京 4 号线 2 期自动列车控制系统（ ATCS ）标准符合证书\n\n4 、为电力行业提供的服务如下：\n\n500 千伏世博输变电工程设备招标书 /GIS 技术规范书翻译\n\n委内瑞拉核电站项目的西班牙语翻译工作\n\n特高压交流 1000 千伏变电站导体选择中面临的问题及理论计算分析翻译\n\n国网论文——特高压直流保护系统冗余配置方案的研究翻译\n\n± 800 千伏换流站换流变组装场地优化研究及其应用翻译\n\n华东电力设计院波兰电厂设计资料翻译\n\n中国电工集团孟加拉国双燃料联合循环电站项目技术合同、商务合同翻译\n\n华东电力设计院 500 千伏世博输变电工程设备招标书 /GIS 技术规范书翻译\n\n华东电力设计院大件运输论文翻译\n\n华东电力设计院特高压交流 1000 千伏变电站导体选择中面临的问题及理论计算分析翻译\n\n华东电力设计院国网论文——特高压直流保护系统冗余配置方案的研究翻译\n\n华东电力设计院± 800 千伏换流站换流变组装场地优化研究及其应用翻译\n\n华东电力设计院委内瑞拉电网项目翻译\n\n卢旺达建议书\n\n线路施工方案\n\n变电土建\n\n110kV 施工组设 .\n\n220kV 型通用试验方案\n\n3591 沙特 110kV 电力变压器试验方案\n\n综合管理手册\n\n质量管理文件\n\n中国水电安哥拉卡西吐供水项目的项目书翻译\n\n马来西亚丰盛港填海项目系列翻译\n\n安哥拉本格拉体育场项目建筑图纸的翻译\n\n柬埔寨科普奥斯大桥项目\n\n印尼佳蒂格德大坝项目\n\n中国水电承建的布巴哈电站\n\n印尼建设项目技术手册书的翻译工作\n\n孟加拉项目 4000 多页的招投标项目书以及技术 文件的翻译工作\n\n博茨瓦纳 Morupule B 4*150MW 燃煤电站项目书翻译\n\n电力集团日常口译及会议交传人员的提供\n\n塞尔维亚黑山 400V 输电线路项目资料的翻译\n\n埃塞俄比亚巴莱斯 400kv 输变电线路项目的翻译\n\n雅加达２×１３５ＭＷ电站项目技术图纸翻译\n\n出厂试验报告翻译\n\n京沪高铁接触网项目翻译\n\n安装和维护说明手册翻译\n\n卢旺达建议书\n\n线路施工方案\n\n变电土建\n\n110kV 施工组设 .\n\n220kV 型通用试验方案\n\n3591 沙特 110kV 电力变压器试验方案\n\n综合管理手册\n\n质量管理文件",
+      "new_content": "许老师，中午好\n\n新规， 发票都需要填写税号， 麻烦您也发我下，谢谢啦。\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年先进企业。\n\n- ---- Original Message received on [PHONE]:\n17:\n12 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: RE: RE: GB翻译\n\n[PHONE]:\n16:\n41\n\nDear [客户称呼]\n\n请安排翻译，谢谢！\n\n许乐\n\nFrom: SPEED Tech. [mailto:\n[EMAIL]]\nSent: 9:\n23\nTo: xu, le [EMAIL]\nCc: [发件人] [EMAIL]\nSubject: Re: RE: RE: GB 翻译\n\nDear\n\n我们收到了您需要翻译的稿件，翻译报价如下 :\n稿件内容： ISO_5395-3_2013_Amd_1_2017(E)-Character_PDF_document.pdf\n页数： 10\n翻译语种：\n英译中\n数量： 2896 个中文字符\n单价： [AMOUNT] / 千中文字符\n翻译金额： RMB579.00\n交稿时间：\n若您于今天 17 点前确认，我方可在 交稿，否则顺延\n交稿方式： WORD 文件（排版参照原文，包括图片）\n付款时间：\n翻译交稿后 30 日内付款（上述支付日期及服务费金额不受翻译稿件是否需要甲方修改之影响。\n\n）\n违约责任：\n双方确认后，若客户方要求终止，则按照确认的翻译等服务单价，客户方需承担我方已经完成的相关工作的所有服务费用，以及支付未完成部分工作的服务费用的 30 ％作为违约补偿。\n\n烦请回复确认，我们会在收到您的确认后马上安排开始工作。\n若有任何疑问或问题，请随时与我们联系。\n谢谢您！\n\nLisa Deng 邓懿欣\nAssistant to [发件人]\nSales Department\nShanghai Jia Sai Information Technology Development CO., LTD.\nSuite 1409, Feidao International Masion, 1065 Zhaojiabang Road, Shanghai,200030, P,R,C.\nTel: [PHONE]\nFax: [PHONE]\n\n- ---- Original Message received on [PHONE]:\n46:\n44 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: RE: GB 翻译\n\n[PHONE]:\n46:\n20\n\n何小姐，你好！\n\n附件中的文件和上次翻译是同一标准，请报价。\n\n商祺！\n\n许乐\n\nFrom: [发件人] [ mailto:\n[EMAIL] ]\nSent: 10:\n52\nTo: xu, le [EMAIL]\nSubject: Fw: RE: GB 翻译\n\n好的，谢谢徐老师。\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年先进企业。\n\n- ---- Forwarded Message received on [PHONE]:\n37:\n12 -----\n\nFrom: [EMAIL]\n\nTo: [EMAIL]\n\nRE: GB 翻译\n\n[PHONE]:\n36:\n40\n\n何小姐，你好！\n\n已确认，请翻译。\n\n请安排好的老师翻，可能后续还有相关标准要翻。\n\n商祺！\n\n许乐\n\nFrom: [发件人] [ mailto:\n[EMAIL] ]\nSent: 9:\n55\nTo: xu, le [EMAIL]\nSubject: GB 翻译\n\n许先生，早上好\n\n多谢支持哦，具体报价如下：\n\n稿件内容： EN ISO 5395-3\n页数： 翻译 8-51 页\n翻译语种：\n英译中\n数量： 25204 个中文字符\n单价： [AMOUNT] / 中文字符\n\n翻译金额： RMB[PHONE] 月 25 日完成 )\n\n交稿方式：\n与原稿对应的 Office 文档，例如 Word 、 Excel 或 ppt 等文件（不含图片）\n付款时间：\n翻译交稿后 **30 天内 ** 付款（在贵方收到译稿后 30 天内，我方\n\n上述支付日期及服务费金额不受翻译稿件是否需我方修改之影响。\n\n）\n\n违约责任：\n双方确认后，若客户方要求终止，则客户需按确认的单价承担我方已完成部分的所有费用，以及支付未完成部分费用的 30 ％作为违约补偿。\n\n烦请回复确认 ，我们会在收到您的确认后马上安排开始工作。\n若有任何疑问或问题，请随时与我们联系，谢谢！\n\nSPEED 网上订单系统 [URL] 可方便的询价、下单、了解进展、反馈质量；我们支持 2G 大文件的上传和下载。\n\n推荐使用谷歌浏览器登陆我们的 SPEED 网上订单系统，谷歌浏览器官方下载链接： [URL]\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年被评为先进企业。\n\n- ---- Forwarded Message received on [PHONE]:\n22:\n14 -----\n\nFrom: [EMAIL]\n\nTo: [EMAIL]\n\nRE: RE: RE: 德英同传 -- 合同 -1.7 万\n\n[PHONE]:\n22:\n06\n\n何小姐，你好！\n\n附件中的标准要英翻中，只要翻 8-51 页，请报价，下周四要，谢谢！\n\n商祺！\n\n许乐\n\nFrom: [发件人] [ mailto:\n[EMAIL] ]\nSent: 16:\n48\nTo: xu, le [EMAIL]\nSubject: Re: RE: RE: 德英同传 -- 合同 -1.7 万\n\n许老师\n\n多谢您的协调沟通， 我们暂定费用 1.6 万 +1 千。 如果最终金额超过 2 万， 此 1 千将免除。\n\n麻烦先回复邮件确认一下，我先安排翻译周末加班把翻译做了，谢谢。\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年先进企业。\n\n- ---- Original Message received on [PHONE]:\n04:\n27 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: RE: 德英同传 -- 合同\n\n[PHONE]:\n02:\n48\n\n以下是客户寄来的安排\n\nFurther to below email, I rechecked, we may also have below translation way\n\nSpeech by Brose\n\nVG/Stoschek (10 min:\nGerman to English and German to Chinese), GV/Otto(English to Chinese, or: German to English/Chinese ), CN/Xiang(English to Chinese, or: Chinese to English/Chinese )\n\nSpeech by customer\n\nVW China/Stephan Beyse(English to Chinese, or, German to English/Chinese )\n\nSpeech by government\n\nInvited (Chinese to English)\n\n黑色是原计划，红色的还未定的。\n\n若有请翻译尽力，但要同提醒关小姐不能太长。\n\n我的手机是 [PHONE] ，我不在桌边，可打我手机。\n\n许乐\n\nFrom: [发件人] [ mailto:\n[EMAIL] ]\nSent: 13:\n30\nTo: xu, le [EMAIL]\nSubject: Re: RE: 德英同传 -- 合同\n\n许老师 , 您好\n\n附件是此次德英同传合同 , 请盖章回传 , 谢谢 .\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年先进企业。\n\n- ---- Original Message received on [PHONE]:\n49:\n32 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: 德英同传 -- 补充简历\n\n[PHONE]:\n47:\n54\n\nDear [客户称呼]\n\nBrose 已确认我们的报价。\n\n客户要金老师将附上的德文讲稿翻译成英文下周一给他们。\n\nAttached is the our German Speech draft. Please forward to the translator and ask him to provide the English version based on this with us WITHIN NEXT MONDAY.\n\n请能将翻译稿下周一中午前给我，谢谢！\n\nLe Xu | 许乐\n\n| Project Manager| Sales & Sourcing Services\n\nGerman Industry & Commerce Greater China | Shanghai\n25/F China Fortune Tower | 1568 Century Avenue | Shanghai 200122\n德中工商技术咨询服务 ( 太仓 ) 有限公司 | 上海分公司\n中国上海世纪大道 1568 号中建大厦 25 楼\nTel [PHONE] ext. 1639 | Fax [PHONE] ext. 5639\n[EMAIL] | [URL]\n\nA branch of German Industry & Commerce (Taicang) Co. Ltd. | Part of the Worldwide Network of German Chambers\nDEinternational? is a registered brand of the German Chamber Network, services are provided by GIC.\nDEinternational? 是德国驻外商会的服务商标，由德中工商技术咨询服务公司使用。\n\nFrom: [发件人] [ mailto:\n[EMAIL] ]\nSent: 10:\n17\nTo: xu, le [EMAIL]\nSubject: 德英同传 -- 补充简历\n\n许老师\n\n我联系到一位德英同传老师 , 时间是匹配的 , 报价如下 , 请参考 . ( 因老师在会上 , 等会议结束后发简历给您 )\n\n4/20 晚上 17:\n00-19:\n00 彩排 报价 [AMOUNT]\n\n会议 4/21 9:\n00-11:\n00, 报价 [AMOUNT]\n\n因上海一共只有 3 名老师可以胜任德英同传 , 如需要预定 , 请尽早通知 , 谢谢 .\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\n\n二十年历史，专业提供笔译、口译、设计印刷、同声传译、配音配字幕，商务礼品，率先实施 ISO9001 ， 实施 ERP 管理，客户涵盖世界 500 强，连续八年先进企业。\n\n- ---- Original Message received on [PHONE]:\n31:\n05 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: 谢谢电话沟通，已经进驻中国的知名外资企业几乎都是我们公司的长期客户，希望有机会再能为您提供服务\n\n[PHONE]:\n29:\n24\n\n王小姐，你好！\n\n我已同贵公司[发件人] Sales Department 保持联系了，最好告知今后谁同我们联系。\n\n商祺！\n\nXu Le | 许乐\n\n| Project Manager| Sales & Sourcing Services\n\nGerman Industry & Commerce Greater China | Shanghai\n25/F China Fortune Tower | 1568 Century Avenue | Shanghai 200122\n德中工商技术咨询服务 ( 太仓 ) 有限公司 | 上海分公司\n中国上海世纪大道 1568 号中建大厦 25 楼\nTel [PHONE] ext. 1639 | Fax [PHONE] ext. 5639\n[EMAIL] | [URL]\n\nA branch of German Industry & Commerce (Taicang) Co. Ltd. | Part of the Worldwide Network of German Chambers\nDEinternational? is a registered brand of the German Chamber Network, services are provided by GIC.\nDEinternational? 是德国驻外商会的服务商标，由德中工商技术咨询服务公司使用。\n\nFrom: 事必达科技 [ mailto:\n[EMAIL] ]\nSent: 10:\n11\nTo: xu, le [EMAIL]\nSubject: 谢谢电话沟通，已经进驻中国的知名外资企业几乎都是我们公司的长期客户，希望有机会再能为您提供服务\n\n许乐先生，您好\n\n我是事必达公司的客户支持部的王萍芳，我们公司曾经为您和您的同事提供过大量的技术资料翻译和各类样本的印刷服务，有段时间没有联系了，刚才我打您电话，也没有联系上。\n\n在翻译行业，我们目前是上海规模最大、市场份额第 1 的专业公司。\n\n各个行业几乎所有最知名外资企业，我们都提供过翻译或印刷服务。\n\n像化工业的 某化工客户 、某化工客户，银行业的渣打银行、汇丰银行，医药行业的赛诺菲、拜耳等都是由我们提供服务的。\n\n特地为您整理了一份近期完成的项目清单。\n\n非常希望很快能再有机会为您提供翻译或印刷一体化的服务，附件是我们公司的详细介绍供您参考。\n\n如果您同事有需要的话，也拜托您帮忙推荐。\n\n诚挚感谢，并祝您工作顺利\n\n王萍芳\n\n客户支持部\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n' Phone: [PHONE] Fax: [PHONE]\n\n* Email: [EMAIL] , [EMAIL]\nAddress: Suite 149, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C.\nWebsite: [URL]\n\n- -------------------------------------------------------------------------------------------------------\n\n1. 我们为化工行业提供的服务如下：\n化工类工程改造方案翻译\n\n化工类 MSDS 资料翻译\n化工类检测类报告翻译\n\n化工类专利说明书翻译\n汽车催化剂分析文件的翻译\n\n催化剂部门的杂志翻译、制版、印刷一体化\n\n技术服务合同的翻译\n\n专业类的石油化工可燃性气体的国家标准的翻译\n\n某化工客户与中国绿色食品协会市场流通委员会战略合作协议翻译\n\n首届中国三聚氰胺技术开发与应用推进峰会通讯录资料翻译\n低臭性共聚物水性溶液及生产方法的专利申请文件资料翻译\n财务报告 CCG 2015 Annual Report 的翻译\n商业证明文件 某化工客户 Antwerpen N.V.-commercial register 翻译\n业务合作伙伴尽职调查问卷的翻译\n《面向制药行业的产品系列》设计印刷制版\n资产负债表的翻译\n股票招股说明书翻译\nCellasto brochure , 翻译 + 制版 + 印刷一体化\n品 Fibro 热电偶线资料翻译\n关于广州市人民政府办公厅关于印发通知的翻译\n媒体访谈资料翻译\n出境加工物权转让申请函翻译\n金属给农业银行的财务资料翻译\n某化工客户关于“海关出境加工货物管理操作流程”的翻译\n二异氰酸酯储罐设备使用指南的翻译\nFamily Day Agenda 设计印刷一体化\n审计报表的翻译\nL190 Armophe 操作规程的翻译\nL190 Plus 操作程序的翻译\n薪酬管理和员工福利管理制度的翻译\nMasterProtect 系列产品的翻译\n乙炔尾气制甲醇成达技术业绩表的翻译\n关于 Brand Ambassador Workshop_某化工客户.ppt 的翻译\n某化工客户漕泾化工 PTHF 和 THF 大型项目的技术资料翻译\n首届中国三聚氰胺技术开发与应用推进峰会通讯录资料翻译\n\n2. 为医药行业提供的服务如下\nXs 系列的血压血栓等方面的研究资料与研究报告\n泌尿系统与胃肠道系统的医药论文资料\n蛋白酶抑制剂等系列药剂使用说明\n有效降低慢性肾病患者的血压的产品的翻译及印刷\n处方药抗肿瘤、抗感染等系列的产品介绍与样本翻译及印刷\n高钙低脂类产品研究资料的翻译及印刷\n系列药品申报资料以及 Operator ’ s Manual forautoSCAN — 4 等医疗测试设备的操作手册的翻译\nCT 系列— PRESTO XE 、 SE ， MRI 系列— APERTO 、 AIRIS- 2 、 AIRISmat ， X 线系列— DR 专用数字化 X 线摄影装置移动式 X 线摄影装置等的技术资料和操作手册的翻译\nX 线照相和荧光显影设备，远程 X 线照相 Prestige II ，介入 X 线照相 Advantx TC+ 可移动 X 线照相设备等的技术资料以及产品手册的翻译\nFORTEKOR? FLAVOUR 5 mg 犬用片剂药理学和毒理学概要\n苯那普利药物临床前药理学及毒理学评价\n长期抑制血管紧张素转化酶有助于提高心力衰竭期间的心输出量及体液平衡报告\n研究清醒血压正常犬中血管紧张素转化酶抑制剂苯那普利的血液动力学效应\n全新血管紧张素转化酶抑制剂盐酸苯那普利的一般药理学性质分析\nCGS14824A: 在大鼠和犬中的吸收、分布、代谢和排泄研究报告\nARZNEIMITTEL-FORSCHUNG 药物研究\n小鼠、大鼠和犬中 5 天急性和 16-20 天亚急性经口毒性研究\n对大鼠静脉注射 CGS 14?824 A 的急性毒性研究\n对比格犬静脉注射 CGS 14 824 A 的急性耐受性研究\n对大鼠为期 13 周的口服亚急性毒性试验报告\n微生物致突变试验报告\n中国仓鼠体细胞间期细胞核异常试验\n为期 104 周的大鼠经口致癌性试验报告\nFORTEKOR FLAVOUR 犬用 5 毫克片剂药理学及毒理学评价\n慢性肾衰竭犬残肾中高血压的发展与盐酸苯那普利作用文案\n犬类模型中血管紧张素转化酶抑制剂苯那普利及其活性代谢产物苯那普利拉的药代动力学试验报告\nCIBA-GEIGY 动物保健试验生物学报告\n犬类模型中持续约 4 周的两期交叉设计生物等效性试验文案\n一项在长期治疗中比较苯那普利与安慰剂单药治疗或作为利尿剂和抗心律失常药的辅助治疗在患 II-IV 期心力衰竭受试犬中作用的多中心、随机、双盲、平行组设计 BEN 92-001 试验报告\n\n3 、为地铁行业提供的服务如下：\n\n上海 5 号线（莘闵线）制动控制电子装置（ BCE ） MVB 接口描述\nSATCO 阿根廷二期项目油压减震器例行试验报告\n阿根廷 105 辆项目例行试验大纲格式\n有轨电车转向架构架计算报告\n铰接连杆胶接培训\n轻轨驾驶舱车门的人机适应性规划书\n标准测试报告法维莱低底盘有轨电车乘客室内空调\n合肥 1 号线一二期工程信号通用技术要求\n北京市现代有轨电车西郊线工程车辆采购项目澄清及补遗文件\n北京市轨道交通香山线工程 100% 低地板轻轨车项目用户需求书\n牢固焊接机械零部件的焊接质量要求\n福州市轨道交通 1 号线一期工程牵引系统用户需求书\n无锡市轨道交通 2 号线工程车辆牵引系统技术规格书\n珠江三角洲穗莞深城际轨道交通项目（莞深段）及东莞至惠州城际轨道交通项目车辆（ 140kph ）采购项目用户需求书\nCTCS-3 级列控系统总体技术方案\n广州市地铁二 / 八号线车辆项目用户需求书册\n广佛车辆整车招标文件商务及技术部分交流稿\n台北都会区捷运系统工程一般条款\n武汉市轨道交通三号线一期工程车辆牵引系统采购项目需求书\n成都地铁 2 号线 ( 牵引） - 商务及技术部分\n珠江三角洲城际快速轨道交通广州至佛山段信号系统采购项目相关文件\n宁波一号线（牵引） - 商务及技术部分\n有轨电车示范线的服务水平，综合智能控制系统报告的翻译\n有轨电车（ LRT ）系统设计培训 PPT 的翻译\n深圳龙华有轨电车工程设备采购招标文件的翻译\n武汉市轨道交通 1 号线径河延伸线工程信号系统、设备部分、技术条件报告书的翻译\n武汉市东湖国家自主创新示范区有轨电车 T1 、 T2 线工程运营调度管理系统集成采购项目技术文件的翻译\n远程记轴预复位系统说明书摘要的翻译\n北京 4 号线 2 期自动列车控制系统（ ATCS ）标准符合证书\n\n4 、为电力行业提供的服务如下：\n\n500 千伏世博输变电工程设备招标书 /GIS 技术规范书翻译\n\n委内瑞拉核电站项目的西班牙语翻译工作\n\n特高压交流 1000 千伏变电站导体选择中面临的问题及理论计算分析翻译\n\n国网论文——特高压直流保护系统冗余配置方案的研究翻译\n\n± 800 千伏换流站换流变组装场地优化研究及其应用翻译\n\n华东电力设计院波兰电厂设计资料翻译\n\n中国电工集团孟加拉国双燃料联合循环电站项目技术合同、商务合同翻译\n\n华东电力设计院 500 千伏世博输变电工程设备招标书 /GIS 技术规范书翻译\n\n华东电力设计院大件运输论文翻译\n\n华东电力设计院特高压交流 1000 千伏变电站导体选择中面临的问题及理论计算分析翻译\n\n华东电力设计院国网论文——特高压直流保护系统冗余配置方案的研究翻译\n\n华东电力设计院± 800 千伏换流站换流变组装场地优化研究及其应用翻译\n\n华东电力设计院委内瑞拉电网项目翻译\n\n卢旺达建议书\n\n线路施工方案\n\n变电土建\n\n110kV 施工组设 .\n\n220kV 型通用试验方案\n\n3591 沙特 110kV 电力变压器试验方案\n\n综合管理手册\n\n质量管理文件\n\n中国水电安哥拉卡西吐供水项目的项目书翻译\n\n马来西亚丰盛港填海项目系列翻译\n\n安哥拉本格拉体育场项目建筑图纸的翻译\n\n柬埔寨科普奥斯大桥项目\n\n印尼佳蒂格德大坝项目\n\n中国水电承建的布巴哈电站\n\n印尼建设项目技术手册书的翻译工作\n\n孟加拉项目 4000 多页的招投标项目书以及技术 文件的翻译工作\n\n博茨瓦纳 Morupule B 4*150MW 燃煤电站项目书翻译\n\n电力集团日常口译及会议交传人员的提供\n\n塞尔维亚黑山 400V 输电线路项目资料的翻译\n\n埃塞俄比亚巴莱斯 400kv 输变电线路项目的翻译\n\n雅加达２×１３５ＭＷ电站项目技术图纸翻译\n\n出厂试验报告翻译\n\n京沪高铁接触网项目翻译\n\n安装和维护说明手册翻译\n\n卢旺达建议书\n\n线路施工方案\n\n变电土建\n\n110kV 施工组设 .\n\n220kV 型通用试验方案\n\n3591 沙特 110kV 电力变压器试验方案\n\n综合管理手册\n\n质量管理文件"
+    },
+    {
+      "fragment_id": "8b5b5f5f-baa1-49ad-9e1b-3af62d684ad6",
+      "source_ref": "mail_gold_v2_1019_scn_2017",
+      "scenario": "new_contact_intro",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "主题: 事必达翻译印刷-薛琳（Shelly）产假，由我为您提供服务",
+      "new_title": "主题: 事必达翻译印刷-薛琳（Shelly）产假，由我为您提供服务",
+      "residual_flags": [
+        "time_or_festival_left"
+      ],
+      "old_content": "Dear [客户称呼]\n\n您好!\n\n我是刚才与您通话的 Elina Guo ，很高兴刚才与您的通话。\n\n原来负责您公司业务的销售代表薛琳（ Shelly ）于  -休产假，这段时间将由我为您提供服务。\n\n如果我的服务有不尽如人意的地方，欢迎您随时指正，您也可以联系我们的部门主管[发件人]（ [发件人] ） [PHONE] ，她会给您满意的回复。\n\n您有任何需求仍可以发送至原来 Shelly 的邮箱，或者您也可以直接联系我，以下是我的联系方式。\n\n非常感谢您长期以来的支持，希望我们继续合作愉快！\n\n祝您工作顺利，谢谢！\n\n郭丽珠 Elina\nSales Department\n上海嘉赛信息科技发展有限公司\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\nPhone: [PHONE]/[PHONE]\nFax: [PHONE]\nEmail: [EMAIL]\nWebsite: [URL]\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C",
+      "new_content": "Dear [客户称呼]\n\n您好!\n\n我是刚才与您通话的 Elina Guo ，很高兴刚才与您的通话。\n\n原来负责您公司业务的销售代表薛琳（ Shelly ）于 -休产假，这段时间将由我为您提供服务。\n\n如果我的服务有不尽如人意的地方，欢迎您随时指正，您也可以联系我们的部门主管[发件人]（ [发件人] ） [PHONE] ，她会给您满意的回复。\n\n您有任何需求仍可以发送至原来 Shelly 的邮箱，或者您也可以直接联系我，以下是我的联系方式。\n\n非常感谢您长期以来的支持，希望我们继续合作愉快！\n\n祝您工作顺利，谢谢！\n\n郭丽珠 Elina\nSales Department\n上海嘉赛信息科技发展有限公司\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\nPhone: [PHONE]/[PHONE]\nFax: [PHONE]\nEmail: [EMAIL]\nWebsite: [URL]\nAddress: Suite 1409, Feidiao International Masion, 1065 Zhaojiabang Road,Shanghai,200030, P,R,C"
+    },
+    {
+      "fragment_id": "5e93fcd6-7057-485c-8cb4-4bad1f271197",
+      "source_ref": "mail_gold_v2_1026_scn_2017",
+      "scenario": "new_contact_intro",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "from SPEED Trasnslation (交大事必达)",
+      "new_title": "from SPEED Trasnslation (交大事必达)",
+      "residual_flags": [
+        "time_or_festival_left"
+      ],
+      "old_content": "季先生您好\n\n您好！\n\n我是事必达的[发件人]，很高兴能和您进行沟通， 以下是我司的相关的业务介绍：\n\n公司创立于 1997 年，品牌名为“事必达”，源于英语“ SPEED ”，意为“高效快速”。\n\n作为中国目前最大的文档及软件本地化公司之一，  开始实施 ERP 管理系统，  获 ISO 9001 质量体系认证，  投资徐家汇核心商圈 5A 涉外商务楼，并成立软件展示中心，  在上海正式成立客户服务呼叫中心 (Call Center) ，连续多年被评为优秀民营企业。\n\n我公司目前是华东区规模最大、市场份额第一的翻译、设计印刷一体化的专业公司。\n\n客户涵盖全球５００强已进驻上海的大部分公司和办事处，而且其中７０％以上都是长期客户，像拜耳、某化工客户、花期银行、百事、贝尔阿尔卡特等，同时我们也为美国、加拿大、英国等国驻沪领事馆和商会机构长期提供翻译和设计印刷。\n\n主营业务：\n\n一、翻译方面\n\n笔译优势：\n\n1 、实力强：\n几乎所有的语种都可以提供笔译和口译服务；\n\n2 、权威保障：\n首家通过 ISO9001 质量认证；\n\n3 、性价比高：\n公司采用最先进的 ERP 管理系统，翻译工作严格按照译、校、审三轮把控，哪怕一页资料都是如此；\n\n4 、速度快：\n行业内专职人员最多，之前，一周内就完成阿尔卡特的一批 2000 多页的专业通讯资料的翻译，其他公司根本没法完成；\n\n5 、经验丰富：\n目前上海几乎所有行业最知名的外企都是我们的合作客户，而且７０％以上都是跟我们签订长期合作协议；\n\n6 、擅长工程技术大项目：\n我们源于交大，有非常强大的工程技术背景；\n\n口译优势：\n\n上海最好的同传，我们几乎都可以提供，她们都参加过像联合国、欧盟这样的同传培训的，拥有丰富的同传经验，参加过许多大型的国际性会议、大型培训、商务谈判、开幕式等。\n\n公司具备其他公司所部具备的优势，拥有自己的专职口译人员，其他公司几乎都是外聘的，而且所有的口译人员至少是具备上海市政府颁发的高级口译资质证书。\n\n目前上海许多 5 星及超 5 星级酒店的商务中心，像浦东的金茂君悦、香格里拉等，入住外国客户预定各种级别的口译的话，她们肯定都是找我们的。\n\n二、设计印刷\n\n主要为外资企业提供产品样本、公司介绍、技术手册等样本的设计、印刷一条龙服务；\n\n像 GE 、某化工客户、欧姆龙、 ABB 等都是我们的长期客户，客户对我们都是非常满意的，像英国领事馆的投资指南等也是我们翻译印刷的。\n\n三、多媒体译制\n\n提供ＤＶＤ的翻译、配音配字幕以及网站的汉化等工作；\n\n外什么要选择翻译、设计印刷一体化的服务公司\n\n翻译、设计印刷一体化的优势：\n真正做到让您省时、省心和省力。\n\n（１）省时：\n同步进行翻译、图像处理及排版工作。\n\n在翻译的同时，我们可以进行图像处理及排版工作。\n\n如果您翻译、印刷分别找二家供应商的话，就必须翻译完成才能开始做排版工作，如果项目比较紧急的话就耽误您的工作了。\n\n（２）省心：\n避免两家不同供应商的推诿，减少中间出错率。\n\n一个项目选址不同的供应商进行翻译、制版、印刷服务时，非常容易出现供应商之间责任相互推诿的现象，如果您将全部工作委托给我们，可以消除中间环节，降低中间出错的几率，解决了后顾之忧。\n\n（３）省力：\n您只需与一名客户服务代表联系，能随时了解项目的进程。\n\n针对您的项目我们会指派一名资深的客户服务代表，负责在整个流程中与您及时沟通，您只需与一名客户服务代表联系所有的工作，不需要联系不同的供应商，重复相同的要求。\n\n另外，我们翻译人员会全程参与项目整个过程，可以避免制版、印刷人员外语薄弱而出现的差错。\n\n附件中有我们的部分合作案例，请参详， 期待与您的合作 !\n\n顺祝商祺！\n\n上海嘉赛信息科技发展有限公司\n销售部[发件人]\n电话: [PHONE]/[PHONE]\n传真: [PHONE]\n邮箱： [EMAIL]\n公司地址：\n上海市徐汇区肇嘉浜路1065号（徐家汇港汇广场对面）\n公司网址: [URL]",
+      "new_content": "季先生您好\n\n您好！\n\n我是事必达的[发件人]，很高兴能和您进行沟通， 以下是我司的相关的业务介绍：\n\n公司创立于 1997 年，品牌名为“事必达”，源于英语“ SPEED ”，意为“高效快速”。\n\n作为中国目前最大的文档及软件本地化公司之一， 开始实施 ERP 管理系统， 获 ISO 9001 质量体系认证， 投资徐家汇核心商圈 5A 涉外商务楼，并成立软件展示中心， 在上海正式成立客户服务呼叫中心 (Call Center) ，连续多年被评为优秀民营企业。\n\n我公司目前是华东区规模最大、市场份额第一的翻译、设计印刷一体化的专业公司。\n\n客户涵盖全球５００强已进驻上海的大部分公司和办事处，而且其中７０％以上都是长期客户，像拜耳、某化工客户、花期银行、百事、贝尔阿尔卡特等，同时我们也为美国、加拿大、英国等国驻沪领事馆和商会机构长期提供翻译和设计印刷。\n\n主营业务：\n\n一、翻译方面\n\n笔译优势：\n\n1 、实力强：\n几乎所有的语种都可以提供笔译和口译服务；\n\n2 、权威保障：\n首家通过 ISO9001 质量认证；\n\n3 、性价比高：\n公司采用最先进的 ERP 管理系统，翻译工作严格按照译、校、审三轮把控，哪怕一页资料都是如此；\n\n4 、速度快：\n行业内专职人员最多，之前，一周内就完成阿尔卡特的一批 2000 多页的专业通讯资料的翻译，其他公司根本没法完成；\n\n5 、经验丰富：\n目前上海几乎所有行业最知名的外企都是我们的合作客户，而且７０％以上都是跟我们签订长期合作协议；\n\n6 、擅长工程技术大项目：\n我们源于交大，有非常强大的工程技术背景；\n\n口译优势：\n\n上海最好的同传，我们几乎都可以提供，她们都参加过像联合国、欧盟这样的同传培训的，拥有丰富的同传经验，参加过许多大型的国际性会议、大型培训、商务谈判、开幕式等。\n\n公司具备其他公司所部具备的优势，拥有自己的专职口译人员，其他公司几乎都是外聘的，而且所有的口译人员至少是具备上海市政府颁发的高级口译资质证书。\n\n目前上海许多 5 星及超 5 星级酒店的商务中心，像浦东的金茂君悦、香格里拉等，入住外国客户预定各种级别的口译的话，她们肯定都是找我们的。\n\n二、设计印刷\n\n主要为外资企业提供产品样本、公司介绍、技术手册等样本的设计、印刷一条龙服务；\n\n像 GE 、某化工客户、欧姆龙、 ABB 等都是我们的长期客户，客户对我们都是非常满意的，像英国领事馆的投资指南等也是我们翻译印刷的。\n\n三、多媒体译制\n\n提供ＤＶＤ的翻译、配音配字幕以及网站的汉化等工作；\n\n外什么要选择翻译、设计印刷一体化的服务公司\n\n翻译、设计印刷一体化的优势：\n真正做到让您省时、省心和省力。\n\n（１）省时：\n同步进行翻译、图像处理及排版工作。\n\n在翻译的同时，我们可以进行图像处理及排版工作。\n\n如果您翻译、印刷分别找二家供应商的话，就必须翻译完成才能开始做排版工作，如果项目比较紧急的话就耽误您的工作了。\n\n（２）省心：\n避免两家不同供应商的推诿，减少中间出错率。\n\n一个项目选址不同的供应商进行翻译、制版、印刷服务时，非常容易出现供应商之间责任相互推诿的现象，如果您将全部工作委托给我们，可以消除中间环节，降低中间出错的几率，解决了后顾之忧。\n\n（３）省力：\n您只需与一名客户服务代表联系，能随时了解项目的进程。\n\n针对您的项目我们会指派一名资深的客户服务代表，负责在整个流程中与您及时沟通，您只需与一名客户服务代表联系所有的工作，不需要联系不同的供应商，重复相同的要求。\n\n另外，我们翻译人员会全程参与项目整个过程，可以避免制版、印刷人员外语薄弱而出现的差错。\n\n附件中有我们的部分合作案例，请参详， 期待与您的合作 !\n\n顺祝商祺！\n\n上海嘉赛信息科技发展有限公司\n销售部[发件人]\n电话: [PHONE]/[PHONE]\n传真: [PHONE]\n邮箱： [EMAIL]\n公司地址：\n上海市徐汇区肇嘉浜路1065号（徐家汇港汇广场对面）\n公司网址: [URL]"
+    },
+    {
+      "fragment_id": "2d53985d-5fe1-40c2-9944-72bb1d518cad",
+      "source_ref": "mail_gold_v2_1027_scn_2017",
+      "scenario": "new_business_promotion",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "带标尺图片",
+      "new_title": "带标尺图片",
+      "residual_flags": [
+        "time_or_festival_left"
+      ],
+      "old_content": "Dear [客户称呼]\n\n带标尺的图片请见附件，您看下。\n\n另外，我需要再和您确认下，您当时提供给我的参考底图的Size 为 A5（148*210mm），如图中：\n蓝条的长为\n\n81.1mm，宽为：\n21mm\n\nBest Regards\n\n王林 销售部\n\n上海嘉赛信息科技发展有限公司 ( 事必达 )\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n[URL] [URL] [EMAIL]\n中国上海徐汇区肇嘉浜路 1065 号飞雕国际大厦 1409 室\n\n关于我们\n\n华东规模领先翻译、印刷、多媒体服务供应商\n\n全新体验 : 快捷下单 文件传输 查询进度 定制译员\n\n世界500强的首选印刷供应商，累计印刷五百万册\n\n领先的多媒体本地化团队助您在客户中提升影响力\n\n- ---- Original Message received on [PHONE]:\n33:\n33 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: RE: FW: notebook\n\n[PHONE]:\n30:\n18\n\nDear [客户称呼]\n\nThanks for your revised version.\n\nHere are still some revisions need to be made:\n\n1. The Heading should be placed in the center\n\n2. The length of the bar is 1/10 of the length of notebook\n\n3. The 某化工客户 logo left too few space to the bar\n\n4. We find 2 background colors in the print out version. Please help define the problem.\n\nAttached please find our visual guideline for your reference. The text bar can also be transparent.\n\nThank you again. Nice day.\n\nBest Regards,\nMs. Felicia GUO\nCommunication, Global Business Management Cellasto (G-PM/A) and Specialty Plastics (G-PM/P)\n\nPhone: [PHONE], Email: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., , 2F, East Wing, 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Judy CHEN\nSent:   12:\n59\nTo: Speed Technology [EMAIL]\nCc: Karin FAN [EMAIL]\nSubject: RE: RE: FW: notebook\n\nDear [客户称呼]\n\nBelow please find the changes. Mainly on new added pages. About our logo, there is come changes. Karin will contact you. And all mistakes are confirmed by me or Karin, you can prepare the sample and ask Karin to sign(I will be in business trip next week). The other thing, please send me the contract and also the net price/tax, I will ask my boss to sign the contract. Thanks.\n\n1. 错别字： P 11 modificatio n; mod i fication; c omposites; injectio n; stabi li ty. Stiffnes s(3 处 ) , avalabio( available );\n\ntype of type of polymer( 去掉一个 type of) ； P = Polyphenylensulfo n e ； E = Polyethersulfon e (PESU)\n\n2. 标点符号 extrusion , blow molding\n\n3. P3 去掉 Ultrason E 2010 G6\n\nBest regards/Mit freundlichen Gruessen,\nJudy Chen\n\nProduct Management Ultrason ?\nSpecialty Polymers (G-PMF/S)\nPerformance Materials\n\nPhone: [PHONE](cogent [PHONE]) Mobile: [PHONE] Fax: [PHONE] E-Mail: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Speed Technology [ mailto:\n[EMAIL] ]\nSent:   10:\n02\nTo: Judy CHEN [EMAIL]\nSubject: Re: RE: FW: notebook\n\nDear [客户称呼]\n\n修改文件请见附件。\n\nBest Regards\n\n王林 销售部\n\n上海嘉赛信息科技发展有限公司 ( 事必达 )\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n[URL] [URL] [EMAIL]\n中国上海徐汇区肇嘉浜路 1065 号飞雕国际大厦 1409 室\n\n关于我们\n\n华东规模领先翻译、印刷、多媒体服务供应商\n\n20 年行业经验\n50+ 语种、 100+ 行业\n\n世界 500 强的首选印刷供应商，累计印刷五百万册\n\n业内顶级交替传译同声传译，服务于各种高端会议\n\n- ---- Original Message received on [PHONE]:\n00:\n49 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: FW: notebook\n\n[PHONE]:\n55:\n39\n\nBest regards/Mit freundlichen Gruessen,\nJudy Chen\n\nProduct Management Ultrason ?\nSpecialty Polymers (G-PMF/S)\nPerformance Materials\n\nPhone: [PHONE](cogent [PHONE]) Mobile: [PHONE] Fax: [PHONE] E-Mail: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Judy CHEN\nSent:   11:\n17\nTo: 'Speed Technology' [EMAIL]\nSubject: RE: FW: notebook\n\nFyi\n\nDirect instruction\n\nBest regards/Mit freundlichen Gruessen,\nJudy Chen\n\nProduct Management Ultrason ?\nSpecialty Polymers (G-PMF/S)\nPerformance Materials\n\nPhone: [PHONE](cogent [PHONE]) Mobile: [PHONE] Fax: [PHONE] E-Mail: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Judy CHEN\nSent:   11:\n06\nTo: 'Speed Technology' [EMAIL]\nSubject: RE: FW: notebook\n\nDear [客户称呼]\n\nBelow please find our LOGO information. Please edit it as below instruction and send the updated version soon. Thanks.\n\nBest regards/Mit freundlichen Gruessen,\nJudy Chen\n\nProduct Management Ultrason ?\nSpecialty Polymers (G-PMF/S)\nPerformance Materials\n\nPhone: [PHONE](cogent [PHONE]) Mobile: [PHONE] Fax: [PHONE] E-Mail: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Judy CHEN\nSent:   13:\n41\nTo: Speed Technology [EMAIL]\nSubject: RE: FW: notebook\n\nDear [客户称呼]\n\n封底， Ultra-infopoint 的这个标志没有加，请按照德国 brochure 上的标志样式加上。\n\nIf you have technical questions on the\n\nproducts, please contact the Ultra-Infopoint:\n\nBest regards/Mit freundlichen Gruessen,\nJudy Chen\n\nProduct Management Ultrason ?\nSpecialty Polymers (G-PMF/S)\nPerformance Materials\n\nPhone: [PHONE](cogent [PHONE]) Mobile: [PHONE] Fax: [PHONE] E-Mail: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Speed Technology [ mailto:\n[EMAIL] ]\nSent:   14:\n18\nTo: Judy CHEN [EMAIL]\nSubject: Re: FW: notebook\n\nDear [客户称呼]\n\n您看下附件，可有需要我们修改的。\n\nBest Regards\n\n王林 销售部\n\n上海嘉赛信息科技发展有限公司 ( 事必达 )\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n[EMAIL]\n中国上海徐汇区肇嘉浜路 1065 号飞雕国际大厦 1409 室\n\n关于我们\n\n华东规模领先翻译、印刷、多媒体服务供应商\n\n20 年行业经验\n50+ 语种、 100+ 行业\n\n世界 500 强的首选印刷供应商，累计印刷五百万册\n\n业内顶级交替传译同声传译，服务于各种高端会议\n\n- ---- Original Message received on [PHONE]:\n38:\n09 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nFW: notebook\n\n[PHONE]:\n37:\n32\n\nHi [客户称呼]\n\n第二页， 请把 Ultrason E, S, P (PSU, PESU , PPSU) to Ultrason E, S, P ( PESU , PSU, PPSU) 。\n\n谢谢 /span›\n\nBest regards/Mit freundlichen Gruessen,\nJudy Chen\n\nProduct Management Ultrason ?\nSpecialty Polymers (G-PMF/S)\nPerformance Materials\n\nPhone: [PHONE](cogent [PHONE]) Mobile: [PHONE] Fax: [PHONE] E-Mail: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Natalia Widjojo\nSent: 2017/span›11/span›9/span› 12:\n23\nTo: Judy CHEN [EMAIL]\nSubject: notebook\n\nDear [客户称呼]\n\nWhen you print the notebook for second round, can you help to change the sequence of Ultrason E, S, P (PSU, PESU , PPSU) to Ultrason E, S, P ( PESU , PSU, PPSU). A very minor thing, other than that is perfect That was initially in our booklet too but our comm had changed it before printing.\n\nThanks and best regards\n\nNatalia\n\n____________________________________\n\nDr. Natalia Widjojo\nBusiness Development, Ultrason ?\n\nPhone: [PHONE], Mobile: [PHONE] , Email: [EMAIL]\n\nPostal Address: 某化工客户 South East Asia Pte Ltd, Suntec Tower One, 34th Floor, 7 Temasek Boulevard, Singapore 038987\n\n某化工客户 We create chemistry\n\n某化工客户 South East Asia Pte Ltd (Registration Number [PHONE]N)\n\nThis e-mail is confidential. If you are not the intended recipient you must not disclose, distribute or use the information in it as this could be a breach of confidentiality. If you have received this message in error, please advise us immediately by return e-mail and delete the document. The address from which this message has been sent is strictly for business mail only and the company reserves the right to monitor the contents of communications and take action where and when it is deemed necessary. Thank you for your co-operation.\n\nThis e-mail is confidential. If you are not the intended recipient you must not disclose, distribute or use the information in it as this could be a breach of confidentiality. If you have received this message in error, please advise us immediately by return e-mail and delete the document. The address from which this message has been sent is strictly for business mail only and the company reserves the right to monitor the contents of communications and take action where and when it is deemed necessary. Thank you for your co-operation.\n\nThis e-mail is confidential. If you are not the intended recipient you must not disclose, distribute or use the information in it as this could be a breach of confidentiality. If you have received this message in error, please advise us immediately by return e-mail and delete the document. The address from which this message has been sent is strictly for business mail only and the company reserves the right to monitor the contents of communications and take action where and when it is deemed necessary. Thank you for your co-operation.",
+      "new_content": "Dear [客户称呼]\n\n带标尺的图片请见附件，您看下。\n\n另外，我需要再和您确认下，您当时提供给我的参考底图的Size 为 A5（148*210mm），如图中：\n蓝条的长为\n\n81.1mm，宽为：\n21mm\n\nBest Regards\n\n王林 销售部\n\n上海嘉赛信息科技发展有限公司 ( 事必达 )\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n[URL] [URL] [EMAIL]\n中国上海徐汇区肇嘉浜路 1065 号飞雕国际大厦 1409 室\n\n关于我们\n\n华东规模领先翻译、印刷、多媒体服务供应商\n\n全新体验 : 快捷下单 文件传输 查询进度 定制译员\n\n世界500强的首选印刷供应商，累计印刷五百万册\n\n领先的多媒体本地化团队助您在客户中提升影响力\n\n- ---- Original Message received on [PHONE]:\n33:\n33 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: RE: FW: notebook\n\n[PHONE]:\n30:\n18\n\nDear [客户称呼]\n\nThanks for your revised version.\n\nHere are still some revisions need to be made:\n\n1. The Heading should be placed in the center\n\n2. The length of the bar is 1/10 of the length of notebook\n\n3. The 某化工客户 logo left too few space to the bar\n\n4. We find 2 background colors in the print out version. Please help define the problem.\n\nAttached please find our visual guideline for your reference. The text bar can also be transparent.\n\nThank you again. Nice day.\n\nBest Regards,\nMs. Felicia GUO\nCommunication, Global Business Management Cellasto (G-PM/A) and Specialty Plastics (G-PM/P)\n\nPhone: [PHONE], Email: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., , 2F, East Wing, 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Judy CHEN\nSent: 12:\n59\nTo: Speed Technology [EMAIL]\nCc: Karin FAN [EMAIL]\nSubject: RE: RE: FW: notebook\n\nDear [客户称呼]\n\nBelow please find the changes. Mainly on new added pages. About our logo, there is come changes. Karin will contact you. And all mistakes are confirmed by me or Karin, you can prepare the sample and ask Karin to sign(I will be in business trip next week). The other thing, please send me the contract and also the net price/tax, I will ask my boss to sign the contract. Thanks.\n\n1. 错别字： P 11 modificatio n; mod i fication; c omposites; injectio n; stabi li ty. Stiffnes s(3 处 ) , avalabio( available );\n\ntype of type of polymer( 去掉一个 type of) ； P = Polyphenylensulfo n e ； E = Polyethersulfon e (PESU)\n\n2. 标点符号 extrusion , blow molding\n\n3. P3 去掉 Ultrason E 2010 G6\n\nBest regards/Mit freundlichen Gruessen,\nJudy Chen\n\nProduct Management Ultrason ?\nSpecialty Polymers (G-PMF/S)\nPerformance Materials\n\nPhone: [PHONE](cogent [PHONE]) Mobile: [PHONE] Fax: [PHONE] E-Mail: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Speed Technology [ mailto:\n[EMAIL] ]\nSent: 10:\n02\nTo: Judy CHEN [EMAIL]\nSubject: Re: RE: FW: notebook\n\nDear [客户称呼]\n\n修改文件请见附件。\n\nBest Regards\n\n王林 销售部\n\n上海嘉赛信息科技发展有限公司 ( 事必达 )\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n[URL] [URL] [EMAIL]\n中国上海徐汇区肇嘉浜路 1065 号飞雕国际大厦 1409 室\n\n关于我们\n\n华东规模领先翻译、印刷、多媒体服务供应商\n\n20 年行业经验\n50+ 语种、 100+ 行业\n\n世界 500 强的首选印刷供应商，累计印刷五百万册\n\n业内顶级交替传译同声传译，服务于各种高端会议\n\n- ---- Original Message received on [PHONE]:\n00:\n49 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nRE: FW: notebook\n\n[PHONE]:\n55:\n39\n\nBest regards/Mit freundlichen Gruessen,\nJudy Chen\n\nProduct Management Ultrason ?\nSpecialty Polymers (G-PMF/S)\nPerformance Materials\n\nPhone: [PHONE](cogent [PHONE]) Mobile: [PHONE] Fax: [PHONE] E-Mail: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Judy CHEN\nSent: 11:\n17\nTo: 'Speed Technology' [EMAIL]\nSubject: RE: FW: notebook\n\nFyi\n\nDirect instruction\n\nBest regards/Mit freundlichen Gruessen,\nJudy Chen\n\nProduct Management Ultrason ?\nSpecialty Polymers (G-PMF/S)\nPerformance Materials\n\nPhone: [PHONE](cogent [PHONE]) Mobile: [PHONE] Fax: [PHONE] E-Mail: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Judy CHEN\nSent: 11:\n06\nTo: 'Speed Technology' [EMAIL]\nSubject: RE: FW: notebook\n\nDear [客户称呼]\n\nBelow please find our LOGO information. Please edit it as below instruction and send the updated version soon. Thanks.\n\nBest regards/Mit freundlichen Gruessen,\nJudy Chen\n\nProduct Management Ultrason ?\nSpecialty Polymers (G-PMF/S)\nPerformance Materials\n\nPhone: [PHONE](cogent [PHONE]) Mobile: [PHONE] Fax: [PHONE] E-Mail: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Judy CHEN\nSent: 13:\n41\nTo: Speed Technology [EMAIL]\nSubject: RE: FW: notebook\n\nDear [客户称呼]\n\n封底， Ultra-infopoint 的这个标志没有加，请按照德国 brochure 上的标志样式加上。\n\nIf you have technical questions on the\n\nproducts, please contact the Ultra-Infopoint:\n\nBest regards/Mit freundlichen Gruessen,\nJudy Chen\n\nProduct Management Ultrason ?\nSpecialty Polymers (G-PMF/S)\nPerformance Materials\n\nPhone: [PHONE](cogent [PHONE]) Mobile: [PHONE] Fax: [PHONE] E-Mail: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Speed Technology [ mailto:\n[EMAIL] ]\nSent: 14:\n18\nTo: Judy CHEN [EMAIL]\nSubject: Re: FW: notebook\n\nDear [客户称呼]\n\n您看下附件，可有需要我们修改的。\n\nBest Regards\n\n王林 销售部\n\n上海嘉赛信息科技发展有限公司 ( 事必达 )\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n[EMAIL]\n中国上海徐汇区肇嘉浜路 1065 号飞雕国际大厦 1409 室\n\n关于我们\n\n华东规模领先翻译、印刷、多媒体服务供应商\n\n20 年行业经验\n50+ 语种、 100+ 行业\n\n世界 500 强的首选印刷供应商，累计印刷五百万册\n\n业内顶级交替传译同声传译，服务于各种高端会议\n\n- ---- Original Message received on [PHONE]:\n38:\n09 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL]\n\nFW: notebook\n\n[PHONE]:\n37:\n32\n\nHi [客户称呼]\n\n第二页， 请把 Ultrason E, S, P (PSU, PESU , PPSU) to Ultrason E, S, P ( PESU , PSU, PPSU) 。\n\n谢谢 /span›\n\nBest regards/Mit freundlichen Gruessen,\nJudy Chen\n\nProduct Management Ultrason ?\nSpecialty Polymers (G-PMF/S)\nPerformance Materials\n\nPhone: [PHONE](cogent [PHONE]) Mobile: [PHONE] Fax: [PHONE] E-Mail: [EMAIL]\nPostal Address: 某化工客户 (China) Company Ltd., 300 Jiang Xin Sha Road Pu Dong, 200137 Shanghai, China\n\n某化工客户 (China) Co., Ltd.\nNo 300, Jiangxinsha Road,\nPudong, Shanghai 200137, P.R. China\nTel: [PHONE]\nFax: [PHONE]\nInternet: [URL]\n\nFrom: Natalia Widjojo\nSent: 2017/span›11/span›9/span› 12:\n23\nTo: Judy CHEN [EMAIL]\nSubject: notebook\n\nDear [客户称呼]\n\nWhen you print the notebook for second round, can you help to change the sequence of Ultrason E, S, P (PSU, PESU , PPSU) to Ultrason E, S, P ( PESU , PSU, PPSU). A very minor thing, other than that is perfect That was initially in our booklet too but our comm had changed it before printing.\n\nThanks and best regards\n\nNatalia\n\n____________________________________\n\nDr. Natalia Widjojo\nBusiness Development, Ultrason ?\n\nPhone: [PHONE], Mobile: [PHONE] , Email: [EMAIL]\n\nPostal Address: 某化工客户 South East Asia Pte Ltd, Suntec Tower One, 34th Floor, 7 Temasek Boulevard, Singapore 038987\n\n某化工客户 We create chemistry\n\n某化工客户 South East Asia Pte Ltd (Registration Number [PHONE]N)\n\nThis e-mail is confidential. If you are not the intended recipient you must not disclose, distribute or use the information in it as this could be a breach of confidentiality. If you have received this message in error, please advise us immediately by return e-mail and delete the document. The address from which this message has been sent is strictly for business mail only and the company reserves the right to monitor the contents of communications and take action where and when it is deemed necessary. Thank you for your co-operation.\n\nThis e-mail is confidential. If you are not the intended recipient you must not disclose, distribute or use the information in it as this could be a breach of confidentiality. If you have received this message in error, please advise us immediately by return e-mail and delete the document. The address from which this message has been sent is strictly for business mail only and the company reserves the right to monitor the contents of communications and take action where and when it is deemed necessary. Thank you for your co-operation.\n\nThis e-mail is confidential. If you are not the intended recipient you must not disclose, distribute or use the information in it as this could be a breach of confidentiality. If you have received this message in error, please advise us immediately by return e-mail and delete the document. The address from which this message has been sent is strictly for business mail only and the company reserves the right to monitor the contents of communications and take action where and when it is deemed necessary. Thank you for your co-operation."
+    },
+    {
+      "fragment_id": "667a2d09-9547-482a-8581-75a6d801b3a7",
+      "source_ref": "mail_gold_v2_1071_scn_2018",
+      "scenario": "new_business_promotion",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "整理的文件",
+      "new_title": "整理的文件",
+      "residual_flags": [
+        "time_or_festival_left"
+      ],
+      "old_content": "Dear [客户称呼]\n\n附件为整理后的文件，请查收\n\nBest Regards\n\n- ---- Original Message received on [PHONE]:\n03:\n39 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL];[EMAIL]\n\nRE: 事必达翻译稿交稿： XS[PHONE]:\n57:\n50\n\nDears\n\n我们这边还有个需求，就是请把你手头所有翻译过的我们 OHC 的产品的中文监测报告按照产品线做一下分类和整合，这周给到我，谢谢！\n\n有问题随时联系。\n\nBest Regards\n\nAntony Yang\n\nOral Healthcare 相关部门 Management\n\nConsumer LifeStyle, Philips China Investment\n\nMobile: [PHONE]\n\nFrom: YANG, Antony\nSent: Wednesday, May 23, 2018 12:\n00 PM\nTo: SPEED Tech. [EMAIL]\nCc: [EMAIL]; JIN, Eva [EMAIL]\nSubject: RE: 事必达翻译稿交稿： XS[PHONE]\n\nDear [客户称呼]\n\n请协助翻译一下附件中的测试报告，谢谢！\n\nBest Regards\n\nAntony Yang\n\nOral Healthcare 相关部门 Management\n\nConsumer LifeStyle, Philips China Investment\n\nMobile: [PHONE]\n\nFrom: JIN, Eva\nSent: Wednesday, May 23, 2018 11:\n28 AM\nTo: SPEED Tech. [EMAIL]\nCc: [EMAIL] ; YANG, Antony [EMAIL]\nSubject: FW: 事必达翻译稿交稿： XS[PHONE]\n\nHi [客户称呼]：\n\nOHC 这边有一个文件，需要请你们翻译，我们同事 Antony 回来跟进。\n\n他已经在 loop 里面了。\n\n同步，请协助将以前翻译过的文件，根据系列整理一下。\n\n类似附件中的一样。\n\n因为我们中间人员变动，很多资料没有齐全。\n\nBest regards\n\nEva Jin\n\n相关部门 Manager OHC\nConsumer Lifestyle, Philips China Investment\n\nTel: [PHONE](Direct Line)\n\nMobile: [PHONE]\nAddress: 10,Lane 888,Tian Lin Road,Philips Innovation Campus Shanghai NO.1 Building\nEmail: [EMAIL]\n\nFrom: SPEED Tech. [ mailto:\n[EMAIL] ]\nSent:   8:\n46\nTo: JIN, Eva [EMAIL]\nCc: [发件人] [EMAIL]\nSubject: 事必达翻译稿交稿： XS[PHONE]\n\nEva ，您好：\n\n本次关于 “XS[PHONE]” 的翻译服务，您可点击以下链接下载我们翻译好的稿件：\n\n定稿文件 ( 可点击“下载”按钮下载 )\n\n下载\n\n飞利浦 .rar\n\n下载\n\n为了更好的提供服务，欢迎您对本次翻译服务的质量做出评价。\n您可通过点击以下 “ 满意 ” ，以指定本组译员为您以后同类稿件的专属译员，我们会在下次翻译时，尽量安排本组译员为您服务。\n\n若您对此次质量不满意，可点击 “ 不满意 ” ，系统将自动记入该组译员的质量信用档案，并在下次翻译时，避免使用该组译员。\n\n满 意\n\n请继续安排本组译员\n\n不 满 意\n\n请不要再安排本组译员\n\n订单中心\n\n尚 可\n\n若您有任何修改要求，也可在评价时告诉我们，我们将提供免费修改。\n\n欢迎使用网上订单处理系统 [URL] 。 您可方便的询价、下单、了解进度、反馈质量，平台支持 2G 大文件的上传和下载。\n\n若有任何问题，请随时与我们联系。\n\n谢谢！\n\n邓懿欣\n\n销售部\n\n上海嘉赛信息科技发展有限公司\n\n地址：\n中国上海徐汇区肇嘉浜路 1065 号飞雕国际大厦 1409 室\n\n电话： [PHONE]\n\n邮箱： [EMAIL]\n\n[URL] [URL]\n\n关于我们\n\n以综合服务能力取胜\n\n满足客户日趋精细的需求\n\n专业的多媒体本地化团队助您在客户中提升影响力\n\n专业服务世界 500 强，累计印刷五百万册\n\n资深交替传译同声传译，服务于各种高端会议\n\nThe information contained in this message may be confidential and legally protected under applicable law. The message is intended solely for the addressee(s). If you are not the intended recipient, you are hereby notified that any use, forwarding, dissemination, or reproduction of this message is strictly prohibited and may be unlawful. If you are not the intended recipient, please contact the sender by return e-mail and destroy all copies of the original message.",
+      "new_content": "Dear [客户称呼]\n\n附件为整理后的文件，请查收\n\nBest Regards\n\n- ---- Original Message received on [PHONE]:\n03:\n39 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL];[EMAIL]\n\nRE: 事必达翻译稿交稿： XS[PHONE]:\n57:\n50\n\nDears\n\n我们这边还有个需求，就是请把你手头所有翻译过的我们 OHC 的产品的中文监测报告按照产品线做一下分类和整合，这周给到我，谢谢！\n\n有问题随时联系。\n\nBest Regards\n\nAntony Yang\n\nOral Healthcare 相关部门 Management\n\nConsumer LifeStyle, Philips China Investment\n\nMobile: [PHONE]\n\nFrom: YANG, Antony\nSent: Wednesday, May 23, 2018 12:\n00 PM\nTo: SPEED Tech. [EMAIL]\nCc: [EMAIL]; JIN, Eva [EMAIL]\nSubject: RE: 事必达翻译稿交稿： XS[PHONE]\n\nDear [客户称呼]\n\n请协助翻译一下附件中的测试报告，谢谢！\n\nBest Regards\n\nAntony Yang\n\nOral Healthcare 相关部门 Management\n\nConsumer LifeStyle, Philips China Investment\n\nMobile: [PHONE]\n\nFrom: JIN, Eva\nSent: Wednesday, May 23, 2018 11:\n28 AM\nTo: SPEED Tech. [EMAIL]\nCc: [EMAIL] ; YANG, Antony [EMAIL]\nSubject: FW: 事必达翻译稿交稿： XS[PHONE]\n\nHi [客户称呼]：\n\nOHC 这边有一个文件，需要请你们翻译，我们同事 Antony 回来跟进。\n\n他已经在 loop 里面了。\n\n同步，请协助将以前翻译过的文件，根据系列整理一下。\n\n类似附件中的一样。\n\n因为我们中间人员变动，很多资料没有齐全。\n\nBest regards\n\nEva Jin\n\n相关部门 Manager OHC\nConsumer Lifestyle, Philips China Investment\n\nTel: [PHONE](Direct Line)\n\nMobile: [PHONE]\nAddress: 10,Lane 888,Tian Lin Road,Philips Innovation Campus Shanghai NO.1 Building\nEmail: [EMAIL]\n\nFrom: SPEED Tech. [ mailto:\n[EMAIL] ]\nSent: 8:\n46\nTo: JIN, Eva [EMAIL]\nCc: [发件人] [EMAIL]\nSubject: 事必达翻译稿交稿： XS[PHONE]\n\nEva ，您好：\n\n本次关于 “XS[PHONE]” 的翻译服务，您可点击以下链接下载我们翻译好的稿件：\n\n定稿文件 ( 可点击“下载”按钮下载 )\n\n下载\n\n飞利浦 .rar\n\n下载\n\n为了更好的提供服务，欢迎您对本次翻译服务的质量做出评价。\n您可通过点击以下 “ 满意 ” ，以指定本组译员为您以后同类稿件的专属译员，我们会在下次翻译时，尽量安排本组译员为您服务。\n\n若您对此次质量不满意，可点击 “ 不满意 ” ，系统将自动记入该组译员的质量信用档案，并在下次翻译时，避免使用该组译员。\n\n满 意\n\n请继续安排本组译员\n\n不 满 意\n\n请不要再安排本组译员\n\n订单中心\n\n尚 可\n\n若您有任何修改要求，也可在评价时告诉我们，我们将提供免费修改。\n\n欢迎使用网上订单处理系统 [URL] 。 您可方便的询价、下单、了解进度、反馈质量，平台支持 2G 大文件的上传和下载。\n\n若有任何问题，请随时与我们联系。\n\n谢谢！\n\n邓懿欣\n\n销售部\n\n上海嘉赛信息科技发展有限公司\n\n地址：\n中国上海徐汇区肇嘉浜路 1065 号飞雕国际大厦 1409 室\n\n电话： [PHONE]\n\n邮箱： [EMAIL]\n\n[URL] [URL]\n\n关于我们\n\n以综合服务能力取胜\n\n满足客户日趋精细的需求\n\n专业的多媒体本地化团队助您在客户中提升影响力\n\n专业服务世界 500 强，累计印刷五百万册\n\n资深交替传译同声传译，服务于各种高端会议\n\nThe information contained in this message may be confidential and legally protected under applicable law. The message is intended solely for the addressee(s). If you are not the intended recipient, you are hereby notified that any use, forwarding, dissemination, or reproduction of this message is strictly prohibited and may be unlawful. If you are not the intended recipient, please contact the sender by return e-mail and destroy all copies of the original message."
+    },
+    {
+      "fragment_id": "d9efacd5-c5cc-47de-8680-c1e51d9894df",
+      "source_ref": "mail_gold_v2_129_mail_promo_recovered",
+      "scenario": "re_activation",
+      "review_status": "needs_revision",
+      "review_comment": "正文和内容去除时间信息，庆祝2025农历新年之际，在2025年，在2024年，过去的一年，2024年，值此新春佳节之际",
+      "old_title": "继续为您提供多业务支持",
+      "new_title": "继续为您提供多业务支持",
+      "residual_flags": [
+        "time_or_festival_left"
+      ],
+      "old_content": "亲爱的[客户称呼]\n\n在庆祝2025农历之际，事必达荣幸与您分享28年的专业积淀。\n\n作为扎根上海、服务全球的技术驱动型专业服务企业，深耕笔译、视频译制、同传口译、设计印刷、展台搭建及商务礼品定制等领域。\n\n作为一站式解决方案的践行者，我们始终以您的需求为核心，为您提供省心、专业、高效的全方位服务体验。\n\n持续提升AI翻译助力下的人工翻译服务\n\n在，我们公司将继续专注于以下两方面提升服务品质。\n\n首先，进一步通过AI技术大幅提升翻译速度和精度，在自动化处理常规内容翻译的基础之上，聚焦复杂和疑难领域，从而在不牺牲质量的前提下大幅节约客户成本。\n\n同时，在难以被AI翻译替代的刚性需求领域，如小语种翻译、紧急大项目、高质量母语翻译及高标准技术资料（如医药注册文件）和法律类文件（如跨国诉讼中的法律文件、大型跨国企业的并购和IPO上市、公司年报等）翻译上，公司继续加大技术和人员投入，确保持续提供专业级服务。\n\n高质量多语言同传\n\n在，我们通过先进的同传设备、卓越的服务质量以及深厚的专业人才储备，在行业内取得了显著成就。\n\n连续7届全勤参与进博会和持续多年的Chinaplas，涵盖线上Webinar、Hybrid Meeting、Zoom及线下大会。\n\n面对，我们将重点致力于强化千人以上大型会议的同传服务能力、扩展小语种同传翻译服务范围，以满足更多元化的语言需求。\n\n同时致力于技术创新和服务优化，强化同传译员和同传设备、会议搭建的一体化服务的范围。\n\n开启高端定制印刷服务的新篇章\n\n我们凭借强大的定制化服务能力、先进的印刷技术、以及对环保的坚定承诺，成功赢得了市场的广泛认可。\n\n我们采用了更多的环保材料和工艺，大幅降低了环境影响。\n\n更多的在不同材料上使用了新印刷技术如UV喷墨印刷等。\n\n展望，我们将重点发力高频小单印刷和高端定制服务。\n\n特别是在样本、礼盒、包装材料及标签印刷领域，我们将利用20多年丰富的经验和创新设计团队，提供独一无二、符合品牌特色的定制解决方案。\n\n创新视频内容制作服务\n\n通过采用智能时间轴匹配技术快速生成SRT字幕文件，系统匹配合适译员确保翻译高质量和准确性，我们完成了数百个视频译制项目。\n\n步入，我们将继续重点发展人工智能驱动的视频编辑工具和实时渲染技术的应用，同时拓展为客户提供跨平台内容制作和分发策略，致力于打造更加多样性的视频和个性化的观看体验，助力您的品牌故事更生动、更有力地传达给全球观众。\n\n并且通过提供一站式服务，将更多公司的音视频转化为多语言内容。\n\n在此，感谢您对我们的信任和支持。\n\n值此之际，愿您事业蒸蒸日上，我们期待与您携手共创更加辉煌的未来！\n\n祝大家新春快乐，万事如意\n\n事必达SPEED",
+      "new_content": "亲爱的[客户称呼]\n\n在庆祝2025农历之际，事必达荣幸与您分享28年的专业积淀。\n\n作为扎根上海、服务全球的技术驱动型专业服务企业，深耕笔译、视频译制、同传口译、设计印刷、展台搭建及商务礼品定制等领域。\n\n作为一站式解决方案的践行者，我们始终以您的需求为核心，为您提供省心、专业、高效的全方位服务体验。\n\n持续提升AI翻译助力下的人工翻译服务\n\n我们公司将继续专注于以下两方面提升服务品质。\n\n首先，进一步通过AI技术大幅提升翻译速度和精度，在自动化处理常规内容翻译的基础之上，聚焦复杂和疑难领域，从而在不牺牲质量的前提下大幅节约客户成本。\n\n同时，在难以被AI翻译替代的刚性需求领域，如小语种翻译、紧急大项目、高质量母语翻译及高标准技术资料（如医药注册文件）和法律类文件（如跨国诉讼中的法律文件、大型跨国企业的并购和IPO上市、公司年报等）翻译上，公司继续加大技术和人员投入，确保持续提供专业级服务。\n\n高质量多语言同传\n\n我们通过先进的同传设备、卓越的服务质量以及深厚的专业人才储备，在行业内取得了显著成就。\n\n连续7届全勤参与进博会和持续多年的Chinaplas，涵盖线上Webinar、Hybrid Meeting、Zoom及线下大会。\n\n面对，我们将重点致力于强化千人以上大型会议的同传服务能力、扩展小语种同传翻译服务范围，以满足更多元化的语言需求。\n\n同时致力于技术创新和服务优化，强化同传译员和同传设备、会议搭建的一体化服务的范围。\n\n开启高端定制印刷服务的新篇章\n\n我们凭借强大的定制化服务能力、先进的印刷技术、以及对环保的坚定承诺，成功赢得了市场的广泛认可。\n\n我们采用了更多的环保材料和工艺，大幅降低了环境影响。\n\n更多的在不同材料上使用了新印刷技术如UV喷墨印刷等。\n\n展望，我们将重点发力高频小单印刷和高端定制服务。\n\n特别是在样本、礼盒、包装材料及标签印刷领域，我们将利用20多年丰富的经验和创新设计团队，提供独一无二、符合品牌特色的定制解决方案。\n\n创新视频内容制作服务\n\n通过采用智能时间轴匹配技术快速生成SRT字幕文件，系统匹配合适译员确保翻译高质量和准确性，我们完成了数百个视频译制项目。\n\n步入，我们将继续重点发展人工智能驱动的视频编辑工具和实时渲染技术的应用，同时拓展为客户提供跨平台内容制作和分发策略，致力于打造更加多样性的视频和个性化的观看体验，助力您的品牌故事更生动、更有力地传达给全球观众。\n\n并且通过提供一站式服务，将更多公司的音视频转化为多语言内容。\n\n在此，感谢您对我们的信任和支持。\n\n值此之际，愿您事业蒸蒸日上，我们期待与您携手共创更加辉煌的未来！\n\n祝大家新春快乐，万事如意\n\n事必达SPEED"
+    },
+    {
+      "fragment_id": "26431ee4-41b6-4e91-8b4b-4d1e3cb3b506",
+      "source_ref": "mail_gold_v2_789_scn_2024",
+      "scenario": "re_activation",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "事必达翻译印刷--Michelia",
+      "new_title": "事必达翻译印刷--Michelia",
+      "residual_flags": [
+        "time_or_festival_left"
+      ],
+      "old_content": "屈先生，您好\n\n我是贵司专属销售[发件人]，值此农历假期结束之际，我代表上海交大事必达全体员工向您致以最诚挚的祝福和温馨的开工问候！\n\n祝您及贵公司在生意兴隆、财源广进、业绩蒸蒸日上！\n\n中，我们非常感谢您的信任和支持，正是有了您的陪伴与合作，我们得以共同面对挑战，共享成功的喜悦。\n\n在，我们将继续秉持专业、诚信、高效的服务理念，为您提供更加优质的产品和服务。\n\n随着的钟声敲响，我已整装待发，全力以赴投入工作。\n\n我们期待着与您进一步深化合作关系，共创更多价值。\n\n同时，如果您有任何新的翻译、印刷、视频、口译、同传需求请随时与我联系，我们会竭诚为您服务。\n\n在此，祝愿您开工大吉，万事如意，在实现更多的商业目标，取得更大的成功！\n\n再次感谢您对上海交大事必达的支持与厚爱，期待我们在中携手并肩，共赢未来！\n\n以下是特意为您整理的简单事必达的介绍，供您参考：\n希望今年为贵司为您提供便捷的服务，一起共同进步。\n\n我们交大事必达创立于1997年，主要为进驻中国的500强外企、各国领事馆提供专业的资料翻译、大型会议同声传译、样册的图文设计印刷、视频配音配字幕等专业服务。\n\n迄今已连续8年获评先进企业，尤其在翻译行业，我们目前是上海规模最大、市场份额第1的专业公司。\n\n公司在业内率先实施ISO9001质量标准、并于全面实施了ERP数据库管理系统。\n\n我们自主研发的业内最领先的互联网翻译平台，连通客户和译员，确保高效运营各类口笔译项目。\n\n经过20余年的数据积累，我们拥有了业内最强大的行业翻译句对和词汇数据库，有力保证了翻译质量的稳定，这对许多跨国公司，是非常重要的。\n\n以下是我司网站上最新的关于几项业务模块的视频介绍，欢迎随时点击浏览：\n\n视频主题短网址关键词\n\n精于专业翻译[URL]\n\n品牌起源[URL]\n\nSpeed企业文化[URL]\n\n5大主营业务[URL]\n\nSPEED互联网翻译平台[URL]\n\n精于笔译大项目处理[URL]\n\n高品质印刷[URL]\n\n设计印刷一体化[URL]\n\n同声传译[URL]\n\n视频译制[URL]\n\n笔译质控流程[URL]\n\n非常希望接下来能有更多机会为贵公司提供服务。\n\n欢迎与我们联系，也拜托您将我们推荐给您的同事。\n\n祝您工作顺利！\n\nBest Regards\n\n[发件人]Michelia 销售部\n\n上海嘉赛信息科技发展有限公司(事必达)\n\nPhone: [PHONE],[PHONE]\n\n[URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室",
+      "new_content": "屈先生，您好\n\n我是贵司专属销售[发件人]，值此农历假期结束之际，我代表上海交大事必达全体员工向您致以最诚挚的祝福和温馨的开工问候！\n\n祝您及贵公司在生意兴隆、财源广进、业绩蒸蒸日上！\n\n中，我们非常感谢您的信任和支持，正是有了您的陪伴与合作，我们得以共同面对挑战，共享成功的喜悦。\n\n我们将继续秉持专业、诚信、高效的服务理念，为您提供更加优质的产品和服务。\n\n随着的钟声敲响，我已整装待发，全力以赴投入工作。\n\n我们期待着与您进一步深化合作关系，共创更多价值。\n\n同时，如果您有任何新的翻译、印刷、视频、口译、同传需求请随时与我联系，我们会竭诚为您服务。\n\n在此，祝愿您开工大吉，万事如意，在实现更多的商业目标，取得更大的成功！\n\n再次感谢您对上海交大事必达的支持与厚爱，期待我们在中携手并肩，共赢未来！\n\n以下是特意为您整理的简单事必达的介绍，供您参考：\n希望今年为贵司为您提供便捷的服务，一起共同进步。\n\n我们交大事必达创立于1997年，主要为进驻中国的500强外企、各国领事馆提供专业的资料翻译、大型会议同声传译、样册的图文设计印刷、视频配音配字幕等专业服务。\n\n迄今已连续8年获评先进企业，尤其在翻译行业，我们目前是上海规模最大、市场份额第1的专业公司。\n\n公司在业内率先实施ISO9001质量标准、并于全面实施了ERP数据库管理系统。\n\n我们自主研发的业内最领先的互联网翻译平台，连通客户和译员，确保高效运营各类口笔译项目。\n\n经过20余年的数据积累，我们拥有了业内最强大的行业翻译句对和词汇数据库，有力保证了翻译质量的稳定，这对许多跨国公司，是非常重要的。\n\n以下是我司网站上最新的关于几项业务模块的视频介绍，欢迎随时点击浏览：\n\n视频主题短网址关键词\n\n精于专业翻译[URL]\n\n品牌起源[URL]\n\nSpeed企业文化[URL]\n\n5大主营业务[URL]\n\nSPEED互联网翻译平台[URL]\n\n精于笔译大项目处理[URL]\n\n高品质印刷[URL]\n\n设计印刷一体化[URL]\n\n同声传译[URL]\n\n视频译制[URL]\n\n笔译质控流程[URL]\n\n非常希望接下来能有更多机会为贵公司提供服务。\n\n欢迎与我们联系，也拜托您将我们推荐给您的同事。\n\n祝您工作顺利！\n\nBest Regards\n\n[发件人]Michelia 销售部\n\n上海嘉赛信息科技发展有限公司(事必达)\n\nPhone: [PHONE],[PHONE]\n\n[URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室"
+    },
+    {
+      "fragment_id": "49a00d12-dbad-4b20-a4cc-7948ffc26e8c",
+      "source_ref": "mail_gold_v2_849_scn_2023",
+      "scenario": "re_activation",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "上海嘉赛SPEED放假日期调整",
+      "new_title": "上海嘉赛SPEED放假日期调整",
+      "residual_flags": [],
+      "old_content": "Dear [客户称呼]\n\n刚刚接公司通知，受上海疫情及接下来的假期影响，我司的工作时间较上次德国统计时有所调整。\n\n-期间办公室处于关闭状态，正式工作，之前所有的项目订单不受影响。\n\n望见谅！\n\n提前祝各位：\n新春快乐！\n\n万事顺遂！\n\nBest Regards\n\n[发件人] 销售部\n\n上海嘉赛科技有限公司(事必达)\n\nPhone: [PHONE],[PHONE]\n\n[URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室",
+      "new_content": "Dear [客户称呼]\n\n刚刚接公司通知，受上海疫情及接下来的假期影响，我司的工作时间较上次德国统计时有所调整。\n\n- 期间办公室处于关闭状态，正式工作，之前所有的项目订单不受影响。\n\n望见谅！\n\n提前祝各位：\n新春快乐！\n\n万事顺遂！\n\nBest Regards\n\n[发件人] 销售部\n\n上海嘉赛科技有限公司(事必达)\n\nPhone: [PHONE],[PHONE]\n\n[URL] [EMAIL]\n\n中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室"
+    }
+  ],
+  "residual": [
+    {
+      "fragment_id": "ea6cf8db-9390-4d9f-b932-d2da1ef80377",
+      "source_ref": "mail_gold_v2_1000_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "COLON Gene讲稿及视频翻译"
+    },
+    {
+      "fragment_id": "d946eef0-ec09-4e2b-bf35-6da5ae54a754",
+      "source_ref": "mail_gold_v2_1000_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "INS视频修改，请在明天中午发我，谢谢！"
+    },
+    {
+      "fragment_id": "716c783d-8ceb-4507-a6db-24274a0f57e5",
+      "source_ref": "mail_gold_v2_1000_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "Mandy！"
+    },
+    {
+      "fragment_id": "9a3670b4-db60-4dac-8ffa-25e810756be7",
+      "source_ref": "mail_gold_v2_1001_scn_2019",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "POORD007800"
+    },
+    {
+      "fragment_id": "97048cd6-8e78-41ca-8b66-006020ee6273",
+      "source_ref": "mail_gold_v2_1003_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷-3M成功案例——供应商编号29237"
+    },
+    {
+      "fragment_id": "d57d1870-78ee-4e93-991e-8f18575ac2f0",
+      "source_ref": "mail_gold_v2_1004_scn_2020",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "与您分享可参考的综合服务场景"
+    },
+    {
+      "fragment_id": "0746c41b-b5b1-412d-bfda-4ca2af60f775",
+      "source_ref": "mail_gold_v2_1005_scn_2019",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "这份word 情翻译成英文"
+    },
+    {
+      "fragment_id": "e0e906a4-b2c6-4624-93c5-5ba3114c34a3",
+      "source_ref": "mail_gold_v2_1005_scn_2020",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "Antwort: Re: Antwort: Re: Translation offer inquiry for Doerken - First draft of environmental assessment report"
+    },
+    {
+      "fragment_id": "b825585d-efaa-461e-9e0a-b6521180f066",
+      "source_ref": "mail_gold_v2_1006_scn_2019",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From Shelly Xue of SPEED Technology (事必达翻译）"
+    },
+    {
+      "fragment_id": "24add7e7-5e01-4178-9329-327264023450",
+      "source_ref": "mail_gold_v2_1007_scn_2019",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From Shelly Xue of SPEED Translation"
+    },
+    {
+      "fragment_id": "a70ba756-8f12-4b5c-8418-ab3d103bc581",
+      "source_ref": "mail_gold_v2_1009_scn_2019",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From Shelly Xue of SPEED(交大事必达）"
+    },
+    {
+      "fragment_id": "a9b98b8b-eaa0-429b-8b2f-4845c9fc1310",
+      "source_ref": "mail_gold_v2_1009_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "Vera收到请回复哦"
+    },
+    {
+      "fragment_id": "c473ac8c-0b8a-4c10-a15b-7602aa75baab",
+      "source_ref": "mail_gold_v2_1010_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "Translation list"
+    },
+    {
+      "fragment_id": "7af17422-b390-42da-9cd5-ac3e3825b424",
+      "source_ref": "mail_gold_v2_1011_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "与您分享可参考的综合服务场景"
+    },
+    {
+      "fragment_id": "023385a8-991d-4399-bd42-53869b4a106f",
+      "source_ref": "mail_gold_v2_1011_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "陈部长，给您拜年啦！"
+    },
+    {
+      "fragment_id": "1d22ac70-7f46-4067-9e51-dc9ef648406f",
+      "source_ref": "mail_gold_v2_1012_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From Shelly of SPEED Translation&Printing"
+    },
+    {
+      "fragment_id": "3244a944-174a-4ddb-988a-7ddc8259886a",
+      "source_ref": "mail_gold_v2_1012_scn_2019",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "来自SpeedAsia的业务支持介绍"
+    },
+    {
+      "fragment_id": "cdb1b4c8-fce8-42db-85ec-0dffae6e46cc",
+      "source_ref": "mail_gold_v2_1013_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "US product changes_Communication_CI 3 and 4 h mixer"
+    },
+    {
+      "fragment_id": "2499a685-4a97-4a98-b436-27d152a74a48",
+      "source_ref": "mail_gold_v2_1014_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "开票税号"
+    },
+    {
+      "fragment_id": "a0e7b341-b61d-4b90-ae69-e2361dfe7aa5",
+      "source_ref": "mail_gold_v2_1014_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From Shelly Xue of SPEED Translation&Printing(交大事必达）"
+    },
+    {
+      "fragment_id": "fe1928e5-485e-4b9c-b3a7-8b7fffe04c7e",
+      "source_ref": "mail_gold_v2_1014_scn_2020",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达-长期为外资银行业客户提供翻译同传一体化服务"
+    },
+    {
+      "fragment_id": "1da5803a-c49e-41ae-b224-ba23e80dd5c5",
+      "source_ref": "mail_gold_v2_1014_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "视频译制-----我们是很专业的"
+    },
+    {
+      "fragment_id": "77218977-72f6-4927-a5ec-d577a4641b3d",
+      "source_ref": "mail_gold_v2_1015_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "来自事必达翻译[发件人]的问候"
+    },
+    {
+      "fragment_id": "0c587af0-103e-4ad8-b714-ca78b2e5e7a2",
+      "source_ref": "mail_gold_v2_1015_scn_2020",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷-汽车行业成功案例"
+    },
+    {
+      "fragment_id": "2233cd65-daf5-4237-832c-26f16f7e00a1",
+      "source_ref": "mail_gold_v2_1015_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译、印刷、视频译制一体化服务"
+    },
+    {
+      "fragment_id": "e2a0a1f5-1c76-4862-907d-9c10f90daea9",
+      "source_ref": "mail_gold_v2_1016_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "三联单"
+    },
+    {
+      "fragment_id": "ac30afdd-e3ff-44fb-849c-c87164d3763e",
+      "source_ref": "mail_gold_v2_1016_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "高经理，！"
+    },
+    {
+      "fragment_id": "6e9e98ac-cc00-4ee6-b754-ea804da99903",
+      "source_ref": "mail_gold_v2_1017_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From Shelly Xue of SPEED(事必达）"
+    },
+    {
+      "fragment_id": "c4d30442-7054-45a8-ba69-3a473d39200f",
+      "source_ref": "mail_gold_v2_1018_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海交大事必达翻译印刷一体化==与众多500强企业翻译和印刷合作案例"
+    },
+    {
+      "fragment_id": "9b9497b2-77ec-42ac-9e83-f808cdcd7ece",
+      "source_ref": "mail_gold_v2_1018_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "来自嘉赛SPEED翻译的[发件人]"
+    },
+    {
+      "fragment_id": "8b5b5f5f-baa1-49ad-9e1b-3af62d684ad6",
+      "source_ref": "mail_gold_v2_1019_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "主题: 事必达翻译印刷-薛琳（Shelly）产假，由我为您提供服务"
+    },
+    {
+      "fragment_id": "4bf8f542-9f59-4d32-a6d3-5582ff4424dd",
+      "source_ref": "mail_gold_v2_1019_scn_2020",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "谢谢电话沟通，某化工客户某化工客户某化工客户都是我们公司的长期客户，希望有机会再能为您提供服务"
+    },
+    {
+      "fragment_id": "f306dfed-49dd-4996-82ff-9d51b5007a33",
+      "source_ref": "mail_gold_v2_1020_scn_2019",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达-20年为酒店客户长期提供笔译和同传口译服务"
+    },
+    {
+      "fragment_id": "326b9efd-fecb-4f69-b81b-e5529c8b2afe",
+      "source_ref": "mail_gold_v2_1022_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "沪上最知名翻译、设计印刷一体化--事必达的问候"
+    },
+    {
+      "fragment_id": "e484deca-2694-4ab0-bf8d-87c7c0302850",
+      "source_ref": "mail_gold_v2_1024_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "from SPEED Trasnslation 翻译印刷多媒体制作"
+    },
+    {
+      "fragment_id": "375b9621-98dc-4219-abc0-535b315f2007",
+      "source_ref": "mail_gold_v2_1024_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From [发件人] He of Speed Tech"
+    },
+    {
+      "fragment_id": "499fed37-fc50-4cf6-bd6e-77ea2eb14e15",
+      "source_ref": "mail_gold_v2_1025_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "Form Lynn Huang of SPEED Translation & Printing(交大事必达)"
+    },
+    {
+      "fragment_id": "5e93fcd6-7057-485c-8cb4-4bad1f271197",
+      "source_ref": "mail_gold_v2_1026_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "from SPEED Trasnslation (交大事必达)"
+    },
+    {
+      "fragment_id": "2d53985d-5fe1-40c2-9944-72bb1d518cad",
+      "source_ref": "mail_gold_v2_1027_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "带标尺图片"
+    },
+    {
+      "fragment_id": "8c13601e-9eb4-40d7-abc9-6d863d854efa",
+      "source_ref": "mail_gold_v2_1029_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "test"
+    },
+    {
+      "fragment_id": "6d66c879-46c3-4cec-becf-549feb4e608d",
+      "source_ref": "mail_gold_v2_1030_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "稿件反馈"
+    },
+    {
+      "fragment_id": "ec709caf-f267-4ce7-9143-b19b0d53ccb4",
+      "source_ref": "mail_gold_v2_1031_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "稿件回访"
+    },
+    {
+      "fragment_id": "f133e0ed-3c96-411f-aabd-83354f7d2e39",
+      "source_ref": "mail_gold_v2_1032_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "公司简介翻译"
+    },
+    {
+      "fragment_id": "5703dab7-099c-4631-a881-bc887a03cac6",
+      "source_ref": "mail_gold_v2_1033_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "公司简介完整译稿"
+    },
+    {
+      "fragment_id": "0019533a-23bc-4bf1-ae2c-6d6eac4c3bc6",
+      "source_ref": "mail_gold_v2_1033_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达-长期为医疗行业提供专业的同声传译服务"
+    },
+    {
+      "fragment_id": "e0a66322-d4e9-4f9e-abb4-44f92535b946",
+      "source_ref": "mail_gold_v2_1034_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译、制作、印刷一体化-Shelly"
+    },
+    {
+      "fragment_id": "c194b2a0-0cc7-4aed-ade7-3e35271d86b1",
+      "source_ref": "mail_gold_v2_1035_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海嘉赛信息科技发展有限公司"
+    },
+    {
+      "fragment_id": "fffb3767-63c9-433b-be24-1b6fe0ed428c",
+      "source_ref": "mail_gold_v2_1036_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译公司"
+    },
+    {
+      "fragment_id": "689f9a8c-2965-496c-8e3a-53e150db20a7",
+      "source_ref": "mail_gold_v2_1036_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷-酒店行业成功案例"
+    },
+    {
+      "fragment_id": "69c9b2fb-4050-4282-af24-22686d56dda1",
+      "source_ref": "mail_gold_v2_1037_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "Speed Tech job list from Oct to Dec"
+    },
+    {
+      "fragment_id": "d899f19a-089b-4241-98ec-1028ad73e43b",
+      "source_ref": "mail_gold_v2_1038_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达公司"
+    },
+    {
+      "fragment_id": "abd91ca7-f1ec-4e05-92be-a36fc22e4d94",
+      "source_ref": "mail_gold_v2_1038_scn_2020",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "亲，样本印刷工艺日新月异，不再只是覆膜啦"
+    },
+    {
+      "fragment_id": "32e900ad-666c-4c3a-b169-5fbeee852d12",
+      "source_ref": "mail_gold_v2_1039_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达台历样本"
+    },
+    {
+      "fragment_id": "a16d904c-06d8-4543-bb55-51cfd08b556a",
+      "source_ref": "mail_gold_v2_1039_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "台历、挂历和笔记本定制-事必达Shelly"
+    },
+    {
+      "fragment_id": "20e5f781-b790-4624-bd2e-1dd8bf7050a9",
+      "source_ref": "mail_gold_v2_1039_scn_2020",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "Antwort: Re: Translation offer inquiry for Doerken - Limit of harmful substances of vehicle coatings"
+    },
+    {
+      "fragment_id": "a90df8e8-a090-4ca7-8a59-9e3848a9f70d",
+      "source_ref": "mail_gold_v2_1039_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海嘉赛 年终供应商考评结果反馈"
+    },
+    {
+      "fragment_id": "4956cc8e-478f-449d-ba52-f95516bd1a66",
+      "source_ref": "mail_gold_v2_1040_scn_2020",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "Form [发件人] of SPEED Translation & Printing(交大事必达)"
+    },
+    {
+      "fragment_id": "44553222-7f2d-463f-83fe-26644cd8affc",
+      "source_ref": "mail_gold_v2_1040_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "来自事必达翻译印刷的问候"
+    },
+    {
+      "fragment_id": "2db7fc99-e001-4995-8f2b-54fc114d1c5b",
+      "source_ref": "mail_gold_v2_1041_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达曾经和贵司合作过的部门,以及合作过的项目"
+    },
+    {
+      "fragment_id": "96fa4757-6db8-43f7-8e4a-39d16d6c04c5",
+      "source_ref": "mail_gold_v2_1041_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "谢谢电话沟通，某化工客户某化工客户某化工客户都是我们公司的长期客户，希望有机会再能为您提供服务"
+    },
+    {
+      "fragment_id": "0df6b0ef-41fc-4cb5-8add-14117041909e",
+      "source_ref": "mail_gold_v2_1042_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "邮件已收到"
+    },
+    {
+      "fragment_id": "ddd80186-d396-46dd-823d-5ed97e92ba58",
+      "source_ref": "mail_gold_v2_1044_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "from SPEED Trasnslation (交大事必达)"
+    },
+    {
+      "fragment_id": "442fad0c-8867-4e74-990c-7a24afccba56",
+      "source_ref": "mail_gold_v2_1045_scn_2019",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达-同传领域成功案例"
+    },
+    {
+      "fragment_id": "d509a4f2-c6bd-4395-babd-e0df2be649dc",
+      "source_ref": "mail_gold_v2_1045_scn_2020",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "继续为您提供多业务支持"
+    },
+    {
+      "fragment_id": "a3acf1ee-983e-4a45-8c23-368d7ce63ddf",
+      "source_ref": "mail_gold_v2_1046_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "谢谢电话沟通，3M、拜耳医药、某化工客户都是我们公司的长期客户，希望有机会再能为您提供服务"
+    },
+    {
+      "fragment_id": "d3d65f7d-9772-4061-bfa0-dfe8fc8aa9eb",
+      "source_ref": "mail_gold_v2_1046_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "彭博士，事必达专业医学翻译24年"
+    },
+    {
+      "fragment_id": "2ee19007-1654-4420-89c1-18e8febfb6bb",
+      "source_ref": "mail_gold_v2_1048_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "from jenny of speed（交大事必达）"
+    },
+    {
+      "fragment_id": "e6ee2dfe-52b9-4be5-aa36-3f6bd44ce100",
+      "source_ref": "mail_gold_v2_1049_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "from jennyof SPEED（交大事必达）"
+    },
+    {
+      "fragment_id": "a29f4840-5747-48c5-b6ca-b94d8d87749d",
+      "source_ref": "mail_gold_v2_1049_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "SPEED公司介绍 From [发件人]"
+    },
+    {
+      "fragment_id": "02e5992d-fec1-44ff-90e4-2eaeb26d689e",
+      "source_ref": "mail_gold_v2_1049_scn_2019",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "份结算单"
+    },
+    {
+      "fragment_id": "0551bf83-0640-49f8-8d34-7c3476645664",
+      "source_ref": "mail_gold_v2_1049_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海事必达翻译印刷一体化"
+    },
+    {
+      "fragment_id": "9e1eb8c4-bb6a-4532-aaac-186ecf64da39",
+      "source_ref": "mail_gold_v2_1050_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "华东最大翻译公司--交大事必达-口译成功案例"
+    },
+    {
+      "fragment_id": "e64f0ec0-269f-4b14-9150-a339020791fd",
+      "source_ref": "mail_gold_v2_1050_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "来自事必达翻译[发件人]"
+    },
+    {
+      "fragment_id": "c50d68b1-8b54-464a-930f-935e47786a32",
+      "source_ref": "mail_gold_v2_1050_scn_2019",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "服务结算单"
+    },
+    {
+      "fragment_id": "a1f88be7-7202-40bd-b84d-d17b437c1b7b",
+      "source_ref": "mail_gold_v2_1050_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海最好的同传我们都能提供事必达"
+    },
+    {
+      "fragment_id": "4d2aa16e-213d-4a74-92bb-7595d1cf514c",
+      "source_ref": "mail_gold_v2_1051_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "建筑行业的成功案例"
+    },
+    {
+      "fragment_id": "3657268a-19c2-4ef9-9a06-6de583bb54c3",
+      "source_ref": "mail_gold_v2_1051_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海最知名的翻译服务商——事必达"
+    },
+    {
+      "fragment_id": "39cf3760-bdbf-491c-9482-2cc80efa8842",
+      "source_ref": "mail_gold_v2_1052_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达"
+    },
+    {
+      "fragment_id": "6e670135-6a72-4662-a831-a7fa1eb89261",
+      "source_ref": "mail_gold_v2_1052_scn_2020",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "Subtitled video and SRT file"
+    },
+    {
+      "fragment_id": "1fad9ed8-df16-49d6-b5b6-1ccfee9c33fe",
+      "source_ref": "mail_gold_v2_1053_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达专业翻译翻译与设计印刷、多媒体译制"
+    },
+    {
+      "fragment_id": "2892b4ef-9800-4a40-938c-b83203f4ba9e",
+      "source_ref": "mail_gold_v2_1054_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达翻译印刷 陈京"
+    },
+    {
+      "fragment_id": "0e3c8a88-2f70-4ab6-af5a-a712dad5a94e",
+      "source_ref": "mail_gold_v2_1054_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "翻译费用PO申请"
+    },
+    {
+      "fragment_id": "394f079b-3eec-47ed-a8ed-3ec3cac5b10e",
+      "source_ref": "mail_gold_v2_1055_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译（jenny 陈）"
+    },
+    {
+      "fragment_id": "385e6ff8-2a73-4941-a834-892c2e268bbc",
+      "source_ref": "mail_gold_v2_1055_scn_2019",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "同传服务简介"
+    },
+    {
+      "fragment_id": "4324470d-7543-4404-b217-45583633e53c",
+      "source_ref": "mail_gold_v2_1056_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译（杨颖13774291210）"
+    },
+    {
+      "fragment_id": "45c45019-1ef2-48e5-a7c8-23343c03fd06",
+      "source_ref": "mail_gold_v2_1057_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷服务——From Jenny Chen of SPEED Translation & Printing"
+    },
+    {
+      "fragment_id": "5856d9f6-c42c-46ed-9f68-98ebacf2a038",
+      "source_ref": "mail_gold_v2_1059_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译，500强外企优选供应商"
+    },
+    {
+      "fragment_id": "39ca3836-03e5-4031-89ee-71786c7a1067",
+      "source_ref": "mail_gold_v2_1062_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "speed tech job list from April to Sept"
+    },
+    {
+      "fragment_id": "5f892f3e-b1b1-4374-9ec7-2541acc21836",
+      "source_ref": "mail_gold_v2_1062_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达==与化工、电气、制药500强企业合作案例、及常规翻译速度"
+    },
+    {
+      "fragment_id": "bf976062-d445-4705-b703-4e3e505af453",
+      "source_ref": "mail_gold_v2_1062_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译、设计印刷、视频译制一体化"
+    },
+    {
+      "fragment_id": "8d4b95a4-3f49-4638-a369-7a6f42190a71",
+      "source_ref": "mail_gold_v2_1063_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达14年翻译设计印刷==日企工程、翻译速度；中翻日、中翻英，分别由日本人、美国人翻译或润稿"
+    },
+    {
+      "fragment_id": "e9c0d69b-8f79-4dcd-a0e9-47e2e7369628",
+      "source_ref": "mail_gold_v2_1064_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译拜年啦"
+    },
+    {
+      "fragment_id": "bcc34872-c627-4efb-9d44-7d47c7eb5ddb",
+      "source_ref": "mail_gold_v2_1065_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达24年翻译设计印刷==日企工程、翻译速度；中翻日、中翻英，分别由日本人、美国人翻译或润稿"
+    },
+    {
+      "fragment_id": "a669411c-fb87-4f3f-8362-e1af45451b25",
+      "source_ref": "mail_gold_v2_1065_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译服务——专业工程技术翻译"
+    },
+    {
+      "fragment_id": "d0bb6e52-20c5-47ea-8ed3-108803dc3ac2",
+      "source_ref": "mail_gold_v2_1066_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "Translation Job list from Dec to now of Speed Tech.（the third party）"
+    },
+    {
+      "fragment_id": "90534eef-0e69-4341-9d35-01bbf615ce14",
+      "source_ref": "mail_gold_v2_1066_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达24年翻译--原料药、生物药、制剂临床、论文、注册文献；"
+    },
+    {
+      "fragment_id": "1aa0a295-0311-40e0-9467-ec705430b5bf",
+      "source_ref": "mail_gold_v2_1066_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译-建筑行业案例"
+    },
+    {
+      "fragment_id": "19b6a8c5-08b6-413f-8b91-3451cf8524ae",
+      "source_ref": "mail_gold_v2_1067_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷视频译制"
+    },
+    {
+      "fragment_id": "3d3ae9b4-5241-4c9e-b0d9-ad947bbf530c",
+      "source_ref": "mail_gold_v2_1068_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "翻译完成稿"
+    },
+    {
+      "fragment_id": "516bd813-3cce-445f-975e-a4e440e007cb",
+      "source_ref": "mail_gold_v2_1068_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "亲爱的[客户称呼]，点我点我"
+    },
+    {
+      "fragment_id": "c60cc53d-346e-4759-a639-5349e86ff174",
+      "source_ref": "mail_gold_v2_1069_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海交大事必达（叶结保）"
+    },
+    {
+      "fragment_id": "f1ba64db-a55a-4519-8dcd-2bfbfbaa1ffe",
+      "source_ref": "mail_gold_v2_1069_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷给您拜年啦！"
+    },
+    {
+      "fragment_id": "667a2d09-9547-482a-8581-75a6d801b3a7",
+      "source_ref": "mail_gold_v2_1071_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "整理的文件"
+    },
+    {
+      "fragment_id": "665cafcc-42af-452a-984f-fc88ffbb09a0",
+      "source_ref": "mail_gold_v2_1071_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海交大事必达翻译印刷一体化==电子、通信行业合作案例"
+    },
+    {
+      "fragment_id": "be8bdcfc-2370-4c93-94e4-bb07b03a4fd2",
+      "source_ref": "mail_gold_v2_1071_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷视频译制一体化服务（汽车案例）"
+    },
+    {
+      "fragment_id": "6a1c5df2-1082-422b-b411-daa83cde0b75",
+      "source_ref": "mail_gold_v2_1072_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷业务介绍"
+    },
+    {
+      "fragment_id": "b9ad12b4-dfe8-468d-b560-07443f904613",
+      "source_ref": "mail_gold_v2_1073_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "芸芸众生中，如何脱颖而出修改"
+    },
+    {
+      "fragment_id": "bae5ae56-0d3c-47b0-8431-4063b492c490",
+      "source_ref": "mail_gold_v2_1073_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海交大事必达翻译印刷一体化==医疗行业合作案例"
+    },
+    {
+      "fragment_id": "dd5de0a3-3beb-419a-b3f7-3816c30ede61",
+      "source_ref": "mail_gold_v2_1074_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海交大事必达翻译印刷一体化==与众多500强企业 笔译、口译、印刷 合作案例"
+    },
+    {
+      "fragment_id": "a8ac136b-9e04-4bae-a27d-725442c5b283",
+      "source_ref": "mail_gold_v2_1075_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海交大事必达翻译印刷一体化--与众多500强企业合作案例"
+    },
+    {
+      "fragment_id": "0c86c721-5ece-4f2c-8cc7-adb0f776e44a",
+      "source_ref": "mail_gold_v2_1075_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达建筑行业翻译案例"
+    },
+    {
+      "fragment_id": "b11cb8d3-3e6d-47b1-974d-a62712884357",
+      "source_ref": "mail_gold_v2_1076_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "3个折页翻译印刷一体化"
+    },
+    {
+      "fragment_id": "1867d350-4e84-44e5-9568-faf1c59d1f4c",
+      "source_ref": "mail_gold_v2_1076_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "施先生，关于通讯行业我们的成功案例，请查阅"
+    },
+    {
+      "fragment_id": "6f2a24c6-3528-460a-a680-731e7d1c47b7",
+      "source_ref": "mail_gold_v2_1079_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译服务（Jessie Chen）——专业招投标资料翻译"
+    },
+    {
+      "fragment_id": "f427dade-6c42-4d0a-8c5e-3dfeb4445539",
+      "source_ref": "mail_gold_v2_1080_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷服务——From [发件人] of SPEED Translation & Printing"
+    },
+    {
+      "fragment_id": "0e7c1240-853d-48d7-ae51-6be806e6274e",
+      "source_ref": "mail_gold_v2_1081_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷视频译制一体化"
+    },
+    {
+      "fragment_id": "af421f7a-4666-445a-9580-23113c56ff58",
+      "source_ref": "mail_gold_v2_1081_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "泰科十年的老朋友"
+    },
+    {
+      "fragment_id": "40e76836-0356-48bd-9dc2-99cfac76abac",
+      "source_ref": "mail_gold_v2_1083_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达专业翻译及设计印刷、多媒体译制"
+    },
+    {
+      "fragment_id": "ab60bf8f-ed83-45be-be18-94896db00e43",
+      "source_ref": "mail_gold_v2_1085_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "谢谢电话沟通，华东电力、电力工程都是我们公司的长期客户，希望有机会再能为您提供服务"
+    },
+    {
+      "fragment_id": "c92d3f02-f428-4051-9c7e-5487b79b6199",
+      "source_ref": "mail_gold_v2_1087_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "关于翻译服务费支付"
+    },
+    {
+      "fragment_id": "2f41c7df-df6a-4286-932b-92f82ad7267c",
+      "source_ref": "mail_gold_v2_1094_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "from Rain lv of SPEED Translation & Printing"
+    },
+    {
+      "fragment_id": "90493d7c-0a0f-4f9b-849e-03411119a122",
+      "source_ref": "mail_gold_v2_1096_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From Rain Of Speed Tech （疫情期间的工作状态）"
+    },
+    {
+      "fragment_id": "1b0915d4-3f2b-4af8-bebd-ebc3517fa5d9",
+      "source_ref": "mail_gold_v2_1100_scn_2021",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达公司（叶结保）"
+    },
+    {
+      "fragment_id": "5b111e72-e6e4-4c7c-a04f-fa255f548bbf",
+      "source_ref": "mail_gold_v2_1106_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译--疫情中服务客户"
+    },
+    {
+      "fragment_id": "4e1a5170-23b1-4ae9-8d16-7bb5063c366f",
+      "source_ref": "mail_gold_v2_1109_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "疫情期间的事必达翻译"
+    },
+    {
+      "fragment_id": "64edf059-66d9-4bad-a4b6-1dec1b7e8f3a",
+      "source_ref": "mail_gold_v2_1119_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "俄语机械类成功案例-----上海交大事必达孙焕（Sunny）"
+    },
+    {
+      "fragment_id": "af9d3563-a800-427d-9816-b0e7663e83e6",
+      "source_ref": "mail_gold_v2_1126_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "费用需要打到新公司账号，感谢"
+    },
+    {
+      "fragment_id": "0f337771-c18e-485e-9025-7145d64f2d49",
+      "source_ref": "mail_gold_v2_1129_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "嘉赛信息---翻译印刷供应商"
+    },
+    {
+      "fragment_id": "505cb64f-1599-4ce4-938b-91bd1d35d413",
+      "source_ref": "mail_gold_v2_1146_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海嘉赛翻译印刷供应商---Jennifer"
+    },
+    {
+      "fragment_id": "0959f9ea-80b8-4169-a5c1-c69c3d8db54d",
+      "source_ref": "mail_gold_v2_1155_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海嘉赛（事必达）关于小语种翻译业务的介绍-----孙焕"
+    },
+    {
+      "fragment_id": "d0927398-90d4-4a43-aa04-6666f70cc16b",
+      "source_ref": "mail_gold_v2_1157_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海嘉赛关于小语种翻译业务的介绍"
+    },
+    {
+      "fragment_id": "5368d9ee-5062-4fa9-8c26-3db8f75e8053",
+      "source_ref": "mail_gold_v2_1162_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达关于小语种翻译业务的介绍---孙焕（Sunny）"
+    },
+    {
+      "fragment_id": "459c4859-5513-42b0-92d5-bf3090823bfd",
+      "source_ref": "mail_gold_v2_1163_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海交大事必达毛遂自荐-------孙焕（Sunny）"
+    },
+    {
+      "fragment_id": "cb7da478-9028-45e5-b996-d29e2e8a4aa6",
+      "source_ref": "mail_gold_v2_1178_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达关于小语种翻译业务的介绍"
+    },
+    {
+      "fragment_id": "bc5d00b4-2382-4414-b10d-39a84038e073",
+      "source_ref": "mail_gold_v2_1179_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达关于小语种翻译业务的介绍－－－－孙焕Sｕｎｎｙ"
+    },
+    {
+      "fragment_id": "18ef4434-ffc8-4fbe-a9b0-02d609124a31",
+      "source_ref": "mail_gold_v2_1180_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "TPJ520"
+    },
+    {
+      "fragment_id": "b8b97ffd-2b5f-465c-a364-09943da0e80c",
+      "source_ref": "mail_gold_v2_1181_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "translation 2nd package"
+    },
+    {
+      "fragment_id": "c110dd86-0c9d-4c9a-b299-f35365aa5d5e",
+      "source_ref": "mail_gold_v2_1185_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "测试"
+    },
+    {
+      "fragment_id": "71f427a4-6338-4f2c-bd18-de409a94cd83",
+      "source_ref": "mail_gold_v2_1188_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "银行行业成功案例-------上海嘉赛孙焕"
+    },
+    {
+      "fragment_id": "927eb53b-bc61-4384-a33f-328187c71c7d",
+      "source_ref": "mail_gold_v2_125_mail_promo_recovered",
+      "review_status": "needs_revision",
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "16载同行，五大新服务升级，限量定制好礼相赠"
+    },
+    {
+      "fragment_id": "d9efacd5-c5cc-47de-8680-c1e51d9894df",
+      "source_ref": "mail_gold_v2_129_mail_promo_recovered",
+      "review_status": "needs_revision",
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "继续为您提供多业务支持"
+    },
+    {
+      "fragment_id": "719458b3-3221-4653-b793-1ff389d9c6b6",
+      "source_ref": "mail_gold_v2_136_mail_promo_recovered",
+      "review_status": "needs_revision",
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "AI+多领域业务： 新一年与您共赴全球商战新征程！"
+    },
+    {
+      "fragment_id": "298a03e4-8695-4950-82e4-7ecd9c6090cf",
+      "source_ref": "mail_gold_v2_156_mail_promo_recovered",
+      "review_status": "needs_revision",
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "【What's New】精选案例速递"
+    },
+    {
+      "fragment_id": "fd0ce81e-b1a6-4605-be47-8460f7fee67a",
+      "source_ref": "mail_gold_v2_165_mail_promo_recovered",
+      "review_status": "needs_revision",
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "来自SpeedAsia的业务支持介绍"
+    },
+    {
+      "fragment_id": "53ccfbf6-00ce-45f5-a83d-8178186043ca",
+      "source_ref": "mail_gold_v2_168_mail_promo_recovered",
+      "review_status": "needs_revision",
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达[发件人]为您业务加速助力！"
+    },
+    {
+      "fragment_id": "97101f08-70c2-481b-ba66-7e6d63e10a96",
+      "source_ref": "mail_gold_v2_169_mail_promo_recovered",
+      "review_status": "needs_revision",
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "老友！ 翻译团队解锁展会全周期服务，实战见证实力"
+    },
+    {
+      "fragment_id": "f3f164e7-b679-453f-a9cf-05d79b0fe02e",
+      "source_ref": "mail_gold_v2_170_mail_promo_recovered",
+      "review_status": "needs_revision",
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "看看我们又有啥新花样！"
+    },
+    {
+      "fragment_id": "6f20e322-627b-43a0-96e9-497dddfe9aa9",
+      "source_ref": "mail_gold_v2_174_mail_promo_recovered",
+      "review_status": "needs_revision",
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "亲爱的[客户称呼]： 服务“上新”啦，还有定制便签等你！"
+    },
+    {
+      "fragment_id": "b08ba163-33d3-4c09-a52d-6cc89bf0db3a",
+      "source_ref": "mail_gold_v2_202_mail_promo_recovered",
+      "review_status": "needs_revision",
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "心意到位，合作更对味！"
+    },
+    {
+      "fragment_id": "a0d431d0-42c2-43a3-b6e0-e977e26c2578",
+      "source_ref": "mail_gold_v2_227_mail_promo_recovered",
+      "review_status": "needs_revision",
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "综合服务，打造无缝展会体验"
+    },
+    {
+      "fragment_id": "871f0942-eec9-49c9-9bb0-5f7fb86d3991",
+      "source_ref": "mail_gold_v2_240_mail_promo_recovered",
+      "review_status": "needs_revision",
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "高性价比的展会活动综合服务提供商—[发件人]—您的首选！"
+    },
+    {
+      "fragment_id": "4b44559f-e8e5-4b91-9a2b-244d3974d027",
+      "source_ref": "mail_gold_v2_278_scn_2026",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "我为您整理的我们的合作历史，请查阅"
+    },
+    {
+      "fragment_id": "31112ca2-69b0-4787-9710-64444b25c491",
+      "source_ref": "mail_gold_v2_280_scn_2026",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "与您分享可参考的综合服务场景"
+    },
+    {
+      "fragment_id": "c6f61d9c-5340-4108-a2e1-eb9ee7bb8732",
+      "source_ref": "mail_gold_v2_281_scn_2026",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "继续为您提供多业务支持"
+    },
+    {
+      "fragment_id": "31f5b045-a4e1-480c-ad8e-3d56dae89c2b",
+      "source_ref": "mail_gold_v2_285_scn_2026",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "来自SpeedAsia的业务支持介绍"
+    },
+    {
+      "fragment_id": "0a3b8290-f33d-4040-8763-ccd149666035",
+      "source_ref": "mail_gold_v2_331_scn_2025",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "TR报告翻译，英译中-明州斯睿"
+    },
+    {
+      "fragment_id": "f3166a40-fe14-4c03-a497-e4672f22a6be",
+      "source_ref": "mail_gold_v2_405_scn_2025",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "翻译文件发送"
+    },
+    {
+      "fragment_id": "7f0e3a78-157a-4483-bca3-f705e50610c4",
+      "source_ref": "mail_gold_v2_415_scn_2025",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "与您分享可参考的综合服务场景"
+    },
+    {
+      "fragment_id": "10e4d737-43cd-4924-b08c-ec315625281b",
+      "source_ref": "mail_gold_v2_440_scn_2025",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "供您备查： 事必达联系方式及业务概览存档"
+    },
+    {
+      "fragment_id": "f85787c2-831b-48ad-a72f-d5dbe712f5a6",
+      "source_ref": "mail_gold_v2_448_scn_2025",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达28周年全业务分享｜诚邀您推荐给相关需求团队"
+    },
+    {
+      "fragment_id": "a96036a5-a830-4653-88f4-dda4e8d9fff3",
+      "source_ref": "mail_gold_v2_494_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "某化工客户---事必达合作"
+    },
+    {
+      "fragment_id": "16b0f9a1-5a32-4e48-9b8f-27a25bd0c374",
+      "source_ref": "mail_gold_v2_504_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译、制作、印刷一体化"
+    },
+    {
+      "fragment_id": "1d8a0047-548b-495a-9781-5eeb5862d435",
+      "source_ref": "mail_gold_v2_509_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达小语种案例分享"
+    },
+    {
+      "fragment_id": "bc710f91-ec84-4e2d-a3b0-1f42487c1a61",
+      "source_ref": "mail_gold_v2_512_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达业务介绍"
+    },
+    {
+      "fragment_id": "a4183031-1dea-4200-b451-e35813bb02d7",
+      "source_ref": "mail_gold_v2_513_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达---印刷案例"
+    },
+    {
+      "fragment_id": "515f55f9-1319-4c53-8147-bd02a6f48e84",
+      "source_ref": "mail_gold_v2_566_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "继续为您提供多业务支持"
+    },
+    {
+      "fragment_id": "b9f91a50-23c8-44f2-9995-b6d702630625",
+      "source_ref": "mail_gold_v2_567_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "感谢有你"
+    },
+    {
+      "fragment_id": "a7185a39-bffa-48b0-b60a-ba6637375ce2",
+      "source_ref": "mail_gold_v2_568_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "暌违已久的高规格展览逐一回归，SPEED为您助力"
+    },
+    {
+      "fragment_id": "ababb363-bd2d-4c70-a540-d497cfdd9743",
+      "source_ref": "mail_gold_v2_571_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "继续为您提供多业务支持"
+    },
+    {
+      "fragment_id": "776384ee-b423-4fd6-b4b3-a06a5d77cb0a",
+      "source_ref": "mail_gold_v2_572_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "0个工作日~~80000字翻译~~无数专业词汇~~"
+    },
+    {
+      "fragment_id": "4576a517-13b3-49c2-9e65-13301becdc83",
+      "source_ref": "mail_gold_v2_582_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "[发件人]的问候，万事顺遂"
+    },
+    {
+      "fragment_id": "89df56ab-d9c6-4b84-a28f-9c757c6a9033",
+      "source_ref": "mail_gold_v2_584_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "[发件人]的问候，恭喜发财"
+    },
+    {
+      "fragment_id": "59e10196-69de-42a8-8a34-ca2f10120f0f",
+      "source_ref": "mail_gold_v2_616_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "来自嘉赛翻译[字段]的问候"
+    },
+    {
+      "fragment_id": "5c9902ee-712d-4a63-ad0c-f1835390d665",
+      "source_ref": "mail_gold_v2_624_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达关于小语种翻译方面的介绍"
+    },
+    {
+      "fragment_id": "3ac634cb-c8df-4d70-8150-e216658e099d",
+      "source_ref": "mail_gold_v2_627_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "合作历史和银行业翻译合作案例分享————上海嘉赛的侯云鹏"
+    },
+    {
+      "fragment_id": "b5812a9d-28d1-4b26-8d5d-524ba0d65d20",
+      "source_ref": "mail_gold_v2_630_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "来自事必达侯云鹏的邮件问候"
+    },
+    {
+      "fragment_id": "6da34220-2fe1-4dea-8505-017daeae6a50",
+      "source_ref": "mail_gold_v2_639_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "来自上海事必达-[发件人]Jerry的问候"
+    },
+    {
+      "fragment_id": "c16e2740-462f-469b-83ee-45f7e3fc63f8",
+      "source_ref": "mail_gold_v2_649_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷-银行业成功案例"
+    },
+    {
+      "fragment_id": "540ebfab-ea4d-430e-9940-a9e5ba1ea8e8",
+      "source_ref": "mail_gold_v2_653_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "50+多种语种，高端外籍母语译员的双外语翻译服务"
+    },
+    {
+      "fragment_id": "a457c771-a8f6-4423-8de2-ffdb383c2d91",
+      "source_ref": "mail_gold_v2_662_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "谢谢电话沟通，上海事必达翻译制作印刷一体化服务案例介绍———Caffery"
+    },
+    {
+      "fragment_id": "d251ca3a-19ea-4747-93c6-e30f810097b6",
+      "source_ref": "mail_gold_v2_665_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "20年印刷一体经验"
+    },
+    {
+      "fragment_id": "147502f5-8d29-4a83-833f-41ae7882e01e",
+      "source_ref": "mail_gold_v2_668_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "[发件人]感谢您的支持，祝您龙年行大运，万事顺心！ ----SPEED"
+    },
+    {
+      "fragment_id": "b2df576e-149c-476b-871c-76c5895dcc22",
+      "source_ref": "mail_gold_v2_678_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达笔译口译--[发件人]"
+    },
+    {
+      "fragment_id": "bd402a85-2299-47c5-9cc9-f19da7be4594",
+      "source_ref": "mail_gold_v2_684_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "翻译印刷一体化"
+    },
+    {
+      "fragment_id": "df9dcac4-b01e-4dfe-a778-b161ef51c0c9",
+      "source_ref": "mail_gold_v2_685_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "国标翻译专家"
+    },
+    {
+      "fragment_id": "c5809090-4df6-4c54-8df5-0a9919525f57",
+      "source_ref": "mail_gold_v2_690_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "一站式服务升级： 展台设设+至高峰论坛，高端口译+全方位会务"
+    },
+    {
+      "fragment_id": "57a83181-753a-49dd-8b2f-ebe48f22574b",
+      "source_ref": "mail_gold_v2_691_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译、制作、印刷一体化"
+    },
+    {
+      "fragment_id": "08ddd5d7-37c7-4e4c-99bd-e959f4b5b44c",
+      "source_ref": "mail_gold_v2_699_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "专业银行资料翻译"
+    },
+    {
+      "fragment_id": "4161f1d7-d1ed-4626-b269-92bd772f9048",
+      "source_ref": "mail_gold_v2_714_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "强生GSK诺华等都是我们公司的长期客户，希望有机会为您提供服务"
+    },
+    {
+      "fragment_id": "83682488-294a-40a2-8602-9f7a1b7f9887",
+      "source_ref": "mail_gold_v2_719_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷-与领事馆合作的成功案例"
+    },
+    {
+      "fragment_id": "1803551a-039e-47a1-9391-dcdab4af0416",
+      "source_ref": "mail_gold_v2_720_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达美妆合作案例"
+    },
+    {
+      "fragment_id": "010e70a0-189c-42db-a7e7-ee633f07b970",
+      "source_ref": "mail_gold_v2_723_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From Of Speed Tech"
+    },
+    {
+      "fragment_id": "cc589215-12e0-454a-bbd2-db06386db7d9",
+      "source_ref": "mail_gold_v2_724_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From [发件人] Chen of SPEED Traslation & Printing(事必达翻译印刷)"
+    },
+    {
+      "fragment_id": "e17f60e8-13eb-4f37-8206-5145a9b5ede2",
+      "source_ref": "mail_gold_v2_731_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "Speed Printing"
+    },
+    {
+      "fragment_id": "e51c953a-926c-43b1-9838-888a100f30fe",
+      "source_ref": "mail_gold_v2_734_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "博雅公共关系有限公司上海办事处一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "43c1f70e-5c5e-4b3d-8dc4-67d92a8f264d",
+      "source_ref": "mail_gold_v2_735_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "布鲁克纳机械技术（苏州）有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "3d65e7eb-6f01-42ef-86ae-d57367d30590",
+      "source_ref": "mail_gold_v2_736_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "大拓乳制品（上海）有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "f6a7905c-0da4-4d15-b002-3e62f491b03f",
+      "source_ref": "mail_gold_v2_737_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "德中工商技术咨询服务（太仓）有限公司上海分公司/德中工商技术咨询服务（太仓）有限公司广州分公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "39251101-a4f3-461f-8949-181e5a271def",
+      "source_ref": "mail_gold_v2_738_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "迪茜（上海）展示设计有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "00674810-4293-48da-9813-7cc25fb1c94c",
+      "source_ref": "mail_gold_v2_739_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "东方汇理银行（中国）有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "7ec814c6-9693-4592-829c-d7b6ad323a98",
+      "source_ref": "mail_gold_v2_740_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "东丽医疗科技（青岛）股份有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "65154518-942e-4168-bbe2-1a5c73429a30",
+      "source_ref": "mail_gold_v2_741_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "杜塞尔多夫展览（中国）有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "55ab292b-ab56-4eaa-abf3-bceae4befbfa",
+      "source_ref": "mail_gold_v2_743_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "富曼实（上海）商贸有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "cc43a122-98e0-403b-b334-a6184eff7eae",
+      "source_ref": "mail_gold_v2_744_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "关于我们公司翻译印刷业务介绍样本的pdf文件"
+    },
+    {
+      "fragment_id": "641d057a-196a-4dc9-97d7-d16a21ef170e",
+      "source_ref": "mail_gold_v2_747_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达（[发件人]）专业翻译与设计印刷、多媒体译制"
+    },
+    {
+      "fragment_id": "06884c6e-c929-4142-b8bf-5ae248abcaca",
+      "source_ref": "mail_gold_v2_748_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达（顾伟民）"
+    },
+    {
+      "fragment_id": "b02847d0-130d-4331-8348-201a826fa5b7",
+      "source_ref": "mail_gold_v2_751_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达翻译--银行业、法律合同"
+    },
+    {
+      "fragment_id": "c30cb056-22aa-44e5-8280-4d7cdbf49eed",
+      "source_ref": "mail_gold_v2_754_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "罗德公共关系顾问（北京）有限公司上海分公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "67984f46-9c25-416b-8379-9c9d0364b53f",
+      "source_ref": "mail_gold_v2_757_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "梅赛尼斯贸易（上海）有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "65a64d3b-8d86-4020-8a0e-2db83f39ab35",
+      "source_ref": "mail_gold_v2_759_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "磨卡贸易（上海）有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "59478f08-7997-4f35-9c09-8a7fd9ef46ef",
+      "source_ref": "mail_gold_v2_762_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "让您成为的展会焦点--Michelia"
+    },
+    {
+      "fragment_id": "a796fc54-e1e7-48b6-a908-c776e2c68322",
+      "source_ref": "mail_gold_v2_764_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "瑞必欧（上海）诊断技术有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "d1256032-3590-41ba-9e1a-eabb3bac58dc",
+      "source_ref": "mail_gold_v2_766_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海ABB工程有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "c3273bcc-3d52-4e7b-9c82-4c2579326afe",
+      "source_ref": "mail_gold_v2_768_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海电气凯士比核电泵阀有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "a208073a-3a36-4b3a-b0c0-6e1db756852a",
+      "source_ref": "mail_gold_v2_769_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海高士线业有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "14244e65-f913-4232-a146-0b1b1defc274",
+      "source_ref": "mail_gold_v2_770_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海交大事必达（何萍萍）"
+    },
+    {
+      "fragment_id": "a7ab6d7c-8439-47bb-b316-7905388921a4",
+      "source_ref": "mail_gold_v2_772_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海交大事必达翻译印刷一体化==电子电器行业合作案例"
+    },
+    {
+      "fragment_id": "c92aa677-d3a4-4ed4-a19f-cbb84db2a97b",
+      "source_ref": "mail_gold_v2_773_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海交大事必达翻译印刷一体化==与众多500强企业合作案例"
+    },
+    {
+      "fragment_id": "f146bdf8-28d1-43f3-bdac-faf90eed1f8c",
+      "source_ref": "mail_gold_v2_774_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海节卡机器人科技有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "dce7d331-c7ec-4dae-ac04-8373e18c48e9",
+      "source_ref": "mail_gold_v2_775_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海凯利泰医疗科技股份有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "19c456ad-5116-4098-b273-e792bf5b5729",
+      "source_ref": "mail_gold_v2_776_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海临顶电子技术有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "fc57a08f-24e7-4d2a-ae36-1ed819ec42f0",
+      "source_ref": "mail_gold_v2_777_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海菱洋工程咨询有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "101ba992-4b4c-490c-85da-d8daea6879a4",
+      "source_ref": "mail_gold_v2_778_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海上药信谊药厂有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "a7c72e24-c699-412f-b198-6b527d986e2a",
+      "source_ref": "mail_gold_v2_779_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海市衡山（集团）公司衡山宾馆一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "b0f895f5-4ca0-4436-a741-fede54931289",
+      "source_ref": "mail_gold_v2_782_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海炫创企业策划有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "cc89cbd1-ff08-47d2-b50f-5a5652e78a9f",
+      "source_ref": "mail_gold_v2_783_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "设计印刷一体化"
+    },
+    {
+      "fragment_id": "c0a65df9-c9e0-4fa5-949d-40065f7efe15",
+      "source_ref": "mail_gold_v2_784_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "圣戈班高功能塑料（上海）有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "4e2a562a-4ea0-476e-9c28-3c902d7542db",
+      "source_ref": "mail_gold_v2_785_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "世泰科化工贸易（上海）有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "69cd07c4-724b-4982-9477-0115755cc3a8",
+      "source_ref": "mail_gold_v2_786_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达的翻译印刷服务"
+    },
+    {
+      "fragment_id": "26431ee4-41b6-4e91-8b4b-4d1e3cb3b506",
+      "source_ref": "mail_gold_v2_789_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷--Michelia"
+    },
+    {
+      "fragment_id": "4c29a6a7-cbad-469b-9ee6-5756328db891",
+      "source_ref": "mail_gold_v2_793_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷-同传领域成功案例"
+    },
+    {
+      "fragment_id": "ea044244-235e-4aaa-967a-ce4c74fb51bd",
+      "source_ref": "mail_gold_v2_794_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷-新闻和市场传讯方面的成功案例"
+    },
+    {
+      "fragment_id": "c994d8d2-1e27-4605-83a3-aea679c934f7",
+      "source_ref": "mail_gold_v2_795_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷业务介绍 一朵祝您工作愉快"
+    },
+    {
+      "fragment_id": "9dce927b-d0c3-41a4-886b-ff6a9aa09599",
+      "source_ref": "mail_gold_v2_796_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达--建筑工程类翻译"
+    },
+    {
+      "fragment_id": "b0ea4e78-2374-4c83-bddf-1a7f414507b8",
+      "source_ref": "mail_gold_v2_797_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "视维咨询（上海）有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "c8527bd0-6514-4b77-bbee-1facb75c1741",
+      "source_ref": "mail_gold_v2_798_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "苏格兰国际发展局/英国苏格兰工商委员会上海代表处一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "e20d9583-129e-4475-a458-a4775c6fe75f",
+      "source_ref": "mail_gold_v2_803_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "新西兰驻沪总领事馆-新西兰贸易发展局一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "61e11379-9e35-4d98-be9f-d09337f418ca",
+      "source_ref": "mail_gold_v2_804_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "以化（上海）投资有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "1bdf5fc3-4be1-4b3e-a908-056eb6cc8f09",
+      "source_ref": "mail_gold_v2_806_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "印刷介绍和案列"
+    },
+    {
+      "fragment_id": "731b2b98-b868-4dfd-bbb4-c234d6f98920",
+      "source_ref": "mail_gold_v2_807_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "某化工客户特种化学（上海）有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "64028407-3a98-4e52-ae6f-5e76f2dce78e",
+      "source_ref": "mail_gold_v2_823_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷-新闻和市场传讯方面的成功案例"
+    },
+    {
+      "fragment_id": "834f0e66-9fe9-4883-af63-9f1ce550b771",
+      "source_ref": "mail_gold_v2_824_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷-与领事馆合作的成功案例"
+    },
+    {
+      "fragment_id": "7b24ed1e-c169-45a4-8d8e-827745e7eaa9",
+      "source_ref": "mail_gold_v2_828_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "翻译 A comparative analysis of Steam vs Hydrogen Peroxide Sterilization in Healthcare Today"
+    },
+    {
+      "fragment_id": "f62de7c8-ac41-43db-9c5e-c4ee57054fec",
+      "source_ref": "mail_gold_v2_832_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "上海交大事必达（SPEED）业务介绍-小语种"
+    },
+    {
+      "fragment_id": "7ddc0a5e-f2cb-4494-92e0-f9e6ff95fad7",
+      "source_ref": "mail_gold_v2_852_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From [发件人] He of Speed translation & printing"
+    },
+    {
+      "fragment_id": "e6091c4b-a39e-4f39-ba47-9bd2857a373e",
+      "source_ref": "mail_gold_v2_853_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From [发件人] of Speed Technology"
+    },
+    {
+      "fragment_id": "4e405ab7-8d26-4ea6-a07f-0309ce66096b",
+      "source_ref": "mail_gold_v2_854_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "From [发件人] of Speed Translation & Pringting"
+    },
+    {
+      "fragment_id": "c1960024-abc6-400d-aaef-8932665f6021",
+      "source_ref": "mail_gold_v2_888_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "from Lily Wang of SPEED（交大事必达）"
+    },
+    {
+      "fragment_id": "84d09dad-2446-4ab5-a315-40bf7cf43889",
+      "source_ref": "mail_gold_v2_890_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "翻译供应商--刚刚和您电话"
+    },
+    {
+      "fragment_id": "ceb4a3b4-fde6-40a4-90d3-8d0fb3b3770e",
+      "source_ref": "mail_gold_v2_898_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达（SPEED）公司介绍与行业案例"
+    },
+    {
+      "fragment_id": "1c09ffaf-c247-4398-a0c7-61c269607266",
+      "source_ref": "mail_gold_v2_904_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "来自speed翻译印刷[发件人]的问候"
+    },
+    {
+      "fragment_id": "f75f8235-8922-48b6-9add-c24642936998",
+      "source_ref": "mail_gold_v2_905_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "来自事必达[发件人]n的介绍~"
+    },
+    {
+      "fragment_id": "5e4a2b32-02bd-4133-b858-e2542626a107",
+      "source_ref": "mail_gold_v2_919_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达服务介绍与行业案例"
+    },
+    {
+      "fragment_id": "c8983ac5-07b8-4f56-b6ac-127741bced97",
+      "source_ref": "mail_gold_v2_926_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达期待再次与您合作~"
+    },
+    {
+      "fragment_id": "d81bb963-6aa2-4a6b-95dd-4d0a845c7b8e",
+      "source_ref": "mail_gold_v2_927_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达详细业务介绍及外企案例"
+    },
+    {
+      "fragment_id": "f10b27bf-bdbf-4da9-b575-3e153b85e058",
+      "source_ref": "mail_gold_v2_931_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达助力企业视频宣传"
+    },
+    {
+      "fragment_id": "ffd340d4-4f6d-4308-923b-3a0141a24eab",
+      "source_ref": "mail_gold_v2_938_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达—翻译、印刷、展台、礼品一体化"
+    },
+    {
+      "fragment_id": "ef962bb8-2100-49da-9f86-23413a1b6d5d",
+      "source_ref": "mail_gold_v2_944_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "交大事必达 许晓雪"
+    },
+    {
+      "fragment_id": "0f05d3af-3bd7-4ebc-98fd-4ed3adb1d3e1",
+      "source_ref": "mail_gold_v2_945_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "0821-021文件退改"
+    },
+    {
+      "fragment_id": "bd94cc3a-1c8c-4f6f-8e5c-ff25c51bb0b1",
+      "source_ref": "mail_gold_v2_951_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达期待与您继续携手，提供一站式解决方案"
+    },
+    {
+      "fragment_id": "a40f2793-9b62-47f3-94f5-86403d06f9da",
+      "source_ref": "mail_gold_v2_996_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "Gina ！ 事必达专业营养品行业翻译、设计印刷、视频译制"
+    }
+  ]
+}

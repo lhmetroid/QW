@@ -1,0 +1,741 @@
+{
+  "created_at": "2026-06-15T06:24:14Z",
+  "target_ranks": [
+    335,
+    336,
+    345,
+    350,
+    362,
+    369,
+    370,
+    397,
+    398
+  ],
+  "asset_count": 9,
+  "review_count": 0,
+  "assets": [
+    {
+      "fragment_id": "51106de5-e8f4-40e0-8325-8f07008543f2",
+      "source_type": "mail_gold_seed",
+      "source_ref": "mail_gold_v2_335_scn_2025",
+      "function_fragment": "full_email",
+      "scenario_label": "new_business_promotion",
+      "candidate_rank": 335,
+      "title": "翻译印刷长期协议",
+      "content": "Dear",
+      "source_snapshot": {
+        "scenario": "new_business_promotion",
+        "send_month": "2025-01",
+        "email_stage": "whole_email_scenario_2025",
+        "score_source": "sop_scenario",
+        "useful_score": 0.8,
+        "candidate_rank": 335,
+        "parent_subject": "2025年翻译印刷长期协议",
+        "angle_normalized": true,
+        "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+        "scenario_label_cn": "老客户其他业务介绍",
+        "content_normalized": true,
+        "desensitized_fields": [],
+        "desensitized_status": "desensitized",
+        "seed_loader_version": "sop_scenario_v1",
+        "manual_cleanup": {
+          "cleaned_at": "2026-06-15T02:13:02Z",
+          "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+          "review_status_before": null,
+          "review_comment_before": null,
+          "rules": [
+            "remove_time_or_festival_info",
+            "desensitize_person_and_company_names",
+            "normalize_paragraphs_and_bullets",
+            "remove_promo_free_gift_trial_language"
+          ]
+        },
+        "promo_analysis": {
+          "is_promotional": true,
+          "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、覆盖多业务线，可用于业务拓展。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、设计印刷/物料。",
+          "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、设计印刷/物料",
+          "promo_score": 3,
+          "promo_signal_hits": {
+            "service_intro": [],
+            "language_services": [
+              "翻译"
+            ],
+            "extended_services": [
+              "印刷"
+            ],
+            "case_or_proof": [
+              "客户",
+              "长期"
+            ],
+            "sales_cta": []
+          },
+          "non_promo_hits": [
+            "附件"
+          ],
+          "risk_hits": [],
+          "analyzed_at": "2026-06-15T03:15:11Z",
+          "analysis_version": "full_email_promo_reason_v1"
+        },
+        "manual_cleanup_rank_301_400": {
+          "cleaned_at": "2026-06-15T05:48:01Z",
+          "cleanup_scope": "full_email_candidate_rank_301_400",
+          "rules": [
+            "remove_time_festival_and_relative_date",
+            "desensitize_customer_company_and_person_names",
+            "remove_private_contact_and_free_gift_language",
+            "normalize_title_and_paragraph_format",
+            "soften_unverifiable_number_claims"
+          ],
+          "manual_hold_reasons": [
+            "cleaned_content_too_short"
+          ]
+        }
+      },
+      "publishable": false,
+      "allowed_for_generation": false,
+      "usable_for_reply": false
+    },
+    {
+      "fragment_id": "a286e230-163d-445e-ac4d-da9c64afcc80",
+      "source_type": "mail_gold_seed",
+      "source_ref": "mail_gold_v2_336_scn_2025",
+      "function_fragment": "full_email",
+      "scenario_label": "new_business_promotion",
+      "candidate_rank": 336,
+      "title": "DEI同传会议翻译",
+      "content": "[客户称呼]\n\n您好\n\n谢谢",
+      "source_snapshot": {
+        "scenario": "new_business_promotion",
+        "send_month": "2025-08",
+        "email_stage": "whole_email_scenario_2025",
+        "score_source": "sop_scenario",
+        "useful_score": 0.8,
+        "candidate_rank": 336,
+        "parent_subject": "8月DEI同传会议翻译",
+        "angle_normalized": true,
+        "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+        "scenario_label_cn": "老客户其他业务介绍",
+        "content_normalized": true,
+        "desensitized_fields": [],
+        "desensitized_status": "desensitized",
+        "seed_loader_version": "sop_scenario_v1",
+        "manual_cleanup": {
+          "cleaned_at": "2026-06-15T02:20:57Z",
+          "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+          "review_status_before": null,
+          "review_comment_before": null,
+          "rules": [
+            "remove_time_or_festival_info",
+            "desensitize_person_and_company_names",
+            "normalize_paragraphs_and_bullets",
+            "remove_promo_free_gift_trial_language"
+          ]
+        },
+        "promo_analysis": {
+          "is_promotional": true,
+          "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、覆盖多业务线，可用于业务拓展。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、多媒体译制。",
+          "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、多媒体译制",
+          "promo_score": 3,
+          "promo_signal_hits": {
+            "service_intro": [],
+            "language_services": [
+              "翻译",
+              "同传"
+            ],
+            "extended_services": [
+              "会议"
+            ],
+            "case_or_proof": [
+              "客户"
+            ],
+            "sales_cta": []
+          },
+          "non_promo_hits": [
+            "附件",
+            "报价",
+            "PO"
+          ],
+          "risk_hits": [],
+          "analyzed_at": "2026-06-15T03:15:11Z",
+          "analysis_version": "full_email_promo_reason_v1"
+        },
+        "manual_cleanup_rank_301_400": {
+          "cleaned_at": "2026-06-15T05:48:01Z",
+          "cleanup_scope": "full_email_candidate_rank_301_400",
+          "rules": [
+            "remove_time_festival_and_relative_date",
+            "desensitize_customer_company_and_person_names",
+            "remove_private_contact_and_free_gift_language",
+            "normalize_title_and_paragraph_format",
+            "soften_unverifiable_number_claims"
+          ],
+          "manual_hold_reasons": [
+            "cleaned_content_too_short"
+          ]
+        }
+      },
+      "publishable": false,
+      "allowed_for_generation": false,
+      "usable_for_reply": false
+    },
+    {
+      "fragment_id": "2a208211-d576-4bc4-8c0b-c37968c11d3f",
+      "source_type": "mail_gold_seed",
+      "source_ref": "mail_gold_v2_345_scn_2025",
+      "function_fragment": "full_email",
+      "scenario_label": "new_business_promotion",
+      "candidate_rank": 345,
+      "title": "某工业客户 产品宣传资料",
+      "content": "Vicky\n\n您好\n\n这个是加了VSG的印刷文件版",
+      "source_snapshot": {
+        "scenario": "new_business_promotion",
+        "send_month": "2025-08",
+        "email_stage": "whole_email_scenario_2025",
+        "score_source": "sop_scenario",
+        "useful_score": 0.8,
+        "candidate_rank": 345,
+        "parent_subject": "VSG1013433 3M ASD PSD Welders Choice Flyer EMEA",
+        "angle_normalized": true,
+        "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+        "scenario_label_cn": "老客户其他业务介绍",
+        "content_normalized": true,
+        "desensitized_fields": [],
+        "desensitized_status": "desensitized",
+        "seed_loader_version": "sop_scenario_v1",
+        "manual_cleanup": {
+          "cleaned_at": "2026-06-15T02:20:57Z",
+          "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+          "review_status_before": null,
+          "review_comment_before": null,
+          "rules": [
+            "remove_time_or_festival_info",
+            "desensitize_person_and_company_names",
+            "normalize_paragraphs_and_bullets",
+            "remove_promo_free_gift_trial_language"
+          ]
+        },
+        "promo_analysis": {
+          "is_promotional": true,
+          "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、覆盖多业务线，可用于业务拓展。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：设计印刷/物料、多媒体译制。",
+          "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：设计印刷/物料、多媒体译制",
+          "promo_score": 2,
+          "promo_signal_hits": {
+            "service_intro": [],
+            "language_services": [],
+            "extended_services": [
+              "印刷"
+            ],
+            "case_or_proof": [
+              "客户"
+            ],
+            "sales_cta": []
+          },
+          "non_promo_hits": [],
+          "risk_hits": [],
+          "analyzed_at": "2026-06-15T03:15:11Z",
+          "analysis_version": "full_email_promo_reason_v1"
+        },
+        "manual_cleanup_rank_301_400": {
+          "cleaned_at": "2026-06-15T05:48:01Z",
+          "cleanup_scope": "full_email_candidate_rank_301_400",
+          "rules": [
+            "remove_time_festival_and_relative_date",
+            "desensitize_customer_company_and_person_names",
+            "remove_private_contact_and_free_gift_language",
+            "normalize_title_and_paragraph_format",
+            "soften_unverifiable_number_claims"
+          ],
+          "manual_hold_reasons": [
+            "cleaned_content_too_short"
+          ]
+        }
+      },
+      "publishable": false,
+      "allowed_for_generation": false,
+      "usable_for_reply": false
+    },
+    {
+      "fragment_id": "cdf2b4aa-98c8-4408-96c4-bdee9166d1f6",
+      "source_type": "mail_gold_seed",
+      "source_ref": "mail_gold_v2_350_scn_2025",
+      "function_fragment": "full_email",
+      "scenario_label": "re_activation",
+      "candidate_rank": 350,
+      "title": "继续为您提供多业务支持",
+      "content": "Dear [客户称呼]\n\n感谢一直以来的的支持[发件人]\n\n工作事事顺利，生活开开心心",
+      "source_snapshot": {
+        "scenario": "re_activation",
+        "send_month": "2025-02",
+        "email_stage": "whole_email_scenario_2025",
+        "score_source": "sop_scenario",
+        "useful_score": 0.8,
+        "candidate_rank": 350,
+        "parent_subject": "来自事必达翻译David的问候",
+        "angle_normalized": true,
+        "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+        "scenario_label_cn": "老客户唤醒",
+        "content_normalized": true,
+        "desensitized_fields": [],
+        "desensitized_status": "desensitized",
+        "seed_loader_version": "sop_scenario_v1",
+        "manual_cleanup": {
+          "cleaned_at": "2026-06-15T02:20:57Z",
+          "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+          "review_status_before": null,
+          "review_comment_before": null,
+          "rules": [
+            "remove_time_or_festival_info",
+            "desensitize_person_and_company_names",
+            "normalize_paragraphs_and_bullets",
+            "remove_promo_free_gift_trial_language"
+          ]
+        },
+        "promo_analysis": {
+          "is_promotional": true,
+          "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书。适合老客户重新激活时承接历史合作并补充新服务；推荐方向：多媒体译制。",
+          "recommendation": "适合老客户重新激活时承接历史合作并补充新服务；推荐方向：多媒体译制",
+          "promo_score": 2,
+          "promo_signal_hits": {
+            "service_intro": [
+              "支持"
+            ],
+            "language_services": [],
+            "extended_services": [],
+            "case_or_proof": [
+              "客户"
+            ],
+            "sales_cta": []
+          },
+          "non_promo_hits": [],
+          "risk_hits": [],
+          "analyzed_at": "2026-06-15T03:15:11Z",
+          "analysis_version": "full_email_promo_reason_v1"
+        },
+        "manual_cleanup_rank_301_400": {
+          "cleaned_at": "2026-06-15T05:48:01Z",
+          "cleanup_scope": "full_email_candidate_rank_301_400",
+          "rules": [
+            "remove_time_festival_and_relative_date",
+            "desensitize_customer_company_and_person_names",
+            "remove_private_contact_and_free_gift_language",
+            "normalize_title_and_paragraph_format",
+            "soften_unverifiable_number_claims"
+          ],
+          "manual_hold_reasons": [
+            "cleaned_content_too_short"
+          ]
+        }
+      },
+      "publishable": false,
+      "allowed_for_generation": false,
+      "usable_for_reply": false
+    },
+    {
+      "fragment_id": "f83a4c41-3e41-4a37-933c-aec6a46287f0",
+      "source_type": "mail_gold_seed",
+      "source_ref": "mail_gold_v2_362_scn_2025",
+      "function_fragment": "full_email",
+      "scenario_label": "new_contact_intro",
+      "candidate_rank": 362,
+      "title": "某客户同传安全培训",
+      "content": "Dear [客户称呼]\n\n我是SpeedAsia的[发件人]，之前我们有过联系，现在又要麻烦你啦\n\n不知道目前培训日期有什么可选的时间，再次感谢",
+      "source_snapshot": {
+        "scenario": "new_contact_intro",
+        "send_month": "2025-05",
+        "email_stage": "whole_email_scenario_2025",
+        "score_source": "sop_scenario",
+        "useful_score": 0.8,
+        "candidate_rank": 362,
+        "parent_subject": "TH同传安全培训",
+        "angle_normalized": true,
+        "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+        "scenario_label_cn": "新客户开发介绍",
+        "content_normalized": true,
+        "desensitized_fields": [],
+        "desensitized_status": "desensitized",
+        "seed_loader_version": "sop_scenario_v1",
+        "manual_cleanup": {
+          "cleaned_at": "2026-06-15T02:20:57Z",
+          "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+          "review_status_before": null,
+          "review_comment_before": null,
+          "rules": [
+            "remove_time_or_festival_info",
+            "desensitize_person_and_company_names",
+            "normalize_paragraphs_and_bullets",
+            "remove_promo_free_gift_trial_language"
+          ]
+        },
+        "promo_analysis": {
+          "is_promotional": true,
+          "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、包含低压力联系或转介绍动作。适合新联系人首次介绍时建立服务认知；推荐方向：语言服务、会议/活动支持、多媒体译制、展会搭建。",
+          "recommendation": "适合新联系人首次介绍时建立服务认知；推荐方向：语言服务、会议/活动支持、多媒体译制、展会搭建",
+          "promo_score": 3,
+          "promo_signal_hits": {
+            "service_intro": [],
+            "language_services": [
+              "同传"
+            ],
+            "extended_services": [],
+            "case_or_proof": [
+              "客户"
+            ],
+            "sales_cta": [
+              "联系"
+            ]
+          },
+          "non_promo_hits": [],
+          "risk_hits": [],
+          "analyzed_at": "2026-06-15T03:15:11Z",
+          "analysis_version": "full_email_promo_reason_v1"
+        },
+        "manual_cleanup_rank_301_400": {
+          "cleaned_at": "2026-06-15T05:50:14Z",
+          "cleanup_scope": "full_email_candidate_rank_301_400",
+          "rules": [
+            "remove_time_festival_and_relative_date",
+            "desensitize_customer_company_and_person_names",
+            "remove_private_contact_and_free_gift_language",
+            "normalize_title_and_paragraph_format",
+            "soften_unverifiable_number_claims"
+          ],
+          "manual_hold_reasons": [
+            "cleaned_content_too_short"
+          ]
+        }
+      },
+      "publishable": false,
+      "allowed_for_generation": false,
+      "usable_for_reply": false
+    },
+    {
+      "fragment_id": "c5b12606-ac8a-4310-a07d-09bb1f8d64a3",
+      "source_type": "mail_gold_seed",
+      "source_ref": "mail_gold_v2_369_scn_2025",
+      "function_fragment": "full_email",
+      "scenario_label": "new_business_promotion",
+      "candidate_rank": 369,
+      "title": "与您分享可参考的综合服务场景",
+      "content": "Dear [客户称呼]\n\n在你的档位内我做了一些推荐，看看哦",
+      "source_snapshot": {
+        "scenario": "new_business_promotion",
+        "send_month": "2025-02",
+        "email_stage": "whole_email_scenario_2025",
+        "score_source": "sop_scenario",
+        "useful_score": 0.8,
+        "candidate_rank": 369,
+        "parent_subject": "礼品推荐",
+        "angle_normalized": true,
+        "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+        "scenario_label_cn": "老客户其他业务介绍",
+        "content_normalized": true,
+        "desensitized_fields": [],
+        "desensitized_status": "desensitized",
+        "seed_loader_version": "sop_scenario_v1",
+        "manual_cleanup": {
+          "cleaned_at": "2026-06-15T02:20:57Z",
+          "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+          "review_status_before": null,
+          "review_comment_before": null,
+          "rules": [
+            "remove_time_or_festival_info",
+            "desensitize_person_and_company_names",
+            "normalize_paragraphs_and_bullets",
+            "remove_promo_free_gift_trial_language"
+          ]
+        },
+        "promo_analysis": {
+          "is_promotional": true,
+          "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、包含低压力联系或转介绍动作。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：多媒体译制。",
+          "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：多媒体译制",
+          "promo_score": 3,
+          "promo_signal_hits": {
+            "service_intro": [
+              "服务"
+            ],
+            "language_services": [],
+            "extended_services": [],
+            "case_or_proof": [
+              "客户"
+            ],
+            "sales_cta": [
+              "推荐"
+            ]
+          },
+          "non_promo_hits": [],
+          "risk_hits": [],
+          "analyzed_at": "2026-06-15T03:15:11Z",
+          "analysis_version": "full_email_promo_reason_v1"
+        },
+        "manual_cleanup_rank_301_400": {
+          "cleaned_at": "2026-06-15T05:48:01Z",
+          "cleanup_scope": "full_email_candidate_rank_301_400",
+          "rules": [
+            "remove_time_festival_and_relative_date",
+            "desensitize_customer_company_and_person_names",
+            "remove_private_contact_and_free_gift_language",
+            "normalize_title_and_paragraph_format",
+            "soften_unverifiable_number_claims"
+          ],
+          "manual_hold_reasons": [
+            "cleaned_content_too_short"
+          ]
+        }
+      },
+      "publishable": false,
+      "allowed_for_generation": false,
+      "usable_for_reply": false
+    },
+    {
+      "fragment_id": "f8921843-636d-4639-b162-23b4b5b311a7",
+      "source_type": "mail_gold_seed",
+      "source_ref": "mail_gold_v2_370_scn_2025",
+      "function_fragment": "full_email",
+      "scenario_label": "new_business_promotion",
+      "candidate_rank": 370,
+      "title": "与您分享可参考的综合服务场景",
+      "content": "郭经理，早\n\n若您有任何问题请随时与我联系，谢谢",
+      "source_snapshot": {
+        "scenario": "new_business_promotion",
+        "send_month": "2025-02",
+        "email_stage": "whole_email_scenario_2025",
+        "score_source": "sop_scenario",
+        "useful_score": 0.8,
+        "candidate_rank": 370,
+        "parent_subject": "礼品选型",
+        "angle_normalized": true,
+        "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+        "scenario_label_cn": "老客户其他业务介绍",
+        "content_normalized": true,
+        "desensitized_fields": [],
+        "desensitized_status": "desensitized",
+        "seed_loader_version": "sop_scenario_v1",
+        "manual_cleanup": {
+          "cleaned_at": "2026-06-15T02:20:57Z",
+          "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+          "review_status_before": null,
+          "review_comment_before": null,
+          "rules": [
+            "remove_time_or_festival_info",
+            "desensitize_person_and_company_names",
+            "normalize_paragraphs_and_bullets",
+            "remove_promo_free_gift_trial_language"
+          ]
+        },
+        "promo_analysis": {
+          "is_promotional": true,
+          "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、包含低压力联系或转介绍动作、覆盖多业务线，可用于业务拓展。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：多媒体译制、商务礼品。",
+          "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：多媒体译制、商务礼品",
+          "promo_score": 3,
+          "promo_signal_hits": {
+            "service_intro": [],
+            "language_services": [],
+            "extended_services": [
+              "礼品"
+            ],
+            "case_or_proof": [
+              "客户"
+            ],
+            "sales_cta": [
+              "联系"
+            ]
+          },
+          "non_promo_hits": [
+            "请查收",
+            "附件",
+            "报价"
+          ],
+          "risk_hits": [],
+          "analyzed_at": "2026-06-15T03:15:11Z",
+          "analysis_version": "full_email_promo_reason_v1"
+        },
+        "manual_cleanup_rank_301_400": {
+          "cleaned_at": "2026-06-15T05:48:01Z",
+          "cleanup_scope": "full_email_candidate_rank_301_400",
+          "rules": [
+            "remove_time_festival_and_relative_date",
+            "desensitize_customer_company_and_person_names",
+            "remove_private_contact_and_free_gift_language",
+            "normalize_title_and_paragraph_format",
+            "soften_unverifiable_number_claims"
+          ],
+          "manual_hold_reasons": [
+            "cleaned_content_too_short"
+          ]
+        }
+      },
+      "publishable": false,
+      "allowed_for_generation": false,
+      "usable_for_reply": false
+    },
+    {
+      "fragment_id": "5fe4b52e-ab0c-42b4-adf6-73fe69bd31fe",
+      "source_type": "mail_gold_seed",
+      "source_ref": "mail_gold_v2_397_scn_2025",
+      "function_fragment": "full_email",
+      "scenario_label": "new_business_promotion",
+      "candidate_rank": 397,
+      "title": "企业会议同传",
+      "content": "Dear [客户称呼]\n\n耳机数量暂订148位，届时按实际预订人数结算开票即可\n\n如您有任何问题，请随时与我联系",
+      "source_snapshot": {
+        "scenario": "new_business_promotion",
+        "send_month": "2025-10",
+        "email_stage": "whole_email_scenario_2025",
+        "score_source": "sop_scenario",
+        "useful_score": 0.8,
+        "candidate_rank": 397,
+        "parent_subject": "TownHall同传-Dec 2",
+        "angle_normalized": true,
+        "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+        "scenario_label_cn": "老客户其他业务介绍",
+        "content_normalized": true,
+        "desensitized_fields": [],
+        "desensitized_status": "desensitized",
+        "seed_loader_version": "sop_scenario_v1",
+        "manual_cleanup": {
+          "cleaned_at": "2026-06-15T02:20:57Z",
+          "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+          "review_status_before": null,
+          "review_comment_before": null,
+          "rules": [
+            "remove_time_or_festival_info",
+            "desensitize_person_and_company_names",
+            "normalize_paragraphs_and_bullets",
+            "remove_promo_free_gift_trial_language"
+          ]
+        },
+        "promo_analysis": {
+          "is_promotional": true,
+          "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、包含低压力联系或转介绍动作。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、多媒体译制。",
+          "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：语言服务、会议/活动支持、多媒体译制",
+          "promo_score": 3,
+          "promo_signal_hits": {
+            "service_intro": [],
+            "language_services": [
+              "同传"
+            ],
+            "extended_services": [],
+            "case_or_proof": [
+              "客户"
+            ],
+            "sales_cta": [
+              "联系"
+            ]
+          },
+          "non_promo_hits": [
+            "请查收",
+            "附件",
+            "报价",
+            "开票",
+            "PO"
+          ],
+          "risk_hits": [],
+          "analyzed_at": "2026-06-15T03:15:11Z",
+          "analysis_version": "full_email_promo_reason_v1"
+        },
+        "manual_cleanup_rank_301_400": {
+          "cleaned_at": "2026-06-15T05:48:01Z",
+          "cleanup_scope": "full_email_candidate_rank_301_400",
+          "rules": [
+            "remove_time_festival_and_relative_date",
+            "desensitize_customer_company_and_person_names",
+            "remove_private_contact_and_free_gift_language",
+            "normalize_title_and_paragraph_format",
+            "soften_unverifiable_number_claims"
+          ],
+          "manual_hold_reasons": [
+            "cleaned_content_too_short"
+          ]
+        }
+      },
+      "publishable": false,
+      "allowed_for_generation": false,
+      "usable_for_reply": false
+    },
+    {
+      "fragment_id": "245d2a63-b178-4190-9686-cacd032586a1",
+      "source_type": "mail_gold_seed",
+      "source_ref": "mail_gold_v2_398_scn_2025",
+      "function_fragment": "full_email",
+      "scenario_label": "new_business_promotion",
+      "candidate_rank": 398,
+      "title": "与您分享可参考的综合服务场景",
+      "content": "Dear [客户称呼]\n\n早上好，记得那天碰面有提到过笔记本制作\n\n附件包含设计印刷、笔记本、台历定制的部分案例，供您参考哦\n\n如有任何问题，欢迎随时沟通哈",
+      "source_snapshot": {
+        "scenario": "new_business_promotion",
+        "send_month": "2025-08",
+        "email_stage": "whole_email_scenario_2025",
+        "score_source": "sop_scenario",
+        "useful_score": 0.8,
+        "candidate_rank": 398,
+        "parent_subject": "笔记本定制",
+        "angle_normalized": true,
+        "seed_source_file": "crm:spSendInfo{staff}.EmailContent",
+        "scenario_label_cn": "老客户其他业务介绍",
+        "content_normalized": true,
+        "desensitized_fields": [],
+        "desensitized_status": "desensitized",
+        "seed_loader_version": "sop_scenario_v1",
+        "manual_cleanup": {
+          "cleaned_at": "2026-06-15T02:20:57Z",
+          "cleanup_scope": "full_email_needs_revision_or_unreviewed",
+          "review_status_before": null,
+          "review_comment_before": null,
+          "rules": [
+            "remove_time_or_festival_info",
+            "desensitize_person_and_company_names",
+            "normalize_paragraphs_and_bullets",
+            "remove_promo_free_gift_trial_language"
+          ]
+        },
+        "promo_analysis": {
+          "is_promotional": true,
+          "selection_reason": "宣传邮件：包含服务能力介绍、包含案例/行业经验/合作背书、包含低压力联系或转介绍动作、覆盖多业务线，可用于业务拓展。适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：设计印刷/物料、多媒体译制、商务礼品。",
+          "recommendation": "适合老客户拓展其他业务时作为服务能力/案例参考；推荐方向：设计印刷/物料、多媒体译制、商务礼品",
+          "promo_score": 3,
+          "promo_signal_hits": {
+            "service_intro": [],
+            "language_services": [],
+            "extended_services": [
+              "设计",
+              "印刷"
+            ],
+            "case_or_proof": [
+              "案例",
+              "客户"
+            ],
+            "sales_cta": [
+              "欢迎",
+              "供您参考",
+              "如有"
+            ]
+          },
+          "non_promo_hits": [
+            "附件"
+          ],
+          "risk_hits": [],
+          "analyzed_at": "2026-06-15T03:15:11Z",
+          "analysis_version": "full_email_promo_reason_v1"
+        },
+        "manual_cleanup_rank_301_400": {
+          "cleaned_at": "2026-06-15T05:48:01Z",
+          "cleanup_scope": "full_email_candidate_rank_301_400",
+          "rules": [
+            "remove_time_festival_and_relative_date",
+            "desensitize_customer_company_and_person_names",
+            "remove_private_contact_and_free_gift_language",
+            "normalize_title_and_paragraph_format",
+            "soften_unverifiable_number_claims"
+          ],
+          "manual_hold_reasons": [
+            "cleaned_content_too_short"
+          ]
+        }
+      },
+      "publishable": false,
+      "allowed_for_generation": false,
+      "usable_for_reply": false
+    }
+  ],
+  "reviews": []
+}

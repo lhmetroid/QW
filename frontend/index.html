@@ -498,6 +498,42 @@
                         <div id="mql-template-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-3"></div>
                     </div>
                 </div>
+                <section id="mql-quality-review-config" class="mt-4 rounded-lg border border-teal-200 bg-white p-5">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="mail-quality-review-toggle" onclick="toggleMailQualityReviewConfig()" class="rounded border border-teal-200 bg-teal-50 px-2 py-1 text-[11px] font-bold text-teal-800 hover:bg-teal-100" title="展开或折叠生成邮件质检配置。">▶ 展开</button>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900" title="开启后，每次邮件 LLM 生成正文后，会再调用一轮 LLM 按质检脚本检查；不合格就退回重新生成，直到达到最大质检次数。">生成邮件质检</h3>
+                            </div>
+                        </div>
+                        <span id="mail-quality-review-status" class="hidden rounded-full px-2 py-1 text-[10px] font-bold"></span>
+                    </div>
+                    <div id="mail-quality-review-collapsible" class="hidden mt-4 space-y-4 text-xs">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label class="rounded-lg border border-slate-200 bg-slate-50 p-3" title="关闭时不增加额外 LLM 质检调用；开启后生成成功后进入质检循环。">
+                                <span class="block font-bold text-slate-700">配置开启或关闭</span>
+                                <span class="mt-2 flex items-center gap-2">
+                                    <input id="mail-quality-review-enabled" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-teal-600" />
+                                    <span class="text-slate-700">开启生成后 LLM 质检</span>
+                                </span>
+                            </label>
+                            <label class="rounded-lg border border-slate-200 bg-slate-50 p-3" title="每一轮包含：生成邮件 -> LLM 质检。质检失败会重新生成，超过次数则返回预警。">
+                                <span class="block font-bold text-slate-700">最大质检次数</span>
+                                <input id="mail-quality-review-max-runs" type="number" min="1" max="10" step="1" class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1 font-mono text-slate-800" />
+                            </label>
+
+                        </div>
+                        <label class="block rounded-lg border border-teal-100 bg-teal-50 p-3" title="前台可修改保存。脚本要求 LLM 返回 JSON：passed、failed_points、reason。后端仍会强制执行缺少主题的本地硬规则。">
+                            <span class="block font-bold text-teal-900">质检脚本（可前台修改保存）</span>
+                            <textarea id="mail-quality-review-script" rows="8" class="mt-2 w-full rounded border border-teal-200 bg-white px-3 py-2 font-mono text-[11px] leading-5 text-slate-800 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-100"></textarea>
+                        </label>
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div class="text-[11px] text-slate-500">保存后立即影响后续邮件草稿生成；超过最大质检次数仍不合格时，后端会返回“始终不满足”的具体质检点。</div>
+                            <button type="button" onclick="saveRuntimeLlmSettings()" class="rounded-lg bg-teal-600 px-4 py-2 text-xs font-bold text-white hover:bg-teal-700" title="与上方邮件 LLM 参数一起保存到后端 runtime 配置。">保存质检配置</button>
+                        </div>
+                    </div>
+                </section>
+
                 <div class="mt-4 hidden grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-xs">
                     <label class="flex flex-col gap-1" title="CRM 中客户的唯一标识（API 字段名 customer_key）。用于联查 CRM 画像、客户域名白名单、欠款风险等级。示例：CUST-DEMO-MULTI-DOMAIN。必填。">
                         <span class="font-bold text-slate-700">客户编号</span>
@@ -662,71 +698,20 @@
             </div>
             <section id="mail-autosend-panel" class="hidden space-y-4">
                 <div class="rounded-lg border border-amber-300 bg-amber-50 p-4">
-                    <div class="flex items-center justify-between gap-3">
-                        <h2 class="text-base font-bold text-slate-900" title="按销售批量给名下联系人挑套装并排期，写入CRM待发队列。先排序联系人、配套装优先级和周期/每日上限，预览排期无误后再真发。">自动发送（套装群发排期）</h2>
-                        <span id="mail-autosend-status" class="text-[11px] text-slate-500"></span>
-                    </div>
-                </div>
-                <div class="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
-                    <div class="text-xs font-bold text-slate-700">① 联系人范围与排序</div>
-                    <div class="flex flex-wrap items-center gap-3 text-xs">
-                        <label class="flex items-center gap-1" title="填要群发的销售工号，多个用逗号。系统取其名下有有效邮箱的联系人。留空则用合成demo数据预览。">销售工号<input id="as-sales-ids" class="rounded border border-slate-300 px-2 py-1 w-56" placeholder="如 0017,0002（留空走demo）" onblur="autosendResolveNames()"></label>
-                        <span id="as-sales-names" class="text-[11px] text-slate-500"></span>
-                        <label class="flex items-center gap-1">排序
-                            <select id="as-sort-rule" class="rounded border border-slate-300 px-2 py-1">
-                                <option value="default">默认(现有顺序)</option>
-                                <option value="amount_desc">合作金额 大→小</option>
-                                <option value="amount_asc">合作金额 小→大</option>
-                                <option value="last_far">末次合作 远→近</option>
-                                <option value="last_near">末次合作 近→远</option>
-                                <option value="random">随机</option>
-                            </select>
-                        </label>
-                        <label class="flex items-center gap-1"><input type="checkbox" id="as-only-valid-email" checked>仅有效邮箱联系人</label>
-                    </div>
-                </div>
-                <div class="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
-                    <div class="flex items-center justify-between gap-2">
-                        <div class="text-xs font-bold text-slate-700" title="自上而下匹配：第一个'条件命中且该联系人没发过'的套装即用；都没有则用最后一个(兜底)；兜底也发过则跳过。">② 套装优先级（自上而下，命中即用；最后一个为兜底）</div>
-                        <div class="flex items-center gap-2">
-                            <button type="button" onclick="autosendAddRule()" class="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100">+ 增加套装规则</button>
-                            <button type="button" onclick="autosendSaveRules()" class="rounded bg-indigo-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-indigo-700">保存规则</button>
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900 flex items-center gap-1">自动排期<span class="text-[11px] text-slate-400 cursor-help" title="admin 可切换销售或选择全部销售；hj 权限固定本人视角。">ⓘ</span></h2>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 text-xs">
+                            <label id="mail-autosend-staff-picker-wrap" class="flex items-center gap-1">销售
+                                <select id="mail-autosend-staff-picker" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" onchange="autosendSwitchStaffView()"></select>
+                            </label>
+                            <button type="button" onclick="autosendRefreshFrame()" class="rounded border border-amber-300 bg-white px-3 py-1 text-xs font-bold text-amber-700 hover:bg-amber-100">刷新</button>
+                            <span id="mail-autosend-status" class="text-[11px] text-slate-500"></span>
                         </div>
                     </div>
-                    <div id="as-rules"></div>
                 </div>
-                <div class="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
-                    <div class="text-xs font-bold text-slate-700">③ 周期 / 每日上限 / 开始日期</div>
-                    <div class="flex flex-wrap items-center gap-3 text-xs">
-                        <label class="flex items-center gap-1" title="统一周期：一组按封的天数，覆盖各套装原间隔。第1封从开始日算，之后每封按上一封实际落日+对应天数。">统一周期(按封天数,逗号)<input id="as-intervals" class="rounded border border-slate-300 px-2 py-1 w-40" value="0,5,7,14"></label>
-                        <label class="flex items-center gap-1" title="每个销售每天最多发多少封；含CRM里已有的待发占用。满了顺延到下一天。">每日上限/销售<input id="as-daily-cap" type="number" min="1" class="rounded border border-slate-300 px-2 py-1 w-20" value="10"></label>
-                        <label class="flex items-center gap-1">开始日期<input id="as-start-date" type="date" class="rounded border border-slate-300 px-2 py-1"></label>
-                        <label class="flex items-center gap-1"><input type="checkbox" id="as-fallback" checked>全不命中用兜底</label>
-                        <label class="flex items-center gap-1"><input type="checkbox" id="as-consider-queue" checked>考虑CRM已有排期</label>
-                        <button type="button" onclick="autosendSaveConfig()" class="rounded border border-slate-300 px-2 py-1 text-[11px] hover:bg-slate-50">保存配置</button>
-                        <button type="button" onclick="autosendDryRun()" class="rounded bg-amber-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-amber-700">预览排期(dry-run)</button>
-                    </div>
-                    <div class="text-[10px] text-slate-400">dry-run 只算排期表，不生成草稿、不写CRM、不入库。真发功能下一步接入。</div>
-                </div>
-                <div id="as-result" class="hidden rounded-lg border border-slate-200 bg-white p-4">
-                    <div id="as-result-summary" class="text-xs font-bold text-slate-700 mb-2"></div>
-                    <div class="overflow-auto max-h-[480px]">
-                        <table class="w-full text-xs">
-                            <thead class="bg-slate-50"><tr class="text-slate-600">
-                                <th class="px-2 py-1 text-left">联系人</th>
-                                <th class="px-2 py-1 text-left">销售</th>
-                                <th class="px-2 py-1 text-left">套装</th>
-                                <th class="px-2 py-1 text-left">第1封</th>
-                                <th class="px-2 py-1 text-left">第2封</th>
-                                <th class="px-2 py-1 text-left">第3封</th>
-                                <th class="px-2 py-1 text-left">第4封</th>
-                            </tr></thead>
-                            <tbody id="as-result-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div id="as-skipped" class="mt-3 text-[11px] text-amber-700"></div>
-                    <div id="as-dayload" class="mt-3 text-[11px] text-slate-500"></div>
-                </div>
+                <div id="mail-autosend-frame-grid" class="space-y-4"></div>
             </section>
             <section id="mail-iteration-panel" class="hidden space-y-5">
                 <div class="rounded-lg border border-indigo-200 bg-white p-5">
@@ -972,6 +957,7 @@
                         <button type="button" onclick="document.getElementById('mail-config-expedite-sla')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-cyan-200 hover:bg-cyan-50" title="跳到【大客户加急工期阈值】分区：编辑大客户加急承诺的最低安全阈值。">大客户加急工期</button>
                         <button type="button" onclick="document.getElementById('mail-config-price-floors')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-amber-200 hover:bg-amber-50" title="跳到【翻译与印刷底价】分区：编辑产品线的最低价。">翻译/印刷底价</button>
                         <button type="button" onclick="document.getElementById('mail-config-rag')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-violet-200 hover:bg-violet-50" title="跳到【范例检索 / 大模型参数】分区：编辑黄金库准入门槛和大模型温度。">范例检索 / 大模型参数</button>
+
                         <button type="button" onclick="document.getElementById('mail-config-audit')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-sky-200 hover:bg-sky-50" title="跳到【配置审计日志】分区：审计邮件配置变更。">配置审计日志</button>
                         <button type="button" onclick="document.getElementById('mail-config-hot-reload')?.scrollIntoView({block:'start'})" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left font-bold text-slate-700 hover:border-emerald-200 hover:bg-emerald-50" title="跳到【邮件配置热加载范围】分区：限定热加载作用域，明确排除企微范围。">热加载范围</button>
                     </div>
@@ -1038,6 +1024,7 @@
                         </div>
                     </div>
                 </div>
+
 <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
                     <section id="mail-config-sequence" class="rounded-lg border border-indigo-200 bg-white p-5">
                         <div class="flex flex-wrap items-start justify-between gap-3">
@@ -1745,6 +1732,12 @@
         let mailDraftLlmRuntimeConfig = null;
         let mailDraftLlmRuntimeStatus = '未加载';
         let mailGenerationModelRuntimeValue = 'deepseek-v4-flash';
+        const MAIL_QUALITY_REVIEW_CONFIG_DEFAULTS = {
+            enabled: false,
+            max_review_runs: 1,
+            script: '你是邮件质检员。请只检查以下质检点，不要改写邮件。\n当前质检点：1. 缺少邮件主题。\n判断规则：如果 subject 为空、只有占位符、或不像可发送邮件主题，则不合格。\n只输出 JSON：{"passed":true/false,"failed_points":["缺少邮件主题"],"reason":"简短原因"}'
+        };
+        let mailQualityReviewConfigState = {...MAIL_QUALITY_REVIEW_CONFIG_DEFAULTS};
         const MAIL_DEEPSEEK_MODEL_CONFIG_DEFAULTS = {
             'deepseek-v4-flash': {
                 thinking_type: 'disabled',
@@ -3792,237 +3785,87 @@
             document.getElementById('mail-feedback-detail')?.classList.add('hidden');
         }
 
-        // ===== 自动发送（套装群发排期, Step2 配置 + dry-run 预览） =====
-        let autosendRules = [];
-        let autosendScenarios = [];
+        // ===== 自动排期入口：复用 static/mail-suite.html 的真实自动排期节点 =====
         let autosendInited = false;
+        let autosendStaffOptions = [];
+        const MAIL_AUTOSEND_LOCKED_STAFF_BY_USER = { hj: '0017' };
 
         function autosendSetStatus(t, err) {
             const el = document.getElementById('mail-autosend-status');
-            if (el) { el.textContent = t || ''; el.className = 'text-[11px] ' + (err ? 'text-red-600 font-bold' : 'text-slate-500'); }
+            if (!el) return;
+            el.textContent = t ? (err ? t : 'ⓘ') : '';
+            el.title = t || '';
+            el.className = 'text-[11px] ' + (err ? 'text-red-600 font-bold' : 'text-slate-400 cursor-help');
         }
-        function autosendParseIntervals() {
-            return (document.getElementById('as-intervals')?.value || '0').split(/[,，\s]+/)
-                .map(x => parseInt(x, 10)).filter(x => Number.isFinite(x));
+        function autosendIsAdminView() {
+            return !isMailQualityOnlyUser() && String(currentFrontendRole || '').toLowerCase() === 'admin';
+        }
+        function autosendLockedStaffId() {
+            const user = String(currentFrontendUser || '').trim();
+            return MAIL_AUTOSEND_LOCKED_STAFF_BY_USER[user] || user;
+        }
+        async function autosendLoadStaffOptions() {
+            if (autosendStaffOptions.length) return autosendStaffOptions;
+            try {
+                const r = await fetch(`${window.location.origin}/api/v1/mail/autosend/sales-staff-names`, { credentials: 'include' });
+                const d = await r.json().catch(() => ({}));
+                const ids = Array.isArray(d.priority_staff_ids) ? d.priority_staff_ids.filter(Boolean) : [];
+                const nr = ids.length ? await fetch(`${window.location.origin}/api/v1/mail/autosend/sales-staff-names?ids=${encodeURIComponent(ids.join(','))}`, { credentials: 'include' }) : null;
+                const nd = nr && nr.ok ? await nr.json().catch(() => ({})) : {};
+                const names = nd.names || {};
+                autosendStaffOptions = ids.map(id => ({ id, name: names[id] || '' }));
+            } catch (e) {
+                autosendStaffOptions = [];
+            }
+            if (!autosendStaffOptions.length) autosendStaffOptions = ['0017', '0002', '0141', '0188', '1607'].map(id => ({ id, name: '' }));
+            return autosendStaffOptions;
+        }
+        function autosendFrameSrc(selection) {
+            const q = new URLSearchParams();
+            const selected = selection || '__all__';
+            q.set('staff_id', selected);
+            if (selected === '__all__') q.set('staff_ids', autosendStaffOptions.map(s => s.id).filter(Boolean).join(','));
+            q.set('embed', '1');
+            return `${window.location.origin}/static/mail-suite.html?${q.toString()}`;
+        }
+        function autosendRenderFrames(selection) {
+            const grid = document.getElementById('mail-autosend-frame-grid');
+            if (!grid) return;
+            const selected = selection || document.getElementById('mail-autosend-staff-picker')?.value || '__all__';
+            const staff = selected === '__all__' ? { id: '__all__', name: `全部销售合并视图${autosendStaffOptions.length ? ' · ' + autosendStaffOptions.length + ' 个销售' : ''}` } : autosendStaffOptions.find(s => s.id === selected);
+            if (!staff) { grid.innerHTML = '<div class="rounded border border-amber-200 bg-white p-4 text-xs text-amber-700">没有可用销售视角。</div>'; return; }
+            const label = staff.name ? escapeHtml(staff.name) : escapeHtml(staff.id);
+            const src = autosendFrameSrc(selected);
+            grid.innerHTML = `<section class="rounded-lg border border-slate-200 bg-white p-3">
+                <div class="mb-2 flex items-center justify-between gap-2 text-xs">
+                    <div class="font-bold text-slate-700">销售视角：${label}</div>
+                </div>
+                <iframe title="自动排期 ${label}" src="${src}" style="min-height:calc(100vh - 210px);height:calc(100vh - 210px);" class="w-full rounded border border-slate-200 bg-white"></iframe>
+            </section>`;
+            autosendSetStatus(selected === '__all__' ? `全部销售共同查看：${autosendStaffOptions.length} 个销售合并在同一页面` : '已加载自动排期节点');
         }
         async function autosendInit() {
-            await autosendLoadScenarios();
-            if (!autosendInited) { await autosendLoadConfig(); await autosendLoadRules(); autosendInited = true; }
-            else { autosendRenderRules(); }
-            const sd = document.getElementById('as-start-date');
-            if (sd && !sd.value) sd.value = new Date().toISOString().slice(0, 10);
+            const picker = document.getElementById('mail-autosend-staff-picker');
+            const wrap = document.getElementById('mail-autosend-staff-picker-wrap');
+            if (!picker) return;
+            await autosendLoadStaffOptions();
+            if (autosendIsAdminView()) {
+                if (wrap) wrap.classList.remove('hidden');
+                const cur = picker.value || '__all__';
+                picker.innerHTML = '<option value="__all__">全部销售</option>' + autosendStaffOptions.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name ? `${s.name}(${s.id})` : s.id)}</option>`).join('');
+                picker.value = autosendStaffOptions.some(s => s.id === cur) || cur === '__all__' ? cur : '__all__';
+            } else {
+                const locked = autosendLockedStaffId();
+                if (wrap) wrap.classList.add('hidden');
+                if (!autosendStaffOptions.some(s => s.id === locked)) autosendStaffOptions = [{ id: locked, name: currentFrontendUser || locked }].concat(autosendStaffOptions);
+                picker.innerHTML = `<option value="${escapeHtml(locked)}">${escapeHtml(currentFrontendUser || locked)}</option>`;
+                picker.value = locked;
+            }
+            autosendInited = true;
+            autosendRenderFrames(picker.value);
         }
-        async function autosendLoadScenarios() {
-            try {
-                const r = await fetch(`${window.location.origin}/api/v1/mail/suite-scenario-options`, { credentials: 'include' });
-                const d = await r.json();
-                autosendScenarios = (d.scenarios || []);
-            } catch (e) { autosendScenarios = []; }
-        }
-        async function autosendLoadConfig() {
-            try {
-                const r = await fetch(`${window.location.origin}/api/v1/mail/autosend/config`, { credentials: 'include' });
-                const d = await r.json(); const c = d.config || {};
-                document.getElementById('as-sort-rule').value = c.sort_rule || 'default';
-                document.getElementById('as-only-valid-email').checked = c.only_valid_email !== false;
-                document.getElementById('as-intervals').value = (c.interval_days || [0]).join(',');
-                document.getElementById('as-daily-cap').value = c.daily_cap || 10;
-                document.getElementById('as-fallback').checked = c.fallback_enabled !== false;
-            } catch (e) {}
-        }
-        async function autosendLoadRules() {
-            try {
-                const r = await fetch(`${window.location.origin}/api/v1/mail/autosend/suite-rules`, { credentials: 'include' });
-                const d = await r.json();
-                autosendRules = (d.rules || []).map(x => ({ scenario: x.scenario, conditions: x.conditions || [], match_mode: x.match_mode || 'and' }));
-            } catch (e) { autosendRules = []; }
-            autosendRenderRules();
-        }
-        const AUTOSEND_BUSINESS_LINE_OPTIONS = [
-            '笔译', '口译', '同传设备租赁', '设计印刷', '印刷', '输入排版', '多媒体译制', '礼品', '复印装订', '运输'
-        ];
-        function autosendBusinessLineSelectedValues(value) {
-            return String(value || '').split(/[,;，、\s]+/).map(x => x.trim()).filter(Boolean);
-        }
-        function autosendBusinessLineLabel(value) {
-            const values = autosendBusinessLineSelectedValues(value);
-            return values.length ? values.join('、') : '选择业务线';
-        }
-        function autosendToggleBusinessLine(i, j, value, checked) {
-            const c = autosendRules?.[i]?.conditions?.[j];
-            if (!c) return;
-            const selected = new Set(autosendBusinessLineSelectedValues(c.value));
-            if (checked) selected.add(value); else selected.delete(value);
-            c.value = Array.from(selected).join(';');
-            const summary = document.getElementById(`autosend-business-summary-${i}-${j}`);
-            if (summary) summary.textContent = autosendBusinessLineLabel(c.value);
-        }
-        function autosendCondRowHtml(i, j, c) {
-            const t = c.type || 'amount';
-            const typeOpts = [['amount', '合作金额'], ['last_coop_days', '上次合作天数'], ['business_line', '业务线']]
-                .map(([v, l]) => `<option value="${v}" ${t === v ? 'selected' : ''}>${l}</option>`).join('');
-            let opOpts;
-            if (t === 'business_line') opOpts = [['has', '合作过'], ['not', '没合作过']].map(([v, l]) => `<option value="${v}" ${c.op === v ? 'selected' : ''}>${l}</option>`).join('');
-            else opOpts = [['<', '小于'], ['>', '大于']].map(([v, l]) => `<option value="${v}" ${c.op === v ? 'selected' : ''}>${l}</option>`).join('');
-            const selectedBusinessLines = new Set(autosendBusinessLineSelectedValues(c.value));
-            const businessLineOptions = AUTOSEND_BUSINESS_LINE_OPTIONS
-                .map(v => `<label class="flex items-center gap-1 px-2 py-1 hover:bg-slate-50"><input type="checkbox" ${selectedBusinessLines.has(v) ? 'checked' : ''} onchange='autosendToggleBusinessLine(${i},${j},${JSON.stringify(v)},this.checked)'><span>${escapeHtml(v)}</span></label>`)
-                .join('');
-            const valInput = t === 'business_line'
-                ? `<details class="relative min-w-[170px]"><summary id="autosend-business-summary-${i}-${j}" class="list-none cursor-pointer rounded border border-slate-300 bg-white px-2 py-1 pr-6 text-slate-700 shadow-sm">${escapeHtml(autosendBusinessLineLabel(c.value))}</summary><div class="absolute z-[1200] mt-1 max-h-56 min-w-[180px] overflow-auto rounded border border-slate-200 bg-white py-1 shadow-lg">${businessLineOptions}</div></details>`
-                : `<input type="number" value="${c.value == null ? '' : escapeHtml(String(c.value))}" onchange="autosendRules[${i}].conditions[${j}].value=parseFloat(this.value)" placeholder="${t === 'amount' ? '金额' : '天数'}" class="rounded border border-slate-300 px-2 py-1 w-28">`;
-            return `<div class="flex items-center gap-2 text-[11px] mt-1">
-                <select onchange="autosendOnCondTypeChange(${i},${j},this.value)" class="rounded border border-slate-300 px-2 py-1">${typeOpts}</select>
-                <select onchange="autosendRules[${i}].conditions[${j}].op=this.value" class="rounded border border-slate-300 px-2 py-1">${opOpts}</select>
-                ${valInput}
-                <button type="button" onclick="autosendRemoveCond(${i},${j})" class="rounded border border-red-300 text-red-600 px-2 py-0.5">x</button>
-            </div>`;
-        }
-        function autosendRenderRules() {
-            const wrap = document.getElementById('as-rules');
-            if (!wrap) return;
-            if (!autosendRules.length) { wrap.innerHTML = '<div class="text-[11px] text-slate-400">暂无规则，点"增加套装规则"。最后一个为兜底。</div>'; return; }
-            wrap.innerHTML = autosendRules.map((r, i) => {
-                const scenOpts = autosendScenarios.map(s => `<option value="${escapeHtml(s.value)}" ${s.value === r.scenario ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')
-                    || `<option value="${escapeHtml(r.scenario || '')}">${escapeHtml(r.scenario || '(无场景)')}</option>`;
-                const condRows = (r.conditions || []).map((c, j) => autosendCondRowHtml(i, j, c)).join('');
-                const isLast = i === autosendRules.length - 1;
-                return `<div class="rounded border border-slate-200 p-2 mb-2 bg-slate-50/40">
-                    <div class="flex flex-wrap items-center gap-2 text-[11px]">
-                        <span class="rounded bg-slate-200 px-1.5 py-0.5 font-bold text-slate-700">优先级 ${i + 1}${isLast ? ' · 兜底' : ''}</span>
-                        <select onchange="autosendRules[${i}].scenario=this.value" class="rounded border border-slate-300 px-2 py-1 font-bold">${scenOpts}</select>
-                        <span>条件</span>
-                        <select onchange="autosendRules[${i}].match_mode=this.value" class="rounded border border-slate-300 px-2 py-1">
-                            <option value="and" ${r.match_mode !== 'or' ? 'selected' : ''}>且(全满足)</option>
-                            <option value="or" ${r.match_mode === 'or' ? 'selected' : ''}>或(满足其一)</option>
-                        </select>
-                        <button type="button" onclick="autosendAddCond(${i})" class="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-emerald-700">+条件</button>
-                        <span class="flex-1"></span>
-                        <button type="button" onclick="autosendMoveRule(${i},-1)" class="rounded border border-slate-300 px-2 py-0.5 ${i === 0 ? 'opacity-40' : ''}">↑</button>
-                        <button type="button" onclick="autosendMoveRule(${i},1)" class="rounded border border-slate-300 px-2 py-0.5 ${isLast ? 'opacity-40' : ''}">↓</button>
-                        <button type="button" onclick="autosendRemoveRule(${i})" class="rounded border border-red-300 text-red-600 px-2 py-0.5">删</button>
-                    </div>
-                    <div>${condRows || '<div class="text-[10px] text-slate-400 mt-1">无条件 = 命中所有（适合做兜底行）</div>'}</div>
-                </div>`;
-            }).join('');
-        }
-        function autosendOnCondTypeChange(i, j, t) {
-            const c = autosendRules[i].conditions[j];
-            c.type = t;
-            c.op = (t === 'business_line') ? 'has' : '>';
-            c.value = (t === 'business_line') ? '' : 0;
-            autosendRenderRules();
-        }
-        function autosendAddRule() {
-            autosendRules.push({ scenario: (autosendScenarios[0] || {}).value || '', conditions: [], match_mode: 'and' });
-            autosendRenderRules();
-        }
-        function autosendRemoveRule(i) { autosendRules.splice(i, 1); autosendRenderRules(); }
-        function autosendMoveRule(i, d) {
-            const j = i + d; if (j < 0 || j >= autosendRules.length) return;
-            const t = autosendRules[i]; autosendRules[i] = autosendRules[j]; autosendRules[j] = t; autosendRenderRules();
-        }
-        function autosendAddCond(i) { autosendRules[i].conditions.push({ type: 'amount', op: '>', value: 0 }); autosendRenderRules(); }
-        function autosendRemoveCond(i, j) { autosendRules[i].conditions.splice(j, 1); autosendRenderRules(); }
-        async function autosendResolveNames() {
-            const ids = (document.getElementById('as-sales-ids')?.value || '').trim();
-            const out = document.getElementById('as-sales-names');
-            if (!ids) { if (out) out.textContent = ''; return; }
-            try {
-                const r = await fetch(`${window.location.origin}/api/v1/mail/autosend/sales-staff-names?ids=${encodeURIComponent(ids)}`, { credentials: 'include' });
-                const d = await r.json(); const names = d.names || {};
-                if (out) out.textContent = Object.keys(names).length ? Object.entries(names).map(([k, v]) => `${k}=${v || '?'}`).join('，') : '（未解析到姓名）';
-            } catch (e) { if (out) out.textContent = ''; }
-        }
-        async function autosendSaveConfig() {
-            const body = {
-                sort_rule: document.getElementById('as-sort-rule').value,
-                only_valid_email: document.getElementById('as-only-valid-email').checked,
-                interval_days: autosendParseIntervals(),
-                daily_cap: parseInt(document.getElementById('as-daily-cap').value || '10', 10),
-                fallback_enabled: document.getElementById('as-fallback').checked,
-            };
-            try {
-                const r = await fetch(`${window.location.origin}/api/v1/mail/autosend/config`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'include' });
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                autosendSetStatus('配置已保存');
-            } catch (e) { autosendSetStatus('配置保存失败：' + e.message, true); }
-        }
-        async function autosendSaveRules() {
-            const body = { rules: autosendRules.map(r => ({ scenario: r.scenario, conditions: r.conditions || [], match_mode: r.match_mode || 'and', enabled: true })) };
-            try {
-                const r = await fetch(`${window.location.origin}/api/v1/mail/autosend/suite-rules`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'include' });
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                autosendSetStatus('规则已保存');
-            } catch (e) { autosendSetStatus('规则保存失败：' + e.message, true); }
-        }
-        async function autosendDryRun() {
-            const ids = (document.getElementById('as-sales-ids')?.value || '').split(/[,;，、\s]+/).filter(Boolean);
-            const body = {
-                start_date: document.getElementById('as-start-date').value || null,
-                daily_cap: parseInt(document.getElementById('as-daily-cap').value || '10', 10),
-                interval_days: autosendParseIntervals(),
-                sort_rule: document.getElementById('as-sort-rule').value,
-                rules: autosendRules.map(r => ({ scenario: r.scenario, conditions: r.conditions || [], match_mode: r.match_mode || 'and' })),
-                fallback_enabled: document.getElementById('as-fallback').checked,
-                consider_existing_crm_queue: document.getElementById('as-consider-queue').checked,
-            };
-            if (ids.length) body.sales_staff_ids = ids; else { body.demo = true; body.demo_count = 26; }
-            if (!body.rules.length && !body.demo) { autosendSetStatus('请先加至少一个套装规则', true); return; }
-            autosendSetStatus(ids.length ? '排期计算中（含读CRM联系人，可能稍慢）…' : 'demo 排期计算中…');
-            try {
-                const r = await fetch(`${window.location.origin}/api/v1/mail/autosend/dry-run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'include' });
-                const txt = await r.text(); let d; try { d = JSON.parse(txt); } catch (e) { d = {}; }
-                if (!r.ok) throw new Error(d.detail || txt.slice(0, 160));
-                autosendRenderResult(d);
-                autosendSetStatus(`排期完成（${d.source}）：${d.scheduled_count} 封，跳过 ${d.skipped_count} 人`);
-            } catch (e) { autosendSetStatus('排期失败：' + e.message, true); }
-        }
-        function autosendRenderResult(d) {
-            const wrap = document.getElementById('as-result');
-            const tbody = document.getElementById('as-result-tbody');
-            if (!wrap || !tbody) return;
-            wrap.classList.remove('hidden');
-            document.getElementById('as-result-summary').textContent =
-                `数据源：${d.source} · 开始日 ${d.start_date} · 每日上限 ${d.daily_cap} · 周期 [${(d.interval_days || []).join(',')}] · 联系人 ${d.contacts_count} · 排期 ${d.scheduled_count} 封 · 跳过 ${d.skipped_count} 人`;
-            const grouped = new Map();
-            (d.items || []).forEach(it => {
-                const key = `${it.contact_id || ''}::${it.owner_staff_id || ''}::${it.scenario || ''}`;
-                if (!grouped.has(key)) grouped.set(key, {
-                    contact_id: it.contact_id || '',
-                    owner_staff_id: it.owner_staff_id || '',
-                    scenario: it.scenario || '',
-                    scenario_label_cn: it.scenario_label_cn || it.scenario || '',
-                    pick_reason: it.pick_reason || '',
-                    steps: {}
-                });
-                grouped.get(key).steps[Number(it.suite_step)] = it;
-            });
-            const groupedRows = Array.from(grouped.values());
-            tbody.innerHTML = groupedRows.map(row => {
-                const stepCell = (n) => {
-                    const it = row.steps[n];
-                    return it ? `${escapeHtml(it.plan_date || '')} <span class="text-slate-400">${escapeHtml(it.plan_time || '')}</span>` : '<span class="text-slate-300">-</span>';
-                };
-                return `<tr class="border-t border-slate-100">
-                    <td class="px-2 py-1 font-mono">${escapeHtml(row.contact_id)}</td>
-                    <td class="px-2 py-1">${escapeHtml(row.owner_staff_id)}</td>
-                    <td class="px-2 py-1">${escapeHtml(row.scenario_label_cn)}${row.pick_reason === 'fallback' ? ' <span class="text-[10px] text-amber-600">(兜底)</span>' : ''}</td>
-                    <td class="px-2 py-1 whitespace-nowrap">${stepCell(1)}</td>
-                    <td class="px-2 py-1 whitespace-nowrap">${stepCell(2)}</td>
-                    <td class="px-2 py-1 whitespace-nowrap">${stepCell(3)}</td>
-                    <td class="px-2 py-1 whitespace-nowrap">${stepCell(4)}</td>
-                </tr>`;
-            }).join('') || '<tr><td colspan="7" class="px-2 py-3 text-center text-slate-400">无排期</td></tr>';
-            const skipped = d.skipped || [];
-            document.getElementById('as-skipped').innerHTML = skipped.length
-                ? `<b>跳过 ${skipped.length} 人：</b>` + skipped.map(s => `${escapeHtml(s.contact_id || '')}(${escapeHtml(s.detail || s.reason || '')})`).join('；')
-                : '';
-            const dl = d.day_load || [];
-            document.getElementById('as-dayload').innerHTML = dl.length
-                ? '<b>每销售每日封数：</b>' + dl.map(x => `${escapeHtml(x.owner_staff_id)} ${escapeHtml(x.date)}=${x.count}`).join('，')
-                : '';
-        }
+        function autosendSwitchStaffView() { autosendRenderFrames(); }
+        function autosendRefreshFrame() { autosendRenderFrames(); }
 
         function switchMailWorkspaceTab(tab) {
             const validTabs = ['stats', 'quality', 'autosend', 'iteration', 'goldlib', 'contractcases', 'feedback', 'config'];
@@ -4064,6 +3907,10 @@
             if (feedbackBtn) feedbackBtn.className = activeTab === 'feedback' ? activeClass : inactiveClass;
             if (configBtn) configBtn.className = activeTab === 'config' ? activeClass : inactiveClass;
             if (statsBtn) statsBtn.className = activeTab === 'stats' ? activeClass : inactiveClass;
+            if (activeTab === 'quality') {
+                renderMailQualityReviewConfig();
+                loadRuntimeLlmSettings();
+            }
             if (activeTab === 'stats' && typeof loadMailAiStats === 'function') loadMailAiStats(false);
             if (activeTab === 'stats' && typeof loadMailAiStatsByStaff === 'function') loadMailAiStatsByStaff(false);
             if (activeTab === 'config') {
@@ -4175,6 +4022,54 @@
                 <div class="mt-3 grid grid-cols-1 xl:grid-cols-2 gap-3">${deepseekCards}</div>
                 <div class="mt-3 rounded border border-violet-100 bg-white p-2 text-[11px] text-slate-600">说明：thinking=disabled 时 temperature/top_p 生效，更适合邮件 JSON 草稿；response_format=text 可能导致后端无法解析 subject/paragraphs，默认保留 json_object。</div>
             `;
+        }
+        function normalizeMailQualityReviewConfig(value) {
+            const source = value && typeof value === 'object' ? value : {};
+            const maxRuns = Math.max(1, Math.min(10, parseInt(source.max_review_runs ?? MAIL_QUALITY_REVIEW_CONFIG_DEFAULTS.max_review_runs, 10) || MAIL_QUALITY_REVIEW_CONFIG_DEFAULTS.max_review_runs));
+            const script = String(source.script || MAIL_QUALITY_REVIEW_CONFIG_DEFAULTS.script || '').trim() || MAIL_QUALITY_REVIEW_CONFIG_DEFAULTS.script;
+            return {
+                enabled: Boolean(source.enabled),
+                max_review_runs: maxRuns,
+                script
+            };
+        }
+
+        function renderMailQualityReviewConfig() {
+            mailQualityReviewConfigState = normalizeMailQualityReviewConfig(mailQualityReviewConfigState);
+            const enabledInput = document.getElementById('mail-quality-review-enabled');
+            const maxInput = document.getElementById('mail-quality-review-max-runs');
+            const scriptInput = document.getElementById('mail-quality-review-script');
+            const status = document.getElementById('mail-quality-review-status');
+            if (enabledInput) enabledInput.checked = Boolean(mailQualityReviewConfigState.enabled);
+            if (maxInput) maxInput.value = mailQualityReviewConfigState.max_review_runs;
+            if (scriptInput) scriptInput.value = mailQualityReviewConfigState.script;
+            if (status) {
+                status.textContent = mailQualityReviewConfigState.enabled ? `已开启 · 最多 ${mailQualityReviewConfigState.max_review_runs} 轮` : '已关闭';
+                status.className = mailQualityReviewConfigState.enabled
+                    ? 'rounded-full bg-teal-50 px-2 py-1 text-[10px] font-bold text-teal-700'
+                    : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500';
+            }
+        }
+
+        function readMailQualityReviewConfigFromDom() {
+            const enabledInput = document.getElementById('mail-quality-review-enabled');
+            const maxInput = document.getElementById('mail-quality-review-max-runs');
+            const scriptInput = document.getElementById('mail-quality-review-script');
+            mailQualityReviewConfigState = normalizeMailQualityReviewConfig({
+                enabled: Boolean(enabledInput?.checked),
+                max_review_runs: maxInput?.value,
+                script: scriptInput?.value
+            });
+            return mailQualityReviewConfigState;
+        }
+
+        function toggleMailQualityReviewConfig() {
+            const panel = document.getElementById('mail-quality-review-collapsible');
+            const btn = document.getElementById('mail-quality-review-toggle');
+            if (!panel || !btn) return;
+            const willOpen = panel.classList.contains('hidden');
+            panel.classList.toggle('hidden', !willOpen);
+            btn.textContent = willOpen ? '▼ 折叠' : '▶ 展开';
         }
         async function loadRuntimeLlmSettings() {
             const statusBadge = document.getElementById('runtime-llm-settings-status');

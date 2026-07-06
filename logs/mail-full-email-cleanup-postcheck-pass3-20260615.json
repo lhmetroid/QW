@@ -1,0 +1,232 @@
+{
+  "mode": "dry_run",
+  "target_count": 1318,
+  "changed_count": 8,
+  "residual_count": 14,
+  "changed": [
+    {
+      "fragment_id": "d946eef0-ec09-4e2b-bf35-6da5ae54a754",
+      "source_ref": "mail_gold_v2_1000_scn_2021",
+      "scenario": "new_business_promotion",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "INS视频修改，请在明天中午发我，谢谢！",
+      "new_title": "INS视频修改，请在明天中午发我，谢谢！",
+      "residual_flags": [],
+      "old_preview": "成功案例\n\n■ 今年医学年会怎么开？\n\n线上直播为您解决■ 300+万条专业词汇，如何准确匹配■ 中国首家新冠检测FDA审核SLD的感谢信■ 3000+页药品注册资料翻译仅需40天\n\n技术驱动，与众不同\n\n■ [PHONE] 退改投诉在企业微信中实时通报，提升全员质量关注度■ [PHONE] 听写配字幕自动生成带时间轴的双语对照Excel脚本供客户校对■ [PHONE] 译员对字幕拆句和合并时，自动匹配时间轴，提升配字幕效率■ [PHONE] 采用自动识别辅助技术，音频快速转为文字，准确率高达90% ■ [PHON",
+      "new_preview": "成功案例\n\n■ 今年医学年会怎么开？\n\n线上直播为您解决■ 300+万条专业词汇，如何准确匹配■ 中国首家新冠检测FDA审核SLD的感谢信■ 3000+页药品注册资料翻译仅需40天\n\n技术驱动，与众不同\n\n■ [PHONE] 退改投诉在企业微信中实时通报，提升全员质量关注度■ [PHONE] 听写配字幕自动生成带时间轴的双语对照Excel脚本供客户校对■ [PHONE] 译员对字幕拆句和合并时，自动匹配时间轴，提升配字幕效率■ [PHONE] 采用自动识别辅助技术，音频快速转为文字，准确率高达90% ■ [PHON"
+    },
+    {
+      "fragment_id": "cdb1b4c8-fce8-42db-85ec-0dffae6e46cc",
+      "source_ref": "mail_gold_v2_1013_scn_2017",
+      "scenario": "new_business_promotion",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "US product changes_Communication_CI 3 and 4 h mixer",
+      "new_title": "US product changes_Communication_CI 3 and 4 h mixer",
+      "residual_flags": [],
+      "old_preview": "Hi [客户称呼]\n\nRed用QQ链接发了， 这个不大，请查收附件，谢谢。\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao In",
+      "new_preview": "Hi [客户称呼]\n\nRed用QQ链接发了， 这个不大，请查收附件，谢谢。\n\n[发件人] Sales Department\n\n上海嘉赛信息科技发展有限公司\n\nShanghai Jia Sai Information Technology Development CO., LTD. (Speed Technology)\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n\nWebsite: [URL] Email: [EMAIL]\n\nAddress: Suite 1409, Feidiao In"
+    },
+    {
+      "fragment_id": "3d3ae9b4-5241-4c9e-b0d9-ad947bbf530c",
+      "source_ref": "mail_gold_v2_1068_scn_2018",
+      "scenario": "new_business_promotion",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "翻译完成稿",
+      "new_title": "翻译完成稿",
+      "residual_flags": [],
+      "old_preview": "Dear [客户称呼]\n\n附件为此次翻译的完成稿，请查收，谢谢。\n\nBest Regards\n\n邓懿欣 Lisa 销售助理\n\n上海嘉赛信息科技发展有限公司 ( 事必达 )\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n[URL] [URL] [EMAIL]\n中国上海徐汇区肇嘉浜路 1065 号飞雕国际大厦 1409 室\n\n关于我们\n\n精于笔译、口译、印刷、多媒体译制、网站本地化\n\n译员专业对口，翻译风格统一\n\n翻译印刷一体化，省时、省心、省力 消除中间环节\n\n专业的多媒体本地化团队助您在",
+      "new_preview": "Dear [客户称呼]\n\n附件为此次翻译的完成稿，请查收，谢谢。\n\nBest Regards\n\n邓懿欣 Lisa 销售助理\n\n上海嘉赛信息科技发展有限公司 ( 事必达 )\n\nPhone: [PHONE],[PHONE] Fax: [PHONE]\n[URL] [URL] [EMAIL]\n中国上海徐汇区肇嘉浜路 1065 号飞雕国际大厦 1409 室\n\n关于我们\n\n精于笔译、口译、印刷、多媒体译制、网站本地化\n\n译员专业对口，翻译风格统一\n\n翻译印刷一体化，省时、省心、省力 消除中间环节\n\n专业的多媒体本地化团队助您在"
+    },
+    {
+      "fragment_id": "667a2d09-9547-482a-8581-75a6d801b3a7",
+      "source_ref": "mail_gold_v2_1071_scn_2018",
+      "scenario": "new_business_promotion",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "整理的文件",
+      "new_title": "整理的文件",
+      "residual_flags": [],
+      "old_preview": "Dear [客户称呼]\n\n附件为整理后的文件，请查收\n\nBest Regards\n\n- ---- Original Message received on [PHONE]:\n03:\n39 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL];[EMAIL]\n\nRE: 事必达翻译稿交稿： XS[PHONE]:\n57:\n50\n\nDears\n\n我们这边还有个需求，就是请把你手头所有翻译过的我们 OHC 的产品的中文监测报告按照产品线做一下分类和整合，这周给到我，谢谢！\n\n有问题随时联系。\n\nBe",
+      "new_preview": "Dear [客户称呼]\n\n附件为整理后的文件，请查收\n\nBest Regards\n\n- ---- Original Message received on [PHONE]:\n03:\n39 -----\n\nFrom: [EMAIL]\n\nBCC:\n\nTo: [EMAIL];[EMAIL]\n\nRE: 事必达翻译稿交稿： XS[PHONE]:\n57:\n50\n\nDears\n\n我们这边还有个需求，就是请把你手头所有翻译过的我们 OHC 的产品的中文监测报告按照产品线做一下分类和整合，这周给到我，谢谢！\n\n有问题随时联系。\n\nBe"
+    },
+    {
+      "fragment_id": "b2df576e-149c-476b-871c-76c5895dcc22",
+      "source_ref": "mail_gold_v2_678_scn_2024",
+      "scenario": "new_business_promotion",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "事必达笔译口译--[发件人]",
+      "new_title": "事必达笔译口译--[发件人]",
+      "residual_flags": [],
+      "old_preview": "Dear [客户称呼]\n\n很高兴刚才与您电话沟通，简单给您做个介绍，希望有机会为您提供服务。\n\n我们与贵司合作步入第13年了，回顾这13年来我们为爱德华提供了近500次的服务。\n\n同时随着爱德华业务的蓬勃发展，我们从最初提供的笔译服务，现在已发展同传、同传设备租赁、会议速记、多媒体译制、制版排版、礼品等等全方位的服务。\n\n以下是我们23年为爱德华各部门提供的部分服务，例如：\n\nSwan_Ganz_漂浮导管，视频译制\n\nINSPIRIS Patient Brochure，翻译\n\n三尖瓣研讨会，视频译制\n\n二尖瓣研讨会",
+      "new_preview": "Dear [客户称呼]\n\n很高兴刚才与您电话沟通，简单给您做个介绍，希望有机会为您提供服务。\n\n我们与贵司合作步入第13年了，回顾这13年来我们为爱德华提供了近500次的服务。\n\n同时随着爱德华业务的蓬勃发展，我们从最初提供的笔译服务，现在已发展同传、同传设备租赁、会议速记、多媒体译制、制版排版、礼品等等全方位的服务。\n\n以下是我们23年为爱德华各部门提供的部分服务，例如：\n\nSwan_Ganz_漂浮导管，视频译制\n\nINSPIRIS Patient Brochure，翻译\n\n三尖瓣研讨会，视频译制\n\n二尖瓣研讨会"
+    },
+    {
+      "fragment_id": "3d65e7eb-6f01-42ef-86ae-d57367d30590",
+      "source_ref": "mail_gold_v2_736_scn_2024",
+      "scenario": "new_contact_intro",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "大拓乳制品（上海）有限公司一体化服务合作伙伴",
+      "new_title": "大拓乳制品（上海）有限公司一体化服务合作伙伴",
+      "residual_flags": [],
+      "old_preview": "很高兴刚才与您电话沟通，我是事必达公司的[发件人]（苏瑾Michelia），之前为您提供翻译服务，希望有机会再为您服务。\n\n我们从起至今，一直为贵司提供笔译、输入排版、礼品、设计、印刷服务，至今已有9年了。\n\n曾经服务过的部门有：\n财务经理、财务、市场、助理、Business Development等各部门，涉及内容包括：\n\n阿里授权书\n\n黄浦区产业扶持协议\n\nuality assurance.\n\n翻译报价\n\nTranslation for Friesland Vivinal? MFGM article\n\nTran",
+      "new_preview": "很高兴刚才与您电话沟通，我是事必达公司的[发件人]（苏瑾Michelia），之前为您提供翻译服务，希望有机会再为您服务。\n\n我们从起至今，一直为贵司提供笔译、输入排版、礼品、设计、印刷服务，至今已有9年了。\n\n曾经服务过的部门有：\n财务经理、财务、市场、助理、Business Development等各部门，涉及内容包括：\n\n阿里授权书\n\n黄浦区产业扶持协议\n\nuality assurance.\n\n翻译报价\n\nTranslation for Friesland Vivinal? MFGM article\n\nTran"
+    },
+    {
+      "fragment_id": "7ec814c6-9693-4592-829c-d7b6ad323a98",
+      "source_ref": "mail_gold_v2_740_scn_2024",
+      "scenario": "new_contact_intro",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "东丽医疗科技（青岛）股份有限公司一体化服务合作伙伴",
+      "new_title": "东丽医疗科技（青岛）股份有限公司一体化服务合作伙伴",
+      "residual_flags": [],
+      "old_preview": "您好，王先生\n\n很高兴刚才与您电话沟通，我是事必达公司的[发件人]（苏瑾Michelia），之前为您提供翻译服务，希望有机会再为您服务。\n\n我们从起至今，一直为贵司提供笔译、输入排版、设计、印刷服务，至今已有9年了。\n\n曾经服务过的部门有：\n药室、海外产品部、営業本部市場推進部、贸易部、药事部、市场部、药事、管理部业务科采购、临床事务（上海） 、市场等各部门，涉及内容包括：\n\n样本印刷\n\n马来西亚TQS-88登录资料 中译英翻译依赖.\n\n制造部确认清单\n\n印度TQS-88登录资料 中译英翻译依赖.\n\n英译报价委托.",
+      "new_preview": "您好，王先生\n\n很高兴刚才与您电话沟通，我是事必达公司的[发件人]（苏瑾Michelia），之前为您提供翻译服务，希望有机会再为您服务。\n\n我们从起至今，一直为贵司提供笔译、输入排版、设计、印刷服务，至今已有9年了。\n\n曾经服务过的部门有：\n药室、海外产品部、営業本部市場推進部、贸易部、药事部、市场部、药事、管理部业务科采购、临床事务（上海） 、市场等各部门，涉及内容包括：\n\n样本印刷\n\n马来西亚TQS-88登录资料 中译英翻译依赖.\n\n制造部确认清单\n\n印度TQS-88登录资料 中译英翻译依赖.\n\n英译报价委托."
+    },
+    {
+      "fragment_id": "d1256032-3590-41ba-9e1a-eabb3bac58dc",
+      "source_ref": "mail_gold_v2_766_scn_2024",
+      "scenario": "new_contact_intro",
+      "review_status": null,
+      "review_comment": null,
+      "old_title": "上海ABB工程有限公司一体化服务合作伙伴",
+      "new_title": "上海ABB工程有限公司一体化服务合作伙伴",
+      "residual_flags": [],
+      "old_preview": "很高兴刚才与您电话沟通，我是事必达公司的苏瑾[发件人]，之前为您提供翻译服务，希望有机会再为您服务。\n\n我们从起至今，一直为贵司提供笔译、多媒体译制、设计、印刷、光盘及盒、销售及采购类、输入排版、配音配字幕、运输服务，至今已有20年了。\n\n曾经服务过的部门有：\n仪器仪表、石油和天然气工业-项目管理部（采购）、电力技术总部(中国区),通信业务系统、电力部、电力技术总部,电力自动化部、相关部门 Communications、船舶、船舶部门、海外项目（康桥）、电力系统总部-通信事业部-工程部Utility Communi",
+      "new_preview": "很高兴刚才与您电话沟通，我是事必达公司的苏瑾[发件人]，之前为您提供翻译服务，希望有机会再为您服务。\n\n我们从起至今，一直为贵司提供笔译、多媒体译制、设计、印刷、光盘及盒、销售及采购类、输入排版、配音配字幕、运输服务，至今已有20年了。\n\n曾经服务过的部门有：\n仪器仪表、石油和天然气工业-项目管理部（采购）、电力技术总部(中国区),通信业务系统、电力部、电力技术总部,电力自动化部、相关部门 Communications、船舶、船舶部门、海外项目（康桥）、电力系统总部-通信事业部-工程部Utility Communi"
+    }
+  ],
+  "residual": [
+    {
+      "fragment_id": "2499a685-4a97-4a98-b436-27d152a74a48",
+      "source_ref": "mail_gold_v2_1014_scn_2017",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "开票税号"
+    },
+    {
+      "fragment_id": "d3d65f7d-9772-4061-bfa0-dfe8fc8aa9eb",
+      "source_ref": "mail_gold_v2_1046_scn_2022",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "彭博士，事必达专业医学翻译24年"
+    },
+    {
+      "fragment_id": "18ef4434-ffc8-4fbe-a9b0-02d609124a31",
+      "source_ref": "mail_gold_v2_1180_scn_2018",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "TPJ520"
+    },
+    {
+      "fragment_id": "f3166a40-fe14-4c03-a497-e4672f22a6be",
+      "source_ref": "mail_gold_v2_405_scn_2025",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "翻译文件发送"
+    },
+    {
+      "fragment_id": "f85787c2-831b-48ad-a72f-d5dbe712f5a6",
+      "source_ref": "mail_gold_v2_448_scn_2025",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达28周年全业务分享｜诚邀您推荐给相关需求团队"
+    },
+    {
+      "fragment_id": "a96036a5-a830-4653-88f4-dda4e8d9fff3",
+      "source_ref": "mail_gold_v2_494_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "某化工客户---事必达合作"
+    },
+    {
+      "fragment_id": "515f55f9-1319-4c53-8147-bd02a6f48e84",
+      "source_ref": "mail_gold_v2_566_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "继续为您提供多业务支持"
+    },
+    {
+      "fragment_id": "ababb363-bd2d-4c70-a540-d497cfdd9743",
+      "source_ref": "mail_gold_v2_571_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "继续为您提供多业务支持"
+    },
+    {
+      "fragment_id": "776384ee-b423-4fd6-b4b3-a06a5d77cb0a",
+      "source_ref": "mail_gold_v2_572_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "0个工作日~~80000字翻译~~无数专业词汇~~"
+    },
+    {
+      "fragment_id": "4576a517-13b3-49c2-9e65-13301becdc83",
+      "source_ref": "mail_gold_v2_582_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "[发件人]的问候，万事顺遂"
+    },
+    {
+      "fragment_id": "89df56ab-d9c6-4b84-a28f-9c757c6a9033",
+      "source_ref": "mail_gold_v2_584_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "[发件人]的问候，恭喜发财"
+    },
+    {
+      "fragment_id": "67984f46-9c25-416b-8379-9c9d0364b53f",
+      "source_ref": "mail_gold_v2_757_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "梅赛尼斯贸易（上海）有限公司一体化服务合作伙伴"
+    },
+    {
+      "fragment_id": "26431ee4-41b6-4e91-8b4b-4d1e3cb3b506",
+      "source_ref": "mail_gold_v2_789_scn_2024",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达翻译印刷--Michelia"
+    },
+    {
+      "fragment_id": "f10b27bf-bdbf-4da9-b575-3e153b85e058",
+      "source_ref": "mail_gold_v2_931_scn_2023",
+      "review_status": null,
+      "flags": [
+        "time_or_festival_left"
+      ],
+      "title": "事必达助力企业视频宣传"
+    }
+  ]
+}

@@ -2134,22 +2134,54 @@ class IntentEngine:
             # 2. 向量嵌入生成
             qvec = cls.get_embedding(normalized_query_text)
 
-            # 3. 检查当前表内是否有任何非 null 的向量，来决定是否直接回退到纯词法检索
-            has_vectors = False
-            if qvec:
-                first_vector = db.query(LlmServiceKnowledgeUnit.unit_id).filter(
-                    LlmServiceKnowledgeUnit.embedding.isnot(None)
-                ).first()
-                if first_vector:
-                    has_vectors = True
+            # 3. 分开记录“库内有向量”和“本次 query 成功生成向量”，避免把 embed 失败误记成库没向量。
+            first_vector = db.query(LlmServiceKnowledgeUnit.unit_id).filter(
+                LlmServiceKnowledgeUnit.embedding.isnot(None)
+            ).first()
+            has_vectors = bool(first_vector)
+            query_embedding_available = bool(qvec)
+            semantic_search_enabled = has_vectors and query_embedding_available
 
             filters_used["has_vectors_in_db"] = has_vectors
+            filters_used["query_embedding_available"] = query_embedding_available
+            filters_used["semantic_search_enabled"] = semantic_search_enabled
+
+            requested_knowledge_types = features.get("knowledge_type") or []
+            if isinstance(requested_knowledge_types, str):
+                requested_knowledge_types = [requested_knowledge_types]
+            requested_knowledge_types = [
+                str(item).strip().lower()
+                for item in requested_knowledge_types
+                if str(item or "").strip()
+            ]
+
+            def kb3_knowledge_type_filter():
+                if not requested_knowledge_types:
+                    return None
+                clauses = []
+                if "faq" in requested_knowledge_types:
+                    clauses.append(LlmServiceKnowledgeUnit.unit_type == "faq")
+                if "process" in requested_knowledge_types:
+                    clauses.append(LlmServiceKnowledgeUnit.knowledge_type.in_(["流程规范", "技术处理"]))
+                if "capability" in requested_knowledge_types:
+                    clauses.append(LlmServiceKnowledgeUnit.knowledge_type.in_(["产品知识", "案例"]))
+                if "pricing" in requested_knowledge_types:
+                    price_terms = ["报价", "价格", "费用", "收费", "单价", "付款", "发票", "税点", "加急费", "最低收费"]
+                    clauses.extend(
+                        LlmServiceKnowledgeUnit.search_text.ilike(f"%{term}%")
+                        for term in price_terms
+                    )
+                return or_(*clauses) if clauses else None
+
+            knowledge_type_clause = kb3_knowledge_type_filter()
+            filters_used["knowledge_type_filter_requested"] = requested_knowledge_types
+            filters_used["knowledge_type_filter_applied"] = bool(knowledge_type_clause is not None)
 
             # 4. 执行召回
             hits_by_id = {}
 
-            # 4.1 语义召回 (仅在有向量时运行)
-            if has_vectors and qvec:
+            # 4.1 语义召回 (仅在有向量且本次 query embedding 可用时运行)
+            if semantic_search_enabled:
                 try:
                     sem_query = db.query(
                         LlmServiceKnowledgeUnit,
@@ -2170,6 +2202,9 @@ class IntentEngine:
                                 LlmServiceKnowledgeUnit.scope == "cross"
                             )
                         )
+
+                    if knowledge_type_clause is not None:
+                        sem_query = sem_query.filter(knowledge_type_clause)
 
                     sem_results = sem_query.order_by(
                         LlmServiceKnowledgeUnit.embedding.cosine_distance(qvec)
@@ -2209,6 +2244,9 @@ class IntentEngine:
                             LlmServiceKnowledgeUnit.scope == "cross"
                         )
                     )
+
+                if knowledge_type_clause is not None:
+                    trgm_query = trgm_query.filter(knowledge_type_clause)
 
                 # Token-based ilike fallback
                 tokens = cls._tokenize_query_text(normalized_query_text)
@@ -2260,6 +2298,9 @@ class IntentEngine:
                     else:
                         backup_query = backup_query.filter(LlmServiceKnowledgeUnit.status.in_(["confirmed", "pending"]))
 
+                    if knowledge_type_clause is not None:
+                        backup_query = backup_query.filter(knowledge_type_clause)
+
                     backup_results = backup_query.limit(top_k).all()
                     for unit in backup_results:
                         hits_by_id[unit.unit_id] = {
@@ -2271,8 +2312,75 @@ class IntentEngine:
                 except Exception as e:
                     logger.warning(f"KB3 全库兜底检索失败: {e}")
 
-            # 5. 排序、重排与截断
-            sorted_candidates = sorted(hits_by_id.values(), key=lambda x: x["final_score"], reverse=True)
+            # 5. 业务重排：保留 embedding 语义分，再按当前问题类型给可直接回答的知识轻量加权。
+            def kb3_business_rerank_bonus(unit) -> float:
+                query = normalized_query_text or ""
+                title = unit.title or ""
+                content = unit.content or ""
+                keywords = " ".join(str(item) for item in (unit.keywords or [])) if isinstance(unit.keywords, list) else str(unit.keywords or "")
+                haystack = f"{title} {content} {keywords} {unit.knowledge_type or ''} {unit.unit_type or ''}".lower()
+                qualification_intent = any(term in query for term in ["资质", "营业执照", "翻译专用章", "认证", "工商", "公安", "公证", "盖章", "单位认"])
+                audit_report_intent = any(term in query for term in ["审计报告", "财报", "年报"])
+                payment_intent = any(term in query for term in ["付款", "发票", "开票", "报价", "价格", "费用"])
+                bonus = 0.0
+
+                if qualification_intent:
+                    for term, weight in [
+                        ("资质", 0.075),
+                        ("营业执照", 0.07),
+                        ("翻译专用章", 0.07),
+                        ("盖章", 0.045),
+                        ("工商", 0.04),
+                        ("公证", 0.035),
+                        ("认证", 0.03),
+                    ]:
+                        if term in haystack:
+                            bonus += weight
+                    if unit.unit_type == "faq":
+                        bonus += 0.025
+                    if unit.knowledge_type in {"产品知识", "流程规范"}:
+                        bonus += 0.02
+                    if any(term in haystack for term in ["字段", "统一", "校正", "registration number", "vat number"]):
+                        bonus -= 0.08
+                    if not payment_intent and any(term in haystack for term in ["开票", "审批", "加急", "付款"]):
+                        bonus -= 0.06
+                    if unit.knowledge_type in {"销售技巧", "案例"}:
+                        bonus -= 0.035
+
+                if audit_report_intent:
+                    if "审计报告" in haystack:
+                        bonus += 0.035 if not qualification_intent else 0.015
+                    if unit.knowledge_type == "案例" and not qualification_intent:
+                        bonus += 0.025
+
+                if payment_intent:
+                    for term, weight in [("报价", 0.04), ("付款", 0.04), ("发票", 0.035), ("开票", 0.035), ("费用", 0.03), ("价格", 0.03)]:
+                        if term in haystack:
+                            bonus += weight
+
+                if service_category and unit.service_category == service_category:
+                    bonus += 0.015
+                elif unit.scope == "cross":
+                    bonus -= 0.015
+
+                return max(-0.10, min(0.12, bonus))
+
+            rerank_debug = []
+            for cand in hits_by_id.values():
+                bonus = kb3_business_rerank_bonus(cand["unit"])
+                cand["rerank_bonus"] = bonus
+                cand["rerank_score"] = max(0.0, min(1.0, cand["final_score"] + bonus))
+                rerank_debug.append({
+                    "unit_id": str(cand["unit"].unit_id),
+                    "base_score": round(cand["final_score"], 6),
+                    "rerank_bonus": round(bonus, 6),
+                    "rerank_score": round(cand["rerank_score"], 6),
+                })
+            filters_used["business_rerank"] = {
+                "enabled": True,
+                "top_debug": sorted(rerank_debug, key=lambda item: item["rerank_score"], reverse=True)[:top_k],
+            }
+            sorted_candidates = sorted(hits_by_id.values(), key=lambda x: x.get("rerank_score", x["final_score"]), reverse=True)
             top_candidates = sorted_candidates[:top_k]
 
             # 6. 对齐返回格式
@@ -2280,7 +2388,7 @@ class IntentEngine:
             replyable_hits = []
             for cand in top_candidates:
                 unit = cand["unit"]
-                score = cand["final_score"]
+                score = cand.get("rerank_score", cand["final_score"])
                 sem_score = cand["semantic_score"]
                 kw_score = cand["keyword_score"]
 

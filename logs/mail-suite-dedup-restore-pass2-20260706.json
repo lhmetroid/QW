@@ -1,0 +1,516 @@
+2026-07-06 14:28:21 | ERROR | main | ���ݿⲹ��ִ���쳣 (���������Ѵ���): (psycopg.errors.LockNotAvailable) ��������ʱ��ȡ��������
+[SQL: ALTER TABLE intent_summaries ALTER COLUMN user_id TYPE VARCHAR(120);]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-07-06 14:28:21 | INFO | mail_scheduler | [scheduler] loaded 0 schedules from DB
+2026-07-06 14:28:21 | INFO | apscheduler.scheduler | Scheduler started
+2026-07-06 14:28:21 | INFO | mail_scheduler | [scheduler] started
+2026-07-06 14:28:21 | INFO | main | �ʼ�ͬ������ʼ����ɣ�������������
+2026-07-06 14:28:27 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:27 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:27 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:27 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:28 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:28 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:28 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:28 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:29 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:29 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:29 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:29 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:29 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:29 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:29 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:30 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:30 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:30 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:30 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:30 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:31 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:31 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:31 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:31 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:31 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:31 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:31 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:31 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:32 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:32 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:32 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:32 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:32 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:32 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:32 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:32 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:33 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:33 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:33 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:33 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:33 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:33 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:33 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:34 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:34 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:34 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:34 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:34 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:35 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:35 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:35 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:35 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:35 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:35 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:35 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:35 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:35 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:35 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:35 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:35 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:36 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:36 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:36 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:36 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:36 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:36 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:37 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:37 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:37 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:37 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:37 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:37 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:38 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:38 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:38 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:38 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:38 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:38 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:38 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:38 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:39 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:39 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:39 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:39 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:39 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:39 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:39 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:39 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:40 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:40 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:40 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:40 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:41 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:41 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:41 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:41 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:41 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:42 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:42 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:42 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:42 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:42 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:42 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:42 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:43 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:43 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:43 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:43 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:44 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:44 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:44 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:44 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+2026-07-06 14:28:44 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:28:44 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:28:44 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:28:44 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.
+{
+  "day": "2026-07-06",
+  "started_at": "2026-07-06T14:28:21",
+  "finished_at": "2026-07-06T14:28:45",
+  "policy": "restore duplicate_skipped rows only when no same staff/customer/step/email enqueued row and no CRM rowid/send_id; backfill masked recipient_email_key",
+  "backfilled_recipient_keys": 1550,
+  "restored_count": 29,
+  "skipped_count": 0,
+  "restored_by_staff": {
+    "0002": 6,
+    "0141": 23
+  },
+  "restored": [
+    {
+      "plan_id": "6fad80e8-c2cd-47da-8626-6a9e4a468606",
+      "staff_id": "0002",
+      "customer_id": "KH15616-026",
+      "scenario": "new_business_promotion",
+      "suite_step": 4,
+      "plan_send_time": "2026-09-17T11:35:00",
+      "subject": "��ҵ���ʻ���ͨ��������˼��",
+      "spqueue_rowid": "480b8881-0d8c-4336-a239-8eceec072b9f",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\e91871958552451c8169c5f622d359f4",
+      "eml_bytes": 5703
+    },
+    {
+      "plan_id": "72c410b7-5422-4df9-8cd1-57c5765457dd",
+      "staff_id": "0002",
+      "customer_id": "KH15616-030",
+      "scenario": "new_business_promotion",
+      "suite_step": 4,
+      "plan_send_time": "2026-09-17T10:15:00",
+      "subject": "��ҵ���ʻ���ͨ���ڷ����ı仯����һ����ҵ�۲�",
+      "spqueue_rowid": "7f19bb66-ece7-4597-953b-63ef6cc22faa",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\d7b627db1ed546a78848d44af5cf33fb",
+      "eml_bytes": 8174
+    },
+    {
+      "plan_id": "116a70b3-812e-4898-9bb7-8203dbbdd93c",
+      "staff_id": "0002",
+      "customer_id": "KH15616-032",
+      "scenario": "new_business_promotion",
+      "suite_step": 4,
+      "plan_send_time": "2026-09-17T11:30:00",
+      "subject": "��ҵ���ʻ���ͨ�е���������Ӧ��˼·",
+      "spqueue_rowid": "aad842f2-2d4e-479a-8434-e4ec3b863ee2",
+      "crm_send_id": "Mal_S260706-000076",
+      "eml_ftp_path": "2026\\07\\06\\073a51a99fbf49c39e516ed2cf9dbf79",
+      "eml_bytes": 5739
+    },
+    {
+      "plan_id": "411b0535-1560-4c3e-ae84-ae3f20913888",
+      "staff_id": "0002",
+      "customer_id": "KH15616-033",
+      "scenario": "new_business_promotion",
+      "suite_step": 4,
+      "plan_send_time": "2026-09-17T11:25:00",
+      "subject": "��ҵ���ʻ���ͨ��������˼��",
+      "spqueue_rowid": "f0f55d37-85ef-44b3-ba43-92dbf987fac7",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\94d5a424f2a84b6ea8b6fed27a4a6dd1",
+      "eml_bytes": 7522
+    },
+    {
+      "plan_id": "04ac5b17-f630-4ca6-8ac1-e558a6999187",
+      "staff_id": "0002",
+      "customer_id": "KH15616-058",
+      "scenario": "new_business_promotion",
+      "suite_step": 1,
+      "plan_send_time": "2026-07-06T11:15:00",
+      "subject": "���ʻ���ͨ������һ��ο�",
+      "spqueue_rowid": "93460b0c-06d2-491e-84a5-a73e7102ce46",
+      "crm_send_id": "Mal_S260706-000078",
+      "eml_ftp_path": "2026\\07\\06\\a514f8e7a9d64e33b129590c1c18f1f1",
+      "eml_bytes": 4524
+    },
+    {
+      "plan_id": "0ea6546d-a125-4921-ad84-5506b94b8395",
+      "staff_id": "0002",
+      "customer_id": "KH15616-064",
+      "scenario": "new_business_promotion",
+      "suite_step": 4,
+      "plan_send_time": "2026-09-17T11:00:00",
+      "subject": "���ʻ���ͨ�����£���ҵ����ͬ���ļ���۲�",
+      "spqueue_rowid": "54f5383d-dd7d-4e5c-bd4c-20279a638b91",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\f32a44b12b854fd9abc9841cd7a901c4",
+      "eml_bytes": 6646
+    },
+    {
+      "plan_id": "b9ce9aeb-c87c-427c-8e86-09334f4c423a",
+      "staff_id": "0141",
+      "customer_id": "KH00242-686",
+      "scenario": "re_activation",
+      "suite_step": 4,
+      "plan_send_time": "2026-08-29T09:05:00",
+      "subject": "��ҵ���ʻ���ͨ�е���������Ӧ��˼·",
+      "spqueue_rowid": "bb1bed0b-b6fb-4c08-ad03-f4c8bd7dad49",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\1771333aaf854ed7b0d5e4724778d281",
+      "eml_bytes": 7558
+    },
+    {
+      "plan_id": "3776f7a4-7cf1-4b64-b9fd-513217d139db",
+      "staff_id": "0141",
+      "customer_id": "KH00907-110",
+      "scenario": "re_activation",
+      "suite_step": 3,
+      "plan_send_time": "2026-08-04T09:55:00",
+      "subject": "���������������ʻ���ͨ����ؾ��飬�����ο�",
+      "spqueue_rowid": "4bf6290a-2dfd-4585-97f8-2749c1e2b032",
+      "crm_send_id": "Mal_S260706-000092",
+      "eml_ftp_path": "2026\\07\\06\\1248d9d2ae054452af9b20b7f78331c3",
+      "eml_bytes": 8390
+    },
+    {
+      "plan_id": "6776a7d4-dd32-4659-9bf2-cd468b60b9d1",
+      "staff_id": "0141",
+      "customer_id": "KH00907-114",
+      "scenario": "re_activation",
+      "suite_step": 3,
+      "plan_send_time": "2026-08-04T09:40:00",
+      "subject": "���������������ʻ���ͨ����ؾ���",
+      "spqueue_rowid": "cbd3252f-febc-4ff8-917c-2e3a324d2f0b",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\de72b9a92cb94306a9f4c9537b04b0b1",
+      "eml_bytes": 6921
+    },
+    {
+      "plan_id": "642df81a-97f0-4d53-a012-bbf53ba4206a",
+      "staff_id": "0141",
+      "customer_id": "KH00907-114",
+      "scenario": "re_activation",
+      "suite_step": 4,
+      "plan_send_time": "2026-08-29T09:40:00",
+      "subject": "��ҵ���ʻ���ͨ�е���������Ӧ��˼·",
+      "spqueue_rowid": "b0251615-a7c9-4185-8328-031e2d73d145",
+      "crm_send_id": "Mal_S260706-000094",
+      "eml_ftp_path": "2026\\07\\06\\ed28f2b96a9841848552a4d425d92266",
+      "eml_bytes": 8727
+    },
+    {
+      "plan_id": "7c2018b6-4cb7-412a-b271-1a64f1e0fa5c",
+      "staff_id": "0141",
+      "customer_id": "KH00907-115",
+      "scenario": "re_activation",
+      "suite_step": 3,
+      "plan_send_time": "2026-08-04T09:35:00",
+      "subject": "���������������ʻ���ͨ����ؾ���",
+      "spqueue_rowid": "0f11a33b-2cc7-40fb-bb0f-3b92f6da7a81",
+      "crm_send_id": "Mal_S260706-000095",
+      "eml_ftp_path": "2026\\07\\06\\5203b6aa9847440b9620aac01b8625ee",
+      "eml_bytes": 6990
+    },
+    {
+      "plan_id": "2d194890-240e-42fc-bc40-dabbed5ea6b4",
+      "staff_id": "0141",
+      "customer_id": "KH00907-115",
+      "scenario": "re_activation",
+      "suite_step": 4,
+      "plan_send_time": "2026-08-29T09:35:00",
+      "subject": "��ҵ���ʻ���ͨ�е���������Ӧ��˼·",
+      "spqueue_rowid": "20471386-9a91-46c4-bff3-a6694adef913",
+      "crm_send_id": "Mal_S260706-000096",
+      "eml_ftp_path": "2026\\07\\06\\4cfec09172d9488fadc82385bde88a27",
+      "eml_bytes": 7626
+    },
+    {
+      "plan_id": "db32680e-98ac-4b29-98c6-13808a824281",
+      "staff_id": "0141",
+      "customer_id": "KH00907-117",
+      "scenario": "re_activation",
+      "suite_step": 3,
+      "plan_send_time": "2026-08-04T09:25:00",
+      "subject": "���������������ʻ���ͨ����ؾ���",
+      "spqueue_rowid": "70904184-a34c-4ab0-8c59-f7e5c48a19b7",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\6cea762431814800b60c1b2089f63535",
+      "eml_bytes": 7151
+    },
+    {
+      "plan_id": "c10f912a-b044-4fd6-aa9f-c515ec650312",
+      "staff_id": "0141",
+      "customer_id": "KH00907-117",
+      "scenario": "re_activation",
+      "suite_step": 4,
+      "plan_send_time": "2026-08-29T09:25:00",
+      "subject": "��ҵ���ʻ���ͨ�е���������Ӧ��˼·",
+      "spqueue_rowid": "76baa77e-39e1-4762-bbc5-3cd80e403eea",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\4a6c47ef48774133b0c0b0af7a2e42c7",
+      "eml_bytes": 7245
+    },
+    {
+      "plan_id": "22c4495c-32fe-44ea-b43f-77e2e228d2ba",
+      "staff_id": "0141",
+      "customer_id": "KH00907-118",
+      "scenario": "re_activation",
+      "suite_step": 3,
+      "plan_send_time": "2026-08-04T09:20:00",
+      "subject": "���������������ʻ���ͨ�����˼·",
+      "spqueue_rowid": "256923d4-a980-4c93-a236-90a3b869eeb1",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\c45adca30d5c455bb646fa0ba13f224f",
+      "eml_bytes": 7131
+    },
+    {
+      "plan_id": "8342556f-5ddd-4823-a10c-78670eefa404",
+      "staff_id": "0141",
+      "customer_id": "KH00907-118",
+      "scenario": "re_activation",
+      "suite_step": 4,
+      "plan_send_time": "2026-08-29T09:20:00",
+      "subject": "��ҵ���ʻ���ͨ�е���������Ӧ��˼·",
+      "spqueue_rowid": "96bba412-929c-4f8d-b37b-42d275df75c4",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\6f088bf3aa704754bf9014e16064d9c3",
+      "eml_bytes": 9149
+    },
+    {
+      "plan_id": "d8e0688d-191b-40de-9272-9f58455ef4d9",
+      "staff_id": "0141",
+      "customer_id": "KH00907-120",
+      "scenario": "re_activation",
+      "suite_step": 4,
+      "plan_send_time": "2026-08-29T09:15:00",
+      "subject": "��ҵ���ʻ���ͨ�е���������Ӧ��˼·",
+      "spqueue_rowid": "34c037bd-4836-4deb-b2fb-635131eae2aa",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\a274b601a88c4871a5a1977ab4e0d0a9",
+      "eml_bytes": 6927
+    },
+    {
+      "plan_id": "266223d7-1fdb-4ff1-baee-96d6de74d42c",
+      "staff_id": "0141",
+      "customer_id": "KH00907-126",
+      "scenario": "re_activation",
+      "suite_step": 2,
+      "plan_send_time": "2026-07-16T09:50:00",
+      "subject": "�ӷ��뵽һվʽ���ʻ������±ش��������˼��",
+      "spqueue_rowid": "5b9497fd-9414-4175-af4e-318b6b041cd4",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\5a761bf7fd0f433ca79ead03ef961862",
+      "eml_bytes": 6466
+    },
+    {
+      "plan_id": "4ab2f740-2078-4393-a1f4-fa7e4bf088f1",
+      "staff_id": "0141",
+      "customer_id": "KH00907-126",
+      "scenario": "re_activation",
+      "suite_step": 4,
+      "plan_send_time": "2026-08-29T09:10:00",
+      "subject": "��ҵ���ʻ���ͨ�е���������Ӧ��˼·",
+      "spqueue_rowid": "23bc4deb-76e0-4205-a4db-daa300bb674e",
+      "crm_send_id": "Mal_S260706-000103",
+      "eml_ftp_path": "2026\\07\\06\\95a2b7af10534e5ca652105148c83bec",
+      "eml_bytes": 7698
+    },
+    {
+      "plan_id": "89829a26-c868-4e65-9bdf-c809870f43c2",
+      "staff_id": "0141",
+      "customer_id": "KH01129-018",
+      "scenario": "re_activation",
+      "suite_step": 1,
+      "plan_send_time": "2026-07-06T09:50:00",
+      "subject": "���ڱ�����Ŀ��������ʻ���ͨ��һ���뷨",
+      "spqueue_rowid": "683bf3be-8923-471e-8a8c-56b4e0d269a5",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\b6072f8d4dca45c889134a0d4a6ca2c2",
+      "eml_bytes": 5521
+    },
+    {
+      "plan_id": "45367f09-8a82-4509-b2df-adcfd9d70ae0",
+      "staff_id": "0141",
+      "customer_id": "KH01129-060",
+      "scenario": "re_activation",
+      "suite_step": 4,
+      "plan_send_time": "2026-09-09T09:20:00",
+      "subject": "��ҵ���ʻ���ͨ�е���������Ӧ��˼·",
+      "spqueue_rowid": "5fc7771b-664e-4c18-94ac-4621708f59af",
+      "crm_send_id": "Mal_S260706-000105",
+      "eml_ftp_path": "2026\\07\\06\\ad80cf1084ff45b19432c99c01b2568f",
+      "eml_bytes": 8126
+    },
+    {
+      "plan_id": "7c1babe9-d4f8-440e-be08-5bb6f5f8e31c",
+      "staff_id": "0141",
+      "customer_id": "KH01129-063",
+      "scenario": "re_activation",
+      "suite_step": 3,
+      "plan_send_time": "2026-08-10T09:25:00",
+      "subject": "��������ʵ���������ʻ���ͨ����ؾ���",
+      "spqueue_rowid": "5d4c6448-3929-41aa-a06e-d36f398feb6e",
+      "crm_send_id": "Mal_S260706-000106",
+      "eml_ftp_path": "2026\\07\\06\\3c3d6c9c55df46db81453ad61fc66d1e",
+      "eml_bytes": 6937
+    },
+    {
+      "plan_id": "d0116ab4-a531-4d9a-a02e-4a2390b45269",
+      "staff_id": "0141",
+      "customer_id": "KH01129-096",
+      "scenario": "re_activation",
+      "suite_step": 4,
+      "plan_send_time": "2026-09-09T09:45:00",
+      "subject": "��ҵ���ʻ���ͨ�е���������Ӧ��˼·",
+      "spqueue_rowid": "c4a71750-78f6-4b14-a0a4-ecdbc30528a8",
+      "crm_send_id": "Mal_S260706-000107",
+      "eml_ftp_path": "2026\\07\\06\\49c91e6a967943c5b16f0f6fb5a81ec1",
+      "eml_bytes": 6784
+    },
+    {
+      "plan_id": "581c103a-3551-4493-9eaf-a95c5929dde0",
+      "staff_id": "0141",
+      "customer_id": "KH01129-103",
+      "scenario": "re_activation",
+      "suite_step": 2,
+      "plan_send_time": "2026-07-20T09:55:00",
+      "subject": "�ӷ��뵽һվʽ���ʻ������±ش��������˼��",
+      "spqueue_rowid": "4f5046aa-a137-4cc0-9863-b4816414f7c1",
+      "crm_send_id": "Mal_S260706-000108",
+      "eml_ftp_path": "2026\\07\\06\\af1f3d38167d4ed2a3c92934c0d56250",
+      "eml_bytes": 7120
+    },
+    {
+      "plan_id": "609c1e4b-6726-42d7-ac67-9d9c6dc5f15e",
+      "staff_id": "0141",
+      "customer_id": "KH01129-121",
+      "scenario": "re_activation",
+      "suite_step": 2,
+      "plan_send_time": "2026-07-20T10:15:00",
+      "subject": "�ӷ��뵽���ʻ������±ش��������������",
+      "spqueue_rowid": "75c37923-5bad-41bc-9e0c-0f6b9a9726fe",
+      "crm_send_id": null,
+      "eml_ftp_path": "2026\\07\\06\\59a8ccb87b0e417d80ca5c85474c60a1",
+      "eml_bytes": 6562
+    },
+    {
+      "plan_id": "89ef8070-e0a5-4265-8d89-cdc46936adf6",
+      "staff_id": "0141",
+      "customer_id": "KH01129-121",
+      "scenario": "re_activation",
+      "suite_step": 3,
+      "plan_send_time": "2026-08-10T10:10:00",
+      "subject": "���������������ʻ���ͨ����ؾ���",
+      "spqueue_rowid": "dfb0f071-c823-4c8f-96db-fe5733073116",
+      "crm_send_id": "Mal_S260706-000110",
+      "eml_ftp_path": "2026\\07\\06\\37e6f093d69441c4be6f92f7401945c9",
+      "eml_bytes": 6882
+    },
+    {
+      "plan_id": "b4bb5635-bfd8-4ab3-9e5d-1ed3bad4fb47",
+      "staff_id": "0141",
+      "customer_id": "KH01129-144",
+      "scenario": "re_activation",
+      "suite_step": 3,
+      "plan_send_time": "2026-08-10T09:40:00",
+      "subject": "���������������ʻ���ͨ����ؾ���",
+      "spqueue_rowid": "8eb86c9f-fb60-4000-9e49-b75e525458ca",
+      "crm_send_id": "Mal_S260706-000111",
+      "eml_ftp_path": "2026\\07\\06\\96f16e7835524ef59e0f0770bafc6500",
+      "eml_bytes": 7119
+    },
+    {
+      "plan_id": "86f92f8b-b50c-479a-b2a7-9398758d47d2",
+      "staff_id": "0141",
+      "customer_id": "KH01129-144",
+      "scenario": "re_activation",
+      "suite_step": 4,
+      "plan_send_time": "2026-09-09T09:40:00",
+      "subject": "��ҵ���ʻ���ͨ�е���������Ӧ��˼·",
+      "spqueue_rowid": "a42f503d-c566-44df-846d-bbd813974116",
+      "crm_send_id": "Mal_S260706-000112",
+      "eml_ftp_path": "2026\\07\\06\\cd7ffd920a8948dd86025c1f8501937d",
+      "eml_bytes": 8018
+    },
+    {
+      "plan_id": "1cb4307b-775a-4749-997c-0df974ca602c",
+      "staff_id": "0141",
+      "customer_id": "KH01129-158",
+      "scenario": "re_activation",
+      "suite_step": 3,
+      "plan_send_time": "2026-08-10T09:10:00",
+      "subject": "���������������ʻ���ͨ����ؾ���",
+      "spqueue_rowid": "c486713c-0915-4885-8ec0-4470a1218b45",
+      "crm_send_id": "Mal_S260706-000113",
+      "eml_ftp_path": "2026\\07\\06\\07080eb90bc044589dbc0f58013555f5",
+      "eml_bytes": 7216
+    }
+  ],
+  "skipped": []
+}

@@ -1,0 +1,9 @@
+2026-07-06 14:31:20 | INFO | main | ���ݿ� Schema �Զ����/�޸����
+2026-07-06 14:31:20 | INFO | mail_scheduler | [scheduler] loaded 0 schedules from DB
+2026-07-06 14:31:20 | INFO | apscheduler.scheduler | Scheduler started
+2026-07-06 14:31:20 | INFO | mail_scheduler | [scheduler] started
+2026-07-06 14:31:20 | INFO | main | �ʼ�ͬ������ʼ����ɣ�������������
+2026-07-06 14:31:26 | INFO | paramiko.transport | Connected (version 2.0, client Serv-U_15.1.6.25)
+2026-07-06 14:31:26 | INFO | paramiko.transport | Authentication (password) successful!
+2026-07-06 14:31:26 | INFO | paramiko.transport.sftp | [chan 0] Opened sftp connection (server version 3)
+2026-07-06 14:31:26 | INFO | paramiko.transport.sftp | [chan 0] sftp session closed.

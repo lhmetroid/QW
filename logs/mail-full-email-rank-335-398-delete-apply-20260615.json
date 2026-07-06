@@ -1,0 +1,74 @@
+{
+  "mode": "apply",
+  "target_ranks": [
+    335,
+    336,
+    345,
+    350,
+    362,
+    369,
+    370,
+    397,
+    398
+  ],
+  "matched_asset_count": 9,
+  "matched_review_count": 0,
+  "matched_assets": [
+    {
+      "rank": 335,
+      "fragment_id": "51106de5-e8f4-40e0-8325-8f07008543f2",
+      "source_ref": "mail_gold_v2_335_scn_2025",
+      "title": "翻译印刷长期协议"
+    },
+    {
+      "rank": 336,
+      "fragment_id": "a286e230-163d-445e-ac4d-da9c64afcc80",
+      "source_ref": "mail_gold_v2_336_scn_2025",
+      "title": "DEI同传会议翻译"
+    },
+    {
+      "rank": 345,
+      "fragment_id": "2a208211-d576-4bc4-8c0b-c37968c11d3f",
+      "source_ref": "mail_gold_v2_345_scn_2025",
+      "title": "某工业客户 产品宣传资料"
+    },
+    {
+      "rank": 350,
+      "fragment_id": "cdf2b4aa-98c8-4408-96c4-bdee9166d1f6",
+      "source_ref": "mail_gold_v2_350_scn_2025",
+      "title": "继续为您提供多业务支持"
+    },
+    {
+      "rank": 362,
+      "fragment_id": "f83a4c41-3e41-4a37-933c-aec6a46287f0",
+      "source_ref": "mail_gold_v2_362_scn_2025",
+      "title": "某客户同传安全培训"
+    },
+    {
+      "rank": 369,
+      "fragment_id": "c5b12606-ac8a-4310-a07d-09bb1f8d64a3",
+      "source_ref": "mail_gold_v2_369_scn_2025",
+      "title": "与您分享可参考的综合服务场景"
+    },
+    {
+      "rank": 370,
+      "fragment_id": "f8921843-636d-4639-b162-23b4b5b311a7",
+      "source_ref": "mail_gold_v2_370_scn_2025",
+      "title": "与您分享可参考的综合服务场景"
+    },
+    {
+      "rank": 397,
+      "fragment_id": "5fe4b52e-ab0c-42b4-adf6-73fe69bd31fe",
+      "source_ref": "mail_gold_v2_397_scn_2025",
+      "title": "企业会议同传"
+    },
+    {
+      "rank": 398,
+      "fragment_id": "245d2a63-b178-4190-9686-cacd032586a1",
+      "source_ref": "mail_gold_v2_398_scn_2025",
+      "title": "与您分享可参考的综合服务场景"
+    }
+  ],
+  "remaining_target_ranks_after_apply": [],
+  "backup": "logs\\mail-full-email-rank-335-398-delete-backup-apply-20260615.json"
+}
