@@ -813,7 +813,7 @@
               <button type="button" onclick="as2SelectAll(true)" class="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50">全选(已生成)</button>
               <button type="button" onclick="as2SelectInvert()" class="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50">反选</button>
               <button type="button" onclick="as2SelectAll(false)" class="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50">清空选择</button>
-              <button type="button" onclick="as2Commit()" class="rounded bg-emerald-600 px-3 py-1 font-bold text-white hover:bg-emerald-700" title="把勾选的已生成邮件同步保存进ERP(CRM)待发队列, 到点由系统按计划发送">同步保存ERP系统</button>
+              <button type="button" id="as2-commit-btn" onclick="as2Commit()" class="rounded bg-emerald-600 px-3 py-1 font-bold text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed" title="把勾选的已生成邮件同步保存进ERP(CRM)待发队列, 到点由系统按计划发送">同步保存ERP系统</button>
             </div>
           </div>
           <div class="overflow-auto max-h-[460px]">
@@ -2254,7 +2254,16 @@
     let as2Selected = new Set();
     let as2GenTimer = null;
     let as2GenerateBusy = false;
+    let as2CommitBusy = false;   // 同步保存ERP进行中: 关页/跳转时拦截提示
     const AS2_BUSINESS_LINES = ['笔译', '口译', '同传设备租赁', '设计印刷', '印刷', '输入排版', '多媒体译制', '礼品', '复印装订', '运输'];
+
+    // 同步保存ERP进行中, 关闭/刷新页面时浏览器弹原生确认(是否离开)
+    window.addEventListener('beforeunload', (e) => {
+      if (!as2CommitBusy) return;
+      e.preventDefault();
+      e.returnValue = '正在同步保存进ERP(CRM), 离开会中断未完成的邮件。确定要离开吗?';
+      return e.returnValue;
+    });
 
     function as2Esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
     function as2Status(msg, bad) { const el = document.getElementById('as2-status'); if (el) { el.textContent = msg || ''; el.style.color = bad ? '#dc2626' : '#64748b'; } }
@@ -2498,9 +2507,13 @@
       else if (st === 'failed') { cls += 'border-rose-300 bg-rose-50 text-rose-700'; label = '✗ ' + date; }
       else { cls += 'border-slate-200 bg-white text-slate-500'; label = '排 ' + date; }
       const reasonTag = it.pick_reason && it.pick_reason !== 'matched' ? `<span class="text-[10px] text-violet-500">${as2Esc({ remaining: '补', resend: '重', fallback: '兜' }[it.pick_reason] || '')}</span>` : '';
-      // 已同步ERP待发(committed/sent)不再显示勾选框; 仅"已生成脚本(drafted)"可勾选转入
-      const chk = st === 'drafted' ? `<input type="checkbox"${checked} onchange="as2ToggleSelect('${it.item_id}')">` : '';
-      return `<div class="flex items-center gap-1">${chk}<button type="button" class="${cls}" onclick="as2OpenDetail('${it.item_id}')" title="${as2Esc(it.subject || st)}">${label}</button>${reasonTag}</div>`;
+      // 时间格不再点开邮件详情(详情改由联系人名进入); 已生成脚本(drafted)可勾选转入, 点时间=等同勾选框
+      if (st === 'drafted') {
+        const selCls = checked ? ' ring-2 ring-emerald-400' : '';
+        const chk = `<input type="checkbox"${checked} onchange="as2ToggleSelect('${it.item_id}');as2RenderPlan()">`;
+        return `<div class="flex items-center gap-1">${chk}<button type="button" class="${cls}${selCls} cursor-pointer" onclick="as2ToggleSelect('${it.item_id}');as2RenderPlan()" title="点击=勾选/取消该封转入CRM">${label}</button>${reasonTag}</div>`;
+      }
+      return `<div class="flex items-center gap-1"><span class="${cls}" title="${as2Esc(st)}">${label}</span>${reasonTag}</div>`;
     }
     function as2PlanGroups(items) {
       const groups = {};
@@ -2626,40 +2639,58 @@
       const d = new Date(ds + 'T00:00:00');
       return Math.max(0, Math.round((d - today) / 86400000));
     }
-    async function as2CommitItems(ids) {
+    // 单封转入CRM: 返回 'ok' | 'fail' | 'skip'(非已生成脚本, 不处理)
+    async function as2CommitOne(id) {
+      const it = as2PlanItems.find((x) => x.item_id === id);
+      if (!it || it.status !== 'drafted') return 'skip';
+      try {
+        const dr = await fetch('/api/v1/mail/autosend/plan-item?item_id=' + encodeURIComponent(id), { credentials: 'include' });
+        const dd = await dr.json();
+        const body = (dd.item || {}).body_html || '';
+        const sendBody = {
+          customer_id: it.customer_id || it.contact_id,
+          scenario: it.scenario,
+          suite_steps: [it.suite_step],
+          recipient_emails: it.recipient_email || null,
+          drafts: [{ suite_step: it.suite_step, subject: it.subject || '', body_html: body, send_interval_days: as2DaysFromToday(it.plan_date), send_time: it.plan_time || '09:00' }],
+        };
+        const sr = await fetch('/api/v1/mail/customer-suite-send', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sendBody) });
+        if (!sr.ok) return 'fail';
+        const sj = await sr.json().catch(() => ({}));
+        const crmSendIds = {};
+        // 尽量回收 crm_send_id(若 send 返回带)
+        const sid = (sj.prepared && sj.prepared[0] && (sj.prepared[0].crm_send_id || sj.prepared[0].send_id)) || (sj.items && sj.items[0] && (sj.items[0].crm_send_id || sj.items[0].send_id)) || sj.crm_send_id || null;
+        if (sid) crmSendIds[id] = sid;
+        await fetch('/api/v1/mail/autosend/mark-committed', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item_ids: [id], crm_send_ids: crmSendIds }) });
+        return 'ok';
+      } catch (e) { return 'fail'; }
+    }
+    async function as2CommitItems(ids, onProgress) {
       let ok = 0, fail = 0;
-      for (const id of ids) {
-        const it = as2PlanItems.find((x) => x.item_id === id);
-        if (!it || it.status !== 'drafted') { continue; }
-        try {
-          const dr = await fetch('/api/v1/mail/autosend/plan-item?item_id=' + encodeURIComponent(id), { credentials: 'include' });
-          const dd = await dr.json();
-          const body = (dd.item || {}).body_html || '';
-          const sendBody = {
-            customer_id: it.customer_id || it.contact_id,
-            scenario: it.scenario,
-            suite_steps: [it.suite_step],
-            recipient_emails: it.recipient_email || null,
-            drafts: [{ suite_step: it.suite_step, subject: it.subject || '', body_html: body, send_interval_days: as2DaysFromToday(it.plan_date), send_time: it.plan_time || '09:00' }],
-          };
-          const sr = await fetch('/api/v1/mail/customer-suite-send', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sendBody) });
-          if (!sr.ok) { fail++; continue; }
-          const sj = await sr.json().catch(() => ({}));
-          const crmSendIds = {};
-          // 尽量回收 crm_send_id(若 send 返回带)
-          const sid = (sj.prepared && sj.prepared[0] && (sj.prepared[0].crm_send_id || sj.prepared[0].send_id)) || (sj.items && sj.items[0] && (sj.items[0].crm_send_id || sj.items[0].send_id)) || sj.crm_send_id || null;
-          if (sid) crmSendIds[id] = sid;
-          await fetch('/api/v1/mail/autosend/mark-committed', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item_ids: [id], crm_send_ids: crmSendIds }) });
-          ok++;
-        } catch (e) { fail++; }
+      for (let i = 0; i < ids.length; i++) {
+        const r = await as2CommitOne(ids[i]);
+        if (r === 'ok') ok++; else if (r === 'fail') fail++;
+        if (onProgress) onProgress(i + 1, ids.length);   // 每封处理完回调进度(含skip), 驱动按钮实时更新
       }
       return { ok, fail };
     }
     async function as2Commit() {
+      if (as2CommitBusy) return;
       const ids = Array.from(as2Selected);
       if (!ids.length) { as2Status('请先勾选已生成的邮件。', true); return; }
+      const btn = document.getElementById('as2-commit-btn');
+      as2CommitBusy = true;
+      if (btn) { btn.disabled = true; btn.textContent = `处理中（0/${ids.length}）`; }
       as2Status(`转入CRM处理中... (共 ${ids.length} 封)`);
-      const res = await as2CommitItems(ids);
+      let res = { ok: 0, fail: 0 };
+      try {
+        res = await as2CommitItems(ids, (done, total) => {
+          if (btn) btn.textContent = `处理中（${done}/${total}）`;
+        });
+      } finally {
+        as2CommitBusy = false;
+        if (btn) { btn.disabled = false; btn.textContent = '同步保存ERP系统'; }
+      }
       as2Selected = new Set();
       await as2LoadPlan();
       cal1Reload();
