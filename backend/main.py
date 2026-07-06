@@ -22757,6 +22757,540 @@ def regenerate_autosend_plan_item(payload: AutosendPlanItemSaveRequest, db: Sess
                                  "llm_prompt": gen["llm_prompt"], "recipient_email": gen["recipient_email"]}}
 
 
+# ============================================================================
+# 自动发送(新节点) 真实后端: 需求15 统一规则批量排期 + 需求14 销售动作触发提示
+# 全部新增, 前缀 /api/v1/mail/autosendrules/*; 复用既有 autosend 的联系人加载/已发映射/
+# 排期落日/待发清单(mail_autosend_plan_item)/后台生成机制; 不改动既有 /autosend/* 任何行为。
+# 写入的就是既有待发队列 mail_autosend_plan_item(status='planned')。
+# 说明:
+#  - 联系人分类=手工逐条规则(不限个数), 复用 _autosend_rule_matches(conditions/match_mode)。
+#  - 已发套装排除口径=该联系人是否发过该套装(有任一已发封即整套装排除)。
+#  - 发送顺序两方案独立可选; 兼容已有排期(existing_load 顶满顺延)。
+#  - 邮箱选择: personal_first/public_* 依赖公共邮箱基建(需求17/19, 尚未建), 当前按个人邮箱落地,
+#    选择值仅记录到 run.company_name_like 附注, 待公共邮箱基建就绪再接发件箱选择。
+#  - 需求14 动作数据源(跟进/丢单事件)待对接外部系统; 当前动作->套装映射可配置, 候选联系人=该销售名下联系人。
+# ============================================================================
+
+def _asr_ensure_tables(db) -> None:
+    db.execute(text(
+        "CREATE TABLE IF NOT EXISTS mail_autosendrules_config ("
+        "scope VARCHAR(120) PRIMARY KEY, "
+        "class_rules TEXT NOT NULL DEFAULT '[]', "
+        "send_order VARCHAR(20) NOT NULL DEFAULT 'contact_first', "
+        "mailbox_mode VARCHAR(20) NOT NULL DEFAULT 'personal_only', "
+        "mail_gap_days INTEGER NOT NULL DEFAULT 2, "
+        "suite_gap_days INTEGER NOT NULL DEFAULT 7, "
+        "daily_cap INTEGER NOT NULL DEFAULT 10, "
+        "action_map TEXT NOT NULL DEFAULT '{}', "
+        "updated_at TIMESTAMP DEFAULT now())"
+    ))
+    db.commit()
+
+
+_ASR_DEFAULT_ACTION_MAP = {"followup": [], "lost": []}
+
+
+def _asr_get_config(db, scope: str) -> dict:
+    import json
+    _asr_ensure_tables(db)
+    scope = (sanitize_text(scope or "").strip() or "__global__")
+    row = db.execute(
+        text("SELECT scope,class_rules,send_order,mailbox_mode,mail_gap_days,suite_gap_days,daily_cap,action_map "
+             "FROM mail_autosendrules_config WHERE scope=:s"),
+        {"s": scope},
+    ).fetchone()
+
+    def _loads(v, d):
+        try:
+            return json.loads(v) if v else d
+        except Exception:
+            return d
+
+    if not row:
+        return {"scope": scope, "class_rules": [], "send_order": "contact_first",
+                "mailbox_mode": "personal_only", "mail_gap_days": 2, "suite_gap_days": 7,
+                "daily_cap": 10, "action_map": dict(_ASR_DEFAULT_ACTION_MAP)}
+    return {"scope": row[0], "class_rules": _loads(row[1], []), "send_order": row[2] or "contact_first",
+            "mailbox_mode": row[3] or "personal_only", "mail_gap_days": int(row[4] or 2),
+            "suite_gap_days": int(row[5] or 7), "daily_cap": int(row[6] or 10),
+            "action_map": _loads(row[7], dict(_ASR_DEFAULT_ACTION_MAP))}
+
+
+def _asr_suite_options(scenarios: list[str] | None) -> list[dict]:
+    """套装范围选项。传入非空时按传入顺序; 空=全部已注册套装。返回 [{value,label}]。"""
+    try:
+        from mail_sequence_strategy import _STRATEGY_REGISTRY, _DYNAMIC_REGISTRY
+        all_sc = list(_STRATEGY_REGISTRY) + [k for k in _DYNAMIC_REGISTRY if k not in _STRATEGY_REGISTRY]
+    except Exception:
+        all_sc = []
+    wanted = [str(s).strip() for s in (scenarios or []) if str(s or "").strip()]
+    seq = wanted if wanted else all_sc
+    out, seen = [], set()
+    for s in seq:
+        if s in seen:
+            continue
+        seen.add(s)
+        out.append({"value": s, "label": _get_scenario_label_cn(s) or s})
+    return out
+
+
+def _asr_llm_rank_suites(class_rule: dict, suite_opts: list[dict]) -> dict:
+    """让 LLM 给一类联系人对候选套装按优先级排序。失败返回 {} (调用方回退输入顺序)。"""
+    import json
+    try:
+        name = str(class_rule.get("name") or "该类联系人")
+        conds = class_rule.get("conditions") or []
+        lines = "\n".join(f"- {o['value']}: {o['label']}" for o in suite_opts)
+        prompt = (
+            "你是外贸邮件套装策略助手。下面给出一类联系人及一组可发送的邮件套装。\n"
+            f"联系人分类名称: {name}\n"
+            f"分类条件(JSON): {json.dumps(conds, ensure_ascii=False)}\n"
+            f"可选套装(套装代号: 中文名):\n{lines}\n\n"
+            "请判断这类联系人最适合优先发送哪些套装, 按优先级从高到低排序。\n"
+            "只输出 JSON: {\"order\":[\"套装代号\", ...], \"reason\":\"一句话理由\"}。"
+            "order 只能包含上面列出的套装代号, 不要新增。"
+        )
+        r = _call_llm2_json_for_mail_draft(prompt, timeout_seconds=20, force_json=True)
+        if isinstance(r, dict):
+            return r
+    except Exception:
+        logger.exception("ASR_LLM_RANK_FAILED")
+    return {}
+
+
+def _asr_classify(contacts: list[dict], class_rules: list[dict]):
+    """按手工分类规则(顺序=优先级)给联系人分类。返回 (classified, unclassified_count)。
+    classified: [(contact, class_index, class_name)], 已按 class_index 稳定排序(保持类内原顺序)。"""
+    classified, unclassified = [], 0
+    for c in contacts:
+        idx = None
+        for i, cr in enumerate(class_rules or []):
+            try:
+                if _autosend_rule_matches(c, cr):
+                    idx = i
+                    break
+            except Exception:
+                continue
+        if idx is None:
+            unclassified += 1
+            continue
+        classified.append((c, idx, str((class_rules[idx] or {}).get("name") or f"分类{idx + 1}")))
+    classified.sort(key=lambda t: t[1])
+    return classified, unclassified
+
+
+def _asr_contact_has_sent_suite(sent_map: dict, contact_id: str, scenario: str) -> bool:
+    rec = (sent_map.get(str(contact_id or "")) or {}).get(scenario) or {}
+    return bool(rec.get("steps"))
+
+
+def _asr_schedule(units: list[dict], send_order: str, mail_gap: int, suite_gap: int,
+                  daily_cap: int, start_date, existing_load: dict | None,
+                  skip_non_workdays: bool, holiday_dates) -> list[dict]:
+    """多套装排期(需求15/14 共用)。units: [{contact_id,customer_id,owner,company,contact_name,email,
+    suites:[{scenario,label,steps:[int,...]}] 按优先级}]。返回逐封 items。纯计算, 不写库。
+    - 套装内: 第k封 = 该套装起始日 + mail_gap*k(0基, 从起始累计)。
+    - 同联系人相邻套装: 后一套装起始 = 前一套装末封 + suite_gap。
+    - 顺序: contact_first=靠前联系人发完所有套装再下一人; round_robin=各联系人先排第一套装, 再轮第二套装...。
+    - 兼容已有排期: existing_load 占满每日上限则整天顺延到下个未满工作日。"""
+    cap = max(1, int(daily_cap or 1))
+    mail_gap = max(0, int(mail_gap or 0))
+    suite_gap = max(0, int(suite_gap or 0))
+    load = dict(existing_load or {})
+    items: list[dict] = []
+
+    def place(owner: str, desired):
+        day = _autosend_next_workday(desired, skip_non_workdays, holiday_dates)
+        while load.get((owner, day.isoformat()), 0) >= cap:
+            day = _autosend_next_workday(day + timedelta(days=1), skip_non_workdays, holiday_dates)
+        seq = load.get((owner, day.isoformat()), 0)
+        minute_total = 9 * 60 + 5 * seq
+        hh, mm = divmod(minute_total, 60)
+        load[(owner, day.isoformat())] = seq + 1
+        return day, f"{hh:02d}:{mm:02d}", seq
+
+    def schedule_suite(unit: dict, suite: dict, start_from):
+        owner = str(unit.get("owner") or "")
+        last_day = None
+        for i, step in enumerate(suite.get("steps") or []):
+            desired = start_from + timedelta(days=mail_gap * i)
+            if last_day is not None and desired < last_day:
+                desired = last_day
+            day, tm, seq = place(owner, desired)
+            items.append({
+                "contact_id": unit.get("contact_id"),
+                "customer_id": unit.get("customer_id") or unit.get("contact_id"),
+                "owner_staff_id": owner,
+                "company_name": unit.get("company") or "",
+                "contact_name": unit.get("contact_name") or "",
+                "email": unit.get("email"),
+                "scenario": suite.get("scenario"),
+                "scenario_label_cn": suite.get("label") or suite.get("scenario"),
+                "suite_step": step,
+                "plan_date": day.isoformat(),
+                "plan_time": tm,
+                "seq_in_day": seq,
+                "pick_reason": "asr",
+            })
+            last_day = day
+        return last_day or start_from
+
+    if str(send_order or "") == "round_robin":
+        max_s = max((len(u.get("suites") or []) for u in units), default=0)
+        cursor = {u["contact_id"]: start_date for u in units}
+        for r in range(max_s):
+            for u in units:
+                suites = u.get("suites") or []
+                if r < len(suites):
+                    end = schedule_suite(u, suites[r], cursor[u["contact_id"]])
+                    cursor[u["contact_id"]] = end + timedelta(days=suite_gap)
+    else:  # contact_first
+        for u in units:
+            cur = start_date
+            for suite in (u.get("suites") or []):
+                end = schedule_suite(u, suite, cur)
+                cur = end + timedelta(days=suite_gap)
+    return items
+
+
+def _asr_build_units(db, staff: str, accepted: list[dict], company_name_like: str, sent_map: dict | None = None):
+    """把前端确认的 [{contact_id, scenarios:[...]}] 组装成排期 units, 并做安全去重/已发排除。
+    返回 (units, dropped:[{contact_id,scenario,reason}])。"""
+    contacts = _autosend_load_contacts_for_sales([staff] if staff else [], only_valid_email=True,
+                                                 company_name_like=company_name_like,
+                                                 email_valid_mode=_mail_get_email_valid_mode())
+    cmap = {str(c.get("contact_id")): c for c in contacts}
+    ids = [str(a.get("contact_id")) for a in (accepted or []) if a.get("contact_id")]
+    if sent_map is None:
+        sent_map = _autosend_sent_map(db, ids)
+    # 已有待发(planned/drafting/drafted)的 (contact,scenario) 也跳过, 避免重复排同套装
+    pend = set()
+    if ids:
+        try:
+            prows = db.execute(
+                text("SELECT contact_id, scenario FROM mail_autosend_plan_item "
+                     "WHERE status IN ('planned','drafting','drafted') AND contact_id IN :ids")
+                .bindparams(bindparam("ids", expanding=True)),
+                {"ids": ids},
+            ).fetchall()
+            pend = {(str(a or ""), str(b or "")) for a, b in prows}
+        except Exception:
+            logger.exception("ASR_PENDING_LOOKUP_FAILED")
+    units, dropped = [], []
+    for a in (accepted or []):
+        cid = str(a.get("contact_id") or "")
+        c = cmap.get(cid)
+        if not c:
+            dropped.append({"contact_id": cid, "scenario": None, "reason": "该销售名下未找到此有效邮箱联系人"})
+            continue
+        suites = []
+        for sc in (a.get("scenarios") or []):
+            sc = str(sc or "").strip()
+            if not sc:
+                continue
+            if _asr_contact_has_sent_suite(sent_map, cid, sc):
+                dropped.append({"contact_id": cid, "scenario": sc, "reason": "该联系人已发过此套装"})
+                continue
+            if (cid, sc) in pend:
+                dropped.append({"contact_id": cid, "scenario": sc, "reason": "该套装已在待发清单"})
+                continue
+            step_count = _autosend_scenario_step_count(sc)
+            suites.append({"scenario": sc, "label": _get_scenario_label_cn(sc) or sc,
+                           "steps": list(range(1, step_count + 1))})
+        if suites:
+            units.append({"contact_id": cid, "customer_id": c.get("customer_id") or cid,
+                          "owner": c.get("owner_staff_id") or staff, "company": c.get("company_name") or "",
+                          "contact_name": c.get("contact_name") or "", "email": c.get("email"), "suites": suites})
+    return units, dropped
+
+
+def _asr_write_plan(db, staff: str, units: list[dict], send_order: str, mail_gap: int, suite_gap: int,
+                    daily_cap: int, start_date, mailbox_mode: str, consider_existing_crm_queue: bool,
+                    skip_non_workdays: bool, holiday_dates) -> dict:
+    """按 units 排期并写入既有待发清单 mail_autosend_plan_item(status='planned')。返回 {run_id, items}。"""
+    owners = sorted({str(u.get("owner") or "") for u in units if u.get("owner")})
+    existing_load: dict = {}
+    if consider_existing_crm_queue and owners:
+        try:
+            existing_load = _autosend_existing_crm_load(owners, start_date)
+            _autosend_merge_local_plan_load(db, owners, start_date, existing_load)
+        except Exception:
+            logger.exception("ASR_EXISTING_LOAD_FAILED")
+            existing_load = {}
+    items = _asr_schedule(units, send_order, mail_gap, suite_gap, daily_cap, start_date,
+                          existing_load, skip_non_workdays, holiday_dates)
+    run_id = db.execute(
+        text(
+            "INSERT INTO mail_autosend_run (status,start_date,sales_staff_ids,owner_staff_id,daily_cap,"
+            "sort_rule,interval_days_csv,total_contacts,total_items,skipped_count,company_name_like,gen_status) "
+            "VALUES ('planned',:sd,:s,:s,:cap,:sr,:iv,:tc,:ti,0,:note,'idle') RETURNING run_id"
+        ),
+        {"sd": start_date, "s": staff, "cap": daily_cap, "sr": ("asr_" + str(send_order or "contact_first"))[:40],
+         "iv": f"mail{int(mail_gap)}_suite{int(suite_gap)}", "tc": len(units), "ti": len(items),
+         "note": (f"autosendrules mailbox={mailbox_mode}")[:200]},
+    ).scalar()
+    for it in items:
+        db.execute(
+            text(
+                "INSERT INTO mail_autosend_plan_item "
+                "(run_id,contact_id,customer_id,owner_staff_id,company_name,contact_name,scenario,"
+                "scenario_label_cn,suite_step,plan_date,plan_time,send_time,seq_in_day,recipient_email,"
+                "pick_reason,partial_sent_mode,status) "
+                "VALUES (:run,:cid,:cust,:own,:co,:cn,:sc,:scl,:st,:pd,:pt,:pt,:sq,:re,:pr,'remaining','planned')"
+            ),
+            {"run": run_id, "cid": it["contact_id"], "cust": it.get("customer_id") or it["contact_id"],
+             "own": it["owner_staff_id"], "co": (it.get("company_name") or "")[:200],
+             "cn": (it.get("contact_name") or "")[:200], "sc": it["scenario"],
+             "scl": (it.get("scenario_label_cn") or "")[:200], "st": it["suite_step"],
+             "pd": it["plan_date"], "pt": it["plan_time"], "sq": it["seq_in_day"],
+             "re": it.get("email"), "pr": it.get("pick_reason")},
+        )
+    db.commit()
+    return {"run_id": str(run_id), "items": items}
+
+
+class AsrConfigRequest(BaseModel):
+    scope: str = ""
+    class_rules: list[dict] | None = None
+    send_order: str | None = None
+    mailbox_mode: str | None = None
+    mail_gap_days: int | None = None
+    suite_gap_days: int | None = None
+    daily_cap: int | None = None
+    action_map: dict | None = None
+
+
+@app.get("/api/v1/mail/autosendrules/config")
+def asr_get_config(scope: str = Query(""), db: Session = Depends(get_db)):
+    return {"ok": True, "config": _asr_get_config(db, scope)}
+
+
+@app.put("/api/v1/mail/autosendrules/config")
+def asr_put_config(payload: AsrConfigRequest, db: Session = Depends(get_db)):
+    import json
+    _asr_ensure_tables(db)
+    scope = (sanitize_text(payload.scope or "").strip() or "__global__")
+    cur = _asr_get_config(db, scope)
+    class_rules = payload.class_rules if payload.class_rules is not None else cur["class_rules"]
+    send_order = payload.send_order if payload.send_order in ("contact_first", "round_robin") else cur["send_order"]
+    mailbox_mode = payload.mailbox_mode if payload.mailbox_mode in ("personal_only", "public_only", "personal_first") else cur["mailbox_mode"]
+    action_map = payload.action_map if isinstance(payload.action_map, dict) else cur["action_map"]
+    mail_gap = int(payload.mail_gap_days) if payload.mail_gap_days is not None else cur["mail_gap_days"]
+    suite_gap = int(payload.suite_gap_days) if payload.suite_gap_days is not None else cur["suite_gap_days"]
+    daily_cap = int(payload.daily_cap) if payload.daily_cap is not None else cur["daily_cap"]
+    db.execute(
+        text(
+            "INSERT INTO mail_autosendrules_config (scope,class_rules,send_order,mailbox_mode,mail_gap_days,"
+            "suite_gap_days,daily_cap,action_map,updated_at) "
+            "VALUES (:s,:cr,:so,:mm,:mg,:sg,:dc,:am,now()) "
+            "ON CONFLICT (scope) DO UPDATE SET class_rules=:cr,send_order=:so,mailbox_mode=:mm,"
+            "mail_gap_days=:mg,suite_gap_days=:sg,daily_cap=:dc,action_map=:am,updated_at=now()"
+        ),
+        {"s": scope, "cr": json.dumps(class_rules, ensure_ascii=False), "so": send_order, "mm": mailbox_mode,
+         "mg": max(0, mail_gap), "sg": max(0, suite_gap), "dc": max(1, daily_cap),
+         "am": json.dumps(action_map, ensure_ascii=False)},
+    )
+    db.commit()
+    return {"ok": True, "config": _asr_get_config(db, scope)}
+
+
+class AsrSuggestRequest(BaseModel):
+    staff_id: str = ""
+    class_rules: list[dict] = []
+    suite_scenarios: list[str] = []
+    company_name_like: str = ""
+    use_llm: bool = True
+
+
+@app.post("/api/v1/mail/autosendrules/suggest")
+def asr_suggest(payload: AsrSuggestRequest, db: Session = Depends(get_db)):
+    """需求15: 结合联系人分类(手工规则)与套装范围, LLM 给出每个联系人适合发送的套装及优先级;
+    已发过的套装(该联系人是否发过该套装)自动排除。只算不写库。"""
+    staff = sanitize_text(payload.staff_id).strip()
+    contacts = _autosend_load_contacts_for_sales([staff] if staff else [], only_valid_email=True,
+                                                 company_name_like=payload.company_name_like,
+                                                 email_valid_mode=_mail_get_email_valid_mode())
+    suite_opts = _asr_suite_options(payload.suite_scenarios)
+    labels = {o["value"]: o["label"] for o in suite_opts}
+    if not suite_opts:
+        return {"ok": True, "rows": [], "unclassified": len(contacts), "note": "套装范围为空且无已注册套装"}
+    sent_map = _autosend_sent_map(db, [c.get("contact_id") for c in contacts])
+    class_rules = payload.class_rules or []
+    if not class_rules:
+        raise HTTPException(status_code=422, detail="请至少添加一条联系人分类规则")
+    classified, unclassified = _asr_classify(contacts, class_rules)
+
+    # 每个分类 LLM 排一次套装优先级(减少调用次数; 失败回退套装范围顺序)
+    ranking_by_class: dict = {}
+    for i, cr in enumerate(class_rules):
+        order = [o["value"] for o in suite_opts]
+        reason = ""
+        if payload.use_llm:
+            r = _asr_llm_rank_suites(cr, suite_opts)
+            ord2 = [str(s).strip() for s in (r.get("order") or []) if str(s).strip() in labels]
+            if ord2:
+                order = ord2 + [s for s in order if s not in ord2]
+                reason = str(r.get("reason") or "")[:200]
+        ranking_by_class[i] = {"order": order, "reason": reason}
+
+    rows = []
+    for c, idx, cname in classified:
+        cid = str(c.get("contact_id"))
+        order = ranking_by_class.get(idx, {}).get("order") or [o["value"] for o in suite_opts]
+        suites, excluded = [], []
+        for sc in order:
+            if _asr_contact_has_sent_suite(sent_map, cid, sc):
+                excluded.append({"scenario": sc, "label": labels.get(sc, sc), "reason": "已发过此套装"})
+            else:
+                suites.append({"scenario": sc, "label": labels.get(sc, sc), "priority": len(suites) + 1})
+        rows.append({
+            "contact_id": cid, "contact_name": c.get("contact_name") or "", "company_name": c.get("company_name") or "",
+            "owner_staff_id": c.get("owner_staff_id") or staff, "email": c.get("email"),
+            "class_index": idx, "class_name": cname,
+            "llm_reason": ranking_by_class.get(idx, {}).get("reason", ""),
+            "suites": suites, "excluded": excluded,
+        })
+    return {"ok": True, "rows": rows, "classified": len(classified), "unclassified": unclassified,
+            "suite_options": suite_opts}
+
+
+class AsrScheduleRequest(BaseModel):
+    staff_id: str
+    accepted: list[dict] = []
+    send_order: str = "contact_first"
+    mail_gap_days: int = 2
+    suite_gap_days: int = 7
+    daily_cap: int = 10
+    start_date: str | None = None
+    mailbox_mode: str = "personal_only"
+    company_name_like: str = ""
+    consider_existing_crm_queue: bool = True
+    skip_non_workdays: bool | None = None
+    holiday_dates: list[str] | None = None
+
+
+def _asr_resolve_workday_cfg(db, payload) -> tuple:
+    now_bj = datetime.utcnow() + timedelta(hours=8)
+    if getattr(payload, "start_date", None):
+        try:
+            start_date = datetime.strptime(payload.start_date.strip(), "%Y-%m-%d").date()
+        except Exception:
+            raise HTTPException(status_code=422, detail="start_date 格式应为 YYYY-MM-DD")
+    else:
+        start_date = now_bj.date()
+    cfg = _autosend_serialize_config(_autosend_get_or_create_config(db))
+    skip = cfg.get("skip_non_workdays", True) if getattr(payload, "skip_non_workdays", None) is None else bool(payload.skip_non_workdays)
+    holidays = payload.holiday_dates if getattr(payload, "holiday_dates", None) is not None else cfg.get("holiday_dates", [])
+    return start_date, skip, holidays
+
+
+@app.post("/api/v1/mail/autosendrules/schedule")
+def asr_schedule_endpoint(payload: AsrScheduleRequest, db: Session = Depends(get_db)):
+    """需求15: 按确认的建议 + 排期规则(邮箱/发送顺序/间隔)预排并写入既有待发清单。"""
+    staff = sanitize_text(payload.staff_id).strip()
+    if not staff:
+        raise HTTPException(status_code=422, detail="staff_id is required")
+    if not payload.accepted:
+        raise HTTPException(status_code=422, detail="没有已确认的排期项")
+    start_date, skip, holidays = _asr_resolve_workday_cfg(db, payload)
+    units, dropped = _asr_build_units(db, staff, payload.accepted, payload.company_name_like)
+    if not units:
+        return {"ok": True, "run_id": None, "new_scheduled": 0, "dropped": dropped, "items": _autosend_list_plan(db, staff),
+                "note": "确认项均被排除(已发/已在清单/无有效邮箱)"}
+    res = _asr_write_plan(db, staff, units, payload.send_order, payload.mail_gap_days, payload.suite_gap_days,
+                          payload.daily_cap, start_date, payload.mailbox_mode, payload.consider_existing_crm_queue,
+                          skip, holidays)
+    items = _autosend_list_plan(db, staff)
+    note = "已写入待发清单。"
+    if payload.mailbox_mode != "personal_only":
+        note += " 注: 公共邮箱发件箱选择依赖公共邮箱基建(需求17/19), 暂按个人邮箱落地。"
+    return {"ok": True, "run_id": res["run_id"], "new_scheduled": len(res["items"]), "dropped": dropped,
+            "total_pending": len(items), "items": items, "note": note}
+
+
+class AsrTriggerSuggestRequest(BaseModel):
+    staff_id: str = ""
+    action: str = "followup"          # followup / lost (下拉选择)
+    action_map: dict | None = None    # {action: [scenario,...]}; 缺省用已存配置
+    company_name_like: str = ""
+
+
+@app.post("/api/v1/mail/autosendrules/trigger-suggest")
+def asr_trigger_suggest(payload: AsrTriggerSuggestRequest, db: Session = Depends(get_db)):
+    """需求14: 按销售动作(跟进/丢单)触发, 给发生该动作的联系人计算适合套装(排除已发), 供人工确认。
+    注: 动作事件数据源待对接外部系统; 当前候选联系人=该销售名下有效邮箱联系人, 动作->套装用配置映射。"""
+    staff = sanitize_text(payload.staff_id).strip()
+    action = sanitize_text(payload.action or "").strip() or "followup"
+    action_map = payload.action_map if isinstance(payload.action_map, dict) else _asr_get_config(db, staff or "__global__")["action_map"]
+    scenarios = [str(s).strip() for s in (action_map.get(action) or []) if str(s or "").strip()]
+    if not scenarios:
+        return {"ok": True, "rows": [], "action": action, "note": f"动作[{action}]尚未配置触发套装, 请先在触发规则中配置。"}
+    labels = {o["value"]: o["label"] for o in _asr_suite_options(scenarios)}
+    contacts = _autosend_load_contacts_for_sales([staff] if staff else [], only_valid_email=True,
+                                                 company_name_like=payload.company_name_like,
+                                                 email_valid_mode=_mail_get_email_valid_mode())
+    sent_map = _autosend_sent_map(db, [c.get("contact_id") for c in contacts])
+    rows = []
+    for c in contacts:
+        cid = str(c.get("contact_id"))
+        suites, excluded = [], []
+        for sc in scenarios:
+            if _asr_contact_has_sent_suite(sent_map, cid, sc):
+                excluded.append({"scenario": sc, "label": labels.get(sc, sc), "reason": "已发过此套装"})
+            else:
+                suites.append({"scenario": sc, "label": labels.get(sc, sc), "priority": len(suites) + 1})
+        if suites:
+            rows.append({"contact_id": cid, "contact_name": c.get("contact_name") or "",
+                         "company_name": c.get("company_name") or "", "owner_staff_id": c.get("owner_staff_id") or staff,
+                         "email": c.get("email"), "action": action, "suites": suites, "excluded": excluded})
+    return {"ok": True, "rows": rows, "action": action,
+            "note": "候选联系人=该销售名下联系人(动作事件源待对接外部系统)。"}
+
+
+class AsrTriggerConfirmRequest(BaseModel):
+    staff_id: str
+    accepted: list[dict] = []
+    mail_gap_days: int = 2
+    suite_gap_days: int = 7
+    daily_cap: int = 10
+    send_order: str = "contact_first"
+    start_date: str | None = None
+    company_name_like: str = ""
+    consider_existing_crm_queue: bool = True
+    start_generate: bool = True
+    skip_non_workdays: bool | None = None
+    holiday_dates: list[str] | None = None
+
+
+@app.post("/api/v1/mail/autosendrules/trigger-confirm")
+def asr_trigger_confirm(payload: AsrTriggerConfirmRequest, db: Session = Depends(get_db)):
+    """需求14: 人工确认后写入待发清单, 并(可选)返回后台自动开始生成。复用既有后台生成 worker。"""
+    staff = sanitize_text(payload.staff_id).strip()
+    if not staff:
+        raise HTTPException(status_code=422, detail="staff_id is required")
+    if not payload.accepted:
+        raise HTTPException(status_code=422, detail="没有已确认的项")
+    start_date, skip, holidays = _asr_resolve_workday_cfg(db, payload)
+    units, dropped = _asr_build_units(db, staff, payload.accepted, payload.company_name_like)
+    if not units:
+        return {"ok": True, "run_id": None, "new_scheduled": 0, "dropped": dropped, "started_generate": False,
+                "items": _autosend_list_plan(db, staff), "note": "确认项均被排除(已发/已在清单/无有效邮箱)"}
+    res = _asr_write_plan(db, staff, units, payload.send_order, payload.mail_gap_days, payload.suite_gap_days,
+                          payload.daily_cap, start_date, "personal_only", payload.consider_existing_crm_queue,
+                          skip, holidays)
+    started = False
+    if payload.start_generate:
+        try:
+            if _autosend_mark_running(staff):
+                threading.Thread(target=_autosend_generate_worker, args=(staff, None), daemon=True).start()
+                started = True
+        except Exception:
+            logger.exception("ASR_TRIGGER_GENERATE_START_FAILED staff=%s", staff)
+    items = _autosend_list_plan(db, staff)
+    return {"ok": True, "run_id": res["run_id"], "new_scheduled": len(res["items"]), "dropped": dropped,
+            "started_generate": started, "total_pending": len(items), "items": items}
+
+
 # ---- 8.2 LLM 生成质量分析: 只读查询(人工修改/人工弃用) ----
 @app.get("/api/v1/mail/llm-edit-records")
 def list_mail_llm_edit_records(source: str | None = Query(None), scenario: str | None = Query(None),
