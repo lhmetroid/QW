@@ -19,6 +19,7 @@ import threading
 import requests
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
+import time
 from io import BytesIO
 from pathlib import Path
 from time import perf_counter
@@ -1544,6 +1545,8 @@ async def qywx_receive_message(
     nonce: str = Query(...)
 ):
     """企微回调消息接收接口"""
+    if not settings.ENABLE_ARCHIVE_POLLING:
+        return "success"
     body = await request.body()
     xml_content = QYWXUtils.decrypt_message(msg_signature, timestamp, nonce, body, is_verify=False)
     if not xml_content:
@@ -21872,6 +21875,8 @@ def _serialize_mail_suite_send_plan_calendar(row) -> dict[str, Any]:
     return {
         "rowid": str(getattr(row, "spqueue_rowid", None) or ""),
         "crm_send_id": str(getattr(row, "crm_send_id", None) or ""),
+        "inputer_staff_id": str(getattr(row, "inputer_staff_id", None) or ""),
+        "owner_staff_id": str(getattr(row, "inputer_staff_id", None) or ""),
         "mapped": True,
         "customer_id": str(getattr(row, "customer_id", None) or ""),
         "contact_id": str(getattr(row, "customer_id", None) or ""),
@@ -22102,32 +22107,45 @@ def _mail_eml_extract_html(eml_bytes: bytes) -> str:
 
 
 @app.get("/api/v1/mail/autosend/crm-mail")
-def get_autosend_crm_mail(rowid: str = Query(...), with_html: int = Query(1)):
-    """读一条 CRM 待发邮件当前内容(spQueueSend 列 + FTP .eml 里的 HTML 精确正文)。
-
-    body_text=EmailContent(库文本版); body_html=从 FTP .eml(EmlFtpPath) 解析出的 HTML 精确正文(读不到为空)。
-    """
+def get_autosend_crm_mail(rowid: str = Query(""), send_id: str = Query(""), staff_id: str = Query(""), with_html: int = Query(1)):
+    """读一条 CRM 邮件内容。rowid 读待发 spQueueSend；send_id+staff_id 读已发送 spSendInfo{staff}。"""
     rid = sanitize_text(rowid).strip()
-    if not rid:
-        raise HTTPException(status_code=422, detail="rowid required")
+    sid = sanitize_text(send_id).strip()
+    staff = sanitize_text(staff_id).strip()
+    if not rid and not sid:
+        raise HTTPException(status_code=422, detail="rowid or send_id required")
     try:
         from crm_database import CRMSessionLocal
         crm_db = CRMSessionLocal()
         try:
-            r = crm_db.execute(
-                text("SELECT CAST(RowId AS NVARCHAR(64)), ISNULL(Subject,''), "
-                     "ISNULL(CAST(EmailContent AS NVARCHAR(MAX)),''), ISNULL(Receiver,''), "
-                     "CONVERT(varchar(16), PlanSendTime, 120), ISNULL(EmlFtpPath,'') "
-                     "FROM spQueueSend WHERE RowId=:r"),
-                {"r": rid},
-            ).fetchone()
+            if rid:
+                r = crm_db.execute(
+                    text("SELECT CAST(RowId AS NVARCHAR(64)), ISNULL(Subject,''), "
+                         "ISNULL(CAST(EmailContent AS NVARCHAR(MAX)),''), ISNULL(Receiver,''), "
+                         "CONVERT(varchar(16), PlanSendTime, 120), ISNULL(EmlFtpPath,'') "
+                         "FROM spQueueSend WHERE RowId=:r"),
+                    {"r": rid},
+                ).fetchone()
+            else:
+                if not re.fullmatch(r"[0-9A-Za-z]{1,8}", staff or ""):
+                    raise HTTPException(status_code=422, detail="staff_id required for sent mail")
+                tbl = f"spSendInfo{staff}"
+                r = crm_db.execute(
+                    text(f"SELECT TOP 1 CAST(RowId AS NVARCHAR(64)), ISNULL(Subject,''), "
+                         f"ISNULL(CAST(EmailContent AS NVARCHAR(MAX)), ISNULL(CAST(PureText AS NVARCHAR(MAX)),'')), "
+                         f"ISNULL(Receiver,''), CONVERT(varchar(16), FactSendTime, 120), ISNULL(EmlFtpDir,'') "
+                         f"FROM [{tbl}] WHERE SendId=:sid AND MessageType='Email' ORDER BY FactSendTime DESC"),
+                    {"sid": sid},
+                ).fetchone()
         finally:
             crm_db.close()
+    except HTTPException:
+        raise
     except Exception:
-        logger.exception("AUTOSEND_CRM_MAIL_FAILED rowid=%s", rid)
+        logger.exception("AUTOSEND_CRM_MAIL_FAILED rowid=%s send_id=%s staff=%s", rid, sid, staff)
         raise HTTPException(status_code=502, detail="读取CRM邮件失败")
     if not r:
-        raise HTTPException(status_code=404, detail="CRM待发邮件不存在(可能已发出)")
+        raise HTTPException(status_code=404, detail="CRM邮件不存在(可能已发出且未同步到已发库)")
     eml_path = r[5] or ""
     body_html = ""
     html_source = "none"
@@ -22140,11 +22158,13 @@ def get_autosend_crm_mail(rowid: str = Query(...), with_html: int = Query(1)):
                 if body_html:
                     html_source = "ftp_eml"
         except Exception:
-            logger.exception("AUTOSEND_CRM_MAIL_EML_READ_FAILED rowid=%s", rid)
-    return {"ok": True, "item": {"rowid": str(r[0] or ""), "subject": r[1] or "", "body_text": r[2] or "",
+            logger.exception("AUTOSEND_CRM_MAIL_EML_READ_FAILED rowid=%s send_id=%s", rid, sid)
+    sent_readonly = bool(sid and not rid)
+    return {"ok": True, "item": {"rowid": str(r[0] or ""), "send_id": sid, "staff_id": staff,
+                                 "status": "sent_done" if sent_readonly else "sent", "readonly": sent_readonly,
+                                 "subject": r[1] or "", "body_text": r[2] or "",
                                  "body_html": body_html, "html_source": html_source,
                                  "receiver": r[3] or "", "plan_time": r[4] or "", "eml_ftp_path": eml_path}}
-
 
 class AutosendCrmMailSaveRequest(BaseModel):
     rowid: str
