@@ -564,7 +564,7 @@
     .ms-node-tab { border:1px solid var(--line); background:#fff; color:var(--muted); font-weight:700; font-size:13px; padding:6px 12px; border-radius:8px; cursor:pointer; }
     .ms-node-tab:hover { background:#f1f5f9; }
     .ms-node-tab.active { background:var(--brand); color:#fff; border-color:var(--brand); }
-    .ms-stepbar { display:flex; gap:8px; flex-wrap:wrap; margin:14px 20px 0; }
+    .ms-stepbar { display:flex; gap:8px; flex-wrap:wrap; margin:0 20px; padding:12px 0 10px; position:sticky; top:64px; z-index:45; background:var(--bg); border-bottom:1px solid #e2e8f0; box-shadow:0 6px 14px rgba(15,23,42,.06); }
     .ms-stepbar .ms-node-tab { font-size:14px; font-weight:800; padding:8px 16px; }
     .ms-sales-lock { font-size:12px; color:var(--muted); }
     .ms-sales-lock b { color:var(--text); }
@@ -791,9 +791,9 @@
         </div>
         <!-- 3 周期/上限/日期 -->
         <div class="rounded-lg border border-slate-200 bg-white p-3 space-y-2 mb-3">
-          <div class="text-xs font-bold text-slate-700">③ 周期 / 每日上限 / 开始日期<span class="ms-info" title="统一周期: 每封间隔天数(第1封从开始日算, 之后每封按上一封落日+对应天数)。每日上限: 每个销售每天最多发多少封, 满了顺延到下一天。">ⓘ</span></div>
+          <div class="text-xs font-bold text-slate-700">③ 周期 / 每日上限 / 开始日期<span class="ms-info" title="统一周期: 从开始日累计的天数列表, 各封相对开始日累计(与套装模板发送间隔=从开始累计口径统一)。每日上限: 每个销售每天最多发多少封, 满了顺延到下一天。">ⓘ</span></div>
           <div class="flex flex-wrap items-center gap-2 text-xs">
-            <label class="flex items-center gap-1" title="一组按封天数, 覆盖各套装原间隔。第1封从开始日算, 之后每封按上一封实际落日+对应天数。">统一周期<input id="as2-intervals" class="rounded border border-slate-300 px-2 py-1 w-28" value="0,7,17,27"></label>
+            <label class="flex items-center gap-1" title="从开始日累计的天数(各封相对开始日, 不是相对上一封)。如 0,7,17,27 = 第1封第0天/第2封第7天/第3封第17天/第4封第27天。与套装模板发送间隔口径一致。">统一周期<input id="as2-intervals" class="rounded border border-slate-300 px-2 py-1 w-28" value="0,7,17,27"></label>
             <label class="flex items-center gap-1" title="每个销售每天最多发多少封, 含已有占用。满了顺延到下一天。">每日上限<input id="as2-daily-cap" type="number" min="1" class="rounded border border-slate-300 px-2 py-1 w-16" value="50"></label>
             <label class="flex items-center gap-1">开始日期<input id="as2-start-date" type="date" class="rounded border border-slate-300 px-2 py-1"></label>
             <label class="flex items-center gap-1" title="勾上: 联系人一条规则都不命中时, 用最后一条(兜底)套装照发。默认不勾: 都不命中就跳过该联系人, 不发。"><input type="checkbox" id="as2-fallback">全不命中用兜底</label>

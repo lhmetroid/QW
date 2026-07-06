@@ -20755,7 +20755,9 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
                        pending_latest_map: dict | None = None) -> dict:
     """逐人逐封排期。返回 {items, skipped, day_load}。纯计算, 不写任何库。
 
-    - 第1封目标日 = 开始日 + interval[0]; 第k封 = 第k-1封实际落日 + interval[k-1]。
+    - 从开始累计口径(与套装模板"发送间隔=从开始累计"统一): 各封相对"开始"(首封基准)累计, 不是相对上一封实际落日。
+      第k封目标日 = 首封基准 + (interval[k-1] - interval[首封序号-1]); 首封基准 = 开始日 + interval[首封序号-1]
+      (补发取已发最后一封 + interval, 已有待发取最晚 + 偏移; 三者取最晚为基准)。
     - 补发(remaining): 首封锚定该套装已发最后一封日期 + interval[首封序号-1], 顺延。
     - 目标日该销售已满(>=上限, 含 existing_load 的已有量)则整天跳过, 向后找首个未满天。
     - 当天时间 = 09:00 + 5 分钟 x 当天该销售第几封。
@@ -20804,11 +20806,13 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
             continue
         prev_actual = None
         first = True
+        base_desired = None      # 首封基准日: 从开始累计的锚点
+        first_step_idx = 0       # 首封的0基间隔下标, 供后续封做累计差
         # 该联系人已有待发套装邮件的最晚日期(本地未转入/已转CRM/CRM待发), 用于本次首封顺延 +N 天
         pend_latest = (pending_latest_map or {}).get(str(cid or "")) if pending_latest_map else None
         for step in steps:
             if first:
-                # 首封目标日取候选里的最晚, 且始终以"开始日+首封间隔"为地板(不排到开始日之前):
+                # 首封基准取候选里的最晚, 且始终以"开始日+首封间隔"为地板(不排到开始日之前):
                 # 开始日+间隔(地板) / 补发锚点+间隔 / 已有待发最晚+偏移
                 cands = [start_date + timedelta(days=gap(step - 1 if step > 1 else 0))]
                 if anchor_last_at is not None:
@@ -20816,10 +20820,13 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
                 if pend_latest is not None:
                     cands.append(pend_latest + timedelta(days=_AUTOSEND_EXISTING_SUITE_OFFSET_DAYS))
                 desired = max(cands)
-            elif prev_actual is None:
-                desired = start_date + timedelta(days=gap(step - 1 if step > 1 else 0))
+                base_desired = desired
+                first_step_idx = step - 1
             else:
-                desired = prev_actual + timedelta(days=gap(step - 1))
+                # 从开始累计: 第k封 = 首封基准 + (本封累计天 - 首封累计天), 相对开始而非上一封实际落日
+                desired = base_desired + timedelta(days=gap(step - 1) - gap(first_step_idx))
+                if prev_actual is not None and desired < prev_actual:
+                    desired = prev_actual   # 安全兜底: 不早于上一封(仅每日上限顺延碰撞时触发)
             first = False
             day = desired
             while load.get((owner, day.isoformat()), 0) >= cap:
@@ -22004,7 +22011,10 @@ _EMAIL_IN_RECEIVER_RE = re.compile(r"<([^<>@\s]+@[^<>\s]+)>")
 
 def _autosend_receiver_key(raw: str) -> str:
     """归一化 CRM Receiver 字段, 用于统计同一收件人。"""
-    s = sanitize_text(raw or "").strip()
+    # This key is used for enqueue idempotency. Do not run sanitize_text here:
+    # it masks every email as "***email***", which makes different recipients
+    # collide when subject and plan date are the same.
+    s = str(raw or "").strip()
     if not s:
         return ""
     i = s.index("[") if "[" in s else -1
