@@ -2271,6 +2271,8 @@
     // 就近提示: 显示在预览/清空按钮旁边(顶部 as2-status 太远), 同步写一份到顶部保持一致
     function as2OpStatus(msg, bad) { const el = document.getElementById('as2-op-status'); if (el) { el.textContent = msg || ''; el.style.color = bad ? '#dc2626' : '#64748b'; } as2Status(msg, bad); }
     function as2ScenarioLabel(v) { const s = AS2_SCENARIOS.find((x) => x.value === v); return (s && s.label) || v; }
+    // 封状态英文码 -> 中文(邮件详情/卡片标题展示用, 不显示 drafted/planned 等英文)
+    function as2StatusCn(st) { return ({ planned: '待生成', drafting: '生成中', drafted: '已生成', sent: '已转入CRM', committed: '已转入CRM', failed: '生成失败' })[String(st || '')] || (st || ''); }
     function as2MmDd(d) { return d && d.length >= 10 ? d.slice(5) : (d || ''); }
     function as2SetGenerateBusy(on, label) {
       as2GenerateBusy = !!on;
@@ -2774,7 +2776,7 @@
       box.hidden = false;
       const client = `${p.company_head || ''} ${p.contact_name || p.contact_id || ''}`.trim();
       box.innerHTML = `<div class="text-sm font-bold text-slate-900 mb-2">${as2Esc(client)} · ${as2Esc(p.scenario_label_cn || '')}（${p.items.length}封，逐封读取）</div>` +
-        p.items.map((it, ci) => `<div id="as2-pcard-${ci}" class="rounded-lg border border-slate-200 p-3 mb-2"><div class="text-xs font-bold text-slate-600">第${it.suite_step}封 · ${as2Esc(it.status)}</div><div class="ms-hint mt-1">${(it.status === 'drafted' || it.status === 'sent') ? '读取中...' : '未生成(到 ② 后台生成)'}</div></div>`).join('');
+        p.items.map((it, ci) => `<div id="as2-pcard-${ci}" class="rounded-lg border border-slate-200 p-3 mb-2"><div class="text-xs font-bold text-slate-600">第${it.suite_step}封 · ${as2Esc(as2StatusCn(it.status))}</div><div class="ms-hint mt-1">${(it.status === 'drafted' || it.status === 'sent') ? '读取中...' : '未生成(到 ② 后台生成)'}</div></div>`).join('');
       // 仅读取已生成的(drafted/sent), 逐封; 未生成不读取, 不触发大模型
       for (let ci = 0; ci < p.items.length; ci++) {
         const it = p.items[ci];
@@ -2807,7 +2809,7 @@
         : `<button type="button" class="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 whitespace-nowrap" onclick="as2PersonRegen(${ci},'${id}')">重新生成</button>
            <button type="button" class="rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700 whitespace-nowrap" onclick="as2PersonCommit(${ci},'${id}')">同步保存ERP系统(本封)</button>`;
       return `<div class="flex flex-wrap items-center gap-2 mb-2">
-          <span class="text-xs font-bold text-slate-600 whitespace-nowrap">第${it.suite_step}封·${as2Esc(it.status || '')}</span>
+          <span class="text-xs font-bold text-slate-600 whitespace-nowrap">第${it.suite_step}封·${as2Esc(as2StatusCn(it.status))}</span>
           <input id="as2p-email-${ci}" class="rounded border border-slate-300 px-2 py-1 text-xs w-52" value="${as2Esc(it.recipient_email || '')}" placeholder="收件人" ${readonly ? 'disabled' : ''}${ob}>
           <input id="as2p-subj-${ci}" class="rounded border border-slate-300 px-2 py-1 text-xs flex-1 min-w-[180px]" value="${as2Esc(it.subject || '')}" placeholder="主题" ${readonly ? 'disabled' : ''}${ob}>
           ${rowRight}
@@ -3446,7 +3448,7 @@
     function as2LocalCardHtml(idx, it, id) {
       const client = `${it.company_head || ''} ${it.contact_name || it.contact_id || ''}`.trim();
       return `<div class="flex items-center justify-between gap-2 mb-1">
-          <div class="text-xs font-bold text-slate-600">${idx + 1}. 本地预排 · 第${it.suite_step}封 · ${as2Esc(it.status || '')} · ${as2Esc(client)}</div>
+          <div class="text-xs font-bold text-slate-600">${idx + 1}. 本地预排 · 第${it.suite_step}封 · ${as2Esc(as2StatusCn(it.status))} · ${as2Esc(client)}</div>
           <button type="button" class="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50" onclick="as2OpenDetail('${id}')">编辑正文</button>
         </div>
         <div class="flex items-end gap-3 mb-2 flex-wrap">
