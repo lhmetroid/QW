@@ -2198,6 +2198,8 @@ class MailAutosendConfig(Base):
     dedup_by_history = Column(Boolean, nullable=False, default=True)            # 同联系人已发过的套装本次跳过
     default_partial_sent_mode = Column(String(20), nullable=False, default="remaining")  # 已发部分套装全局默认: remaining/resend_all/skip
     email_valid_mode = Column(String(20), nullable=False, default="collect")  # 有效邮箱判定: collect(IsCollect=正确) / manual(人工判断)
+    skip_non_workdays = Column(Boolean, nullable=False, default=True)           # 排期自动跳过周六周日和配置的中国法定节假日
+    holiday_dates_csv = Column(Text, nullable=False, default="")                # 额外跳过日期, YYYY-MM-DD 逗号/空白分隔
     updated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 

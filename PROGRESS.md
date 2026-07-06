@@ -1,5 +1,12 @@
 # PROGRESS
+## 2026-07-06 自动排期工作日跳过开关与存量回收只读分析
 
+- 已新增自动排期工作日控制配置: `skip_non_workdays` 默认开启, `holiday_dates_csv` 用于配置中国法定节假日日期。
+- 新增排期计算会先跳过周六、周日和配置节假日, 如当天达到每销售每日上限, 继续往后找最近工作日; 该逻辑只影响后续新增/预览排期。
+- 前端自动排期区新增“跳过周末/节假日”开关和节假日日期输入框, 保存配置和预览排期都会带上该配置。
+- 已新增只读分析接口 `/api/v1/mail/autosend/workday-recovery-analysis`, 用于分析当前本地预排和 CRM OutBox AI 待发行如按工作日规则回收会涉及哪些记录变化; 返回 `analysis_only`, 不写本地库、不改 CRM。
+- 已新增方案文档 `docs/mail_autosend_workday_recovery_plan.md`, 明确存量回收原则: 每销售独立、原日期靠前优先、往后移到最近工作日、每天上限 50; 实际回收等待人工指令。
+- 验证: `python -m py_compile backend\main.py backend\database.py` 通过; `node --check scratch\frontend-mail-suite-autosend-check.js` 通过; `git diff --check -- backend/main.py backend/database.py frontend/mail-suite.html docs/mail_autosend_workday_recovery_plan.md` 通过。
 ## 2026-06-30 每日详情字段改"读固化快照", 还原当时结果(不再现拼 MessageLog)
 
 - 用户质疑: 实时验证详情里哪些字段不是读 DB 而是重算的? 要求百分百还原当时结果。

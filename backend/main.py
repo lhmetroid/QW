@@ -17,7 +17,7 @@ import random
 import subprocess
 import threading
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from decimal import Decimal, InvalidOperation
 import time
 from io import BytesIO
@@ -855,6 +855,8 @@ def auto_patch_db():
         # ---- autosend 升级: 排期持久化 + 后台生成 + 转入CRM + 已发部分套装策略 所需新列 ----
         db.execute(text("ALTER TABLE mail_autosend_config ADD COLUMN IF NOT EXISTS default_partial_sent_mode VARCHAR(20) NOT NULL DEFAULT 'remaining';"))
         db.execute(text("ALTER TABLE mail_autosend_config ADD COLUMN IF NOT EXISTS email_valid_mode VARCHAR(20) NOT NULL DEFAULT 'collect';"))
+        db.execute(text("ALTER TABLE mail_autosend_config ADD COLUMN IF NOT EXISTS skip_non_workdays BOOLEAN NOT NULL DEFAULT TRUE;"))
+        db.execute(text("ALTER TABLE mail_autosend_config ADD COLUMN IF NOT EXISTS holiday_dates_csv TEXT NOT NULL DEFAULT '';"))
         db.execute(text("ALTER TABLE mail_autosend_suite_rule ADD COLUMN IF NOT EXISTS partial_sent_mode VARCHAR(20) NOT NULL DEFAULT 'use_global';"))
         # plan_item: 落库展示字段 + 生成内容 + 状态机(planned/drafting/drafted/sent/failed)
         db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS customer_id VARCHAR(120);"))
@@ -20763,7 +20765,9 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
                        fallback_enabled: bool = True, sent_map: dict | None = None,
                        global_partial_default: str = "remaining",
                        exclude_recent_suite_days: int | None = None,
-                       pending_latest_map: dict | None = None) -> dict:
+                       pending_latest_map: dict | None = None,
+                       skip_non_workdays: bool = True,
+                       holiday_dates: Any = None) -> dict:
     """逐人逐封排期。返回 {items, skipped, day_load}。纯计算, 不写任何库。
 
     - 从开始累计口径(与套装模板"发送间隔=从开始累计"统一): 各封相对"开始"(首封基准)累计, 不是相对上一封实际落日。
@@ -20839,9 +20843,9 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
                 if prev_actual is not None and desired < prev_actual:
                     desired = prev_actual   # 安全兜底: 不早于上一封(仅每日上限顺延碰撞时触发)
             first = False
-            day = desired
+            day = _autosend_next_workday(desired, skip_non_workdays, holiday_dates)
             while load.get((owner, day.isoformat()), 0) >= cap:
-                day = day + timedelta(days=1)
+                day = _autosend_next_workday(day + timedelta(days=1), skip_non_workdays, holiday_dates)
             seq = load.get((owner, day.isoformat()), 0)
             minute_total = 9 * 60 + 5 * seq
             hh, mm = divmod(minute_total, 60)
@@ -20919,6 +20923,8 @@ class AutosendDryRunRequest(BaseModel):
     company_name_like: str = ""             # 公司名模糊筛选(默认空=不生效)
     exclude_recent_suite_days: int | None = None   # 近N天发过套装则跳过(默认空=不生效)
     partial_sent_default: str = "remaining"        # 已发部分套装的全局默认模式
+    skip_non_workdays: bool | None = None
+    holiday_dates: list[str] | str | None = None
     demo: bool = False
     demo_count: int = 26
 
@@ -20977,11 +20983,15 @@ def autosend_dry_run(payload: AutosendDryRunRequest, db: Session = Depends(get_d
     if source == "crm_sales":
         sent_map = _autosend_sent_map(db, [c.get("contact_id") for c in contacts])
 
+    cfg = _autosend_serialize_config(_autosend_get_or_create_config(db))
+    skip_non_workdays = cfg.get("skip_non_workdays", True) if payload.skip_non_workdays is None else bool(payload.skip_non_workdays)
+    holiday_dates = payload.holiday_dates if payload.holiday_dates is not None else cfg.get("holiday_dates", [])
     result = _autosend_schedule(
         contacts, rules, payload.interval_days, payload.daily_cap, start_date,
         existing_load=existing_load, fallback_enabled=payload.fallback_enabled,
         sent_map=sent_map, global_partial_default=payload.partial_sent_default,
         exclude_recent_suite_days=payload.exclude_recent_suite_days,
+        skip_non_workdays=skip_non_workdays, holiday_dates=holiday_dates,
     )
     return {
         "ok": True,
@@ -21009,6 +21019,52 @@ def _autosend_parse_interval_csv(csv: str) -> list[int]:
     return out or [0]
 
 
+
+def _autosend_parse_date_csv(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        parts = [str(x or "").strip() for x in value]
+    else:
+        parts = [x.strip() for x in re.split(r"[,;，、\s]+", str(value or "")) if x.strip()]
+    out: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        try:
+            ds = datetime.strptime(part[:10], "%Y-%m-%d").date().isoformat()
+        except Exception:
+            continue
+        if ds not in seen:
+            seen.add(ds)
+            out.append(ds)
+    return out
+
+
+def _autosend_holiday_set(value: Any) -> set:
+    dates = set()
+    for ds in _autosend_parse_date_csv(value):
+        try:
+            dates.add(datetime.strptime(ds, "%Y-%m-%d").date())
+        except Exception:
+            pass
+    return dates
+
+
+def _autosend_is_non_workday(day, skip_non_workdays: bool = True, holiday_dates: Any = None) -> bool:
+    if day is None or not skip_non_workdays:
+        return False
+    if hasattr(day, "date") and not isinstance(day, date):
+        day = day.date()
+    holidays = _autosend_holiday_set(holiday_dates)
+    return day.weekday() >= 5 or day in holidays
+
+
+def _autosend_next_workday(day, skip_non_workdays: bool = True, holiday_dates: Any = None):
+    if day is None:
+        return day
+    while _autosend_is_non_workday(day, skip_non_workdays, holiday_dates):
+        day = day + timedelta(days=1)
+    return day
 def _autosend_serialize_config(row) -> dict:
     return {
         "sort_rule": row.sort_rule,
@@ -21020,6 +21076,9 @@ def _autosend_serialize_config(row) -> dict:
         "dedup_by_history": bool(row.dedup_by_history),
         "default_partial_sent_mode": getattr(row, "default_partial_sent_mode", None) or "remaining",
         "email_valid_mode": getattr(row, "email_valid_mode", None) or "collect",
+        "skip_non_workdays": bool(getattr(row, "skip_non_workdays", True)),
+        "holiday_dates_csv": getattr(row, "holiday_dates_csv", None) or "",
+        "holiday_dates": _autosend_parse_date_csv(getattr(row, "holiday_dates_csv", None) or ""),
     }
 
 
@@ -21056,6 +21115,9 @@ class AutosendConfigRequest(BaseModel):
     dedup_by_history: bool | None = None
     default_partial_sent_mode: str | None = None
     email_valid_mode: str | None = None
+    skip_non_workdays: bool | None = None
+    holiday_dates: list[str] | str | None = None
+    holiday_dates_csv: str | None = None
 
 
 @app.get("/api/v1/mail/autosend/config")
@@ -21086,6 +21148,12 @@ def put_autosend_config(payload: AutosendConfigRequest, db: Session = Depends(ge
     if payload.email_valid_mode is not None:
         em = sanitize_text(payload.email_valid_mode).strip().lower()
         row.email_valid_mode = em if em in ("collect", "manual") else "collect"
+    if payload.skip_non_workdays is not None:
+        row.skip_non_workdays = bool(payload.skip_non_workdays)
+    if payload.holiday_dates is not None:
+        row.holiday_dates_csv = ",".join(_autosend_parse_date_csv(payload.holiday_dates))
+    elif payload.holiday_dates_csv is not None:
+        row.holiday_dates_csv = ",".join(_autosend_parse_date_csv(payload.holiday_dates_csv))
     row.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(row)
@@ -21357,7 +21425,52 @@ class AutosendPreviewRequest(BaseModel):
     exclude_recent_suite_days: int | None = None
     partial_sent_default: str = "remaining"
     consider_existing_crm_queue: bool = True
-    email_valid_mode: str | None = None    # collect/manual; 缺省用已保存配置
+    email_valid_mode: str | None = None
+    skip_non_workdays: bool | None = None
+    holiday_dates: list[str] | str | None = None
+    holiday_dates_csv: str | None = None
+
+
+def _autosend_align_crm_status(db, items: list[dict]) -> None:
+    """读层对齐(不改库): 排期清单里某封若已在 CRM(mail_customer_suite_send_plan enqueued 且未删),
+    但本地 plan_item 还停在 drafted/planned/failed, 覆盖显示为 sent(前端=待发, 已转入CRM, 不可再勾),
+    消除 排期清单 与 已用套装/日历 的口径不一致(如 KH15616-024 第1封已实发却仍显示可勾)。"""
+    if not items:
+        return
+    keys = set()
+    for it in items:
+        for k in (it.get("contact_id"), it.get("customer_id")):
+            if k:
+                keys.add(str(k))
+    if not keys:
+        return
+    try:
+        rows = db.execute(
+            text("SELECT customer_id, scenario, suite_step, "
+                 "MAX(CASE WHEN crm_send_status='SendSuccess' THEN 2 ELSE 1 END) rk "
+                 "FROM mail_customer_suite_send_plan "
+                 "WHERE customer_id IN :ids AND status='enqueued' "
+                 "AND COALESCE(crm_send_status,'') <> 'deleted' "
+                 "GROUP BY customer_id, scenario, suite_step").bindparams(bindparam("ids", expanding=True)),
+            {"ids": list(keys)},
+        ).fetchall()
+    except Exception:
+        logger.exception("AUTOSEND_PLAN_CRM_ALIGN_FAILED")
+        return
+    crm_map = {(str(c), str(sc), int(st)): int(rk) for c, sc, st, rk in rows if st is not None}
+    for it in items:
+        if it.get("status") == "sent":
+            continue
+        sc = str(it.get("scenario") or "")
+        try:
+            st = int(it.get("suite_step") or 0)
+        except (TypeError, ValueError):
+            continue
+        rk = crm_map.get((str(it.get("contact_id") or ""), sc, st)) or crm_map.get((str(it.get("customer_id") or ""), sc, st))
+        if rk:
+            it["status"] = "sent"        # 前端 as2StepBtn 显示为"待发"(已转入CRM), 不再是可勾选的绿色
+            it["crm_synced"] = True       # 标记: 本状态由 CRM 实际发送计划对齐而来
+            it["crm_sent"] = (rk == 2)    # True=CRM已实发(SendSuccess); False=CRM待发
 
 
 def _autosend_list_plan(db, staff: str, statuses: tuple = _AUTOSEND_PENDING_STATUSES) -> list[dict]:
@@ -21374,7 +21487,9 @@ def _autosend_list_plan(db, staff: str, statuses: tuple = _AUTOSEND_PENDING_STAT
         ).bindparams(bindparam("st", expanding=True)),
         params,
     ).fetchall()
-    return [_autosend_serialize_plan_row(r) for r in rows]
+    items = [_autosend_serialize_plan_row(r) for r in rows]
+    _autosend_align_crm_status(db, items)   # 读层对齐 CRM 实际发送状态, 消除口径不一致
+    return items
 
 
 @app.post("/api/v1/mail/autosend/preview")
@@ -21425,12 +21540,16 @@ def autosend_preview(payload: AutosendPreviewRequest, db: Session = Depends(get_
     # G: 该联系人已有待发送套装邮件时, 本次首封 = 已有最晚一封 + N 天
     pending_latest_map = _autosend_pending_latest_map(db, fresh, owner_scope)
 
+    cfg = _autosend_serialize_config(_autosend_get_or_create_config(db))
+    skip_non_workdays = cfg.get("skip_non_workdays", True) if payload.skip_non_workdays is None else bool(payload.skip_non_workdays)
+    holiday_dates = payload.holiday_dates if payload.holiday_dates is not None else cfg.get("holiday_dates", [])
     result = _autosend_schedule(
         fresh, rules, payload.interval_days, payload.daily_cap, start_date,
         existing_load=existing_load, fallback_enabled=payload.fallback_enabled,
         sent_map=sent_map, global_partial_default=payload.partial_sent_default,
         exclude_recent_suite_days=payload.exclude_recent_suite_days,
         pending_latest_map=pending_latest_map,
+        skip_non_workdays=skip_non_workdays, holiday_dates=holiday_dates,
     )
 
     run_id = db.execute(
@@ -21694,6 +21813,188 @@ def autosend_mark_committed(payload: AutosendMarkCommittedRequest, db: Session =
     db.commit()
     return {"ok": True, "committed": n}
 
+
+
+def _autosend_recovery_row_key(row: dict) -> str:
+    return f"{row.get('source')}:{row.get('id')}"
+
+
+def _autosend_recovery_simulate(rows: list[dict], daily_cap: int,
+                                skip_non_workdays: bool, holiday_dates: Any) -> dict:
+    """只读模拟存量排期回收: 每销售独立, 原日期靠前优先, 往后移到最近工作日, 每天上限 cap。"""
+    cap = max(1, int(daily_cap or 50))
+    by_staff: dict[str, list[dict]] = {}
+    for row in rows:
+        staff = str(row.get("owner_staff_id") or "").strip() or "UNKNOWN"
+        by_staff.setdefault(staff, []).append(row)
+    changed: list[dict] = []
+    unchanged: list[dict] = []
+    summaries: dict[str, dict] = {}
+    loads: dict[str, dict[str, int]] = {}
+    for staff, staff_rows in sorted(by_staff.items()):
+        staff_rows.sort(key=lambda r: (
+            str(r.get("old_date") or ""), str(r.get("old_time") or ""),
+            0 if r.get("source") == "local_plan" else 1, str(r.get("created_at") or ""),
+            _autosend_recovery_row_key(r),
+        ))
+        load: dict[str, int] = {}
+        staff_changed = 0
+        for row in staff_rows:
+            old_date_s = str(row.get("old_date") or "")[:10]
+            if not old_date_s:
+                unchanged.append({**row, "reason": "missing_old_date"})
+                continue
+            try:
+                old_day = datetime.strptime(old_date_s, "%Y-%m-%d").date()
+            except Exception:
+                unchanged.append({**row, "reason": "invalid_old_date"})
+                continue
+            candidate = _autosend_next_workday(old_day, skip_non_workdays, holiday_dates)
+            reasons = []
+            if candidate != old_day:
+                reasons.append("non_workday")
+            while load.get(candidate.isoformat(), 0) >= cap:
+                candidate = _autosend_next_workday(candidate + timedelta(days=1), skip_non_workdays, holiday_dates)
+                if "daily_cap" not in reasons:
+                    reasons.append("daily_cap")
+            seq = load.get(candidate.isoformat(), 0)
+            load[candidate.isoformat()] = seq + 1
+            item = {
+                **row,
+                "new_date": candidate.isoformat(),
+                "new_time": row.get("old_time"),
+                "new_seq_in_day": seq,
+                "need_change": candidate != old_day,
+                "change_reasons": reasons,
+            }
+            if item["need_change"]:
+                staff_changed += 1
+                changed.append(item)
+            else:
+                unchanged.append(item)
+        loads[staff] = load
+        summaries[staff] = {
+            "staff_id": staff,
+            "total": len(staff_rows),
+            "changed": staff_changed,
+            "unchanged": len(staff_rows) - staff_changed,
+            "max_day_load": max(load.values()) if load else 0,
+            "day_count": len(load),
+        }
+    day_load = [
+        {"owner_staff_id": staff, "date": ds, "count": count}
+        for staff, load in sorted(loads.items())
+        for ds, count in sorted(load.items())
+    ]
+    return {
+        "changed": changed,
+        "unchanged_count": len(unchanged),
+        "staff_summaries": list(summaries.values()),
+        "day_load": day_load,
+    }
+
+
+@app.get("/api/v1/mail/autosend/workday-recovery-analysis")
+def autosend_workday_recovery_analysis(
+    staff_id: str = Query(""),
+    start: str = Query(""),
+    days: int = Query(180),
+    daily_cap: int = Query(50),
+    include_local: int = Query(1),
+    include_crm: int = Query(1),
+    skip_non_workdays: int | None = Query(None),
+    holiday_dates: str = Query(""),
+    db: Session = Depends(get_db),
+):
+    """只读分析: 当前排期如按工作日配置回收, 哪些记录需要往后移。不会写本地库或 CRM。"""
+    staff = sanitize_text(staff_id).strip()
+    now_bj = datetime.utcnow() + timedelta(hours=8)
+    try:
+        start_date = datetime.strptime(start.strip(), "%Y-%m-%d").date() if start else now_bj.date()
+    except Exception:
+        raise HTTPException(status_code=422, detail="start 格式应为 YYYY-MM-DD")
+    end_date = start_date + timedelta(days=max(1, min(int(days or 180), 366)))
+    cfg = _autosend_serialize_config(_autosend_get_or_create_config(db))
+    skip = bool(cfg.get("skip_non_workdays", True)) if skip_non_workdays is None else bool(int(skip_non_workdays))
+    holidays = _autosend_parse_date_csv(holiday_dates) if holiday_dates else cfg.get("holiday_dates", [])
+    rows: list[dict] = []
+    if int(include_local or 0):
+        staff_clause = "owner_staff_id=:s AND " if staff else ""
+        params = {"sd": start_date, "ed": end_date}
+        if staff:
+            params["s"] = staff
+        local_rows = db.execute(
+            text("SELECT item_id, owner_staff_id, contact_id, customer_id, company_name, contact_name, "
+                 "scenario, suite_step, plan_date, plan_time, status, created_at "
+                 "FROM mail_autosend_plan_item "
+                 f"WHERE {staff_clause}status IN ('planned','drafting','drafted','failed') "
+                 "AND plan_date>=:sd AND plan_date<:ed"),
+            params,
+        ).fetchall()
+        for r in local_rows:
+            plan_date = r[8].isoformat() if r[8] is not None and hasattr(r[8], "isoformat") else str(r[8] or "")[:10]
+            rows.append({
+                "source": "local_plan", "id": str(r[0]), "owner_staff_id": r[1] or "",
+                "contact_id": r[2], "customer_id": r[3] or r[2], "company_name": r[4] or "",
+                "contact_name": r[5] or "", "scenario": r[6], "suite_step": int(r[7] or 0),
+                "old_date": plan_date, "old_time": r[9] or "", "status": r[10],
+                "created_at": r[11].isoformat() if r[11] is not None and hasattr(r[11], "isoformat") else str(r[11] or ""),
+            })
+    if int(include_crm or 0):
+        try:
+            from crm_database import CRMSessionLocal
+            crm_db = CRMSessionLocal()
+            try:
+                staff_clause = "AND InputerStaffId=:s " if staff else ""
+                params = {"sd": datetime.combine(start_date, datetime.min.time()),
+                          "ed": datetime.combine(end_date, datetime.min.time())}
+                if staff:
+                    params["s"] = staff
+                crm_rows = crm_db.execute(
+                    text("SELECT RowId, InputerStaffId, PlanSendTime, ISNULL(Subject,''), ISNULL(Receiver,'') "
+                         "FROM spQueueSend "
+                         "WHERE MessageType='Email' AND ISNULL(UseRange,'') LIKE '%宣传邮件-AI%' "
+                         "AND ISNULL(FolderId,'')='OutBox' "
+                         f"{staff_clause}"
+                         "AND PlanSendTime>=:sd AND PlanSendTime<:ed"),
+                    params,
+                ).fetchall()
+            finally:
+                crm_db.close()
+            for r in crm_rows:
+                dt = r[2]
+                rows.append({
+                    "source": "crm_queue", "id": str(r[0]), "owner_staff_id": str(r[1] or ""),
+                    "contact_id": _autosend_receiver_key(r[4]) or str(r[4] or ""),
+                    "customer_id": "", "company_name": "", "contact_name": str(r[4] or ""),
+                    "scenario": "", "suite_step": None,
+                    "old_date": dt.strftime("%Y-%m-%d") if dt is not None and hasattr(dt, "strftime") else str(dt or "")[:10],
+                    "old_time": dt.strftime("%H:%M") if dt is not None and hasattr(dt, "strftime") else "",
+                    "status": "crm_outbox", "subject": str(r[3] or ""), "created_at": "",
+                })
+        except Exception as exc:
+            logger.exception("AUTOSEND_WORKDAY_RECOVERY_CRM_ANALYSIS_FAILED")
+            return {"ok": False, "error": str(exc)[:500], "wrote_to_db": False, "updated_crm": False}
+    sim = _autosend_recovery_simulate(rows, daily_cap, skip, holidays)
+    return {
+        "ok": True,
+        "mode": "analysis_only",
+        "wrote_to_db": False,
+        "updated_crm": False,
+        "staff_id": staff,
+        "start": start_date.isoformat(),
+        "end": end_date.isoformat(),
+        "daily_cap": max(1, int(daily_cap or 50)),
+        "skip_non_workdays": skip,
+        "holiday_dates": _autosend_parse_date_csv(holidays),
+        "total_rows": len(rows),
+        "changed_count": len(sim["changed"]),
+        "unchanged_count": sim["unchanged_count"],
+        "staff_summaries": sim["staff_summaries"],
+        "day_load": sim["day_load"],
+        "changes": sim["changed"],
+        "policy": "每个销售独立; 原日期/时间靠前的优先保留; 非工作日或当天超过上限时逐日向后找最近工作日; 本接口只分析不回写。",
+    }
 
 @app.get("/api/v1/mail/autosend/calendar")
 def autosend_calendar(staff_id: str = Query(""), days: int = Query(90), db: Session = Depends(get_db)):
@@ -36179,5 +36480,3 @@ async def caselib_regenerate_iteration_summary(run_id: str):
         }
     finally:
         db.close()
-
-

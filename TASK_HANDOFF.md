@@ -1,5 +1,16 @@
 # TASK_HANDOFF
+## 2026-07-06 自动排期工作日跳过与存量回收分析交接
 
+- **用户要求**: 增加开关, 让后续新增排期自动跳过周六、周日及中国国家规定法定节假日; 当前存量数据先只分析方案和涉及的数据变化, 原则为往后移到最近工作日、每天上限 50、原日期靠前优先、每个销售独立, 具体回收等待人工指令。
+- **已完成**:
+  - `mail_autosend_config` 新增 `skip_non_workdays` 与 `holiday_dates_csv`。
+  - 自动排期 `_autosend_schedule()` 新增工作日跳过逻辑, 每次目标日和每日上限顺延都会跳过周末和配置节假日。
+  - 自动排期配置 API、dry-run/preview 请求和前端 `mail-suite.html` 均接入新开关与节假日输入。
+  - 新增只读接口 `/api/v1/mail/autosend/workday-recovery-analysis`, 同时分析本地预排和 CRM OutBox AI 待发行, 返回变化清单但不写库、不改 CRM。
+  - 新增 `docs/mail_autosend_workday_recovery_plan.md`, 写清楚存量回收策略和未来人工确认后可能涉及的字段。
+- **未执行**: 未进行任何存量回收、未更新 `mail_autosend_plan_item` 排期日期、未修改 CRM `spQueueSend.PlanSendTime`。
+- **下一步**: 人工先调用只读分析接口导出 `changes` 复核; 若确认回收, 再另行下令实现/执行受控回写脚本或接口。
+- **验证**: `python -m py_compile backend\main.py backend\database.py` 通过; `node --check scratch\frontend-mail-suite-autosend-check.js` 通过; `git diff --check -- backend/main.py backend/database.py frontend/mail-suite.html docs/mail_autosend_workday_recovery_plan.md` 通过。
 ## 2026-06-16 案例2 Step1 多轮 API 脚本交接
 
 - **用户要求**：先停留在案例2 Step1，修正前一版方向走偏问题；获取客户真实信息；去掉“爱德华/TAVR/医疗器械/生命科学”硬禁词；不要新增“不得带入其他客户信息”这类泛化规则；用正向思路完成脚本并检查一轮。

@@ -798,6 +798,8 @@
           <div class="flex flex-wrap items-center gap-2 text-xs">
             <label class="flex items-center gap-1" title="从开始日累计的天数(各封相对开始日, 不是相对上一封)。如 1,10,19,28 = 第1封第1天/第2封第10天/第3封第19天/第4封第28天。与套装模板发送间隔口径一致。">统一周期<input id="as2-intervals" class="rounded border border-slate-300 px-2 py-1 w-28" value="1,10,19,28"></label>
             <label class="flex items-center gap-1" title="每个销售每天最多发多少封, 含已有占用。满了顺延到下一天。">每日上限<input id="as2-daily-cap" type="number" min="1" class="rounded border border-slate-300 px-2 py-1 w-16" value="50"></label>
+            <label class="flex items-center gap-1" title="勾选后, 新增排期会自动跳过周六、周日和下方配置的中国法定节假日; 已有存量排期不会自动改动。"><input type="checkbox" id="as2-skip-nonworkdays" checked>跳过周末/节假日</label>
+            <label class="flex items-center gap-1" title="配置要跳过的中国法定节假日, 格式 YYYY-MM-DD, 可用逗号或空格分隔。例: 2026-10-01,2026-10-02">节假日<input id="as2-holiday-dates" class="rounded border border-slate-300 px-2 py-1 w-80" placeholder="YYYY-MM-DD,YYYY-MM-DD"></label>
             <label class="flex items-center gap-1">开始日期<input id="as2-start-date" type="date" class="rounded border border-slate-300 px-2 py-1"></label>
             <label class="flex items-center gap-1" title="勾上: 联系人一条规则都不命中时, 用最后一条(兜底)套装照发。默认不勾: 都不命中就跳过该联系人, 不发。"><input type="checkbox" id="as2-fallback">全不命中用兜底</label>
             <label class="flex items-center gap-1"><input type="checkbox" id="as2-consider-queue" checked>考虑已有排期</label>
@@ -2391,6 +2393,8 @@
         if (Array.isArray(c.interval_days) && c.interval_days.length > 1) set('as2-intervals', c.interval_days.join(','));
         if (c.daily_cap && Number(c.daily_cap) !== 10) set('as2-daily-cap', c.daily_cap);
         const fb = document.getElementById('as2-fallback'); if (fb) fb.checked = c.fallback_enabled !== false;
+        const snw = document.getElementById('as2-skip-nonworkdays'); if (snw) snw.checked = c.skip_non_workdays !== false;
+        set('as2-holiday-dates', Array.isArray(c.holiday_dates) ? c.holiday_dates.join(',') : (c.holiday_dates_csv || ''));
         const evm = (c.email_valid_mode === 'manual') ? 'manual' : 'collect';
         document.querySelectorAll('input[name="as2-evm"]').forEach((r) => { r.checked = (r.value === evm); });
       } catch (e) {}
@@ -2496,6 +2500,8 @@
           daily_cap: parseInt(document.getElementById('as2-daily-cap').value, 10) || 50,
           fallback_enabled: document.getElementById('as2-fallback').checked,
           email_valid_mode: as2Evm(),
+          skip_non_workdays: document.getElementById('as2-skip-nonworkdays')?.checked !== false,
+          holiday_dates_csv: document.getElementById('as2-holiday-dates')?.value || '',
         };
         const r = await fetch('/api/v1/mail/autosend/config', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         as2Status(r.ok ? '配置已保存' : '配置保存失败', !r.ok);
@@ -2516,6 +2522,8 @@
         partial_sent_default: 'remaining',
         email_valid_mode: as2Evm(),
         consider_existing_crm_queue: document.getElementById('as2-consider-queue').checked,
+        skip_non_workdays: document.getElementById('as2-skip-nonworkdays')?.checked !== false,
+        holiday_dates: document.getElementById('as2-holiday-dates')?.value || '',
       };
     }
     let as2PreviewBusy = false;
