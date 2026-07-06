@@ -22834,25 +22834,52 @@ def _asr_suite_options(scenarios: list[str] | None) -> list[dict]:
     return out
 
 
+def _asr_ensure_scope_table(db) -> None:
+    db.execute(text(
+        "CREATE TABLE IF NOT EXISTS mail_suite_applicable_scope ("
+        "scenario VARCHAR(120) PRIMARY KEY, "
+        "scope_text TEXT NOT NULL DEFAULT '', "
+        "updated_at TIMESTAMP DEFAULT now())"
+    ))
+    db.commit()
+
+
+def _asr_load_scopes(db) -> dict:
+    """{scenario: 适用范围文本}。缺行=未填写(空串)。"""
+    try:
+        _asr_ensure_scope_table(db)
+        rows = db.execute(text("SELECT scenario, scope_text FROM mail_suite_applicable_scope")).fetchall()
+        return {str(r[0] or "").strip(): (r[1] or "") for r in rows if str(r[0] or "").strip()}
+    except Exception:
+        logger.exception("ASR_LOAD_SCOPES_FAILED")
+        return {}
+
+
 def _asr_llm_rank_suites(class_rule: dict, suite_opts: list[dict]) -> dict:
     """让 LLM 给一类联系人对候选套装按优先级排序。失败返回 {} (调用方回退输入顺序)。"""
     import json
     try:
         name = str(class_rule.get("name") or "该类联系人")
         conds = class_rule.get("conditions") or []
-        lines = "\n".join(f"- {o['value']}: {o['label']}" for o in suite_opts)
+        lines = "\n".join(
+            f"- {o['value']}: {o['label']} | 适用范围: {(str(o.get('scope') or '').strip() or '未填写')}"
+            for o in suite_opts
+        )
         prompt = (
-            "你是外贸邮件套装策略助手。下面给出一类联系人及一组可发送的邮件套装。\n"
+            "你是外贸邮件套装策略助手。下面给出一类联系人及一组可发送的邮件套装(含各套装的人工填写适用范围)。\n"
             f"联系人分类名称: {name}\n"
             f"分类条件(JSON): {json.dumps(conds, ensure_ascii=False)}\n"
-            f"可选套装(套装代号: 中文名):\n{lines}\n\n"
-            "请判断这类联系人最适合优先发送哪些套装, 按优先级从高到低排序。\n"
+            f"可选套装(套装代号: 中文名 | 适用范围):\n{lines}\n\n"
+            "请结合每个套装的适用范围, 判断这类联系人最适合优先发送哪些套装, 按优先级从高到低排序。\n"
             "只输出 JSON: {\"order\":[\"套装代号\", ...], \"reason\":\"一句话理由\"}。"
             "order 只能包含上面列出的套装代号, 不要新增。"
         )
         r = _call_llm2_json_for_mail_draft(prompt, timeout_seconds=20, force_json=True)
+        # 该 helper 返回 {parsed: dict|None, raw_text, error, model}, 真正的模型 JSON 在 parsed 里。
         if isinstance(r, dict):
-            return r
+            parsed = r.get("parsed")
+            if isinstance(parsed, dict):
+                return parsed
     except Exception:
         logger.exception("ASR_LLM_RANK_FAILED")
     return {}
@@ -23094,6 +23121,41 @@ def asr_put_config(payload: AsrConfigRequest, db: Session = Depends(get_db)):
     return {"ok": True, "config": _asr_get_config(db, scope)}
 
 
+@app.get("/api/v1/mail/suite-applicable-scopes")
+def asr_get_suite_scopes(db: Session = Depends(get_db)):
+    """需求16: 列出所有套装及其人工填写的适用范围(供自动发送 LLM 优先级判断 + 人工填写页)。"""
+    scopes = _asr_load_scopes(db)
+    out = []
+    for o in _asr_suite_options(None):
+        out.append({"scenario": o["value"], "label": o["label"],
+                    "step_count": _autosend_scenario_step_count(o["value"]),
+                    "scope_text": scopes.get(o["value"], "")})
+    return {"ok": True, "suites": out}
+
+
+class AsrSuiteScopeRequest(BaseModel):
+    scenario: str
+    scope_text: str = ""
+
+
+@app.put("/api/v1/mail/suite-applicable-scope")
+def asr_put_suite_scope(payload: AsrSuiteScopeRequest, db: Session = Depends(get_db)):
+    """需求16: 保存某套装的适用范围(人工填写修改)。"""
+    scenario = sanitize_text(payload.scenario or "").strip()
+    if not scenario:
+        raise HTTPException(status_code=422, detail="scenario is required")
+    _asr_ensure_scope_table(db)
+    db.execute(
+        text(
+            "INSERT INTO mail_suite_applicable_scope (scenario,scope_text,updated_at) VALUES (:sc,:tx,now()) "
+            "ON CONFLICT (scenario) DO UPDATE SET scope_text=:tx, updated_at=now()"
+        ),
+        {"sc": scenario[:120], "tx": sanitize_text(payload.scope_text or "")},
+    )
+    db.commit()
+    return {"ok": True, "scenario": scenario, "scope_text": sanitize_text(payload.scope_text or "")}
+
+
 class AsrSuggestRequest(BaseModel):
     staff_id: str = ""
     class_rules: list[dict] = []
@@ -23112,6 +23174,9 @@ def asr_suggest(payload: AsrSuggestRequest, db: Session = Depends(get_db)):
                                                  email_valid_mode=_mail_get_email_valid_mode())
     suite_opts = _asr_suite_options(payload.suite_scenarios)
     labels = {o["value"]: o["label"] for o in suite_opts}
+    scopes = _asr_load_scopes(db)
+    for o in suite_opts:
+        o["scope"] = scopes.get(o["value"], "")
     if not suite_opts:
         return {"ok": True, "rows": [], "unclassified": len(contacts), "note": "套装范围为空且无已注册套装"}
     sent_map = _autosend_sent_map(db, [c.get("contact_id") for c in contacts])

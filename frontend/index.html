@@ -756,6 +756,19 @@
                         </div>
                     </div>
 
+                    <!-- 1.5 套装适用范围(需求16, 人工填写, 供 LLM 优先级参考) -->
+                    <div class="rounded-lg border border-slate-300 bg-white p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <h3 class="text-sm font-bold text-slate-900">套装适用范围<span class="ml-1 cursor-help text-[11px] text-slate-400" title="每个套装人工填写适用范围; 生成建议时 LLM 会结合它给套装排优先级(需求16)。">ⓘ</span></h3>
+                            <div class="flex items-center gap-2">
+                                <button type="button" id="asr-scopes-toggle" onclick="asrToggleScopes()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50">▶ 展开</button>
+                                <button type="button" onclick="asrSaveAllScopes()" class="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100" title="保存所有已修改的套装适用范围。">保存全部</button>
+                                <span id="asr-scopes-status" class="text-[11px] text-slate-500"></span>
+                            </div>
+                        </div>
+                        <div id="asr-scopes-body" class="hidden mt-3 space-y-2"></div>
+                    </div>
+
                     <!-- 2. LLM 分析生成 -->
                     <div class="rounded-lg border border-slate-300 bg-white p-4">
                         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -4123,6 +4136,50 @@
             const am = cfg.action_map || {};
             asrSetMultiSelect('asr-action-followup', am.followup || []);
             asrSetMultiSelect('asr-action-lost', am.lost || []);
+        }
+
+        // ---- 需求16: 套装适用范围(人工填写, 供 LLM 优先级参考) ----
+        let asrScopesLoaded = false;
+        async function asrToggleScopes() {
+            const body = document.getElementById('asr-scopes-body');
+            const btn = document.getElementById('asr-scopes-toggle');
+            if (!body) return;
+            const willShow = body.classList.contains('hidden');
+            body.classList.toggle('hidden', !willShow);
+            if (btn) btn.textContent = willShow ? '▼ 收起' : '▶ 展开';
+            if (willShow && !asrScopesLoaded) await asrLoadScopes();
+        }
+        async function asrLoadScopes() {
+            const body = document.getElementById('asr-scopes-body'); if (!body) return;
+            body.innerHTML = '<div class="text-[11px] text-slate-400">加载中…</div>';
+            try {
+                const r = await fetch(`${window.location.origin}/api/v1/mail/suite-applicable-scopes`, { credentials: 'include' });
+                const j = await r.json();
+                const suites = j.suites || [];
+                body.innerHTML = suites.length ? suites.map(s => `<div class="flex flex-col gap-1 rounded border border-slate-100 bg-slate-50 p-2">
+                    <div class="text-[11px] font-bold text-slate-700">${escapeHtml(s.label || s.scenario)} <span class="text-slate-400">(${escapeHtml(s.scenario)} · ${s.step_count || 0}封)</span></div>
+                    <textarea class="asr-scope-input w-full rounded border border-slate-300 px-2 py-1 text-xs" rows="2" data-scenario="${escapeHtml(s.scenario)}" data-orig="${escapeHtml(s.scope_text || '')}" placeholder="填写该套装适用范围, 如: 近1年有报价未成交的老客户">${escapeHtml(s.scope_text || '')}</textarea>
+                </div>`).join('') : '<div class="text-[11px] text-slate-400">暂无套装。</div>';
+                asrScopesLoaded = true;
+            } catch (e) { body.innerHTML = '<div class="text-[11px] text-rose-600">加载失败: ' + escapeHtml(String(e)) + '</div>'; }
+        }
+        async function asrSaveAllScopes() {
+            const inputs = Array.from(document.querySelectorAll('#asr-scopes-body .asr-scope-input'));
+            const changed = inputs.filter(i => (i.value || '') !== (i.getAttribute('data-orig') || ''));
+            if (!changed.length) { asrStatus('asr-scopes-status', asrScopesLoaded ? '无改动' : '请先展开加载'); return; }
+            asrStatus('asr-scopes-status', `保存 ${changed.length} 项…`);
+            let ok = 0;
+            for (const inp of changed) {
+                try {
+                    const r = await fetch(`${window.location.origin}/api/v1/mail/suite-applicable-scope`, {
+                        method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ scenario: inp.getAttribute('data-scenario'), scope_text: inp.value || '' }),
+                    });
+                    const j = await r.json();
+                    if (j.ok) { inp.setAttribute('data-orig', inp.value || ''); ok++; }
+                } catch (e) {}
+            }
+            asrStatus('asr-scopes-status', `已保存 ${ok}/${changed.length} 项`, ok !== changed.length);
         }
 
         // ---- 分类规则编辑(手工, 不限个数) ----
