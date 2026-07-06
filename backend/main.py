@@ -1517,6 +1517,9 @@ async def _api_invocation_rescore_backfill_worker():
 
 @app.on_event("startup")
 async def _start_api_rescore_backfill_worker():
+    if not settings.ENABLE_ARCHIVE_POLLING:
+        logger.info("企微会话存档自动轮询未启用，跳过 API 原始/相似分后台补算任务")
+        return
     logger.info("启动 API 调用原始回复分/相似分 30 分钟后台补算任务(从北京 2026-05-28 00:00 起)")
     asyncio.create_task(_api_invocation_rescore_backfill_worker())
 
@@ -20508,6 +20511,10 @@ def get_mail_customer_suite_records(
 
     suites = []
     for suite in suite_map.values():
+        # 已用套装 = 至少"预排"(自动排期 plan_item, 含失败/预排/生成态)或"转入CRM"(send_plan/已入CRM/已发送)。
+        # 仅在"邮件套装生成"页生成过模板草稿(mail_customer_suite_draft_edit)、从未预排也没转入CRM的, 不算已用, 不显示。
+        if not (suite["has_send_plan"] or suite["has_autosend_plan"]):
+            continue
         for key in ("draft_steps", "send_plan_steps", "autosend_steps", "feedback_steps"):
             suite[key] = sorted(step for step in suite[key] if step is not None)
         used_steps = sorted({
@@ -21874,7 +21881,8 @@ def _mail_suite_fill_missing_index_fields(db: Session, rows: list[MailCustomerSu
             if not getattr(row, "contact_name", None) and profile.get("contact_name"):
                 row.contact_name = sanitize_text(profile.get("contact_name"))[:255]
                 touched = True
-        if not getattr(row, "recipient_email_key", None):
+        cur_recipient_key = str(getattr(row, "recipient_email_key", None) or "").strip()
+        if (not cur_recipient_key) or ("***" in cur_recipient_key):
             key = _autosend_receiver_key(getattr(row, "to_emails", None) or getattr(row, "receiver_serialized", None) or "")
             if key:
                 row.recipient_email_key = key[:255]
@@ -22262,6 +22270,22 @@ def get_autosend_plan_item(item_id: str = Query(...), db: Session = Depends(get_
     item = _autosend_serialize_plan_row(row)
     item["body_html"] = row[25]
     item["llm_prompt"] = row[26]
+    if item.get("status") == "sent" and item.get("crm_send_id"):
+        try:
+            from crm_database import CRMSessionLocal
+            crm_db = CRMSessionLocal()
+            try:
+                rr = crm_db.execute(
+                    text("SELECT TOP 1 CAST(RowId AS NVARCHAR(64)) FROM spQueueSend "
+                         "WHERE SendId=:sid AND MessageType='Email' AND ISNULL(UseRange,'') LIKE :ur"),
+                    {"sid": str(item.get("crm_send_id") or ""), "ur": f"%{_MAIL_AI_USE_RANGE}%"},
+                ).fetchone()
+                if rr and rr[0]:
+                    item["spqueue_rowid"] = str(rr[0])
+            finally:
+                crm_db.close()
+        except Exception:
+            logger.exception("AUTOSEND_PLAN_ITEM_CRM_ROWID_LOOKUP_FAILED item_id=%s", sanitize_text(item_id))
     return {"ok": True, "item": item}
 
 
@@ -36098,3 +36122,5 @@ async def caselib_regenerate_iteration_summary(run_id: str):
         }
     finally:
         db.close()
+
+
