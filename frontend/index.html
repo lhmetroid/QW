@@ -733,6 +733,8 @@
                     <div class="mt-3 flex flex-wrap gap-2">
                         <button type="button" id="asr-mode-rules-btn" onclick="asrSwitchMode('rules')" class="px-3 py-1.5 rounded-lg border border-violet-300 bg-violet-100 text-violet-800 text-xs font-bold" title="按统一规则批量排期(需求15)">① 按统一规则批量排期</button>
                         <button type="button" id="asr-mode-trigger-btn" onclick="asrSwitchMode('trigger')" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="按销售动作(跟进/丢单)触发套装发送提示(需求14)">② 销售动作触发提示</button>
+                        <button type="button" id="asr-mode-mailbox-btn" onclick="asrSwitchMode('mailbox')" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="配置公共邮箱账号及每日上限、分配规则(需求17/19)">③ 邮箱与公共邮箱规则</button>
+                        <button type="button" id="asr-mode-stats-btn" onclick="asrSwitchMode('stats')" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50" title="统计哪封邮件(套装+第几封)回复最多(需求18)">④ 回复统计</button>
                     </div>
                 </div>
 
@@ -888,6 +890,81 @@
                             <label class="flex items-center gap-2 text-xs">每日上限<input type="number" id="asr-trig-daily-cap" min="1" value="10" class="w-14 rounded border border-slate-300 px-2 py-1 text-right">封</label>
                             <button type="button" id="asr-trigger-confirm-btn" onclick="asrTriggerConfirm()" class="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100" title="写入待发清单并后台开始生成(复用套装排期后台生成)。">确认并后台生成</button>
                             <span id="asr-trigger-status" class="text-[11px] text-slate-500"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== 模式③: 邮箱与公共邮箱规则 (需求19 + 17) ===== -->
+                <div id="asr-mode-mailbox" class="hidden space-y-4">
+                    <div class="rounded-lg border border-slate-300 bg-white p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <h3 class="text-sm font-bold text-slate-900">公共邮箱账号<span class="ml-1 cursor-help text-[11px] text-slate-400" title="配置公共邮箱账号及每天使用上限(需求19/17)。个人邮箱由各销售自身账号决定, 此处只管理公共邮箱。">ⓘ</span></h3>
+                            <div class="flex items-center gap-2">
+                                <button type="button" onclick="asrAddMailboxRow()" class="rounded border border-violet-300 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-700 hover:bg-violet-100">+ 新增邮箱</button>
+                                <button type="button" onclick="asrSaveAllMailboxes()" class="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100">保存全部</button>
+                                <span id="asr-mailbox-status" class="text-[11px] text-slate-500"></span>
+                            </div>
+                        </div>
+                        <div class="mt-3 overflow-auto">
+                            <table class="min-w-full text-xs border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-600">
+                                        <th class="border border-slate-200 px-3 py-2 text-left">公共邮箱地址</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-left">名称</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-right">每天上限</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-center">启用</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-center">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="asr-mailbox-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="rounded-lg border border-slate-300 bg-white p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <h3 class="text-sm font-bold text-slate-900">公共邮箱使用规则<span class="ml-1 cursor-help text-[11px] text-slate-400" title="公共邮箱当日容量的分配方式(需求17)。个人邮箱当日满时按此规则分配公共容量。">ⓘ</span></h3>
+                            <button type="button" onclick="asrSavePolicy()" class="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100">保存规则</button>
+                        </div>
+                        <div class="mt-3 space-y-2 text-xs">
+                            <label class="flex items-center gap-2"><input type="radio" name="asr-pub-strategy" value="first_come" onchange="asrOnStrategyChange()" checked> 先到先得(全部公共容量全销售共享, 排到就用)</label>
+                            <label class="flex items-center gap-2"><input type="radio" name="asr-pub-strategy" value="ratio" onchange="asrOnStrategyChange()"> 每个销售按比例分配公共当日容量</label>
+                            <div id="asr-ratio-box" class="hidden mt-2 rounded border border-slate-100 bg-slate-50 p-3">
+                                <div class="text-[11px] text-slate-500 mb-2">给每个销售填一个权重(0=不使用公共)。当日公共容量按权重占比分配。</div>
+                                <div id="asr-ratio-list" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
+                            </div>
+                            <span id="asr-policy-status" class="text-[11px] text-slate-500"></span>
+                        </div>
+                    </div>
+                    <div class="text-[11px] text-slate-400">说明: 排期时"仅公共/个人优先当日不足用公共"会按上面规则把邮件分配到公共邮箱, 并在待发项记录发件箱; 实际从公共邮箱发出由 CRM 发送环节按发件箱标记执行。</div>
+                </div>
+
+                <!-- ===== 模式④: 回复统计 (需求18) ===== -->
+                <div id="asr-mode-stats" class="hidden space-y-4">
+                    <div class="rounded-lg border border-slate-300 bg-white p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <h3 class="text-sm font-bold text-slate-900">哪封邮件回复最多<span class="ml-1 cursor-help text-[11px] text-slate-400" title="按 套装 + 第几封 聚合回信数与有价值回信数, 回信多的排前(需求18)。数据来自 AI 邮件回信解析。">ⓘ</span></h3>
+                            <div class="flex flex-wrap items-center gap-2 text-xs">
+                                <label class="flex items-center gap-1">起<input type="date" id="asr-stats-start" class="rounded border border-slate-300 px-2 py-1"></label>
+                                <label class="flex items-center gap-1">止<input type="date" id="asr-stats-end" class="rounded border border-slate-300 px-2 py-1"></label>
+                                <button type="button" onclick="asrLoadReplyRanking()" class="rounded border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-100">查询</button>
+                            </div>
+                        </div>
+                        <div id="asr-stats-summary" class="mt-2 text-[11px] text-slate-500"></div>
+                        <div class="mt-3 overflow-auto">
+                            <table class="min-w-full text-xs border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-600">
+                                        <th class="border border-slate-200 px-3 py-2 text-left">排名</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-left">套装</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-center">第几封</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-right">回复数</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-right">有价值回复数</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="asr-stats-tbody">
+                                    <tr><td colspan="5" class="border border-slate-200 px-3 py-6 text-center text-slate-400">点"查询"后展示。销售范围跟随顶部销售选择。</td></tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -4088,14 +4165,17 @@
         }
         function asrOnStaffChange() { asrLoadConfig(); }
         function asrSwitchMode(mode) {
-            const isRules = mode !== 'trigger';
-            document.getElementById('asr-mode-rules')?.classList.toggle('hidden', !isRules);
-            document.getElementById('asr-mode-trigger')?.classList.toggle('hidden', isRules);
+            const modes = ['rules', 'trigger', 'mailbox', 'stats'];
+            if (!modes.includes(mode)) mode = 'rules';
             const activeCls = 'px-3 py-1.5 rounded-lg border border-violet-300 bg-violet-100 text-violet-800 text-xs font-bold';
             const inactiveCls = 'px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50';
-            const rb = document.getElementById('asr-mode-rules-btn'), tb = document.getElementById('asr-mode-trigger-btn');
-            if (rb) rb.className = isRules ? activeCls : inactiveCls;
-            if (tb) tb.className = isRules ? inactiveCls : activeCls;
+            modes.forEach(m => {
+                document.getElementById('asr-mode-' + m)?.classList.toggle('hidden', m !== mode);
+                const b = document.getElementById('asr-mode-' + m + '-btn');
+                if (b) b.className = (m === mode) ? activeCls : inactiveCls;
+            });
+            if (mode === 'mailbox' && !asrMailboxLoaded) asrLoadMailboxes();
+            if (mode === 'stats') asrLoadReplyRanking();
         }
 
         async function asrLoadSuiteOptions() {
@@ -4388,6 +4468,125 @@
                 asrStatus('asr-trigger-status', `已写入 ${j.new_scheduled || 0} 封${dropped ? `(排除 ${dropped})` : ''}, 后台生成${j.started_generate ? '已启动' : '未启动'}。到"套装排期"页看进度。`);
             } catch (e) { asrStatus('asr-trigger-status', '失败: ' + e, true); }
             finally { if (btn) btn.disabled = false; }
+        }
+
+        // ---- 需求19/17: 公共邮箱账号 + 使用规则 ----
+        let asrMailboxLoaded = false;
+        async function asrLoadMailboxes() {
+            try {
+                const r = await fetch(`${window.location.origin}/api/v1/mail/mailboxes`, { credentials: 'include' });
+                const j = await r.json();
+                asrRenderMailboxTable(j.public || []);
+                asrRenderPolicy(j.policy || { strategy: 'first_come', ratio: {} });
+                asrMailboxLoaded = true;
+            } catch (e) { asrStatus('asr-mailbox-status', '加载失败: ' + e, true); }
+        }
+        function asrMailboxRowHtml(m) {
+            m = m || { id: '', email: '', display_name: '', daily_limit: 50, enabled: true };
+            return `<tr data-id="${m.id || ''}">
+                <td class="border border-slate-200 px-2 py-1"><input class="asr-mb-email w-56 rounded border border-slate-300 px-2 py-1 text-xs" value="${escapeHtml(m.email || '')}" placeholder="public@company.com"></td>
+                <td class="border border-slate-200 px-2 py-1"><input class="asr-mb-name w-32 rounded border border-slate-300 px-2 py-1 text-xs" value="${escapeHtml(m.display_name || '')}" placeholder="名称"></td>
+                <td class="border border-slate-200 px-2 py-1 text-right"><input type="number" min="0" class="asr-mb-limit w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs" value="${Number(m.daily_limit || 0)}"></td>
+                <td class="border border-slate-200 px-2 py-1 text-center"><input type="checkbox" class="asr-mb-enabled h-4 w-4" ${m.enabled ? 'checked' : ''}></td>
+                <td class="border border-slate-200 px-2 py-1 text-center"><button type="button" onclick="asrDeleteMailbox('${m.id || ''}', this)" class="rounded border border-rose-200 bg-white px-2 py-1 text-[11px] text-rose-600 hover:bg-rose-50">删除</button></td>
+            </tr>`;
+        }
+        function asrRenderMailboxTable(list) {
+            const tb = document.getElementById('asr-mailbox-tbody'); if (!tb) return;
+            tb.innerHTML = (list && list.length) ? list.map(asrMailboxRowHtml).join('') : `<tr><td colspan="5" class="border border-slate-200 px-3 py-4 text-center text-slate-400">暂无公共邮箱, 点"+ 新增邮箱"。</td></tr>`;
+        }
+        function asrAddMailboxRow() {
+            const tb = document.getElementById('asr-mailbox-tbody'); if (!tb) return;
+            if (tb.querySelector('td[colspan]')) tb.innerHTML = '';
+            tb.insertAdjacentHTML('beforeend', asrMailboxRowHtml(null));
+        }
+        async function asrDeleteMailbox(id, btn) {
+            if (!id) { const tr = btn.closest('tr'); if (tr) tr.remove(); return; }
+            if (!confirm('确认删除该公共邮箱?')) return;
+            try {
+                const r = await fetch(`${window.location.origin}/api/v1/mail/public-mailbox?id=${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
+                const j = await r.json();
+                if (j.ok) asrRenderMailboxTable(j.public || []);
+            } catch (e) { asrStatus('asr-mailbox-status', '删除失败: ' + e, true); }
+        }
+        async function asrSaveAllMailboxes() {
+            const rows = Array.from(document.querySelectorAll('#asr-mailbox-tbody tr')).filter(tr => tr.querySelector('.asr-mb-email'));
+            const targets = rows.filter(tr => (tr.querySelector('.asr-mb-email').value || '').trim());
+            if (!targets.length) { asrStatus('asr-mailbox-status', '没有可保存的邮箱'); return; }
+            asrStatus('asr-mailbox-status', `保存 ${targets.length} 个…`);
+            let ok = 0;
+            for (const tr of targets) {
+                const body = {
+                    id: tr.getAttribute('data-id') ? parseInt(tr.getAttribute('data-id'), 10) : null,
+                    email: tr.querySelector('.asr-mb-email').value.trim(),
+                    display_name: tr.querySelector('.asr-mb-name').value || '',
+                    daily_limit: parseInt(tr.querySelector('.asr-mb-limit').value || '0', 10),
+                    enabled: !!tr.querySelector('.asr-mb-enabled').checked,
+                };
+                try {
+                    const r = await fetch(`${window.location.origin}/api/v1/mail/public-mailbox`, {
+                        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+                    });
+                    const j = await r.json();
+                    if (j.ok) ok++;
+                } catch (e) {}
+            }
+            asrStatus('asr-mailbox-status', `已保存 ${ok}/${targets.length}`, ok !== targets.length);
+            await asrLoadMailboxes();
+        }
+        function asrRenderPolicy(policy) {
+            const strat = (policy && policy.strategy) || 'first_come';
+            const el = document.querySelector(`input[name="asr-pub-strategy"][value="${strat}"]`); if (el) el.checked = true;
+            const list = document.getElementById('asr-ratio-list');
+            if (list) {
+                const ratio = (policy && policy.ratio) || {};
+                const staff = (autosendStaffOptions || []);
+                list.innerHTML = staff.length ? staff.map(s => `<label class="flex items-center gap-2">${escapeHtml(s.name ? `${s.name}(${s.id})` : s.id)}
+                    <input type="number" min="0" class="asr-ratio-w w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs" data-staff="${escapeHtml(s.id)}" value="${Number(ratio[s.id] || 0)}"></label>`).join('')
+                    : '<div class="text-[11px] text-slate-400">无销售名单(admin 视角可见)。</div>';
+            }
+            asrOnStrategyChange();
+        }
+        function asrOnStrategyChange() {
+            const strat = document.querySelector('input[name="asr-pub-strategy"]:checked')?.value || 'first_come';
+            document.getElementById('asr-ratio-box')?.classList.toggle('hidden', strat !== 'ratio');
+        }
+        async function asrSavePolicy() {
+            const strategy = document.querySelector('input[name="asr-pub-strategy"]:checked')?.value || 'first_come';
+            const ratio = {};
+            document.querySelectorAll('#asr-ratio-list .asr-ratio-w').forEach(i => { const w = parseFloat(i.value || '0'); if (w > 0) ratio[i.getAttribute('data-staff')] = w; });
+            asrStatus('asr-policy-status', '保存中…');
+            try {
+                const r = await fetch(`${window.location.origin}/api/v1/mail/public-mailbox-policy`, {
+                    method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ strategy, ratio }),
+                });
+                const j = await r.json();
+                asrStatus('asr-policy-status', j.ok ? '已保存' : '保存失败', !j.ok);
+            } catch (e) { asrStatus('asr-policy-status', '保存失败: ' + e, true); }
+        }
+
+        // ---- 需求18: 回复统计 ----
+        async function asrLoadReplyRanking() {
+            const q = new URLSearchParams();
+            const s = document.getElementById('asr-stats-start')?.value; if (s) q.set('start', s);
+            const e = document.getElementById('asr-stats-end')?.value; if (e) q.set('end', e);
+            const staff = asrStaffId(); if (staff) q.set('staff_id', staff);
+            document.getElementById('asr-stats-summary').textContent = '查询中…';
+            try {
+                const r = await fetch(`${window.location.origin}/api/v1/mail/reply-ranking?${q.toString()}`, { credentials: 'include' });
+                const j = await r.json();
+                if (!j.ok) { document.getElementById('asr-stats-summary').textContent = '失败: ' + (j.detail || ''); return; }
+                const rows = j.rows || [];
+                const tb = document.getElementById('asr-stats-tbody');
+                tb.innerHTML = rows.length ? rows.map((row, i) => `<tr>
+                    <td class="border border-slate-200 px-3 py-2">${i + 1}</td>
+                    <td class="border border-slate-200 px-3 py-2">${escapeHtml(row.scenario_label_cn || row.scenario)}</td>
+                    <td class="border border-slate-200 px-3 py-2 text-center">第 ${row.suite_step} 封</td>
+                    <td class="border border-slate-200 px-3 py-2 text-right font-bold">${row.reply_count}</td>
+                    <td class="border border-slate-200 px-3 py-2 text-right">${row.valuable_count}</td>
+                </tr>`).join('') : '<tr><td colspan="5" class="border border-slate-200 px-3 py-6 text-center text-slate-400">该范围内暂无回信数据。</td></tr>';
+                document.getElementById('asr-stats-summary').textContent = `共 ${j.total_reply || 0} 封回信, ${rows.length} 种(套装x第几封)。销售范围: ${staff || '全部'}。`;
+            } catch (e2) { document.getElementById('asr-stats-summary').textContent = '失败: ' + e2; }
         }
 
         function switchMailWorkspaceTab(tab) {

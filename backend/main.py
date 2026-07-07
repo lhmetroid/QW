@@ -22855,6 +22855,57 @@ def _asr_load_scopes(db) -> dict:
         return {}
 
 
+def _asr_ensure_mailbox_tables(db) -> None:
+    db.execute(text(
+        "CREATE TABLE IF NOT EXISTS mail_public_mailbox ("
+        "id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, display_name VARCHAR(200) NOT NULL DEFAULT '', "
+        "daily_limit INTEGER NOT NULL DEFAULT 50, enabled BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMP DEFAULT now())"
+    ))
+    db.execute(text(
+        "CREATE TABLE IF NOT EXISTS mail_public_mailbox_policy ("
+        "id INTEGER PRIMARY KEY DEFAULT 1, strategy VARCHAR(20) NOT NULL DEFAULT 'first_come', "
+        "ratio_json TEXT NOT NULL DEFAULT '{}', updated_at TIMESTAMP DEFAULT now())"
+    ))
+    db.commit()
+
+
+def _asr_ensure_plan_sender_columns(db) -> None:
+    """给既有待发清单表加发件箱标记列(需求17): personal/public + 具体公共邮箱地址。IF NOT EXISTS, 不动既有数据。"""
+    try:
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS asr_sender_kind VARCHAR(16)"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS asr_sender_email VARCHAR(255)"))
+        db.commit()
+    except Exception:
+        logger.exception("ASR_ENSURE_PLAN_SENDER_COLUMNS_FAILED")
+
+
+def _asr_load_public_mailboxes(db) -> list[dict]:
+    try:
+        _asr_ensure_mailbox_tables(db)
+        rows = db.execute(text("SELECT id,email,display_name,daily_limit,enabled FROM mail_public_mailbox ORDER BY id")).fetchall()
+        return [{"id": r[0], "email": r[1], "display_name": r[2] or "", "daily_limit": int(r[3] or 0), "enabled": bool(r[4])} for r in rows]
+    except Exception:
+        logger.exception("ASR_LOAD_PUBLIC_MAILBOXES_FAILED")
+        return []
+
+
+def _asr_load_public_policy(db) -> dict:
+    import json
+    try:
+        _asr_ensure_mailbox_tables(db)
+        row = db.execute(text("SELECT strategy, ratio_json FROM mail_public_mailbox_policy WHERE id=1")).fetchone()
+        if not row:
+            return {"strategy": "first_come", "ratio": {}}
+        try:
+            ratio = json.loads(row[1]) if row[1] else {}
+        except Exception:
+            ratio = {}
+        return {"strategy": row[0] or "first_come", "ratio": ratio if isinstance(ratio, dict) else {}}
+    except Exception:
+        logger.exception("ASR_LOAD_PUBLIC_POLICY_FAILED")
+        return {"strategy": "first_come", "ratio": {}}
+
+
 def _asr_llm_rank_suites(class_rule: dict, suite_opts: list[dict]) -> dict:
     """让 LLM 给一类联系人对候选套装按优先级排序。失败返回 {} (调用方回退输入顺序)。"""
     import json
@@ -22913,28 +22964,97 @@ def _asr_contact_has_sent_suite(sent_map: dict, contact_id: str, scenario: str) 
 
 def _asr_schedule(units: list[dict], send_order: str, mail_gap: int, suite_gap: int,
                   daily_cap: int, start_date, existing_load: dict | None,
-                  skip_non_workdays: bool, holiday_dates) -> list[dict]:
+                  skip_non_workdays: bool, holiday_dates,
+                  mailbox_mode: str = "personal_only", public_ctx: dict | None = None) -> list[dict]:
     """多套装排期(需求15/14 共用)。units: [{contact_id,customer_id,owner,company,contact_name,email,
-    suites:[{scenario,label,steps:[int,...]}] 按优先级}]。返回逐封 items。纯计算, 不写库。
+    suites:[{scenario,label,steps:[int,...]}] 按优先级}]。返回逐封 items(含 sender_kind/sender_email)。纯计算, 不写库。
     - 套装内: 第k封 = 该套装起始日 + mail_gap*k(0基, 从起始累计)。
     - 同联系人相邻套装: 后一套装起始 = 前一套装末封 + suite_gap。
     - 顺序: contact_first=靠前联系人发完所有套装再下一人; round_robin=各联系人先排第一套装, 再轮第二套装...。
-    - 兼容已有排期: existing_load 占满每日上限则整天顺延到下个未满工作日。"""
+    - 兼容已有排期: existing_load 占满个人每日上限则该天转公共邮箱(需求17)或整天顺延。
+    - 邮箱(需求17): personal_only=只个人; public_only=只公共; personal_first=个人满转公共。
+      公共邮箱各有每日上限; 分配策略 first_come(全局先到先得)/ ratio(每销售按比例分公共当日容量)。
+    """
     cap = max(1, int(daily_cap or 1))
     mail_gap = max(0, int(mail_gap or 0))
     suite_gap = max(0, int(suite_gap or 0))
-    load = dict(existing_load or {})
+    load = dict(existing_load or {})            # 个人每日占用 {(owner,date):count}
+    day_seq: dict = {}                          # {(owner,date):count} 仅用于发送时间排布
+    pub_boxes = [b for b in ((public_ctx or {}).get("mailboxes") or []) if b.get("enabled") and int(b.get("daily_limit") or 0) > 0]
+    policy = (public_ctx or {}).get("policy") or {"strategy": "first_come", "ratio": {}}
+    pub_load: dict = {}                         # {(email,date):count}
+    pub_owner_load: dict = {}                   # {(owner,date):count} 供 ratio 每销售配额
+    total_pub_cap = sum(int(b.get("daily_limit") or 0) for b in pub_boxes)
+    ratio = policy.get("ratio") or {}
+    total_weight = sum(float(v or 0) for v in ratio.values()) if isinstance(ratio, dict) else 0
+    mode = str(mailbox_mode or "personal_only")
     items: list[dict] = []
 
-    def place(owner: str, desired):
-        day = _autosend_next_workday(desired, skip_non_workdays, holiday_dates)
-        while load.get((owner, day.isoformat()), 0) >= cap:
-            day = _autosend_next_workday(day + timedelta(days=1), skip_non_workdays, holiday_dates)
-        seq = load.get((owner, day.isoformat()), 0)
-        minute_total = 9 * 60 + 5 * seq
+    def owner_pub_daily_cap(owner: str) -> int:
+        """该销售当日可用公共容量: first_come=全部公共容量; ratio=按权重占比。"""
+        if str(policy.get("strategy")) != "ratio":
+            return total_pub_cap
+        if total_weight <= 0:
+            return 0
+        w = float((ratio or {}).get(owner, 0) or 0)
+        return int(round(w / total_weight * total_pub_cap))
+
+    def pick_public(owner: str, day) -> str | None:
+        ds = day.isoformat()
+        if not pub_boxes:
+            return None
+        if pub_owner_load.get((owner, ds), 0) >= owner_pub_daily_cap(owner):
+            return None
+        for b in pub_boxes:
+            if pub_load.get((b["email"], ds), 0) < int(b.get("daily_limit") or 0):
+                return b["email"]
+        return None
+
+    def time_for(owner: str, day):
+        ds = day.isoformat()
+        s = day_seq.get((owner, ds), 0)
+        day_seq[(owner, ds)] = s + 1
+        minute_total = 9 * 60 + 5 * s
         hh, mm = divmod(minute_total, 60)
-        load[(owner, day.isoformat())] = seq + 1
-        return day, f"{hh:02d}:{mm:02d}", seq
+        return f"{hh:02d}:{mm:02d}", s
+
+    def place(owner: str, desired):
+        """返回 (day, time_str, seq, sender_kind, sender_email)。按邮箱模式在个人/公共间分配, 满则顺延工作日。"""
+        day = _autosend_next_workday(desired, skip_non_workdays, holiday_dates)
+        guard = 0
+        while True:
+            guard += 1
+            if guard > 3660:   # 安全阀: 约10年, 防公共/个人皆无容量时死循环
+                break
+            ds = day.isoformat()
+            if mode == "public_only":
+                mb = pick_public(owner, day)
+                if mb:
+                    pub_load[(mb, ds)] = pub_load.get((mb, ds), 0) + 1
+                    pub_owner_load[(owner, ds)] = pub_owner_load.get((owner, ds), 0) + 1
+                    tm, seq = time_for(owner, day)
+                    return day, tm, seq, "public", mb
+            elif mode == "personal_first":
+                if load.get((owner, ds), 0) < cap:
+                    load[(owner, ds)] = load.get((owner, ds), 0) + 1
+                    tm, seq = time_for(owner, day)
+                    return day, tm, seq, "personal", ""
+                mb = pick_public(owner, day)
+                if mb:
+                    pub_load[(mb, ds)] = pub_load.get((mb, ds), 0) + 1
+                    pub_owner_load[(owner, ds)] = pub_owner_load.get((owner, ds), 0) + 1
+                    tm, seq = time_for(owner, day)
+                    return day, tm, seq, "public", mb
+            else:  # personal_only
+                if load.get((owner, ds), 0) < cap:
+                    load[(owner, ds)] = load.get((owner, ds), 0) + 1
+                    tm, seq = time_for(owner, day)
+                    return day, tm, seq, "personal", ""
+            day = _autosend_next_workday(day + timedelta(days=1), skip_non_workdays, holiday_dates)
+        # 兜底: 强制个人放这天(极端无容量), 保证不丢件
+        load[(owner, ds)] = load.get((owner, ds), 0) + 1
+        tm, seq = time_for(owner, day)
+        return day, tm, seq, "personal", ""
 
     def schedule_suite(unit: dict, suite: dict, start_from):
         owner = str(unit.get("owner") or "")
@@ -22943,7 +23063,7 @@ def _asr_schedule(units: list[dict], send_order: str, mail_gap: int, suite_gap: 
             desired = start_from + timedelta(days=mail_gap * i)
             if last_day is not None and desired < last_day:
                 desired = last_day
-            day, tm, seq = place(owner, desired)
+            day, tm, seq, sk, se = place(owner, desired)
             items.append({
                 "contact_id": unit.get("contact_id"),
                 "customer_id": unit.get("customer_id") or unit.get("contact_id"),
@@ -22958,6 +23078,8 @@ def _asr_schedule(units: list[dict], send_order: str, mail_gap: int, suite_gap: 
                 "plan_time": tm,
                 "seq_in_day": seq,
                 "pick_reason": "asr",
+                "sender_kind": sk,
+                "sender_email": se,
             })
             last_day = day
         return last_day or start_from
@@ -23044,8 +23166,13 @@ def _asr_write_plan(db, staff: str, units: list[dict], send_order: str, mail_gap
         except Exception:
             logger.exception("ASR_EXISTING_LOAD_FAILED")
             existing_load = {}
+    public_ctx = None
+    if str(mailbox_mode or "personal_only") != "personal_only":
+        public_ctx = {"mailboxes": _asr_load_public_mailboxes(db), "policy": _asr_load_public_policy(db)}
     items = _asr_schedule(units, send_order, mail_gap, suite_gap, daily_cap, start_date,
-                          existing_load, skip_non_workdays, holiday_dates)
+                          existing_load, skip_non_workdays, holiday_dates,
+                          mailbox_mode=mailbox_mode, public_ctx=public_ctx)
+    _asr_ensure_plan_sender_columns(db)
     run_id = db.execute(
         text(
             "INSERT INTO mail_autosend_run (status,start_date,sales_staff_ids,owner_staff_id,daily_cap,"
@@ -23062,15 +23189,16 @@ def _asr_write_plan(db, staff: str, units: list[dict], send_order: str, mail_gap
                 "INSERT INTO mail_autosend_plan_item "
                 "(run_id,contact_id,customer_id,owner_staff_id,company_name,contact_name,scenario,"
                 "scenario_label_cn,suite_step,plan_date,plan_time,send_time,seq_in_day,recipient_email,"
-                "pick_reason,partial_sent_mode,status) "
-                "VALUES (:run,:cid,:cust,:own,:co,:cn,:sc,:scl,:st,:pd,:pt,:pt,:sq,:re,:pr,'remaining','planned')"
+                "pick_reason,partial_sent_mode,status,asr_sender_kind,asr_sender_email) "
+                "VALUES (:run,:cid,:cust,:own,:co,:cn,:sc,:scl,:st,:pd,:pt,:pt,:sq,:re,:pr,'remaining','planned',:sk,:se)"
             ),
             {"run": run_id, "cid": it["contact_id"], "cust": it.get("customer_id") or it["contact_id"],
              "own": it["owner_staff_id"], "co": (it.get("company_name") or "")[:200],
              "cn": (it.get("contact_name") or "")[:200], "sc": it["scenario"],
              "scl": (it.get("scenario_label_cn") or "")[:200], "st": it["suite_step"],
              "pd": it["plan_date"], "pt": it["plan_time"], "sq": it["seq_in_day"],
-             "re": it.get("email"), "pr": it.get("pick_reason")},
+             "re": it.get("email"), "pr": it.get("pick_reason"),
+             "sk": (it.get("sender_kind") or "personal")[:16], "se": (it.get("sender_email") or "")[:255]},
         )
     db.commit()
     return {"run_id": str(run_id), "items": items}
@@ -23154,6 +23282,111 @@ def asr_put_suite_scope(payload: AsrSuiteScopeRequest, db: Session = Depends(get
     )
     db.commit()
     return {"ok": True, "scenario": scenario, "scope_text": sanitize_text(payload.scope_text or "")}
+
+
+# ===== 需求19 邮箱账号(公共邮箱)配置 + 需求17 公共邮箱使用规则 =====
+@app.get("/api/v1/mail/mailboxes")
+def asr_get_mailboxes(db: Session = Depends(get_db)):
+    """列出公共邮箱账号 + 公共邮箱使用策略(需求19/17)。个人邮箱由各销售自身账号决定, 此处仅管理公共邮箱。"""
+    return {"ok": True, "public": _asr_load_public_mailboxes(db), "policy": _asr_load_public_policy(db)}
+
+
+class PublicMailboxRequest(BaseModel):
+    id: int | None = None
+    email: str
+    display_name: str = ""
+    daily_limit: int = 50
+    enabled: bool = True
+
+
+@app.post("/api/v1/mail/public-mailbox")
+def asr_save_public_mailbox(payload: PublicMailboxRequest, db: Session = Depends(get_db)):
+    """新增/修改一个公共邮箱账号(含每天使用上限, 需求17/19)。"""
+    email = str(payload.email or "").strip()   # 邮箱不能过 sanitize_text(会做PII脱敏抹掉@)
+    if not email or "@" not in email:
+        raise HTTPException(status_code=422, detail="email 无效")
+    _asr_ensure_mailbox_tables(db)
+    params = {"e": email[:255], "d": sanitize_text(payload.display_name or "")[:200],
+              "l": max(0, int(payload.daily_limit or 0)), "en": bool(payload.enabled)}
+    if payload.id:
+        db.execute(text("UPDATE mail_public_mailbox SET email=:e,display_name=:d,daily_limit=:l,enabled=:en WHERE id=:i"),
+                   {**params, "i": int(payload.id)})
+    else:
+        db.execute(
+            text("INSERT INTO mail_public_mailbox (email,display_name,daily_limit,enabled) VALUES (:e,:d,:l,:en) "
+                 "ON CONFLICT (email) DO UPDATE SET display_name=:d,daily_limit=:l,enabled=:en"),
+            params,
+        )
+    db.commit()
+    return {"ok": True, "public": _asr_load_public_mailboxes(db)}
+
+
+@app.delete("/api/v1/mail/public-mailbox")
+def asr_delete_public_mailbox(id: int = Query(...), db: Session = Depends(get_db)):
+    _asr_ensure_mailbox_tables(db)
+    db.execute(text("DELETE FROM mail_public_mailbox WHERE id=:i"), {"i": int(id)})
+    db.commit()
+    return {"ok": True, "public": _asr_load_public_mailboxes(db)}
+
+
+class PublicPolicyRequest(BaseModel):
+    strategy: str = "first_come"     # first_come 先到先得 / ratio 每销售按比例
+    ratio: dict | None = None        # {staff_id: weight}
+
+
+@app.put("/api/v1/mail/public-mailbox-policy")
+def asr_put_public_policy(payload: PublicPolicyRequest, db: Session = Depends(get_db)):
+    """保存公共邮箱分配策略(需求17): 先到先得, 或每个销售按比例分配公共当日容量。"""
+    import json
+    _asr_ensure_mailbox_tables(db)
+    strat = payload.strategy if payload.strategy in ("first_come", "ratio") else "first_come"
+    ratio = payload.ratio if isinstance(payload.ratio, dict) else {}
+    db.execute(
+        text("INSERT INTO mail_public_mailbox_policy (id,strategy,ratio_json,updated_at) VALUES (1,:s,:r,now()) "
+             "ON CONFLICT (id) DO UPDATE SET strategy=:s,ratio_json=:r,updated_at=now()"),
+        {"s": strat, "r": json.dumps(ratio, ensure_ascii=False)},
+    )
+    db.commit()
+    return {"ok": True, "policy": _asr_load_public_policy(db)}
+
+
+# ===== 需求18 统计: 哪封邮件(套装+第几封)回复最多 =====
+@app.get("/api/v1/mail/reply-ranking")
+def mail_reply_ranking(start: str = Query(""), end: str = Query(""), staff_id: str = Query(""),
+                       db: Session = Depends(get_db)):
+    """按 套装+第几封 聚合回信数与有价值回信数, 回信多的排前。
+    数据源: mail_ai_reply_analysis JOIN mail_customer_suite_send_plan(plan_id)。只读。"""
+    where = ["1=1"]
+    params: dict = {}
+    st = sanitize_text(staff_id or "").strip()
+    if st:
+        where.append("r.staff_id = :st")
+        params["st"] = st
+    if sanitize_text(start or "").strip():
+        where.append("r.reply_received_at >= :s")
+        params["s"] = sanitize_text(start).strip()[:10] + " 00:00:00"
+    if sanitize_text(end or "").strip():
+        where.append("r.reply_received_at <= :e")
+        params["e"] = sanitize_text(end).strip()[:10] + " 23:59:59"
+    try:
+        rows = db.execute(
+            text(
+                "SELECT p.scenario, p.suite_step, COUNT(*) AS reply_cnt, "
+                "SUM(CASE WHEN r.is_valuable THEN 1 ELSE 0 END) AS val_cnt "
+                "FROM mail_ai_reply_analysis r "
+                "JOIN mail_customer_suite_send_plan p ON r.plan_id = p.plan_id "
+                "WHERE " + " AND ".join(where) +
+                " GROUP BY p.scenario, p.suite_step ORDER BY reply_cnt DESC, val_cnt DESC"
+            ),
+            params,
+        ).fetchall()
+    except Exception:
+        logger.exception("MAIL_REPLY_RANKING_FAILED")
+        raise HTTPException(status_code=500, detail="回复统计查询失败")
+    out = [{"scenario": r[0], "scenario_label_cn": _get_scenario_label_cn(r[0]) or r[0],
+            "suite_step": int(r[1] or 0), "reply_count": int(r[2] or 0), "valuable_count": int(r[3] or 0)}
+           for r in rows]
+    return {"ok": True, "rows": out, "total_reply": sum(x["reply_count"] for x in out)}
 
 
 class AsrSuggestRequest(BaseModel):
@@ -23266,11 +23499,12 @@ def asr_schedule_endpoint(payload: AsrScheduleRequest, db: Session = Depends(get
                           payload.daily_cap, start_date, payload.mailbox_mode, payload.consider_existing_crm_queue,
                           skip, holidays)
     items = _autosend_list_plan(db, staff)
+    pub_cnt = sum(1 for it in res["items"] if it.get("sender_kind") == "public")
     note = "已写入待发清单。"
     if payload.mailbox_mode != "personal_only":
-        note += " 注: 公共邮箱发件箱选择依赖公共邮箱基建(需求17/19), 暂按个人邮箱落地。"
+        note += f" 公共邮箱分配 {pub_cnt} 封, 个人 {len(res['items']) - pub_cnt} 封(发件箱已记录在待发项; 实际从公共邮箱发出需CRM发送环节按发件箱标记执行)。"
     return {"ok": True, "run_id": res["run_id"], "new_scheduled": len(res["items"]), "dropped": dropped,
-            "total_pending": len(items), "items": items, "note": note}
+            "public_count": pub_cnt, "total_pending": len(items), "items": items, "note": note}
 
 
 class AsrTriggerSuggestRequest(BaseModel):
@@ -23862,6 +24096,40 @@ def get_mail_ai_stats_by_staff(
         "refresh_result": refresh_result,
     }
 
+
+@app.post("/api/v1/mail/ai-stats/broadcast")
+def post_mail_ai_stats_broadcast(
+    day: str | None = Query(None),
+    refresh: int = Query(1),
+    dry_run: int = Query(0),
+    chat_id: str | None = Query(None),
+):
+    """手动触发: 刷新当天邮件统计并播报到企微群。默认 day=今天(北京时间)。"""
+    import mail_ai_stats_broadcast as _broadcast
+    try:
+        day_d = _broadcast.parse_stat_day(day)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"日期格式应为 YYYY-MM-DD: {day}") from exc
+    try:
+        result = _broadcast.broadcast_stats(
+            day_d,
+            _mail_ai_stats_llm_call,
+            refresh=bool(refresh),
+            chat_id=chat_id,
+            dry_run=bool(dry_run),
+        )
+    except Exception as exc:
+        logger.exception("MAIL_AI_STATS_BROADCAST_API_FAILED")
+        raise HTTPException(status_code=502, detail=f"邮件统计企微播报失败: {sanitize_text(str(exc))[:200]}")
+    if not result.get("sent") and not result.get("dry_run"):
+        raise HTTPException(status_code=502, detail=result)
+    return result
+
+
+@app.on_event("startup")
+async def start_mail_ai_stats_wecom_broadcast_scheduler():
+    import mail_ai_stats_broadcast as _broadcast
+    _broadcast.start_scheduler(_mail_ai_stats_llm_call)
 
 @app.get("/api/v1/mail/demo-contacts")
 async def get_mail_demo_contacts(db: Session = Depends(get_db)):
