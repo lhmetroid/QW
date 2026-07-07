@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -732,7 +732,7 @@
                             <h2 class="text-base font-bold text-slate-900 flex items-center gap-1">自动发送
                                 <span class="text-[11px] text-slate-400 cursor-help" title="①按手工分类规则+LLM优先级批量排期 ②按销售动作触发。排期写入既有待发清单(套装排期页可见), 复用套装排期后端。">ⓘ</span>
                             </h2>
-                            <p class="mt-1 text-[11px] text-violet-700">排期结果写入既有待发清单(在"套装排期"页可见/生成/转入CRM)。邮箱的公共发件箱选择依赖公共邮箱基建(需求17/19), 暂按个人邮箱落地; 需求14 动作事件源待对接外部系统。</p>
+                            <p class="mt-1 text-[11px] text-violet-700">排期结果写入既有待发清单(在"套装排期"页可见/生成/转入CRM)。公共邮箱可在本节点配置；无销售代表联系人会使用公共邮箱发送。需求14 动作事件源待对接外部系统。</p>
                         </div>
                         <label id="mail-autosendrules-staff-wrap" class="flex items-center gap-1 text-xs">销售
                             <select id="mail-autosendrules-staff" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs" onchange="asrOnStaffChange()"></select>
@@ -791,25 +791,30 @@
                         <div class="flex flex-wrap items-center justify-between gap-2">
                             <h3 class="text-sm font-bold text-slate-900">② LLM 分析建议</h3>
                             <div class="flex items-center gap-2">
+                                <label class="flex items-center gap-1 text-[11px] text-slate-600" title="分析粒度。按分类=每类套装排一次优先级(现行);按人=逐个联系人结合完整画像排序(数据通路已预留,LLM逐人排序待开发)。">分析粒度
+                                    <select id="asr-analysis-mode" class="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]">
+                                        <option value="class" selected>按分类</option>
+                                        <option value="per_contact">按人(待开发)</option>
+                                    </select>
+                                </label>
                                 <label class="flex items-center gap-1 text-[11px] text-slate-600"><input type="checkbox" id="asr-use-llm" class="h-3.5 w-3.5" checked> 用 LLM 排优先级</label>
                                 <button type="button" id="asr-suggest-btn" onclick="asrGenerateSuggestion()" class="rounded border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-100" title="按分类规则给该销售联系人分类, LLM 给每类套装优先级; 该联系人已发过的套装自动排除。只算不写。">生成建议</button>
                             </div>
                         </div>
-                        <p class="mt-1 text-[11px] text-slate-500">按分类给联系人归类, LLM 给出每类套装优先级; 该联系人已发过的套装自动排除。默认全选采用, 可逐个取消。</p>
+                        <p class="mt-1 text-[11px] text-slate-500">一行一类: LLM 给出每类的套装优先级(顺序即优先级), 可整类批量勾选/取消套装。联系人明细在下方"预排"后展示。已发过的套装在预排时按人自动排除。</p>
                         <div id="asr-suggest-summary" class="mt-2 text-[11px] text-slate-500"></div>
-                        <div class="mt-3 overflow-auto">
+                        <div class="mt-3 overflow-auto" style="max-height:52vh">
                             <table class="min-w-full text-xs border-collapse">
                                 <thead>
                                     <tr class="bg-slate-50 text-slate-600">
                                         <th class="border border-slate-200 px-3 py-2 text-center"><input type="checkbox" id="asr-suggest-all" onchange="asrToggleAllSuggest(this.checked)" checked></th>
-                                        <th class="border border-slate-200 px-3 py-2 text-left">联系人</th>
-                                        <th class="border border-slate-200 px-3 py-2 text-left">分类</th>
-                                        <th class="border border-slate-200 px-3 py-2 text-left">适合套装(勾选=采用, 顺序即优先级)</th>
-                                        <th class="border border-slate-200 px-3 py-2 text-left">已排除</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-left whitespace-nowrap">分类 / 人数</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-left">建议套装(勾选=采用, 顺序即优先级)</th>
+                                        <th class="border border-slate-200 px-3 py-2 text-left">LLM 说明</th>
                                     </tr>
                                 </thead>
                                 <tbody id="asr-suggestion-tbody">
-                                    <tr><td colspan="5" class="border border-slate-200 px-3 py-6 text-center text-slate-400">尚未生成。点"生成建议"后展示。</td></tr>
+                                    <tr><td colspan="4" class="border border-slate-200 px-3 py-6 text-center text-slate-400">尚未生成。点"生成建议"后展示。</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -826,7 +831,7 @@
                                     <label class="flex items-center gap-2"><input type="radio" name="asr-mailbox" value="public_only"> 仅公共邮箱</label>
                                     <label class="flex items-center gap-2"><input type="radio" name="asr-mailbox" value="personal_first"> 个人邮箱优先, 当日不足用公共邮箱</label>
                                 </div>
-                                <div class="mt-1 text-[11px] text-amber-600">公共邮箱发件箱基建(需求17/19)尚未建, 选"公共/优先"时暂按个人邮箱落地, 仅记录选择。</div>
+                                <div class="mt-1 text-[11px] text-slate-500">公共邮箱按下方账号与规则分配；无销售代表联系人固定走公共邮箱。</div>
                             </div>
                             <div>
                                 <div class="font-bold text-slate-700">2) 发送顺序</div>
@@ -842,72 +847,72 @@
                                 <label class="flex items-center gap-2">开始日期<input type="date" id="asr-start-date" class="rounded border border-slate-300 px-2 py-1"></label>
                             </div>
                         </div>
-                        <div class="mt-4 flex flex-wrap items-center gap-2">
-                            <button type="button" id="asr-schedule-btn" onclick="asrPreviewSchedule()" class="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100" title="按上述规则给已采用的建议排期, 写入既有待发清单(status=planned)。之后到套装排期页后台生成/转入CRM。">预排并写入待发清单</button>
-                            <span id="asr-rules-status" class="text-[11px] text-slate-500"></span>
+                        <div class="relative mt-4 flex flex-wrap items-center gap-2">
+                            <button type="button" id="asr-schedule-btn" onclick="asrPreviewSchedule('asr-schedule-btn','预排写入中…')" class="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60" onmouseenter="asrShowRulesHint('按上述规则给已采用的建议排期，写入既有待发清单(status=planned)。之后可分步生成邮件、同步CRM系统。')" onmouseleave="asrHideRulesHint()">预排并写入待发清单</button>
+                            <button type="button" id="asr-step-preview-btn" onclick="asrPreviewSchedule('asr-step-preview-btn','预排中…')" class="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60" onmouseenter="asrShowRulesHint('分步动作：只预排写入待发清单，不生成邮件、不同步CRM。')" onmouseleave="asrHideRulesHint()">预排</button>
+                            <button type="button" id="asr-generate-mail-btn" onclick="asrGenerateMailFromPlan()" class="rounded border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60" onmouseenter="asrShowRulesHint('分步动作：对当前视角待发清单中的 planned/failed 邮件启动后台生成。')" onmouseleave="asrHideRulesHint()">生成邮件</button>
+                            <button type="button" id="asr-sync-crm-btn" onclick="asrCommitCrmFromPlan()" class="rounded border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60" onmouseenter="asrShowRulesHint('分步动作：将已生成(drafted)邮件逐封同步保存到CRM待发队列。')" onmouseleave="asrHideRulesHint()">同步CRM系统</button>
+                            <button type="button" id="asr-clear-plan-btn" onclick="asrClearRulesPlan()" class="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60" onmouseenter="asrShowRulesHint('分步动作：清空当前视角未转入CRM的排期；已转入CRM的不受影响。')" onmouseleave="asrHideRulesHint()">清空排期</button>
+                            <span id="asr-rules-op" class="ml-1 text-[11px] text-slate-500"></span>
+                            <span id="asr-rules-status" class="pointer-events-none absolute bottom-full left-0 z-40 mb-2 hidden max-w-[760px] rounded bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-white shadow-lg"></span>
                         </div>
                     </div>
-                </div>
 
+                    <!-- 预排结果(待发清单): 字段参考 套装排期-自动排期节点(公司/联系人/销售/套装/第N封) -->
+                    <div id="asr-plan-result-card" class="hidden rounded-lg border border-slate-300 bg-white p-4">
+                        <h3 class="text-sm font-bold text-slate-900">预排结果(待发清单)<span class="ml-1 cursor-help text-[11px] text-slate-400" title="字段参考 套装排期-自动排期节点; 每行=联系人x套装, 各封显示计划发送日期。">ⓘ</span> <span id="asr-plan-count" class="text-[11px] font-normal text-slate-500"></span></h3>
+                        <div id="asr-plan-result" class="mt-3 overflow-auto" style="max-height:60vh"></div>
+                    </div>
+                </div>
                 <!-- ===== 模式②: 销售动作触发提示 (需求14) ===== -->
                 <div id="asr-mode-trigger" class="hidden space-y-4">
                     <div class="rounded-lg border border-slate-300 bg-white p-4">
                         <div class="flex flex-wrap items-center justify-between gap-2">
-                            <h3 class="text-sm font-bold text-slate-900">① 触发规则配置<span class="ml-1 cursor-help text-[11px] text-slate-400" title="不同销售动作触发不同套装。当前先支持 跟进/丢单(下拉选择), 后续对接外部系统扩展更多动作。">ⓘ</span></h3>
+                            <h3 class="text-sm font-bold text-slate-900">① 触发规则配置<span class="ml-1 cursor-help text-[11px] text-slate-400" title="不同销售动作触发不同套装。外部系统调用 API 时按这里的动作映射计算套装。">ⓘ</span></h3>
                             <button type="button" onclick="asrSaveConfig()" class="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50">保存配置</button>
                         </div>
                         <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <div class="text-xs font-bold text-slate-700">跟进 触发的套装</div>
-                                <select id="asr-action-followup" multiple size="5" class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs"></select>
+                                <div id="asr-action-followup" class="relative mt-2 w-full">
+                                    <button id="asr-action-followup-button" type="button" onclick="asrToggleActionDropdown('asr-action-followup', event)" class="flex min-h-[34px] w-full items-center justify-between gap-2 rounded border border-slate-300 bg-white px-2 py-1 text-left text-xs text-slate-700 hover:bg-slate-50">
+                                        <span id="asr-action-followup-text" class="min-w-0 flex-1 truncate">加载中...</span>
+                                        <span class="text-slate-400">▼</span>
+                                    </button>
+                                    <div id="asr-action-followup-panel" class="absolute z-30 mt-1 hidden max-h-64 w-full overflow-auto rounded border border-slate-200 bg-white p-2 shadow-lg"></div>
+                                </div>
                             </div>
                             <div>
                                 <div class="text-xs font-bold text-slate-700">丢单 触发的套装</div>
-                                <select id="asr-action-lost" multiple size="5" class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs"></select>
+                                <div id="asr-action-lost" class="relative mt-2 w-full">
+                                    <button id="asr-action-lost-button" type="button" onclick="asrToggleActionDropdown('asr-action-lost', event)" class="flex min-h-[34px] w-full items-center justify-between gap-2 rounded border border-slate-300 bg-white px-2 py-1 text-left text-xs text-slate-700 hover:bg-slate-50">
+                                        <span id="asr-action-lost-text" class="min-w-0 flex-1 truncate">加载中...</span>
+                                        <span class="text-slate-400">▼</span>
+                                    </button>
+                                    <div id="asr-action-lost-panel" class="absolute z-30 mt-1 hidden max-h-64 w-full overflow-auto rounded border border-slate-200 bg-white p-2 shadow-lg"></div>
+                                </div>
                             </div>
                         </div>
-                        <div class="mt-2 text-[11px] text-slate-400">多选。后期新增动作与外部动作事件源对接后, 这里可扩展更多动作行。</div>
+                        <div class="mt-2 text-[11px] text-slate-400">勾选后顶部按逗号展示；保存后供外部动作 API 调用。</div>
                     </div>
                     <div class="rounded-lg border border-slate-300 bg-white p-4">
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                            <h3 class="text-sm font-bold text-slate-900">② 触发计算与建议</h3>
-                            <div class="flex items-center gap-2 text-xs">
-                                <label class="flex items-center gap-1">销售动作
-                                    <select id="asr-trigger-action" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs">
-                                        <option value="followup">跟进</option>
-                                        <option value="lost">丢单</option>
-                                    </select>
-                                </label>
-                                <button type="button" id="asr-trigger-btn" onclick="asrTriggerCompute()" class="rounded border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-100" title="对候选联系人计算适合套装(排除已发/已在清单), 供人工确认。">计算适合套装</button>
+                        <h3 class="text-sm font-bold text-slate-900">② API 调用方法</h3>
+                        <p class="mt-1 text-[11px] text-slate-500">销售动作来自外部系统时，直接调用下面接口。链接按当前打开网站自动生成。</p>
+                        <div class="mt-3 grid grid-cols-1 gap-3 text-xs">
+                            <div class="rounded border border-slate-200 bg-slate-50 p-3">
+                                <div class="font-bold text-slate-700">计算适合套装</div>
+                                <div class="mt-1 font-mono text-[11px] text-violet-700">POST <span id="asr-trigger-suggest-url"></span></div>
+                                <pre class="mt-2 overflow-auto rounded bg-white p-2 text-[11px] text-slate-700">{"staff_id":"销售工号","action":"followup 或 lost","company_name_like":"可选公司关键词"}</pre>
                             </div>
-                        </div>
-                        <p class="mt-1 text-[11px] text-slate-500">按所选动作的映射套装, 对候选联系人计算(排除已发过该套装/已在清单); 人工确认后写入待发清单并后台开始生成。</p>
-                        <div id="asr-trigger-summary" class="mt-2 text-[11px] text-slate-500"></div>
-                        <div class="mt-3 overflow-auto">
-                            <table class="min-w-full text-xs border-collapse">
-                                <thead>
-                                    <tr class="bg-slate-50 text-slate-600">
-                                        <th class="border border-slate-200 px-3 py-2 text-center"><input type="checkbox" id="asr-trigger-all" onchange="asrToggleAllTrigger(this.checked)" checked></th>
-                                        <th class="border border-slate-200 px-3 py-2 text-left">联系人</th>
-                                        <th class="border border-slate-200 px-3 py-2 text-left">动作</th>
-                                        <th class="border border-slate-200 px-3 py-2 text-left">建议套装(勾选=发送)</th>
-                                        <th class="border border-slate-200 px-3 py-2 text-left">已排除</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="asr-trigger-tbody">
-                                    <tr><td colspan="5" class="border border-slate-200 px-3 py-6 text-center text-slate-400">尚未计算。点"计算适合套装"后展示。</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="mt-4 flex flex-wrap items-center gap-4">
-                            <label class="flex items-center gap-2 text-xs">套装内间隔<input type="number" id="asr-trig-gap-mail" min="0" value="2" class="w-14 rounded border border-slate-300 px-2 py-1 text-right">天</label>
-                            <label class="flex items-center gap-2 text-xs">套装间间隔<input type="number" id="asr-trig-gap-suite" min="0" value="7" class="w-14 rounded border border-slate-300 px-2 py-1 text-right">天</label>
-                            <label class="flex items-center gap-2 text-xs">每日上限<input type="number" id="asr-trig-daily-cap" min="1" value="10" class="w-14 rounded border border-slate-300 px-2 py-1 text-right">封</label>
-                            <button type="button" id="asr-trigger-confirm-btn" onclick="asrTriggerConfirm()" class="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100" title="写入待发清单并后台开始生成(复用套装排期后台生成)。">确认并后台生成</button>
-                            <span id="asr-trigger-status" class="text-[11px] text-slate-500"></span>
+                            <div class="rounded border border-slate-200 bg-slate-50 p-3">
+                                <div class="font-bold text-slate-700">确认写入待发清单并生成</div>
+                                <div class="mt-1 font-mono text-[11px] text-violet-700">POST <span id="asr-trigger-confirm-url"></span></div>
+                                <pre class="mt-2 overflow-auto rounded bg-white p-2 text-[11px] text-slate-700">{"staff_id":"销售工号","accepted":[{"contact_id":"联系人ID","suites":["套装scenario"]}],"start_generate":true}</pre>
+                            </div>
                         </div>
                     </div>
                 </div>
+
 
                 <!-- ===== 模式③: 邮箱与公共邮箱规则 (需求19 + 17) ===== -->
                 <div id="asr-mode-mailbox" class="hidden space-y-4">
@@ -920,12 +925,18 @@
                                 <span id="asr-mailbox-status" class="text-[11px] text-slate-500"></span>
                             </div>
                         </div>
+                        <div class="mt-3 rounded border border-slate-200 bg-slate-50 p-3 text-xs">
+                            <div class="font-bold text-slate-700">批量添加公共邮箱</div>
+                            <div class="mt-2 flex flex-wrap items-start gap-2">
+                                <textarea id="asr-mailbox-bulk" rows="2" class="min-w-[360px] flex-1 rounded border border-slate-300 px-2 py-1 text-xs" placeholder="可粘贴多个邮箱，用逗号、空格或换行分隔，如 public1@example.com, public2@example.com"></textarea>
+                                <button type="button" onclick="asrAddMailboxBulk()" class="rounded border border-violet-300 bg-white px-3 py-1.5 text-[11px] font-bold text-violet-700 hover:bg-violet-50">加入列表</button>
+                            </div>
+                        </div>
                         <div class="mt-3 overflow-auto">
                             <table class="min-w-full text-xs border-collapse">
                                 <thead>
                                     <tr class="bg-slate-50 text-slate-600">
                                         <th class="border border-slate-200 px-3 py-2 text-left">公共邮箱地址</th>
-                                        <th class="border border-slate-200 px-3 py-2 text-left">名称</th>
                                         <th class="border border-slate-200 px-3 py-2 text-right">每天上限</th>
                                         <th class="border border-slate-200 px-3 py-2 text-center">启用</th>
                                         <th class="border border-slate-200 px-3 py-2 text-center">操作</th>
@@ -933,6 +944,15 @@
                                 </thead>
                                 <tbody id="asr-mailbox-tbody"></tbody>
                             </table>
+                        </div>
+                        <div class="mt-4 rounded border border-slate-200 bg-slate-50 p-3 text-xs">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="font-bold text-slate-700">无销售代表默认签名<span class="ml-1 cursor-help text-[11px] text-slate-400" title="联系人没有销售代表时，生成邮件使用该签名。支持富文本，可人工修改后保存。">ⓘ</span></div>
+                                <button type="button" onclick="asrSaveConfig()" class="rounded border border-emerald-300 bg-white px-2 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-50">保存签名</button>
+                            </div>
+                            <div id="asr-default-signature" contenteditable="true" class="mt-2 min-h-[120px] rounded border border-slate-300 bg-white px-3 py-2 text-xs leading-relaxed outline-none focus:border-violet-400" aria-label="无销售代表默认签名"></div>
+                            <div class="mt-1 text-[11px] text-slate-500">无销售代表联系人会使用公共邮箱发送，并使用此签名。</div>
+                            <span id="asr-default-signature-status" class="text-[11px] text-slate-500"></span>
                         </div>
                     </div>
                     <div class="rounded-lg border border-slate-300 bg-white p-4">
@@ -4148,6 +4168,8 @@
             { value: 'last_coop_days', label: '距上次合作天数' },
             { value: 'business_line', label: '业务线' },
         ];
+        const ASR_BUSINESS_LINES = ['笔译', '口译', '同传设备租赁', '设计印刷', '印刷', '输入排版', '多媒体译制', '礼品', '复印装订', '运输'];
+        const ASR_DEFAULT_PUBLIC_SIGNATURE_HTML = '<div class="mail-signature" style="margin-top:16px;color:#004080;font-size:13px;line-height:1.7;"><strong>事必达销售</strong><br><br>事必达翻译与本地化部<br>上海嘉赛科技有限公司(事必达)<br>Phone: +86 21 5489 6060<br>www.speed-asia.com<br>中国上海徐汇区肇嘉浜路1065号飞雕国际大厦1409室</div>';
         function asrOpsForType(t) {
             if (t === 'business_line') return [{ value: 'has', label: '合作过' }, { value: 'not', label: '没合作过' }];
             return [{ value: '<', label: '小于' }, { value: '>', label: '大于' }];
@@ -4155,7 +4177,45 @@
         function asrStaffId() { const v = document.getElementById('mail-autosendrules-staff')?.value || ''; return v === '__all__' ? '' : v; }
         function asrScope() { return asrStaffId() || '__global__'; }
         function asrToday() { const d = new Date(Date.now() + 8 * 3600 * 1000); return d.toISOString().slice(0, 10); }
-        function asrStatus(id, msg, err) { const el = document.getElementById(id); if (el) { el.textContent = msg || ''; el.className = 'text-[11px] ' + (err ? 'text-rose-600' : 'text-slate-500'); } }
+        function asrStatus(id, msg, err) {
+            // 排期区操作状态改为按钮旁的行内文字(红字=错误), 不再用遮挡按钮的深底浮层(浮层只留悬浮提示用)。
+            if (id === 'asr-rules-status') {
+                const op = document.getElementById('asr-rules-op');
+                if (op) { op.textContent = msg || ''; op.className = 'ml-1 text-[11px] ' + (err ? 'font-bold text-rose-600' : 'text-slate-600'); }
+                return;
+            }
+            const el = document.getElementById(id); if (!el) return;
+            el.textContent = msg || '';
+            el.className = 'text-[11px] ' + (err ? 'text-rose-600' : 'text-slate-500');
+        }
+        // 排期区动作按钮: 任一动作进行中禁用全部, 避免误操作; 当前按钮显示各自"进行中"文案。
+        const ASR_OP_BTNS = ['asr-schedule-btn', 'asr-step-preview-btn', 'asr-generate-mail-btn', 'asr-sync-crm-btn', 'asr-clear-plan-btn'];
+        function asrLockOps(activeId, busyText) {
+            ASR_OP_BTNS.forEach(id => {
+                const b = document.getElementById(id); if (!b) return;
+                b.disabled = true;
+                if (id === activeId && busyText) { if (b.dataset.normal === undefined) b.dataset.normal = b.textContent; b.textContent = busyText; }
+            });
+        }
+        function asrUnlockOps() {
+            ASR_OP_BTNS.forEach(id => {
+                const b = document.getElementById(id); if (!b) return;
+                b.disabled = false;
+                if (b.dataset.normal !== undefined) { b.textContent = b.dataset.normal; delete b.dataset.normal; }
+            });
+        }
+        function asrShowRulesHint(text) {
+            const el = document.getElementById('asr-rules-status'); if (!el || el.dataset.mode === 'status') return;
+            el.dataset.mode = 'hint';
+            el.textContent = text || '';
+            el.className = 'pointer-events-none absolute bottom-full left-0 z-40 mb-2 max-w-[760px] rounded bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-white shadow-lg';
+        }
+        function asrHideRulesHint() {
+            const el = document.getElementById('asr-rules-status'); if (!el || el.dataset.mode !== 'hint') return;
+            el.dataset.mode = '';
+            el.textContent = '';
+            el.className = 'pointer-events-none absolute bottom-full left-0 z-40 mb-2 hidden max-w-[760px] rounded bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-white shadow-lg';
+        }
 
         async function autosendRulesInit() {
             if (!asrInited) {
@@ -4191,6 +4251,7 @@
                 if (b) b.className = (m === mode) ? activeCls : inactiveCls;
             });
             if (mode === 'mailbox' && !asrMailboxLoaded) asrLoadMailboxes();
+            if (mode === 'trigger') asrUpdateTriggerApiDocs();
             if (mode === 'stats') asrLoadReplyRanking();
         }
 
@@ -4199,13 +4260,12 @@
                 const r = await fetch(`${window.location.origin}/api/v1/mail/suite-scenario-options`, { credentials: 'include' });
                 const j = await r.json();
                 asrSuiteOptions = (j.scenarios || []).map(s => ({ value: s.value, label: s.label || s.value }));
-            } catch (e) { asrSuiteOptions = []; }
-            const currentSuiteValues = asrGetMultiSelect('asr-suite-range');
-            const optHtml = asrSuiteOptions.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('');
-            ['asr-action-followup', 'asr-action-lost'].forEach(id => {
-                const el = document.getElementById(id); if (el) el.innerHTML = optHtml;
-            });
+            } catch (e) { asrSuiteOptions = []; }            const currentSuiteValues = asrGetMultiSelect('asr-suite-range');
+            const currentFollowup = asrGetMultiSelect('asr-action-followup');
+            const currentLost = asrGetMultiSelect('asr-action-lost');
             asrRenderSuiteRangeDropdown(currentSuiteValues.length ? currentSuiteValues : undefined);
+            asrRenderActionDropdown('asr-action-followup', currentFollowup);
+            asrRenderActionDropdown('asr-action-lost', currentLost);
         }
         function asrSuiteRangeValuesFromDom() {
             return Array.from(document.querySelectorAll('#asr-suite-range-panel .asr-suite-range-check:checked')).map(o => o.value);
@@ -4226,6 +4286,40 @@
             panel.innerHTML = asrSuiteOptions.length ? asrSuiteOptions.map(o => `<label class="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><input type="checkbox" class="asr-suite-range-check h-3.5 w-3.5" value="${escapeHtml(o.value)}" ${selected.has(String(o.value)) ? 'checked' : ''} onchange="asrUpdateSuiteRangeText()">${escapeHtml(o.label || o.value)}</label>`).join('') : '<div class="px-2 py-1 text-xs text-slate-400">暂无套装</div>';
             asrUpdateSuiteRangeText();
         }
+        function asrActionValuesFromDom(id) {
+            return Array.from(document.querySelectorAll(`#${id}-panel .asr-action-check:checked`)).map(o => o.value);
+        }
+        function asrUpdateActionDropdownText(id) {
+            const text = document.getElementById(`${id}-text`);
+            if (!text) return;
+            const selected = new Set(asrActionValuesFromDom(id));
+            const labels = asrSuiteOptions.filter(o => selected.has(String(o.value))).map(o => o.label || o.value);
+            text.textContent = labels.length ? labels.join(', ') : '未选择套装';
+            text.title = text.textContent;
+        }
+        function asrRenderActionDropdown(id, values) {
+            const panel = document.getElementById(`${id}-panel`);
+            if (!panel) return;
+            const selected = new Set((Array.isArray(values) ? values : []).map(String));
+            panel.innerHTML = asrSuiteOptions.length ? asrSuiteOptions.map(o => `<label class="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><input type="checkbox" class="asr-action-check h-3.5 w-3.5" value="${escapeHtml(o.value)}" ${selected.has(String(o.value)) ? 'checked' : ''} onchange="asrUpdateActionDropdownText('${id}')">${escapeHtml(o.label || o.value)}</label>`).join('') : '<div class="px-2 py-1 text-xs text-slate-400">暂无套装</div>';
+            asrUpdateActionDropdownText(id);
+        }
+        function asrToggleActionDropdown(id, event) {
+            if (event) event.stopPropagation();
+            const panel = document.getElementById(`${id}-panel`);
+            const btn = document.getElementById(`${id}-button`);
+            if (!panel) return;
+            const open = panel.classList.contains('hidden');
+            panel.classList.toggle('hidden', !open);
+            if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        function asrUpdateTriggerApiDocs() {
+            const base = window.location.origin;
+            const suggest = document.getElementById('asr-trigger-suggest-url');
+            const confirm = document.getElementById('asr-trigger-confirm-url');
+            if (suggest) suggest.textContent = `${base}/api/v1/mail/autosendrules/trigger-suggest`;
+            if (confirm) confirm.textContent = `${base}/api/v1/mail/autosendrules/trigger-confirm`;
+        }
         function asrToggleSuiteRangeDropdown(event) {
             if (event) event.stopPropagation();
             const panel = document.getElementById('asr-suite-range-panel');
@@ -4243,19 +4337,38 @@
                 panel.classList.add('hidden');
                 if (btn) btn.setAttribute('aria-expanded', 'false');
             }
+            ['asr-action-followup', 'asr-action-lost'].forEach(id => {
+                const actionRoot = document.getElementById(id);
+                const actionPanel = document.getElementById(`${id}-panel`);
+                const actionButton = document.getElementById(`${id}-button`);
+                if (actionRoot && actionPanel && !actionRoot.contains(event.target)) {
+                    actionPanel.classList.add('hidden');
+                    if (actionButton) actionButton.setAttribute('aria-expanded', 'false');
+                }
+            });
         });
         function asrSetMultiSelect(id, values) {
             if (id === 'asr-suite-range') { asrRenderSuiteRangeDropdown(values); return; }
+            if (id === 'asr-action-followup' || id === 'asr-action-lost') { asrRenderActionDropdown(id, values); return; }
             const el = document.getElementById(id); if (!el) return;
             const set = new Set((values || []).map(String));
             Array.from(el.options).forEach(o => { o.selected = set.has(o.value); });
         }
         function asrGetMultiSelect(id) {
             if (id === 'asr-suite-range') return asrSuiteRangeValuesFromDom();
+            if (id === 'asr-action-followup' || id === 'asr-action-lost') return asrActionValuesFromDom(id);
             const el = document.getElementById(id); if (!el) return [];
             return Array.from(el.selectedOptions).map(o => o.value);
         }
 
+        function asrSetDefaultSignatureHtml(html) {
+            const el = document.getElementById('asr-default-signature');
+            if (el) el.innerHTML = html || ASR_DEFAULT_PUBLIC_SIGNATURE_HTML;
+        }
+        function asrGetDefaultSignatureHtml() {
+            const el = document.getElementById('asr-default-signature');
+            return (el && el.innerHTML.trim()) || ASR_DEFAULT_PUBLIC_SIGNATURE_HTML;
+        }
         async function asrLoadConfig() {
             let cfg = null;
             try {
@@ -4273,6 +4386,7 @@
             const am = cfg.action_map || {};
             asrSetMultiSelect('asr-action-followup', am.followup || []);
             asrSetMultiSelect('asr-action-lost', am.lost || []);
+            asrSetDefaultSignatureHtml(cfg.default_signature_html || ASR_DEFAULT_PUBLIC_SIGNATURE_HTML);
         }
 
         // ===== 需求16: 套装适用范围(单一数据库字段 mail_suite_applicable_scope.scope_text, 按 scenario) =====
@@ -4381,10 +4495,13 @@
                 const conds = (rule.conditions || []).map((c, ci) => {
                     const typeOpts = ASR_COND_TYPES.map(t => `<option value="${t.value}"${c.type === t.value ? ' selected' : ''}>${t.label}</option>`).join('');
                     const opOpts = asrOpsForType(c.type || 'amount').map(o => `<option value="${o.value}"${c.op === o.value ? ' selected' : ''}>${o.label}</option>`).join('');
+                    const valueHtml = c.type === 'business_line'
+                        ? `<div class="asr-cond-business-lines flex flex-wrap items-center gap-1">${ASR_BUSINESS_LINES.map(b => `<label class="inline-flex cursor-pointer items-center gap-0.5 rounded border border-slate-200 bg-white px-1 py-0.5 text-xs"><input type="checkbox" class="asr-cond-business-line h-3.5 w-3.5" value="${escapeHtml(b)}" ${String(c.value || '').split(';').filter(Boolean).includes(b) ? 'checked' : ''}>${escapeHtml(b)}</label>`).join('')}</div>`
+                        : `<input class="asr-cond-value rounded border border-slate-300 px-2 py-1 text-xs w-40" value="${escapeHtml(c.value == null ? '' : String(c.value))}" placeholder="数值">`;
                     return `<div class="asr-cond flex flex-wrap items-center gap-2" data-r="${r}" data-ci="${ci}">
                         <select class="asr-cond-type rounded border border-slate-300 px-2 py-1 text-xs" onchange="asrOnCondTypeChange(${r},${ci})">${typeOpts}</select>
                         <select class="asr-cond-op rounded border border-slate-300 px-2 py-1 text-xs">${opOpts}</select>
-                        <input class="asr-cond-value rounded border border-slate-300 px-2 py-1 text-xs w-40" value="${escapeHtml(c.value == null ? '' : String(c.value))}" placeholder="${(c.type === 'business_line') ? '业务线关键词' : '数值'}">
+                        ${valueHtml}
                         <button type="button" onclick="asrRemoveCond(${r},${ci})" class="text-rose-500 hover:text-rose-700 text-xs">删除</button>
                     </div>`;
                 }).join('');
@@ -4413,7 +4530,9 @@
                 rl.querySelectorAll('.asr-cond').forEach(cd => {
                     const type = cd.querySelector('.asr-cond-type')?.value || 'amount';
                     const op = cd.querySelector('.asr-cond-op')?.value || '<';
-                    const value = cd.querySelector('.asr-cond-value')?.value || '';
+                    const value = type === 'business_line'
+                        ? Array.from(cd.querySelectorAll('.asr-cond-business-line:checked')).map(i => i.value).join(';')
+                        : (cd.querySelector('.asr-cond-value')?.value || '');
                     conds.push({ type, op, value });
                 });
                 rules.push({ name, match_mode: mode, conditions: conds });
@@ -4439,6 +4558,7 @@
                 suite_gap_days: parseInt(document.getElementById('asr-gap-suite')?.value || '7', 10),
                 daily_cap: parseInt(document.getElementById('asr-daily-cap')?.value || '10', 10),
                 action_map: asrActionMapFromDom(),
+                default_signature_html: asrGetDefaultSignatureHtml(),
             };
             asrStatus('asr-config-status', '保存中…');
             try {
@@ -4447,13 +4567,19 @@
                 });
                 const j = await r.json();
                 asrStatus('asr-config-status', j.ok ? '已保存' : ('保存失败: ' + (j.detail || '')), !j.ok);
-            } catch (e) { asrStatus('asr-config-status', '保存失败: ' + e, true); }
+                asrStatus('asr-default-signature-status', j.ok ? '已保存' : ('保存失败: ' + (j.detail || '')), !j.ok);
+            } catch (e) { asrStatus('asr-config-status', '保存失败: ' + e, true); asrStatus('asr-default-signature-status', '保存失败: ' + e, true); }
         }
 
         // ---- 需求15: 生成建议 → 预排写入 ----
         function asrSuiteChipsHtml(cid, suites) {
             if (!suites || !suites.length) return '<span class="text-slate-400">无可发套装</span>';
             return suites.map(s => `<label class="mr-2 inline-flex items-center gap-1"><input type="checkbox" class="asr-sug-suite h-3.5 w-3.5" data-cid="${escapeHtml(cid)}" data-sc="${escapeHtml(s.scenario)}" checked>${escapeHtml(s.label)}</label>`).join('');
+        }
+        // 按类: 套装 chips(带优先级序号), data-ci=分类下标; 整类批量勾选
+        function asrClassSuiteChipsHtml(ci, suites) {
+            if (!suites || !suites.length) return '<span class="text-slate-400">无候选套装</span>';
+            return suites.map(s => `<label class="mr-2 mb-1 inline-flex items-center gap-1"><input type="checkbox" class="asr-cls-suite h-3.5 w-3.5" data-ci="${ci}" data-sc="${escapeHtml(s.scenario)}" checked><span class="text-slate-400">${s.priority}.</span>${escapeHtml(s.label)}</label>`).join('');
         }
         function asrExcludedHtml(excluded) {
             if (!excluded || !excluded.length) return '<span class="text-slate-300">—</span>';
@@ -4462,7 +4588,7 @@
         async function asrGenerateSuggestion() {
             asrSyncClassRulesFromDom();
             if (!asrClassRules.length) { asrStatus('asr-rules-status', '请先添加至少一条分类规则', true); return; }
-            const body = { staff_id: asrStaffId(), class_rules: asrClassRules, suite_scenarios: asrGetMultiSelect('asr-suite-range'), use_llm: !!document.getElementById('asr-use-llm')?.checked };
+            const body = { staff_id: asrStaffId(), class_rules: asrClassRules, suite_scenarios: asrGetMultiSelect('asr-suite-range'), use_llm: !!document.getElementById('asr-use-llm')?.checked, analysis_mode: document.getElementById('asr-analysis-mode')?.value || 'class' };
             const btn = document.getElementById('asr-suggest-btn'); if (btn) btn.disabled = true;
             document.getElementById('asr-suggest-summary').textContent = '分析中…(LLM 排优先级可能需要几十秒)';
             try {
@@ -4471,22 +4597,44 @@
                 });
                 const j = await r.json();
                 if (!j.ok) { document.getElementById('asr-suggest-summary').textContent = '失败: ' + (j.detail || ''); return; }
+                // 一行一类; 联系人明细留到预排。保存每类联系人分组供预排展开。
                 const rows = j.rows || [];
+                asrLastRowsByClass = {};
+                rows.forEach(r => { (asrLastRowsByClass[r.class_index] = asrLastRowsByClass[r.class_index] || []).push(r); });
+                const cs = j.class_summary || [];
                 const tb = document.getElementById('asr-suggestion-tbody');
-                tb.innerHTML = rows.length ? rows.map(row => `<tr>
-                    <td class="border border-slate-200 px-3 py-2 text-center"><input type="checkbox" class="asr-sug-row h-4 w-4" data-cid="${escapeHtml(row.contact_id)}" checked></td>
-                    <td class="border border-slate-200 px-3 py-2">${escapeHtml(row.contact_name || row.contact_id)}<div class="text-[11px] text-slate-400">${escapeHtml(row.company_name || '')} · ${escapeHtml(row.owner_staff_id || '')}</div></td>
-                    <td class="border border-slate-200 px-3 py-2">${escapeHtml(row.class_name || '')}${row.llm_reason ? `<div class="text-[11px] text-slate-400">${escapeHtml(row.llm_reason)}</div>` : ''}</td>
-                    <td class="border border-slate-200 px-3 py-2">${asrSuiteChipsHtml(row.contact_id, row.suites)}</td>
-                    <td class="border border-slate-200 px-3 py-2 text-[11px] text-slate-500">${asrExcludedHtml(row.excluded)}</td>
-                </tr>`).join('') : '<tr><td colspan="5" class="border border-slate-200 px-3 py-6 text-center text-slate-400">无符合条件且有可发套装的联系人。</td></tr>';
+                tb.innerHTML = cs.length ? cs.map(c => `<tr>
+                    <td class="border border-slate-200 px-3 py-2 text-center align-top"><input type="checkbox" class="asr-cls-row h-4 w-4" data-ci="${c.class_index}" ${c.count ? 'checked' : 'disabled'}></td>
+                    <td class="border border-slate-200 px-3 py-2 align-top whitespace-nowrap"><b>#${c.class_index + 1}</b> ${escapeHtml(c.class_name || '')}<div class="text-[11px] font-bold text-violet-700">${c.count} 人</div></td>
+                    <td class="border border-slate-200 px-3 py-2 align-top">${asrClassSuiteChipsHtml(c.class_index, c.suites)}</td>
+                    <td class="border border-slate-200 px-3 py-2 align-top text-[11px] text-slate-500">${escapeHtml(c.llm_reason || '—')}</td>
+                </tr>`).join('') : '<tr><td colspan="4" class="border border-slate-200 px-3 py-6 text-center text-slate-400">无可归类联系人。请检查分类规则。</td></tr>';
                 const allBox = document.getElementById('asr-suggest-all'); if (allBox) allBox.checked = true;
-                document.getElementById('asr-suggest-summary').textContent = `已归类 ${j.classified || 0} 人, 未归类 ${j.unclassified || 0} 人, 可排 ${rows.length} 人。`;
+                document.getElementById('asr-suggest-summary').textContent = `${cs.length} 类: ` + cs.map(c => `#${c.class_index + 1} ${c.count}人`).join(', ') + ` · LLM 每类分析 1 次(共 ${cs.length} 次)。` + (j.per_contact_reserved ? ' [按人分析待开发, 当前按分类]' : '');
             } catch (e) { document.getElementById('asr-suggest-summary').textContent = '失败: ' + e; }
             finally { if (btn) btn.disabled = false; }
         }
         function asrToggleAllSuggest(checked) {
-            document.querySelectorAll('#asr-suggestion-tbody .asr-sug-row, #asr-suggestion-tbody .asr-sug-suite').forEach(c => { c.checked = checked; });
+            document.querySelectorAll('#asr-suggestion-tbody .asr-cls-row').forEach(c => { if (!c.disabled) c.checked = checked; });
+            document.querySelectorAll('#asr-suggestion-tbody .asr-cls-suite').forEach(c => { c.checked = checked; });
+        }
+        // 按类采用 -> 预排时展开到该类每个联系人(套装取"整类勾选 ∩ 该联系人可发的(已排除已发的))")
+        let asrLastRowsByClass = {};
+        function asrCollectAcceptedByClass() {
+            const accepted = [];
+            document.querySelectorAll('#asr-suggestion-tbody .asr-cls-row').forEach(rowBox => {
+                if (rowBox.disabled || !rowBox.checked) return;
+                const ci = rowBox.getAttribute('data-ci');
+                const checkedScen = [];
+                document.querySelectorAll(`#asr-suggestion-tbody .asr-cls-suite[data-ci="${ci}"]`).forEach(s => { if (s.checked) checkedScen.push(s.getAttribute('data-sc')); });
+                if (!checkedScen.length) return;
+                (asrLastRowsByClass[ci] || []).forEach(ct => {
+                    const avail = new Set((ct.suites || []).map(s => s.scenario));
+                    const scen = checkedScen.filter(sc => avail.has(sc));
+                    if (scen.length) accepted.push({ contact_id: ct.contact_id, scenarios: scen });
+                });
+            });
+            return accepted;
         }
         function asrCollectAccepted(tbodyId, rowCls, suiteCls) {
             const accepted = [];
@@ -4499,11 +4647,43 @@
             });
             return accepted;
         }
-        async function asrPreviewSchedule() {
+        // 预排结果表: 字段参考 套装排期-自动排期节点(公司(前6字)/联系人/销售/套装/第N封), 每行=联系人x套装
+        function asrRenderPlanResult(items) {
+            const card = document.getElementById('asr-plan-result-card');
+            const box = document.getElementById('asr-plan-result');
+            if (!card || !box) return;
+            items = items || [];
+            card.classList.remove('hidden');
+            document.getElementById('asr-plan-count').textContent = `共 ${items.length} 封`;
+            if (!items.length) { box.innerHTML = '<div class="text-[11px] text-slate-400">暂无排期。</div>'; return; }
+            const showSales = new Set(items.map(i => i.owner_staff_id || '')).size > 1;
+            const hasPublic = items.some(i => i.asr_sender_kind === 'public');
+            const groups = {}; let maxStep = 0;
+            items.forEach(i => {
+                const k = `${i.contact_id}||${i.scenario}`;
+                if (!groups[k]) groups[k] = { company_head: i.company_head, contact_name: i.contact_name, contact_id: i.contact_id, owner: i.owner_staff_id, label: i.scenario_label_cn, steps: {}, sender: i.asr_sender_email || (i.asr_sender_kind === 'public' ? '公共' : '个人') };
+                groups[k].steps[i.suite_step] = i;
+                if (i.suite_step > maxStep) maxStep = i.suite_step;
+            });
+            const stepCols = []; for (let s = 1; s <= maxStep; s++) stepCols.push(s);
+            const th = ['公司', '联系人', ...(showSales ? ['销售'] : []), '套装', ...stepCols.map(s => `第${s}封`), ...(hasPublic ? ['发件箱'] : [])];
+            const head = '<tr class="bg-slate-50 text-slate-600">' + th.map(t => `<th class="border border-slate-200 px-2 py-1 text-left whitespace-nowrap">${t}</th>`).join('') + '</tr>';
+            const cellDate = (it) => { if (!it) return '<span class="text-slate-300">—</span>'; const t = (it.plan_time || '').slice(0, 5); return escapeHtml((it.plan_date || '') + (t ? ' ' + t : '')); };
+            const staffName = (id) => { const s = (autosendStaffOptions || []).find(x => x.id === id); return s && s.name ? `${s.name}(${id})` : (id || ''); };
+            const rows = Object.values(groups).map(g => {
+                const tds = [escapeHtml(g.company_head || ''), escapeHtml(g.contact_name || g.contact_id || '')];
+                if (showSales) tds.push(escapeHtml(staffName(g.owner)));
+                tds.push(escapeHtml(g.label || ''));
+                stepCols.forEach(s => tds.push(cellDate(g.steps[s])));
+                if (hasPublic) tds.push(escapeHtml(g.sender || '个人'));
+                return '<tr>' + tds.map(x => `<td class="border border-slate-200 px-2 py-1 whitespace-nowrap">${x}</td>`).join('') + '</tr>';
+            }).join('');
+            box.innerHTML = `<table class="min-w-full text-xs border-collapse"><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+        }
+        async function asrPreviewSchedule(activeId, busyText) {
             const staff = asrStaffId();
-            if (!staff) { asrStatus('asr-rules-status', '请先在上方选择具体销售(全部销售视角不支持写入)', true); return; }
-            const accepted = asrCollectAccepted('asr-suggestion-tbody', 'asr-sug-row', 'asr-sug-suite');
-            if (!accepted.length) { asrStatus('asr-rules-status', '没有勾选的采用项', true); return; }
+            const accepted = asrCollectAcceptedByClass();
+            if (!accepted.length) { asrStatus('asr-rules-status', '没有勾选的采用项(先生成建议并勾选分类/套装)', true); return; }
             const body = {
                 staff_id: staff, accepted,
                 send_order: document.querySelector('input[name="asr-order"]:checked')?.value || 'contact_first',
@@ -4513,8 +4693,8 @@
                 daily_cap: parseInt(document.getElementById('asr-daily-cap')?.value || '10', 10),
                 start_date: document.getElementById('asr-start-date')?.value || asrToday(),
             };
-            const btn = document.getElementById('asr-schedule-btn'); if (btn) btn.disabled = true;
-            asrStatus('asr-rules-status', '写入中…');
+            asrLockOps(activeId || 'asr-step-preview-btn', busyText || '预排中…');
+            asrStatus('asr-rules-status', busyText || '预排中…');
             try {
                 const r = await fetch(`${window.location.origin}/api/v1/mail/autosendrules/schedule`, {
                     method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -4522,64 +4702,155 @@
                 const j = await r.json();
                 if (!j.ok) { asrStatus('asr-rules-status', '失败: ' + (j.detail || ''), true); return; }
                 const dropped = (j.dropped || []).length;
-                asrStatus('asr-rules-status', `已写入待发清单 ${j.new_scheduled || 0} 封${dropped ? `(排除 ${dropped} 项)` : ''}。到"套装排期"页后台生成/转入CRM。${j.note || ''}`);
+                asrRenderPlanResult(j.items || []);
+                asrStatus('asr-rules-status', `已写入待发清单 ${j.new_scheduled || 0} 封${dropped ? `(排除 ${dropped} 项)` : ''}, 见下方预排结果。${j.note || ''}`);
             } catch (e) { asrStatus('asr-rules-status', '失败: ' + e, true); }
-            finally { if (btn) btn.disabled = false; }
+            finally { asrUnlockOps(); }
+        }
+        function asrSetButtonBusy(id, busy, busyText, normalText) {
+            const btn = document.getElementById(id); if (!btn) return;
+            btn.disabled = !!busy;
+            if (busyText || normalText) btn.textContent = busy ? (busyText || btn.textContent) : (normalText || btn.textContent);
+        }
+        async function asrFetchJson(url, options) {
+            const r = await fetch(url, options || { credentials: 'include' });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.detail || d.message || `HTTP ${r.status}`);
+            return d;
+        }
+        function asrSelectedStaffIds() {
+            const staff = asrStaffId();
+            if (staff) return [staff];
+            return (autosendStaffOptions || []).map(s => s.id).filter(Boolean);
+        }
+        function asrSelectedStaffLabel() {
+            const staff = asrStaffId();
+            return staff || `全部销售(${asrSelectedStaffIds().length})`;
+        }
+        function asrStaffIdsOrWarn(actionLabel) {
+            const ids = asrSelectedStaffIds();
+            if (!ids.length) { asrStatus('asr-rules-status', `没有可执行${actionLabel || '操作'}的销售名单。`, true); return []; }
+            return ids;
+        }
+        function asrDaysFromToday(ds) {
+            if (!ds || String(ds).length < 10) return 0;
+            const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00');
+            const d = new Date(String(ds).slice(0, 10) + 'T00:00:00');
+            return Math.max(0, Math.round((d - today) / 86400000));
+        }
+        async function asrLoadPlanItemsForStaff(staff) {
+            const d = await asrFetchJson(`${window.location.origin}/api/v1/mail/autosend/plan?staff_id=${encodeURIComponent(staff || '')}`, { credentials: 'include' });
+            return d.items || [];
+        }
+        function asrSumGenerateStatuses(results) {
+            const out = { ok: true, running: false, counts: {}, remaining: 0 };
+            (results || []).forEach(d => {
+                out.running = out.running || !!(d && d.running);
+                out.remaining += Number((d && d.remaining) || 0);
+                Object.entries((d && d.counts) || {}).forEach(([k, v]) => { out.counts[k] = (out.counts[k] || 0) + Number(v || 0); });
+            });
+            return out;
+        }
+        let asrRulesGenerateTimer = null;
+        async function asrRefreshGenerateStatus(staffIds, finalOnly) {
+            const ids = Array.isArray(staffIds) ? staffIds : [staffIds].filter(Boolean);
+            const results = ids.length
+                ? await Promise.all(ids.map(id => asrFetchJson(`${window.location.origin}/api/v1/mail/autosend/generate-status?staff_id=${encodeURIComponent(id)}`, { credentials: 'include' }).catch(() => ({ counts: {}, remaining: 0, running: false }))))
+                : [await asrFetchJson(`${window.location.origin}/api/v1/mail/autosend/generate-status?staff_id=`, { credentials: 'include' })];
+            const d = ids.length > 1 ? asrSumGenerateStatuses(results) : (results[0] || { counts: {}, remaining: 0, running: false });
+            const c = d.counts || {};
+            const msg = `生成进度：已生成 ${c.drafted || 0} · 生成中 ${c.drafting || 0} · 待生成 ${c.planned || 0} · 失败 ${c.failed || 0} · 剩余 ${d.remaining || 0}`;
+            if (!finalOnly || !d.running) asrStatus('asr-rules-status', msg + (d.running ? '（进行中）' : '（完成）'));
+            return d;
+        }
+        function asrPollRulesGenerate(staffIds) {
+            if (asrRulesGenerateTimer) clearInterval(asrRulesGenerateTimer);
+            const ids = Array.isArray(staffIds) ? staffIds : [staffIds].filter(Boolean);
+            const tick = async () => {
+                try {
+                    const d = await asrRefreshGenerateStatus(ids, false);
+                    if (!d.running) { clearInterval(asrRulesGenerateTimer); asrRulesGenerateTimer = null; asrUnlockOps(); }
+                } catch (e) {}
+            };
+            tick();
+            asrRulesGenerateTimer = setInterval(tick, 2500);
+        }
+        async function asrGenerateMailFromPlan() {
+            const staffIds = asrStaffIdsOrWarn('生成'); if (!staffIds.length) return;
+            asrLockOps('asr-generate-mail-btn', '生成中...');
+            asrStatus('asr-rules-status', staffIds.length > 1 ? '已触发全部销售后台生成，逐封真调中...' : '已触发后台生成邮件，逐封真调中...');
+            try {
+                const results = await Promise.all(staffIds.map(async (staff) => {
+                    try {
+                        return await asrFetchJson(`${window.location.origin}/api/v1/mail/autosend/generate`, {
+                            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ staff_id: staff }),
+                        });
+                    } catch (e) { return { started: false, already_running: false, note: `${staff}: ${e.message}` }; }
+                }));
+                const hasWork = results.some(d => d.started || d.already_running);
+                if (hasWork) asrPollRulesGenerate(staffIds);   // 轮询完成时 asrUnlockOps
+                else { asrUnlockOps(); asrStatus('asr-rules-status', results.map(d => d.note).filter(Boolean).join('；') || '没有待生成的排期。'); }
+            } catch (e) { asrUnlockOps(); asrStatus('asr-rules-status', '生成邮件失败：' + e.message, true); }
+        }
+        async function asrCommitOnePlanItemToCrm(it) {
+            if (!it || it.status !== 'drafted') return 'skip';
+            try {
+                const detail = await asrFetchJson(`${window.location.origin}/api/v1/mail/autosend/plan-item?item_id=${encodeURIComponent(it.item_id)}`, { credentials: 'include' });
+                const bodyHtml = (detail.item || {}).body_html || '';
+                const sendBody = {
+                    customer_id: it.customer_id || it.contact_id,
+                    scenario: it.scenario,
+                    suite_steps: [it.suite_step],
+                    recipient_emails: it.recipient_email || null,
+                    drafts: [{ suite_step: it.suite_step, subject: it.subject || '', body_html: bodyHtml, send_interval_days: asrDaysFromToday(it.plan_date), send_time: it.plan_time || '09:00' }],
+                };
+                const sent = await asrFetchJson(`${window.location.origin}/api/v1/mail/customer-suite-send`, {
+                    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sendBody),
+                });
+                const crmSendIds = {};
+                const sid = (sent.prepared && sent.prepared[0] && (sent.prepared[0].crm_send_id || sent.prepared[0].send_id)) || (sent.items && sent.items[0] && (sent.items[0].crm_send_id || sent.items[0].send_id)) || sent.crm_send_id || null;
+                if (sid) crmSendIds[it.item_id] = sid;
+                await asrFetchJson(`${window.location.origin}/api/v1/mail/autosend/mark-committed`, {
+                    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item_ids: [it.item_id], crm_send_ids: crmSendIds }),
+                });
+                return 'ok';
+            } catch (e) { return 'fail'; }
+        }
+        async function asrCommitCrmFromPlan() {
+            if (asrRulesGenerateTimer) { asrStatus('asr-rules-status', '邮件仍在生成中，请等生成完成后再同步CRM系统。', true); return; }
+            const btn = document.getElementById('asr-sync-crm-btn');
+            asrLockOps('asr-sync-crm-btn', '读取中...');
+            try {
+                const items = await asrLoadPlanItemsForStaff(asrStaffId());
+                const targets = items.filter(it => it.status === 'drafted');
+                if (!targets.length) { asrStatus('asr-rules-status', '没有已生成(drafted)邮件可同步CRM系统。'); return; }
+                let ok = 0, fail = 0;
+                for (let i = 0; i < targets.length; i++) {
+                    if (btn) btn.textContent = `同步中(${i + 1}/${targets.length})`;
+                    const res = await asrCommitOnePlanItemToCrm(targets[i]);
+                    if (res === 'ok') ok++; else if (res === 'fail') fail++;
+                    asrStatus('asr-rules-status', `同步CRM系统中：${i + 1}/${targets.length}，成功 ${ok}，失败 ${fail}`);
+                }
+                asrStatus('asr-rules-status', `同步CRM系统完成：成功 ${ok} 封，失败 ${fail} 封。${fail ? '请到自动排期页查看失败项。' : ''}`, !!fail);
+            } catch (e) { asrStatus('asr-rules-status', '同步CRM系统失败：' + e.message, true); }
+            finally { asrUnlockOps(); }
+        }
+        async function asrClearRulesPlan() {
+            const staffIds = asrStaffIdsOrWarn('清空'); if (!staffIds.length) return;
+            if (!confirm(`仅清空${staffIds.length > 1 ? '全部销售' : '当前销售'}本节点(自动发送)未转入CRM的排期？套装排期节点各销售独立排期、已转入CRM的均不受影响。`)) return;
+            asrLockOps('asr-clear-plan-btn', '清空中...');
+            try {
+                // pick_reason=asr: 只清本节点(自动发送)产生的排期, 不动套装排期节点各销售独立清单
+                const results = await Promise.all(staffIds.map(async (staff) => {
+                    try { return await asrFetchJson(`${window.location.origin}/api/v1/mail/autosend/plan?staff_id=${encodeURIComponent(staff)}&pick_reason=asr`, { method: 'DELETE', credentials: 'include' }); }
+                    catch (e) { return { deleted: 0 }; }
+                }));
+                const deleted = results.reduce((s, d) => s + Number(d.deleted || 0), 0);
+                asrStatus('asr-rules-status', `已清空 ${deleted} 封排期。`);
+            } catch (e) { asrStatus('asr-rules-status', '清空排期失败：' + e.message, true); }
+            finally { asrUnlockOps(); }
         }
 
-        // ---- 需求14: 触发计算 → 确认后台生成 ----
-        async function asrTriggerCompute() {
-            const body = { staff_id: asrStaffId(), action: document.getElementById('asr-trigger-action')?.value || 'followup', action_map: asrActionMapFromDom() };
-            const btn = document.getElementById('asr-trigger-btn'); if (btn) btn.disabled = true;
-            document.getElementById('asr-trigger-summary').textContent = '计算中…';
-            try {
-                const r = await fetch(`${window.location.origin}/api/v1/mail/autosendrules/trigger-suggest`, {
-                    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-                });
-                const j = await r.json();
-                if (!j.ok) { document.getElementById('asr-trigger-summary').textContent = '失败: ' + (j.detail || ''); return; }
-                const rows = j.rows || [];
-                const tb = document.getElementById('asr-trigger-tbody');
-                tb.innerHTML = rows.length ? rows.map(row => `<tr>
-                    <td class="border border-slate-200 px-3 py-2 text-center"><input type="checkbox" class="asr-trig-row h-4 w-4" data-cid="${escapeHtml(row.contact_id)}" checked></td>
-                    <td class="border border-slate-200 px-3 py-2">${escapeHtml(row.contact_name || row.contact_id)}<div class="text-[11px] text-slate-400">${escapeHtml(row.company_name || '')} · ${escapeHtml(row.owner_staff_id || '')}</div></td>
-                    <td class="border border-slate-200 px-3 py-2">${escapeHtml(row.action || '')}</td>
-                    <td class="border border-slate-200 px-3 py-2">${row.suites.map(s => `<label class="mr-2 inline-flex items-center gap-1"><input type="checkbox" class="asr-trig-suite h-3.5 w-3.5" data-cid="${escapeHtml(row.contact_id)}" data-sc="${escapeHtml(s.scenario)}" checked>${escapeHtml(s.label)}</label>`).join('')}</td>
-                    <td class="border border-slate-200 px-3 py-2 text-[11px] text-slate-500">${asrExcludedHtml(row.excluded)}</td>
-                </tr>`).join('') : `<tr><td colspan="5" class="border border-slate-200 px-3 py-6 text-center text-slate-400">无可发联系人。${escapeHtml(j.note || '')}</td></tr>`;
-                const allBox = document.getElementById('asr-trigger-all'); if (allBox) allBox.checked = true;
-                document.getElementById('asr-trigger-summary').textContent = `${rows.length} 个联系人可发。${j.note || ''}`;
-            } catch (e) { document.getElementById('asr-trigger-summary').textContent = '失败: ' + e; }
-            finally { if (btn) btn.disabled = false; }
-        }
-        function asrToggleAllTrigger(checked) {
-            document.querySelectorAll('#asr-trigger-tbody .asr-trig-row, #asr-trigger-tbody .asr-trig-suite').forEach(c => { c.checked = checked; });
-        }
-        async function asrTriggerConfirm() {
-            const staff = asrStaffId();
-            if (!staff) { asrStatus('asr-trigger-status', '请先选择具体销售(全部销售视角不支持写入)', true); return; }
-            const accepted = asrCollectAccepted('asr-trigger-tbody', 'asr-trig-row', 'asr-trig-suite');
-            if (!accepted.length) { asrStatus('asr-trigger-status', '没有勾选的项', true); return; }
-            const body = {
-                staff_id: staff, accepted,
-                mail_gap_days: parseInt(document.getElementById('asr-trig-gap-mail')?.value || '2', 10),
-                suite_gap_days: parseInt(document.getElementById('asr-trig-gap-suite')?.value || '7', 10),
-                daily_cap: parseInt(document.getElementById('asr-trig-daily-cap')?.value || '10', 10),
-                start_generate: true,
-            };
-            const btn = document.getElementById('asr-trigger-confirm-btn'); if (btn) btn.disabled = true;
-            asrStatus('asr-trigger-status', '写入并启动生成中…');
-            try {
-                const r = await fetch(`${window.location.origin}/api/v1/mail/autosendrules/trigger-confirm`, {
-                    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-                });
-                const j = await r.json();
-                if (!j.ok) { asrStatus('asr-trigger-status', '失败: ' + (j.detail || ''), true); return; }
-                const dropped = (j.dropped || []).length;
-                asrStatus('asr-trigger-status', `已写入 ${j.new_scheduled || 0} 封${dropped ? `(排除 ${dropped})` : ''}, 后台生成${j.started_generate ? '已启动' : '未启动'}。到"套装排期"页看进度。`);
-            } catch (e) { asrStatus('asr-trigger-status', '失败: ' + e, true); }
-            finally { if (btn) btn.disabled = false; }
-        }
 
         // ---- 需求19/17: 公共邮箱账号 + 使用规则 ----
         let asrMailboxLoaded = false;
@@ -4593,10 +4864,9 @@
             } catch (e) { asrStatus('asr-mailbox-status', '加载失败: ' + e, true); }
         }
         function asrMailboxRowHtml(m) {
-            m = m || { id: '', email: '', display_name: '', daily_limit: 50, enabled: true };
+            m = m || { id: '', email: '', daily_limit: 50, enabled: true };
             return `<tr data-id="${m.id || ''}">
-                <td class="border border-slate-200 px-2 py-1"><input class="asr-mb-email w-56 rounded border border-slate-300 px-2 py-1 text-xs" value="${escapeHtml(m.email || '')}" placeholder="public@company.com"></td>
-                <td class="border border-slate-200 px-2 py-1"><input class="asr-mb-name w-32 rounded border border-slate-300 px-2 py-1 text-xs" value="${escapeHtml(m.display_name || '')}" placeholder="名称"></td>
+                <td class="border border-slate-200 px-2 py-1"><input class="asr-mb-email w-72 rounded border border-slate-300 px-2 py-1 text-xs" value="${escapeHtml(m.email || '')}" placeholder="public@company.com"></td>
                 <td class="border border-slate-200 px-2 py-1 text-right"><input type="number" min="0" class="asr-mb-limit w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs" value="${Number(m.daily_limit || 0)}"></td>
                 <td class="border border-slate-200 px-2 py-1 text-center"><input type="checkbox" class="asr-mb-enabled h-4 w-4" ${m.enabled ? 'checked' : ''}></td>
                 <td class="border border-slate-200 px-2 py-1 text-center"><button type="button" onclick="asrDeleteMailbox('${m.id || ''}', this)" class="rounded border border-rose-200 bg-white px-2 py-1 text-[11px] text-rose-600 hover:bg-rose-50">删除</button></td>
@@ -4604,12 +4874,21 @@
         }
         function asrRenderMailboxTable(list) {
             const tb = document.getElementById('asr-mailbox-tbody'); if (!tb) return;
-            tb.innerHTML = (list && list.length) ? list.map(asrMailboxRowHtml).join('') : `<tr><td colspan="5" class="border border-slate-200 px-3 py-4 text-center text-slate-400">暂无公共邮箱, 点"+ 新增邮箱"。</td></tr>`;
+            tb.innerHTML = (list && list.length) ? list.map(asrMailboxRowHtml).join('') : `<tr><td colspan="4" class="border border-slate-200 px-3 py-4 text-center text-slate-400">暂无公共邮箱, 点"+ 新增邮箱"。</td></tr>`;
         }
-        function asrAddMailboxRow() {
+        function asrAddMailboxRow(mailbox) {
             const tb = document.getElementById('asr-mailbox-tbody'); if (!tb) return;
             if (tb.querySelector('td[colspan]')) tb.innerHTML = '';
-            tb.insertAdjacentHTML('beforeend', asrMailboxRowHtml(null));
+            tb.insertAdjacentHTML('beforeend', asrMailboxRowHtml(mailbox || null));
+        }
+        function asrAddMailboxBulk() {
+            const el = document.getElementById('asr-mailbox-bulk');
+            const raw = (el && el.value) || '';
+            const emails = Array.from(new Set(raw.split(/[,;，、\s]+/).map(s => s.trim()).filter(s => s && s.includes('@'))));
+            if (!emails.length) { asrStatus('asr-mailbox-status', '请输入有效邮箱'); return; }
+            emails.forEach(email => asrAddMailboxRow({ email, daily_limit: 50, enabled: true }));
+            if (el) el.value = '';
+            asrStatus('asr-mailbox-status', `已加入 ${emails.length} 个邮箱，确认后点保存全部`);
         }
         async function asrDeleteMailbox(id, btn) {
             if (!id) { const tr = btn.closest('tr'); if (tr) tr.remove(); return; }
@@ -4630,7 +4909,7 @@
                 const body = {
                     id: tr.getAttribute('data-id') ? parseInt(tr.getAttribute('data-id'), 10) : null,
                     email: tr.querySelector('.asr-mb-email').value.trim(),
-                    display_name: tr.querySelector('.asr-mb-name').value || '',
+                    display_name: '',
                     daily_limit: parseInt(tr.querySelector('.asr-mb-limit').value || '0', 10),
                     enabled: !!tr.querySelector('.asr-mb-enabled').checked,
                 };

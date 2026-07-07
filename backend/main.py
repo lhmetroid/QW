@@ -1,7 +1,7 @@
-from fastapi import FastAPI, Request, Response, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File, Form, Body
+﻿from fastapi import FastAPI, Request, Response, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File, Form, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.responses import StreamingResponse, RedirectResponse, PlainTextResponse, HTMLResponse
 from concurrent.futures import Future, ThreadPoolExecutor
 import xml.etree.ElementTree as ET
 import base64
@@ -872,6 +872,8 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS generated_at TIMESTAMP;"))
         db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS committed_at TIMESTAMP;"))
         db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS asr_sender_kind VARCHAR(16);"))
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS asr_sender_email VARCHAR(255);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_masp_owner_status ON mail_autosend_plan_item (owner_staff_id, status);"))
         # run: 记录本次排期的锁定销售 + 新筛选参数(便于审计/复算)
         db.execute(text("ALTER TABLE mail_autosend_run ADD COLUMN IF NOT EXISTS owner_staff_id VARCHAR(120);"))
@@ -18134,96 +18136,96 @@ def _fetch_mail_contact_owner_staff_id(customer_key: str) -> str:
     try:
         from crm_database import CRMSessionLocal
         crm_db = CRMSessionLocal()
-        def _owner_tokens(raw_owner: str) -> list[str]:
-            tokens: list[str] = []
-            seen: set[str] = set()
-            for token in re.split(r"[,;，、\s]+", str(raw_owner or "")):
-                token = token.strip()
-                if not token or token in seen:
-                    continue
-                seen.add(token)
-                tokens.append(token)
-            return tokens
+        try:
+            def _owner_tokens(raw_owner: str) -> list[str]:
+                tokens: list[str] = []
+                seen: set[str] = set()
+                for token in re.split(r"[,;，、\s]+", str(raw_owner or "")):
+                    token = token.strip()
+                    if not token or token in seen:
+                        continue
+                    seen.add(token)
+                    tokens.append(token)
+                return tokens
 
-        def _active_owner_with_email_score(owner: str) -> tuple[int, str] | None:
-            staff_row = crm_db.execute(
+            def _active_owner_with_email_score(owner: str) -> tuple[int, str] | None:
+                staff_row = crm_db.execute(
+                    text(
+                        """
+                        SELECT TOP 1
+                            s.StaffId,
+                            ISNULL(s.Division, '') AS Division,
+                            CASE WHEN EXISTS (
+                                SELECT 1
+                                FROM spEmailAddressBelong a
+                                INNER JOIN spEmailAddress b ON a.EmailAddress = b.EmailAddress AND ISNULL(b.IsUse, 0) = 1
+                                WHERE a.belongId = s.StaffId
+                                   OR a.BelongId IN (SELECT StructId FROM usrStaffInDivisionStruct WHERE StaffId = s.StaffId)
+                            ) THEN 1 ELSE 0 END AS HasUsableEmail,
+                            CASE WHEN EXISTS (
+                                SELECT 1
+                                FROM spEmailAddressBelong a
+                                INNER JOIN spEmailAddress b ON a.EmailAddress = b.EmailAddress AND ISNULL(b.IsUse, 0) = 1
+                                INNER JOIN spEmailAddressDefaultSet c ON a.EmailAddress = c.EmailAddress AND c.DefaultStaffId = s.StaffId
+                                WHERE a.belongId = s.StaffId
+                                   OR a.BelongId IN (SELECT StructId FROM usrStaffInDivisionStruct WHERE StaffId = s.StaffId)
+                            ) THEN 1 ELSE 0 END AS HasDefaultEmail
+                        FROM usrStaff AS s
+                        WHERE s.StaffId = :owner
+                          AND s.DismissTime IS NULL
+                        """
+                    ),
+                    {"owner": owner},
+                ).fetchone()
+                if not staff_row:
+                    return None
+                division = str(staff_row[1] or "")
+                sales_priority = 0 if any(k in division for k in ("销售", "电销", "大客户", "市场")) else 1
+                has_usable_email = bool(int(staff_row[2] or 0))
+                has_default_email = bool(int(staff_row[3] or 0))
+                priority_rank = _MAIL_SUITE_OWNER_PRIORITY_RANK.get(owner, 99)
+                if has_default_email or has_usable_email:
+                    group_priority = 0 if owner in _MAIL_SUITE_OWNER_PRIORITY_RANK else 1
+                else:
+                    group_priority = 2 if owner in _MAIL_SUITE_OWNER_PRIORITY_RANK else 3
+                email_priority = 0 if has_default_email else (1 if has_usable_email else 2)
+                # Lower score wins: priority staff with usable/default mailbox > other staff with mailbox > no-mailbox fallback.
+                return (group_priority * 1000 + priority_rank * 10 + email_priority * 2 + sales_priority, owner)
+
+            # CRM 有些联系人 Owner 是多个工号拼接(如 "2012,0017")。这里先拆开逐个判断，
+            # 只允许在职员工参与选择，并优先选择有可用/默认企业邮箱的销售代表。
+            contact_rows = crm_db.execute(
                 text(
                     """
-                    SELECT TOP 1
-                        s.StaffId,
-                        ISNULL(s.Division, '') AS Division,
-                        CASE WHEN EXISTS (
-                            SELECT 1
-                            FROM spEmailAddressBelong a
-                            INNER JOIN spEmailAddress b ON a.EmailAddress = b.EmailAddress AND ISNULL(b.IsUse, 0) = 1
-                            WHERE a.belongId = s.StaffId
-                               OR a.BelongId IN (SELECT StructId FROM usrStaffInDivisionStruct WHERE StaffId = s.StaffId)
-                        ) THEN 1 ELSE 0 END AS HasUsableEmail,
-                        CASE WHEN EXISTS (
-                            SELECT 1
-                            FROM spEmailAddressBelong a
-                            INNER JOIN spEmailAddress b ON a.EmailAddress = b.EmailAddress AND ISNULL(b.IsUse, 0) = 1
-                            INNER JOIN spEmailAddressDefaultSet c ON a.EmailAddress = c.EmailAddress AND c.DefaultStaffId = s.StaffId
-                            WHERE a.belongId = s.StaffId
-                               OR a.BelongId IN (SELECT StructId FROM usrStaffInDivisionStruct WHERE StaffId = s.StaffId)
-                        ) THEN 1 ELSE 0 END AS HasDefaultEmail
-                    FROM usrStaff AS s
-                    WHERE s.StaffId = :owner
-                      AND s.DismissTime IS NULL
+                    SELECT TOP 10 ISNULL(CAST(c.Owner AS NVARCHAR(240)), '') AS OwnerRaw, c.ContactId
+                    FROM usrCustomerContact AS c
+                    LEFT JOIN usrCustomer AS d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL
+                    WHERE c.Deleter IS NULL
+                      AND ISNULL(CAST(c.Owner AS NVARCHAR(240)), '') <> ''
+                      AND (
+                        LOWER(ISNULL(CAST(c.ContactId AS NVARCHAR(120)), '')) = :k
+                        OR LOWER(ISNULL(CAST(c.NewContactId AS NVARCHAR(120)), '')) = :k
+                        OR LOWER(ISNULL(CAST(c.CustomerId AS NVARCHAR(120)), '')) = :k
+                        OR LOWER(ISNULL(CAST(d.NewCustomerId AS NVARCHAR(120)), '')) = :k
+                        OR LOWER(ISNULL(d.CompanyName, '')) LIKE :like
+                        OR LOWER(ISNULL(d.CompanyNameEnglish, '')) LIKE :like
+                      )
+                    ORDER BY c.ContactId DESC
                     """
                 ),
-                {"owner": owner},
-            ).fetchone()
-            if not staff_row:
-                return None
-            division = str(staff_row[1] or "")
-            sales_priority = 0 if any(k in division for k in ("销售", "电销", "大客户", "市场")) else 1
-            has_usable_email = bool(int(staff_row[2] or 0))
-            has_default_email = bool(int(staff_row[3] or 0))
-            priority_rank = _MAIL_SUITE_OWNER_PRIORITY_RANK.get(owner, 99)
-            if has_default_email or has_usable_email:
-                group_priority = 0 if owner in _MAIL_SUITE_OWNER_PRIORITY_RANK else 1
-            else:
-                group_priority = 2 if owner in _MAIL_SUITE_OWNER_PRIORITY_RANK else 3
-            email_priority = 0 if has_default_email else (1 if has_usable_email else 2)
-            # Lower score wins: priority staff with usable/default mailbox > other staff with mailbox > no-mailbox fallback.
-            return (group_priority * 1000 + priority_rank * 10 + email_priority * 2 + sales_priority, owner)
+                {"k": normalized_key.lower(), "like": f"%{normalized_key.lower()}%"},
+            ).fetchall()
+            scored_owners: list[tuple[int, int, str]] = []
+            for row_index, contact_row in enumerate(contact_rows):
+                for owner in _owner_tokens(contact_row[0] if contact_row else ""):
+                    scored = _active_owner_with_email_score(owner)
+                    if scored is not None:
+                        score, staff_id = scored
+                        scored_owners.append((score, row_index, staff_id))
+            if scored_owners:
+                scored_owners.sort(key=lambda item: (item[0], item[1]))
+                return scored_owners[0][2]
 
-        # CRM 有些联系人 Owner 是多个工号拼接(如 "2012,0017")。这里先拆开逐个判断，
-        # 只允许在职员工参与选择，并优先选择有可用/默认企业邮箱的销售代表。
-        contact_rows = crm_db.execute(
-            text(
-                """
-                SELECT TOP 10 ISNULL(CAST(c.Owner AS NVARCHAR(240)), '') AS OwnerRaw, c.ContactId
-                FROM usrCustomerContact AS c
-                LEFT JOIN usrCustomer AS d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL
-                WHERE c.Deleter IS NULL
-                  AND ISNULL(CAST(c.Owner AS NVARCHAR(240)), '') <> ''
-                  AND (
-                    LOWER(ISNULL(CAST(c.ContactId AS NVARCHAR(120)), '')) = :k
-                    OR LOWER(ISNULL(CAST(c.NewContactId AS NVARCHAR(120)), '')) = :k
-                    OR LOWER(ISNULL(CAST(c.CustomerId AS NVARCHAR(120)), '')) = :k
-                    OR LOWER(ISNULL(CAST(d.NewCustomerId AS NVARCHAR(120)), '')) = :k
-                    OR LOWER(ISNULL(d.CompanyName, '')) LIKE :like
-                    OR LOWER(ISNULL(d.CompanyNameEnglish, '')) LIKE :like
-                  )
-                ORDER BY c.ContactId DESC
-                """
-            ),
-            {"k": normalized_key.lower(), "like": f"%{normalized_key.lower()}%"},
-        ).fetchall()
-        scored_owners: list[tuple[int, int, str]] = []
-        for row_index, contact_row in enumerate(contact_rows):
-            for owner in _owner_tokens(contact_row[0] if contact_row else ""):
-                scored = _active_owner_with_email_score(owner)
-                if scored is not None:
-                    score, staff_id = scored
-                    scored_owners.append((score, row_index, staff_id))
-        if scored_owners:
-            scored_owners.sort(key=lambda item: (item[0], item[1]))
-            return scored_owners[0][2]
-
-        try:
             row = crm_db.execute(
                 text(
                     """
@@ -18562,12 +18564,40 @@ def _mail_suite_fallback_signature_html() -> str:
     )
 
 
+def _asr_clean_signature_html(value: str) -> str:
+    """保存富文本签名: 保留常规 HTML, 去掉脚本和事件属性。"""
+    s = str(value or "").strip()
+    s = re.sub(r"(?is)<\s*script\b.*?>.*?<\s*/\s*script\s*>", "", s)
+    s = re.sub(r"(?is)\s+on[a-z]+\s*=\s*(['\"]).*?\1", "", s)
+    s = re.sub(r"(?is)\s+on[a-z]+\s*=\s*[^\s>]+", "", s)
+    return s[:20000]
+
+
+def _asr_default_public_signature_html() -> str:
+    """无销售代表联系人使用的默认签名。配置缺失/读取失败时回退到原固定签名。"""
+    fallback = _mail_suite_fallback_signature_html()
+    try:
+        db = SessionLocal()
+        try:
+            _asr_ensure_tables(db)
+            row = db.execute(
+                text("SELECT default_signature_html FROM mail_autosendrules_config WHERE scope='__global__'")
+            ).fetchone()
+            html_value = _asr_clean_signature_html(row[0] if row else "")
+            return html_value or fallback
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("ASR_DEFAULT_PUBLIC_SIGNATURE_LOAD_FAILED")
+        return fallback
+
+
 def _mail_suite_signature_html_for_customer(customer_id: str) -> tuple[str, dict[str, str], str]:
     owner_staff_id = _fetch_mail_contact_owner_staff_id(customer_id)
     signature_fields = _fetch_mail_sender_signature_fields(owner_staff_id) if owner_staff_id else {}
     signature_html = _build_mail_sender_signature_html(signature_fields) if signature_fields else ""
     if not signature_html:
-        signature_html = _mail_suite_fallback_signature_html()
+        signature_html = _asr_default_public_signature_html()
     return signature_html, signature_fields, owner_staff_id
 
 
@@ -21214,9 +21244,12 @@ def get_autosend_sales_staff_names(ids: str = Query("")):
 # 自动群发: 销售锁定 + 排期持久化 + 后台生成 + 转入CRM + 日历(发送计划工作台)
 # ============================================================================
 
-_AUTOSEND_GEN_ACTIVE: dict = {}   # 正在后台生成的销售工号 -> 启动时刻(monotonic); 用于超时自愈, 避免卡死锁永久阻断重跑
+_AUTOSEND_GEN_ACTIVE: dict = {}   # 正在后台生成的销售工号 -> 最后心跳时刻(monotonic); worker 每封续期一次
 _AUTOSEND_GEN_LOCK = threading.Lock()
-_AUTOSEND_GEN_STALE_SECONDS = 1200   # 运行锁超过此秒数视为卡死(worker线程挂了没释放), 自动清除, 允许重新触发后台生成
+# 超过此秒数没有心跳视为 worker 已挂(线程崩了没走 finally 释放), 自动清锁放行重跑。
+# 因 worker 逐封(且每次重试前)续期, 只需 > 单封单次生成最坏耗时即可, 不再要求整批在窗口内跑完;
+# 故大批次(如几千封)也绝不会被误判挂死, 同时真挂了 10 分钟内自愈。
+_AUTOSEND_GEN_STALE_SECONDS = 600
 
 _AUTOSEND_PENDING_STATUSES = ("planned", "drafting", "drafted", "failed")
 # 该联系人已有待发送套装邮件时, 本次套装第1封 = 该联系人已有最晚一封发送日 + 本偏移天数
@@ -21225,27 +21258,35 @@ _AUTOSEND_EXISTING_SUITE_OFFSET_DAYS = 7
 
 def _autosend_is_running(staff: str) -> bool:
     with _AUTOSEND_GEN_LOCK:
-        started = _AUTOSEND_GEN_ACTIVE.get(staff)
-        if started is None:
+        last_beat = _AUTOSEND_GEN_ACTIVE.get(staff)
+        if last_beat is None:
             return False
-        if time.monotonic() - started > _AUTOSEND_GEN_STALE_SECONDS:
-            _AUTOSEND_GEN_ACTIVE.pop(staff, None)   # 卡死锁自愈: 超时旧锁清掉, 视为未运行
+        if time.monotonic() - last_beat > _AUTOSEND_GEN_STALE_SECONDS:
+            _AUTOSEND_GEN_ACTIVE.pop(staff, None)   # 心跳超时自愈: worker 已挂, 清锁视为未运行
             return False
         return True
 
 
 def _autosend_mark_running(staff: str) -> bool:
-    """Return False when this staff already has an active (non-stale) in-process worker.
+    """Return False when this staff already has an active (heartbeating) in-process worker.
 
-    卡死自愈: 旧锁超过 _AUTOSEND_GEN_STALE_SECONDS(worker线程挂了没走到 finally 释放)则覆盖放行,
+    自愈: 最后心跳超过 _AUTOSEND_GEN_STALE_SECONDS(worker线程挂了不再续期也没走 finally 释放)则覆盖放行,
     避免"每次点后台生成都 already_running 空转、失败项永远轮不到重跑"。
     """
     with _AUTOSEND_GEN_LOCK:
-        started = _AUTOSEND_GEN_ACTIVE.get(staff)
-        if started is not None and (time.monotonic() - started) <= _AUTOSEND_GEN_STALE_SECONDS:
+        last_beat = _AUTOSEND_GEN_ACTIVE.get(staff)
+        if last_beat is not None and (time.monotonic() - last_beat) <= _AUTOSEND_GEN_STALE_SECONDS:
             return False
         _AUTOSEND_GEN_ACTIVE[staff] = time.monotonic()
         return True
+
+
+def _autosend_heartbeat(staff: str) -> None:
+    """worker 存活续期: 每处理一封(及每次重试前)刷新心跳, 使长批次(逐封耗时累加)不被 stale 误判挂死。
+    只在锁仍属于本 staff 时续期(已被自愈清掉或被新 worker 接管则不复活), 避免僵尸线程干扰。"""
+    with _AUTOSEND_GEN_LOCK:
+        if staff in _AUTOSEND_GEN_ACTIVE:
+            _AUTOSEND_GEN_ACTIVE[staff] = time.monotonic()
 
 
 def _autosend_mark_done(staff: str) -> None:
@@ -21266,11 +21307,17 @@ def _autosend_recover_orphan_drafting(db: Session, staff: str) -> int:
         db.commit()
     return int(n or 0)
 
+# 列表口径专用列: 第16/17位原是 body_html/llm_prompt 两个大 TEXT(整封正文 + 最长2万字 prompt),
+# 列表只需要"有没有正文"这一个布尔, 却把几十MB正文全量拉出, 大批次(如某销售数千封)一次查直接撑爆
+# statement_timeout(20s) 报 500。这里把两列换成轻量占位: has_body 布尔 + NULL, 位序不变。
+# 单条详情仍由 /autosend/plan-item 用 "SELECT {_AUTOSEND_PLAN_COLS}, body_html, llm_prompt" 追加真列取全文, 不受影响。
 _AUTOSEND_PLAN_COLS = (
     "item_id, run_id, contact_id, customer_id, owner_staff_id, company_name, contact_name, "
     "scenario, scenario_label_cn, suite_step, plan_date, plan_time, send_time, seq_in_day, "
-    "recipient_email, subject, body_html, llm_prompt, pick_reason, partial_sent_mode, status, "
-    "crm_send_id, gen_error, generated_at, committed_at"
+    "recipient_email, subject, (body_html IS NOT NULL AND body_html <> '') AS has_body, NULL AS llm_prompt, "
+    "pick_reason, partial_sent_mode, status, "
+    "crm_send_id, gen_error, generated_at, committed_at, "
+    "COALESCE(asr_sender_kind, '') AS asr_sender_kind, COALESCE(asr_sender_email, '') AS asr_sender_email"
 )
 
 
@@ -21306,6 +21353,8 @@ def _autosend_serialize_plan_row(r) -> dict:
         "crm_send_id": r[21],
         "gen_error": r[22],
         "generated": r[20] in ("drafted", "sent"),
+        "sender_kind": r[25] if len(r) > 25 else "",
+        "sender_email": r[26] if len(r) > 26 else "",
     }
 
 
@@ -21432,32 +21481,41 @@ class AutosendPreviewRequest(BaseModel):
 
 
 def _autosend_align_crm_status(db, items: list[dict]) -> None:
-    """读层对齐(不改库): 排期清单里某封若已在 CRM(mail_customer_suite_send_plan enqueued 且未删),
-    但本地 plan_item 还停在 drafted/planned/failed, 覆盖显示为 sent(前端=待发, 已转入CRM, 不可再勾),
-    消除 排期清单 与 已用套装/日历 的口径不一致(如 KH15616-024 第1封已实发却仍显示可勾)。"""
+    """读层对齐 CRM 状态，但必须锁定到同一个联系人。
+
+    之前只按 customer_id + scenario + suite_step 对齐，同一客户公司下 Vera / liyu tang
+    这类多联系人会互相继承 CRM 待发行，导致点 liyu tang 读出 Vera 正文。这里必须同时匹配
+    销售、客户、套装、封次和收件邮箱，匹配不上就保持本地状态，不借用别人的 CRM 行。
+    """
     if not items:
         return
-    keys = set()
-    for it in items:
-        for k in (it.get("contact_id"), it.get("customer_id")):
-            if k:
-                keys.add(str(k))
-    if not keys:
+    customer_ids = {str(it.get("customer_id") or it.get("contact_id") or "").strip() for it in items}
+    customer_ids = {x for x in customer_ids if x}
+    if not customer_ids:
         return
     try:
         rows = db.execute(
-            text("SELECT customer_id, scenario, suite_step, "
-                 "MAX(CASE WHEN crm_send_status='SendSuccess' THEN 2 ELSE 1 END) rk "
+            text("SELECT customer_id, scenario, suite_step, inputer_staff_id, "
+                 "COALESCE(recipient_email_key,''), COALESCE(spqueue_rowid,''), COALESCE(crm_send_id,''), "
+                 "CASE WHEN crm_send_status='SendSuccess' THEN 2 ELSE 1 END AS rk "
                  "FROM mail_customer_suite_send_plan "
                  "WHERE customer_id IN :ids AND status='enqueued' "
-                 "AND COALESCE(crm_send_status,'') <> 'deleted' "
-                 "GROUP BY customer_id, scenario, suite_step").bindparams(bindparam("ids", expanding=True)),
-            {"ids": list(keys)},
+                 "AND COALESCE(crm_send_status,'') <> 'deleted'")
+            .bindparams(bindparam("ids", expanding=True)),
+            {"ids": list(customer_ids)},
         ).fetchall()
     except Exception:
         logger.exception("AUTOSEND_PLAN_CRM_ALIGN_FAILED")
         return
-    crm_map = {(str(c), str(sc), int(st)): int(rk) for c, sc, st, rk in rows if st is not None}
+    crm_map: dict[tuple[str, str, int, str, str], tuple[int, str, str]] = {}
+    for c, sc, st, staff, recipient_key, rowid, send_id, rk in rows:
+        if st is None:
+            continue
+        key = (str(c or ""), str(sc or ""), int(st), str(staff or ""), str(recipient_key or "").lower())
+        old = crm_map.get(key)
+        val = (int(rk or 1), str(rowid or ""), str(send_id or ""))
+        if old is None or val[0] > old[0]:
+            crm_map[key] = val
     for it in items:
         if it.get("status") == "sent":
             continue
@@ -21466,27 +21524,70 @@ def _autosend_align_crm_status(db, items: list[dict]) -> None:
             st = int(it.get("suite_step") or 0)
         except (TypeError, ValueError):
             continue
-        rk = crm_map.get((str(it.get("contact_id") or ""), sc, st)) or crm_map.get((str(it.get("customer_id") or ""), sc, st))
-        if rk:
-            it["status"] = "sent"        # 前端 as2StepBtn 显示为"待发"(已转入CRM), 不再是可勾选的绿色
-            it["crm_synced"] = True       # 标记: 本状态由 CRM 实际发送计划对齐而来
-            it["crm_sent"] = (rk == 2)    # True=CRM已实发(SendSuccess); False=CRM待发
+        recipient_key = _autosend_receiver_key(str(it.get("recipient_email") or "")).lower()
+        if not recipient_key:
+            continue
+        base_ids = [str(it.get("customer_id") or "").strip(), str(it.get("contact_id") or "").strip()]
+        hit = None
+        for cid in base_ids:
+            if not cid:
+                continue
+            hit = crm_map.get((cid, sc, st, str(it.get("owner_staff_id") or ""), recipient_key))
+            if hit:
+                break
+        if hit:
+            rk, rowid, send_id = hit
+            it["status"] = "sent"
+            it["crm_synced"] = True
+            it["crm_sent"] = (rk == 2)
+            if rowid:
+                it["spqueue_rowid"] = rowid
+            if send_id:
+                it["crm_send_id"] = send_id
 
-
-def _autosend_list_plan(db, staff: str, statuses: tuple = _AUTOSEND_PENDING_STATUSES) -> list[dict]:
-    staff = sanitize_text(staff).strip()
-    staff_clause = "owner_staff_id = :s AND " if staff else ""
+def _autosend_plan_where(staff: str, statuses, company_tokens=None):
+    """构造排期清单 WHERE 子句与参数(销售 + 状态 + 可选公司名多词 OR), 供列表与计数共用, 保证口径一致。"""
+    clauses = []
     params = {"st": list(statuses)}
+    staff = sanitize_text(staff or "").strip()
     if staff:
+        clauses.append("owner_staff_id = :s")
         params["s"] = staff
-    rows = db.execute(
-        text(
-            f"SELECT {_AUTOSEND_PLAN_COLS} FROM mail_autosend_plan_item "
-            f"WHERE {staff_clause}status IN :st "
-            "ORDER BY owner_staff_id NULLS LAST, plan_date NULLS LAST, plan_time NULLS LAST, seq_in_day NULLS LAST"
-        ).bindparams(bindparam("st", expanding=True)),
+    clauses.append("status IN :st")
+    toks = [t for t in (company_tokens or []) if t]
+    if toks:
+        # company_head 是 company_name 前6字的子串, 故按 company_name LIKE 即等价覆盖原前端 head/name 双匹配
+        ors = []
+        for i, t in enumerate(toks):
+            ors.append(f"LOWER(company_name) LIKE :c{i}")
+            params[f"c{i}"] = f"%{t}%"
+        clauses.append("(" + " OR ".join(ors) + ")")
+    return " AND ".join(clauses), params
+
+
+def _autosend_count_plan(db, staff: str, statuses, company_tokens=None) -> int:
+    """轻量计数(不碰大 TEXT 列): 返回符合条件的总封数, 供分页前端判断是否还有下一页。"""
+    where, params = _autosend_plan_where(staff, statuses, company_tokens)
+    n = db.execute(
+        text(f"SELECT COUNT(*) FROM mail_autosend_plan_item WHERE {where}").bindparams(bindparam("st", expanding=True)),
         params,
-    ).fetchall()
+    ).scalar()
+    return int(n or 0)
+
+
+def _autosend_list_plan(db, staff: str, statuses: tuple = _AUTOSEND_PENDING_STATUSES,
+                        company_tokens=None, limit: int = 0, offset: int = 0) -> list[dict]:
+    where, params = _autosend_plan_where(staff, statuses, company_tokens)
+    sql = (
+        f"SELECT {_AUTOSEND_PLAN_COLS} FROM mail_autosend_plan_item WHERE {where} "
+        # 追加 item_id 作最终排序键, 保证分页(LIMIT/OFFSET)在同日同序号并列时稳定, 不重不漏
+        "ORDER BY owner_staff_id NULLS LAST, plan_date NULLS LAST, plan_time NULLS LAST, seq_in_day NULLS LAST, item_id"
+    )
+    if limit and int(limit) > 0:
+        sql += " LIMIT :_lim OFFSET :_off"
+        params["_lim"] = int(limit)
+        params["_off"] = max(0, int(offset or 0))
+    rows = db.execute(text(sql).bindparams(bindparam("st", expanding=True)), params).fetchall()
     items = [_autosend_serialize_plan_row(r) for r in rows]
     _autosend_align_crm_status(db, items)   # 读层对齐 CRM 实际发送状态, 消除口径不一致
     return items
@@ -21601,34 +21702,48 @@ def autosend_preview(payload: AutosendPreviewRequest, db: Session = Depends(get_
 
 @app.get("/api/v1/mail/autosend/plan")
 def get_autosend_plan(staff_id: str = Query(""), include_sent: int = Query(0),
-                      company: str = Query(""), db: Session = Depends(get_db)):
-    """该销售当前排期清单；staff_id 为空时查全销售。默认只返回未转入CRM项，日历可 include_sent=1 显示已入CRM项。company 可按公司名(多个逗号隔开)过滤。"""
+                      company: str = Query(""), limit: int = Query(0), offset: int = Query(0),
+                      db: Session = Depends(get_db)):
+    """该销售当前排期清单；staff_id 为空时查全销售。默认只返回未转入CRM项，日历可 include_sent=1 显示已入CRM项。company 可按公司名(多个逗号隔开)过滤。
+
+    分页(可选, 供前端逐步加载, 避免大批次一次性拉全量卡浏览器):
+    - limit>0 时按 limit/offset 返回一页, 并给出 total 与 has_more; limit=0(默认)返回全部, 与旧行为一致。
+    - 公司名过滤已下推到 SQL, 分页/计数与过滤口径一致。
+    """
     staff = sanitize_text(staff_id).strip()
     statuses = _AUTOSEND_PENDING_STATUSES + (("sent",) if int(include_sent or 0) else tuple())
-    items = _autosend_list_plan(db, staff, statuses=statuses)
     company_tokens = [t.strip().lower() for t in re.split(r"[,，]", sanitize_text(company or "")) if t.strip()]
-    if company_tokens:
-        items = [it for it in items
-                 if any(t in str(it.get("company_name") or it.get("company_head") or "").lower()
-                        for t in company_tokens)]
+    lim = max(0, int(limit or 0))
+    off = max(0, int(offset or 0))
+    items = _autosend_list_plan(db, staff, statuses=statuses, company_tokens=company_tokens, limit=lim, offset=off)
+    total = _autosend_count_plan(db, staff, statuses, company_tokens) if lim else (off + len(items))
     counts: dict = {}
     for it in items:
         counts[it["status"]] = counts.get(it["status"], 0) + 1
+    has_more = bool(lim and (off + len(items) < total))
     return {"ok": True, "staff_id": staff, "items": items, "counts": counts,
+            "total": total, "offset": off, "limit": lim, "has_more": has_more,
             "running": _autosend_is_running(staff) if staff else False}
 
 @app.delete("/api/v1/mail/autosend/plan")
-def clear_autosend_plan(staff_id: str = Query(...), db: Session = Depends(get_db)):
-    """清空该销售未转入CRM的排期(planned/drafting/drafted/failed)。不动已转入CRM(sent)的。"""
+def clear_autosend_plan(staff_id: str = Query(...), pick_reason: str = Query(""),
+                        db: Session = Depends(get_db)):
+    """清空该销售未转入CRM的排期(planned/drafting/drafted/failed)。不动已转入CRM(sent)的。
+    pick_reason 非空时仅清该来源的排期(自动发送节点传 'asr', 只清本节点排期, 不动套装排期节点)。"""
     staff = sanitize_text(staff_id).strip()
     if not staff:
         raise HTTPException(status_code=422, detail="staff_id is required")
+    pr = sanitize_text(pick_reason or "").strip()
+    pr_clause = " AND pick_reason = :pr" if pr else ""
+    base_params = {"s": staff}
+    if pr:
+        base_params["pr"] = pr
     # 8.2 清空排期 = 人工弃用: 对已生成(drafted)的封记录弃用(主题+正文), 供分析
     try:
         drows = db.execute(
             text("SELECT customer_id, contact_id, scenario, suite_step, subject, body_html "
-                 "FROM mail_autosend_plan_item WHERE owner_staff_id=:s AND status='drafted'"),
-            {"s": staff},
+                 "FROM mail_autosend_plan_item WHERE owner_staff_id=:s AND status='drafted'" + pr_clause),
+            base_params,
         ).fetchall()
         for dr in drows:
             _mail_record_llm_discard(db, "autosend", dr[0] or dr[1], dr[1], staff, dr[2], dr[3],
@@ -21636,9 +21751,9 @@ def clear_autosend_plan(staff_id: str = Query(...), db: Session = Depends(get_db
     except Exception:
         logger.exception("AUTOSEND_CLEAR_DISCARD_RECORD_FAILED staff=%s", staff)
     n = db.execute(
-        text("DELETE FROM mail_autosend_plan_item WHERE owner_staff_id = :s AND status IN :st")
+        text("DELETE FROM mail_autosend_plan_item WHERE owner_staff_id = :s AND status IN :st" + pr_clause)
         .bindparams(bindparam("st", expanding=True)),
-        {"s": staff, "st": list(_AUTOSEND_PENDING_STATUSES)},
+        {**base_params, "st": list(_AUTOSEND_PENDING_STATUSES)},
     ).rowcount
     db.commit()
     return {"ok": True, "deleted": int(n or 0)}
@@ -21686,6 +21801,7 @@ def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> 
         finally:
             db.close()
         for item_id, customer_id, contact_id, scenario, step in rows:
+            _autosend_heartbeat(staff)   # 逐封续期: 大批次逐封耗时累加也不会被 stale 误判挂死
             cid = (customer_id or contact_id)
             d2 = SessionLocal()
             try:
@@ -21697,6 +21813,7 @@ def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> 
             try:
                 gen = None
                 for _attempt in range(3):   # 瞬时错(CRM连接抖动/画像临时查不到等)自动重试, 避免一次抖动就永久 failed
+                    _autosend_heartbeat(staff)   # 每次重试前续期: 单封多次重试也不会跨过 stale 窗口
                     try:
                         gen = _autosend_generate_one(cid, scenario, int(step))
                         break
@@ -22626,8 +22743,8 @@ def get_autosend_plan_item(item_id: str = Query(...), db: Session = Depends(get_
     if not row:
         raise HTTPException(status_code=404, detail="plan item not found")
     item = _autosend_serialize_plan_row(row)
-    item["body_html"] = row[25]
-    item["llm_prompt"] = row[26]
+    item["body_html"] = row[27]
+    item["llm_prompt"] = row[28]
     if item.get("status") == "sent" and item.get("crm_send_id"):
         try:
             from crm_database import CRMSessionLocal
@@ -22766,8 +22883,8 @@ def regenerate_autosend_plan_item(payload: AutosendPlanItemSaveRequest, db: Sess
 #  - 联系人分类=手工逐条规则(不限个数), 复用 _autosend_rule_matches(conditions/match_mode)。
 #  - 已发套装排除口径=该联系人是否发过该套装(有任一已发封即整套装排除)。
 #  - 发送顺序两方案独立可选; 兼容已有排期(existing_load 顶满顺延)。
-#  - 邮箱选择: personal_first/public_* 依赖公共邮箱基建(需求17/19, 尚未建), 当前按个人邮箱落地,
-#    选择值仅记录到 run.company_name_like 附注, 待公共邮箱基建就绪再接发件箱选择。
+#  - 邮箱选择: personal_first/public_* 已接公共邮箱账号/每日上限/分配策略;
+#    排期项记录 asr_sender_kind/asr_sender_email, 实际发出由 CRM 发送环节执行。
 #  - 需求14 动作数据源(跟进/丢单事件)待对接外部系统; 当前动作->套装映射可配置, 候选联系人=该销售名下联系人。
 # ============================================================================
 
@@ -22782,8 +22899,10 @@ def _asr_ensure_tables(db) -> None:
         "suite_gap_days INTEGER NOT NULL DEFAULT 7, "
         "daily_cap INTEGER NOT NULL DEFAULT 10, "
         "action_map TEXT NOT NULL DEFAULT '{}', "
+        "default_signature_html TEXT NOT NULL DEFAULT '', "
         "updated_at TIMESTAMP DEFAULT now())"
     ))
+    db.execute(text("ALTER TABLE mail_autosendrules_config ADD COLUMN IF NOT EXISTS default_signature_html TEXT NOT NULL DEFAULT ''"))
     db.commit()
 
 
@@ -22795,7 +22914,7 @@ def _asr_get_config(db, scope: str) -> dict:
     _asr_ensure_tables(db)
     scope = (sanitize_text(scope or "").strip() or "__global__")
     row = db.execute(
-        text("SELECT scope,class_rules,send_order,mailbox_mode,mail_gap_days,suite_gap_days,daily_cap,action_map "
+        text("SELECT scope,class_rules,send_order,mailbox_mode,mail_gap_days,suite_gap_days,daily_cap,action_map,default_signature_html "
              "FROM mail_autosendrules_config WHERE scope=:s"),
         {"s": scope},
     ).fetchone()
@@ -22809,11 +22928,13 @@ def _asr_get_config(db, scope: str) -> dict:
     if not row:
         return {"scope": scope, "class_rules": [], "send_order": "contact_first",
                 "mailbox_mode": "personal_only", "mail_gap_days": 2, "suite_gap_days": 7,
-                "daily_cap": 10, "action_map": dict(_ASR_DEFAULT_ACTION_MAP)}
+                "daily_cap": 10, "action_map": dict(_ASR_DEFAULT_ACTION_MAP),
+                "default_signature_html": _asr_default_public_signature_html()}
     return {"scope": row[0], "class_rules": _loads(row[1], []), "send_order": row[2] or "contact_first",
             "mailbox_mode": row[3] or "personal_only", "mail_gap_days": int(row[4] or 2),
             "suite_gap_days": int(row[5] or 7), "daily_cap": int(row[6] or 10),
-            "action_map": _loads(row[7], dict(_ASR_DEFAULT_ACTION_MAP))}
+            "action_map": _loads(row[7], dict(_ASR_DEFAULT_ACTION_MAP)),
+            "default_signature_html": _asr_clean_signature_html(row[8] or "") or _asr_default_public_signature_html()}
 
 
 def _asr_suite_options(scenarios: list[str] | None) -> list[dict]:
@@ -22936,6 +23057,70 @@ def _asr_llm_rank_suites(class_rule: dict, suite_opts: list[dict]) -> dict:
     return {}
 
 
+def _asr_prefilter_contact_ids(staff: str, class_rules: list[dict]) -> "set[str] | None":
+    """SQL 预筛: 返回"至少可能命中某一类"的联系人 ContactId 超集, 避免全销售时全量加载。
+    只下推能保证超集(绝不漏掉真命中)的条件: amount(数值精确) 与 business_line 'has'(双向 LIKE);
+    其余条件(last_coop_days / business_line 'not' / 未知)一律不下推(留给 Python 精确判定, 只会更宽)。
+    任一类没有可下推的正向条件 => 该类无法收窄 => 返回 None(调用方回退全量加载, 保证结果不变)。
+    真正的归类仍由 _asr_classify 在加载后精确完成; 本函数只做"少拉数据"。"""
+    rules = class_rules or []
+    if not rules:
+        return None
+    class_preds: list[str] = []
+    params: dict = {}
+    pidx = 0
+    for cr in rules:
+        conds = (cr or {}).get("conditions") or []
+        parts: list[str] = []
+        for cond in conds:
+            ctype = str(cond.get("type") or "").strip()
+            op = str(cond.get("op") or "").strip()
+            val = cond.get("value")
+            if ctype == "amount" and op in ("<", ">"):
+                params[f"a{pidx}"] = float(val or 0)
+                parts.append(f"COALESCE(g.amt,0) {op} :a{pidx}")
+                pidx += 1
+            elif ctype == "business_line" and op == "has":
+                term = str(val or "").strip()
+                if not term:
+                    continue
+                params[f"bl{pidx}"] = f"%{term}%"
+                params[f"be{pidx}"] = term
+                parts.append(
+                    "EXISTS(SELECT 1 FROM usrContract u WHERE u.Deleter IS NULL AND u.ContractType='销售合同' "
+                    "AND u.ContactId=c.ContactId AND ISNULL(u.BusinessType,'')<>'' "
+                    f"AND (ISNULL(u.BusinessType,'') LIKE :bl{pidx} OR :be{pidx} LIKE '%'+ISNULL(u.BusinessType,'')+'%'))"
+                )
+                pidx += 1
+            # 其余条件不下推(超集更宽), 交给 Python 精确判定
+        if not parts:
+            return None  # 该类没有可下推正向条件 => 无法收窄 => 全量加载
+        class_preds.append("(" + " AND ".join(parts) + ")")
+    if not class_preds:
+        return None
+    staff = str(staff or "").strip()
+    owner_clause = ""
+    if staff:
+        params["own"] = f"%{staff}%"
+        owner_clause = " AND CAST(c.Owner AS NVARCHAR(240)) LIKE :own "
+    sql = (
+        "SELECT DISTINCT c.ContactId FROM usrCustomerContact c "
+        "LEFT JOIN (SELECT ContactId, COALESCE(SUM(Money1+Money2+Money3),0) AS amt "
+        "FROM usrContract WHERE Deleter IS NULL AND ContractType='销售合同' GROUP BY ContactId) g "
+        "ON g.ContactId = c.ContactId "
+        "WHERE c.Deleter IS NULL AND ISNULL(CAST(c.Owner AS NVARCHAR(240)),'')<>'' "
+        + owner_clause
+        + " AND (" + " OR ".join(class_preds) + ")"
+    )
+    from crm_database import CRMSessionLocal
+    crm_db = CRMSessionLocal()
+    try:
+        rows = crm_db.execute(text(sql), params).fetchall()
+        return {str(r[0]).strip() for r in rows if r[0] is not None and str(r[0]).strip()}
+    finally:
+        crm_db.close()
+
+
 def _asr_classify(contacts: list[dict], class_rules: list[dict]):
     """按手工分类规则(顺序=优先级)给联系人分类。返回 (classified, unclassified_count)。
     classified: [(contact, class_index, class_name)], 已按 class_index 稳定排序(保持类内原顺序)。"""
@@ -22991,7 +23176,9 @@ def _asr_schedule(units: list[dict], send_order: str, mail_gap: int, suite_gap: 
     items: list[dict] = []
 
     def owner_pub_daily_cap(owner: str) -> int:
-        """该销售当日可用公共容量: first_come=全部公共容量; ratio=按权重占比。"""
+        """该销售当日可用公共容量: first_come=全部公共容量; ratio=按权重占比。无归属销售直接使用公共池。"""
+        if not owner:
+            return total_pub_cap
         if str(policy.get("strategy")) != "ratio":
             return total_pub_cap
         if total_weight <= 0:
@@ -23021,12 +23208,20 @@ def _asr_schedule(units: list[dict], send_order: str, mail_gap: int, suite_gap: 
     def place(owner: str, desired):
         """返回 (day, time_str, seq, sender_kind, sender_email)。按邮箱模式在个人/公共间分配, 满则顺延工作日。"""
         day = _autosend_next_workday(desired, skip_non_workdays, holiday_dates)
+        force_public = not str(owner or "").strip()
         guard = 0
         while True:
             guard += 1
             if guard > 3660:   # 安全阀: 约10年, 防公共/个人皆无容量时死循环
                 break
             ds = day.isoformat()
+            if force_public:
+                mb = pick_public("", day)
+                if mb:
+                    pub_load[(mb, ds)] = pub_load.get((mb, ds), 0) + 1
+                    pub_owner_load[("", ds)] = pub_owner_load.get(("", ds), 0) + 1
+                tm, seq = time_for("", day)
+                return day, tm, seq, "public", mb or ""
             if mode == "public_only":
                 mb = pick_public(owner, day)
                 if mb:
@@ -23105,9 +23300,12 @@ def _asr_schedule(units: list[dict], send_order: str, mail_gap: int, suite_gap: 
 def _asr_build_units(db, staff: str, accepted: list[dict], company_name_like: str, sent_map: dict | None = None):
     """把前端确认的 [{contact_id, scenarios:[...]}] 组装成排期 units, 并做安全去重/已发排除。
     返回 (units, dropped:[{contact_id,scenario,reason}])。"""
+    # 只加载本次确认的联系人(而非该销售/全销售的全部), 避免全销售预排时重复拉全量。
+    accepted_ids = [str(a.get("contact_id")).strip() for a in (accepted or []) if a.get("contact_id")]
     contacts = _autosend_load_contacts_for_sales([staff] if staff else [], only_valid_email=True,
                                                  company_name_like=company_name_like,
-                                                 email_valid_mode=_mail_get_email_valid_mode())
+                                                 email_valid_mode=_mail_get_email_valid_mode(),
+                                                 contact_ids=accepted_ids)
     cmap = {str(c.get("contact_id")): c for c in contacts}
     ids = [str(a.get("contact_id")) for a in (accepted or []) if a.get("contact_id")]
     if sent_map is None:
@@ -23148,7 +23346,7 @@ def _asr_build_units(db, staff: str, accepted: list[dict], company_name_like: st
                            "steps": list(range(1, step_count + 1))})
         if suites:
             units.append({"contact_id": cid, "customer_id": c.get("customer_id") or cid,
-                          "owner": c.get("owner_staff_id") or staff, "company": c.get("company_name") or "",
+                          "owner": c.get("owner_staff_id") or "", "company": c.get("company_name") or "",
                           "contact_name": c.get("contact_name") or "", "email": c.get("email"), "suites": suites})
     return units, dropped
 
@@ -23213,6 +23411,7 @@ class AsrConfigRequest(BaseModel):
     suite_gap_days: int | None = None
     daily_cap: int | None = None
     action_map: dict | None = None
+    default_signature_html: str | None = None
 
 
 @app.get("/api/v1/mail/autosendrules/config")
@@ -23233,18 +23432,29 @@ def asr_put_config(payload: AsrConfigRequest, db: Session = Depends(get_db)):
     mail_gap = int(payload.mail_gap_days) if payload.mail_gap_days is not None else cur["mail_gap_days"]
     suite_gap = int(payload.suite_gap_days) if payload.suite_gap_days is not None else cur["suite_gap_days"]
     daily_cap = int(payload.daily_cap) if payload.daily_cap is not None else cur["daily_cap"]
+    default_signature_html = _asr_clean_signature_html(payload.default_signature_html if payload.default_signature_html is not None else cur.get("default_signature_html", ""))
     db.execute(
         text(
             "INSERT INTO mail_autosendrules_config (scope,class_rules,send_order,mailbox_mode,mail_gap_days,"
-            "suite_gap_days,daily_cap,action_map,updated_at) "
-            "VALUES (:s,:cr,:so,:mm,:mg,:sg,:dc,:am,now()) "
+            "suite_gap_days,daily_cap,action_map,default_signature_html,updated_at) "
+            "VALUES (:s,:cr,:so,:mm,:mg,:sg,:dc,:am,:sig,now()) "
             "ON CONFLICT (scope) DO UPDATE SET class_rules=:cr,send_order=:so,mailbox_mode=:mm,"
-            "mail_gap_days=:mg,suite_gap_days=:sg,daily_cap=:dc,action_map=:am,updated_at=now()"
+            "mail_gap_days=:mg,suite_gap_days=:sg,daily_cap=:dc,action_map=:am,default_signature_html=:sig,updated_at=now()"
         ),
         {"s": scope, "cr": json.dumps(class_rules, ensure_ascii=False), "so": send_order, "mm": mailbox_mode,
          "mg": max(0, mail_gap), "sg": max(0, suite_gap), "dc": max(1, daily_cap),
-         "am": json.dumps(action_map, ensure_ascii=False)},
+         "am": json.dumps(action_map, ensure_ascii=False), "sig": default_signature_html},
     )
+    if payload.default_signature_html is not None and scope != "__global__":
+        db.execute(
+            text(
+                "INSERT INTO mail_autosendrules_config (scope,class_rules,send_order,mailbox_mode,mail_gap_days,"
+                "suite_gap_days,daily_cap,action_map,default_signature_html,updated_at) "
+                "VALUES ('__global__','[]','contact_first','personal_only',2,7,10,'{}',:sig,now()) "
+                "ON CONFLICT (scope) DO UPDATE SET default_signature_html=:sig,updated_at=now()"
+            ),
+            {"sig": default_signature_html},
+        )
     db.commit()
     return {"ok": True, "config": _asr_get_config(db, scope)}
 
@@ -23395,6 +23605,36 @@ class AsrSuggestRequest(BaseModel):
     suite_scenarios: list[str] = []
     company_name_like: str = ""
     use_llm: bool = True
+    analysis_mode: str = "class"   # class=按分类(现行) / per_contact=按人(数据已预留, LLM逐人排序待开发)
+    debug_no_prefilter: bool = False   # 调试: True 时禁用 SQL 预筛, 全量加载(用于校验预筛结果一致)
+
+
+def _asr_contact_llm_profile(c: dict, sent_map: dict | None = None) -> dict:
+    """预留(待开发): 组装单个联系人用于"按人"精准套装推荐的信号。
+    现有字段直接可用; 标 TODO 的为待接入的更完整 CRM 画像(逐人取, 参见 _lookup_mail_crm_profile)。"""
+    cid = str(c.get("contact_id") or "")
+    sent = (sent_map or {}).get(cid) or {}
+    return {
+        "contact_id": cid,
+        "company_name": c.get("company_name") or "",
+        "amount": float(c.get("amount") or 0),            # 累计销售合同额(已有)
+        "last_coop_days": c.get("last_coop_days"),          # 距末次合作天数, None=从未(已有)
+        "business_lines": c.get("business_lines") or [],    # 已成交业务线(已有)
+        "sent_scenarios": sorted(sent.keys()) if isinstance(sent, dict) else [],  # 已发套装(已有)
+        # ==== 以下为"按人"精准分析预留字段, 待开发接入更完整 CRM 画像 ====
+        "industry": None,             # TODO 行业
+        "duty": None,                 # TODO 联系人职务
+        "lifecycle_stage": None,      # TODO 生命周期阶段(新联系/熟客/流失/沉睡)
+        "recent_quote": None,         # TODO 最近报价 {product, time, deal}
+        "recent_followup_days": None, # TODO 距最近跟进天数
+        "language_pref": None,        # TODO 语言偏好(中文/英文, 决定中英文版套装)
+    }
+
+
+def _asr_llm_rank_suites_per_contact(profile: dict, suite_opts: list[dict]) -> dict:
+    """预留(待开发): 逐个联系人调 LLM, 结合其完整画像给套装优先级。
+    当前未实现真实调用, 返回 {} 以回退到按分类排序; 待 _asr_contact_llm_profile 的 TODO 字段补齐后接入。"""
+    return {}
 
 
 @app.post("/api/v1/mail/autosendrules/suggest")
@@ -23402,9 +23642,25 @@ def asr_suggest(payload: AsrSuggestRequest, db: Session = Depends(get_db)):
     """需求15: 结合联系人分类(手工规则)与套装范围, LLM 给出每个联系人适合发送的套装及优先级;
     已发过的套装(该联系人是否发过该套装)自动排除。只算不写库。"""
     staff = sanitize_text(payload.staff_id).strip()
-    contacts = _autosend_load_contacts_for_sales([staff] if staff else [], only_valid_email=True,
-                                                 company_name_like=payload.company_name_like,
-                                                 email_valid_mode=_mail_get_email_valid_mode())
+    class_rules = payload.class_rules or []
+    if not class_rules:
+        raise HTTPException(status_code=422, detail="请至少添加一条联系人分类规则")
+    # SQL 预筛只加载"可能命中某类"的联系人超集(全销售时避免拉全量); 失败/无法收窄则回退全量。
+    prefilter_ids = None
+    if not payload.debug_no_prefilter:
+        try:
+            prefilter_ids = _asr_prefilter_contact_ids(staff, class_rules)
+        except Exception:
+            logger.exception("ASR_PREFILTER_FAILED")
+            prefilter_ids = None
+    if prefilter_ids is not None and not prefilter_ids:
+        contacts = []   # 预筛明确无命中 => 不再加载
+    else:
+        contacts = _autosend_load_contacts_for_sales(
+            [staff] if staff else [], only_valid_email=True,
+            company_name_like=payload.company_name_like,
+            email_valid_mode=_mail_get_email_valid_mode(),
+            contact_ids=(list(prefilter_ids) if prefilter_ids is not None else None))
     suite_opts = _asr_suite_options(payload.suite_scenarios)
     labels = {o["value"]: o["label"] for o in suite_opts}
     scopes = _asr_load_scopes(db)
@@ -23413,9 +23669,6 @@ def asr_suggest(payload: AsrSuggestRequest, db: Session = Depends(get_db)):
     if not suite_opts:
         return {"ok": True, "rows": [], "unclassified": len(contacts), "note": "套装范围为空且无已注册套装"}
     sent_map = _autosend_sent_map(db, [c.get("contact_id") for c in contacts])
-    class_rules = payload.class_rules or []
-    if not class_rules:
-        raise HTTPException(status_code=422, detail="请至少添加一条联系人分类规则")
     classified, unclassified = _asr_classify(contacts, class_rules)
 
     # 每个分类 LLM 排一次套装优先级(减少调用次数; 失败回退套装范围顺序)
@@ -23431,29 +23684,59 @@ def asr_suggest(payload: AsrSuggestRequest, db: Session = Depends(get_db)):
                 reason = str(r.get("reason") or "")[:200]
         ranking_by_class[i] = {"order": order, "reason": reason}
 
+    # 按人(per_contact): 数据通路已预留, 逐人 LLM 排序待开发; 当前回退按分类排序, 但每行附上逐人信号。
+    per_contact = str(payload.analysis_mode or "class").strip() == "per_contact"
+
     rows = []
     for c, idx, cname in classified:
         cid = str(c.get("contact_id"))
         order = ranking_by_class.get(idx, {}).get("order") or [o["value"] for o in suite_opts]
+        # 预留: 待开发时用逐人画像调 LLM 覆盖 order(现返回 {} 回退按分类)
+        if per_contact:
+            pc = _asr_llm_rank_suites_per_contact(_asr_contact_llm_profile(c, sent_map), suite_opts)
+            ord_pc = [str(s).strip() for s in (pc.get("order") or []) if str(s).strip() in labels]
+            if ord_pc:
+                order = ord_pc + [s for s in order if s not in ord_pc]
         suites, excluded = [], []
         for sc in order:
             if _asr_contact_has_sent_suite(sent_map, cid, sc):
                 excluded.append({"scenario": sc, "label": labels.get(sc, sc), "reason": "已发过此套装"})
             else:
                 suites.append({"scenario": sc, "label": labels.get(sc, sc), "priority": len(suites) + 1})
-        rows.append({
+        row = {
             "contact_id": cid, "contact_name": c.get("contact_name") or "", "company_name": c.get("company_name") or "",
-            "owner_staff_id": c.get("owner_staff_id") or staff, "email": c.get("email"),
+            "owner_staff_id": c.get("owner_staff_id") or "", "email": c.get("email"),
             "class_index": idx, "class_name": cname,
             "llm_reason": ranking_by_class.get(idx, {}).get("reason", ""),
             "suites": suites, "excluded": excluded,
+        }
+        if per_contact:
+            row["contact_profile"] = _asr_contact_llm_profile(c, sent_map)  # 预留: 逐人信号已备好
+        rows.append(row)
+
+    # 按类汇总(前端 ② 只展示一行一类; 联系人明细留到预排): 每类人数 + LLM 套装优先级 + 理由
+    counts: dict = {}
+    for _c, _idx, _n in classified:
+        counts[_idx] = counts.get(_idx, 0) + 1
+    class_summary = []
+    for i, cr in enumerate(class_rules):
+        order = ranking_by_class.get(i, {}).get("order") or [o["value"] for o in suite_opts]
+        class_summary.append({
+            "class_index": i,
+            "class_name": str((cr or {}).get("name") or f"分类{i + 1}"),
+            "count": counts.get(i, 0),
+            "llm_reason": ranking_by_class.get(i, {}).get("reason", ""),
+            "suites": [{"scenario": sc, "label": labels.get(sc, sc), "priority": k + 1} for k, sc in enumerate(order)],
         })
+
     return {"ok": True, "rows": rows, "classified": len(classified), "unclassified": unclassified,
-            "suite_options": suite_opts}
+            "suite_options": suite_opts, "class_summary": class_summary,
+            "analysis_mode": "per_contact" if per_contact else "class",
+            "per_contact_reserved": per_contact}
 
 
 class AsrScheduleRequest(BaseModel):
-    staff_id: str
+    staff_id: str = ""
     accepted: list[dict] = []
     send_order: str = "contact_first"
     mail_gap_days: int = 2
@@ -23486,8 +23769,6 @@ def _asr_resolve_workday_cfg(db, payload) -> tuple:
 def asr_schedule_endpoint(payload: AsrScheduleRequest, db: Session = Depends(get_db)):
     """需求15: 按确认的建议 + 排期规则(邮箱/发送顺序/间隔)预排并写入既有待发清单。"""
     staff = sanitize_text(payload.staff_id).strip()
-    if not staff:
-        raise HTTPException(status_code=422, detail="staff_id is required")
     if not payload.accepted:
         raise HTTPException(status_code=422, detail="没有已确认的排期项")
     start_date, skip, holidays = _asr_resolve_workday_cfg(db, payload)
@@ -23510,7 +23791,7 @@ def asr_schedule_endpoint(payload: AsrScheduleRequest, db: Session = Depends(get
 class AsrTriggerSuggestRequest(BaseModel):
     staff_id: str = ""
     action: str = "followup"          # followup / lost (下拉选择)
-    action_map: dict | None = None    # {action: [scenario,...]}; 缺省用已存配置
+    action_map: dict | None = None
     company_name_like: str = ""
 
 
@@ -23781,7 +24062,8 @@ def _autosend_pending_latest_map(db, contacts: list[dict], staff_ids: list[str])
 
 
 def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bool = True,
-                                      company_name_like: str = "", email_valid_mode: str = "collect") -> list[dict]:
+                                      company_name_like: str = "", email_valid_mode: str = "collect",
+                                      contact_ids: list[str] | None = None) -> list[dict]:
     """从 CRM 取指定销售名下、有有效邮箱的联系人, 并按人聚合历史累计销售合同额/末次合作/业务线。
 
     口径(均按联系人 ContactId):
@@ -23793,6 +24075,8 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
     """
     staff_ids = [s for s in (staff_ids or []) if s]
     all_staff = not bool(staff_ids)
+    # 只取指定联系人(预排等已知 contact_id 场景): 避免全销售时把全量联系人都拉出来
+    cid_filter = [str(x).strip() for x in (contact_ids or []) if str(x or "").strip()]
     company_like = sanitize_text(company_name_like or "").strip()
     # 支持多个公司名: 用中英文逗号隔开, 每个都做模糊(LIKE)匹配, 任一命中即选中(OR 关系)
     company_tokens = [t for t in (s.strip() for s in re.split(r"[,，]", company_like)) if t] if company_like else []
@@ -23814,19 +24098,22 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
                     for i in range(len(company_tokens))
                 )
                 company_clause = f" AND ({ors})"
-            contact_rows = crm_db.execute(
-                text(
-                    "SELECT DISTINCT c.ContactId, CAST(ISNULL(c.Owner,'') AS NVARCHAR(240)) AS Owner, "
-                    "CAST(ISNULL(c.ContactName,'') AS NVARCHAR(200)) AS ContactName, "
-                    "CAST(ISNULL(d.CompanyName,'') AS NVARCHAR(200)) AS CompanyName "
-                    "FROM usrCustomerContact c "
-                    "LEFT JOIN usrCustomer d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL "
-                    "WHERE c.Deleter IS NULL AND ISNULL(CAST(c.Owner AS NVARCHAR(240)),'')<>'' "
-                    + owner_clause
-                    + company_clause
-                ),
-                params,
-            ).fetchall()
+            cid_clause = " AND c.ContactId IN :cids " if cid_filter else ""
+            contact_stmt = text(
+                "SELECT DISTINCT c.ContactId, CAST(ISNULL(c.Owner,'') AS NVARCHAR(240)) AS Owner, "
+                "CAST(ISNULL(c.ContactName,'') AS NVARCHAR(200)) AS ContactName, "
+                "CAST(ISNULL(d.CompanyName,'') AS NVARCHAR(200)) AS CompanyName "
+                "FROM usrCustomerContact c "
+                "LEFT JOIN usrCustomer d ON c.CustomerId = d.CustomerId AND d.Deleter IS NULL "
+                "WHERE c.Deleter IS NULL AND ISNULL(CAST(c.Owner AS NVARCHAR(240)),'')<>'' "
+                + owner_clause
+                + company_clause
+                + cid_clause
+            )
+            if cid_filter:
+                contact_stmt = contact_stmt.bindparams(bindparam("cids", expanding=True))
+                params["cids"] = cid_filter
+            contact_rows = crm_db.execute(contact_stmt, params).fetchall()
             staff_set = set(staff_ids)
             contacts_map: dict[str, str] = {}  # contact_id -> matched owner staff id
             name_map: dict[str, str] = {}      # contact_id -> contact name
@@ -24055,7 +24342,7 @@ def get_mail_ai_stats_by_staff(
     refresh: int = Query(0),
     db: Session = Depends(get_db),
 ):
-    """某一天 各销售 的 5 指标(销售显示中文名)。默认昨天(北京时间)。
+    """某一天 各销售 的 5 指标(销售显示中文名)。默认当天(北京时间)。
 
     - refresh=1 时先从 CRM/FTP/deepseek 全量刷新再统计; 否则当天用本地缓存实时重算。
     - 双击明细复用 /ai-stats/detail?staff_id=... 接口。
@@ -24063,7 +24350,7 @@ def get_mail_ai_stats_by_staff(
     import mail_ai_stats as _stats
     import datetime as _dt
     today_bj = (_dt.datetime.utcnow() + _dt.timedelta(hours=8)).date()
-    day_d = _parse_stat_date(day, today_bj - _dt.timedelta(days=1))  # 默认上一天
+    day_d = _parse_stat_date(day, today_bj)  # 默认当天
     effective_refresh = bool(refresh) or (day_d == today_bj)
     refresh_result = None
     try:
@@ -24103,6 +24390,8 @@ def post_mail_ai_stats_broadcast(
     refresh: int = Query(1),
     dry_run: int = Query(0),
     chat_id: str | None = Query(None),
+    format: str = Query("json"),
+    message_type: str = Query("image"),
 ):
     """手动触发: 刷新当天邮件统计并播报到企微群。默认 day=今天(北京时间)。"""
     import mail_ai_stats_broadcast as _broadcast
@@ -24117,12 +24406,18 @@ def post_mail_ai_stats_broadcast(
             refresh=bool(refresh),
             chat_id=chat_id,
             dry_run=bool(dry_run),
+            message_type=message_type,
         )
     except Exception as exc:
         logger.exception("MAIL_AI_STATS_BROADCAST_API_FAILED")
         raise HTTPException(status_code=502, detail=f"邮件统计企微播报失败: {sanitize_text(str(exc))[:200]}")
     if not result.get("sent") and not result.get("dry_run"):
         raise HTTPException(status_code=502, detail=result)
+    fmt = str(format or "").strip().lower()
+    if fmt in ("text", "txt", "plain"):
+        return PlainTextResponse(result.get("message") or "")
+    if fmt in ("html", "htm"):
+        return HTMLResponse(result.get("html") or "")
     return result
 
 
