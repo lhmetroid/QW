@@ -496,6 +496,15 @@
                         </div>
                     </div>
                     <div id="mql-template-collapsible" class="mt-3">
+                        <!-- 需求16: 该套装(场景)适用范围, 人工填写; 与"自动发送"页套装适用范围联动, 存 mail_suite_applicable_scope -->
+                        <div class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                            <div class="flex items-center justify-between gap-2 mb-1">
+                                <label for="mql-suite-scope-input" class="text-[11px] font-bold text-emerald-900" title="当前套装(场景)的适用范围, 人工填写修改。与'自动发送'页的套装适用范围联动(同一份数据), 保存后供自动发送 LLM 排优先级参考。">套装适用范围<span class="ml-1 cursor-help text-emerald-600">ⓘ</span></label>
+                                <button type="button" id="mql-suite-scope-save" onclick="saveSuiteScopeFromTemplate()" class="rounded bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-emerald-700" title="保存当前套装的适用范围, 立即同步到'自动发送'页。">保存适用范围</button>
+                            </div>
+                            <textarea id="mql-suite-scope-input" rows="2" data-scenario="" class="w-full rounded border border-emerald-300 px-2 py-1 text-xs text-slate-800" placeholder="填写该套装适用范围, 如: 近1年有报价未成交的老客户"></textarea>
+                            <span id="mql-suite-scope-status" class="text-[11px] text-emerald-700"></span>
+                        </div>
                         <div id="mql-template-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-3"></div>
                     </div>
                 </div>
@@ -753,8 +762,14 @@
                         <div id="asr-class-rules" class="mt-3 space-y-3"></div>
                         <div class="mt-4">
                             <div class="text-xs font-bold text-slate-700">套装范围<span class="ml-1 cursor-help text-[11px] text-slate-400" title="参与本次排期的候选套装。留空=全部已注册套装。">ⓘ</span></div>
-                            <select id="asr-suite-range" multiple size="6" class="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs"></select>
-                            <div class="mt-1 text-[11px] text-slate-500">多选(按住 Ctrl/Cmd)。留空=全部候选套装。</div>
+                            <div id="asr-suite-range" class="relative mt-2 w-full">
+                                <button id="asr-suite-range-button" type="button" onclick="asrToggleSuiteRangeDropdown(event)" class="flex min-h-[34px] w-full items-center justify-between gap-2 rounded border border-slate-300 bg-white px-2 py-1 text-left text-xs text-slate-700 hover:bg-slate-50">
+                                    <span id="asr-suite-range-text" class="min-w-0 flex-1 truncate">加载中...</span>
+                                    <span class="text-slate-400">▼</span>
+                                </button>
+                                <div id="asr-suite-range-panel" class="absolute z-30 mt-1 hidden max-h-64 w-full overflow-auto rounded border border-slate-200 bg-white p-2 shadow-lg"></div>
+                            </div>
+                            <div class="mt-1 text-[11px] text-slate-500">默认全部。</div>
                         </div>
                     </div>
 
@@ -2289,6 +2304,7 @@
             const templates = selectedCase.templates || [];
             // 记录当前选中场景, 供"生成测试套装邮件"按钮使用
             mailTemplateCurrentScenario = selectedCase.scenario || '';
+            fillSuiteScopeField(selectedCase.scenario || '');  // 需求16: 载入该套装适用范围(与自动发送页联动)
             ensureTestCustomerKeyDefault();
             renderMailTemplateCaseSelect(selectedCustomerKey);
             syncMailSuiteNameInput(selectedCase.scenario || '', selectedCase.scenario_label_cn || selectedCase.case_label || '');
@@ -4184,17 +4200,58 @@
                 const j = await r.json();
                 asrSuiteOptions = (j.scenarios || []).map(s => ({ value: s.value, label: s.label || s.value }));
             } catch (e) { asrSuiteOptions = []; }
+            const currentSuiteValues = asrGetMultiSelect('asr-suite-range');
             const optHtml = asrSuiteOptions.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('');
-            ['asr-suite-range', 'asr-action-followup', 'asr-action-lost'].forEach(id => {
+            ['asr-action-followup', 'asr-action-lost'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.innerHTML = optHtml;
             });
+            asrRenderSuiteRangeDropdown(currentSuiteValues.length ? currentSuiteValues : undefined);
         }
+        function asrSuiteRangeValuesFromDom() {
+            return Array.from(document.querySelectorAll('#asr-suite-range-panel .asr-suite-range-check:checked')).map(o => o.value);
+        }
+        function asrUpdateSuiteRangeText() {
+            const text = document.getElementById('asr-suite-range-text');
+            if (!text) return;
+            const selected = new Set(asrSuiteRangeValuesFromDom());
+            const labels = asrSuiteOptions.filter(o => selected.has(String(o.value))).map(o => o.label || o.value);
+            text.textContent = labels.length ? labels.join(', ') : '全部套装';
+            text.title = text.textContent;
+        }
+        function asrRenderSuiteRangeDropdown(values) {
+            const panel = document.getElementById('asr-suite-range-panel');
+            if (!panel) return;
+            const selectedValues = Array.isArray(values) ? values.map(String) : asrSuiteOptions.map(o => String(o.value));
+            const selected = new Set(selectedValues.length ? selectedValues : asrSuiteOptions.map(o => String(o.value)));
+            panel.innerHTML = asrSuiteOptions.length ? asrSuiteOptions.map(o => `<label class="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><input type="checkbox" class="asr-suite-range-check h-3.5 w-3.5" value="${escapeHtml(o.value)}" ${selected.has(String(o.value)) ? 'checked' : ''} onchange="asrUpdateSuiteRangeText()">${escapeHtml(o.label || o.value)}</label>`).join('') : '<div class="px-2 py-1 text-xs text-slate-400">暂无套装</div>';
+            asrUpdateSuiteRangeText();
+        }
+        function asrToggleSuiteRangeDropdown(event) {
+            if (event) event.stopPropagation();
+            const panel = document.getElementById('asr-suite-range-panel');
+            const btn = document.getElementById('asr-suite-range-button');
+            if (!panel) return;
+            const open = panel.classList.contains('hidden');
+            panel.classList.toggle('hidden', !open);
+            if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        document.addEventListener('click', (event) => {
+            const root = document.getElementById('asr-suite-range');
+            const panel = document.getElementById('asr-suite-range-panel');
+            const btn = document.getElementById('asr-suite-range-button');
+            if (root && panel && !root.contains(event.target)) {
+                panel.classList.add('hidden');
+                if (btn) btn.setAttribute('aria-expanded', 'false');
+            }
+        });
         function asrSetMultiSelect(id, values) {
+            if (id === 'asr-suite-range') { asrRenderSuiteRangeDropdown(values); return; }
             const el = document.getElementById(id); if (!el) return;
             const set = new Set((values || []).map(String));
             Array.from(el.options).forEach(o => { o.selected = set.has(o.value); });
         }
         function asrGetMultiSelect(id) {
+            if (id === 'asr-suite-range') return asrSuiteRangeValuesFromDom();
             const el = document.getElementById(id); if (!el) return [];
             return Array.from(el.selectedOptions).map(o => o.value);
         }
@@ -4218,7 +4275,60 @@
             asrSetMultiSelect('asr-action-lost', am.lost || []);
         }
 
-        // ---- 需求16: 套装适用范围(人工填写, 供 LLM 优先级参考) ----
+        // ===== 需求16: 套装适用范围(单一数据库字段 mail_suite_applicable_scope.scope_text, 按 scenario) =====
+        // 两处 UI 共用同一份数据并联动: (A)质量诊断 场景全阶段脚本模板; (B)自动发送 模式① 套装适用范围卡片。
+        let suiteScopeCache = null;   // {scenario: scope_text}
+        async function loadSuiteScopeCache(force) {
+            if (suiteScopeCache && !force) return suiteScopeCache;
+            try {
+                const r = await fetch(`${window.location.origin}/api/v1/mail/suite-applicable-scopes`, { credentials: 'include' });
+                const j = await r.json();
+                suiteScopeCache = {};
+                (j.suites || []).forEach(s => { suiteScopeCache[s.scenario] = s.scope_text || ''; });
+            } catch (e) { if (!suiteScopeCache) suiteScopeCache = {}; }
+            return suiteScopeCache;
+        }
+        // (A) 模板编辑区: 按当前场景载入适用范围
+        async function fillSuiteScopeField(scenario) {
+            const inp = document.getElementById('mql-suite-scope-input'); if (!inp) return;
+            const saveBtn = document.getElementById('mql-suite-scope-save');
+            const cache = await loadSuiteScopeCache(false);
+            inp.value = cache[scenario] || '';
+            inp.setAttribute('data-scenario', scenario || '');
+            const noScene = !scenario;
+            inp.disabled = noScene; if (saveBtn) saveBtn.disabled = noScene;
+            const st = document.getElementById('mql-suite-scope-status'); if (st) st.textContent = noScene ? '当前案例无套装场景' : '';
+        }
+        async function saveSuiteScopeFromTemplate() {
+            const inp = document.getElementById('mql-suite-scope-input'); if (!inp) return;
+            const scenario = inp.getAttribute('data-scenario') || mailTemplateCurrentScenario || '';
+            const st = document.getElementById('mql-suite-scope-status');
+            if (!scenario) { if (st) st.textContent = '无场景, 无法保存'; return; }
+            if (st) st.textContent = '保存中…';
+            try {
+                const r = await fetch(`${window.location.origin}/api/v1/mail/suite-applicable-scope`, {
+                    method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scenario, scope_text: inp.value || '' }),
+                });
+                const j = await r.json();
+                if (j.ok) { suiteScopeUpdateLocal(scenario, inp.value || '', 'template'); if (st) st.textContent = '已保存(已同步自动发送页)'; }
+                else if (st) st.textContent = '保存失败';
+            } catch (e) { if (st) st.textContent = '保存失败: ' + e; }
+        }
+        // 联动: 更新缓存 + 另一处 UI 的同场景控件。source 标记发起方, 避免自我覆盖。
+        function suiteScopeUpdateLocal(scenario, text, source) {
+            if (suiteScopeCache) suiteScopeCache[scenario] = text;
+            if (source !== 'template') {
+                const tinp = document.getElementById('mql-suite-scope-input');
+                if (tinp && (tinp.getAttribute('data-scenario') || '') === scenario) tinp.value = text;
+            }
+            if (source !== 'autosend') {
+                const ta = document.querySelector(`#asr-scopes-body .asr-scope-input[data-scenario="${scenario}"]`);
+                if (ta) { ta.value = text; ta.setAttribute('data-orig', text); }
+            }
+        }
+
+        // ---- 自动发送 模式① 套装适用范围卡片(与上面同一份数据) ----
         let asrScopesLoaded = false;
         async function asrToggleScopes() {
             const body = document.getElementById('asr-scopes-body');
@@ -4227,7 +4337,7 @@
             const willShow = body.classList.contains('hidden');
             body.classList.toggle('hidden', !willShow);
             if (btn) btn.textContent = willShow ? '▼ 收起' : '▶ 展开';
-            if (willShow && !asrScopesLoaded) await asrLoadScopes();
+            if (willShow) await asrLoadScopes();   // 每次展开都拉最新, 反映模板页刚保存的适用范围(联动)
         }
         async function asrLoadScopes() {
             const body = document.getElementById('asr-scopes-body'); if (!body) return;
@@ -4236,6 +4346,7 @@
                 const r = await fetch(`${window.location.origin}/api/v1/mail/suite-applicable-scopes`, { credentials: 'include' });
                 const j = await r.json();
                 const suites = j.suites || [];
+                suiteScopeCache = {}; suites.forEach(s => { suiteScopeCache[s.scenario] = s.scope_text || ''; });
                 body.innerHTML = suites.length ? suites.map(s => `<div class="flex flex-col gap-1 rounded border border-slate-100 bg-slate-50 p-2">
                     <div class="text-[11px] font-bold text-slate-700">${escapeHtml(s.label || s.scenario)} <span class="text-slate-400">(${escapeHtml(s.scenario)} · ${s.step_count || 0}封)</span></div>
                     <textarea class="asr-scope-input w-full rounded border border-slate-300 px-2 py-1 text-xs" rows="2" data-scenario="${escapeHtml(s.scenario)}" data-orig="${escapeHtml(s.scope_text || '')}" placeholder="填写该套装适用范围, 如: 近1年有报价未成交的老客户">${escapeHtml(s.scope_text || '')}</textarea>
@@ -4256,7 +4367,7 @@
                         body: JSON.stringify({ scenario: inp.getAttribute('data-scenario'), scope_text: inp.value || '' }),
                     });
                     const j = await r.json();
-                    if (j.ok) { inp.setAttribute('data-orig', inp.value || ''); ok++; }
+                    if (j.ok) { inp.setAttribute('data-orig', inp.value || ''); suiteScopeUpdateLocal(inp.getAttribute('data-scenario'), inp.value || '', 'autosend'); ok++; }
                 } catch (e) {}
             }
             asrStatus('asr-scopes-status', `已保存 ${ok}/${changed.length} 项`, ok !== changed.length);
