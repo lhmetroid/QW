@@ -22751,11 +22751,16 @@ def get_autosend_plan_item(item_id: str = Query(...), db: Session = Depends(get_
             from crm_database import CRMSessionLocal
             crm_db = CRMSessionLocal()
             try:
+                # SendId 是"按销售各自计数"的序号, 全局 spQueueSend 里跨销售必然撞车(实测 460/979 个 SendId 被多家共用),
+                # 只按 SendId 取 TOP 1 会串到别的销售还在待发的同号行(实测串错率 77.5%)。必须同时限定本销售。
+                # sent 邮件本身队列行已删, 加限定后本销售通常查不到 -> spqueue_rowid 留空 -> 前端改走 send_id+销售分表(正确)。
+                _owner = str(item.get("owner_staff_id") or "").strip()
                 rr = crm_db.execute(
                     text("SELECT TOP 1 CAST(RowId AS NVARCHAR(64)) FROM spQueueSend "
-                         "WHERE SendId=:sid AND MessageType='Email' AND ISNULL(UseRange,'') LIKE :ur"),
-                    {"sid": str(item.get("crm_send_id") or ""), "ur": f"%{_MAIL_AI_USE_RANGE}%"},
-                ).fetchone()
+                         "WHERE SendId=:sid AND ISNULL(InputerStaffId,'')=:staff "
+                         "AND MessageType='Email' AND ISNULL(UseRange,'') LIKE :ur"),
+                    {"sid": str(item.get("crm_send_id") or ""), "staff": _owner, "ur": f"%{_MAIL_AI_USE_RANGE}%"},
+                ).fetchone() if _owner else None
                 if rr and rr[0]:
                     item["spqueue_rowid"] = str(rr[0])
             finally:
@@ -23043,9 +23048,9 @@ def _asr_llm_rank_suites(class_rule: dict, suite_opts: list[dict]) -> dict:
             f"联系人分类名称: {name}\n"
             f"分类条件(JSON): {json.dumps(conds, ensure_ascii=False)}\n"
             f"可选套装(套装代号: 中文名 | 适用范围):\n{lines}\n\n"
-            "请结合每个套装的适用范围, 判断这类联系人最适合优先发送哪些套装, 按优先级从高到低排序。\n"
+            "请结合每个套装的适用范围，只挑选真正适合这类联系人发送的套装，最多 3 个，并按优先级从高到低排序；不适合的不要放入 order。\n"
             "只输出 JSON: {\"order\":[\"套装代号\", ...], \"reason\":\"一句话理由\"}。"
-            "order 只能包含上面列出的套装代号, 不要新增。"
+            "order 最多 3 个，只能包含上面列出的套装代号, 不要新增。"
         )
         r = _call_llm2_json_for_mail_draft(prompt, timeout_seconds=20, force_json=True)
         # 该 helper 返回 {parsed: dict|None, raw_text, error, model}, 真正的模型 JSON 在 parsed 里。
@@ -23675,15 +23680,20 @@ def asr_suggest(payload: AsrSuggestRequest, db: Session = Depends(get_db)):
     # 每个分类 LLM 排一次套装优先级(减少调用次数; 失败回退套装范围顺序)
     ranking_by_class: dict = {}
     for i, cr in enumerate(class_rules):
-        order = [o["value"] for o in suite_opts]
+        all_order = [o["value"] for o in suite_opts]
+        order = list(all_order)
+        selected_order: list[str] = []
         reason = ""
         if payload.use_llm:
             r = _asr_llm_rank_suites(cr, suite_opts)
             ord2 = [str(s).strip() for s in (r.get("order") or []) if str(s).strip() in labels]
             if ord2:
-                order = ord2 + [s for s in order if s not in ord2]
+                selected_order = ord2[:3]
+                order = selected_order + [s for s in all_order if s not in selected_order]
                 reason = str(r.get("reason") or "")[:200]
-        ranking_by_class[i] = {"order": order, "reason": reason}
+        if not selected_order:
+            selected_order = order[: min(3, len(order))]
+        ranking_by_class[i] = {"order": order, "selected": selected_order[:3], "reason": reason}
 
     # 按人(per_contact): 数据通路已预留, 逐人 LLM 排序待开发; 当前回退按分类排序, 但每行附上逐人信号。
     per_contact = str(payload.analysis_mode or "class").strip() == "per_contact"
@@ -23699,11 +23709,12 @@ def asr_suggest(payload: AsrSuggestRequest, db: Session = Depends(get_db)):
             if ord_pc:
                 order = ord_pc + [s for s in order if s not in ord_pc]
         suites, excluded = [], []
+        selected_set = set((ranking_by_class.get(idx, {}) or {}).get("selected") or order[:3])
         for sc in order:
             if _asr_contact_has_sent_suite(sent_map, cid, sc):
                 excluded.append({"scenario": sc, "label": labels.get(sc, sc), "reason": "已发过此套装"})
             else:
-                suites.append({"scenario": sc, "label": labels.get(sc, sc), "priority": len(suites) + 1})
+                suites.append({"scenario": sc, "label": labels.get(sc, sc), "priority": len(suites) + 1, "selected": sc in selected_set})
         row = {
             "contact_id": cid, "contact_name": c.get("contact_name") or "", "company_name": c.get("company_name") or "",
             "owner_staff_id": c.get("owner_staff_id") or "", "email": c.get("email"),
@@ -23721,13 +23732,15 @@ def asr_suggest(payload: AsrSuggestRequest, db: Session = Depends(get_db)):
         counts[_idx] = counts.get(_idx, 0) + 1
     class_summary = []
     for i, cr in enumerate(class_rules):
-        order = ranking_by_class.get(i, {}).get("order") or [o["value"] for o in suite_opts]
+        ranking = ranking_by_class.get(i, {}) or {}
+        order = ranking.get("order") or [o["value"] for o in suite_opts]
+        selected_set = set(ranking.get("selected") or order[:3])
         class_summary.append({
             "class_index": i,
             "class_name": str((cr or {}).get("name") or f"分类{i + 1}"),
             "count": counts.get(i, 0),
-            "llm_reason": ranking_by_class.get(i, {}).get("reason", ""),
-            "suites": [{"scenario": sc, "label": labels.get(sc, sc), "priority": k + 1} for k, sc in enumerate(order)],
+            "llm_reason": ranking.get("reason", ""),
+            "suites": [{"scenario": sc, "label": labels.get(sc, sc), "priority": k + 1, "selected": sc in selected_set} for k, sc in enumerate(order)],
         })
 
     return {"ok": True, "rows": rows, "classified": len(classified), "unclassified": unclassified,
@@ -23772,21 +23785,32 @@ def asr_schedule_endpoint(payload: AsrScheduleRequest, db: Session = Depends(get
     staff = sanitize_text(payload.staff_id).strip()
     if not payload.accepted:
         raise HTTPException(status_code=422, detail="没有已确认的排期项")
-    start_date, skip, holidays = _asr_resolve_workday_cfg(db, payload)
-    units, dropped = _asr_build_units(db, staff, payload.accepted, payload.company_name_like)
-    if not units:
-        return {"ok": True, "run_id": None, "new_scheduled": 0, "dropped": dropped, "items": _autosend_list_plan(db, staff),
-                "note": "确认项均被排除(已发/已在清单/无有效邮箱)"}
-    res = _asr_write_plan(db, staff, units, payload.send_order, payload.mail_gap_days, payload.suite_gap_days,
-                          payload.daily_cap, start_date, payload.mailbox_mode, payload.consider_existing_crm_queue,
-                          skip, holidays)
-    items = _autosend_list_plan(db, staff)
-    pub_cnt = sum(1 for it in res["items"] if it.get("sender_kind") == "public")
-    note = "已写入待发清单。"
-    if payload.mailbox_mode != "personal_only":
-        note += f" 公共邮箱分配 {pub_cnt} 封, 个人 {len(res['items']) - pub_cnt} 封(发件箱已记录在待发项; 实际从公共邮箱发出需CRM发送环节按发件箱标记执行)。"
-    return {"ok": True, "run_id": res["run_id"], "new_scheduled": len(res["items"]), "dropped": dropped,
-            "public_count": pub_cnt, "total_pending": len(items), "items": items, "note": note}
+    try:
+        start_date, skip, holidays = _asr_resolve_workday_cfg(db, payload)
+        units, dropped = _asr_build_units(db, staff, payload.accepted, payload.company_name_like)
+        if not units:
+            return {"ok": True, "run_id": None, "new_scheduled": 0, "dropped": dropped, "items": _autosend_list_plan(db, staff),
+                    "note": "确认项均被排除(已发/已在清单/无有效邮箱)"}
+        res = _asr_write_plan(db, staff, units, payload.send_order, payload.mail_gap_days, payload.suite_gap_days,
+                              payload.daily_cap, start_date, payload.mailbox_mode, payload.consider_existing_crm_queue,
+                              skip, holidays)
+        items = _autosend_list_plan(db, staff)
+        pub_cnt = sum(1 for it in res["items"] if it.get("sender_kind") == "public")
+        note = "已写入待发清单。"
+        if payload.mailbox_mode != "personal_only":
+            note += f" 公共邮箱分配 {pub_cnt} 封, 个人 {len(res['items']) - pub_cnt} 封(发件箱已记录在待发项; 实际从公共邮箱发出需CRM发送环节按发件箱标记执行)。"
+        return {"ok": True, "run_id": res["run_id"], "new_scheduled": len(res["items"]), "dropped": dropped,
+                "public_count": pub_cnt, "total_pending": len(items), "items": items, "note": note}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("ASR_SCHEDULE_ENDPOINT_FAILED")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        msg = sanitize_text(str(exc) or exc.__class__.__name__)[:240]
+        raise HTTPException(status_code=500, detail=f"预排失败: {msg}")
 
 
 class AsrTriggerSuggestRequest(BaseModel):
