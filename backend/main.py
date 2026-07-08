@@ -20877,7 +20877,7 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
             while load.get((owner, day.isoformat()), 0) >= cap:
                 day = _autosend_next_workday(day + timedelta(days=1), skip_non_workdays, holiday_dates)
             seq = load.get((owner, day.isoformat()), 0)
-            minute_total = 9 * 60 + 5 * seq
+            minute_total = 9 * 60 + 10 * seq
             hh, mm = divmod(minute_total, 60)
             load[(owner, day.isoformat())] = seq + 1
             items.append({
@@ -23201,7 +23201,7 @@ def _asr_schedule(units: list[dict], send_order: str, mail_gap: int, suite_gap: 
         ds = day.isoformat()
         s = day_seq.get((owner, ds), 0)
         day_seq[(owner, ds)] = s + 1
-        minute_total = 9 * 60 + 5 * s
+        minute_total = 9 * 60 + 10 * s
         hh, mm = divmod(minute_total, 60)
         return f"{hh:02d}:{mm:02d}", s
 
