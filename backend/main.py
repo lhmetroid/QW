@@ -7906,9 +7906,9 @@ def _load_runtime_settings_with_defaults() -> dict[str, Any]:
 
 
 _MAIL_DRAFT_LLM_SYSTEM_PROMPT = (
-    "你是事必达的资深销售。写给客户的邮件要像真人发出的轻商务邮件：自然、具体、克制。\n"
-    "不要写成营销文、服务清单、合规摘要或 AI 总结。\n"
-    "只输出 JSON，不要 Markdown：{\"subject\":\"关于近期业务支持的沟通\",\"paragraphs\":[\"称呼段\",\"正文段1\",\"正文段2\"]}"
+    "撰写商务邮件，\n"
+    "只输出JSON格式，绝对不要包含任何 Markdown 格式包裹（如 ```json 等）：\n"
+    "{\"subject\": \"邮件主题\", \"paragraphs\": [\"称呼段\", \"正文段落1\", \"正文段落2\"]}"
 )
 
 _MAIL_GENERATION_MODEL_OPTIONS: dict[str, dict[str, str]] = {
@@ -8702,7 +8702,8 @@ def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile) -> str:
         "【输出格式硬性要求】\n"
         "1. 只输出一个 JSON 对象，不要 Markdown，不要代码块，不要解释。\n"
         "2. JSON 必须同时包含 subject 和 paragraphs 两个字段。\n"
-        "3. subject 必须是可直接发送给客户的中文邮件主题，不能为空，不能是“-”“无主题”“邮件主题”等占位内容，长度建议 12-36 个中文字符。"
+        "3. subject 必须是可直接发送给客户的中文邮件主题，不能为空，不能是“-”“无主题”“邮件主题”等占位内容，长度建议 12-36 个中文字符。\n"
+        "4. 输出不要有字母表达的变量"
     )
     return _mail_brand_display_text(
         "\n\n".join(
