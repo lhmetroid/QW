@@ -412,9 +412,11 @@
                             <label class="text-xs text-slate-600">日期<input type="date" id="mail-stats-staff-day" class="ml-1 rounded border border-slate-300 px-2 py-1 text-xs"></label>
                             <button type="button" onclick="loadMailAiStatsByStaff(false)" class="rounded border border-indigo-300 bg-white px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100" title="按该日期重算各销售指标(当天实时, 历史日读已固化)。">查询</button>
                             <button type="button" onclick="loadMailAiStatsByStaff(true)" class="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100" title="先从 CRM 同步真发/回信/价值后, 再按销售统计该天。较慢。">从CRM刷新</button>
+                            <button type="button" onclick="testMailWecomBroadcast()" class="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100" title="立即把该日期的统计图片真发到企微群, 用于验证配置。失败会显示企微返回的错误码/原因。">测试企微播报</button>
                         </div>
                     </div>
                     <div id="mail-stats-staff-status" class="mt-2 text-[11px] text-slate-500"></div>
+                    <div id="mail-wecom-test-status" class="mt-1 text-[11px] text-slate-500"></div>
                     <div class="mt-2 overflow-auto">
                         <table class="min-w-full text-xs border-collapse">
                             <thead>
@@ -3844,6 +3846,37 @@
                 }
             } catch (err) {
                 if (statusEl) { statusEl.textContent = `加载失败：${err.message}`; statusEl.className = 'mt-2 text-[11px] text-red-600 font-bold'; }
+            }
+        }
+        // 测试企微群播报: 立即把该日期统计真发到企微群, 页面显示 时间 + 成功/失败 + 失败原因
+        async function testMailWecomBroadcast() {
+            const dayEl = document.getElementById('mail-stats-staff-day');
+            const el = document.getElementById('mail-wecom-test-status');
+            if (!el) return;
+            if (dayEl && !dayEl.value) dayEl.value = mailStatsYesterday();
+            const nowStr = () => new Date().toLocaleString('zh-CN', { hour12: false });
+            // refresh=0 用已固化数据发送, 更快且少副作用; 真发图片, 与定时播报一致
+            const params = new URLSearchParams({ refresh: '0', message_type: 'image' });
+            if (dayEl && dayEl.value) params.set('day', dayEl.value);
+            el.textContent = `[${nowStr()}] 正在发送到企微群…`;
+            el.className = 'mt-1 text-[11px] text-slate-500';
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/ai-stats/broadcast?${params.toString()}`, { method: 'POST' });
+                const data = await resp.json().catch(() => ({}));
+                if (resp.ok && data && data.sent) {
+                    el.textContent = `[${nowStr()}] 发送成功 · 群 ${data.chat_id || ''} · ${data.message_type || ''}`;
+                    el.className = 'mt-1 text-[11px] text-emerald-700 font-bold';
+                    return;
+                }
+                // 失败: 后端把整个 result 放在 detail 里, 尽量提取企微错误码/原因
+                const d = (data && data.detail) || data || {};
+                const sr = d.send_result || {};
+                const reason = d.error || sr.errmsg || sr.errcode !== undefined && `errcode=${sr.errcode}` || (typeof d === 'string' ? d : JSON.stringify(d).slice(0, 300)) || `HTTP ${resp.status}`;
+                el.textContent = `[${nowStr()}] 发送失败：${reason}`;
+                el.className = 'mt-1 text-[11px] text-red-600 font-bold';
+            } catch (err) {
+                el.textContent = `[${nowStr()}] 发送失败：${err.message}`;
+                el.className = 'mt-1 text-[11px] text-red-600 font-bold';
             }
         }
         function renderMailAiStatsByStaff(data) {

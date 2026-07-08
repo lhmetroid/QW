@@ -166,6 +166,137 @@ class QYWXUtils:
             logger.error(f"发送提醒请求异常: {e}")
         return False
 
+    @classmethod
+    def send_appchat_text(cls, chat_id: str, content: str):
+        """发送企微应用群聊文本消息(appchat/send)。"""
+        chat_id = (chat_id or "").strip()
+        content = (content or "").strip()
+        if not chat_id or not content:
+            logger.error("企微群聊发送失败: chat_id/content 为空")
+            return {"ok": False, "errcode": -1, "errmsg": "chat_id/content empty"}
+        token = cls.get_access_token()
+        if not token:
+            return {"ok": False, "errcode": -1, "errmsg": "access_token unavailable"}
+        send_url = f"https://qyapi.weixin.qq.com/cgi-bin/appchat/send?access_token={token}"
+        payload = {
+            "chatid": chat_id,
+            "msgtype": "text",
+            "text": {"content": content[:4000]},
+            "safe": 0,
+        }
+        last_data = None
+        for attempt in range(2):
+            try:
+                if attempt == 1:
+                    token = cls.get_access_token(force_refresh=True)
+                    if not token:
+                        break
+                    send_url = f"https://qyapi.weixin.qq.com/cgi-bin/appchat/send?access_token={token}"
+                response = requests.post(send_url, json=payload, timeout=15)
+                try:
+                    data = response.json()
+                except Exception:
+                    data = {
+                        "errcode": -1,
+                        "errmsg": response.text[:500],
+                        "http_status": response.status_code,
+                    }
+                if not isinstance(data, dict):
+                    data = {
+                        "errcode": -1,
+                        "errmsg": str(data)[:500],
+                        "http_status": response.status_code,
+                    }
+                data.setdefault("http_status", response.status_code)
+                last_data = data
+                try:
+                    errcode = int(data.get("errcode", -1))
+                except Exception:
+                    errcode = -1
+                if errcode == 0:
+                    logger.info("成功向企微群 %s 发送邮件统计播报", chat_id)
+                    return {"ok": True, **data}
+                if errcode in (40014, 42001) and attempt == 0:
+                    logger.warning("企微群聊发送 token 过期(%s), 强制刷新后重试", errcode)
+                    continue
+                logger.error("企微群聊发送失败: %s", json.dumps(data, ensure_ascii=False))
+                return {"ok": False, **data}
+            except Exception as e:
+                logger.error("企微群聊发送请求异常: %s", e)
+                return {"ok": False, "errcode": -1, "errmsg": str(e)}
+        return {"ok": False, **(last_data or {"errcode": -1, "errmsg": "send failed"})}
+
+    @classmethod
+    def upload_temp_image(cls, image_path: str):
+        """上传企微临时图片素材，返回 media_id。"""
+        image_path = (image_path or "").strip()
+        if not image_path:
+            return {"ok": False, "errcode": -1, "errmsg": "image_path empty"}
+        token = cls.get_access_token()
+        if not token:
+            return {"ok": False, "errcode": -1, "errmsg": "access_token unavailable"}
+        upload_url = f"https://qyapi.weixin.qq.com/cgi-bin/media/upload?access_token={token}&type=image"
+        try:
+            with open(image_path, "rb") as f:
+                response = requests.post(
+                    upload_url,
+                    files={"media": ("mail-ai-stats.png", f, "image/png")},
+                    timeout=30,
+                )
+            try:
+                data = response.json()
+            except Exception:
+                data = {"errcode": -1, "errmsg": response.text[:500], "http_status": response.status_code}
+            if not isinstance(data, dict):
+                data = {"errcode": -1, "errmsg": str(data)[:500], "http_status": response.status_code}
+            data.setdefault("http_status", response.status_code)
+            errcode = int(data.get("errcode", -1))
+            if errcode == 0 and data.get("media_id"):
+                return {"ok": True, **data}
+            logger.error("企微临时图片上传失败: %s", json.dumps(data, ensure_ascii=False))
+            return {"ok": False, **data}
+        except Exception as e:
+            logger.error("企微临时图片上传异常: %s", e)
+            return {"ok": False, "errcode": -1, "errmsg": str(e)}
+
+    @classmethod
+    def send_appchat_image(cls, chat_id: str, image_path: str):
+        """发送企微应用群聊图片消息(appchat/send)。"""
+        chat_id = (chat_id or "").strip()
+        if not chat_id:
+            return {"ok": False, "errcode": -1, "errmsg": "chat_id empty"}
+        upload_result = cls.upload_temp_image(image_path)
+        if not upload_result.get("ok"):
+            return {"ok": False, "stage": "upload", **upload_result}
+        token = cls.get_access_token()
+        if not token:
+            return {"ok": False, "errcode": -1, "errmsg": "access_token unavailable"}
+        send_url = f"https://qyapi.weixin.qq.com/cgi-bin/appchat/send?access_token={token}"
+        payload = {
+            "chatid": chat_id,
+            "msgtype": "image",
+            "image": {"media_id": upload_result.get("media_id")},
+            "safe": 0,
+        }
+        try:
+            response = requests.post(send_url, json=payload, timeout=15)
+            try:
+                data = response.json()
+            except Exception:
+                data = {"errcode": -1, "errmsg": response.text[:500], "http_status": response.status_code}
+            if not isinstance(data, dict):
+                data = {"errcode": -1, "errmsg": str(data)[:500], "http_status": response.status_code}
+            data.setdefault("http_status", response.status_code)
+            errcode = int(data.get("errcode", -1))
+            if errcode == 0:
+                logger.info("成功向企微群 %s 发送邮件统计图片播报", chat_id)
+                return {"ok": True, "upload_result": upload_result, **data}
+            logger.error("企微群聊图片发送失败: %s", json.dumps(data, ensure_ascii=False))
+            return {"ok": False, "stage": "send", "upload_result": upload_result, **data}
+        except Exception as e:
+            logger.error("企微群聊图片发送异常: %s", e)
+            return {"ok": False, "stage": "send", "errmsg": str(e), "upload_result": upload_result}
+
     @staticmethod
     def decrypt_message(msg_signature, timestamp, nonce, echostr_or_data, is_verify=True):
         """

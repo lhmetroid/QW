@@ -166,6 +166,12 @@ class Settings(BaseSettings):
     # Mail Few-Shot retrieval admission.
     MAIL_FEWSHOT_MIN_USEFUL_SCORE: float = 0.60
 
+    # Mail AI stats WeCom group broadcast.
+    MAIL_AI_STATS_BROADCAST_ENABLED: bool = True
+    MAIL_AI_STATS_BROADCAST_CHAT_ID: str = "wrS8sICwAAPC88TuMf2-0kW4lAXOMqHw"
+    MAIL_AI_STATS_BROADCAST_TIMES: str = "10:30,11:30,13:30,14:30,15:30,16:30,17:30"
+    MAIL_AI_STATS_BROADCAST_WORKDAYS_ONLY: bool = True
+
     # Offline training pipeline runner.
     TRAINING_RUNNER_COMMAND: str = ""
     TRAINING_RUNNER_WORKDIR: str = ""

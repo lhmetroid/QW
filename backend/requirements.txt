@@ -25,3 +25,4 @@ pytesseract            # Tesseract OCR Python 绑定（需系统安装 tesseract
 # py7zr                # 7z 压缩包解析
 # rarfile              # RAR 压缩包解析（需系统安装 unrar）
 paramiko<4
+Pillow
