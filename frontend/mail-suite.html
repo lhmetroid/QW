@@ -2377,10 +2377,12 @@
     }
     async function as2FetchJson(url, options) { const r = await fetch(url, options || { credentials: 'include' }); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.detail || r.status); return d; }
     function as2SumStatusResults(results) {
-      const out = { ok: true, staff_id: AS2_STAFF, running: false, counts: {}, remaining: 0, recovered_drafting: false };
+      const out = { ok: true, staff_id: AS2_STAFF, running: false, counts: {}, remaining: 0, queued: 0, interrupted: false, recovered_drafting: false };
       (results || []).forEach((d) => {
         out.running = out.running || !!d.running;
         out.remaining += Number(d.remaining || 0);
+        out.queued += Number(d.queued || 0);
+        out.interrupted = out.interrupted || !!d.interrupted;
         out.recovered_drafting = out.recovered_drafting || !!d.recovered_drafting;
         Object.entries((d && d.counts) || {}).forEach(([k, v]) => { out.counts[k] = (out.counts[k] || 0) + Number(v || 0); });
       });
@@ -2392,7 +2394,7 @@
     function as2OpStatus(msg, bad) { const el = document.getElementById('as2-op-status'); if (el) { el.textContent = msg || ''; el.style.color = bad ? '#dc2626' : '#64748b'; } as2Status(msg, bad); }
     function as2ScenarioLabel(v) { const s = AS2_SCENARIOS.find((x) => x.value === v); return (s && s.label) || v; }
     // 封状态英文码 -> 中文(邮件详情/卡片标题展示用, 不显示 drafted/planned 等英文)
-    function as2StatusCn(st) { return ({ planned: '待生成', drafting: '生成中', drafted: '已生成', sent: '已转入CRM', committed: '已转入CRM', failed: '生成失败' })[String(st || '')] || (st || ''); }
+    function as2StatusCn(st) { return ({ planned: '待生成', queued: '排队中', drafting: '生成中', drafted: '已生成', sent: '已转入CRM', committed: '已转入CRM', failed: '生成失败' })[String(st || '')] || (st || ''); }
     function as2MmDd(d) { return d && d.length >= 10 ? d.slice(5) : (d || ''); }
     function as2SetGenerateBusy(on, label) {
       as2GenerateBusy = !!on;
@@ -2400,16 +2402,34 @@
       if (!btn) return;
       btn.disabled = !!on;
       btn.textContent = label || (on ? '生成中...' : '后台生成');
-      btn.title = on ? '该销售的后台生成正在进行中，刷新或重开页面后仍会按后端状态锁定。' : '逐封生成当前排期清单中 planned/failed 的邮件草稿';
+      btn.title = on ? '该销售的后台生成正在进行中，刷新或重开页面后仍会按后端状态锁定。' : '逐封生成当前排期清单中 待生成/生成失败 的邮件草稿';
+    }
+    // 按钮三态(全部由后端 status 落库决定, 关页面/重启后端后仍准确):
+    // 正在跑 -> 生成中...(禁用) / 有排队中但没人跑 -> 继续生成(N封)(可点) / 其余 -> 后台生成
+    function as2ApplyGenState(d) {
+      const btn = document.getElementById('as2-generate-btn');
+      if (!btn) return;
+      if (d && d.running) { as2SetGenerateBusy(true, '生成中...'); return; }
+      const queued = Number((d && d.queued) || 0);
+      as2GenerateBusy = false;
+      btn.disabled = false;
+      if (queued > 0) {
+        btn.textContent = `继续生成(${queued}封)`;
+        btn.title = `上次"后台生成"被中断(后端重启/服务停过), 还有 ${queued} 封排队中未生成。点此接着生成, 已生成的不会重做。`;
+      } else {
+        btn.textContent = '后台生成';
+        btn.title = '逐封生成当前排期清单中 待生成/生成失败 的邮件草稿';
+      }
     }
     function as2GenerationStatusText(d) {
       const c = (d && d.counts) || {};
       const drafted = c.drafted || 0;
       const drafting = c.drafting || 0;
+      const queued = c.queued || 0;
       const planned = c.planned || 0;
       const failed = c.failed || 0;
-      const remaining = d && Number.isFinite(Number(d.remaining)) ? Number(d.remaining) : (drafting + planned + failed);
-      return `生成进度: 已生成 ${drafted} · 生成中 ${drafting} · 待生成 ${planned} · 失败 ${failed} · 剩余 ${remaining}`;
+      const remaining = d && Number.isFinite(Number(d.remaining)) ? Number(d.remaining) : (drafting + queued + planned + failed);
+      return `生成进度: 已生成 ${drafted} · 生成中 ${drafting} · 排队中 ${queued} · 待生成 ${planned} · 失败 ${failed} · 剩余 ${remaining}`;
     }
     async function as2RefreshGenerateStatus(silent) {
       const staffIds = as2ReadStaffIds();
@@ -2420,8 +2440,11 @@
           catch (e) { return { running: false, counts: {}, remaining: 0 }; }
         }));
         const d = as2SumStatusResults(results);
-        as2SetGenerateBusy(!!d.running, d.running ? '生成中...' : '后台生成');
-        if (!silent || d.running) as2Status(`${as2GenerationStatusText(d)}${d.running ? ' (进行中)' : ' (完成)'}`);
+        as2ApplyGenState(d);
+        if (!silent || d.running || d.interrupted) {
+          const tail = d.running ? ' (进行中)' : (d.interrupted ? ' (上次生成被中断, 点"继续生成"接着做)' : ' (完成)');
+          as2Status(`${as2GenerationStatusText(d)}${tail}`, !!d.interrupted);
+        }
         if (d.recovered_drafting) await as2LoadPlan();
         return d;
       } catch (e) { return null; }
@@ -2672,6 +2695,7 @@
       if (committed) { cls += 'border-sky-400 bg-sky-50 text-sky-700 font-bold'; label = date + '待发'; }
       else if (st === 'drafted') { cls += 'border-emerald-400 bg-emerald-50 text-emerald-700 font-bold'; label = date; }
       else if (st === 'drafting') { cls += 'border-amber-300 bg-amber-50 text-amber-700'; label = '⏳ ' + date; }
+      else if (st === 'queued') { cls += 'border-violet-300 bg-violet-50 text-violet-700'; label = '候 ' + date; }
       else if (st === 'failed') { cls += 'border-rose-300 bg-rose-50 text-rose-700'; label = '✗ ' + date; }
       else { cls += 'border-slate-200 bg-white text-slate-500'; label = '排 ' + date; }
       const reasonTag = it.pick_reason && it.pick_reason !== 'matched' ? `<span class="text-[10px] text-violet-500">${as2Esc({ remaining: '补', resend: '重', fallback: '兜' }[it.pick_reason] || '')}</span>` : '';
@@ -2872,9 +2896,8 @@
         }));
         const hasWork = results.some((d) => d.started || d.already_running);
         if (!hasWork) {
-          as2SetGenerateBusy(false);
           as2Status(results.map((d) => d.note).filter(Boolean).join('；') || '无待生成');
-          await as2RefreshGenerateStatus(true);
+          await as2RefreshGenerateStatus(true);   // 由后端 status 决定按钮回到"后台生成"还是"继续生成(N封)"
           return;
         }
         as2PollGen();
@@ -2889,7 +2912,8 @@
         if (!d.running) {
           if (as2GenTimer) clearInterval(as2GenTimer);
           as2GenTimer = null;
-          as2SetGenerateBusy(false);
+          // 按钮态已由 as2RefreshGenerateStatus -> as2ApplyGenState 按后端 status 设好, 此处不再覆盖,
+          // 否则会把"继续生成(N封)"(worker 中途死掉但仍有 queued)误显示成"后台生成"。
         }
       };
       tick();

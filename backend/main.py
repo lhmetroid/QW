@@ -19881,7 +19881,7 @@ def _suite_existing_suite_ranges(db, customer_id: str, contact_id: str, recipien
                 params["emails"] = emails_local
             stmt = text("SELECT scenario, MIN(plan_date), MAX(plan_date) FROM mail_autosend_plan_item "
                         "WHERE (" + " OR ".join(conds) + ") "
-                        "AND status IN ('planned','drafting','drafted','sent') GROUP BY scenario")
+                        "AND status IN ('planned','queued','drafting','drafted','sent') GROUP BY scenario")
             if ids:
                 stmt = stmt.bindparams(bindparam("ids", expanding=True))
             if emails_local:
@@ -20589,7 +20589,7 @@ def get_mail_customer_suite_records(
                 tm = x["plan_date"] + (("T" + x["plan_time"][:5]) if x.get("plan_time") else "")
             if x.get("status") == "sent":
                 _consider(x.get("suite_step"), "crm", tm, 2)
-            elif x.get("status") in ("planned", "drafting", "drafted"):
+            elif x.get("status") in ("planned", "queued", "drafting", "drafted"):
                 _consider(x.get("suite_step"), "planned", tm, 1)
         for x in (item for item in history_items if item.get("scenario") == suite["scenario"]):
             _consider(x.get("suite_step"), "crm", x.get("planned_send_at"), 2)
@@ -21253,7 +21253,9 @@ _AUTOSEND_GEN_LOCK = threading.Lock()
 # 故大批次(如几千封)也绝不会被误判挂死, 同时真挂了 10 分钟内自愈。
 _AUTOSEND_GEN_STALE_SECONDS = 600
 
-_AUTOSEND_PENDING_STATUSES = ("planned", "drafting", "drafted", "failed")
+# 未转入CRM的在册状态。queued = 已点"后台生成"、已入队但还没轮到(worker 逐封串行),
+# 落库而非只存内存: 关页面/重启后端后仍能区分"只预排过"(planned) 与"已请求生成尚未完成"(queued)。
+_AUTOSEND_PENDING_STATUSES = ("planned", "queued", "drafting", "drafted", "failed")
 # 该联系人已有待发送套装邮件时, 本次套装第1封 = 该联系人已有最晚一封发送日 + 本偏移天数
 _AUTOSEND_EXISTING_SUITE_OFFSET_DAYS = 7
 
@@ -21297,13 +21299,17 @@ def _autosend_mark_done(staff: str) -> None:
 
 
 def _autosend_recover_orphan_drafting(db: Session, staff: str) -> int:
-    """A server stop kills the in-memory worker but can leave rows in drafting."""
+    """A server stop kills the in-memory worker but can leave rows in drafting.
+
+    恢复为 queued(而非 planned): 这些封是"已请求生成"的, 只是被中断。留在 queued 才能让
+    页面看出"上次生成没做完, 还剩 N 封", 而不是与"只预排过、从没点生成"混为一谈。
+    """
     if _autosend_is_running(staff):
         return 0
     n = db.execute(
-        text("UPDATE mail_autosend_plan_item SET status='planned', gen_error=:e, updated_at=now() "
+        text("UPDATE mail_autosend_plan_item SET status='queued', gen_error=:e, updated_at=now() "
              "WHERE owner_staff_id=:s AND status='drafting'"),
-        {"s": staff, "e": "后台生成中断或服务重启，已恢复为待生成"},
+        {"s": staff, "e": "后台生成中断或服务重启，已恢复为排队中"},
     ).rowcount
     if n:
         db.commit()
@@ -21370,7 +21376,7 @@ def _autosend_merge_local_plan_load(db, owners: list[str], start_date, load: dic
             text(
                 "SELECT owner_staff_id, to_char(plan_date,'YYYY-MM-DD') AS d, COUNT(*) AS n "
                 "FROM mail_autosend_plan_item "
-                "WHERE status IN ('planned','drafting','drafted') AND plan_date >= :sd "
+                "WHERE status IN ('planned','queued','drafting','drafted') AND plan_date >= :sd "
                 "AND owner_staff_id IN :ids "
                 "GROUP BY owner_staff_id, to_char(plan_date,'YYYY-MM-DD')"
             ).bindparams(bindparam("ids", expanding=True)),
@@ -21631,7 +21637,7 @@ def autosend_preview(payload: AutosendPreviewRequest, db: Session = Depends(get_
         str(row[0]) for row in db.execute(
             text("SELECT DISTINCT contact_id FROM mail_autosend_plan_item "
                  + ("WHERE owner_staff_id = :s AND " if staff else "WHERE ")
-                 + "status IN ('planned','drafting','drafted')"),
+                 + "status IN ('planned','queued','drafting','drafted')"),
             pending_params,
         ).fetchall()
     }
@@ -21789,12 +21795,15 @@ def _autosend_generate_one(customer_id: str, scenario: str, step: int) -> dict:
 
 
 def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> None:
-    """后台逐封生成: 取 planned/failed 的 plan_item, 逐个真调生成, 写回 drafted/failed。"""
+    """后台逐封生成: 取 queued 的 plan_item(入队由 /autosend/generate 完成), 逐个真调生成, 写回 drafted/failed。
+
+    串行: 同一时刻只有 1 封 drafting, 其余留在 queued 排队。中断后 queued 不丢, 可再点"继续生成"接着做。
+    """
     try:
         db = SessionLocal()
         try:
             base = ("SELECT item_id, customer_id, contact_id, scenario, suite_step "
-                    "FROM mail_autosend_plan_item WHERE owner_staff_id = :s AND status IN ('planned','failed')")
+                    "FROM mail_autosend_plan_item WHERE owner_staff_id = :s AND status = 'queued'")
             if item_ids:
                 rows = db.execute(
                     text(base + " AND item_id IN :ids").bindparams(bindparam("ids", expanding=True)),
@@ -21809,11 +21818,17 @@ def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> 
             cid = (customer_id or contact_id)
             d2 = SessionLocal()
             try:
-                d2.execute(text("UPDATE mail_autosend_plan_item SET status='drafting', updated_at=now() WHERE item_id=:i"),
-                           {"i": str(item_id)})
+                # 认领: 仅当该封仍在 queued 时才置 drafting。中途被"清空排期"删掉或被另一 worker 抢走则跳过。
+                claimed = d2.execute(
+                    text("UPDATE mail_autosend_plan_item SET status='drafting', updated_at=now() "
+                         "WHERE item_id=:i AND status='queued'"),
+                    {"i": str(item_id)},
+                ).rowcount
                 d2.commit()
             finally:
                 d2.close()
+            if not claimed:
+                continue
             try:
                 gen = None
                 for _attempt in range(3):   # 瞬时错(CRM连接抖动/画像临时查不到等)自动重试, 避免一次抖动就永久 failed
@@ -21865,26 +21880,63 @@ class AutosendGenerateRequest(BaseModel):
     item_ids: list[str] | None = None
 
 
+def _autosend_enqueue(db: Session, staff: str, item_ids: list[str] | None) -> int:
+    """把该销售的 planned/failed 封入队(status='queued'), 返回本次入队数。
+
+    落库入队是"点过后台生成"这一事实的唯一持久证据; 之前只存在内存里, 一重启就分不清
+    planned 是"没点过生成"还是"点了没做完"。已在 queued/drafting 的封不动(幂等)。
+    """
+    sql = ("UPDATE mail_autosend_plan_item SET status='queued', gen_error=NULL, updated_at=now() "
+           "WHERE owner_staff_id=:s AND status IN ('planned','failed')")
+    params: dict = {"s": staff}
+    if item_ids:
+        stmt = text(sql + " AND item_id IN :ids").bindparams(bindparam("ids", expanding=True))
+        params["ids"] = [str(x) for x in item_ids]
+    else:
+        stmt = text(sql)
+    n = db.execute(stmt, params).rowcount
+    db.commit()
+    return int(n or 0)
+
+
+def _autosend_queued_count(db: Session, staff: str, item_ids: list[str] | None = None) -> int:
+    sql = "SELECT COUNT(*) FROM mail_autosend_plan_item WHERE owner_staff_id=:s AND status='queued'"
+    params: dict = {"s": staff}
+    if item_ids:
+        stmt = text(sql + " AND item_id IN :ids").bindparams(bindparam("ids", expanding=True))
+        params["ids"] = [str(x) for x in item_ids]
+    else:
+        stmt = text(sql)
+    return int(db.execute(stmt, params).scalar() or 0)
+
+
 @app.post("/api/v1/mail/autosend/generate")
 def autosend_generate(payload: AutosendGenerateRequest, db: Session = Depends(get_db)):
-    """后台逐封生成草稿(节点2 的'后台生成')。立即返回, 前端轮询 generate-status; 每封点亮。"""
+    """后台逐封生成草稿(节点2 的'后台生成'/'继续生成')。立即返回, 前端轮询 generate-status; 每封点亮。
+
+    先把 planned/failed 落库入队为 queued, 再起 worker。因此中途关页面/重启后端, 未做完的封仍是 queued,
+    页面据此显示"上次生成被中断, 还剩 N 封", 点"继续生成"接着做, 已 drafted 的不会重做。
+    """
     staff = sanitize_text(payload.staff_id).strip()
     if not staff:
         raise HTTPException(status_code=422, detail="staff_id is required")
     if _autosend_is_running(staff):
         return {"ok": True, "started": False, "already_running": True}
-    recovered = _autosend_recover_orphan_drafting(db, staff)
+    recovered = _autosend_recover_orphan_drafting(db, staff)   # drafting -> queued
     if not _autosend_mark_running(staff):
         return {"ok": True, "started": False, "already_running": True, "recovered_drafting": recovered}
-    pending = db.execute(
-        text("SELECT COUNT(*) FROM mail_autosend_plan_item WHERE owner_staff_id=:s AND status IN ('planned','failed')"),
-        {"s": staff},
-    ).scalar()
+    try:
+        enqueued = _autosend_enqueue(db, staff, payload.item_ids)
+        pending = _autosend_queued_count(db, staff, payload.item_ids)
+    except Exception:
+        _autosend_mark_done(staff)   # 入队失败必须放锁, 否则该销售 10 分钟内点不动
+        raise
     if not pending:
         _autosend_mark_done(staff)
-        return {"ok": True, "started": False, "pending": 0, "recovered_drafting": recovered, "note": "没有待生成的排期"}
+        return {"ok": True, "started": False, "pending": 0, "enqueued": enqueued,
+                "recovered_drafting": recovered, "note": "没有待生成的排期"}
     threading.Thread(target=_autosend_generate_worker, args=(staff, payload.item_ids), daemon=True).start()
-    return {"ok": True, "started": True, "pending": int(pending or 0), "recovered_drafting": recovered}
+    return {"ok": True, "started": True, "pending": pending, "enqueued": enqueued, "recovered_drafting": recovered}
 
 
 @app.get("/api/v1/mail/autosend/generate-status")
@@ -21899,8 +21951,13 @@ def autosend_generate_status(staff_id: str = Query(""), db: Session = Depends(ge
         params,
     ).fetchall()
     counts = {str(r[0]): int(r[1]) for r in rows}
-    remaining = int(counts.get("planned", 0) + counts.get("drafting", 0) + counts.get("failed", 0))
-    return {"ok": True, "staff_id": staff, "running": running, "counts": counts, "remaining": remaining, "recovered_drafting": recovered}
+    remaining = int(counts.get("planned", 0) + counts.get("queued", 0)
+                    + counts.get("drafting", 0) + counts.get("failed", 0))
+    queued = int(counts.get("queued", 0) + counts.get("drafting", 0))
+    # 已请求生成但没人在跑 = 上次被关服务/崩线程打断; 前端据此把按钮显示成"继续生成(N封)"。
+    interrupted = (not running) and queued > 0
+    return {"ok": True, "staff_id": staff, "running": running, "counts": counts, "remaining": remaining,
+            "queued": queued, "interrupted": interrupted, "recovered_drafting": recovered}
 
 
 class AutosendMarkCommittedRequest(BaseModel):
@@ -22048,7 +22105,7 @@ def autosend_workday_recovery_analysis(
             text("SELECT item_id, owner_staff_id, contact_id, customer_id, company_name, contact_name, "
                  "scenario, suite_step, plan_date, plan_time, status, created_at "
                  "FROM mail_autosend_plan_item "
-                 f"WHERE {staff_clause}status IN ('planned','drafting','drafted','failed') "
+                 f"WHERE {staff_clause}status IN ('planned','queued','drafting','drafted','failed') "
                  "AND plan_date>=:sd AND plan_date<:ed"),
             params,
         ).fetchall()
@@ -22134,7 +22191,7 @@ def autosend_calendar(staff_id: str = Query(""), days: int = Query(90), db: Sess
         rows = db.execute(
             text("SELECT to_char(plan_date,'YYYY-MM-DD') d, COUNT(*) n, COUNT(DISTINCT contact_id) c "
                  "FROM mail_autosend_plan_item "
-                 f"WHERE {staff_clause}status IN ('planned','drafting','drafted') "
+                 f"WHERE {staff_clause}status IN ('planned','queued','drafting','drafted') "
                  "AND plan_date>=:t AND plan_date<:e "
                  "GROUP BY to_char(plan_date,'YYYY-MM-DD')"),
             params,
@@ -22146,7 +22203,7 @@ def autosend_calendar(staff_id: str = Query(""), days: int = Query(90), db: Sess
                 slot["planned_contacts"] = int(c or 0)
         crows = db.execute(
             text("SELECT DISTINCT contact_id FROM mail_autosend_plan_item "
-                 f"WHERE {staff_clause}status IN ('planned','drafting','drafted') "
+                 f"WHERE {staff_clause}status IN ('planned','queued','drafting','drafted') "
                  "AND plan_date>=:t AND plan_date<:e"),
             params,
         ).fetchall()
@@ -23325,7 +23382,7 @@ def _asr_build_units(db, staff: str, accepted: list[dict], company_name_like: st
         try:
             prows = db.execute(
                 text("SELECT contact_id, scenario FROM mail_autosend_plan_item "
-                     "WHERE status IN ('planned','drafting','drafted') AND contact_id IN :ids")
+                     "WHERE status IN ('planned','queued','drafting','drafted') AND contact_id IN :ids")
                 .bindparams(bindparam("ids", expanding=True)),
                 {"ids": ids},
             ).fetchall()
@@ -23890,9 +23947,15 @@ def asr_trigger_confirm(payload: AsrTriggerConfirmRequest, db: Session = Depends
     if payload.start_generate:
         try:
             if _autosend_mark_running(staff):
-                threading.Thread(target=_autosend_generate_worker, args=(staff, None), daemon=True).start()
-                started = True
+                # worker 只捞 queued, 必须先落库入队, 否则线程空转一圈什么都不做
+                _autosend_enqueue(db, staff, None)
+                if _autosend_queued_count(db, staff):
+                    threading.Thread(target=_autosend_generate_worker, args=(staff, None), daemon=True).start()
+                    started = True
+                else:
+                    _autosend_mark_done(staff)
         except Exception:
+            _autosend_mark_done(staff)
             logger.exception("ASR_TRIGGER_GENERATE_START_FAILED staff=%s", staff)
     items = _autosend_list_plan(db, staff)
     return {"ok": True, "run_id": res["run_id"], "new_scheduled": len(res["items"]), "dropped": dropped,
@@ -24039,7 +24102,7 @@ def _autosend_pending_latest_map(db, contacts: list[dict], staff_ids: list[str])
         try:
             rows = db.execute(
                 text("SELECT contact_id, MAX(plan_date) FROM mail_autosend_plan_item "
-                     "WHERE contact_id IN :ids AND status IN ('planned','drafting','drafted','sent') "
+                     "WHERE contact_id IN :ids AND status IN ('planned','queued','drafting','drafted','sent') "
                      "GROUP BY contact_id").bindparams(bindparam("ids", expanding=True)),
                 {"ids": ids},
             ).fetchall()
@@ -24116,11 +24179,22 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
     domain_like = sanitize_text(email_domain_like or "").strip()
     domain_tokens = [t for t in (s.strip().lstrip("@").lower() for s in re.split(r"[,，]", domain_like)) if t] if domain_like else []
 
-    def _email_domain_hit(addr: str | None) -> bool:
+    def _pick_email(emails: list[str]) -> str | None:
+        """在该联系人的多个有效邮箱里挑一个用于展示/排期。
+
+        无后缀条件: 取最新一个(与历史行为一致)。
+        有后缀条件: 取"最新的命中后缀的那一个"; 多个邮箱只要有一个命中即算命中(如 qq + 公司邮箱, 筛 qq 也入选);
+        一个都不命中则返回 None(该联系人被筛掉)。
+        """
+        if not emails:
+            return None
         if not domain_tokens:
-            return True
-        dom = str(addr or "").rsplit("@", 1)[-1].lower() if addr and "@" in str(addr) else ""
-        return any(tok in dom for tok in domain_tokens)
+            return emails[0]
+        for e in emails:
+            dom = e.rsplit("@", 1)[-1].lower()
+            if any(tok in dom for tok in domain_tokens):
+                return e
+        return None
 
     out: list[dict] = []
     try:
@@ -24178,9 +24252,9 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
                 for i in range(0, len(seq), n):
                     yield seq[i:i + n]
 
-            # 2) 有效邮箱(取最新一个); 判定模式 collect/manual
+            # 2) 有效邮箱(一个联系人可有多个, 按 InputTime 从新到旧全留); 判定模式 collect/manual
             email_valid_frag = _mail_email_valid_where(email_valid_mode)
-            email_map: dict[str, str] = {}
+            emails_map: dict[str, list[str]] = {}
             for chunk in _chunks(contact_ids):
                 rows = crm_db.execute(
                     text(
@@ -24193,7 +24267,9 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
                 for cid, no, _t in rows:
                     cid = str(cid or "").strip(); no = str(no or "").strip()
                     if cid and no and "@" in no and "/" not in no and " " not in no:
-                        email_map.setdefault(cid, no)
+                        lst = emails_map.setdefault(cid, [])
+                        if no.lower() not in {e.lower() for e in lst}:
+                            lst.append(no)
 
             # 3) 合同聚合: 金额 + 末次合作
             agg_map: dict[str, dict] = {}
@@ -24229,10 +24305,11 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
 
             today = (datetime.utcnow() + timedelta(hours=8)).date()
             for cid, owner in contacts_map.items():
-                email = email_map.get(cid)
+                contact_emails = emails_map.get(cid) or []
+                email = _pick_email(contact_emails)
                 if only_valid_email and not email:
                     continue
-                if not _email_domain_hit(email):   # 邮箱后缀筛选(留空不生效); 无邮箱者在有后缀条件时一律不命中
+                if domain_tokens and not email:   # 该联系人所有有效邮箱都不含指定后缀 -> 筛掉
                     continue
                 agg = agg_map.get(cid) or {}
                 last_t = agg.get("last_t")
