@@ -601,6 +601,42 @@
     .cal1-cell.cal1-weekend .cal1-num { color:#ea580c; }
     .cal1-status-btn { border:0; background:transparent; color:#4f46e5; font-weight:800; cursor:pointer; padding:0; text-decoration:underline; }
     .cal1-status-btn:hover { color:#3730a3; }
+    .as2-plan-table {
+      table-layout: fixed;
+      min-width: 980px;
+    }
+    .as2-plan-table th,
+    .as2-plan-table td {
+      vertical-align: middle;
+    }
+    .as2-plan-row.as2-row-selected {
+      background: #f0fdf4;
+    }
+    .as2-suite-cell {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .as2-suite-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .as2-step-wrap {
+      min-height: 24px;
+      user-select: none;
+    }
+    .as2-step-btn {
+      min-width: 48px;
+      text-align: center;
+    }
+    .as2-step-wrap.as2-selected .as2-step-btn {
+      box-shadow: 0 0 0 2px #34d399;
+    }
+    .as2-dragging-select .as2-plan-row {
+      cursor: crosshair;
+    }
     .suite-records-btn {
       margin-left: 8px;
       padding: 3px 7px;
@@ -775,6 +811,7 @@
               </select>
             </label>
             <label class="flex items-center gap-1" title="按公司名模糊匹配筛选联系人; 可填多个, 用逗号隔开(中英文逗号均可), 任一命中即选中(或的关系); 每个都是模糊匹配; 留空=不生效">公司名含<input id="as2-company-like" class="rounded border border-slate-300 px-2 py-1 w-40" placeholder="多个用逗号隔开, 留空不限"></label>
+            <label class="flex items-center gap-1" title="按联系人有效邮箱的后缀(@ 之后的域名)模糊匹配筛选; 可填多个, 用逗号隔开(中英文逗号均可), 命中任一即选中(或的关系); 163 / 163.com / @163.com 三种写法等价; 留空=不生效。与销售、公司名含是且的关系。">邮箱后缀含<input id="as2-email-domain-like" class="rounded border border-slate-300 px-2 py-1 w-40" placeholder="如 163,126,qq, 留空不限"></label>
             <label class="flex items-center gap-1" title="该联系人任意套装最后一封在近N天内则本次跳过(按套装最后一封计算); 留空=不生效">近<input id="as2-exclude-days" type="number" min="1" class="rounded border border-slate-300 px-2 py-1 w-16">天发过套装则跳过</label>
             <span class="flex items-center gap-2" title="有效邮箱判定(二选一, 保存配置后其他页面也走这里)。系统标记正确=只取 IsCollect='正确'。人工判断=除'真人(非0000/admin)标记为错误'的邮箱外都算有效(admin/0000 标错的仍算有效)。仅只读CRM, 不改数据。">有效邮箱
               <label class="flex items-center gap-1"><input type="radio" name="as2-evm" value="collect" checked>系统标记正确</label>
@@ -823,7 +860,17 @@
             </div>
           </div>
           <div class="overflow-auto min-h-[65vh]">
-            <table class="w-full text-xs">
+            <table class="as2-plan-table w-full text-xs">
+              <colgroup>
+                <col style="width:14%">
+                <col style="width:14%">
+                <col data-sales-col style="width:10%" class="hidden">
+                <col style="width:18%">
+                <col style="width:11%">
+                <col style="width:11%">
+                <col style="width:11%">
+                <col style="width:11%">
+              </colgroup>
               <thead class="bg-slate-50"><tr class="text-slate-600">
                 <th class="px-2 py-1 text-left">公司(前6字)</th>
                 <th class="px-2 py-1 text-left">联系人</th>
@@ -2300,7 +2347,24 @@
     function as2IsAllStaff() { return AS2_STAFF === '__all__'; }
     function as2StaffLabel() { const n = as2StaffIds().length; return as2IsAllStaff() ? ('全部销售' + (n ? '(' + n + ')' : '')) : (MS_STAFF_NAME ? (MS_STAFF_NAME + '(' + AS2_STAFF + ')') : AS2_STAFF); }
     function as2OwnerStaffId(it) { return String((it && (it.owner_staff_id || it.inputer_staff_id || it.staff_id)) || '').trim(); }
-    function as2StaffName(id) { id = String(id || '').trim(); return id ? (AS2_STAFF_NAMES[id] || id) : '-'; }
+    function as2StaffName(id) { id = String(id || '').trim(); return id ? (AS2_STAFF_NAMES[id] || id) : '公共邮箱'; }
+    function as2SenderLabel(it) {
+      const owner = as2OwnerStaffId(it);
+      if (owner) return as2StaffName(owner);
+      const email = String((it && (it.sender_email || it.asr_sender_email)) || '').trim();
+      return email ? ('公共邮箱(' + email + ')') : '公共邮箱';
+    }
+    function as2ContactIdentity(it) {
+      const email = String((it && (it.recipient_email || it.email || it.to_email)) || '').trim().toLowerCase();
+      if (email && email.includes('@')) return 'email:' + email;
+      const receiverEmail = (typeof as2ReceiverEmail === 'function') ? as2ReceiverEmail((it && (it.receiver || it.to_emails)) || '').toLowerCase() : '';
+      if (receiverEmail && receiverEmail.includes('@')) return 'email:' + receiverEmail;
+      const company = String((it && (it.company_name || it.company_head)) || '').trim().toLowerCase();
+      const contact = String((it && it.contact_name) || '').trim().toLowerCase();
+      if (contact) return 'name:' + company + '::' + contact;
+      return 'id:' + String((it && (it.contact_id || it.customer_id)) || '').trim();
+    }
+    function as2PersonGroupKey(it) { return [as2OwnerStaffId(it), String((it && it.scenario) || '').trim(), as2ContactIdentity(it)].join('::'); }
     function as2SalesColVisible() { return as2IsAllStaff(); }
     async function as2EnsureStaffNames(items) {
       const ids = Array.from(new Set([...(AS2_STAFF_IDS || []), ...((items || []).map(as2OwnerStaffId))].map((s) => String(s || '').trim()).filter(Boolean)));
@@ -2518,6 +2582,7 @@
         rules: as2Rules.map((x) => ({ scenario: x.scenario, conditions: x.conditions, match_mode: x.match_mode, partial_sent_mode: x.partial_sent_mode || 'remaining' })),
         fallback_enabled: document.getElementById('as2-fallback').checked,
         company_name_like: (document.getElementById('as2-company-like').value || '').trim(),
+        email_domain_like: (document.getElementById('as2-email-domain-like')?.value || '').trim(),
         exclude_recent_suite_days: isNaN(ed) ? null : ed,
         partial_sent_default: 'remaining',
         email_valid_mode: as2Evm(),
@@ -2573,6 +2638,9 @@
       const staffIds = as2ReadStaffIds();
       if (!staffIds.length) return;
       try {
+        // 单次拉取(后端已去 body_html/llm_prompt 大列, 4千+封也仅 ~0.3s), 不做 OFFSET 分页:
+        // 生成中每 2.5s 全量重载, OFFSET 分页每页都要全量重排, 反而 N 倍放大 DB 负载喂大风暴。
+        // 逐步显示改由 as2RenderPlan 前端分块渲染实现, 数据一次到位、DOM 分批出, 浏览器不卡。
         const all = [];
         for (const sid of staffIds) {
           try {
@@ -2592,34 +2660,69 @@
       const detail = skipped.map((s) => `${s.contact_id}(${s.detail || s.reason})`).join('、');
       el.innerHTML = `跳过 ${skipped.length} 人<span class="ms-info" title="${as2Esc(detail)}">ⓘ</span>`;
     }
+    function as2Enc(v) { return encodeURIComponent(String(v || '')); }
     function as2StepBtn(it) {
       if (!it) return '<span class="text-slate-300">-</span>';
       const date = as2MmDd(it.plan_date);
       const st = it.status;
-      const checked = as2Selected.has(it.item_id) ? ' checked' : '';
+      const selected = as2Selected.has(it.item_id);
+      const checked = selected ? ' checked' : '';
       const committed = (st === 'sent' || st === 'committed');
-      let cls = 'rounded px-1 py-0.5 text-[11px] border ', label = date;
+      let cls = 'as2-step-btn rounded px-1 py-0.5 text-[11px] border ', label = date;
       if (committed) { cls += 'border-sky-400 bg-sky-50 text-sky-700 font-bold'; label = date + '待发'; }
       else if (st === 'drafted') { cls += 'border-emerald-400 bg-emerald-50 text-emerald-700 font-bold'; label = date; }
       else if (st === 'drafting') { cls += 'border-amber-300 bg-amber-50 text-amber-700'; label = '⏳ ' + date; }
       else if (st === 'failed') { cls += 'border-rose-300 bg-rose-50 text-rose-700'; label = '✗ ' + date; }
       else { cls += 'border-slate-200 bg-white text-slate-500'; label = '排 ' + date; }
       const reasonTag = it.pick_reason && it.pick_reason !== 'matched' ? `<span class="text-[10px] text-violet-500">${as2Esc({ remaining: '补', resend: '重', fallback: '兜' }[it.pick_reason] || '')}</span>` : '';
-      // 时间格不再点开邮件详情(详情改由联系人名进入); 已生成脚本(drafted)可勾选转入, 点时间=等同勾选框
+      // 时间格不再点开邮件详情(详情改由联系人名进入); 已生成脚本(drafted)可勾选转入, 点时间=等同勾选框。
+      // 勾选只更新当前 DOM 状态, 不重绘整张表, 避免列宽闪动。
       if (st === 'drafted') {
-        const selCls = checked ? ' ring-2 ring-emerald-400' : '';
-        const chk = `<input type="checkbox"${checked} onchange="as2ToggleSelect('${it.item_id}');as2RenderPlan()">`;
-        return `<div class="flex items-center gap-1">${chk}<button type="button" class="${cls}${selCls} cursor-pointer" onclick="as2ToggleSelect('${it.item_id}');as2RenderPlan()" title="点击=勾选/取消该封转入CRM">${label}</button>${reasonTag}</div>`;
+        const itemArg = as2Enc(it.item_id);
+        return `<div class="as2-step-wrap flex items-center gap-1${selected ? ' as2-selected' : ''}" data-as2-item="${as2Esc(it.item_id)}">`
+          + `<input type="checkbox" data-as2-item-check="${as2Esc(it.item_id)}"${checked} onclick="event.stopPropagation()" onchange="as2SetItemSelected(decodeURIComponent('${itemArg}'), this.checked)">`
+          + `<button type="button" data-as2-step-btn="${as2Esc(it.item_id)}" class="${cls} cursor-pointer" onclick="as2ToggleSelect(decodeURIComponent('${itemArg}'))" title="点击=勾选/取消该封转入CRM；按住鼠标拖过多行可批量勾选">${label}</button>${reasonTag}</div>`;
       }
-      return `<div class="flex items-center gap-1"><span class="${cls}" title="${as2Esc(st)}">${label}</span>${reasonTag}</div>`;
+      return `<div class="as2-step-wrap flex items-center gap-1"><span class="${cls}" title="${as2Esc(st)}">${label}</span>${reasonTag}</div>`;
     }
     function as2PlanGroups(items) {
       const groups = {};
       (items || []).forEach((it) => {
-        const key = (it.owner_staff_id || '') + '::' + it.contact_id + '::' + it.scenario;
-        (groups[key] = groups[key] || { it: it, steps: {} }).steps[it.suite_step] = it;
+        const key = as2PersonGroupKey(it);
+        (groups[key] = groups[key] || { key: key, it: it, steps: {} }).steps[it.suite_step] = it;
       });
       return groups;
+    }
+    function as2DraftIdsForGroup(g) {
+      return Object.values((g && g.steps) || {})
+        .filter((s) => s && s.status === 'drafted' && s.item_id)
+        .map((s) => String(s.item_id));
+    }
+    function as2PlanGroupRowHtml(g, salesCol) {
+      const it = g.it;
+      const hasGen = Object.values(g.steps).some((s) => s && (s.status === 'drafted' || s.status === 'sent'));
+      const draftIds = as2DraftIdsForGroup(g);
+      const selectedCount = draftIds.filter((id) => as2Selected.has(id)).length;
+      const rowSelected = draftIds.length > 0 && selectedCount === draftIds.length;
+      const groupArg = as2Enc(g.key);
+      const contactBase = hasGen
+        ? `<button type="button" class="text-indigo-600 underline" onclick="as2ShowPersonByKey(decodeURIComponent('${groupArg}'))" title="点开查看该联系人已生成的邮件">${as2Esc(it.contact_name || it.contact_id)}</button>`
+        : as2Esc(it.contact_name || it.contact_id);
+      const contactCell = `${contactBase}${suiteRecordsButton(it.contact_id)}`;
+      const salesCell = salesCol ? `<td class="px-2 py-1 whitespace-nowrap">${as2Esc(as2SenderLabel(it))}</td>` : '';
+      const suiteCheckbox = draftIds.length
+        ? `<input type="checkbox" data-as2-group-check="${as2Esc(g.key)}"${rowSelected ? ' checked' : ''} onclick="event.stopPropagation()" onchange="as2SetGroupSelected(decodeURIComponent('${groupArg}'), this.checked)" title="勾选/取消该联系人整行套装">`
+        : '<span class="inline-block" style="width:13px"></span>';
+      return `<tr class="as2-plan-row border-t border-slate-100${rowSelected ? ' as2-row-selected' : ''}" data-as2-group="${as2Esc(g.key)}" data-as2-draft-ids="${as2Esc(draftIds.join(','))}" onmouseenter="as2MaybeDragSelectRow(this)">
+        <td class="px-2 py-1" title="${as2Esc(it.company_name)}">${as2Esc(it.company_head || '-')}</td>
+        <td class="px-2 py-1">${contactCell}</td>
+        ${salesCell}
+        <td class="px-2 py-1"><div class="as2-suite-cell" onmousedown="as2StartRowDrag(event, this.closest('tr'))">${suiteCheckbox}<span class="as2-suite-name" title="${as2Esc(it.scenario_label_cn || it.scenario || '')}">${as2Esc(it.scenario_label_cn)}</span></div></td>
+        <td class="px-2 py-1">${as2StepBtn(g.steps[1])}</td>
+        <td class="px-2 py-1">${as2StepBtn(g.steps[2])}</td>
+        <td class="px-2 py-1">${as2StepBtn(g.steps[3])}</td>
+        <td class="px-2 py-1">${as2StepBtn(g.steps[4])}</td>
+      </tr>`;
     }
     function as2PlanRowsHtml(items, emptyText) {
       const groups = as2PlanGroups(items);
@@ -2627,26 +2730,7 @@
       const salesCol = as2SalesColVisible();
       const colspan = salesCol ? 8 : 7;
       if (!keys.length) return `<tr><td colspan="${colspan}" class="px-2 py-3 text-slate-400">${as2Esc(emptyText || '暂无排期。')}</td></tr>`;
-      return keys.map((k) => {
-        const g = groups[k];
-        const it = g.it;
-        const hasGen = Object.values(g.steps).some((s) => s && (s.status === 'drafted' || s.status === 'sent'));
-        const contactBase = hasGen
-          ? `<button type="button" class="text-indigo-600 underline" onclick="as2ShowPersonByContact('${as2Esc(it.contact_id)}','${as2Esc(it.scenario)}')" title="点开查看该联系人已生成的邮件">${as2Esc(it.contact_name || it.contact_id)}</button>`
-          : as2Esc(it.contact_name || it.contact_id);
-        const contactCell = `${contactBase}${suiteRecordsButton(it.contact_id)}`;
-        const salesCell = salesCol ? `<td class="px-2 py-1 whitespace-nowrap">${as2Esc(as2StaffName(as2OwnerStaffId(it)))}</td>` : '';
-        return `<tr class="border-t border-slate-100">
-          <td class="px-2 py-1" title="${as2Esc(it.company_name)}">${as2Esc(it.company_head || '-')}</td>
-          <td class="px-2 py-1">${contactCell}</td>
-          ${salesCell}
-          <td class="px-2 py-1">${as2Esc(it.scenario_label_cn)}</td>
-          <td class="px-2 py-1">${as2StepBtn(g.steps[1])}</td>
-          <td class="px-2 py-1">${as2StepBtn(g.steps[2])}</td>
-          <td class="px-2 py-1">${as2StepBtn(g.steps[3])}</td>
-          <td class="px-2 py-1">${as2StepBtn(g.steps[4])}</td>
-        </tr>`;
-      }).join('');
+      return keys.map((k) => as2PlanGroupRowHtml(groups[k], salesCol)).join('');
     }
     function as2PlanGroupCount(items) { return Object.keys(as2PlanGroups(items)).length; }
     function as2RenderPlanTable(title, items, emptyText, noteHtml) {
@@ -2654,7 +2738,7 @@
         <div class="text-xs font-bold text-slate-700 mb-2">${as2Esc(title || '排期清单')} <span class="text-slate-500 font-normal">(${(items || []).length} 封 / ${as2PlanGroupCount(items)} 个联系人套装)</span></div>
         ${noteHtml || ''}
         <div class="overflow-auto min-h-[65vh]">
-          <table class="w-full text-xs">
+          <table class="as2-plan-table w-full text-xs">
             <thead class="bg-slate-50"><tr class="text-slate-600">
               <th class="px-2 py-1 text-left">公司(前6字)</th>
               <th class="px-2 py-1 text-left">联系人</th>
@@ -2670,27 +2754,111 @@
         </div>
       </div>`;
     }
+    let as2PlanRenderSeq = 0;
     function as2RenderPlan() {
       const tb = document.getElementById('as2-plan-tbody');
       const cnt = document.getElementById('as2-plan-count');
       if (!tb) return;
       document.querySelectorAll('[data-sales-col]').forEach((el) => el.classList.toggle('hidden', !as2SalesColVisible()));
-      const groupCount = as2PlanGroupCount(as2PlanItems);
-      if (cnt) cnt.textContent = `(${as2PlanItems.length} 封 / ${groupCount} 个联系人套装)`;
-      tb.innerHTML = as2PlanRowsHtml(as2PlanItems, '暂无排期。配置规则后点"预览排期(入清单)"。');
+      const salesCol = as2SalesColVisible();
+      const groups = as2PlanGroups(as2PlanItems);
+      const keys = Object.keys(groups);
+      if (cnt) cnt.textContent = `(${as2PlanItems.length} 封 / ${keys.length} 个联系人套装)`;
+      const seq = ++as2PlanRenderSeq;   // 新一轮渲染, 令上一轮未完成的分块循环失效, 避免并发交叠
+      if (!keys.length) {
+        tb.innerHTML = `<tr><td colspan="${salesCol ? 8 : 7}" class="px-2 py-3 text-slate-400">暂无排期。配置规则后点"预览排期(入清单)"。</td></tr>`;
+        return;
+      }
+      // 分块渲染: 一次只拼 ~120 个套装组的行, setTimeout 让出主线程,
+      // 数千封的清单逐步显示、浏览器不卡(数据已一次到位, 只是 DOM 分批出)。
+      tb.innerHTML = '';
+      const CHUNK = 120;
+      let i = 0;
+      const step = () => {
+        if (seq !== as2PlanRenderSeq) return;   // 已被更新的渲染取代, 停止本轮
+        const slice = keys.slice(i, i + CHUNK);
+        if (!slice.length) return;
+        tb.insertAdjacentHTML('beforeend', slice.map((k) => as2PlanGroupRowHtml(groups[k], salesCol)).join(''));
+        as2SyncPlanSelectionDom();
+        i += CHUNK;
+        if (i < keys.length) setTimeout(step, 0);
+      };
+      step();
     }
-    function as2ToggleSelect(id) { if (as2Selected.has(id)) as2Selected.delete(id); else as2Selected.add(id); }
+    function as2DraftIdsFromRow(row) {
+      return String((row && row.dataset && row.dataset.as2DraftIds) || '').split(',').map((s) => s.trim()).filter(Boolean);
+    }
+    function as2SetItemSelected(id, on, sync = true) {
+      id = String(id || '').trim();
+      if (!id) return;
+      if (on) as2Selected.add(id); else as2Selected.delete(id);
+      if (sync) as2SyncPlanSelectionDom();
+    }
+    function as2ToggleSelect(id) {
+      id = String(id || '').trim();
+      as2SetItemSelected(id, !as2Selected.has(id));
+    }
+    function as2SetGroupSelected(groupKey, on, sync = true) {
+      const row = document.querySelector(`[data-as2-group="${CSS.escape(String(groupKey || ''))}"]`);
+      as2DraftIdsFromRow(row).forEach((id) => as2SetItemSelected(id, on, false));
+      if (sync) as2SyncPlanSelectionDom();
+    }
+    function as2SyncPlanSelectionDom() {
+      document.querySelectorAll('[data-as2-item]').forEach((wrap) => {
+        const id = wrap.dataset.as2Item || '';
+        wrap.classList.toggle('as2-selected', as2Selected.has(id));
+      });
+      document.querySelectorAll('[data-as2-item-check]').forEach((cb) => {
+        cb.checked = as2Selected.has(cb.dataset.as2ItemCheck || '');
+      });
+      document.querySelectorAll('[data-as2-group]').forEach((row) => {
+        const ids = as2DraftIdsFromRow(row);
+        const selected = ids.filter((id) => as2Selected.has(id)).length;
+        const all = ids.length > 0 && selected === ids.length;
+        const some = selected > 0 && !all;
+        row.classList.toggle('as2-row-selected', selected > 0);
+        const cb = row.querySelector('[data-as2-group-check]');
+        if (cb) { cb.checked = all; cb.indeterminate = some; }
+      });
+    }
     async function as2SelectAll(on) {
       if (on) { try { await as2LoadPlan(); } catch (e) {} }  // 先刷新到最新, 避免与后台生成时序竞争导致漏选
       as2Selected = new Set();
       if (on) as2PlanItems.filter((it) => it.status === 'drafted').forEach((it) => as2Selected.add(it.item_id));
-      as2RenderPlan();
+      as2SyncPlanSelectionDom();
     }
     function as2SelectInvert() {
       const next = new Set();
       as2PlanItems.filter((it) => it.status === 'drafted').forEach((it) => { if (!as2Selected.has(it.item_id)) next.add(it.item_id); });
-      as2Selected = next; as2RenderPlan();
+      as2Selected = next;
+      as2SyncPlanSelectionDom();
     }
+    let as2RowDrag = null;
+    function as2StartRowDrag(event, row) {
+      if (!row || event.button !== 0) return;
+      if (event.target && event.target.closest('input,select,textarea,button,a,label')) return;
+      const ids = as2DraftIdsFromRow(row);
+      if (!ids.length) return;
+      const on = ids.some((id) => !as2Selected.has(id));
+      as2RowDrag = { on, seen: new Set() };
+      document.body.classList.add('as2-dragging-select');
+      event.preventDefault();
+      as2ApplyDragSelectRow(row);
+    }
+    function as2ApplyDragSelectRow(row) {
+      if (!as2RowDrag || !row) return;
+      const key = row.dataset.as2Group || '';
+      if (as2RowDrag.seen.has(key)) return;
+      as2RowDrag.seen.add(key);
+      as2DraftIdsFromRow(row).forEach((id) => as2SetItemSelected(id, as2RowDrag.on, false));
+      as2SyncPlanSelectionDom();
+    }
+    function as2MaybeDragSelectRow(row) { as2ApplyDragSelectRow(row); }
+    document.addEventListener('mouseup', () => {
+      if (!as2RowDrag) return;
+      as2RowDrag = null;
+      document.body.classList.remove('as2-dragging-select');
+    });
     async function as2Generate() {
       const staffIds = as2StaffIds();
       if (!staffIds.length) { as2Status('未限定销售, 无法生成。', true); return; }
@@ -2826,8 +2994,8 @@
     function as2BuildPersons() {
       const map = new Map();
       (as2PlanItems || []).forEach((it) => {
-        const key = (it.owner_staff_id || '') + '::' + it.contact_id + '::' + it.scenario;
-        if (!map.has(key)) map.set(key, { key, contact_id: it.contact_id, scenario: it.scenario, company_head: it.company_head, contact_name: it.contact_name, scenario_label_cn: it.scenario_label_cn, items: [] });
+        const key = as2PersonGroupKey(it);
+        if (!map.has(key)) map.set(key, { key, owner_staff_id: as2OwnerStaffId(it), contact_key: as2ContactIdentity(it), contact_id: it.contact_id, scenario: it.scenario, company_head: it.company_head, contact_name: it.contact_name, scenario_label_cn: it.scenario_label_cn, items: [] });
         map.get(key).items.push(it);
       });
       as2Persons = Array.from(map.values());
@@ -2849,11 +3017,19 @@
     // 点排期清单里的联系人/某封 -> 打开该人
     function as2OpenDetail(itemId) {
       const it = (as2PlanItems || []).find((x) => x.item_id === itemId);
-      if (it) as2ShowPersonByContact(it.contact_id, it.scenario);
+      if (it) as2ShowPersonByKey(as2PersonGroupKey(it));
     }
-    async function as2ShowPersonByContact(contactId, scenario) {
+    async function as2ShowPersonByKey(key) {
       as2BuildPersons();
-      let idx = as2Persons.findIndex((p) => p.contact_id === contactId && (!scenario || p.scenario === scenario));
+      const idx = as2Persons.findIndex((p) => p.key === key);
+      if (idx < 0) return;
+      await as2ShowPerson(idx);
+    }
+    async function as2ShowPersonByContact(contactId, scenario, ownerStaffId) {
+      as2BuildPersons();
+      const owner = String(ownerStaffId || '').trim();
+      let idx = as2Persons.findIndex((p) => p.contact_id === contactId && (!scenario || p.scenario === scenario) && (!owner || p.owner_staff_id === owner));
+      if (idx < 0) idx = as2Persons.findIndex((p) => p.contact_id === contactId && (!scenario || p.scenario === scenario));
       if (idx < 0) idx = as2Persons.findIndex((p) => p.contact_id === contactId);
       if (idx < 0) return;
       await as2ShowPerson(idx);
@@ -2889,6 +3065,13 @@
             const cr = await fetch(item.spqueue_rowid ? ('/api/v1/mail/autosend/crm-mail?rowid=' + encodeURIComponent(item.spqueue_rowid)) : ('/api/v1/mail/autosend/crm-mail?send_id=' + encodeURIComponent(item.crm_send_id || '') + '&staff_id=' + encodeURIComponent(as2OwnerStaffId(item))), { credentials: 'include' });
             const cd = await cr.json();
             if (!cr.ok) { card.innerHTML = `<div class="text-xs" style="color:#dc2626">第${it.suite_step}封 CRM读取失败: ${as2Esc(cd.detail || cr.status)}</div>`; continue; }
+            const expectedEmail = as2ExpectedEmail(item) || as2ExpectedEmail(it);
+            if (!as2CrmMailMatchesExpected(cd.item || {}, expectedEmail)) {
+              const crmEmail = as2EmailKey((cd.item || {}).receiver || '');
+              card.innerHTML = `<div class="text-xs font-bold text-rose-700 mb-2">第${it.suite_step}封 CRM行收件人不匹配，已拦截错误正文：当前联系人 ${as2Esc(expectedEmail || '-')}，CRM返回 ${as2Esc(crmEmail || '-')}</div>`
+                + as2PersonCardHtml(ci, { ...item, status: 'sent' }, it.item_id);
+              continue;
+            }
             card.innerHTML = as2CrmCardHtml(ci, cd.item || {});
           } else {
             card.innerHTML = as2PersonCardHtml(ci, item, it.item_id);
@@ -3091,8 +3274,8 @@
       const title = `${state.label} · ${it.status || ''} · ${it.subject || ''}`;
       const st = String(it.status || '').toLowerCase();
       let click = '';
-      if (it._kind === 'crm' && it.rowid) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'crm', rowid:'${as2Esc(it.rowid)}'}])"`;
-      else if (['sent_done', 'crm_sent', 'send_success'].includes(st) && it.crm_send_id) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'sent', send_id:'${as2Esc(it.crm_send_id)}', staff_id:'${as2Esc(as2OwnerStaffId(it))}'}])"`;
+      if (it._kind === 'crm' && it.rowid) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'crm', rowid:'${as2Esc(it.rowid)}', expected_email:'${as2Esc(as2ExpectedEmail(it))}'}])"`;
+      else if (['sent_done', 'crm_sent', 'send_success'].includes(st) && it.crm_send_id) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'sent', send_id:'${as2Esc(it.crm_send_id)}', staff_id:'${as2Esc(as2OwnerStaffId(it))}', expected_email:'${as2Esc(as2ExpectedEmail(it))}'}])"`;
       else if (it.item_id) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'local', item_id:'${as2Esc(it.item_id)}'}])"`;
       // 取消: 本地预排期(未转入CRM) -> 删本地; CRM待发(本系统AI入队, 未实发) -> 删CRM行; 已发送不可取消
       const cancelLocal = it._kind !== 'crm' && it.item_id && !['sent', 'sent_done', 'crm_sent', 'send_success'].includes(st);
@@ -3145,14 +3328,12 @@
       if (!it) return '';
       if (it._group_key) return it._group_key;
       const scenario = String(it.scenario || '').trim();
-      const contactId = String(it.customer_id || it.contact_id || '').trim();
-      if (contactId && scenario && scenario !== 'crm_pending') return `local:${contactId}::${scenario}`;
-      const company = String(it.company_name || it.company_head || '').trim().toLowerCase();
-      const contact = String(it.contact_name || '').trim().toLowerCase();
-      if (company && contact && scenario && scenario !== 'crm_pending') return `name:${company}::${contact}::${scenario}`;
+      const owner = as2OwnerStaffId(it);
+      const contactKey = as2ContactIdentity(it);
+      if (scenario && scenario !== 'crm_pending') return `local:${owner}::${scenario}::${contactKey}`;
       const email = String(it.recipient_email || '').trim().toLowerCase();
-      if (email && email.includes('@')) return `crm:${email}`;
-      return `local:${contactId}::${scenario}`;
+      if (email && email.includes('@')) return `crm:${owner}::${email}`;
+      return `local:${owner}::${scenario}::${contactKey}`;
     }
     function cal1StepPriority(it) {
       const raw = String((it && it.status) || '').toLowerCase();
@@ -3233,7 +3414,7 @@
         const it = g.it;
         const canShowSuiteRecords = it.contact_id && (it.mapped || it._kind !== 'crm');
         const contactCell = `${as2Esc(it.contact_name || it.contact_id || '-')}${canShowSuiteRecords ? suiteRecordsButton(it.contact_id) : ''}`;
-        const salesCell = salesCol ? `<td class="px-2 py-1 whitespace-nowrap">${as2Esc(as2StaffName(as2OwnerStaffId(it)))}</td>` : '';
+        const salesCell = salesCol ? `<td class="px-2 py-1 whitespace-nowrap">${as2Esc(as2SenderLabel(it))}</td>` : '';
         return `<tr class="border-t border-slate-100">
           <td class="px-2 py-1" title="${as2Esc(it.company_name || '')}">${as2Esc(it.company_head || '-')}</td>
           <td class="px-2 py-1">${contactCell}</td>
@@ -3493,6 +3674,12 @@
             const r = await fetch(e.kind === 'sent' ? ('/api/v1/mail/autosend/crm-mail?send_id=' + encodeURIComponent(e.send_id || '') + '&staff_id=' + encodeURIComponent(e.staff_id || '')) : ('/api/v1/mail/autosend/crm-mail?rowid=' + encodeURIComponent(e.rowid)), { credentials: 'include' });
             const d = await r.json();
             if (!r.ok) { card.innerHTML = `<div class="text-xs" style="color:#dc2626">${idx + 1}. 读取失败: ${as2Esc(d.detail || r.status)}</div>`; continue; }
+            const expectedEmail = e.expected_email || '';
+            if (expectedEmail && !as2CrmMailMatchesExpected(d.item || {}, expectedEmail)) {
+              const crmEmail = as2EmailKey((d.item || {}).receiver || '');
+              card.innerHTML = `<div class="text-xs font-bold text-rose-700">${idx + 1}. CRM行收件人不匹配，已拦截错误正文：当前联系人 ${as2Esc(expectedEmail)}，CRM返回 ${as2Esc(crmEmail || '-')}</div>`;
+              continue;
+            }
             card.innerHTML = as2CrmCardHtml(idx, d.item || {});
           } else {
             const r = await fetch('/api/v1/mail/autosend/plan-item?item_id=' + encodeURIComponent(e.item_id), { credentials: 'include' });
@@ -3505,6 +3692,20 @@
     }
     // 从序列化 Receiver 里取收件邮箱
     function as2ReceiverEmail(raw) { const m = String(raw || '').match(/<([^<>@\s]+@[^<>\s]+)>/); return m ? m[1] : ''; }
+    function as2EmailKey(raw) {
+      const s = String(raw || '').trim();
+      const fromReceiver = as2ReceiverEmail(s);
+      if (fromReceiver) return fromReceiver.toLowerCase();
+      const m = s.match(/([^<>\s,;，；]+@[^<>\s,;，；]+)/);
+      return m ? m[1].toLowerCase() : '';
+    }
+    function as2ExpectedEmail(it) { return as2EmailKey((it && (it.recipient_email || it.receiver || it.to_emails || it.email || it.to_email)) || ''); }
+    function as2CrmMailMatchesExpected(crmItem, expectedEmail) {
+      const expected = as2EmailKey(expectedEmail || '');
+      if (!expected) return true;
+      const actual = as2EmailKey((crmItem && (crmItem.receiver || crmItem.to_emails || crmItem.recipient_email)) || '');
+      return !!actual && actual === expected;
+    }
     function as2CrmCardHtml(idx, it) {
       const email = as2ReceiverEmail(it.receiver) || '';
       const dtv = String(it.plan_time || '').replace(' ', 'T').slice(0, 16);

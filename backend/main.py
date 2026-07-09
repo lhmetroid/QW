@@ -20952,6 +20952,7 @@ class AutosendDryRunRequest(BaseModel):
     sales_staff_ids: list[str] | None = None
     consider_existing_crm_queue: bool = True
     company_name_like: str = ""             # 公司名模糊筛选(默认空=不生效)
+    email_domain_like: str = ""             # 邮箱后缀模糊筛选, 多个逗号隔开命中任一即可(默认空=不生效)
     exclude_recent_suite_days: int | None = None   # 近N天发过套装则跳过(默认空=不生效)
     partial_sent_default: str = "remaining"        # 已发部分套装的全局默认模式
     skip_non_workdays: bool | None = None
@@ -20989,7 +20990,7 @@ def autosend_dry_run(payload: AutosendDryRunRequest, db: Session = Depends(get_d
     elif payload.sales_staff_ids:
         contacts = _autosend_load_contacts_for_sales(
             payload.sales_staff_ids, only_valid_email=True, company_name_like=payload.company_name_like,
-            email_valid_mode=_mail_get_email_valid_mode())
+            email_valid_mode=_mail_get_email_valid_mode(), email_domain_like=payload.email_domain_like)
         source = "crm_sales"
         rules = payload.rules
     else:
@@ -21472,6 +21473,7 @@ class AutosendPreviewRequest(BaseModel):
     rules: list[dict] = []
     fallback_enabled: bool = True
     company_name_like: str = ""
+    email_domain_like: str = ""
     exclude_recent_suite_days: int | None = None
     partial_sent_default: str = "remaining"
     consider_existing_crm_queue: bool = True
@@ -21620,7 +21622,8 @@ def autosend_preview(payload: AutosendPreviewRequest, db: Session = Depends(get_
     owner_scope = [staff] if staff else []
     contacts = _autosend_load_contacts_for_sales(owner_scope, only_valid_email=True,
                                                  company_name_like=payload.company_name_like,
-                                                 email_valid_mode=evm)
+                                                 email_valid_mode=evm,
+                                                 email_domain_like=payload.email_domain_like)
     contacts = _autosend_sort_contacts(contacts, payload.sort_rule)
     # 已在未转入清单里的联系人 -> 本次不重复排(叠加不重叠)
     pending_params = {"s": staff} if staff else {}
@@ -24088,7 +24091,8 @@ def _autosend_pending_latest_map(db, contacts: list[dict], staff_ids: list[str])
 
 def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bool = True,
                                       company_name_like: str = "", email_valid_mode: str = "collect",
-                                      contact_ids: list[str] | None = None) -> list[dict]:
+                                      contact_ids: list[str] | None = None,
+                                      email_domain_like: str = "") -> list[dict]:
     """从 CRM 取指定销售名下、有有效邮箱的联系人, 并按人聚合历史累计销售合同额/末次合作/业务线。
 
     口径(均按联系人 ContactId):
@@ -24097,6 +24101,8 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
     - 业务线 = DISTINCT BusinessType。
     - 有效邮箱 = usrCustomerContactCommunicateNo(ContactEmail, IsCollect='正确')。
     - company_name_like: 非空时按 usrCustomer.CompanyName 模糊匹配筛选(默认空=不生效)。
+    - email_domain_like: 非空时按有效邮箱的域名(@ 之后)模糊匹配筛选(默认空=不生效)。
+      与 staff_ids/company_name_like 是"且"的关系; 自身多个后缀用逗号隔开, 命中任一即选中(OR)。
     """
     staff_ids = [s for s in (staff_ids or []) if s]
     all_staff = not bool(staff_ids)
@@ -24105,6 +24111,17 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
     company_like = sanitize_text(company_name_like or "").strip()
     # 支持多个公司名: 用中英文逗号隔开, 每个都做模糊(LIKE)匹配, 任一命中即选中(OR 关系)
     company_tokens = [t for t in (s.strip() for s in re.split(r"[,，]", company_like)) if t] if company_like else []
+    # 邮箱后缀: 同样中英文逗号隔开, 逐个对域名做子串模糊匹配, 命中任一即选中(OR 关系)。
+    # 允许写 163 / 163.com / @163.com 三种写法, 统一去掉前导 @ 并转小写后比对。
+    domain_like = sanitize_text(email_domain_like or "").strip()
+    domain_tokens = [t for t in (s.strip().lstrip("@").lower() for s in re.split(r"[,，]", domain_like)) if t] if domain_like else []
+
+    def _email_domain_hit(addr: str | None) -> bool:
+        if not domain_tokens:
+            return True
+        dom = str(addr or "").rsplit("@", 1)[-1].lower() if addr and "@" in str(addr) else ""
+        return any(tok in dom for tok in domain_tokens)
+
     out: list[dict] = []
     try:
         from crm_database import CRMSessionLocal
@@ -24214,6 +24231,8 @@ def _autosend_load_contacts_for_sales(staff_ids: list[str], only_valid_email: bo
             for cid, owner in contacts_map.items():
                 email = email_map.get(cid)
                 if only_valid_email and not email:
+                    continue
+                if not _email_domain_hit(email):   # 邮箱后缀筛选(留空不生效); 无邮箱者在有后缀条件时一律不命中
                     continue
                 agg = agg_map.get(cid) or {}
                 last_t = agg.get("last_t")
