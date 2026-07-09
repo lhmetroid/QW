@@ -21246,12 +21246,22 @@ def get_autosend_sales_staff_names(ids: str = Query("")):
 # 自动群发: 销售锁定 + 排期持久化 + 后台生成 + 转入CRM + 日历(发送计划工作台)
 # ============================================================================
 
-_AUTOSEND_GEN_ACTIVE: dict = {}   # 正在后台生成的销售工号 -> 最后心跳时刻(monotonic); worker 每封续期一次
+# 正在后台生成的销售工号 -> {"token": 本次 worker 的唯一凭据, "beat": 最后心跳(monotonic)}。
+# token 用于"接管": watchdog 判定卡死后会强制放锁并另起 worker, 此时旧线程可能还阻塞在 LLM 调用里。
+# 旧线程醒来后走 finally 只会凭自己的 token 放锁, 认不出新锁 -> 不会把接管者的锁误删。
+_AUTOSEND_GEN_ACTIVE: dict = {}
 _AUTOSEND_GEN_LOCK = threading.Lock()
 # 超过此秒数没有心跳视为 worker 已挂(线程崩了没走 finally 释放), 自动清锁放行重跑。
 # 因 worker 逐封(且每次重试前)续期, 只需 > 单封单次生成最坏耗时即可, 不再要求整批在窗口内跑完;
-# 故大批次(如几千封)也绝不会被误判挂死, 同时真挂了 10 分钟内自愈。
-_AUTOSEND_GEN_STALE_SECONDS = 600
+# 故大批次(如几千封)也绝不会被误判挂死, 同时真挂了 15 分钟内自愈。与卡死判定同窗口, 二者语义一致。
+_AUTOSEND_GEN_STALE_SECONDS = 900
+# 单封 drafting 超过此秒数没有任何进展 = 卡死(线程阻塞在 LLM/CRM 调用上, Python 无法强杀)。
+# watchdog 把该封判 failed 跳过, 放锁并另起 worker 接着做剩下的, 避免整批卡在一封上。
+_AUTOSEND_STUCK_SECONDS = 900
+# watchdog 巡检间隔; 兼做"重启后自动续跑"的入口(首轮即扫描 queued 并拉起 worker)。
+_AUTOSEND_WATCHDOG_INTERVAL_SECONDS = 60
+# 出厂即开; 需要临时禁掉"重启自动续跑 + 卡死自愈"时设环境变量 MAIL_AUTOSEND_AUTO_RESUME=0
+_AUTOSEND_AUTO_RESUME = os.getenv("MAIL_AUTOSEND_AUTO_RESUME", "1").strip() != "0"
 
 # 未转入CRM的在册状态。queued = 已点"后台生成"、已入队但还没轮到(worker 逐封串行),
 # 落库而非只存内存: 关页面/重启后端后仍能区分"只预排过"(planned) 与"已请求生成尚未完成"(queued)。
@@ -21262,40 +21272,54 @@ _AUTOSEND_EXISTING_SUITE_OFFSET_DAYS = 7
 
 def _autosend_is_running(staff: str) -> bool:
     with _AUTOSEND_GEN_LOCK:
-        last_beat = _AUTOSEND_GEN_ACTIVE.get(staff)
-        if last_beat is None:
+        cur = _AUTOSEND_GEN_ACTIVE.get(staff)
+        if not cur:
             return False
-        if time.monotonic() - last_beat > _AUTOSEND_GEN_STALE_SECONDS:
+        if time.monotonic() - cur["beat"] > _AUTOSEND_GEN_STALE_SECONDS:
             _AUTOSEND_GEN_ACTIVE.pop(staff, None)   # 心跳超时自愈: worker 已挂, 清锁视为未运行
             return False
         return True
 
 
-def _autosend_mark_running(staff: str) -> bool:
-    """Return False when this staff already has an active (heartbeating) in-process worker.
+def _autosend_mark_running(staff: str) -> str | None:
+    """抢锁成功返回本次 worker 的 token; 该销售已有活着(还在心跳)的 worker 时返回 None。
 
     自愈: 最后心跳超过 _AUTOSEND_GEN_STALE_SECONDS(worker线程挂了不再续期也没走 finally 释放)则覆盖放行,
     避免"每次点后台生成都 already_running 空转、失败项永远轮不到重跑"。
     """
     with _AUTOSEND_GEN_LOCK:
-        last_beat = _AUTOSEND_GEN_ACTIVE.get(staff)
-        if last_beat is not None and (time.monotonic() - last_beat) <= _AUTOSEND_GEN_STALE_SECONDS:
-            return False
-        _AUTOSEND_GEN_ACTIVE[staff] = time.monotonic()
-        return True
+        cur = _AUTOSEND_GEN_ACTIVE.get(staff)
+        if cur and (time.monotonic() - cur["beat"]) <= _AUTOSEND_GEN_STALE_SECONDS:
+            return None
+        token = uuid.uuid4().hex
+        _AUTOSEND_GEN_ACTIVE[staff] = {"token": token, "beat": time.monotonic()}
+        return token
 
 
-def _autosend_heartbeat(staff: str) -> None:
+def _autosend_heartbeat(staff: str, token: str) -> None:
     """worker 存活续期: 每处理一封(及每次重试前)刷新心跳, 使长批次(逐封耗时累加)不被 stale 误判挂死。
-    只在锁仍属于本 staff 时续期(已被自愈清掉或被新 worker 接管则不复活), 避免僵尸线程干扰。"""
+    只在锁仍属于本次 worker(token 相符)时续期; 已被 watchdog 接管的僵尸线程不能复活自己的锁。"""
     with _AUTOSEND_GEN_LOCK:
-        if staff in _AUTOSEND_GEN_ACTIVE:
-            _AUTOSEND_GEN_ACTIVE[staff] = time.monotonic()
+        cur = _AUTOSEND_GEN_ACTIVE.get(staff)
+        if cur and cur["token"] == token:
+            cur["beat"] = time.monotonic()
 
 
-def _autosend_mark_done(staff: str) -> None:
+def _autosend_owns_lock(staff: str, token: str) -> bool:
+    """本 worker 是否仍持有该销售的锁(被 watchdog 接管后为 False, worker 应自行退出)。"""
     with _AUTOSEND_GEN_LOCK:
-        _AUTOSEND_GEN_ACTIVE.pop(staff, None)
+        cur = _AUTOSEND_GEN_ACTIVE.get(staff)
+        return bool(cur and cur["token"] == token)
+
+
+def _autosend_mark_done(staff: str, token: str | None = None) -> None:
+    """token 非空 = 只放自己那把锁(接管后不误删新 worker 的锁); token 为空 = 强制放锁(watchdog 用)。"""
+    with _AUTOSEND_GEN_LOCK:
+        cur = _AUTOSEND_GEN_ACTIVE.get(staff)
+        if not cur:
+            return
+        if token is None or cur["token"] == token:
+            _AUTOSEND_GEN_ACTIVE.pop(staff, None)
 
 
 def _autosend_recover_orphan_drafting(db: Session, staff: str) -> int:
@@ -21794,10 +21818,11 @@ def _autosend_generate_one(customer_id: str, scenario: str, step: int) -> dict:
             "llm_prompt": draft.get("llm_prompt") or "", "recipient_email": draft_contact_email}
 
 
-def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> None:
+def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None, token: str = "") -> None:
     """后台逐封生成: 取 queued 的 plan_item(入队由 /autosend/generate 完成), 逐个真调生成, 写回 drafted/failed。
 
-    串行: 同一时刻只有 1 封 drafting, 其余留在 queued 排队。中断后 queued 不丢, 可再点"继续生成"接着做。
+    串行: 同一时刻只有 1 封 drafting, 其余留在 queued 排队。中断后 queued 不丢(重启由 watchdog 自动续跑)。
+    token: 本次 worker 的锁凭据。被 watchdog 判卡死接管后, 本线程一旦醒来就自行退出, 不与接管者抢活。
     """
     try:
         db = SessionLocal()
@@ -21814,7 +21839,10 @@ def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> 
         finally:
             db.close()
         for item_id, customer_id, contact_id, scenario, step in rows:
-            _autosend_heartbeat(staff)   # 逐封续期: 大批次逐封耗时累加也不会被 stale 误判挂死
+            if token and not _autosend_owns_lock(staff, token):
+                logger.warning("AUTOSEND_GEN_WORKER_PREEMPTED staff=%s: 锁已被 watchdog 接管, 本线程退出", staff)
+                return
+            _autosend_heartbeat(staff, token)   # 逐封续期: 大批次逐封耗时累加也不会被 stale 误判挂死
             cid = (customer_id or contact_id)
             d2 = SessionLocal()
             try:
@@ -21832,7 +21860,7 @@ def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> 
             try:
                 gen = None
                 for _attempt in range(3):   # 瞬时错(CRM连接抖动/画像临时查不到等)自动重试, 避免一次抖动就永久 failed
-                    _autosend_heartbeat(staff)   # 每次重试前续期: 单封多次重试也不会跨过 stale 窗口
+                    _autosend_heartbeat(staff, token)   # 每次重试前续期: 单封多次重试也不会跨过 stale 窗口
                     try:
                         gen = _autosend_generate_one(cid, scenario, int(step))
                         break
@@ -21842,6 +21870,11 @@ def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> 
                         logger.warning("AUTOSEND_GEN_ITEM_RETRY item=%s attempt=%s/3: %s",
                                        item_id, _attempt + 1, str(_retry_exc)[:200])
                         time.sleep(1.5 * (_attempt + 1))
+                # 本封若已被 watchdog 判卡死(failed)并另起 worker 接管, 这里的结果就是"迟到的",
+                # 再写库会与接管者重复生成同一封。持锁校验不过就丢弃, 不写库。
+                if token and not _autosend_owns_lock(staff, token):
+                    logger.warning("AUTOSEND_GEN_ITEM_DISCARD item=%s staff=%s: 锁已被接管, 丢弃本封迟到结果", item_id, staff)
+                    return
                 d3 = SessionLocal()
                 try:
                     d3.execute(
@@ -21861,6 +21894,9 @@ def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> 
                 finally:
                     d3.close()
             except Exception as exc:
+                if token and not _autosend_owns_lock(staff, token):
+                    logger.warning("AUTOSEND_GEN_ITEM_DISCARD_ERR item=%s staff=%s: 锁已被接管, 不回写失败态", item_id, staff)
+                    return
                 d4 = SessionLocal()
                 try:
                     d4.execute(text("UPDATE mail_autosend_plan_item SET status='failed', gen_error=:e, updated_at=now() WHERE item_id=:i"),
@@ -21872,7 +21908,7 @@ def _autosend_generate_worker(staff: str, item_ids: list[str] | None = None) -> 
     except Exception:
         logger.exception("AUTOSEND_GEN_WORKER_FAILED staff=%s", staff)
     finally:
-        _autosend_mark_done(staff)
+        _autosend_mark_done(staff, token or None)   # 只放自己那把锁, 不误删接管者的
 
 
 class AutosendGenerateRequest(BaseModel):
@@ -21923,19 +21959,20 @@ def autosend_generate(payload: AutosendGenerateRequest, db: Session = Depends(ge
     if _autosend_is_running(staff):
         return {"ok": True, "started": False, "already_running": True}
     recovered = _autosend_recover_orphan_drafting(db, staff)   # drafting -> queued
-    if not _autosend_mark_running(staff):
+    token = _autosend_mark_running(staff)
+    if not token:
         return {"ok": True, "started": False, "already_running": True, "recovered_drafting": recovered}
     try:
         enqueued = _autosend_enqueue(db, staff, payload.item_ids)
         pending = _autosend_queued_count(db, staff, payload.item_ids)
     except Exception:
-        _autosend_mark_done(staff)   # 入队失败必须放锁, 否则该销售 10 分钟内点不动
+        _autosend_mark_done(staff, token)   # 入队失败必须放锁, 否则该销售 15 分钟内点不动
         raise
     if not pending:
-        _autosend_mark_done(staff)
+        _autosend_mark_done(staff, token)
         return {"ok": True, "started": False, "pending": 0, "enqueued": enqueued,
                 "recovered_drafting": recovered, "note": "没有待生成的排期"}
-    threading.Thread(target=_autosend_generate_worker, args=(staff, payload.item_ids), daemon=True).start()
+    threading.Thread(target=_autosend_generate_worker, args=(staff, payload.item_ids, token), daemon=True).start()
     return {"ok": True, "started": True, "pending": pending, "enqueued": enqueued, "recovered_drafting": recovered}
 
 
@@ -21954,10 +21991,93 @@ def autosend_generate_status(staff_id: str = Query(""), db: Session = Depends(ge
     remaining = int(counts.get("planned", 0) + counts.get("queued", 0)
                     + counts.get("drafting", 0) + counts.get("failed", 0))
     queued = int(counts.get("queued", 0) + counts.get("drafting", 0))
-    # 已请求生成但没人在跑 = 上次被关服务/崩线程打断; 前端据此把按钮显示成"继续生成(N封)"。
+    # 已请求生成但此刻没人在跑: 服务刚重启/worker 刚被接管。watchdog 最迟 1 分钟内自动续跑,
+    # 前端据此显示"待自动继续(N封)", 用户也可手动点按钮立刻续上, 不必等。
     interrupted = (not running) and queued > 0
     return {"ok": True, "staff_id": staff, "running": running, "counts": counts, "remaining": remaining,
-            "queued": queued, "interrupted": interrupted, "recovered_drafting": recovered}
+            "queued": queued, "interrupted": interrupted, "auto_resume": _AUTOSEND_AUTO_RESUME,
+            "recovered_drafting": recovered}
+
+
+def _autosend_fail_stuck_items(db: Session) -> list[str]:
+    """把卡死的封(drafting 超过 _AUTOSEND_STUCK_SECONDS 没有任何进展)判为 failed, 返回涉及的销售工号。
+
+    为什么判 failed 而不是退回 queued: 退回 queued 会让同一封被无限重试, 整批永远推进不下去。
+    判 failed 后 worker 接着做剩下的; 这封与其它生成失败的封同一口径——下次点"后台生成"随入队一起重试。
+    (Python 杀不掉阻塞在 LLM/CRM 调用里的线程, 所以只能"绕过"它: 判失败 + 放锁 + 另起 worker。
+     旧线程醒来后凭 token 发现锁已被接管, 会丢弃迟到结果并自行退出, 不会重复写库。)
+    """
+    rows = db.execute(
+        text("UPDATE mail_autosend_plan_item SET status='failed', gen_error=:e, updated_at=now() "
+             "WHERE status='drafting' AND updated_at < now() - (:sec * interval '1 second') "
+             "RETURNING owner_staff_id, item_id"),
+        {"e": f"生成超过 {_AUTOSEND_STUCK_SECONDS // 60} 分钟无进展，判定卡死并跳过（下次生成会自动重试本封）",
+         "sec": _AUTOSEND_STUCK_SECONDS},
+    ).fetchall()
+    db.commit()
+    staffs: list[str] = []
+    for owner, item_id in rows:
+        logger.warning("AUTOSEND_GEN_ITEM_STUCK item=%s staff=%s -> failed", item_id, owner)
+        if owner and owner not in staffs:
+            staffs.append(str(owner))
+    return staffs
+
+
+def _autosend_resume_workers(db: Session) -> list[str]:
+    """给所有"库里还有 queued 但此刻没人在跑"的销售拉起 worker。重启自动续跑与卡死接管都走这里。"""
+    rows = db.execute(
+        text("SELECT DISTINCT owner_staff_id FROM mail_autosend_plan_item "
+             "WHERE status IN ('queued','drafting') AND COALESCE(owner_staff_id,'') <> ''")
+    ).fetchall()
+    started: list[str] = []
+    for (staff,) in rows:
+        staff = str(staff)
+        if _autosend_is_running(staff):
+            continue
+        _autosend_recover_orphan_drafting(db, staff)   # 无人认领的 drafting -> queued
+        if not _autosend_queued_count(db, staff):
+            continue
+        token = _autosend_mark_running(staff)
+        if not token:
+            continue
+        threading.Thread(target=_autosend_generate_worker, args=(staff, None, token), daemon=True).start()
+        started.append(staff)
+    return started
+
+
+def _autosend_watchdog_loop() -> None:
+    """每分钟一轮: 判卡死 -> 放锁 -> 把还有 queued 的销售自动续跑。首轮即完成"重启后自动恢复"。"""
+    time.sleep(20)   # 让建表/连接池先就绪, 避免服务刚起就抢连接
+    first = True
+    while True:
+        db = None
+        try:
+            db = SessionLocal()
+            for staff in _autosend_fail_stuck_items(db):
+                _autosend_mark_done(staff)   # 强制放锁(旧线程仍阻塞着, 但已被接管)
+            started = _autosend_resume_workers(db)
+            if started:
+                logger.info("AUTOSEND_AUTO_RESUME%s staff=%s",
+                            "_ON_START" if first else "", ",".join(started))
+        except Exception:
+            logger.exception("AUTOSEND_WATCHDOG_TICK_FAILED")
+        finally:
+            if db is not None:
+                db.close()
+        first = False
+        time.sleep(_AUTOSEND_WATCHDOG_INTERVAL_SECONDS)
+
+
+@app.on_event("startup")
+async def start_autosend_watchdog():
+    """后台生成的看门狗: 重启后自动续跑未完成的 queued + 单封卡死 15 分钟自动跳过。
+    需要临时关掉(例如本地调试不想真调大模型)时设 MAIL_AUTOSEND_AUTO_RESUME=0。"""
+    if not _AUTOSEND_AUTO_RESUME:
+        logger.info("AUTOSEND_WATCHDOG_DISABLED (MAIL_AUTOSEND_AUTO_RESUME=0)")
+        return
+    threading.Thread(target=_autosend_watchdog_loop, name="autosend-watchdog", daemon=True).start()
+    logger.info("AUTOSEND_WATCHDOG_STARTED interval=%ss stuck=%ss",
+                _AUTOSEND_WATCHDOG_INTERVAL_SECONDS, _AUTOSEND_STUCK_SECONDS)
 
 
 class AutosendMarkCommittedRequest(BaseModel):
@@ -23945,17 +24065,19 @@ def asr_trigger_confirm(payload: AsrTriggerConfirmRequest, db: Session = Depends
                           skip, holidays)
     started = False
     if payload.start_generate:
+        token = None
         try:
-            if _autosend_mark_running(staff):
+            token = _autosend_mark_running(staff)
+            if token:
                 # worker 只捞 queued, 必须先落库入队, 否则线程空转一圈什么都不做
                 _autosend_enqueue(db, staff, None)
                 if _autosend_queued_count(db, staff):
-                    threading.Thread(target=_autosend_generate_worker, args=(staff, None), daemon=True).start()
+                    threading.Thread(target=_autosend_generate_worker, args=(staff, None, token), daemon=True).start()
                     started = True
                 else:
-                    _autosend_mark_done(staff)
+                    _autosend_mark_done(staff, token)
         except Exception:
-            _autosend_mark_done(staff)
+            _autosend_mark_done(staff, token)
             logger.exception("ASR_TRIGGER_GENERATE_START_FAILED staff=%s", staff)
     items = _autosend_list_plan(db, staff)
     return {"ok": True, "run_id": res["run_id"], "new_scheduled": len(res["items"]), "dropped": dropped,
