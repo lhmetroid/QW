@@ -2331,6 +2331,7 @@
     let as2Selected = new Set();
     let as2GenTimer = null;
     let as2GenerateBusy = false;
+    let as2CommitTimer = null;
     let as2CommitBusy = false;   // 同步保存ERP进行中: 关页/跳转时拦截提示
     const AS2_BUSINESS_LINES = ['笔译', '口译', '同传设备租赁', '设计印刷', '印刷', '输入排版', '多媒体译制', '礼品', '复印装订', '运输'];
 
@@ -2395,7 +2396,9 @@
     function as2OpStatus(msg, bad) { const el = document.getElementById('as2-op-status'); if (el) { el.textContent = msg || ''; el.style.color = bad ? '#dc2626' : '#64748b'; } as2Status(msg, bad); }
     function as2ScenarioLabel(v) { const s = AS2_SCENARIOS.find((x) => x.value === v); return (s && s.label) || v; }
     // 封状态英文码 -> 中文(邮件详情/卡片标题展示用, 不显示 drafted/planned 等英文)
-    function as2StatusCn(st) { return ({ planned: '待生成', queued: '排队中', drafting: '生成中', drafted: '已生成', sent: '已转入CRM', committed: '已转入CRM', failed: '生成失败' })[String(st || '')] || (st || ''); }
+    // 可勾选"同步保存ERP"的状态: 已生成, 以及上次同步失败的(勾上即重试)
+    function as2IsCommittable(st) { return st === 'drafted' || st === 'commit_failed'; }
+    function as2StatusCn(st) { return ({ planned: '待生成', queued: '排队中', drafting: '生成中', drafted: '已生成', commit_queued: '待同步ERP', committing: '同步ERP中', commit_failed: '同步失败', sent: '已转入CRM', committed: '已转入CRM', failed: '生成失败' })[String(st || '')] || (st || ''); }
     function as2MmDd(d) { return d && d.length >= 10 ? d.slice(5) : (d || ''); }
     function as2SetGenerateBusy(on, label) {
       as2GenerateBusy = !!on;
@@ -2466,7 +2469,13 @@
       await as2LoadConfig();
       await as2LoadRules();
       // running=正在跑; queued>0=重启后等 watchdog 续上(最迟1分钟)。两种都轮询, 让"剩余N封"实时走动。
-      if (AS2_STAFF) { await as2LoadPlan(); const gen = await as2RefreshGenerateStatus(true); if (gen && (gen.running || Number(gen.queued || 0) > 0)) as2PollGen(); }
+      if (AS2_STAFF) {
+        await as2LoadPlan();
+        const gen = await as2RefreshGenerateStatus(true);
+        if (gen && (gen.running || Number(gen.queued || 0) > 0)) as2PollGen();
+        const cm = await as2RefreshCommitStatus(true);
+        if (cm && (cm.running || Number(cm.queued || 0) > 0)) as2PollCommit();
+      }
     }
     async function as2LoadScenarios() {
       try {
@@ -2700,12 +2709,15 @@
       else if (st === 'drafted') { cls += 'border-emerald-400 bg-emerald-50 text-emerald-700 font-bold'; label = date; }
       else if (st === 'drafting') { cls += 'border-amber-300 bg-amber-50 text-amber-700'; label = '⏳ ' + date; }
       else if (st === 'queued') { cls += 'border-violet-300 bg-violet-50 text-violet-700'; label = '候 ' + date; }
+      else if (st === 'committing') { cls += 'border-sky-300 bg-sky-50 text-sky-600'; label = '⇢ ' + date; }
+      else if (st === 'commit_queued') { cls += 'border-indigo-300 bg-indigo-50 text-indigo-700'; label = '待同步 ' + date; }
+      else if (st === 'commit_failed') { cls += 'border-rose-400 bg-rose-50 text-rose-700 font-bold'; label = '同步✗ ' + date; }
       else if (st === 'failed') { cls += 'border-rose-300 bg-rose-50 text-rose-700'; label = '✗ ' + date; }
       else { cls += 'border-slate-200 bg-white text-slate-500'; label = '排 ' + date; }
       const reasonTag = it.pick_reason && it.pick_reason !== 'matched' ? `<span class="text-[10px] text-violet-500">${as2Esc({ remaining: '补', resend: '重', fallback: '兜' }[it.pick_reason] || '')}</span>` : '';
       // 时间格不再点开邮件详情(详情改由联系人名进入); 已生成脚本(drafted)可勾选转入, 点时间=等同勾选框。
       // 勾选只更新当前 DOM 状态, 不重绘整张表, 避免列宽闪动。
-      if (st === 'drafted') {
+      if (as2IsCommittable(st)) {
         const itemArg = as2Enc(it.item_id);
         return `<div class="as2-step-wrap flex items-center gap-1${selected ? ' as2-selected' : ''}" data-as2-item="${as2Esc(it.item_id)}">`
           + `<input type="checkbox" data-as2-item-check="${as2Esc(it.item_id)}"${checked} onclick="event.stopPropagation()" onchange="as2SetItemSelected(decodeURIComponent('${itemArg}'), this.checked)">`
@@ -2723,12 +2735,12 @@
     }
     function as2DraftIdsForGroup(g) {
       return Object.values((g && g.steps) || {})
-        .filter((s) => s && s.status === 'drafted' && s.item_id)
+        .filter((s) => s && as2IsCommittable(s.status) && s.item_id)
         .map((s) => String(s.item_id));
     }
     function as2PlanGroupRowHtml(g, salesCol) {
       const it = g.it;
-      const hasGen = Object.values(g.steps).some((s) => s && (s.status === 'drafted' || s.status === 'sent'));
+      const hasGen = Object.values(g.steps).some((s) => s && (as2IsCommittable(s.status) || s.status === 'sent'));
       const draftIds = as2DraftIdsForGroup(g);
       const selectedCount = draftIds.filter((id) => as2Selected.has(id)).length;
       const rowSelected = draftIds.length > 0 && selectedCount === draftIds.length;
@@ -2852,12 +2864,12 @@
     async function as2SelectAll(on) {
       if (on) { try { await as2LoadPlan(); } catch (e) {} }  // 先刷新到最新, 避免与后台生成时序竞争导致漏选
       as2Selected = new Set();
-      if (on) as2PlanItems.filter((it) => it.status === 'drafted').forEach((it) => as2Selected.add(it.item_id));
+      if (on) as2PlanItems.filter((it) => as2IsCommittable(it.status)).forEach((it) => as2Selected.add(it.item_id));
       as2SyncPlanSelectionDom();
     }
     function as2SelectInvert() {
       const next = new Set();
-      as2PlanItems.filter((it) => it.status === 'drafted').forEach((it) => { if (!as2Selected.has(it.item_id)) next.add(it.item_id); });
+      as2PlanItems.filter((it) => as2IsCommittable(it.status)).forEach((it) => { if (!as2Selected.has(it.item_id)) next.add(it.item_id); });
       as2Selected = next;
       as2SyncPlanSelectionDom();
     }
@@ -2959,61 +2971,89 @@
       return Math.max(0, Math.round((d - today) / 86400000));
     }
     // 单封转入CRM: 返回 'ok' | 'fail' | 'skip'(非已生成脚本, 不处理)
-    async function as2CommitOne(id) {
-      const it = as2PlanItems.find((x) => x.item_id === id);
-      if (!it || it.status !== 'drafted') return 'skip';
-      try {
-        const dr = await fetch('/api/v1/mail/autosend/plan-item?item_id=' + encodeURIComponent(id), { credentials: 'include' });
-        const dd = await dr.json();
-        const body = (dd.item || {}).body_html || '';
-        const sendBody = {
-          customer_id: it.customer_id || it.contact_id,
-          scenario: it.scenario,
-          suite_steps: [it.suite_step],
-          recipient_emails: it.recipient_email || null,
-          drafts: [{ suite_step: it.suite_step, subject: it.subject || '', body_html: body, send_interval_days: as2DaysFromToday(it.plan_date), send_time: it.plan_time || '09:00' }],
-        };
-        const sr = await fetch('/api/v1/mail/customer-suite-send', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sendBody) });
-        if (!sr.ok) return 'fail';
-        const sj = await sr.json().catch(() => ({}));
-        const crmSendIds = {};
-        // 尽量回收 crm_send_id(若 send 返回带)
-        const sid = (sj.prepared && sj.prepared[0] && (sj.prepared[0].crm_send_id || sj.prepared[0].send_id)) || (sj.items && sj.items[0] && (sj.items[0].crm_send_id || sj.items[0].send_id)) || sj.crm_send_id || null;
-        if (sid) crmSendIds[id] = sid;
-        await fetch('/api/v1/mail/autosend/mark-committed', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item_ids: [id], crm_send_ids: crmSendIds }) });
-        return 'ok';
-      } catch (e) { return 'fail'; }
+    // 旧的 as2CommitOne / as2CommitItems(浏览器 for-await 串行写CRM)已删除:
+    // 关页面即中断且无断点记录, crm_send_id 还常常回收不到(实测 0141 有 108 封丢失)。
+    // 现由后端 /autosend/commit + commit worker 承担, send_id 直接从 CRM 返回值取。
+    // 同步保存ERP: 改为后端逐封落库执行(commit_queued -> committing -> sent)。
+    // 旧实现是浏览器里的 for-await 串行循环, 关页面/切走就断在半路且无任何断点记录 —— 因为清单按
+    // plan_date 排序, 队列是"全部人的第1封 -> 全部人的第2封", 断在中途看起来就像"每行只同步了第1封"。
+    function as2SetCommitBusy(on, label) {
+      as2CommitBusy = !!on;
+      const btn = document.getElementById('as2-commit-btn');
+      if (!btn) return;
+      btn.disabled = !!on;
+      btn.textContent = label || (on ? '同步中...' : '同步保存ERP系统');
     }
-    async function as2CommitItems(ids, onProgress) {
-      let ok = 0, fail = 0;
-      for (let i = 0; i < ids.length; i++) {
-        const r = await as2CommitOne(ids[i]);
-        if (r === 'ok') ok++; else if (r === 'fail') fail++;
-        if (onProgress) onProgress(i + 1, ids.length);   // 每封处理完回调进度(含skip), 驱动按钮实时更新
-      }
-      return { ok, fail };
+    function as2ApplyCommitState(d) {
+      const btn = document.getElementById('as2-commit-btn');
+      if (!btn) return;
+      const queued = Number((d && d.queued) || 0);
+      if (d && d.running) { as2SetCommitBusy(true, queued > 0 ? `同步中...(剩${queued}封)` : '同步中...'); return; }
+      as2CommitBusy = false;
+      btn.disabled = false;
+      btn.textContent = queued > 0 ? `继续同步(${queued}封)` : '同步保存ERP系统';
+      btn.title = queued > 0
+        ? `还有 ${queued} 封排队中未同步(后端重启/上一封卡死被跳过)。后台最迟 1 分钟内自动续上, 也可点此立刻开始。`
+        : '把勾选的已生成邮件同步保存进ERP(CRM)待发队列, 到点由系统按计划发送';
+    }
+    async function as2RefreshCommitStatus(silent) {
+      const staffIds = as2ReadStaffIds();
+      if (!staffIds.length) return null;
+      try {
+        const results = await Promise.all(staffIds.map(async (sid) => {
+          try { return await as2FetchJson('/api/v1/mail/autosend/commit-status?staff_id=' + encodeURIComponent(sid), { credentials: 'include' }); }
+          catch (e) { return { running: false, counts: {}, queued: 0 }; }
+        }));
+        const d = as2SumStatusResults(results);
+        d.commit_failed = results.reduce((s, x) => s + Number((x && x.commit_failed) || 0), 0);
+        as2ApplyCommitState(d);
+        if (!silent || d.running || d.queued > 0) {
+          const c = d.counts || {};
+          as2Status(`同步进度: 已转入CRM ${c.sent || 0} · 同步中 ${c.committing || 0} · 排队中 ${c.commit_queued || 0} · 失败 ${d.commit_failed || 0}`
+            + (d.running ? ' (进行中)' : (d.queued > 0 ? ' (后台将自动继续)' : ' (完成)')), (d.commit_failed || 0) > 0);
+        }
+        return d;
+      } catch (e) { return null; }
+    }
+    function as2PollCommit() {
+      if (as2CommitTimer) clearInterval(as2CommitTimer);
+      const tick = async () => {
+        const d = await as2RefreshCommitStatus(false);
+        if (!d) return;
+        await as2LoadPlan();
+        const waiting = Number(d.queued || 0) > 0 && d.auto_resume !== false;
+        if (!d.running && !waiting) {
+          if (as2CommitTimer) clearInterval(as2CommitTimer);
+          as2CommitTimer = null;
+          cal1Reload();
+        }
+      };
+      tick();
+      as2CommitTimer = setInterval(tick, 2500);
     }
     async function as2Commit() {
       if (as2CommitBusy) return;
+      const staffIds = as2ReadStaffIds();
+      if (!staffIds.length) { as2Status('未限定销售, 无法同步。', true); return; }
       const ids = Array.from(as2Selected);
       if (!ids.length) { as2Status('请先勾选已生成的邮件。', true); return; }
-      const btn = document.getElementById('as2-commit-btn');
-      as2CommitBusy = true;
-      if (btn) { btn.disabled = true; btn.textContent = `处理中（0/${ids.length}）`; }
-      as2Status(`转入CRM处理中... (共 ${ids.length} 封)`);
-      let res = { ok: 0, fail: 0 };
+      as2SetCommitBusy(true, '同步中...');
+      as2Status(`已触发后台同步, 共 ${ids.length} 封, 逐封写入CRM待发队列...`);
       try {
-        res = await as2CommitItems(ids, (done, total) => {
-          if (btn) btn.textContent = `处理中（${done}/${total}）`;
-        });
-      } finally {
-        as2CommitBusy = false;
-        if (btn) { btn.disabled = false; btn.textContent = '同步保存ERP系统'; }
-      }
-      as2Selected = new Set();
-      await as2LoadPlan();
-      cal1Reload();
-      as2Status(`导入成功 ${res.ok} 封${res.fail ? ` · 失败 ${res.fail} 封` : ''}。`, res.fail > 0);
+        const results = await Promise.all(staffIds.map(async (sid) => {
+          try { return await as2FetchJson('/api/v1/mail/autosend/commit', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ staff_id: sid, item_ids: ids }) }); }
+          catch (e) { return { started: false, already_running: false, note: `${sid}: ${e.message}` }; }
+        }));
+        const hasWork = results.some((d) => d.started || d.already_running);
+        as2Selected = new Set();
+        if (!hasWork) {
+          as2Status(results.map((d) => d.note).filter(Boolean).join('；') || '没有可同步的已生成邮件');
+          await as2RefreshCommitStatus(true);
+          await as2LoadPlan();
+          return;
+        }
+        as2PollCommit();
+      } catch (e) { as2SetCommitBusy(false); as2Status('同步触发失败: ' + e.message, true); }
     }
 
     // ============================================================
@@ -3079,13 +3119,13 @@
       box.hidden = false;
       const client = `${p.company_head || ''} ${p.contact_name || p.contact_id || ''}`.trim();
       box.innerHTML = `<div class="text-sm font-bold text-slate-900 mb-2">${as2Esc(client)} · ${as2Esc(p.scenario_label_cn || '')}（${p.items.length}封，逐封读取）</div>` +
-        p.items.map((it, ci) => `<div id="as2-pcard-${ci}" class="rounded-lg border border-slate-200 p-3 mb-2"><div class="text-xs font-bold text-slate-600">第${it.suite_step}封 · ${as2Esc(as2StatusCn(it.status))}</div><div class="ms-hint mt-1">${(it.status === 'drafted' || it.status === 'sent') ? '读取中...' : '未生成(到 ② 后台生成)'}</div></div>`).join('');
+        p.items.map((it, ci) => `<div id="as2-pcard-${ci}" class="rounded-lg border border-slate-200 p-3 mb-2"><div class="text-xs font-bold text-slate-600">第${it.suite_step}封 · ${as2Esc(as2StatusCn(it.status))}</div><div class="ms-hint mt-1">${(as2IsCommittable(it.status) || it.status === 'sent' || it.status === 'committing') ? '读取中...' : '未生成(到 ② 后台生成)'}</div></div>`).join('');
       // 仅读取已生成的(drafted/sent), 逐封; 未生成不读取, 不触发大模型
       for (let ci = 0; ci < p.items.length; ci++) {
         const it = p.items[ci];
         const card = document.getElementById('as2-pcard-' + ci);
         if (!card) continue;
-        if (it.status !== 'drafted' && it.status !== 'sent') continue;
+        if (!as2IsCommittable(it.status) && it.status !== 'sent' && it.status !== 'committing') continue;
         try {
           const r = await fetch('/api/v1/mail/autosend/plan-item?item_id=' + encodeURIComponent(it.item_id), { credentials: 'include' });
           const d = await r.json();
@@ -3184,8 +3224,16 @@
     async function as2PersonCommit(ci, id) {
       await as2PersonSave(ci, id);
       as2pSt(ci, '转入CRM中...');
-      const res = await as2CommitItems([id]);
-      as2pSt(ci, res.ok ? '已转入CRM' : '转入失败', res.ok > 0);
+      // 与批量同步走同一条后端链路(落库入队 + worker), 不再在浏览器里直接写CRM
+      const it = as2PlanItems.find((x) => x.item_id === id);
+      const sid = (it && it.owner_staff_id) || AS2_STAFF;
+      let ok = false;
+      try {
+        const r = await as2FetchJson('/api/v1/mail/autosend/commit', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ staff_id: sid, item_ids: [id] }) });
+        ok = !!(r.started || r.already_running);
+      } catch (e) { ok = false; }
+      as2pSt(ci, ok ? '已提交后台同步' : '转入失败', ok);
+      if (ok) as2PollCommit();
       await as2LoadPlan(); cal1Reload();
       as2ShowPerson(as2PersonIdx);
     }

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -450,6 +450,63 @@
                     </table>
                 </div>
                 <span class="mt-2 inline-block cursor-help text-[11px] text-slate-400" title="双击任意数字单元格可查看该天该指标对应的具体邮件清单（含联系人、主题、正文，有反馈/价值理由才显示）。">ⓘ</span>
+                <div class="mt-5 rounded-lg border border-violet-200 bg-violet-50/30 p-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <div class="text-sm font-bold text-violet-800">每日迭代分析<span class="ml-1 cursor-help text-[11px] text-slate-400" title="按已转入 CRM 邮件统计 LLM 生成后销售人工改动率；数据已入库，打开页面直接读取。双击数字时才逐封加载原始与改后内容。">ⓘ</span></div>
+                            <div class="mt-1 text-[11px] text-slate-500">按天记录销售人工改动率、改动类型和对应邮件索引；正文明细默认不加载。</div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <label class="text-xs text-slate-600">起<input type="date" id="mail-iter-start" class="ml-1 rounded border border-slate-300 px-2 py-1 text-xs"></label>
+                            <label class="text-xs text-slate-600">止<input type="date" id="mail-iter-end" class="ml-1 rounded border border-slate-300 px-2 py-1 text-xs"></label>
+                            <label class="text-xs text-slate-600">销售
+                                <select id="mail-iter-staff" class="ml-1 rounded border border-slate-300 px-2 py-1 text-xs"><option value="">全部销售</option></select>
+                            </label>
+                            <button type="button" onclick="loadMailIterationDailyAnalysis(false)" class="rounded border border-violet-300 bg-white px-3 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-100">查询</button>
+                            <button type="button" onclick="loadMailIterationDailyAnalysis(true)" class="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100">回填/刷新</button>
+                        </div>
+                    </div>
+                    <div id="mail-iter-status" class="mt-2 text-[11px] text-slate-500">尚未加载。</div>
+                    <div class="mt-3 overflow-auto">
+                        <table class="min-w-full text-xs border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 text-slate-600">
+                                    <th class="border border-slate-200 px-3 py-2 text-left">日期</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">转入CRM</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">人工改动</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">改动率</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">自动排期</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">套装排期</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">称呼/开头</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">签名/联系方式</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">业务线/服务</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">主题</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">占位/测试</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mail-iter-daily-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="mt-4 text-xs font-bold text-violet-800">按销售日明细</div>
+                    <div class="mt-2 overflow-auto max-h-72">
+                        <table class="min-w-full text-xs border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 text-slate-600">
+                                    <th class="border border-slate-200 px-3 py-2 text-left">日期</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-left">销售</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">转入CRM</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">人工改动</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">改动率</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">称呼/开头</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">签名/联系方式</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">业务线/服务</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right">其他正文</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mail-iter-staff-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
             </section>
             <div id="mail-stats-detail-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
                 <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col">
@@ -856,7 +913,7 @@
                             <button type="button" id="asr-sync-crm-btn" onclick="asrCommitCrmFromPlan()" class="rounded border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60" onmouseenter="asrShowRulesHint('分步动作：将已生成(drafted)邮件逐封同步保存到CRM待发队列。')" onmouseleave="asrHideRulesHint()">同步CRM系统</button>
                             <button type="button" id="asr-clear-plan-btn" onclick="asrClearRulesPlan()" class="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60" onmouseenter="asrShowRulesHint('分步动作：清空当前视角未转入CRM的排期；已转入CRM的不受影响。')" onmouseleave="asrHideRulesHint()">清空排期</button>
                             <span id="asr-rules-op" class="ml-1 text-[11px] text-slate-500"></span>
-                            <span id="asr-rules-status" class="pointer-events-none absolute bottom-full left-0 z-40 mb-2 hidden max-w-[760px] rounded bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-white shadow-lg"></span>
+                            <span id="asr-rules-status" class="hidden"></span>
                         </div>
                     </div>
 
@@ -3951,6 +4008,153 @@
             }
         }
 
+        // ===== 邮件每日迭代分析 =====
+        function mailDailyIterMetricCell(metric, day, staffId, val) {
+            const n = Number(val || 0);
+            const staffArg = staffId ? `,'${escapeHtml(staffId)}'` : '';
+            return `<td class="border border-slate-200 px-3 py-2 text-right ${n ? 'cursor-pointer text-violet-700 hover:bg-violet-50 font-bold' : 'text-slate-400'}" ${n ? `ondblclick="openMailDailyIterationDetail('${metric}','${day}'${staffArg})" title="双击逐封加载原始/改后内容"` : ''}>${n}</td>`;
+        }
+        function mailDailyIterRateCell(row) {
+            const rate = Number(row.edit_rate_pct || 0);
+            const tone = rate >= 25 ? 'text-rose-700' : rate >= 10 ? 'text-amber-700' : 'text-slate-600';
+            return `<td class="border border-slate-200 px-3 py-2 text-right font-bold ${tone}">${rate.toFixed(1)}%</td>`;
+        }
+        async function loadMailIterationDailyAnalysis(refresh) {
+            const startEl = document.getElementById('mail-iter-start');
+            const endEl = document.getElementById('mail-iter-end');
+            const staffEl = document.getElementById('mail-iter-staff');
+            const statusEl = document.getElementById('mail-iter-status');
+            if (!startEl || !endEl) return;
+            if (!endEl.value) endEl.value = mailStatsLocalDate();
+            if (!startEl.value) { const d = new Date(); d.setDate(d.getDate() - 8); startEl.value = mailStatsLocalDate(d); }
+            const params = new URLSearchParams({ start: startEl.value, end: endEl.value });
+            if (staffEl && staffEl.value) params.set('staff_id', staffEl.value);
+            if (statusEl) { statusEl.textContent = refresh ? '正在回填/刷新每日迭代分析…' : '加载每日迭代分析…'; statusEl.className = 'mt-2 text-[11px] text-slate-500'; }
+            try {
+                if (refresh) {
+                    const rr = await fetch(`${window.location.origin}/api/v1/mail/iteration-analysis/refresh?${params.toString()}`, { method: 'POST' });
+                    const rd = await rr.json().catch(() => ({}));
+                    if (!rr.ok) throw new Error(rd.detail || `HTTP ${rr.status}`);
+                }
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/iteration-analysis/summary?${params.toString()}`);
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+                renderMailIterationDailyAnalysis(data);
+                if (statusEl) {
+                    const t = data.totals || {};
+                    statusEl.textContent = `${data.start} ~ ${data.end} · 转入CRM ${t.crm_total || 0} · 人工改动 ${t.edited_total || 0} · 改动率 ${Number(t.edit_rate_pct || 0).toFixed(1)}%`;
+                    statusEl.className = 'mt-2 text-[11px] text-emerald-700 font-bold';
+                }
+            } catch (err) {
+                if (statusEl) { statusEl.textContent = `加载失败：${err.message}`; statusEl.className = 'mt-2 text-[11px] text-red-600 font-bold'; }
+            }
+        }
+        function renderMailIterationDailyAnalysis(data) {
+            const staffEl = document.getElementById('mail-iter-staff');
+            if (staffEl) {
+                const cur = staffEl.value;
+                const names = data.staff_names || {};
+                staffEl.innerHTML = '<option value="">全部销售</option>' + (data.staff_options || []).map(s => `<option value="${escapeHtml(s)}">${escapeHtml(names[s] || ('销售 ' + s))}</option>`).join('');
+                staffEl.value = cur;
+            }
+            const dailyBody = document.getElementById('mail-iter-daily-tbody');
+            const staffBody = document.getElementById('mail-iter-staff-tbody');
+            const daily = data.daily || [];
+            if (dailyBody) {
+                const t = data.totals || {};
+                let html = `<tr class="bg-amber-50 font-bold text-slate-800"><td class="border border-slate-200 px-3 py-2">合计</td>`
+                    + `<td class="border border-slate-200 px-3 py-2 text-right">${t.crm_total || 0}</td>`
+                    + `<td class="border border-slate-200 px-3 py-2 text-right">${t.edited_total || 0}</td>`
+                    + `<td class="border border-slate-200 px-3 py-2 text-right">${Number(t.edit_rate_pct || 0).toFixed(1)}%</td>`
+                    + `<td class="border border-slate-200 px-3 py-2 text-right">${t.autosend_total || 0}</td>`
+                    + `<td class="border border-slate-200 px-3 py-2 text-right">${t.mail_suite_total || 0}</td>`
+                    + `<td class="border border-slate-200 px-3 py-2 text-right">${t.greeting_count || 0}</td>`
+                    + `<td class="border border-slate-200 px-3 py-2 text-right">${t.signature_count || 0}</td>`
+                    + `<td class="border border-slate-200 px-3 py-2 text-right">${t.service_count || 0}</td>`
+                    + `<td class="border border-slate-200 px-3 py-2 text-right">${t.subject_changed_count || 0}</td>`
+                    + `<td class="border border-slate-200 px-3 py-2 text-right">${t.placeholder_count || 0}</td></tr>`;
+                if (!daily.length) {
+                    html += `<tr><td colspan="11" class="border border-slate-200 px-3 py-6 text-center text-slate-400">该区间暂无每日迭代数据，点“回填/刷新”。</td></tr>`;
+                } else {
+                    for (const r of daily) {
+                        const day = r.stat_date || '';
+                        html += `<tr class="hover:bg-slate-50"><td class="border border-slate-200 px-3 py-2 whitespace-nowrap">${escapeHtml(day)}</td>`
+                            + mailDailyIterMetricCell('crm_total', day, '', r.crm_total)
+                            + mailDailyIterMetricCell('edited_total', day, '', r.edited_total)
+                            + mailDailyIterRateCell(r)
+                            + mailDailyIterMetricCell('autosend_total', day, '', r.autosend_total)
+                            + mailDailyIterMetricCell('mail_suite_total', day, '', r.mail_suite_total)
+                            + mailDailyIterMetricCell('greeting_count', day, '', r.greeting_count)
+                            + mailDailyIterMetricCell('signature_count', day, '', r.signature_count)
+                            + mailDailyIterMetricCell('service_count', day, '', r.service_count)
+                            + mailDailyIterMetricCell('subject_changed_count', day, '', r.subject_changed_count)
+                            + mailDailyIterMetricCell('placeholder_count', day, '', r.placeholder_count)
+                            + `</tr>`;
+                    }
+                }
+                dailyBody.innerHTML = html;
+            }
+            if (staffBody) {
+                const rows = data.staff_daily || [];
+                const names = data.staff_names || {};
+                if (!rows.length) {
+                    staffBody.innerHTML = `<tr><td colspan="9" class="border border-slate-200 px-3 py-6 text-center text-slate-400">该区间暂无销售明细。</td></tr>`;
+                } else {
+                    staffBody.innerHTML = rows.map((r) => {
+                        const day = r.stat_date || '';
+                        const sid = r.staff_id || '';
+                        return `<tr class="hover:bg-slate-50"><td class="border border-slate-200 px-3 py-2 whitespace-nowrap">${escapeHtml(day)}</td>`
+                            + `<td class="border border-slate-200 px-3 py-2 whitespace-nowrap">${escapeHtml(names[sid] || sid)}</td>`
+                            + mailDailyIterMetricCell('crm_total', day, sid, r.crm_total)
+                            + mailDailyIterMetricCell('edited_total', day, sid, r.edited_total)
+                            + mailDailyIterRateCell(r)
+                            + mailDailyIterMetricCell('greeting_count', day, sid, r.greeting_count)
+                            + mailDailyIterMetricCell('signature_count', day, sid, r.signature_count)
+                            + mailDailyIterMetricCell('service_count', day, sid, r.service_count)
+                            + mailDailyIterMetricCell('other_body_count', day, sid, r.other_body_count)
+                            + `</tr>`;
+                    }).join('');
+                }
+            }
+        }
+        async function openMailDailyIterationDetail(metric, day, staffId) {
+            const modal = document.getElementById('mail-stats-detail-modal');
+            const title = document.getElementById('mail-stats-detail-title');
+            const body = document.getElementById('mail-stats-detail-body');
+            if (!modal || !body) return;
+            const staffText = staffId ? ` · 销售 ${staffId}` : '';
+            modal.classList.remove('hidden');
+            if (title) title.textContent = `${day}${staffText} · 每日迭代明细 · ${metric}`;
+            body.innerHTML = '<div class="text-slate-500">逐封加载中…</div>';
+            const params = new URLSearchParams({ day, metric, limit: '80' });
+            if (staffId) params.set('staff_id', staffId);
+            try {
+                const resp = await fetch(`${window.location.origin}/api/v1/mail/iteration-analysis/detail?${params.toString()}`);
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+                const items = data.items || [];
+                if (!items.length) { body.innerHTML = '<div class="text-slate-400 py-6 text-center">无明细记录</div>'; return; }
+                const bodyBlock = (v) => v ? v : '<span class="text-slate-400">无记录</span>';
+                body.innerHTML = `<div class="text-[11px] text-slate-500">共 ${data.total || items.length} 封，本次加载 ${items.length} 封。</div>` + items.map((it) => {
+                    const flags = (it.type_flags || []).map(x => `<span class="rounded bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">${escapeHtml(x)}</span>`).join(' ');
+                    const meta = [it.source, it.scenario_label || it.scenario, it.suite_step ? `第${it.suite_step}封` : '', it.crm_time ? `入CRM ${it.crm_time}` : ''].filter(Boolean).join(' · ');
+                    return `<div class="rounded border border-slate-200 p-3">
+                        <div class="flex flex-wrap justify-between gap-2">
+                            <div class="font-mono text-[11px] text-slate-900">${escapeHtml(it.customer_id || '')} <span class="text-slate-500">${escapeHtml(it.contact_id || '')}</span></div>
+                            <div class="text-[10px] text-slate-400">${escapeHtml(meta)}</div>
+                        </div>
+                        <div class="mt-1 font-bold text-slate-800">${escapeHtml(it.subject || it.final_subject || it.orig_subject || '（无主题）')}</div>
+                        <div class="mt-2 flex flex-wrap gap-1">${flags || '<span class="text-[10px] text-slate-400">未改动/无分类</span>'}</div>
+                        <div class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            <div><div class="mb-1 text-[11px] font-bold text-slate-500">原始生成</div><div class="max-h-72 overflow-auto rounded bg-slate-50 p-2 text-slate-700">${bodyBlock(it.orig_body_html)}</div></div>
+                            <div><div class="mb-1 text-[11px] font-bold text-slate-500">人工改后 / 最终</div><div class="max-h-72 overflow-auto rounded bg-emerald-50 p-2 text-slate-700">${bodyBlock(it.final_body_html)}</div></div>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (err) {
+                body.innerHTML = `<div class="text-red-600 py-6 text-center">加载失败：${escapeHtml(err.message)}</div>`;
+            }
+        }
         function renderMailCustomerSuiteFeedbackRecords() {
             const tbody = document.getElementById('mail-feedback-tbody');
             const empty = document.getElementById('mail-feedback-empty');
@@ -4211,10 +4415,10 @@
         function asrScope() { return asrStaffId() || '__global__'; }
         function asrToday() { const d = new Date(Date.now() + 8 * 3600 * 1000); return d.toISOString().slice(0, 10); }
         function asrStatus(id, msg, err) {
-            // 排期区操作状态改为按钮旁的行内文字(红字=错误), 不再用遮挡按钮的深底浮层(浮层只留悬浮提示用)。
+            // 排期区操作状态和悬浮说明都显示在按钮旁，避免深色浮层遮挡按钮。
             if (id === 'asr-rules-status') {
                 const op = document.getElementById('asr-rules-op');
-                if (op) { op.textContent = msg || ''; op.className = 'ml-1 text-[11px] ' + (err ? 'font-bold text-rose-600' : 'text-slate-600'); }
+                if (op) { op.dataset.mode = msg ? 'status' : ''; op.textContent = msg || ''; op.className = 'ml-1 text-[11px] ' + (err ? 'font-bold text-rose-600' : 'text-slate-600'); }
                 return;
             }
             const el = document.getElementById(id); if (!el) return;
@@ -4238,16 +4442,16 @@
             });
         }
         function asrShowRulesHint(text) {
-            const el = document.getElementById('asr-rules-status'); if (!el || el.dataset.mode === 'status') return;
-            el.dataset.mode = 'hint';
-            el.textContent = text || '';
-            el.className = 'pointer-events-none absolute bottom-full left-0 z-40 mb-2 max-w-[760px] rounded bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-white shadow-lg';
+            const op = document.getElementById('asr-rules-op'); if (!op || op.dataset.mode === 'status') return;
+            op.dataset.mode = 'hint';
+            op.textContent = text || '';
+            op.className = 'ml-1 text-[11px] text-slate-500';
         }
         function asrHideRulesHint() {
-            const el = document.getElementById('asr-rules-status'); if (!el || el.dataset.mode !== 'hint') return;
-            el.dataset.mode = '';
-            el.textContent = '';
-            el.className = 'pointer-events-none absolute bottom-full left-0 z-40 mb-2 hidden max-w-[760px] rounded bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-white shadow-lg';
+            const op = document.getElementById('asr-rules-op'); if (!op || op.dataset.mode !== 'hint') return;
+            op.dataset.mode = '';
+            op.textContent = '';
+            op.className = 'ml-1 text-[11px] text-slate-500';
         }
 
         async function autosendRulesInit() {
@@ -4612,7 +4816,7 @@
         // 按类: 套装 chips(带优先级序号), data-ci=分类下标; 整类批量勾选
         function asrClassSuiteChipsHtml(ci, suites) {
             if (!suites || !suites.length) return '<span class="text-slate-400">无候选套装</span>';
-            return suites.map(s => `<label class="mr-2 mb-1 inline-flex items-center gap-1"><input type="checkbox" class="asr-cls-suite h-3.5 w-3.5" data-ci="${ci}" data-sc="${escapeHtml(s.scenario)}" checked><span class="text-slate-400">${s.priority}.</span>${escapeHtml(s.label)}</label>`).join('');
+            return suites.map(s => `<label class="mr-2 mb-1 inline-flex items-center gap-1"><input type="checkbox" class="asr-cls-suite h-3.5 w-3.5" data-ci="${ci}" data-sc="${escapeHtml(s.scenario)}" ${s.selected ? 'checked' : ''}><span class="text-slate-400">${s.priority}.</span>${escapeHtml(s.label)}</label>`).join('');
         }
         function asrExcludedHtml(excluded) {
             if (!excluded || !excluded.length) return '<span class="text-slate-300">—</span>';
@@ -4625,11 +4829,9 @@
             const btn = document.getElementById('asr-suggest-btn'); if (btn) btn.disabled = true;
             document.getElementById('asr-suggest-summary').textContent = '分析中…(LLM 排优先级可能需要几十秒)';
             try {
-                const r = await fetch(`${window.location.origin}/api/v1/mail/autosendrules/suggest`, {
+                const j = await asrFetchJson(`${window.location.origin}/api/v1/mail/autosendrules/suggest`, {
                     method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
                 });
-                const j = await r.json();
-                if (!j.ok) { document.getElementById('asr-suggest-summary').textContent = '失败: ' + (j.detail || ''); return; }
                 // 一行一类; 联系人明细留到预排。保存每类联系人分组供预排展开。
                 const rows = j.rows || [];
                 asrLastRowsByClass = {};
@@ -4637,12 +4839,12 @@
                 const cs = j.class_summary || [];
                 const tb = document.getElementById('asr-suggestion-tbody');
                 tb.innerHTML = cs.length ? cs.map(c => `<tr>
-                    <td class="border border-slate-200 px-3 py-2 text-center align-top"><input type="checkbox" class="asr-cls-row h-4 w-4" data-ci="${c.class_index}" ${c.count ? 'checked' : 'disabled'}></td>
+                    <td class="border border-slate-200 px-3 py-2 text-center align-top"><input type="checkbox" class="asr-cls-row h-4 w-4" data-ci="${c.class_index}" ${c.count && (c.suites || []).some(s => s.selected) ? 'checked' : 'disabled'}></td>
                     <td class="border border-slate-200 px-3 py-2 align-top whitespace-nowrap"><b>#${c.class_index + 1}</b> ${escapeHtml(c.class_name || '')}<div class="text-[11px] font-bold text-violet-700">${c.count} 人</div></td>
                     <td class="border border-slate-200 px-3 py-2 align-top">${asrClassSuiteChipsHtml(c.class_index, c.suites)}</td>
                     <td class="border border-slate-200 px-3 py-2 align-top text-[11px] text-slate-500">${escapeHtml(c.llm_reason || '—')}</td>
                 </tr>`).join('') : '<tr><td colspan="4" class="border border-slate-200 px-3 py-6 text-center text-slate-400">无可归类联系人。请检查分类规则。</td></tr>';
-                const allBox = document.getElementById('asr-suggest-all'); if (allBox) allBox.checked = true;
+                const allBox = document.getElementById('asr-suggest-all'); if (allBox) { const enabled = Array.from(document.querySelectorAll('#asr-suggestion-tbody .asr-cls-row:not(:disabled)')); allBox.checked = enabled.length > 0 && enabled.every(c => c.checked); }
                 document.getElementById('asr-suggest-summary').textContent = `${cs.length} 类: ` + cs.map(c => `#${c.class_index + 1} ${c.count}人`).join(', ') + ` · LLM 每类分析 1 次(共 ${cs.length} 次)。` + (j.per_contact_reserved ? ' [按人分析待开发, 当前按分类]' : '');
             } catch (e) { document.getElementById('asr-suggest-summary').textContent = '失败: ' + e; }
             finally { if (btn) btn.disabled = false; }
@@ -4729,11 +4931,9 @@
             asrLockOps(activeId || 'asr-step-preview-btn', busyText || '预排中…');
             asrStatus('asr-rules-status', busyText || '预排中…');
             try {
-                const r = await fetch(`${window.location.origin}/api/v1/mail/autosendrules/schedule`, {
+                const j = await asrFetchJson(`${window.location.origin}/api/v1/mail/autosendrules/schedule`, {
                     method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
                 });
-                const j = await r.json();
-                if (!j.ok) { asrStatus('asr-rules-status', '失败: ' + (j.detail || ''), true); return; }
                 const dropped = (j.dropped || []).length;
                 asrRenderPlanResult(j.items || []);
                 asrStatus('asr-rules-status', `已写入待发清单 ${j.new_scheduled || 0} 封${dropped ? `(排除 ${dropped} 项)` : ''}, 见下方预排结果。${j.note || ''}`);
@@ -4747,9 +4947,15 @@
         }
         async function asrFetchJson(url, options) {
             const r = await fetch(url, options || { credentials: 'include' });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok) throw new Error(d.detail || d.message || `HTTP ${r.status}`);
-            return d;
+            const text = await r.text();
+            let d = {};
+            try { d = text ? JSON.parse(text) : {}; }
+            catch (e) {
+                const snippet = (text || '').replace(/\s+/g, ' ').slice(0, 180);
+                throw new Error(`非JSON响应 HTTP ${r.status}: ${snippet || r.statusText}`);
+            }
+            if (!r.ok || (d && d.ok === false)) throw new Error((d && (d.detail || d.message)) || `HTTP ${r.status}`);
+            return d || {};
         }
         function asrSelectedStaffIds() {
             const staff = asrStaffId();
@@ -5062,6 +5268,7 @@
             }
             if (activeTab === 'stats' && typeof loadMailAiStats === 'function') loadMailAiStats(false);
             if (activeTab === 'stats' && typeof loadMailAiStatsByStaff === 'function') loadMailAiStatsByStaff(false);
+            if (activeTab === 'stats' && typeof loadMailIterationDailyAnalysis === 'function') loadMailIterationDailyAnalysis(false);
             if (activeTab === 'config') {
                 renderMailConfigReviewOnlyMocks();
                 loadRuntimeLlmSettings();

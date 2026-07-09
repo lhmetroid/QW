@@ -1,0 +1,16 @@
+{
+  "created_at": "20260708-191859",
+  "criteria": {
+    "pick_reason": "asr",
+    "created_date": "2026-07-08",
+    "statuses": [
+      "planned",
+      "drafting",
+      "drafted",
+      "failed"
+    ]
+  },
+  "count": 0,
+  "summary": [],
+  "items": []
+}

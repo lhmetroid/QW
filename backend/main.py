@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, Request, Response, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File, Form, Body
+from fastapi import FastAPI, Request, Response, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File, Form, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, RedirectResponse, PlainTextResponse, HTMLResponse
@@ -869,6 +869,8 @@ def auto_patch_db():
         db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS llm_prompt TEXT;"))
         db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS send_time VARCHAR(10);"))
         db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS gen_error TEXT;"))
+        # 同步保存ERP(转入CRM)失败原因; 与 gen_error(生成失败) 分开, 便于区分是"没生成出来"还是"没推进CRM"
+        db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS commit_error TEXT;"))
         db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS generated_at TIMESTAMP;"))
         db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS committed_at TIMESTAMP;"))
         db.execute(text("ALTER TABLE mail_autosend_plan_item ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();"))
@@ -1054,6 +1056,75 @@ def auto_patch_db():
             ");"
         ))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_mads_date ON mail_ai_daily_stats (stat_date);"))
+        # 邮件每日迭代分析：统计 LLM 生成后销售人工改动率；明细表只存索引，正文双击时懒加载。
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_llm_iteration_daily_summary ("
+            "stat_date DATE PRIMARY KEY,"
+            "crm_total INTEGER NOT NULL DEFAULT 0,"
+            "edited_total INTEGER NOT NULL DEFAULT 0,"
+            "autosend_total INTEGER NOT NULL DEFAULT 0,"
+            "autosend_edited INTEGER NOT NULL DEFAULT 0,"
+            "mail_suite_total INTEGER NOT NULL DEFAULT 0,"
+            "mail_suite_edited INTEGER NOT NULL DEFAULT 0,"
+            "body_changed_count INTEGER NOT NULL DEFAULT 0,"
+            "subject_changed_count INTEGER NOT NULL DEFAULT 0,"
+            "signature_count INTEGER NOT NULL DEFAULT 0,"
+            "greeting_count INTEGER NOT NULL DEFAULT 0,"
+            "service_count INTEGER NOT NULL DEFAULT 0,"
+            "cta_count INTEGER NOT NULL DEFAULT 0,"
+            "placeholder_count INTEGER NOT NULL DEFAULT 0,"
+            "other_body_count INTEGER NOT NULL DEFAULT 0,"
+            "computed_at TIMESTAMP DEFAULT now()"
+            ");"
+        ))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_llm_iteration_staff_daily_summary ("
+            "stat_date DATE NOT NULL,"
+            "staff_id VARCHAR(120) NOT NULL,"
+            "crm_total INTEGER NOT NULL DEFAULT 0,"
+            "edited_total INTEGER NOT NULL DEFAULT 0,"
+            "autosend_total INTEGER NOT NULL DEFAULT 0,"
+            "autosend_edited INTEGER NOT NULL DEFAULT 0,"
+            "mail_suite_total INTEGER NOT NULL DEFAULT 0,"
+            "mail_suite_edited INTEGER NOT NULL DEFAULT 0,"
+            "body_changed_count INTEGER NOT NULL DEFAULT 0,"
+            "subject_changed_count INTEGER NOT NULL DEFAULT 0,"
+            "signature_count INTEGER NOT NULL DEFAULT 0,"
+            "greeting_count INTEGER NOT NULL DEFAULT 0,"
+            "service_count INTEGER NOT NULL DEFAULT 0,"
+            "cta_count INTEGER NOT NULL DEFAULT 0,"
+            "placeholder_count INTEGER NOT NULL DEFAULT 0,"
+            "other_body_count INTEGER NOT NULL DEFAULT 0,"
+            "computed_at TIMESTAMP DEFAULT now(),"
+            "CONSTRAINT uq_mlias_date_staff UNIQUE(stat_date, staff_id)"
+            ");"
+        ))
+        db.execute(text(
+            "CREATE TABLE IF NOT EXISTS mail_llm_iteration_detail_index ("
+            "detail_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "stat_date DATE NOT NULL,"
+            "staff_id VARCHAR(120) NOT NULL DEFAULT '',"
+            "source VARCHAR(40) NOT NULL,"
+            "source_row_id VARCHAR(80) NOT NULL,"
+            "instance_id VARCHAR(120),"
+            "edit_record_id UUID,"
+            "customer_id VARCHAR(120),"
+            "contact_id VARCHAR(120),"
+            "scenario VARCHAR(80),"
+            "suite_step INTEGER,"
+            "crm_time TIMESTAMP,"
+            "subject VARCHAR(500),"
+            "edited BOOLEAN NOT NULL DEFAULT FALSE,"
+            "subject_changed BOOLEAN NOT NULL DEFAULT FALSE,"
+            "body_changed BOOLEAN NOT NULL DEFAULT FALSE,"
+            "primary_type VARCHAR(80),"
+            "type_flags JSONB NOT NULL DEFAULT '[]'::jsonb,"
+            "created_at TIMESTAMP DEFAULT now(),"
+            "CONSTRAINT uq_mlid_source_row UNIQUE(source, source_row_id)"
+            ");"
+        ))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mlid_date_staff ON mail_llm_iteration_detail_index (stat_date, staff_id);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_mlid_type ON mail_llm_iteration_detail_index (primary_type);"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS wecom_trigger_record ("
             "record_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -18459,6 +18530,14 @@ def _mail_suite_serialize_receivers(recipients: list[dict[str, str]]) -> str:
     return ";".join(items)
 
 
+# CRM usrStaff.Division 与对外署名部门不一致时的人工覆盖。
+# CRM 是只读生产库(不改数据/结构), 故在渲染层覆盖: 0141 王慧莹 Tiffany 的 Division 存的是"总经理助理",
+# 对客户署名统一用"大客户部"(与 0002/0017 一致)。只影响邮件签名展示, 不回写 CRM。
+_MAIL_SIGNATURE_DIVISION_OVERRIDE: dict[str, str] = {
+    "0141": "大客户部",
+}
+
+
 def _fetch_mail_sender_signature_fields(owner_staff_id: str) -> dict[str, str]:
     """只读取销售代表签名要素(分机/手机/中英文名/部门/企业邮箱)，口径对齐既有 CRM 取数逻辑。只读不写。"""
     owner = sanitize_text(owner_staff_id).strip()
@@ -18508,6 +18587,8 @@ def _fetch_mail_sender_signature_fields(owner_staff_id: str) -> dict[str, str]:
             if email and email[0]:
                 # 企业邮箱是签名要展示的内容，不能走 sanitize_text(会被脱敏成 ***EMAIL***)
                 fields["email"] = str(email[0]).strip()
+            if owner in _MAIL_SIGNATURE_DIVISION_OVERRIDE:
+                fields["division"] = _MAIL_SIGNATURE_DIVISION_OVERRIDE[owner]
             return fields
         finally:
             crm_db.close()
@@ -18602,14 +18683,22 @@ def _mail_suite_signature_html_for_customer(customer_id: str) -> tuple[str, dict
     return signature_html, signature_fields, owner_staff_id
 
 
+# 通用落款(LLM 自己写的假署名), 一律删掉, 由真实销售签名块取代。
+# 注意按"长串在前"排列: 短串是长串的前缀时先删短串会留下残词。
 _MAIL_SUITE_GENERIC_SIGNOFFS = (
     "事必达国际化服务团队", "事必达销售团队", "事必达客户经理",
-    "事必达国际", "事必达销售",
+    "事必达国际", "事必达团队", "事必达销售",
+)
+
+# 通用落款被删后常单独剩下一行"祝好，", 与紧随其后的真实签名构成重复落款。
+# 仅当它是正文最末尾的独立段落时才删(段落里除告别语和标点没有别的内容), 不碰正文中间。
+_MAIL_SUITE_TRAILING_CLOSINGS = (
+    "顺颂商祺", "顺祝商祺", "此致敬礼", "祝好", "此致", "敬礼", "祝商祺",
 )
 
 
 def _clean_mail_suite_body_html(body_html: str) -> str:
-    """纯输出层清洗 LLM 正文(不改生成脚本): 去开头元信息行/方括号占位/通用落款/markdown/空段落。"""
+    """纯输出层清洗 LLM 正文(不改生成脚本): 去开头元信息行/方括号占位/通用落款/markdown/空段落/末尾告别语。"""
     s = str(body_html or "")
     # 1) 去掉 LLM 多写的开头元信息行: 收件人/发件人/抄送/主题/公司 ：xxx
     #    正文应从问候语(如 "Feng 您好,")开始
@@ -18631,6 +18720,17 @@ def _clean_mail_suite_body_html(body_html: str) -> str:
     s = _mail_strip_markdown_artifacts(s)
     # 6) 清理空段落
     s = re.sub(r"(?is)<p>\s*(?:<br\s*/?>|&nbsp;|\s)*</p>", "", s)
+    # 7) 删掉末尾孤立的告别语段("祝好，"等)。上面删通用落款后它就成了光杆, 再接真实签名即重复落款。
+    #    循环: "此致" + "敬礼" 可能是相邻两段; 空段落已在 6) 清掉, 故可直接锚定末尾。
+    _closing = "|".join(re.escape(c) for c in _MAIL_SUITE_TRAILING_CLOSINGS)
+    _closing_re = re.compile(
+        r"(?is)<p>\s*(?:<br\s*/?>|&nbsp;|\s)*(?:" + _closing + r")\s*[，,。.！!；;、~～]*\s*(?:<br\s*/?>|&nbsp;|\s)*</p>\s*$"
+    )
+    for _ in range(3):
+        stripped = _closing_re.sub("", s)
+        if stripped == s:
+            break
+        s = stripped
     return s
 
 
@@ -19881,7 +19981,7 @@ def _suite_existing_suite_ranges(db, customer_id: str, contact_id: str, recipien
                 params["emails"] = emails_local
             stmt = text("SELECT scenario, MIN(plan_date), MAX(plan_date) FROM mail_autosend_plan_item "
                         "WHERE (" + " OR ".join(conds) + ") "
-                        "AND status IN ('planned','queued','drafting','drafted','sent') GROUP BY scenario")
+                        f"AND status IN ({_AUTOSEND_SCHEDULED_SQL_IN},'sent') GROUP BY scenario")
             if ids:
                 stmt = stmt.bindparams(bindparam("ids", expanding=True))
             if emails_local:
@@ -20589,7 +20689,7 @@ def get_mail_customer_suite_records(
                 tm = x["plan_date"] + (("T" + x["plan_time"][:5]) if x.get("plan_time") else "")
             if x.get("status") == "sent":
                 _consider(x.get("suite_step"), "crm", tm, 2)
-            elif x.get("status") in ("planned", "queued", "drafting", "drafted"):
+            elif x.get("status") in _AUTOSEND_SCHEDULED_STATUSES:
                 _consider(x.get("suite_step"), "planned", tm, 1)
         for x in (item for item in history_items if item.get("scenario") == suite["scenario"]):
             _consider(x.get("suite_step"), "crm", x.get("planned_send_at"), 2)
@@ -21263,63 +21363,101 @@ _AUTOSEND_WATCHDOG_INTERVAL_SECONDS = 60
 # 出厂即开; 需要临时禁掉"重启自动续跑 + 卡死自愈"时设环境变量 MAIL_AUTOSEND_AUTO_RESUME=0
 _AUTOSEND_AUTO_RESUME = os.getenv("MAIL_AUTOSEND_AUTO_RESUME", "1").strip() != "0"
 
-# 未转入CRM的在册状态。queued = 已点"后台生成"、已入队但还没轮到(worker 逐封串行),
-# 落库而非只存内存: 关页面/重启后端后仍能区分"只预排过"(planned) 与"已请求生成尚未完成"(queued)。
-_AUTOSEND_PENDING_STATUSES = ("planned", "queued", "drafting", "drafted", "failed")
+# 状态机(两段, 都落库, 关页面/重启后端都不丢):
+#   生成: planned -> queued(点后台生成) -> drafting(worker认领) -> drafted / failed
+#   同步: drafted -> commit_queued(点同步ERP) -> committing(worker认领) -> sent / commit_failed
+# 落库而非只存内存: 才能区分"只预排过"与"已请求但没做完", 中断后可自动续跑。
+_AUTOSEND_PENDING_STATUSES = ("planned", "queued", "drafting", "drafted",
+                             "commit_queued", "committing", "commit_failed", "failed")
+# "已排进清单、尚未转入CRM"的状态。预览排期去重/日历/套装去重都按它 —— 漏一个就会把这些封当成
+# "没排过"而重复排期。故这里集中定义, 各处 SQL 用 _AUTOSEND_SCHEDULED_SQL_IN 拼, 不再散落硬编码。
+_AUTOSEND_SCHEDULED_STATUSES = ("planned", "queued", "drafting", "drafted",
+                               "commit_queued", "committing", "commit_failed")
+_AUTOSEND_SCHEDULED_SQL_IN = ",".join(f"'{s}'" for s in _AUTOSEND_SCHEDULED_STATUSES)
+_AUTOSEND_PENDING_SQL_IN = ",".join(f"'{s}'" for s in _AUTOSEND_PENDING_STATUSES)
 # 该联系人已有待发送套装邮件时, 本次套装第1封 = 该联系人已有最晚一封发送日 + 本偏移天数
 _AUTOSEND_EXISTING_SUITE_OFFSET_DAYS = 7
 
 
-def _autosend_is_running(staff: str) -> bool:
+# 同步保存ERP(转入CRM)的 worker 锁, 与生成锁互不干扰:
+# 一个销售可以一边生成后面的封、一边同步前面已生成的封, 两者操作的状态集不重叠。
+_AUTOSEND_COMMIT_ACTIVE: dict = {}
+
+
+def _lock_running(reg: dict, staff: str) -> bool:
     with _AUTOSEND_GEN_LOCK:
-        cur = _AUTOSEND_GEN_ACTIVE.get(staff)
+        cur = reg.get(staff)
         if not cur:
             return False
         if time.monotonic() - cur["beat"] > _AUTOSEND_GEN_STALE_SECONDS:
-            _AUTOSEND_GEN_ACTIVE.pop(staff, None)   # 心跳超时自愈: worker 已挂, 清锁视为未运行
+            reg.pop(staff, None)   # 心跳超时自愈: worker 已挂, 清锁视为未运行
             return False
         return True
 
 
-def _autosend_mark_running(staff: str) -> str | None:
+def _lock_take(reg: dict, staff: str) -> str | None:
     """抢锁成功返回本次 worker 的 token; 该销售已有活着(还在心跳)的 worker 时返回 None。
 
     自愈: 最后心跳超过 _AUTOSEND_GEN_STALE_SECONDS(worker线程挂了不再续期也没走 finally 释放)则覆盖放行,
-    避免"每次点后台生成都 already_running 空转、失败项永远轮不到重跑"。
+    避免"每次点都 already_running 空转、失败项永远轮不到重跑"。
     """
     with _AUTOSEND_GEN_LOCK:
-        cur = _AUTOSEND_GEN_ACTIVE.get(staff)
+        cur = reg.get(staff)
         if cur and (time.monotonic() - cur["beat"]) <= _AUTOSEND_GEN_STALE_SECONDS:
             return None
         token = uuid.uuid4().hex
-        _AUTOSEND_GEN_ACTIVE[staff] = {"token": token, "beat": time.monotonic()}
+        reg[staff] = {"token": token, "beat": time.monotonic()}
         return token
 
 
-def _autosend_heartbeat(staff: str, token: str) -> None:
-    """worker 存活续期: 每处理一封(及每次重试前)刷新心跳, 使长批次(逐封耗时累加)不被 stale 误判挂死。
+def _lock_beat(reg: dict, staff: str, token: str) -> None:
+    """worker 存活续期: 每处理一封刷新心跳, 使长批次(逐封耗时累加)不被 stale 误判挂死。
     只在锁仍属于本次 worker(token 相符)时续期; 已被 watchdog 接管的僵尸线程不能复活自己的锁。"""
     with _AUTOSEND_GEN_LOCK:
-        cur = _AUTOSEND_GEN_ACTIVE.get(staff)
+        cur = reg.get(staff)
         if cur and cur["token"] == token:
             cur["beat"] = time.monotonic()
 
 
-def _autosend_owns_lock(staff: str, token: str) -> bool:
+def _lock_owns(reg: dict, staff: str, token: str) -> bool:
     """本 worker 是否仍持有该销售的锁(被 watchdog 接管后为 False, worker 应自行退出)。"""
     with _AUTOSEND_GEN_LOCK:
-        cur = _AUTOSEND_GEN_ACTIVE.get(staff)
+        cur = reg.get(staff)
         return bool(cur and cur["token"] == token)
 
 
-def _autosend_mark_done(staff: str, token: str | None = None) -> None:
+def _lock_release(reg: dict, staff: str, token: str | None = None) -> None:
     """token 非空 = 只放自己那把锁(接管后不误删新 worker 的锁); token 为空 = 强制放锁(watchdog 用)。"""
     with _AUTOSEND_GEN_LOCK:
-        cur = _AUTOSEND_GEN_ACTIVE.get(staff)
+        cur = reg.get(staff)
         if not cur:
             return
         if token is None or cur["token"] == token:
-            _AUTOSEND_GEN_ACTIVE.pop(staff, None)
+            reg.pop(staff, None)
+
+
+def _autosend_is_running(staff: str) -> bool:
+    return _lock_running(_AUTOSEND_GEN_ACTIVE, staff)
+
+
+def _autosend_mark_running(staff: str) -> str | None:
+    return _lock_take(_AUTOSEND_GEN_ACTIVE, staff)
+
+
+def _autosend_heartbeat(staff: str, token: str) -> None:
+    _lock_beat(_AUTOSEND_GEN_ACTIVE, staff, token)
+
+
+def _autosend_owns_lock(staff: str, token: str) -> bool:
+    return _lock_owns(_AUTOSEND_GEN_ACTIVE, staff, token)
+
+
+def _autosend_mark_done(staff: str, token: str | None = None) -> None:
+    _lock_release(_AUTOSEND_GEN_ACTIVE, staff, token)
+
+
+def _autosend_commit_is_running(staff: str) -> bool:
+    return _lock_running(_AUTOSEND_COMMIT_ACTIVE, staff)
 
 
 def _autosend_recover_orphan_drafting(db: Session, staff: str) -> int:
@@ -21400,7 +21538,7 @@ def _autosend_merge_local_plan_load(db, owners: list[str], start_date, load: dic
             text(
                 "SELECT owner_staff_id, to_char(plan_date,'YYYY-MM-DD') AS d, COUNT(*) AS n "
                 "FROM mail_autosend_plan_item "
-                "WHERE status IN ('planned','queued','drafting','drafted') AND plan_date >= :sd "
+                f"WHERE status IN ({_AUTOSEND_SCHEDULED_SQL_IN}) AND plan_date >= :sd "
                 "AND owner_staff_id IN :ids "
                 "GROUP BY owner_staff_id, to_char(plan_date,'YYYY-MM-DD')"
             ).bindparams(bindparam("ids", expanding=True)),
@@ -21661,7 +21799,7 @@ def autosend_preview(payload: AutosendPreviewRequest, db: Session = Depends(get_
         str(row[0]) for row in db.execute(
             text("SELECT DISTINCT contact_id FROM mail_autosend_plan_item "
                  + ("WHERE owner_staff_id = :s AND " if staff else "WHERE ")
-                 + "status IN ('planned','queued','drafting','drafted')"),
+                 + f"status IN ({_AUTOSEND_SCHEDULED_SQL_IN})"),
             pending_params,
         ).fetchall()
     }
@@ -21793,8 +21931,12 @@ def clear_autosend_plan(staff_id: str = Query(...), pick_reason: str = Query("")
     return {"ok": True, "deleted": int(n or 0)}
 
 
-def _autosend_generate_one(customer_id: str, scenario: str, step: int) -> dict:
-    """复用套装生成链路真调一封, 返回 {subject, body_html, llm_prompt, recipient_email}。抛异常即失败。"""
+def _autosend_draft_context(customer_id: str) -> tuple[dict, str]:
+    """取该客户的 CRM 画像(已补 contact_domain) 与草稿收件人邮箱。
+
+    真调生成(_autosend_generate_one)与只补脚本(repair) 共用同一口径, 保证补出来的脚本
+    与当初生成正文时用的那份一致。
+    """
     crm_profile = _lookup_mail_crm_profile(customer_id, "")
     contact_email = sanitize_text(crm_profile.get("contact_email"))
     draft_contact_email = _mail_demo_contact_email_for_draft(contact_email) or _mail_review_only_draft_contact_email(customer_id, crm_profile)
@@ -21803,9 +21945,19 @@ def _autosend_generate_one(customer_id: str, scenario: str, step: int) -> dict:
         shared = set(crm_profile.get("customer_domains") or ())
         shared.add(contact_domain)
         crm_profile = {**crm_profile, "customer_domains": tuple(sorted(shared))}
-    req = MailGenerateDraftRequest(
+    return crm_profile, draft_contact_email
+
+
+def _autosend_draft_request(customer_id: str, scenario: str, step: int, draft_contact_email: str) -> MailGenerateDraftRequest:
+    return MailGenerateDraftRequest(
         customer_key=customer_id, contact_email=draft_contact_email, scenario=scenario,
-        suite_step=step, current_seller_name="事必达销售", current_seller_signature="事必达销售")
+        suite_step=int(step), current_seller_name="事必达销售", current_seller_signature="事必达销售")
+
+
+def _autosend_generate_one(customer_id: str, scenario: str, step: int) -> dict:
+    """复用套装生成链路真调一封, 返回 {subject, body_html, llm_prompt, recipient_email}。抛异常即失败。"""
+    crm_profile, draft_contact_email = _autosend_draft_context(customer_id)
+    req = _autosend_draft_request(customer_id, scenario, step, draft_contact_email)
     gdb = SessionLocal()
     try:
         resp = _build_mail_generate_draft_response(gdb, req, precomputed_crm_profile=crm_profile)
@@ -21999,6 +22151,438 @@ def autosend_generate_status(staff_id: str = Query(""), db: Session = Depends(ge
             "recovered_drafting": recovered}
 
 
+def _autosend_mark_item_sent(db: Session, item_id: str, crm_send_id: str | None) -> bool:
+    """把一封回标为 sent 并记套装历史(供后续排期去重)。drafted(前端旧路径)/committing(worker) 都可回标。"""
+    row = db.execute(
+        text("SELECT contact_id, owner_staff_id, scenario, suite_step, plan_date "
+             "FROM mail_autosend_plan_item WHERE item_id=:i AND status IN ('drafted','committing')"),
+        {"i": item_id},
+    ).fetchone()
+    if not row:
+        return False
+    db.execute(text("UPDATE mail_autosend_plan_item SET status='sent', committed_at=now(), "
+                    "crm_send_id=:c, commit_error=NULL, updated_at=now() WHERE item_id=:i"),
+               {"c": crm_send_id or None, "i": item_id})
+    try:
+        pa = datetime.combine(row[4], datetime.min.time()) if row[4] else None
+        db.execute(text("INSERT INTO mail_contact_suite_history (contact_id, owner_staff_id, scenario, suite_step, planned_send_at) "
+                        "VALUES (:cid,:own,:sc,:st,:pa)"),
+                   {"cid": row[0], "own": row[1], "sc": row[2], "st": row[3], "pa": pa})
+    except Exception:
+        logger.exception("AUTOSEND_HISTORY_INSERT_FAILED item=%s", item_id)
+    return True
+
+
+def _autosend_commit_interval_days(plan_date) -> int:
+    """plan_date 距今天(北京)的天数; 已过期或为空一律按 0(今天发)。"""
+    if not plan_date:
+        return 0
+    today = (datetime.utcnow() + timedelta(hours=8)).date()
+    d = plan_date.date() if hasattr(plan_date, "hour") else plan_date
+    try:
+        return max(0, (d - today).days)
+    except Exception:
+        return 0
+
+
+def _autosend_commit_enqueue(db: Session, staff: str, item_ids: list[str] | None) -> int:
+    """drafted / commit_failed -> commit_queued。落库入队 = "点过同步ERP" 这件事的持久证据。"""
+    sql = ("UPDATE mail_autosend_plan_item SET status='commit_queued', commit_error=NULL, updated_at=now() "
+           "WHERE owner_staff_id=:s AND status IN ('drafted','commit_failed')")
+    params: dict = {"s": staff}
+    if item_ids:
+        stmt = text(sql + " AND item_id IN :ids").bindparams(bindparam("ids", expanding=True))
+        params["ids"] = [str(x) for x in item_ids]
+    else:
+        stmt = text(sql)
+    n = db.execute(stmt, params).rowcount
+    db.commit()
+    return int(n or 0)
+
+
+def _autosend_commit_queued_count(db: Session, staff: str) -> int:
+    return int(db.execute(
+        text("SELECT COUNT(*) FROM mail_autosend_plan_item "
+             "WHERE owner_staff_id=:s AND status IN ('commit_queued','committing')"),
+        {"s": staff},
+    ).scalar() or 0)
+
+
+def _autosend_commit_worker(staff: str, item_ids: list[str] | None = None, token: str = "") -> None:
+    """后台逐封同步保存ERP(转入CRM待发队列): 取 commit_queued, 认领为 committing, 成功 -> sent。
+
+    以前这一步是浏览器里的 for-await 串行循环, 关页面就断在半路, 没有任何断点记录。
+    现在入队/认领/结果全部落库, 关页面不影响, 后端重启由 watchdog 自动续跑。
+    写 CRM 直接复用 send_mail_customer_suite(手动传 Session), 与套装页"发送"是同一条链路。
+    """
+    try:
+        db = SessionLocal()
+        try:
+            base = ("SELECT item_id, customer_id, contact_id, scenario, suite_step, subject, body_html, "
+                    "recipient_email, plan_date, plan_time "
+                    "FROM mail_autosend_plan_item WHERE owner_staff_id=:s AND status='commit_queued'")
+            if item_ids:
+                rows = db.execute(
+                    text(base + " AND item_id IN :ids").bindparams(bindparam("ids", expanding=True)),
+                    {"s": staff, "ids": [str(x) for x in item_ids]},
+                ).fetchall()
+            else:
+                rows = db.execute(text(base + " ORDER BY plan_date, suite_step"), {"s": staff}).fetchall()
+        finally:
+            db.close()
+
+        for (item_id, customer_id, contact_id, scenario, step, subject, body_html,
+             recipient_email, plan_date, plan_time) in rows:
+            if token and not _lock_owns(_AUTOSEND_COMMIT_ACTIVE, staff, token):
+                logger.warning("AUTOSEND_COMMIT_WORKER_PREEMPTED staff=%s", staff)
+                return
+            _lock_beat(_AUTOSEND_COMMIT_ACTIVE, staff, token)
+            cid = str(customer_id or contact_id)
+            d2 = SessionLocal()
+            try:
+                claimed = d2.execute(
+                    text("UPDATE mail_autosend_plan_item SET status='committing', updated_at=now() "
+                         "WHERE item_id=:i AND status='commit_queued'"),
+                    {"i": str(item_id)},
+                ).rowcount
+                d2.commit()
+            finally:
+                d2.close()
+            if not claimed:
+                continue
+
+            # 守卫: send_mail_customer_suite 只在 drafts[].body_html 非空时直接用页面内容;
+            # 为空会走"兜底重新生成"分支真调大模型。同步这一步绝不允许触发 LLM, 故先拦掉。
+            if not str(body_html or "").strip():
+                d0 = SessionLocal()
+                try:
+                    d0.execute(text("UPDATE mail_autosend_plan_item SET status='commit_failed', "
+                                    "commit_error='正文为空，无法同步(请先重新生成这一封)', updated_at=now() "
+                                    "WHERE item_id=:i"), {"i": str(item_id)})
+                    d0.commit()
+                finally:
+                    d0.close()
+                logger.warning("AUTOSEND_COMMIT_EMPTY_BODY item=%s", item_id)
+                continue
+
+            try:
+                req = MailCustomerSuiteSendRequest(
+                    customer_id=cid,
+                    scenario=scenario,
+                    suite_steps=[int(step)],
+                    recipient_emails=(recipient_email or None),
+                    drafts=[{
+                        "suite_step": int(step),
+                        "subject": subject or "",
+                        "body_html": body_html or "",
+                        "send_interval_days": _autosend_commit_interval_days(plan_date),
+                        "send_time": (str(plan_time or "09:00")[:5] or "09:00"),
+                    }],
+                )
+                sdb = SessionLocal()
+                try:
+                    res = send_mail_customer_suite(req, db=sdb)
+                finally:
+                    sdb.close()
+                prepared = (res or {}).get("prepared") or []
+                p0 = prepared[0] if prepared else {}
+                st = str(p0.get("status") or "")
+                if token and not _lock_owns(_AUTOSEND_COMMIT_ACTIVE, staff, token):
+                    logger.warning("AUTOSEND_COMMIT_ITEM_DISCARD item=%s: 锁已被接管, 丢弃迟到结果", item_id)
+                    return
+                # enqueued=真写进CRM待发队列; duplicate_skipped=同收件人+同主题+同计划日已在队列, 同样视为已转入
+                if st in ("enqueued", "duplicate_skipped"):
+                    d3 = SessionLocal()
+                    try:
+                        send_id = p0.get("crm_send_id")
+                        if not send_id:
+                            # duplicate_skipped 不返 send_id; 之前那次推送已在 send_plan 里留了记录, 回查补上。
+                            # 否则这封回标成 sent 却没有 send_id, 详情页读回 CRM 正文时就断了路(实测 0141 有 108 封)。
+                            send_id = d3.execute(
+                                text("SELECT crm_send_id FROM mail_customer_suite_send_plan "
+                                     "WHERE customer_id=:c AND scenario=:sc AND suite_step=:st "
+                                     "AND COALESCE(inputer_staff_id,'')=:own AND status='enqueued' "
+                                     "AND COALESCE(crm_send_id,'') <> '' "
+                                     "ORDER BY created_at DESC LIMIT 1"),
+                                {"c": cid, "sc": scenario, "st": int(step), "own": staff},
+                            ).scalar()
+                        _autosend_mark_item_sent(d3, str(item_id), send_id)
+                        d3.commit()
+                    finally:
+                        d3.close()
+                    if not send_id:
+                        logger.warning("AUTOSEND_COMMIT_NO_SENDID item=%s crm_status=%s rowid=%s",
+                                       item_id, st, p0.get("spqueue_rowid"))
+                else:
+                    err = str(p0.get("error") or st or "CRM 未返回结果")[:2000]
+                    d4 = SessionLocal()
+                    try:
+                        d4.execute(text("UPDATE mail_autosend_plan_item SET status='commit_failed', "
+                                        "commit_error=:e, updated_at=now() WHERE item_id=:i"),
+                                   {"e": err, "i": str(item_id)})
+                        d4.commit()
+                    finally:
+                        d4.close()
+                    logger.warning("AUTOSEND_COMMIT_ITEM_FAILED item=%s crm_status=%s err=%s", item_id, st, err)
+            except Exception as exc:
+                if token and not _lock_owns(_AUTOSEND_COMMIT_ACTIVE, staff, token):
+                    return
+                d5 = SessionLocal()
+                try:
+                    d5.execute(text("UPDATE mail_autosend_plan_item SET status='commit_failed', "
+                                    "commit_error=:e, updated_at=now() WHERE item_id=:i"),
+                               {"e": str(exc)[:2000], "i": str(item_id)})
+                    d5.commit()
+                finally:
+                    d5.close()
+                logger.exception("AUTOSEND_COMMIT_ITEM_EXC item=%s", item_id)
+    except Exception:
+        logger.exception("AUTOSEND_COMMIT_WORKER_FAILED staff=%s", staff)
+    finally:
+        _lock_release(_AUTOSEND_COMMIT_ACTIVE, staff, token or None)
+
+
+class AutosendCommitRequest(BaseModel):
+    staff_id: str
+    item_ids: list[str] | None = None
+
+
+@app.post("/api/v1/mail/autosend/commit")
+def autosend_commit(payload: AutosendCommitRequest, db: Session = Depends(get_db)):
+    """后台逐封同步保存ERP。立即返回, 前端轮询 commit-status; 关页面不影响, 重启自动续跑。"""
+    staff = sanitize_text(payload.staff_id).strip()
+    if not staff:
+        raise HTTPException(status_code=422, detail="staff_id is required")
+    if _autosend_commit_is_running(staff):
+        return {"ok": True, "started": False, "already_running": True}
+    token = _lock_take(_AUTOSEND_COMMIT_ACTIVE, staff)
+    if not token:
+        return {"ok": True, "started": False, "already_running": True}
+    try:
+        enqueued = _autosend_commit_enqueue(db, staff, payload.item_ids)
+        pending = _autosend_commit_queued_count(db, staff)
+    except Exception:
+        _lock_release(_AUTOSEND_COMMIT_ACTIVE, staff, token)
+        raise
+    if not pending:
+        _lock_release(_AUTOSEND_COMMIT_ACTIVE, staff, token)
+        return {"ok": True, "started": False, "pending": 0, "enqueued": enqueued, "note": "没有可同步的已生成邮件"}
+    threading.Thread(target=_autosend_commit_worker, name="autosend-commit", daemon=True,
+                     args=(staff, payload.item_ids, token)).start()
+    return {"ok": True, "started": True, "pending": pending, "enqueued": enqueued}
+
+
+@app.get("/api/v1/mail/autosend/commit-status")
+def autosend_commit_status(staff_id: str = Query(""), db: Session = Depends(get_db)):
+    staff = sanitize_text(staff_id).strip()
+    running = _autosend_commit_is_running(staff) if staff else False
+    staff_clause = "WHERE owner_staff_id=:s " if staff else ""
+    params = {"s": staff} if staff else {}
+    rows = db.execute(
+        text(f"SELECT status, COUNT(*) FROM mail_autosend_plan_item {staff_clause}GROUP BY status"),
+        params,
+    ).fetchall()
+    counts = {str(r[0]): int(r[1]) for r in rows}
+    queued = int(counts.get("commit_queued", 0) + counts.get("committing", 0))
+    return {"ok": True, "staff_id": staff, "running": running, "counts": counts, "queued": queued,
+            "commit_failed": int(counts.get("commit_failed", 0)),
+            "interrupted": (not running) and queued > 0,
+            "auto_resume": _AUTOSEND_AUTO_RESUME}
+
+
+_AUTOSEND_REPAIR_LOCK = threading.Lock()
+_AUTOSEND_REPAIR_STATE: dict = {"running": False, "total": 0, "done": 0, "prompt_fixed": 0,
+                               "signature_fixed": 0, "committed_fixed": 0, "failed": 0,
+                               "error": "", "dry_run": False}
+
+
+class AutosendRepairRequest(BaseModel):
+    staff_id: str = ""            # 空 = 全部销售
+    fix_prompt: bool = True       # 回填缺失的 llm_prompt(脚本)
+    fix_signature: bool = True    # 仅 drafted: 重跑正文清洗 + 重注入真实签名
+    fix_committed: bool = True    # 本地 drafted 但 CRM 队列里已有 -> 回标 sent 并补 crm_send_id
+    dry_run: bool = False         # 只统计不写库
+
+
+# 本地 status='drafted' 但 CRM 待发计划表里已有 enqueued 行的封:
+# 读接口 _autosend_align_crm_status 会把它们"显示"成已转入(待发), 于是前端不给复选框、
+# as2CommitOne 也直接 skip -> 这封永远不会被同步、也永远不会被回标, 卡在夹缝里。
+# 这里按同一口径(客户+套装+封次+销售+收件邮箱)把它们真正回标为 sent, 并补回 crm_send_id。
+_AUTOSEND_ALIGNED_SENT_SQL = """
+    SELECT i.item_id, COALESCE(p.crm_send_id, '')
+    FROM mail_autosend_plan_item i
+    JOIN mail_customer_suite_send_plan p
+      ON p.customer_id = COALESCE(NULLIF(i.customer_id, ''), i.contact_id)
+     AND p.scenario = i.scenario
+     AND p.suite_step = i.suite_step
+     AND COALESCE(p.inputer_staff_id, '') = COALESCE(i.owner_staff_id, '')
+     AND LOWER(COALESCE(p.recipient_email_key, '')) = LOWER(COALESCE(i.recipient_email, ''))
+    WHERE i.status = 'drafted'
+      AND p.status = 'enqueued'
+      AND COALESCE(p.crm_send_status, '') <> 'deleted'
+"""
+
+
+def _autosend_backfill_aligned_sent(db: Session, staff: str, dry_run: bool) -> int:
+    sql = _AUTOSEND_ALIGNED_SENT_SQL
+    params: dict = {}
+    if staff:
+        sql += " AND i.owner_staff_id = :s"
+        params["s"] = staff
+    rows = db.execute(text(sql), params).fetchall()
+    if dry_run:
+        return len(rows)
+    n = 0
+    for item_id, send_id in rows:
+        if _autosend_mark_item_sent(db, str(item_id), send_id or None):
+            n += 1
+    db.commit()
+    return n
+
+
+def _autosend_repair_worker(staff: str, fix_prompt: bool, fix_signature: bool, dry_run: bool,
+                            fix_committed: bool = True) -> None:
+    """存量修复: 全程不调大模型、不写 CRM。
+
+    - 补脚本: llm_prompt 为空但正文完好的封, 用 _build_mail_customer_suite_prompt_only 重建脚本, 只写 llm_prompt, 正文一字不动。
+      drafted/sent 都补(补脚本不影响已入 CRM 队列的内容)。
+    - 修签名: 只处理 drafted。sent 的正文已随 .eml 进了 CRM 待发队列, 改本地会让两边不一致, 故不动。
+    """
+    stats = {"total": 0, "done": 0, "prompt_fixed": 0, "signature_fixed": 0, "failed": 0}
+    try:
+        # 先做回标: 这些封本地 drafted 但 CRM 已有待发行, 前端点不到也同步不了。
+        # 必须在 fix_signature 之前跑 —— 回标成 sent 后就不该再改它的正文(已随 .eml 进了 CRM)。
+        if fix_committed:
+            cdb = SessionLocal()
+            try:
+                n = _autosend_backfill_aligned_sent(cdb, staff, dry_run)
+                stats["committed_fixed"] = n
+                with _AUTOSEND_REPAIR_LOCK:
+                    _AUTOSEND_REPAIR_STATE["committed_fixed"] = n
+                logger.info("AUTOSEND_REPAIR_ALIGNED_SENT staff=%s n=%d dry_run=%s", staff or "ALL", n, dry_run)
+            except Exception:
+                logger.exception("AUTOSEND_REPAIR_ALIGNED_SENT_FAILED staff=%s", staff)
+            finally:
+                cdb.close()
+
+        db = SessionLocal()
+        try:
+            where = ["COALESCE(body_html,'') <> ''"]
+            params: dict = {}
+            if staff:
+                where.append("owner_staff_id = :s")
+                params["s"] = staff
+            need = []
+            if fix_prompt:
+                need.append("COALESCE(llm_prompt,'') = ''")
+            if fix_signature:
+                need.append("status = 'drafted'")
+            if not need:
+                return
+            where.append("(" + " OR ".join(need) + ")")
+            rows = db.execute(
+                text("SELECT item_id, customer_id, contact_id, scenario, suite_step, status, "
+                     "COALESCE(llm_prompt,''), body_html "
+                     "FROM mail_autosend_plan_item WHERE " + " AND ".join(where) + " ORDER BY item_id"),
+                params,
+            ).fetchall()
+        finally:
+            db.close()
+
+        stats["total"] = len(rows)
+        with _AUTOSEND_REPAIR_LOCK:
+            _AUTOSEND_REPAIR_STATE.update(total=stats["total"], done=0)
+        logger.info("AUTOSEND_REPAIR_START staff=%s rows=%d fix_prompt=%s fix_signature=%s dry_run=%s",
+                    staff or "ALL", len(rows), fix_prompt, fix_signature, dry_run)
+
+        # 同一客户的 CRM 画像/签名只查一次: 557 封里大量同联系人的 4 封, 否则 CRM 要被打几百次
+        ctx_cache: dict = {}
+        sig_cache: dict = {}
+        for item_id, customer_id, contact_id, scenario, step, status, prompt, body in rows:
+            cid = str(customer_id or contact_id)
+            try:
+                new_prompt = None
+                if fix_prompt and not prompt:
+                    if cid not in ctx_cache:
+                        ctx_cache[cid] = _autosend_draft_context(cid)
+                    crm_profile, draft_email = ctx_cache[cid]
+                    req = _autosend_draft_request(cid, scenario, int(step), draft_email)
+                    pdb = SessionLocal()
+                    try:
+                        new_prompt = (_build_mail_customer_suite_prompt_only(
+                            pdb, payload=req, precomputed_crm_profile=crm_profile) or "")[:20000] or None
+                    finally:
+                        pdb.close()
+
+                new_body = None
+                if fix_signature and status == "drafted":
+                    if cid not in sig_cache:
+                        sig_cache[cid] = _mail_suite_signature_html_for_customer(cid)[0]
+                    rebuilt = _apply_mail_suite_signature(body or "", sig_cache[cid])
+                    if rebuilt and rebuilt != body:
+                        new_body = rebuilt
+
+                if new_prompt or new_body:
+                    if not dry_run:
+                        sets, p = [], {"i": str(item_id)}
+                        if new_prompt:
+                            sets.append("llm_prompt = :p")
+                            p["p"] = new_prompt
+                        if new_body:
+                            sets.append("body_html = :b")
+                            p["b"] = new_body
+                        sets.append("updated_at = now()")
+                        wdb = SessionLocal()
+                        try:
+                            wdb.execute(text("UPDATE mail_autosend_plan_item SET " + ", ".join(sets)
+                                             + " WHERE item_id = :i"), p)
+                            wdb.commit()
+                        finally:
+                            wdb.close()
+                    if new_prompt:
+                        stats["prompt_fixed"] += 1
+                    if new_body:
+                        stats["signature_fixed"] += 1
+            except Exception:
+                stats["failed"] += 1
+                logger.exception("AUTOSEND_REPAIR_ITEM_FAILED item=%s", item_id)
+            finally:
+                stats["done"] += 1
+                if stats["done"] % 20 == 0 or stats["done"] == stats["total"]:
+                    with _AUTOSEND_REPAIR_LOCK:
+                        _AUTOSEND_REPAIR_STATE.update(**stats)
+        logger.info("AUTOSEND_REPAIR_DONE %s", stats)
+    except Exception as exc:
+        with _AUTOSEND_REPAIR_LOCK:
+            _AUTOSEND_REPAIR_STATE["error"] = str(exc)[:300]
+        logger.exception("AUTOSEND_REPAIR_WORKER_FAILED staff=%s", staff)
+    finally:
+        with _AUTOSEND_REPAIR_LOCK:
+            _AUTOSEND_REPAIR_STATE.update(running=False, **stats)
+
+
+@app.post("/api/v1/mail/autosend/repair-drafts")
+def autosend_repair_drafts(payload: AutosendRepairRequest):
+    """存量修复(后台跑, 立即返回; 进度见 GET /autosend/repair-status)。不调大模型, 不写 CRM。"""
+    with _AUTOSEND_REPAIR_LOCK:
+        if _AUTOSEND_REPAIR_STATE.get("running"):
+            return {"ok": True, "started": False, "already_running": True,
+                    "state": dict(_AUTOSEND_REPAIR_STATE)}
+        _AUTOSEND_REPAIR_STATE.update(running=True, total=0, done=0, prompt_fixed=0, signature_fixed=0,
+                                      committed_fixed=0, failed=0, error="", dry_run=bool(payload.dry_run))
+    staff = sanitize_text(payload.staff_id).strip()
+    threading.Thread(target=_autosend_repair_worker, name="autosend-repair", daemon=True,
+                     args=(staff, bool(payload.fix_prompt), bool(payload.fix_signature),
+                           bool(payload.dry_run), bool(payload.fix_committed))).start()
+    return {"ok": True, "started": True, "staff_id": staff or "ALL", "dry_run": bool(payload.dry_run)}
+
+
+@app.get("/api/v1/mail/autosend/repair-status")
+def autosend_repair_status():
+    with _AUTOSEND_REPAIR_LOCK:
+        return {"ok": True, **_AUTOSEND_REPAIR_STATE}
+
+
 def _autosend_fail_stuck_items(db: Session) -> list[str]:
     """把卡死的封(drafting 超过 _AUTOSEND_STUCK_SECONDS 没有任何进展)判为 failed, 返回涉及的销售工号。
 
@@ -22023,13 +22607,51 @@ def _autosend_fail_stuck_items(db: Session) -> list[str]:
     return staffs
 
 
+def _autosend_fail_stuck_commits(db: Session) -> list[str]:
+    """同步保存ERP 卡死(committing 超时无进展)的封判 commit_failed, 返回涉及的销售工号。
+
+    与生成的卡死处理同理: 判失败跳过, 不退回 commit_queued(否则同一封无限重试, 整批推进不下去)。
+    commit_failed 的封在下次点"同步保存ERP"时随入队一起重试。
+    """
+    rows = db.execute(
+        text("UPDATE mail_autosend_plan_item SET status='commit_failed', commit_error=:e, updated_at=now() "
+             "WHERE status='committing' AND updated_at < now() - (:sec * interval '1 second') "
+             "RETURNING owner_staff_id, item_id"),
+        {"e": f"同步ERP超过 {_AUTOSEND_STUCK_SECONDS // 60} 分钟无进展，判定卡死并跳过（下次同步会自动重试本封）",
+         "sec": _AUTOSEND_STUCK_SECONDS},
+    ).fetchall()
+    db.commit()
+    staffs: list[str] = []
+    for owner, item_id in rows:
+        logger.warning("AUTOSEND_COMMIT_ITEM_STUCK item=%s staff=%s -> commit_failed", item_id, owner)
+        if owner and owner not in staffs:
+            staffs.append(str(owner))
+    return staffs
+
+
+def _autosend_recover_orphan_committing(db: Session, staff: str) -> int:
+    """服务重启会杀掉 commit worker, 留下 committing 的孤儿行 -> 恢复为 commit_queued 等待续跑。"""
+    if _autosend_commit_is_running(staff):
+        return 0
+    n = db.execute(
+        text("UPDATE mail_autosend_plan_item SET status='commit_queued', commit_error=:e, updated_at=now() "
+             "WHERE owner_staff_id=:s AND status='committing'"),
+        {"s": staff, "e": "同步ERP中断或服务重启，已恢复为排队中"},
+    ).rowcount
+    if n:
+        db.commit()
+    return int(n or 0)
+
+
 def _autosend_resume_workers(db: Session) -> list[str]:
-    """给所有"库里还有 queued 但此刻没人在跑"的销售拉起 worker。重启自动续跑与卡死接管都走这里。"""
+    """给所有"库里还有 queued/commit_queued 但此刻没人在跑"的销售拉起 worker。
+    重启自动续跑与卡死接管都走这里; 生成与同步两条队列各自独立拉起。"""
+    started: list[str] = []
+
     rows = db.execute(
         text("SELECT DISTINCT owner_staff_id FROM mail_autosend_plan_item "
              "WHERE status IN ('queued','drafting') AND COALESCE(owner_staff_id,'') <> ''")
     ).fetchall()
-    started: list[str] = []
     for (staff,) in rows:
         staff = str(staff)
         if _autosend_is_running(staff):
@@ -22041,7 +22663,26 @@ def _autosend_resume_workers(db: Session) -> list[str]:
         if not token:
             continue
         threading.Thread(target=_autosend_generate_worker, args=(staff, None, token), daemon=True).start()
-        started.append(staff)
+        started.append("gen:" + staff)
+
+    rows = db.execute(
+        text("SELECT DISTINCT owner_staff_id FROM mail_autosend_plan_item "
+             "WHERE status IN ('commit_queued','committing') AND COALESCE(owner_staff_id,'') <> ''")
+    ).fetchall()
+    for (staff,) in rows:
+        staff = str(staff)
+        if _autosend_commit_is_running(staff):
+            continue
+        _autosend_recover_orphan_committing(db, staff)   # 无人认领的 committing -> commit_queued
+        if not _autosend_commit_queued_count(db, staff):
+            continue
+        token = _lock_take(_AUTOSEND_COMMIT_ACTIVE, staff)
+        if not token:
+            continue
+        threading.Thread(target=_autosend_commit_worker, name="autosend-commit", daemon=True,
+                         args=(staff, None, token)).start()
+        started.append("commit:" + staff)
+
     return started
 
 
@@ -22055,6 +22696,8 @@ def _autosend_watchdog_loop() -> None:
             db = SessionLocal()
             for staff in _autosend_fail_stuck_items(db):
                 _autosend_mark_done(staff)   # 强制放锁(旧线程仍阻塞着, 但已被接管)
+            for staff in _autosend_fail_stuck_commits(db):
+                _lock_release(_AUTOSEND_COMMIT_ACTIVE, staff)
             started = _autosend_resume_workers(db)
             if started:
                 logger.info("AUTOSEND_AUTO_RESUME%s staff=%s",
@@ -22087,27 +22730,14 @@ class AutosendMarkCommittedRequest(BaseModel):
 
 @app.post("/api/v1/mail/autosend/mark-committed")
 def autosend_mark_committed(payload: AutosendMarkCommittedRequest, db: Session = Depends(get_db)):
-    """前端用现有 /customer-suite-send 转入CRM成功后, 回标这些 plan_item 为 sent 并记历史(供去重)。"""
+    """回标 plan_item 为 sent 并记历史(供去重)。
+
+    保留给外部/旧调用方; 页面自身的同步已改走 /autosend/commit(后端 worker), 回标在 worker 内完成。
+    """
     n = 0
     for iid in (payload.item_ids or []):
-        row = db.execute(
-            text("SELECT contact_id, owner_staff_id, scenario, suite_step, plan_date "
-                 "FROM mail_autosend_plan_item WHERE item_id=:i AND status='drafted'"),
-            {"i": iid},
-        ).fetchone()
-        if not row:
-            continue
-        csid = (payload.crm_send_ids or {}).get(iid)
-        db.execute(text("UPDATE mail_autosend_plan_item SET status='sent', committed_at=now(), crm_send_id=:c, updated_at=now() WHERE item_id=:i"),
-                   {"c": csid, "i": iid})
-        try:
-            pa = datetime.combine(row[4], datetime.min.time()) if row[4] else None
-            db.execute(text("INSERT INTO mail_contact_suite_history (contact_id, owner_staff_id, scenario, suite_step, planned_send_at) "
-                            "VALUES (:cid,:own,:sc,:st,:pa)"),
-                       {"cid": row[0], "own": row[1], "sc": row[2], "st": row[3], "pa": pa})
-        except Exception:
-            logger.exception("AUTOSEND_HISTORY_INSERT_FAILED item=%s", iid)
-        n += 1
+        if _autosend_mark_item_sent(db, iid, (payload.crm_send_ids or {}).get(iid)):
+            n += 1
     db.commit()
     return {"ok": True, "committed": n}
 
@@ -22225,7 +22855,7 @@ def autosend_workday_recovery_analysis(
             text("SELECT item_id, owner_staff_id, contact_id, customer_id, company_name, contact_name, "
                  "scenario, suite_step, plan_date, plan_time, status, created_at "
                  "FROM mail_autosend_plan_item "
-                 f"WHERE {staff_clause}status IN ('planned','queued','drafting','drafted','failed') "
+                 f"WHERE {staff_clause}status IN ({_AUTOSEND_PENDING_SQL_IN}) "
                  "AND plan_date>=:sd AND plan_date<:ed"),
             params,
         ).fetchall()
@@ -22311,7 +22941,7 @@ def autosend_calendar(staff_id: str = Query(""), days: int = Query(90), db: Sess
         rows = db.execute(
             text("SELECT to_char(plan_date,'YYYY-MM-DD') d, COUNT(*) n, COUNT(DISTINCT contact_id) c "
                  "FROM mail_autosend_plan_item "
-                 f"WHERE {staff_clause}status IN ('planned','queued','drafting','drafted') "
+                 f"WHERE {staff_clause}status IN ({_AUTOSEND_SCHEDULED_SQL_IN}) "
                  "AND plan_date>=:t AND plan_date<:e "
                  "GROUP BY to_char(plan_date,'YYYY-MM-DD')"),
             params,
@@ -22323,7 +22953,7 @@ def autosend_calendar(staff_id: str = Query(""), days: int = Query(90), db: Sess
                 slot["planned_contacts"] = int(c or 0)
         crows = db.execute(
             text("SELECT DISTINCT contact_id FROM mail_autosend_plan_item "
-                 f"WHERE {staff_clause}status IN ('planned','queued','drafting','drafted') "
+                 f"WHERE {staff_clause}status IN ({_AUTOSEND_SCHEDULED_SQL_IN}) "
                  "AND plan_date>=:t AND plan_date<:e"),
             params,
         ).fetchall()
@@ -23502,7 +24132,7 @@ def _asr_build_units(db, staff: str, accepted: list[dict], company_name_like: st
         try:
             prows = db.execute(
                 text("SELECT contact_id, scenario FROM mail_autosend_plan_item "
-                     "WHERE status IN ('planned','queued','drafting','drafted') AND contact_id IN :ids")
+                     f"WHERE status IN ({_AUTOSEND_SCHEDULED_SQL_IN}) AND contact_id IN :ids")
                 .bindparams(bindparam("ids", expanding=True)),
                 {"ids": ids},
             ).fetchall()
@@ -24224,7 +24854,7 @@ def _autosend_pending_latest_map(db, contacts: list[dict], staff_ids: list[str])
         try:
             rows = db.execute(
                 text("SELECT contact_id, MAX(plan_date) FROM mail_autosend_plan_item "
-                     "WHERE contact_id IN :ids AND status IN ('planned','queued','drafting','drafted','sent') "
+                     f"WHERE contact_id IN :ids AND status IN ({_AUTOSEND_SCHEDULED_SQL_IN},'sent') "
                      "GROUP BY contact_id").bindparams(bindparam("ids", expanding=True)),
                 {"ids": ids},
             ).fetchall()
@@ -24626,6 +25256,103 @@ def get_mail_ai_stats_by_staff(
         "refresh_result": refresh_result,
     }
 
+
+
+@app.get("/api/v1/mail/iteration-analysis/summary")
+def get_mail_iteration_analysis_summary(
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+    staff_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """每日迭代分析：按天/销售读取已入库的 LLM 人工改动统计。"""
+    import datetime as _dt
+    import mail_llm_iteration_analysis as _iter
+    today_bj = (_dt.datetime.utcnow() + _dt.timedelta(hours=8)).date()
+    end_d = _parse_stat_date(end, today_bj)
+    start_d = _parse_stat_date(start, end_d - _dt.timedelta(days=6))
+    if start_d > end_d:
+        start_d, end_d = end_d, start_d
+    try:
+        _iter.ensure_tables(db)
+        # 查询区间没有数据时自动回填一次，保证界面首次打开可读。
+        exists = db.execute(text(
+            "SELECT 1 FROM mail_llm_iteration_daily_summary WHERE stat_date>=:s AND stat_date<=:e LIMIT 1"
+        ), {"s": start_d, "e": end_d}).fetchone()
+        if not exists:
+            _iter.compute_and_store(db, start_d, end_d)
+        payload = _iter.query_summary(db, start_d, end_d, staff_id)
+    except Exception as exc:
+        logger.exception("MAIL_ITERATION_ANALYSIS_SUMMARY_FAILED")
+        raise HTTPException(status_code=502, detail=f"每日迭代分析读取失败: {sanitize_text(str(exc))[:200]}")
+    name_map = _resolve_mail_staff_names(payload.get("staff_options") or [])
+    for r in payload.get("staff_daily") or []:
+        sid = str(r.get("staff_id") or "")
+        r["staff_name"] = name_map.get(sid, "") or sid
+    return {
+        "version": "mail_llm_iteration_analysis.v1",
+        "start": start_d.isoformat(),
+        "end": end_d.isoformat(),
+        "staff_id": (staff_id or "").strip(),
+        "staff_options": payload.get("staff_options") or [],
+        "staff_names": name_map,
+        "totals": payload.get("totals") or {},
+        "daily": payload.get("daily") or [],
+        "staff_daily": payload.get("staff_daily") or [],
+        "type_columns": payload.get("type_columns") or {},
+    }
+
+
+@app.post("/api/v1/mail/iteration-analysis/refresh")
+def refresh_mail_iteration_analysis(
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """重算并入库指定日期范围的每日迭代分析。"""
+    import datetime as _dt
+    import mail_llm_iteration_analysis as _iter
+    today_bj = (_dt.datetime.utcnow() + _dt.timedelta(hours=8)).date()
+    end_d = _parse_stat_date(end, today_bj)
+    start_d = _parse_stat_date(start, end_d - _dt.timedelta(days=6))
+    if start_d > end_d:
+        start_d, end_d = end_d, start_d
+    try:
+        result = _iter.compute_and_store(db, start_d, end_d)
+    except Exception as exc:
+        logger.exception("MAIL_ITERATION_ANALYSIS_REFRESH_FAILED")
+        raise HTTPException(status_code=502, detail=f"每日迭代分析回填失败: {sanitize_text(str(exc))[:200]}")
+    return {"ok": True, "start": start_d.isoformat(), "end": end_d.isoformat(), "result": result}
+
+
+@app.get("/api/v1/mail/iteration-analysis/detail")
+def get_mail_iteration_analysis_detail(
+    day: str = Query(..., min_length=1),
+    metric: str = Query(..., min_length=1),
+    staff_id: str | None = Query(None),
+    limit: int = Query(80, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """每日迭代分析单元格明细。默认不加载正文，双击数值时逐页加载。"""
+    import mail_llm_iteration_analysis as _iter
+    day_d = _parse_stat_date(day)
+    if day_d is None:
+        raise HTTPException(status_code=422, detail="day is required (YYYY-MM-DD)")
+    try:
+        data = _iter.detail_rows(db, day_d, metric, staff_id, limit, offset)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("MAIL_ITERATION_ANALYSIS_DETAIL_FAILED")
+        raise HTTPException(status_code=502, detail=f"每日迭代明细读取失败: {sanitize_text(str(exc))[:200]}")
+    return {
+        "version": "mail_llm_iteration_analysis_detail.v1",
+        "day": day_d.isoformat(),
+        "metric": metric,
+        "staff_id": (staff_id or "").strip(),
+        **data,
+    }
 
 @app.post("/api/v1/mail/ai-stats/broadcast")
 def post_mail_ai_stats_broadcast(

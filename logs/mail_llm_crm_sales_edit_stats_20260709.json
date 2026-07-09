@@ -1,0 +1,524 @@
+{
+  "generated_at": "2026-07-09T10:37:50",
+  "definition": "分母=已转入CRM/已写入CRM待发队列的邮件。本地口径：mail_autosend_plan_item status sent/committed 或有 crm_send_id/committed_at；mail_customer_suite_send_plan status enqueued 或有 crm_send_id。",
+  "overall": {
+    "crm_total": 4549,
+    "edited": 968,
+    "edit_rate_pct": 21.3
+  },
+  "source_stats": [
+    {
+      "source": "autosend",
+      "crm_total": 1772,
+      "edited": 673,
+      "edit_rate_pct": 38.0
+    },
+    {
+      "source": "mail_suite",
+      "crm_total": 2777,
+      "edited": 295,
+      "edit_rate_pct": 10.6
+    }
+  ],
+  "sales_stats": [
+    {
+      "sales": "0017",
+      "crm_total": 1198,
+      "edited": 213,
+      "edit_rate_pct": 17.8,
+      "autosend": 367,
+      "mail_suite": 831
+    },
+    {
+      "sales": "0188",
+      "crm_total": 990,
+      "edited": 180,
+      "edit_rate_pct": 18.2,
+      "autosend": 474,
+      "mail_suite": 516
+    },
+    {
+      "sales": "1607",
+      "crm_total": 871,
+      "edited": 257,
+      "edit_rate_pct": 29.5,
+      "autosend": 227,
+      "mail_suite": 644
+    },
+    {
+      "sales": "0002",
+      "crm_total": 835,
+      "edited": 155,
+      "edit_rate_pct": 18.6,
+      "autosend": 405,
+      "mail_suite": 430
+    },
+    {
+      "sales": "0141",
+      "crm_total": 655,
+      "edited": 163,
+      "edit_rate_pct": 24.9,
+      "autosend": 299,
+      "mail_suite": 356
+    }
+  ],
+  "edit_type_total": [
+    {
+      "type": "正文改动",
+      "n": 955,
+      "pct_of_edited": 98.7
+    },
+    {
+      "type": "签名/联系方式调整",
+      "n": 472,
+      "pct_of_edited": 48.8
+    },
+    {
+      "type": "称呼/语言风格调整",
+      "n": 171,
+      "pct_of_edited": 17.7
+    },
+    {
+      "type": "业务线/服务描述调整",
+      "n": 90,
+      "pct_of_edited": 9.3
+    },
+    {
+      "type": "主题改动",
+      "n": 86,
+      "pct_of_edited": 8.9
+    },
+    {
+      "type": "结尾动作/语气调整",
+      "n": 46,
+      "pct_of_edited": 4.8
+    },
+    {
+      "type": "占位/测试痕迹处理",
+      "n": 22,
+      "pct_of_edited": 2.3
+    },
+    {
+      "type": "明显缩短",
+      "n": 4,
+      "pct_of_edited": 0.4
+    },
+    {
+      "type": "明显加长",
+      "n": 2,
+      "pct_of_edited": 0.2
+    }
+  ],
+  "sales_type_stats": [
+    {
+      "sales": "1607",
+      "crm_total": 871,
+      "edited": 257,
+      "types": [
+        {
+          "type": "正文改动",
+          "n": 257
+        },
+        {
+          "type": "签名/联系方式调整",
+          "n": 253
+        },
+        {
+          "type": "主题改动",
+          "n": 17
+        },
+        {
+          "type": "称呼/语言风格调整",
+          "n": 17
+        },
+        {
+          "type": "业务线/服务描述调整",
+          "n": 15
+        },
+        {
+          "type": "结尾动作/语气调整",
+          "n": 6
+        },
+        {
+          "type": "占位/测试痕迹处理",
+          "n": 6
+        },
+        {
+          "type": "明显加长",
+          "n": 1
+        }
+      ],
+      "edit_rate_pct": 29.5
+    },
+    {
+      "sales": "0017",
+      "crm_total": 1198,
+      "edited": 213,
+      "types": [
+        {
+          "type": "正文改动",
+          "n": 213
+        },
+        {
+          "type": "签名/联系方式调整",
+          "n": 41
+        },
+        {
+          "type": "称呼/语言风格调整",
+          "n": 24
+        },
+        {
+          "type": "结尾动作/语气调整",
+          "n": 14
+        },
+        {
+          "type": "业务线/服务描述调整",
+          "n": 5
+        },
+        {
+          "type": "主题改动",
+          "n": 2
+        },
+        {
+          "type": "明显加长",
+          "n": 1
+        }
+      ],
+      "edit_rate_pct": 17.8
+    },
+    {
+      "sales": "0188",
+      "crm_total": 990,
+      "edited": 180,
+      "types": [
+        {
+          "type": "正文改动",
+          "n": 180
+        },
+        {
+          "type": "称呼/语言风格调整",
+          "n": 39
+        },
+        {
+          "type": "签名/联系方式调整",
+          "n": 28
+        },
+        {
+          "type": "占位/测试痕迹处理",
+          "n": 16
+        },
+        {
+          "type": "业务线/服务描述调整",
+          "n": 10
+        },
+        {
+          "type": "主题改动",
+          "n": 2
+        },
+        {
+          "type": "结尾动作/语气调整",
+          "n": 2
+        }
+      ],
+      "edit_rate_pct": 18.2
+    },
+    {
+      "sales": "0141",
+      "crm_total": 655,
+      "edited": 163,
+      "types": [
+        {
+          "type": "正文改动",
+          "n": 163
+        },
+        {
+          "type": "签名/联系方式调整",
+          "n": 146
+        },
+        {
+          "type": "称呼/语言风格调整",
+          "n": 42
+        },
+        {
+          "type": "结尾动作/语气调整",
+          "n": 5
+        },
+        {
+          "type": "业务线/服务描述调整",
+          "n": 3
+        }
+      ],
+      "edit_rate_pct": 24.9
+    },
+    {
+      "sales": "0002",
+      "crm_total": 835,
+      "edited": 155,
+      "types": [
+        {
+          "type": "正文改动",
+          "n": 142
+        },
+        {
+          "type": "主题改动",
+          "n": 65
+        },
+        {
+          "type": "业务线/服务描述调整",
+          "n": 57
+        },
+        {
+          "type": "称呼/语言风格调整",
+          "n": 49
+        },
+        {
+          "type": "结尾动作/语气调整",
+          "n": 19
+        },
+        {
+          "type": "签名/联系方式调整",
+          "n": 4
+        },
+        {
+          "type": "明显缩短",
+          "n": 3
+        }
+      ],
+      "edit_rate_pct": 18.6
+    }
+  ],
+  "scenario_step_stats": [
+    {
+      "source": "mail_suite",
+      "scenario": "custom_e42ead1a",
+      "suite_step": 4,
+      "crm_total": 1,
+      "edited": 1,
+      "edit_rate_pct": 100.0
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "custom_e42ead1a",
+      "suite_step": 3,
+      "crm_total": 1,
+      "edited": 1,
+      "edit_rate_pct": 100.0
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "custom_e42ead1a",
+      "suite_step": 2,
+      "crm_total": 1,
+      "edited": 1,
+      "edit_rate_pct": 100.0
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "custom_5dcb9341",
+      "suite_step": 1,
+      "crm_total": 1,
+      "edited": 1,
+      "edit_rate_pct": 100.0
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_business_promotion",
+      "suite_step": 1,
+      "crm_total": 124,
+      "edited": 75,
+      "edit_rate_pct": 60.5
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_contact_intro",
+      "suite_step": 1,
+      "crm_total": 118,
+      "edited": 56,
+      "edit_rate_pct": 47.5
+    },
+    {
+      "source": "autosend",
+      "scenario": "re_activation",
+      "suite_step": 1,
+      "crm_total": 203,
+      "edited": 94,
+      "edit_rate_pct": 46.3
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_business_promotion",
+      "suite_step": 2,
+      "crm_total": 123,
+      "edited": 51,
+      "edit_rate_pct": 41.5
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_business_promotion",
+      "suite_step": 3,
+      "crm_total": 122,
+      "edited": 49,
+      "edit_rate_pct": 40.2
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_contact_intro",
+      "suite_step": 2,
+      "crm_total": 118,
+      "edited": 47,
+      "edit_rate_pct": 39.8
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_business_promotion",
+      "suite_step": 4,
+      "crm_total": 123,
+      "edited": 45,
+      "edit_rate_pct": 36.6
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_contact_intro",
+      "suite_step": 3,
+      "crm_total": 119,
+      "edited": 43,
+      "edit_rate_pct": 36.1
+    },
+    {
+      "source": "autosend",
+      "scenario": "re_activation",
+      "suite_step": 2,
+      "crm_total": 202,
+      "edited": 65,
+      "edit_rate_pct": 32.2
+    },
+    {
+      "source": "autosend",
+      "scenario": "re_activation",
+      "suite_step": 3,
+      "crm_total": 201,
+      "edited": 58,
+      "edit_rate_pct": 28.9
+    },
+    {
+      "source": "autosend",
+      "scenario": "re_activation",
+      "suite_step": 4,
+      "crm_total": 200,
+      "edited": 57,
+      "edit_rate_pct": 28.5
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_contact_intro",
+      "suite_step": 4,
+      "crm_total": 119,
+      "edited": 33,
+      "edit_rate_pct": 27.7
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "re_activation",
+      "suite_step": 2,
+      "crm_total": 373,
+      "edited": 60,
+      "edit_rate_pct": 16.1
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "re_activation",
+      "suite_step": 4,
+      "crm_total": 359,
+      "edited": 52,
+      "edit_rate_pct": 14.5
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_business_promotion",
+      "suite_step": 4,
+      "crm_total": 174,
+      "edited": 21,
+      "edit_rate_pct": 12.1
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "re_activation",
+      "suite_step": 3,
+      "crm_total": 357,
+      "edited": 39,
+      "edit_rate_pct": 10.9
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_business_promotion",
+      "suite_step": 3,
+      "crm_total": 178,
+      "edited": 18,
+      "edit_rate_pct": 10.1
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_business_promotion",
+      "suite_step": 2,
+      "crm_total": 180,
+      "edited": 16,
+      "edit_rate_pct": 8.9
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "re_activation",
+      "suite_step": 1,
+      "crm_total": 336,
+      "edited": 27,
+      "edit_rate_pct": 8.0
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_contact_intro",
+      "suite_step": 2,
+      "crm_total": 163,
+      "edited": 13,
+      "edit_rate_pct": 8.0
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_business_promotion",
+      "suite_step": 1,
+      "crm_total": 163,
+      "edited": 12,
+      "edit_rate_pct": 7.4
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_contact_intro",
+      "suite_step": 3,
+      "crm_total": 162,
+      "edited": 11,
+      "edit_rate_pct": 6.8
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_contact_intro",
+      "suite_step": 4,
+      "crm_total": 162,
+      "edited": 11,
+      "edit_rate_pct": 6.8
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_contact_intro",
+      "suite_step": 1,
+      "crm_total": 165,
+      "edited": 11,
+      "edit_rate_pct": 6.7
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "custom_0904af93",
+      "suite_step": 1,
+      "crm_total": 1,
+      "edited": 0,
+      "edit_rate_pct": 0.0
+    }
+  ]
+}

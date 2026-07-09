@@ -1,0 +1,583 @@
+{
+  "date_bj": "2026-07-08",
+  "definition": "分母=北京时间2026-07-08当天已转入CRM/已写入CRM待发队列邮件；自动排期按 COALESCE(committed_at,updated_at,created_at)::date，套装排期按 created_at::date。",
+  "overall": {
+    "crm_total": 1012,
+    "edited": 84,
+    "edit_rate_pct": 8.3
+  },
+  "source_stats": [
+    {
+      "source": "autosend",
+      "crm_total": 500,
+      "edited": 73,
+      "edit_rate_pct": 14.6
+    },
+    {
+      "source": "mail_suite",
+      "crm_total": 512,
+      "edited": 11,
+      "edit_rate_pct": 2.1
+    }
+  ],
+  "sales_stats": [
+    {
+      "sales": "0002",
+      "crm_total": 214,
+      "edited": 37,
+      "edit_rate_pct": 17.3,
+      "autosend": 107,
+      "mail_suite": 107
+    },
+    {
+      "sales": "0017",
+      "crm_total": 208,
+      "edited": 0,
+      "edit_rate_pct": 0.0,
+      "autosend": 104,
+      "mail_suite": 104
+    },
+    {
+      "sales": "0188",
+      "crm_total": 200,
+      "edited": 36,
+      "edit_rate_pct": 18.0,
+      "autosend": 100,
+      "mail_suite": 100
+    },
+    {
+      "sales": "0141",
+      "crm_total": 200,
+      "edited": 0,
+      "edit_rate_pct": 0.0,
+      "autosend": 100,
+      "mail_suite": 100
+    },
+    {
+      "sales": "1607",
+      "crm_total": 190,
+      "edited": 11,
+      "edit_rate_pct": 5.8,
+      "autosend": 89,
+      "mail_suite": 101
+    }
+  ],
+  "subtype_stats": [
+    {
+      "type": "正文任意改动",
+      "n": 83,
+      "pct_of_edited": 98.8
+    },
+    {
+      "type": "称呼/开头语言调整",
+      "n": 52,
+      "pct_of_edited": 61.9
+    },
+    {
+      "type": "其他正文措辞调整",
+      "n": 20,
+      "pct_of_edited": 23.8
+    },
+    {
+      "type": "业务线/服务描述调整",
+      "n": 13,
+      "pct_of_edited": 15.5
+    },
+    {
+      "type": "主题改动",
+      "n": 12,
+      "pct_of_edited": 14.3
+    },
+    {
+      "type": "签名/联系方式调整",
+      "n": 11,
+      "pct_of_edited": 13.1
+    },
+    {
+      "type": "占位/测试痕迹处理",
+      "n": 4,
+      "pct_of_edited": 4.8
+    }
+  ],
+  "primary_type_stats": [
+    {
+      "type": "称呼/开头语言调整",
+      "n": 43,
+      "pct_of_edited": 51.2
+    },
+    {
+      "type": "其他正文措辞调整",
+      "n": 20,
+      "pct_of_edited": 23.8
+    },
+    {
+      "type": "签名/联系方式调整",
+      "n": 11,
+      "pct_of_edited": 13.1
+    },
+    {
+      "type": "业务线/服务描述调整",
+      "n": 5,
+      "pct_of_edited": 6.0
+    },
+    {
+      "type": "占位/测试痕迹处理",
+      "n": 4,
+      "pct_of_edited": 4.8
+    },
+    {
+      "type": "主题改动",
+      "n": 1,
+      "pct_of_edited": 1.2
+    }
+  ],
+  "sales_type_stats": [
+    {
+      "sales": "0002",
+      "crm_total": 214,
+      "edited": 37,
+      "edit_rate_pct": 17.3,
+      "types": [
+        {
+          "type": "称呼/开头语言调整",
+          "n": 30
+        },
+        {
+          "type": "业务线/服务描述调整",
+          "n": 13
+        },
+        {
+          "type": "主题改动",
+          "n": 12
+        },
+        {
+          "type": "其他正文措辞调整",
+          "n": 1
+        }
+      ]
+    },
+    {
+      "sales": "0188",
+      "crm_total": 200,
+      "edited": 36,
+      "edit_rate_pct": 18.0,
+      "types": [
+        {
+          "type": "其他正文措辞调整",
+          "n": 19
+        },
+        {
+          "type": "称呼/开头语言调整",
+          "n": 14
+        },
+        {
+          "type": "占位/测试痕迹处理",
+          "n": 4
+        }
+      ]
+    },
+    {
+      "sales": "1607",
+      "crm_total": 190,
+      "edited": 11,
+      "edit_rate_pct": 5.8,
+      "types": [
+        {
+          "type": "签名/联系方式调整",
+          "n": 11
+        },
+        {
+          "type": "称呼/开头语言调整",
+          "n": 8
+        }
+      ]
+    },
+    {
+      "sales": "0017",
+      "crm_total": 208,
+      "edited": 0,
+      "edit_rate_pct": 0.0,
+      "types": []
+    },
+    {
+      "sales": "0141",
+      "crm_total": 200,
+      "edited": 0,
+      "edit_rate_pct": 0.0,
+      "types": []
+    }
+  ],
+  "scenario_step_stats": [
+    {
+      "source": "autosend",
+      "scenario": "new_contact_intro",
+      "scenario_cn": "新接手联系人介绍",
+      "suite_step": 3,
+      "crm_total": 25,
+      "edited": 10,
+      "edit_rate_pct": 40.0
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_contact_intro",
+      "scenario_cn": "新接手联系人介绍",
+      "suite_step": 2,
+      "crm_total": 25,
+      "edited": 9,
+      "edit_rate_pct": 36.0
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_contact_intro",
+      "scenario_cn": "新接手联系人介绍",
+      "suite_step": 1,
+      "crm_total": 26,
+      "edited": 9,
+      "edit_rate_pct": 34.6
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_contact_intro",
+      "scenario_cn": "新接手联系人介绍",
+      "suite_step": 4,
+      "crm_total": 24,
+      "edited": 8,
+      "edit_rate_pct": 33.3
+    },
+    {
+      "source": "autosend",
+      "scenario": "re_activation",
+      "scenario_cn": "老客户激活",
+      "suite_step": 1,
+      "crm_total": 74,
+      "edited": 16,
+      "edit_rate_pct": 21.6
+    },
+    {
+      "source": "autosend",
+      "scenario": "re_activation",
+      "scenario_cn": "老客户激活",
+      "suite_step": 3,
+      "crm_total": 73,
+      "edited": 7,
+      "edit_rate_pct": 9.6
+    },
+    {
+      "source": "autosend",
+      "scenario": "re_activation",
+      "scenario_cn": "老客户激活",
+      "suite_step": 4,
+      "crm_total": 74,
+      "edited": 7,
+      "edit_rate_pct": 9.5
+    },
+    {
+      "source": "autosend",
+      "scenario": "re_activation",
+      "scenario_cn": "老客户激活",
+      "suite_step": 2,
+      "crm_total": 75,
+      "edited": 7,
+      "edit_rate_pct": 9.3
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_contact_intro",
+      "scenario_cn": "新接手联系人介绍",
+      "suite_step": 4,
+      "crm_total": 25,
+      "edited": 1,
+      "edit_rate_pct": 4.0
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "re_activation",
+      "scenario_cn": "老客户激活",
+      "suite_step": 4,
+      "crm_total": 77,
+      "edited": 3,
+      "edit_rate_pct": 3.9
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "re_activation",
+      "scenario_cn": "老客户激活",
+      "suite_step": 2,
+      "crm_total": 78,
+      "edited": 3,
+      "edit_rate_pct": 3.8
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_contact_intro",
+      "scenario_cn": "新接手联系人介绍",
+      "suite_step": 2,
+      "crm_total": 26,
+      "edited": 1,
+      "edit_rate_pct": 3.8
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_contact_intro",
+      "scenario_cn": "新接手联系人介绍",
+      "suite_step": 1,
+      "crm_total": 27,
+      "edited": 1,
+      "edit_rate_pct": 3.7
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "re_activation",
+      "scenario_cn": "老客户激活",
+      "suite_step": 3,
+      "crm_total": 76,
+      "edited": 2,
+      "edit_rate_pct": 2.6
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "re_activation",
+      "scenario_cn": "老客户激活",
+      "suite_step": 1,
+      "crm_total": 74,
+      "edited": 0,
+      "edit_rate_pct": 0.0
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_business_promotion",
+      "scenario_cn": "新业务推广",
+      "suite_step": 1,
+      "crm_total": 27,
+      "edited": 0,
+      "edit_rate_pct": 0.0
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_business_promotion",
+      "scenario_cn": "新业务推广",
+      "suite_step": 1,
+      "crm_total": 27,
+      "edited": 0,
+      "edit_rate_pct": 0.0
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_business_promotion",
+      "scenario_cn": "新业务推广",
+      "suite_step": 2,
+      "crm_total": 26,
+      "edited": 0,
+      "edit_rate_pct": 0.0
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_business_promotion",
+      "scenario_cn": "新业务推广",
+      "suite_step": 4,
+      "crm_total": 26,
+      "edited": 0,
+      "edit_rate_pct": 0.0
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_business_promotion",
+      "scenario_cn": "新业务推广",
+      "suite_step": 4,
+      "crm_total": 26,
+      "edited": 0,
+      "edit_rate_pct": 0.0
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_business_promotion",
+      "scenario_cn": "新业务推广",
+      "suite_step": 2,
+      "crm_total": 26,
+      "edited": 0,
+      "edit_rate_pct": 0.0
+    },
+    {
+      "source": "autosend",
+      "scenario": "new_business_promotion",
+      "scenario_cn": "新业务推广",
+      "suite_step": 3,
+      "crm_total": 25,
+      "edited": 0,
+      "edit_rate_pct": 0.0
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_contact_intro",
+      "scenario_cn": "新接手联系人介绍",
+      "suite_step": 3,
+      "crm_total": 25,
+      "edited": 0,
+      "edit_rate_pct": 0.0
+    },
+    {
+      "source": "mail_suite",
+      "scenario": "new_business_promotion",
+      "scenario_cn": "新业务推广",
+      "suite_step": 3,
+      "crm_total": 25,
+      "edited": 0,
+      "edit_rate_pct": 0.0
+    }
+  ],
+  "examples": {
+    "签名/联系方式调整": {
+      "source": "mail_suite",
+      "sales": "1607",
+      "scenario": "new_contact_intro",
+      "suite_step": 1,
+      "removed_top": [
+        "[名称]",
+        "您好",
+        "前曾为贵",
+        "司提供笔",
+        "译服务",
+        "[电话]",
+        "[邮箱]"
+      ],
+      "added_top": [
+        "Dear",
+        "前曾为欧",
+        "莱雅提供",
+        "笔译服务",
+        "PHONE",
+        "EMAIL"
+      ],
+      "before": "[名称] 您好， 事必达此前曾为贵司提供笔译服务，协助完成多语言资料本地化工作，对贵司的业务需求有一定了解。 结合贵司所在行业的国际化沟通场景；为一家知名科技公司完成30万字产品文档翻译；还协助一家跨国制造企业完成多语种展会物料制作与现场口译支持。 如果未来有类似需求，是否方便",
+      "after": "Dear 事必达此前曾为[公司]提供笔译服务，协助完成多语言资料本地化工作，对贵司的业务需求有一定了解。 结合贵司所在行业的国际化沟通场景；为一家知名科技公司完成30万字产品文档翻译；还协助一家跨国制造企业完成多语种展会物料制作与现场口译支持。 如果未来有类似需求，是否方便将事必达"
+    },
+    "称呼/开头语言调整": {
+      "source": "autosend",
+      "sales": "0002",
+      "scenario": "re_activation",
+      "suite_step": 1,
+      "removed_top": [
+        "之前为英",
+        "威达提供",
+        "过笔译和",
+        "排版印刷",
+        "服务",
+        "当时在双",
+        "语资料的",
+        "呈现上"
+      ],
+      "added_top": [
+        "您好",
+        "之前我们",
+        "在",
+        "[公司]",
+        "的笔记本",
+        "台历印刷",
+        "项目上有",
+        "过合作"
+      ],
+      "before": "Fiona， 之前为[公司]提供过笔译和排版印刷服务，当时在双语资料的呈现上，我们配合得挺顺畅的。最近注意到不少企业在准备海外展会或对外宣传时，会同时需要翻译、排版、甚至多语言版本的文件整合，如果分散给不同供应商，沟通成本和时间周期往往容易拉长。 比如，一份产品手册要同时出中英文版",
+      "after": "Fiona，您好~ 之前我们在[公司]的笔记本台历印刷项目上有过合作，好久没有联系了。这些年来，SPEED一直在为[公司]提供各类资料翻译、视频制作、制版印刷等方面服务。最近注意到不少企业在准备海外展会或对外宣传时，会同时需要翻译、排版、甚至多语言版本的文件整合，如果分散给不同供应"
+    },
+    "业务线/服务描述调整": {
+      "source": "autosend",
+      "sales": "0002",
+      "scenario": "re_activation",
+      "suite_step": 1,
+      "removed_top": [
+        "之前为英",
+        "威达提供",
+        "过笔译和",
+        "排版印刷",
+        "服务",
+        "当时在双",
+        "语资料的",
+        "呈现上"
+      ],
+      "added_top": [
+        "您好",
+        "之前我们",
+        "在",
+        "[公司]",
+        "的笔记本",
+        "台历印刷",
+        "项目上有",
+        "过合作"
+      ],
+      "before": "Fiona， 之前为[公司]提供过笔译和排版印刷服务，当时在双语资料的呈现上，我们配合得挺顺畅的。最近注意到不少企业在准备海外展会或对外宣传时，会同时需要翻译、排版、甚至多语言版本的文件整合，如果分散给不同供应商，沟通成本和时间周期往往容易拉长。 比如，一份产品手册要同时出中英文版",
+      "after": "Fiona，您好~ 之前我们在[公司]的笔记本台历印刷项目上有过合作，好久没有联系了。这些年来，SPEED一直在为[公司]提供各类资料翻译、视频制作、制版印刷等方面服务。最近注意到不少企业在准备海外展会或对外宣传时，会同时需要翻译、排版、甚至多语言版本的文件整合，如果分散给不同供应"
+    },
+    "结尾动作/语气调整": null,
+    "占位/测试痕迹处理": {
+      "source": "autosend",
+      "sales": "0188",
+      "scenario": "new_contact_intro",
+      "suite_step": 3,
+      "removed_top": [
+        "[称呼]",
+        "case_company_1",
+        "的智能翻",
+        "译项目",
+        "case_company_2",
+        "的国际会",
+        "议项目",
+        "case_company_3"
+      ],
+      "added_top": [
+        "项目",
+        "[名称]",
+        "智能翻译",
+        "国际会议",
+        "多媒体本",
+        "地化项目"
+      ],
+      "before": "[称呼]，您好。 不同企业在走向国际化的过程中，面临的沟通挑战往往各不相同。有的需要精准的技术文档翻译，有的要协调多语言会议，还有的则要完成全球同步的视频传播。 我们最近服务的三个案例，或许能给您一些参考： 案例一：{case_company_1} 的智能翻译项目。他们需要将大量产",
+      "after": "[名称]，您好。 不同企业在走向国际化的过程中，面临的沟通挑战往往各不相同。有的需要精准的技术文档翻译，有的要协调多语言会议，还有的则要完成全球同步的视频传播。 我们最近服务的三个案例，或许能给您一些参考： 案例一：智能翻译项目。他们需要将大量产品手册和操作指南翻译成8种语言。我"
+    },
+    "主题改动": {
+      "source": "autosend",
+      "sales": "0002",
+      "scenario": "re_activation",
+      "suite_step": 1,
+      "removed_top": [
+        "之前为英",
+        "威达管理",
+        "提供过笔",
+        "译和排版",
+        "印刷服务",
+        "记得当时",
+        "在双语资",
+        "料的处理"
+      ],
+      "added_top": [
+        "好长时间",
+        "没有联系",
+        "了",
+        "之前我们",
+        "还经常合",
+        "作一些翻",
+        "译方面的",
+        "服务"
+      ],
+      "before": "Red 你好， 之前为[公司]管理提供过笔译和排版印刷服务，记得当时在双语资料的处理上，我们配合得挺顺畅的。像这类涉及多语言的内容，从翻译到最终成品的排版，中间环节一多，沟通成本就容易上去。 最近我们服务的一些企业客户，在准备对外展示的双语手册或会议材料时，会直接让我们统筹翻译、排",
+      "after": "Red 你好， 好长时间没有联系了，之前我们还经常合作一些翻译方面的服务。近些年来，SPEED也一直在为[公司]提供各类笔译、视频制作、制版及印刷等方面的服务。 最近我们服务的一些企业客户，在准备对外展示的双语手册或会议材料时，会直接让我们统筹翻译、排版和印刷，这样能省去分别对接几"
+    },
+    "明显缩短": null,
+    "明显加长": null,
+    "其他正文措辞调整": {
+      "source": "autosend",
+      "sales": "0188",
+      "scenario": "new_contact_intro",
+      "suite_step": 1,
+      "removed_top": [
+        "[名称]"
+      ],
+      "added_top": [
+        "[名称]",
+        "[名称]"
+      ],
+      "before": "[名称] 你好， 我是事必达的销售顾问，注意到我们此前已为贵司提供过笔译和活动物料方面的服务，对贵司在跨语言内容管理上的专业要求有一定了解。 基于贵司在国际会议、全球市场沟通和多语言资料制作上的持续投入，我们近期也协助了多家类似规模的企业完成复杂项目。例如，为一家全球50",
+      "after": "[名称] 你好， 我是事必达的销售顾问[名称]，注意到我们此前已为贵司提供过笔译和活动物料方面的服务，对贵司在跨语言内容管理上的专业要求有一定了解。 基于贵司在国际会议、全球市场沟通和多语言资料制作上的持续投入，我们近期也协助了多家类似规模的企业完成复杂项目。例如，为一"
+    }
+  }
+}

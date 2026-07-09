@@ -1972,3 +1972,34 @@ ode --check scratch\frontend-mail-suite-current-check.js；git diff --check -- b
 - 已完成后端：backend/main.py 的 /api/v1/mail/autosend/crm-mail 支持 rowid 读取待发 spQueueSend，也支持 send_id+staff_id 读取 spSendInfo{staff} 已发送邮件；crm-range/crm-day 返回 inputer_staff_id/owner_staff_id 供前端定位销售。
 - 验证通过：node --check scratch\frontend-mail-suite-autosend-check.js；node --check scratch\frontend-index-autosend-check.js；python -m py_compile backend\main.py；git diff --check -- backend/main.py frontend/mail-suite.html frontend/index.html。
 - 注意：全部销售视图读接口继续使用空 staff_id，不加销售编号限制；生成/清空等写操作仍需具体销售，避免误清全量。
+
+## 2026-07-07 10:00:47 交接：邮件统计定时企微群播报
+
+- 本轮新增需求不修改 Task79 的 SMTP 真发任务状态, 也不启用真实邮件发送。
+- 已完成: 邮件统计播报模块、企微 appchat 文本发送 helper、手动播报 API、工作日定时线程、配置项与 .env.example。
+- 定时时间: 10:30,11:30,13:30,14:30,15:30,16:30,17:30; 工作日判断为周一至周五; 每个日期+时间只播一次。
+- 手动验证接口: POST /api/v1/mail/ai-stats/broadcast?dry_run=1 可只生成消息不发送; dry_run=0 会真实发企微群消息。
+- 风险/待确认: wrS8sICwAAPC88TuMf2-0kW4lAXOMqHw 若不是企微应用群聊 appchat 的 chatid, appchat/send 会失败; 需要人工确认该群 ID 类型或提供客户群群发所需权限。
+- 启动规则读取补记: 根目录缺少 邮件智能回复实现方案.md、文件创建要求.md、企微记录入知识库标准定义.md; 已按现有 TASKS/PROGRESS/TASK_HANDOFF/VALIDATION 和源码继续。
+- 验证: py_compile 与定向 diff-check 已通过。
+## 2026-07-07 13:49:38 交接：邮件统计图片播报
+- 当前代码已支持：day 为空默认当天；format=html 预览 HTML；format=text 预览文本；message_type=image 默认发送图片。
+- 真实发送链路：HTML 数据 -> Pillow PNG -> /cgi-bin/media/upload?type=image -> /cgi-bin/appchat/send msgtype=image。
+- 已确认本机 Pillow 可用，dry-run 生成图片成功；未在本轮执行真实发群。
+- 人工验证命令：curl.exe -s -S -X POST 'http://127.0.0.1:8071/api/v1/mail/ai-stats/broadcast?refresh=1&dry_run=0'
+- 若需看 HTML：curl.exe -s -S -X POST 'http://127.0.0.1:8071/api/v1/mail/ai-stats/broadcast?refresh=0&dry_run=1&format=html'
+
+## 2026-07-08 11:11:40 交接：邮件自动排期排期清单选择交互
+- 本轮只修改 frontend/mail-suite.html，未改后端、未启用真实邮件发送、未修改企微链路。
+- 已解决用户截图反馈的“勾选一个模板/封次后表格闪屏”问题：选择状态不再触发整表重绘。
+- 新增套装名前整行复选框；勾选后该行所有 drafted 封次进入待同步选择集。
+- 新增拖拽选择：按住套装名区域向下/向上拖过多行，可连续批量勾选；从已全选行开始拖会批量取消。
+- 验证通过：node --check scratch\frontend-mail-suite-current-check.js；git diff --check -- frontend/mail-suite.html。
+## 2026-07-09 交接：case_company 占位重跑
+
+- 用户要求核对变量/占位 358/43 是否实际为 case_company，并发起重跑。
+- 已确认：自动发送未同步草稿真实 case_company 为 358 封，全部 owner_staff_id=0188；套装草稿当前 case_company 为 0，之前 43 是混入其它方括号占位口径。
+- 已备份 358 封到 logs/case_company-rerun-backup-20260709-180736.json。
+- 已将这 358 封清空 subject/body_html/llm_prompt/llm_instance_id/generated_at，并置为 queued 重新生成；未写 CRM/ERP。
+- 本机 127.0.0.1:8071 拒绝连接，但后台 worker 已实际开始处理。最新状态：24 drafted、1 drafting、333 queued，已生成的 24 封 case_company=0。
+- 后续如需查看进度，按备份 item_id 查询 mail_autosend_plan_item 状态；如后台中断，保持 queued 的记录可由后端 watchdog/后台生成继续处理。
