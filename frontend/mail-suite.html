@@ -838,8 +838,8 @@
           <div class="flex flex-wrap items-center gap-2 text-xs">
             <label class="flex items-center gap-1" title="从开始日累计的天数(各封相对开始日, 不是相对上一封)。如 1,10,19,28 = 第1封第1天/第2封第10天/第3封第19天/第4封第28天。与套装模板发送间隔口径一致。">统一周期<input id="as2-intervals" class="rounded border border-slate-300 px-2 py-1 w-28" value="1,10,19,28"></label>
             <label class="flex items-center gap-1" title="每个销售每天最多发多少封, 含已有占用。满了顺延到下一天。">每日上限<input id="as2-daily-cap" type="number" min="1" class="rounded border border-slate-300 px-2 py-1 w-16" value="50"></label>
-            <label class="flex items-center gap-1" title="勾选后, 新增排期会自动跳过周六、周日和下方配置的中国法定节假日; 已有存量排期不会自动改动。"><input type="checkbox" id="as2-skip-nonworkdays" checked>跳过周末/节假日</label>
-            <label class="flex items-center gap-1" title="配置要跳过的中国法定节假日, 格式 YYYY-MM-DD, 可用逗号或空格分隔。例: 2026-10-01,2026-10-02">节假日<input id="as2-holiday-dates" class="rounded border border-slate-300 px-2 py-1 w-80" placeholder="YYYY-MM-DD,YYYY-MM-DD"></label>
+            <label class="flex items-center gap-1" title="勾选后, 新增排期自动跳过周六、周日和中国法定节假日(国务院安排已内置, 无需手填: 2026年元旦/春节/清明/劳动节/端午/中秋/国庆), 法定调休上班日(如 2026-02-14 周六)照常发信; 已有存量排期不会自动改动。"><input type="checkbox" id="as2-skip-nonworkdays" checked>跳过周末/节假日</label>
+            <label class="flex items-center gap-1" title="选填, 额外要跳过的日期(公司自定休息日/临时停发日)。法定节假日已内置, 这里不用重复填。格式 YYYY-MM-DD, 逗号或空格分隔。">额外休息日<input id="as2-holiday-dates" class="rounded border border-slate-300 px-2 py-1 w-80" placeholder="选填; 法定节假日已内置, 无需填写"></label>
             <label class="flex items-center gap-1">开始日期<input id="as2-start-date" type="date" class="rounded border border-slate-300 px-2 py-1"></label>
             <label class="flex items-center gap-1" title="勾上: 联系人一条规则都不命中时, 用最后一条(兜底)套装照发。默认不勾: 都不命中就跳过该联系人, 不发。"><input type="checkbox" id="as2-fallback">全不命中用兜底</label>
             <label class="flex items-center gap-1"><input type="checkbox" id="as2-consider-queue" checked>考虑已有排期</label>
@@ -3230,7 +3230,7 @@
         </div>
         <div class="text-[11px] text-slate-500 mb-1">正文${readonly ? '(只读)' : '(可直接编辑, 支持字体/颜色/段落等; 离开输入框/正文即自动保存)'}</div>
         ${readonly ? '' : as2RteToolbar()}
-        <div id="as2p-body-${ci}" class="body-html${readonly ? '' : ' rte'}" style="min-height:65vh;overflow:auto" ${readonly ? '' : 'contenteditable="true"'}${ob}>${it.body_html || '<span class="text-slate-400">无正文</span>'}</div>`;
+        <div id="as2p-body-${ci}" class="body-html${readonly ? '' : ' rte'}" style="min-height:180px;padding-bottom:8px" ${readonly ? '' : 'contenteditable="true"'}${ob}>${it.body_html || '<span class="text-slate-400">无正文</span>'}</div>`;
     }
     // 复用套装页富文本工具栏(rteCmd/rteExec/rteHilite 均对当前聚焦的 .rte 生效)
     function as2RteToolbar() {

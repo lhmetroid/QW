@@ -1074,6 +1074,7 @@ def auto_patch_db():
             "cta_count INTEGER NOT NULL DEFAULT 0,"
             "placeholder_count INTEGER NOT NULL DEFAULT 0,"
             "other_body_count INTEGER NOT NULL DEFAULT 0,"
+            "ai_suggestion_count INTEGER NOT NULL DEFAULT 0,"
             "computed_at TIMESTAMP DEFAULT now()"
             ");"
         ))
@@ -1095,6 +1096,7 @@ def auto_patch_db():
             "cta_count INTEGER NOT NULL DEFAULT 0,"
             "placeholder_count INTEGER NOT NULL DEFAULT 0,"
             "other_body_count INTEGER NOT NULL DEFAULT 0,"
+            "ai_suggestion_count INTEGER NOT NULL DEFAULT 0,"
             "computed_at TIMESTAMP DEFAULT now(),"
             "CONSTRAINT uq_mlias_date_staff UNIQUE(stat_date, staff_id)"
             ");"
@@ -1119,10 +1121,16 @@ def auto_patch_db():
             "body_changed BOOLEAN NOT NULL DEFAULT FALSE,"
             "primary_type VARCHAR(80),"
             "type_flags JSONB NOT NULL DEFAULT '[]'::jsonb,"
+            "ai_suggestion_count INTEGER NOT NULL DEFAULT 0,"
+            "ai_suggestions JSONB NOT NULL DEFAULT '[]'::jsonb,"
             "created_at TIMESTAMP DEFAULT now(),"
             "CONSTRAINT uq_mlid_source_row UNIQUE(source, source_row_id)"
             ");"
         ))
+        db.execute(text("ALTER TABLE mail_llm_iteration_daily_summary ADD COLUMN IF NOT EXISTS ai_suggestion_count INTEGER NOT NULL DEFAULT 0;"))
+        db.execute(text("ALTER TABLE mail_llm_iteration_staff_daily_summary ADD COLUMN IF NOT EXISTS ai_suggestion_count INTEGER NOT NULL DEFAULT 0;"))
+        db.execute(text("ALTER TABLE mail_llm_iteration_detail_index ADD COLUMN IF NOT EXISTS ai_suggestion_count INTEGER NOT NULL DEFAULT 0;"))
+        db.execute(text("ALTER TABLE mail_llm_iteration_detail_index ADD COLUMN IF NOT EXISTS ai_suggestions JSONB NOT NULL DEFAULT '[]'::jsonb;"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_mlid_date_staff ON mail_llm_iteration_detail_index (stat_date, staff_id);"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_mlid_type ON mail_llm_iteration_detail_index (primary_type);"))
         db.execute(text(
@@ -21182,13 +21190,72 @@ def _autosend_holiday_set(value: Any) -> set:
     return dates
 
 
+# 中国法定节假日(国务院办公厅通知)。放假日=不发信; 调休上班日=照常发信(即便是周六周日)。
+# 2026: 国办发明电〔2025〕7号(2025-11-04 发布)。新年份的安排一般在上一年 11 月发布, 届时按同格式补一段即可;
+# 未收录的年份自动退化为"只跳周末 + 页面手填节假日", 不会报错。
+_CN_HOLIDAY_PLAN_BY_YEAR: dict[int, dict[str, tuple]] = {
+    2026: {
+        # 元旦 1/1-1/3; 春节 2/15-2/23; 清明 4/4-4/6; 劳动节 5/1-5/5; 端午 6/19-6/21;
+        # 中秋 9/25-9/27; 国庆 10/1-10/7
+        "holidays": (
+            "2026-01-01", "2026-01-02", "2026-01-03",
+            "2026-02-15", "2026-02-16", "2026-02-17", "2026-02-18", "2026-02-19",
+            "2026-02-20", "2026-02-21", "2026-02-22", "2026-02-23",
+            "2026-04-04", "2026-04-05", "2026-04-06",
+            "2026-05-01", "2026-05-02", "2026-05-03", "2026-05-04", "2026-05-05",
+            "2026-06-19", "2026-06-20", "2026-06-21",
+            "2026-09-25", "2026-09-26", "2026-09-27",
+            "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04",
+            "2026-10-05", "2026-10-06", "2026-10-07",
+        ),
+        # 调休上班日(周末但要上班): 1/4(日) 2/14(六) 2/28(六) 5/9(六) 9/20(日) 10/10(六)
+        "workdays": (
+            "2026-01-04", "2026-02-14", "2026-02-28", "2026-05-09", "2026-09-20", "2026-10-10",
+        ),
+    },
+}
+
+
+def _cn_holiday_plan_sets() -> tuple[set, set]:
+    """把内置法定节假日表展开成 (放假日集合, 调休上班日集合), 结果缓存, 只算一次。"""
+    cached = getattr(_cn_holiday_plan_sets, "_cache", None)
+    if cached is not None:
+        return cached
+    holidays, workdays = set(), set()
+    for plan in _CN_HOLIDAY_PLAN_BY_YEAR.values():
+        for ds in plan.get("holidays", ()):  # 放假
+            try:
+                holidays.add(datetime.strptime(ds, "%Y-%m-%d").date())
+            except Exception:
+                logger.warning("CN_HOLIDAY_PLAN_BAD_DATE %s", ds)
+        for ds in plan.get("workdays", ()):  # 调休上班
+            try:
+                workdays.add(datetime.strptime(ds, "%Y-%m-%d").date())
+            except Exception:
+                logger.warning("CN_HOLIDAY_PLAN_BAD_DATE %s", ds)
+    cached = (holidays, workdays)
+    _cn_holiday_plan_sets._cache = cached
+    return cached
+
+
 def _autosend_is_non_workday(day, skip_non_workdays: bool = True, holiday_dates: Any = None) -> bool:
+    """是否不发信的日子。优先级: 手填节假日 > 内置调休上班日 > 内置法定假日 > 周末。
+
+    手填在最前, 是为了让页面能临时加休(如公司自定休息日); 调休上班日排在周末之前, 所以春节前的
+    2/14(周六)照常发信 —— 只按 weekday>=5 判会把它当周末跳掉, 与国务院安排不符。
+    """
     if day is None or not skip_non_workdays:
         return False
     if hasattr(day, "date") and not isinstance(day, date):
         day = day.date()
-    holidays = _autosend_holiday_set(holiday_dates)
-    return day.weekday() >= 5 or day in holidays
+    if day in _autosend_holiday_set(holiday_dates):   # 页面手填, 额外补充
+        return True
+    cn_holidays, cn_workdays = _cn_holiday_plan_sets()
+    if day in cn_workdays:      # 法定调休上班日: 即便周六周日也照常发
+        return False
+    if day in cn_holidays:      # 法定放假日
+        return True
+    return day.weekday() >= 5
 
 
 def _autosend_next_workday(day, skip_non_workdays: bool = True, holiday_dates: Any = None):
