@@ -427,25 +427,28 @@
       padding: 0 4px;
       cursor: pointer;
     }
-    .rte-color {
+    .rte-color-picker { position: relative; }
+    .rte-color-trigger {
       display: inline-flex;
       align-items: center;
-      gap: 3px;
+      gap: 4px;
       border: 1px solid #cbd5e1;
       border-radius: 6px;
-      padding: 2px 5px;
+      padding: 3px 6px;
       font-weight: 800;
       cursor: pointer;
       user-select: none;
+      background: #fff;
     }
-    .rte-color input[type=color] {
-      width: 18px;
-      height: 18px;
-      border: none;
-      padding: 0;
-      background: none;
-      cursor: pointer;
-    }
+    .rte-color-icon { display: grid; line-height: 12px; text-align: center; }
+    .rte-color-line { width: 15px; height: 3px; margin-top: 1px; background: #111827; }
+    .rte-color-menu { position: fixed; z-index: 300; width: 252px; padding: 10px; border: 1px solid #94a3b8; border-radius: 6px; background: #fff; box-shadow: 0 12px 28px rgba(15,23,42,.22); }
+    .rte-color-menu-title { margin: 2px 0 5px; color: #475569; font-size: 11px; font-weight: 800; }
+    .rte-color-grid { display: grid; grid-template-columns: repeat(10, 19px); gap: 4px; }
+    .rte-color-swatch { width: 19px; height: 19px; padding: 0 !important; border: 1px solid rgba(15,23,42,.14) !important; border-radius: 1px !important; }
+    .rte-color-swatch:hover { outline: 2px solid #2563eb; outline-offset: 1px; }
+    .rte-color-more { display: flex; align-items: center; gap: 7px; width: 100%; margin-top: 9px; padding: 5px 4px; border: 0; border-top: 1px solid #e2e8f0; background: #fff; color: #334155; cursor: pointer; font-size: 12px; text-align: left; }
+    .rte-color-more input[type=color] { width: 22px; height: 22px; border: 0; padding: 0; background: none; cursor: pointer; }
     .rte-sep {
       width: 1px;
       align-self: stretch;
@@ -853,6 +856,9 @@
           <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
             <div class="text-xs font-bold text-slate-700">排期清单<span class="ms-info" title="含: 待生成/已生成脚本(可勾选同步ERP)、以及已同步ERP系统(显示为 待发, 不再消失也不可再勾)。">ⓘ</span> <span id="as2-plan-count" class="text-slate-500 font-normal"></span></div>
             <div class="flex flex-wrap items-center gap-2 text-[11px]">
+              <label class="flex items-center gap-1 font-normal text-slate-600" title="隐藏整行四封都已同步进CRM(待发)的联系人套装; 行内只要还有未同步的封, 该行仍显示。仅影响显示, 不删除任何数据。">
+                <input type="checkbox" id="as2-hide-committed" checked onchange="as2RenderPlan()">过滤已同步CRM
+              </label>
               <button type="button" onclick="as2SelectAll(true)" class="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50">全选(已生成)</button>
               <button type="button" onclick="as2SelectInvert()" class="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50">反选</button>
               <button type="button" onclick="as2SelectAll(false)" class="rounded border border-slate-300 px-2 py-1 hover:bg-slate-50">清空选择</button>
@@ -1250,8 +1256,8 @@
               <button type="button" title="斜体" onmousedown="rteCmd(event,'italic')"><i>I</i></button>
               <button type="button" title="下划线" onmousedown="rteCmd(event,'underline')"><u>U</u></button>
               <button type="button" title="删除线" onmousedown="rteCmd(event,'strikeThrough')"><s>S</s></button>
-              <label class="rte-color" title="字体颜色">A<input type="color" onchange="rteExec('foreColor', this.value)"></label>
-              <label class="rte-color" title="背景色">底<input type="color" onchange="rteHilite(this.value)"></label>
+              ${rteColorPicker('foreColor')}
+              ${rteColorPicker('hiliteColor')}
               <span class="rte-sep"></span>
               <button type="button" title="无序列表" onmousedown="rteCmd(event,'insertUnorderedList')">• 列表</button>
               <button type="button" title="有序列表" onmousedown="rteCmd(event,'insertOrderedList')">1. 列表</button>
@@ -1417,6 +1423,49 @@
         document.execCommand('backColor', false, color);
       }
     }
+
+    const RTE_THEME_COLORS = [
+      '#ffffff','#000000','#e7e6e6','#44546a','#4472c4','#ed7d31','#a5a5a5','#ffc000','#70ad47','#5b9bd5',
+      '#f2f2f2','#7f7f7f','#d0cece','#d6dce4','#d9e2f3','#fce4d6','#ededed','#fff2cc','#e2f0d9','#ddebf7',
+      '#d9d9d9','#595959','#aeaaaa','#adb9ca','#b4c6e7','#f8cbad','#dbdbdb','#ffe699','#c6e0b4','#bdd7ee',
+      '#bfbfbf','#404040','#757171','#8497b0','#8eaadb','#f4b183','#c9c9c9','#ffd966','#a9d18e','#9dc3e6',
+      '#a6a6a6','#262626','#3b3838','#323f4f','#2f5597','#c65911','#7b7b7b','#bf9000','#548235','#2e75b6'
+    ];
+    const RTE_STANDARD_COLORS = ['#c00000','#ff0000','#ffc000','#ffff00','#92d050','#00b050','#00b0f0','#0070c0','#002060','#7030a0'];
+
+    function rteColorPicker(mode) {
+      const isText = mode === 'foreColor';
+      const title = isText ? '字体颜色' : '背景色';
+      const icon = isText ? 'A' : '底';
+      const swatches = colors => colors.map(color => `<button type="button" class="rte-color-swatch" style="background:${color}" title="${color}" onmousedown="rteChooseColor(event,'${mode}','${color}')"></button>`).join('');
+      return `<span class="rte-color-picker"><button type="button" class="rte-color-trigger" title="${title}" onmousedown="rteToggleColorMenu(event,this)"><span class="rte-color-icon">${icon}<i class="rte-color-line"></i></span><span aria-hidden="true">▾</span></button><span class="rte-color-menu" hidden><span class="rte-color-menu-title">主题颜色</span><span class="rte-color-grid">${swatches(RTE_THEME_COLORS)}</span><span class="rte-color-menu-title" style="display:block;margin-top:9px">标准色</span><span class="rte-color-grid">${swatches(RTE_STANDARD_COLORS)}</span><label class="rte-color-more"><input type="color" value="#000000" onchange="rteChooseCustomColor(event,'${mode}',this.value)"><span>其他颜色…</span></label></span></span>`;
+    }
+
+    function rteCloseColorMenus(except) { document.querySelectorAll('.rte-color-menu').forEach(menu => { if (menu !== except) menu.hidden = true; }); }
+    function rteToggleColorMenu(event, trigger) {
+      event.preventDefault(); event.stopPropagation();
+      const menu = trigger.parentElement.querySelector('.rte-color-menu');
+      const opening = menu.hidden;
+      rteCloseColorMenus(menu); menu.hidden = !opening;
+      if (!opening) return;
+      const rect = trigger.getBoundingClientRect();
+      menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 260))}px`;
+      menu.style.top = `${Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - menu.offsetHeight - 8))}px`;
+    }
+    function rteChooseColor(event, mode, color) {
+      event.preventDefault(); event.stopPropagation();
+      if (mode === 'foreColor') rteExec('foreColor', color); else rteHilite(color);
+      const line = event.currentTarget.closest('.rte-color-picker').querySelector('.rte-color-line');
+      if (line) line.style.background = color;
+      rteCloseColorMenus();
+    }
+    function rteChooseCustomColor(event, mode, color) {
+      if (mode === 'foreColor') rteExec('foreColor', color); else rteHilite(color);
+      const line = event.currentTarget.closest('.rte-color-picker').querySelector('.rte-color-line');
+      if (line) line.style.background = color;
+      rteCloseColorMenus();
+    }
+    document.addEventListener('mousedown', event => { if (!event.target.closest('.rte-color-picker')) rteCloseColorMenus(); });
 
     function rteLink(event) {
       event.preventDefault();
@@ -2794,6 +2843,13 @@
         </div>
       </div>`;
     }
+    // 过滤已同步CRM: 只隐藏"整个联系人套装的封全部已进CRM"的行; 行内还有未同步的封则仍显示, 免得把待操作的封藏掉。
+    // 只影响显示, as2PlanItems 仍是全量, 勾选/生成/同步/清空的口径不变(sent 本就不可勾)。
+    function as2HideCommitted() { return document.getElementById('as2-hide-committed')?.checked !== false; }
+    function as2GroupAllCommitted(g) {
+      const steps = Object.values((g && g.steps) || {});
+      return steps.length > 0 && steps.every((s) => s && (s.status === 'sent' || s.status === 'committed'));
+    }
     let as2PlanRenderSeq = 0;
     function as2RenderPlan() {
       const tb = document.getElementById('as2-plan-tbody');
@@ -2802,11 +2858,18 @@
       document.querySelectorAll('[data-sales-col]').forEach((el) => el.classList.toggle('hidden', !as2SalesColVisible()));
       const salesCol = as2SalesColVisible();
       const groups = as2PlanGroups(as2PlanItems);
-      const keys = Object.keys(groups);
-      if (cnt) cnt.textContent = `(${as2PlanItems.length} 封 / ${keys.length} 个联系人套装)`;
+      const allKeys = Object.keys(groups);
+      const hide = as2HideCommitted();
+      const hiddenCount = hide ? allKeys.filter((k) => as2GroupAllCommitted(groups[k])).length : 0;
+      const keys = hide ? allKeys.filter((k) => !as2GroupAllCommitted(groups[k])) : allKeys;
+      const shownMails = keys.reduce((n, k) => n + Object.keys(groups[k].steps).length, 0);
+      if (cnt) cnt.textContent = `(${shownMails} 封 / ${keys.length} 个联系人套装)` + (hiddenCount ? ` · 已隐藏 ${hiddenCount} 个已同步CRM` : '');
       const seq = ++as2PlanRenderSeq;   // 新一轮渲染, 令上一轮未完成的分块循环失效, 避免并发交叠
       if (!keys.length) {
-        tb.innerHTML = `<tr><td colspan="${salesCol ? 8 : 7}" class="px-2 py-3 text-slate-400">暂无排期。配置规则后点"预览排期(入清单)"。</td></tr>`;
+        const empty = hiddenCount
+          ? `当前排期已全部同步进CRM(${hiddenCount} 个联系人套装被"过滤已同步CRM"隐藏)。取消该勾选可查看。`
+          : '暂无排期。配置规则后点"预览排期(入清单)"。';
+        tb.innerHTML = `<tr><td colspan="${salesCol ? 8 : 7}" class="px-2 py-3 text-slate-400">${as2Esc(empty)}</td></tr>`;
         return;
       }
       // 分块渲染: 一次只拼 ~120 个套装组的行, setTimeout 让出主线程,
@@ -3183,8 +3246,8 @@
         <button type="button" title="斜体" onmousedown="rteCmd(event,'italic')"><i>I</i></button>
         <button type="button" title="下划线" onmousedown="rteCmd(event,'underline')"><u>U</u></button>
         <button type="button" title="删除线" onmousedown="rteCmd(event,'strikeThrough')"><s>S</s></button>
-        <label class="rte-color" title="字体颜色">A<input type="color" onchange="rteExec('foreColor', this.value)"></label>
-        <label class="rte-color" title="背景色">底<input type="color" onchange="rteHilite(this.value)"></label>
+        ${rteColorPicker('foreColor')}
+        ${rteColorPicker('hiliteColor')}
         <span class="rte-sep"></span>
         <button type="button" title="无序列表" onmousedown="rteCmd(event,'insertUnorderedList')">• 列表</button>
         <button type="button" title="有序列表" onmousedown="rteCmd(event,'insertOrderedList')">1. 列表</button>
