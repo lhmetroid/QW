@@ -20145,6 +20145,19 @@ def send_mail_customer_suite(
             continue
 
     now_bj = datetime.utcnow() + timedelta(hours=8)
+    # 计划发送日沿用自动排期的工作日规则: 跳过周末 + 中国法定节假日, 法定调休上班日照常发。
+    # 本函数是三条发送链路的共同出口(套装页手工发送 / 管理员自动发送节点同步CRM / 自动排期 commit worker),
+    # 校正放在这里, 三处口径一致; commit worker 传进来的天数已校正过, 再算一次是幂等的(已是工作日则不动)。
+    try:
+        _wd_cfg = _autosend_serialize_config(_autosend_get_or_create_config(db))
+        _skip_nwd = bool(_wd_cfg.get("skip_non_workdays", True))
+        _extra_holidays = _wd_cfg.get("holiday_dates", [])
+    except Exception:
+        logger.exception("MAIL_SUITE_SEND_WORKDAY_CFG_FAILED")
+        _skip_nwd, _extra_holidays = True, []
+    # 本批已占用的发送日: 跨周末顺延会把相邻两封挤到同一个周一(如间隔5天/6天都落到周末),
+    # 客户同一天收两封。故同批内再撞日就继续往后找下一个工作日。
+    _used_days: set = set()
     import uuid as _uuid
     batch_id = _uuid.uuid4().hex
     prepared = []
@@ -20192,7 +20205,13 @@ def send_mail_customer_suite(
             hh, mm = [int(x) for x in send_time.split(":")]
         except Exception:
             hh, mm = 9, 0
-        plan_dt = (now_bj + timedelta(days=max(0, interval))).replace(hour=hh, minute=mm, second=0, microsecond=0)
+        _base_dt = now_bj + timedelta(days=max(0, interval))
+        _plan_day = _autosend_next_workday(_base_dt.date(), _skip_nwd, _extra_holidays)
+        while _plan_day in _used_days:   # 同批撞日(顺延导致), 再往后找一个工作日
+            _plan_day = _autosend_next_workday(_plan_day + timedelta(days=1), _skip_nwd, _extra_holidays)
+        _used_days.add(_plan_day)
+        plan_dt = _base_dt.replace(year=_plan_day.year, month=_plan_day.month, day=_plan_day.day,
+                                   hour=hh, minute=mm, second=0, microsecond=0)
         body_text = _mail_suite_html_to_text(final_body_html)
         # 幂等去重(两道): ① 内容级—同收件人+同主题+同计划日 已在 CRM 待发队列(含历史/跨重启)则跳过;
         # ② 并发占位—抢 dedup_key 唯一键, 同一瞬间并发/重试只放一个。共同防 重复点/网络重试/报错重启重跑/自动排期重复commit。
