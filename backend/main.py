@@ -22240,15 +22240,22 @@ def _autosend_mark_item_sent(db: Session, item_id: str, crm_send_id: str | None)
     return True
 
 
-def _autosend_commit_interval_days(plan_date) -> int:
-    """plan_date 距今天(北京)的天数; 已过期或为空一律按 0(今天发)。"""
-    if not plan_date:
-        return 0
+def _autosend_commit_interval_days(plan_date, skip_non_workdays: bool = True, holiday_dates: Any = None) -> int:
+    """plan_date 距今天(北京)的天数; 已过期或为空按今天算。
+
+    落库前再做一次工作日校正: 排期时虽然避开了周末/法定节假日, 但一封拖到 plan_date 过期后才同步,
+    会被压回"今天", 今天可能正好是周六或国庆 —— 这里把结果日顺延到下一个工作日再算天数。
+    存量老排期(排期时没开跳过周末)如果本身就落在非工作日, 同步时同样会被顺延。
+    """
     today = (datetime.utcnow() + timedelta(hours=8)).date()
-    d = plan_date.date() if hasattr(plan_date, "hour") else plan_date
     try:
+        d = (plan_date.date() if hasattr(plan_date, "hour") else plan_date) if plan_date else today
+        if d < today:
+            d = today
+        d = _autosend_next_workday(d, skip_non_workdays, holiday_dates)
         return max(0, (d - today).days)
     except Exception:
+        logger.exception("AUTOSEND_COMMIT_INTERVAL_FAILED plan_date=%s", plan_date)
         return 0
 
 
@@ -22295,6 +22302,10 @@ def _autosend_commit_worker(staff: str, item_ids: list[str] | None = None, token
                 ).fetchall()
             else:
                 rows = db.execute(text(base + " ORDER BY plan_date, suite_step"), {"s": staff}).fetchall()
+            # 落库前的工作日校正用同一份全局配置(与排期口径一致), 整批只读一次
+            cfg = _autosend_serialize_config(_autosend_get_or_create_config(db))
+            skip_nwd = bool(cfg.get("skip_non_workdays", True))
+            holiday_dates = cfg.get("holiday_dates", [])
         finally:
             db.close()
 
@@ -22342,7 +22353,7 @@ def _autosend_commit_worker(staff: str, item_ids: list[str] | None = None, token
                         "suite_step": int(step),
                         "subject": subject or "",
                         "body_html": body_html or "",
-                        "send_interval_days": _autosend_commit_interval_days(plan_date),
+                        "send_interval_days": _autosend_commit_interval_days(plan_date, skip_nwd, holiday_dates),
                         "send_time": (str(plan_time or "09:00")[:5] or "09:00"),
                     }],
                 )
