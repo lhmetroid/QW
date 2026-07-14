@@ -22278,6 +22278,365 @@ def _autosend_commit_interval_days(plan_date, skip_non_workdays: bool = True, ho
         return 0
 
 
+# ---------------------------------------------------------------------------
+# 过期排期重排(同步保存ERP 之前)
+#
+# 病灶: 排期时算好的 plan_date/plan_time(如 07-08 09:50) 拖到今天才点同步, 旧逻辑只把日期压回今天、
+# 时刻原样带走 -> 落进 CRM 的 plan_send_time 是"今天 09:50", 早已过点, CRM 下一次扫描就把这一批
+# 全部在同一分钟发出去。
+#
+# 处方(只在"存在过期封"时才触发, 否则一行都不动):
+#   日期层: 每个(联系人 x 套装)的首封锚点 = max(原计划日, 今天)。过期的拉到今天; 没过期的原地不动,
+#           绝不提前。后续封 = 该套装首封的"实际落日" + 原累计间隔差 -> 套装内间隔严格保持, 第1封
+#           哪怕被上限挤到几天后, 第2封也一定在它之后, 不会反超/贴脸。
+#   时刻层: 每天 10 分钟一个槽, 09:00 起、18:30 止, 取当天第一个空槽(已同步待发的封连续占着前几格,
+#           新封自然接在它们后面 10 分钟); 今天的槽还要 >= 现在+10分钟。装不下(撞 18:30 或撞每日上限)
+#           就顺延到下一个工作日 —— 只往后, 不往前。
+#   不可动: 已写入CRM的封(spQueueSend 待发 + 本地 sent/committing)只作为固定占位, 占时间槽与上限名额。
+#   零打扰: 整条链都没过期、原槽位仍合法的, 一个字段都不改(先占槽) -> 没过期的封绝不会被提前, 只会
+#           因为让位而顺延。
+# ---------------------------------------------------------------------------
+_AUTOSEND_SLOT_GAP_MINUTES = 10             # 同一天相邻两封的间隔, 与 _autosend_schedule 的 09:00+10*seq 同口径
+_AUTOSEND_DAY_START_MINUTE = 9 * 60         # 每天最早发送时刻 09:00
+_AUTOSEND_DAY_END_MINUTE = 18 * 60 + 30     # 每天最晚发送时刻 18:30, 超过一律顺延到下一个工作日
+_AUTOSEND_RESCHEDULE_LEAD_MINUTES = 10      # 过期封起排缓冲: 不早于"现在+10分钟"(留出逐封写CRM的时间)
+_AUTOSEND_RESCHEDULE_MAX_DAYS = 180         # 顺延最多往后找的自然天数; 超出即报错不落库, 不静默截断
+# 可重排的状态: 尚未写进 CRM。committing 正在写、sent 已经写进去了, 两者都不能动(只做占位)。
+_AUTOSEND_MOVABLE_STATUSES = ("planned", "queued", "drafting", "drafted", "commit_queued", "commit_failed")
+_AUTOSEND_MOVABLE_SQL_IN = ",".join(f"'{s}'" for s in _AUTOSEND_MOVABLE_STATUSES)
+
+
+def _autosend_parse_hhmm(value) -> int | None:
+    """'HH:MM' / 'HH:MM:SS' -> 当天第几分钟。解析不出来返回 None。"""
+    s = str(value or "").strip()
+    if not s:
+        return None
+    parts = s.split(":")
+    try:
+        hh = int(parts[0])
+        mm = int(parts[1]) if len(parts) > 1 else 0
+    except Exception:
+        return None
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        return None
+    return hh * 60 + mm
+
+
+def _autosend_fmt_hhmm(minute: int) -> str:
+    hh, mm = divmod(int(minute), 60)
+    return f"{hh:02d}:{mm:02d}"
+
+
+def _autosend_crm_pending_slots(staff: str, start_date) -> dict:
+    """CRM spQueueSend 里该销售 start_date 起的待发邮件, 按日归集已占用的分钟槽。
+
+    这些就是"已同步待发送"的封: 不可移动, 但必须占住时间槽和每日上限名额, 否则重排会把新封
+    塞到同一分钟。CRM 读不到时直接抛错(不静默降级成空占位), 由调用方拒绝重排。
+    """
+    from crm_database import CRMSessionLocal
+    crm_db = CRMSessionLocal()
+    try:
+        rows = crm_db.execute(
+            text("SELECT CONVERT(varchar(10), PlanSendTime, 23) AS d, "
+                 "DATEPART(hour, PlanSendTime) * 60 + DATEPART(minute, PlanSendTime) AS m "
+                 "FROM spQueueSend WHERE MessageType='Email' AND PlanSendTime >= :start "
+                 "AND InputerStaffId = :sid"),
+            {"start": datetime.combine(start_date, datetime.min.time()), "sid": staff},
+        ).fetchall()
+    finally:
+        crm_db.close()
+    out: dict = {}
+    for d, m in rows:
+        try:
+            day = datetime.strptime(str(d), "%Y-%m-%d").date()
+        except Exception:
+            continue
+        out.setdefault(day, []).append(int(m or 0))
+    return out
+
+
+class _AutosendSlotBook:
+    """发送槽账本: 按天分配 10 分钟一格的发送时刻, 受 09:00 / 18:30 / 每日上限 / 工作日 四条约束。
+
+    occupied: {date: [已占用的分钟, ...]} —— 已写进CRM、不可移动的封。
+    """
+
+    def __init__(self, occupied: dict, cap: int, today, now_minute: int,
+                 skip_non_workdays: bool, holiday_dates):
+        self.used: dict = {d: set(int(x) for x in ms) for d, ms in (occupied or {}).items()}
+        self.count: dict = {d: len(ms) for d, ms in (occupied or {}).items()}
+        self.cap = max(1, int(cap or 1))
+        self.today = today
+        self.skip_non_workdays = skip_non_workdays
+        self.holiday_dates = holiday_dates
+        # 今天的最早可用时刻: 现在+缓冲, 向上取整到 10 分钟网格(避免落在过去导致CRM立刻群发)
+        lead = int(now_minute) + _AUTOSEND_RESCHEDULE_LEAD_MINUTES
+        gap = _AUTOSEND_SLOT_GAP_MINUTES
+        self.earliest_today = ((lead + gap - 1) // gap) * gap
+
+    def occupy_fixed(self, day, minute: int) -> None:
+        """把一封"不可移动但还没进 CRM 待发表"的封(本地 committing)也占进账本。"""
+        if day is None or minute is None:
+            return
+        if minute in self.used.get(day, set()):
+            return
+        self.used.setdefault(day, set()).add(int(minute))
+        self.count[day] = self.count.get(day, 0) + 1
+
+    def _base_minute(self, day) -> int:
+        """当天最早可用时刻: 平时 09:00; 今天还要 >= 现在+缓冲(不能排到过去)。"""
+        base = _AUTOSEND_DAY_START_MINUTE
+        if day == self.today:
+            base = max(base, self.earliest_today)
+        return base
+
+    def can_keep(self, day, minute) -> bool:
+        """这封能不能就待在原槽不动(没过期的封优先原地保留, 避免无谓改动)。"""
+        if day is None or minute is None:
+            return False
+        if day < self.today or _autosend_is_non_workday(day, self.skip_non_workdays, self.holiday_dates):
+            return False
+        if self.count.get(day, 0) >= self.cap:
+            return False
+        if minute in self.used.get(day, set()):
+            return False
+        return self._base_minute(day) <= minute <= _AUTOSEND_DAY_END_MINUTE
+
+    def keep(self, day, minute) -> int:
+        """占住原槽(供 can_keep 通过的封使用), 返回当天序号。"""
+        seq = self.count.get(day, 0)
+        self.used.setdefault(day, set()).add(int(minute))
+        self.count[day] = seq + 1
+        return seq
+
+    def take(self, desired_day):
+        """给一封分配 (日期, 分钟, 当天序号)。装不下就顺延到下一个工作日, 只往后, 绝不往前。
+
+        当天取第一个空槽: 已同步待发的封通常连续占着 09:00 起的前几格, 于是新封自然接在它们
+        后面 10 分钟; 中间若真有空档(CRM里被删过一封), 填上比空着强, 两种情形都不会撞槽。
+        """
+        day = _autosend_next_workday(max(desired_day, self.today), self.skip_non_workdays, self.holiday_dates)
+        for _ in range(_AUTOSEND_RESCHEDULE_MAX_DAYS):
+            if self.count.get(day, 0) < self.cap:
+                used = self.used.setdefault(day, set())
+                minute = self._base_minute(day)
+                while minute in used:
+                    minute += _AUTOSEND_SLOT_GAP_MINUTES
+                if minute <= _AUTOSEND_DAY_END_MINUTE:
+                    seq = self.count.get(day, 0)
+                    used.add(minute)
+                    self.count[day] = seq + 1
+                    return day, minute, seq
+            day = _autosend_next_workday(day + timedelta(days=1), self.skip_non_workdays, self.holiday_dates)
+        raise RuntimeError(f"重排失败: 自 {desired_day} 起 {_AUTOSEND_RESCHEDULE_MAX_DAYS} 天内没有可用发送槽")
+
+
+def _autosend_reschedule_plan(db: Session, staff: str, apply_changes: bool) -> dict:
+    """检测过期排期并重排。apply_changes=False 只算不写(预览), True 才落库。
+
+    只改 plan_date / plan_time / send_time / seq_in_day —— 正文、主题、勾选、套装归属一律不动。
+    没有过期封时直接返回 overdue=0 且不做任何改动(零副作用), 因此可以无条件调用。
+    """
+    now_bj = datetime.utcnow() + timedelta(hours=8)
+    today = now_bj.date()
+    now_minute = now_bj.hour * 60 + now_bj.minute
+    empty = {"ok": True, "staff_id": staff, "overdue": 0, "changed": 0, "movable": 0,
+             "fixed_pending": 0, "first_slot": None, "last_slot": None,
+             "day_load": [], "changes": [], "applied": False}
+
+    movable = db.execute(
+        text(f"SELECT item_id, contact_id, scenario, suite_step, plan_date, plan_time, "
+             f"company_name, contact_name, status FROM mail_autosend_plan_item "
+             f"WHERE owner_staff_id=:s AND status IN ({_AUTOSEND_MOVABLE_SQL_IN}) "
+             f"ORDER BY plan_date, plan_time, suite_step"),
+        {"s": staff},
+    ).fetchall()
+    if not movable:
+        return empty
+
+    def plan_dt_of(plan_date, plan_time):
+        if plan_date is None:
+            return None
+        d = plan_date.date() if hasattr(plan_date, "hour") else plan_date
+        m = _autosend_parse_hhmm(plan_time)
+        return datetime.combine(d, datetime.min.time()) + timedelta(minutes=(m if m is not None else _AUTOSEND_DAY_START_MINUTE))
+
+    cutoff = now_bj + timedelta(minutes=_AUTOSEND_RESCHEDULE_LEAD_MINUTES)
+    overdue = [r for r in movable if (plan_dt_of(r[4], r[5]) is None or plan_dt_of(r[4], r[5]) < cutoff)]
+    if not overdue:
+        empty["movable"] = len(movable)
+        return empty
+
+    cfg = _autosend_serialize_config(_autosend_get_or_create_config(db))
+    cap = int(cfg.get("daily_cap") or 10)
+    skip_nwd = bool(cfg.get("skip_non_workdays", True))
+    holiday_dates = cfg.get("holiday_dates", [])
+
+    occupied = _autosend_crm_pending_slots(staff, today)   # 读不到会抛, 由上层拒绝重排
+    book = _AutosendSlotBook(occupied, cap, today, now_minute, skip_nwd, holiday_dates)
+    fixed_pending = sum(len(v) for v in occupied.values())
+
+    # 本地 sent/committing: sent 已在 CRM(上面已占), committing 可能还没写进去 -> 补一次占位(同分钟不重复计)
+    fixed_rows = db.execute(
+        text("SELECT contact_id, scenario, suite_step, plan_date, plan_time, status "
+             "FROM mail_autosend_plan_item WHERE owner_staff_id=:s AND status IN ('sent','committing') "
+             "AND plan_date >= :d"),
+        {"s": staff, "d": today},
+    ).fetchall()
+    fixed_last_day: dict = {}      # (contact_id, scenario) -> 已同步封的最晚计划日
+    for cid, sc, _step, pdate, ptime, status in fixed_rows:
+        d = pdate.date() if hasattr(pdate, "hour") else pdate
+        if d is None:
+            continue
+        key = (str(cid or ""), str(sc or ""))
+        if fixed_last_day.get(key) is None or d > fixed_last_day[key]:
+            fixed_last_day[key] = d
+        if str(status) == "committing":
+            book.occupy_fixed(d, _autosend_parse_hhmm(ptime) or _AUTOSEND_DAY_START_MINUTE)
+
+    # 按(联系人 x 套装)成链, 链内按封序; 链间按"原计划最早的一封"排序 -> 原先后顺序不倒置
+    chains: dict = {}
+    for r in movable:
+        chains.setdefault((str(r[1] or ""), str(r[2] or "")), []).append(r)
+    for k in list(chains):
+        chains[k] = sorted(chains[k], key=lambda x: int(x[3] or 0))   # 链内按封序; 必须先排, ordered 引用的是同一批 list
+    ordered = sorted(
+        chains.items(),
+        key=lambda kv: (min(plan_dt_of(x[4], x[5]) or datetime.max for x in kv[1]), kv[0][0], kv[0][1]),
+    )
+
+    # 第一遍: 整条链都没过期、且原槽位仍然合法(工作日/未满/没被占/在 09:00~18:30 内)的, 原地保留,
+    # 一个字段都不改。它们先把槽占住 —— 于是"没过期的封绝不会被提前", 只可能因为让位而顺延。
+    def chain_overdue(rows) -> bool:
+        for r in rows:
+            dt = plan_dt_of(r[4], r[5])
+            if dt is None or dt < cutoff:
+                return True
+        return False
+
+    pending: list = []
+    for key, rows in ordered:
+        if chain_overdue(rows):
+            pending.append((key, rows))
+            continue
+        slots = [((r[4].date() if hasattr(r[4], "hour") else r[4]), _autosend_parse_hhmm(r[5])) for r in rows]
+        if all(book.can_keep(d, m) for d, m in slots):
+            for d, m in slots:
+                book.keep(d, m)
+        else:
+            pending.append((key, rows))   # 原槽被占/超上限 -> 这条链跟着一起重排(只会往后)
+
+    # 第二遍: 过期链 + 原槽保不住的链, 按原先后顺序重新装箱
+    changes: list[dict] = []
+    for (cid, scenario), rows in pending:
+        first_date = rows[0][4].date() if hasattr(rows[0][4], "hour") else rows[0][4]
+        # 原累计间隔差: 用原排期实际落日算(而不是配置里的周期), 人工改过日期的套装也能原样保间隔
+        offsets: list[int] = []
+        prev_off = -1
+        for r in rows:
+            d = r[4].date() if hasattr(r[4], "hour") else r[4]
+            off = (d - first_date).days if (d is not None and first_date is not None) else (prev_off + 1)
+            if off <= prev_off:      # 同日/倒挂的历史数据: 至少隔一天, 保证同一人一天不发两封
+                off = prev_off + 1
+            offsets.append(off)
+            prev_off = off
+
+        desired = max(first_date, today) if first_date is not None else today
+        anchor_fixed = fixed_last_day.get((cid, scenario))
+        if anchor_fixed is not None:      # 同套装已有已同步封: 本次这几封不得早于它 +1 天, 防止倒挂
+            desired = max(desired, anchor_fixed + timedelta(days=1))
+
+        base_day = None
+        prev_day = None
+        for idx, r in enumerate(rows):
+            if idx == 0:
+                want = desired
+            else:
+                want = base_day + timedelta(days=offsets[idx] - offsets[0])
+                if prev_day is not None and want <= prev_day:
+                    want = prev_day + timedelta(days=1)
+            day, minute, seq = book.take(want)
+            if idx == 0:
+                base_day = day
+            prev_day = day
+            old_date = r[4].date() if hasattr(r[4], "hour") else r[4]
+            old_minute = _autosend_parse_hhmm(r[5])
+            if old_date == day and old_minute == minute:
+                continue
+            changes.append({
+                "item_id": str(r[0]),
+                "contact_id": cid,
+                "company_name": r[6] or "",
+                "contact_name": r[7] or "",
+                "scenario": scenario,
+                "suite_step": int(r[3] or 0),
+                "old": (f"{old_date.isoformat()} {_autosend_fmt_hhmm(old_minute)}" if (old_date and old_minute is not None)
+                        else (old_date.isoformat() if old_date else "")),
+                "new_date": day,
+                "new_time": _autosend_fmt_hhmm(minute),
+                "seq_in_day": int(seq),
+            })
+
+    day_counter: dict = {}
+    for c in changes:
+        day_counter[c["new_date"]] = day_counter.get(c["new_date"], 0) + 1
+    slots = sorted(f"{c['new_date'].isoformat()} {c['new_time']}" for c in changes)
+
+    if apply_changes:
+        for c in changes:
+            db.execute(
+                text("UPDATE mail_autosend_plan_item SET plan_date=:d, plan_time=:t, send_time=:t, "
+                     "seq_in_day=:q, updated_at=now() WHERE item_id=:i"),
+                {"d": c["new_date"], "t": c["new_time"], "q": c["seq_in_day"], "i": c["item_id"]},
+            )
+        db.commit()
+        for c in changes:
+            logger.info("AUTOSEND_RESCHEDULE staff=%s item=%s step=%s %s -> %s %s",
+                        staff, c["item_id"], c["suite_step"], c["old"] or "(无日期)",
+                        c["new_date"].isoformat(), c["new_time"])
+        logger.warning("AUTOSEND_RESCHEDULE_DONE staff=%s overdue=%s changed=%s first=%s last=%s",
+                       staff, len(overdue), len(changes), slots[0] if slots else "-", slots[-1] if slots else "-")
+
+    return {
+        "ok": True,
+        "staff_id": staff,
+        "overdue": len(overdue),
+        "changed": len(changes),
+        "movable": len(movable),
+        "fixed_pending": fixed_pending,
+        "first_slot": slots[0] if slots else None,
+        "last_slot": slots[-1] if slots else None,
+        "day_load": [{"date": d.isoformat(), "count": n} for d, n in sorted(day_counter.items())],
+        "changes": [{k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in c.items()} for c in changes[:200]],
+        "applied": bool(apply_changes),
+    }
+
+
+class AutosendRescheduleRequest(BaseModel):
+    staff_id: str
+    apply: bool = False
+
+
+@app.post("/api/v1/mail/autosend/reschedule")
+def autosend_reschedule(payload: AutosendRescheduleRequest, db: Session = Depends(get_db)):
+    """过期排期重排。apply=false 只预览(不写库), apply=true 落库。
+
+    同步进行中不允许重排(worker 已经在按旧时刻逐封写 CRM, 中途改期会两头对不上)。
+    """
+    staff = sanitize_text(payload.staff_id).strip()
+    if not staff:
+        raise HTTPException(status_code=422, detail="staff_id is required")
+    if _autosend_commit_is_running(staff):
+        raise HTTPException(status_code=409, detail="该销售正在同步保存ERP, 请等本轮同步结束后再重排")
+    try:
+        return _autosend_reschedule_plan(db, staff, bool(payload.apply))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("AUTOSEND_RESCHEDULE_FAILED staff=%s apply=%s", staff, payload.apply)
+        raise HTTPException(status_code=502, detail=f"重排失败: {sanitize_text(str(exc))[:200]}") from exc
+
+
 def _autosend_commit_enqueue(db: Session, staff: str, item_ids: list[str] | None) -> int:
     """drafted / commit_failed -> commit_queued。落库入队 = "点过同步ERP" 这件事的持久证据。"""
     sql = ("UPDATE mail_autosend_plan_item SET status='commit_queued', commit_error=NULL, updated_at=now() "
@@ -22314,13 +22673,15 @@ def _autosend_commit_worker(staff: str, item_ids: list[str] | None = None, token
             base = ("SELECT item_id, customer_id, contact_id, scenario, suite_step, subject, body_html, "
                     "recipient_email, plan_date, plan_time "
                     "FROM mail_autosend_plan_item WHERE owner_staff_id=:s AND status='commit_queued'")
+            # 一律按计划时刻升序写入: 排在最前的封先进 CRM, 写入耗时永远追不上它自己的计划时刻
             if item_ids:
                 rows = db.execute(
-                    text(base + " AND item_id IN :ids").bindparams(bindparam("ids", expanding=True)),
+                    text(base + " AND item_id IN :ids ORDER BY plan_date, plan_time, suite_step")
+                    .bindparams(bindparam("ids", expanding=True)),
                     {"s": staff, "ids": [str(x) for x in item_ids]},
                 ).fetchall()
             else:
-                rows = db.execute(text(base + " ORDER BY plan_date, suite_step"), {"s": staff}).fetchall()
+                rows = db.execute(text(base + " ORDER BY plan_date, plan_time, suite_step"), {"s": staff}).fetchall()
             # 落库前的工作日校正用同一份全局配置(与排期口径一致), 整批只读一次
             cfg = _autosend_serialize_config(_autosend_get_or_create_config(db))
             skip_nwd = bool(cfg.get("skip_non_workdays", True))
@@ -22446,7 +22807,11 @@ class AutosendCommitRequest(BaseModel):
 
 @app.post("/api/v1/mail/autosend/commit")
 def autosend_commit(payload: AutosendCommitRequest, db: Session = Depends(get_db)):
-    """后台逐封同步保存ERP。立即返回, 前端轮询 commit-status; 关页面不影响, 重启自动续跑。"""
+    """后台逐封同步保存ERP。立即返回, 前端轮询 commit-status; 关页面不影响, 重启自动续跑。
+
+    入队前先做过期重排: 带着过去时刻写进 CRM 会被下一次扫描判成"已过点"而在同一分钟群发,
+    所以这一步不可跳过。没有过期封时重排是空操作, 一行都不改。
+    """
     staff = sanitize_text(payload.staff_id).strip()
     if not staff:
         raise HTTPException(status_code=422, detail="staff_id is required")
@@ -22456,6 +22821,13 @@ def autosend_commit(payload: AutosendCommitRequest, db: Session = Depends(get_db
     if not token:
         return {"ok": True, "started": False, "already_running": True}
     try:
+        resched = _autosend_reschedule_plan(db, staff, True)
+    except Exception as exc:
+        _lock_release(_AUTOSEND_COMMIT_ACTIVE, staff, token)
+        logger.exception("AUTOSEND_COMMIT_RESCHEDULE_FAILED staff=%s", staff)
+        raise HTTPException(status_code=502,
+                            detail=f"过期排期重排失败，本次未同步任何邮件：{sanitize_text(str(exc))[:200]}") from exc
+    try:
         enqueued = _autosend_commit_enqueue(db, staff, payload.item_ids)
         pending = _autosend_commit_queued_count(db, staff)
     except Exception:
@@ -22463,10 +22835,11 @@ def autosend_commit(payload: AutosendCommitRequest, db: Session = Depends(get_db
         raise
     if not pending:
         _lock_release(_AUTOSEND_COMMIT_ACTIVE, staff, token)
-        return {"ok": True, "started": False, "pending": 0, "enqueued": enqueued, "note": "没有可同步的已生成邮件"}
+        return {"ok": True, "started": False, "pending": 0, "enqueued": enqueued,
+                "rescheduled": resched, "note": "没有可同步的已生成邮件"}
     threading.Thread(target=_autosend_commit_worker, name="autosend-commit", daemon=True,
                      args=(staff, payload.item_ids, token)).start()
-    return {"ok": True, "started": True, "pending": pending, "enqueued": enqueued}
+    return {"ok": True, "started": True, "pending": pending, "enqueued": enqueued, "rescheduled": resched}
 
 
 @app.get("/api/v1/mail/autosend/commit-status")
@@ -22775,6 +23148,14 @@ def _autosend_resume_workers(db: Session) -> list[str]:
             continue
         token = _lock_take(_AUTOSEND_COMMIT_ACTIVE, staff)
         if not token:
+            continue
+        # 续跑前再重排一次: 上次同步断在半路, 剩下的封可能已经躺过了自己的计划时刻,
+        # 直接续写进 CRM 又会是一批"已过点"的邮件。重排失败(如CRM读不到)就本轮不续跑, 下一轮再试。
+        try:
+            _autosend_reschedule_plan(db, staff, True)
+        except Exception:
+            logger.exception("AUTOSEND_RESUME_RESCHEDULE_FAILED staff=%s, 本轮不续跑", staff)
+            _lock_release(_AUTOSEND_COMMIT_ACTIVE, staff, token)
             continue
         threading.Thread(target=_autosend_commit_worker, name="autosend-commit", daemon=True,
                          args=(staff, None, token)).start()

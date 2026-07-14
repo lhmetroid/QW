@@ -3094,12 +3094,85 @@
       tick();
       as2CommitTimer = setInterval(tick, 2500);
     }
+    // 三选一弹窗(浏览器原生 confirm 只有两个按钮, 不够用)。返回被点按钮的 key, 点遮罩/ESC 视为 cancel。
+    function as2ChoiceModal(title, bodyHtml, buttons) {
+      return new Promise((resolve) => {
+        const mask = document.createElement('div');
+        mask.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4';
+        const btnHtml = buttons.map((b, i) => `<button type="button" data-k="${b.key}" class="rounded px-3 py-1.5 text-xs font-bold ${b.cls}">${b.label}</button>`).join('');
+        mask.innerHTML = `<div class="w-full max-w-xl rounded-lg bg-white p-4 shadow-xl">
+            <div class="mb-2 text-sm font-bold text-slate-800">${title}</div>
+            <div class="mb-3 text-xs leading-relaxed text-slate-600">${bodyHtml}</div>
+            <div class="flex flex-wrap justify-end gap-2">${btnHtml}</div>
+          </div>`;
+        const done = (k) => { document.removeEventListener('keydown', onKey); mask.remove(); resolve(k); };
+        const onKey = (e) => { if (e.key === 'Escape') done('cancel'); };
+        mask.addEventListener('click', (e) => { if (e.target === mask) done('cancel'); });
+        mask.querySelectorAll('button[data-k]').forEach((b) => b.addEventListener('click', () => done(b.getAttribute('data-k'))));
+        document.addEventListener('keydown', onKey);
+        document.body.appendChild(mask);
+      });
+    }
+    // 过期排期重排: apply=false 只预览(不写库), apply=true 落库。逐个销售调用后汇总。
+    async function as2Reschedule(staffIds, apply) {
+      const results = await Promise.all(staffIds.map((sid) => as2FetchJson('/api/v1/mail/autosend/reschedule', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staff_id: sid, apply: !!apply }),
+      })));
+      const dayMap = new Map();
+      results.forEach((r) => (r.day_load || []).forEach((x) => dayMap.set(x.date, (dayMap.get(x.date) || 0) + Number(x.count || 0))));
+      const slots = results.map((r) => r.first_slot).filter(Boolean).sort();
+      const lasts = results.map((r) => r.last_slot).filter(Boolean).sort();
+      return {
+        overdue: results.reduce((s, r) => s + Number(r.overdue || 0), 0),
+        changed: results.reduce((s, r) => s + Number(r.changed || 0), 0),
+        movable: results.reduce((s, r) => s + Number(r.movable || 0), 0),
+        fixed_pending: results.reduce((s, r) => s + Number(r.fixed_pending || 0), 0),
+        first_slot: slots[0] || null,
+        last_slot: lasts[lasts.length - 1] || null,
+        day_load: Array.from(dayMap.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([date, count]) => ({ date, count })),
+      };
+    }
     async function as2Commit() {
       if (as2CommitBusy) return;
       const staffIds = as2ReadStaffIds();
       if (!staffIds.length) { as2Status('未限定销售, 无法同步。', true); return; }
       const ids = Array.from(as2Selected);
       if (!ids.length) { as2Status('请先勾选已生成的邮件。', true); return; }
+
+      // 同步前先看有没有"计划时刻已过"的封: 带着过去时刻写进CRM会被判成已过点, 一批邮件同一分钟群发。
+      let pre = null;
+      as2Status('检查排期是否有过期邮件...');
+      try {
+        pre = await as2Reschedule(staffIds, false);
+      } catch (e) { as2Status('过期排期检查失败, 未同步任何邮件: ' + e.message, true); return; }
+      if (pre.overdue > 0) {
+        const days = pre.day_load.slice(0, 6).map((x) => `${x.date} ${x.count}封`).join(' · ');
+        const body = `检测到 <b>${pre.overdue}</b> 封邮件的计划发送时刻已经过去。若按原时刻写入ERP, CRM 下次扫描会认定它们全部超时, 在同一分钟一起发出去。<br><br>
+            重排规则: 过期的封从 <b>现在+10分钟</b> 起、每 10 分钟一封依次排开; 当天最晚 18:30, 超过则顺延到下一个工作日 09:00 继续; 每日上限(含已同步待发)满了同样顺延。没过期的封不会被提前, 只会因让位而顺延。已同步待发送的 ${pre.fixed_pending} 封完全不动。<br><br>
+            重排影响: 共 <b>${pre.changed}</b> 封排期时间变更${pre.first_slot ? `, 最早 <b>${pre.first_slot}</b>, 最晚 <b>${pre.last_slot}</b>` : ''}。${days ? `<br>落位分布: ${days}${pre.day_load.length > 6 ? ' ...' : ''}` : ''}<br><br>
+            <span class="text-slate-500">重排只改发送日期与时刻, 不动邮件正文, 不动你的勾选。</span><br>
+            <span class="text-slate-500">重排并同步: 先落库新排期, 再逐封写入ERP待发队列。</span><br>
+            <span class="text-slate-500">只重排、先不同步: 只把新排期落库, 你可以在清单里核对新日期, 满意后再点同步。</span><br>
+            <span class="text-slate-500">取消: 什么都不做 —— 排期不变, 一封也不同步, 勾选保留。</span>`;
+        const k = await as2ChoiceModal('排期中有过期邮件, 需要先重排', body, [
+          { key: 'cancel', label: '取消(什么都不做)', cls: 'border border-slate-300 text-slate-600 hover:bg-slate-50' },
+          { key: 'resched', label: '只重排、先不同步', cls: 'border border-emerald-600 text-emerald-700 hover:bg-emerald-50' },
+          { key: 'both', label: '重排并同步', cls: 'bg-emerald-600 text-white hover:bg-emerald-700' },
+        ]);
+        if (k === 'cancel') { as2Status('已取消: 排期未变更, 未同步任何邮件。'); return; }
+        if (k === 'resched') {
+          as2Status('正在重排...');
+          try {
+            const r = await as2Reschedule(staffIds, true);
+            await as2LoadPlan();
+            cal1Reload();
+            as2Status(`已重排 ${r.changed} 封 (最早 ${r.first_slot || '-'}, 最晚 ${r.last_slot || '-'})，尚未同步。核对无误后再点"同步保存ERP系统"。`);
+          } catch (e) { as2Status('重排失败: ' + e.message, true); }
+          return;
+        }
+      }
+
       as2SetCommitBusy(true, '同步中...');
       as2Status(`已触发后台同步, 共 ${ids.length} 封, 逐封写入CRM待发队列...`);
       try {
@@ -3108,6 +3181,8 @@
           catch (e) { return { started: false, already_running: false, note: `${sid}: ${e.message}` }; }
         }));
         const hasWork = results.some((d) => d.started || d.already_running);
+        const reChanged = results.reduce((s, d) => s + Number((d.rescheduled || {}).changed || 0), 0);
+        if (reChanged > 0) as2Status(`已重排 ${reChanged} 封过期排期, 并触发后台同步, 共 ${ids.length} 封...`);
         as2Selected = new Set();
         if (!hasWork) {
           as2Status(results.map((d) => d.note).filter(Boolean).join('；') || '没有可同步的已生成邮件');
@@ -3291,11 +3366,15 @@
       const it = as2PlanItems.find((x) => x.item_id === id);
       const sid = (it && it.owner_staff_id) || AS2_STAFF;
       let ok = false;
+      let note = '';
       try {
         const r = await as2FetchJson('/api/v1/mail/autosend/commit', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ staff_id: sid, item_ids: [id] }) });
         ok = !!(r.started || r.already_running);
-      } catch (e) { ok = false; }
-      as2pSt(ci, ok ? '已提交后台同步' : '转入失败', ok);
+        // 后端在入队前会自动重排过期封(否则会带着过去时刻进CRM被立刻群发), 这里如实告知改动了几封
+        const rs = r.rescheduled || {};
+        if (ok && Number(rs.changed || 0) > 0) note = ` (另有 ${rs.changed} 封过期排期被重排)`;
+      } catch (e) { ok = false; note = ': ' + e.message; }
+      as2pSt(ci, ok ? ('已提交后台同步' + note) : ('转入失败' + note), ok);
       if (ok) as2PollCommit();
       await as2LoadPlan(); cal1Reload();
       as2ShowPerson(as2PersonIdx);
