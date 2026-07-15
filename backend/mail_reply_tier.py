@@ -203,8 +203,26 @@ def ensure_tables(db: Session) -> None:
 
 
 # 视作"后续未发, 可取消/可替换"的排期状态。已发(sent)/已入CRM 不动。
-PENDING_PLAN_STATUSES = ("planned", "drafting", "drafted", "queued", "gen_failed", "commit_failed")
+# 状态名与 main.py 实际写入口径一致: 生成失败=failed, 同步CRM失败=commit_failed(均属未发, 可联动)。
+PENDING_PLAN_STATUSES = ("planned", "drafting", "drafted", "queued", "commit_queued", "failed", "commit_failed")
 CANCELLED_INVALID_STATUS = "cancelled_invalid"
+
+
+def reconcile_tier(tier: str | None, is_valuable: bool) -> str:
+    """让 value_tier 与 is_valuable 在"有价值边界"上一致, 避免两套口径给出不同的有价值数。
+
+    - 退信(invalid)保持不变(它天然 is_valuable=False)。
+    - is_valuable=False 但 tier 落在有价值层(关键词误命中, 如"不需要报价") -> 归为无价值 none。
+    - is_valuable=True 但 tier 落在 received/none -> 用有价值层(referral/future/inquiry)。
+    """
+    t = tier or TIER_NONE
+    if t == TIER_INVALID:
+        return t
+    if is_valuable and t not in VALUABLE_TIERS:
+        return tier_from_llm_valuable(True, "")
+    if (not is_valuable) and t in VALUABLE_TIERS:
+        return TIER_NONE
+    return t
 
 
 def apply_invalid_recipient(
@@ -323,7 +341,8 @@ def tier_summary(db: Session, start: date, end: date, staff_id: str | None = Non
     reply_total = sum(int(r[1]) for r in rows)
     valuable_total = sum(tier_counts.get(t, 0) for t in VALUABLE_TIERS)
 
-    inv_where = ["detected_at::date >= :s", "detected_at::date <= :e"]
+    # 与回信统计同口径: 按北京日归属(detected_at 存 UTC)
+    inv_where = ["(detected_at + interval '8 hour')::date >= :s", "(detected_at + interval '8 hour')::date <= :e"]
     inv_params: dict[str, Any] = {"s": start, "e": end}
     if staff:
         # 无效地址表无 staff 维度, 按 customer 归属销售较重, 这里仅在全量口径统计。
@@ -370,6 +389,8 @@ def backfill_tiers(db: Session, limit: int = 2000) -> dict:
         tier = classify_reply_tier(r[1], r[2], r[3])
         if tier is None:
             tier = tier_from_llm_valuable(bool(r[4]), r[5])
+        # 与已判 is_valuable 对齐, 避免分层与有价值口径矛盾
+        tier = reconcile_tier(tier, bool(r[4]))
         db.execute(text(
             "UPDATE mail_ai_reply_analysis SET value_tier=:t WHERE reply_id=:id"
         ), {"t": tier, "id": r[0]})

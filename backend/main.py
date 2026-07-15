@@ -19379,17 +19379,22 @@ def get_mail_customer_suite(
             )
             # 测试模式: 额外计算"替换前"脚本(保留 {变量} 占位符), 供前端做替换前/替换后两列对照。
             # 只在测试模式算, 不拖累真实发送链路。替换前与 draft.llm_prompt(替换后) 用同一条 profile 构造路径。
+            # 这是纯展示用的辅助计算: 即使它异常(如瞬时DB错误)也绝不能把一封已生成成功的草稿判成失败。
             if test_mode:
-                raw_db = SessionLocal()
                 try:
-                    draft["llm_prompt_raw"] = _build_mail_customer_suite_prompt_only(
-                        raw_db,
-                        payload=payload,
-                        precomputed_crm_profile=shared_crm_profile,
-                        raw=True,
-                    )[:20000]
-                finally:
-                    raw_db.close()
+                    raw_db = SessionLocal()
+                    try:
+                        draft["llm_prompt_raw"] = _build_mail_customer_suite_prompt_only(
+                            raw_db,
+                            payload=payload,
+                            precomputed_crm_profile=shared_crm_profile,
+                            raw=True,
+                        )[:20000]
+                    finally:
+                        raw_db.close()
+                except Exception:
+                    logger.exception("MAIL_SUITE_PROMPT_RAW_FAILED customer_id=%s step=%s", sanitize_text(customer_id), suite_step)
+                    draft["llm_prompt_raw"] = ""
             return {
                 "suite_step": int(suite_step),
                 "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(suite_step)),

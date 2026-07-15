@@ -557,6 +557,7 @@ def analyze_values(db: Session, llm_call, limit: int = 60) -> dict:
     同时写入 value_tier(5.3 回信 4 类价值分层): 确定性规则优先, LLM 兜底。退信记为 invalid。
     """
     import mail_reply_tier as _tier
+    _tier.ensure_tables(db)  # 确保 value_tier 列存在(该列迁移只在回信分层模块里), 否则首次刷新会因缺列报错中断
     rows = db.execute(text(
         "SELECT reply_id, reply_subject, reply_body, reply_sender FROM mail_ai_reply_analysis "
         "WHERE is_valuable IS NULL ORDER BY reply_received_at DESC NULLS LAST LIMIT :lim"
@@ -605,6 +606,8 @@ def analyze_values(db: Session, llm_call, limit: int = 60) -> dict:
         tier = det_tier if det_tier is not None else _tier.tier_from_llm_valuable(is_val, reason)
         if tier == _tier.TIER_INVALID:
             is_val = False
+        # 让分层与 is_valuable 在有价值边界上一致(如"不需要报价"关键词误命中 inquiry 但 LLM 判无价值)
+        tier = _tier.reconcile_tier(tier, is_val)
         db.execute(text(
             "UPDATE mail_ai_reply_analysis SET is_valuable=:v, value_reason=:r, value_model=:m, value_tier=:tier, analyzed_at=now() "
             "WHERE reply_id=:id"
