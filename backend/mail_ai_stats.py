@@ -552,9 +552,13 @@ _VALUE_PROMPT = (
 
 
 def analyze_values(db: Session, llm_call, limit: int = 60) -> dict:
-    """对 is_valuable 为空的回信逐封调 deepseek 判定价值。llm_call(prompt)->{parsed,model,error}。"""
+    """对 is_valuable 为空的回信逐封调 deepseek 判定价值。llm_call(prompt)->{parsed,model,error}。
+
+    同时写入 value_tier(5.3 回信 4 类价值分层): 确定性规则优先, LLM 兜底。退信记为 invalid。
+    """
+    import mail_reply_tier as _tier
     rows = db.execute(text(
-        "SELECT reply_id, reply_subject, reply_body FROM mail_ai_reply_analysis "
+        "SELECT reply_id, reply_subject, reply_body, reply_sender FROM mail_ai_reply_analysis "
         "WHERE is_valuable IS NULL ORDER BY reply_received_at DESC NULLS LAST LIMIT :lim"
     ), {"lim": limit}).fetchall()
     done = 0
@@ -562,14 +566,24 @@ def analyze_values(db: Session, llm_call, limit: int = 60) -> dict:
     for r in rows:
         subject = (r[1] or "")[:300]
         body = (r[2] or "")[:4000]
+        sender = (r[3] or "")
+        det_tier = _tier.classify_reply_tier(subject, body, sender)
         override = _local_value_override(subject, body)
-        if override:
+        if override and det_tier != _tier.TIER_INVALID:
             db.execute(text(
                 "UPDATE mail_ai_reply_analysis SET is_valuable=TRUE, value_reason=:r, "
-                "value_model='local_referral_signal_rule', analyzed_at=now() WHERE reply_id=:id"
-            ), {"r": override["reason"], "id": r[0]})
+                "value_model='local_referral_signal_rule', value_tier=:tier, analyzed_at=now() WHERE reply_id=:id"
+            ), {"r": override["reason"], "tier": det_tier or _tier.TIER_REFERRAL, "id": r[0]})
             done += 1
             valuable += 1
+            continue
+        if det_tier == _tier.TIER_INVALID:
+            # 退信: 直接判无效, 不必调 LLM
+            db.execute(text(
+                "UPDATE mail_ai_reply_analysis SET is_valuable=FALSE, value_reason='退信/无法投递(自动识别)', "
+                "value_model='local_bounce_rule', value_tier=:tier, analyzed_at=now() WHERE reply_id=:id"
+            ), {"tier": _tier.TIER_INVALID, "id": r[0]})
+            done += 1
             continue
         prompt = _VALUE_PROMPT.replace("{subject}", subject).replace("{body}", body)
         try:
@@ -588,10 +602,13 @@ def analyze_values(db: Session, llm_call, limit: int = 60) -> dict:
             is_val = True
             reason = override["reason"]
             model = f"{model}+local_referral_signal_rule"[:120]
+        tier = det_tier if det_tier is not None else _tier.tier_from_llm_valuable(is_val, reason)
+        if tier == _tier.TIER_INVALID:
+            is_val = False
         db.execute(text(
-            "UPDATE mail_ai_reply_analysis SET is_valuable=:v, value_reason=:r, value_model=:m, analyzed_at=now() "
+            "UPDATE mail_ai_reply_analysis SET is_valuable=:v, value_reason=:r, value_model=:m, value_tier=:tier, analyzed_at=now() "
             "WHERE reply_id=:id"
-        ), {"v": is_val, "r": reason, "m": model, "id": r[0]})
+        ), {"v": is_val, "r": reason, "m": model, "tier": tier, "id": r[0]})
         done += 1
         if is_val:
             valuable += 1

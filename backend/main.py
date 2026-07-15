@@ -2003,6 +2003,9 @@ class MailCustomerSuiteSendRequest(BaseModel):
     recipient_emails: str | None = None
     # 前端把页面上当前显示/编辑后的每封内容带上，避免发送时再调大模型重生成(更快也更准)
     drafts: list[dict[str, Any]] | None = None
+    # 第4块: 公共邮箱池发件出口。排期层已按 first_come 竞争分配 asr_sender_email,
+    # 这里让真发出口用它覆盖发件地址(默认空=仍用在职销售个人邮箱)。签名不受影响, 仍按联系人在职销售赋值。
+    sender_email_override: str | None = None
 
     class Config:
         extra = "forbid"
@@ -8536,12 +8539,14 @@ def _mail_prompt_template_variable_map(
     fewshot_content: str,
     service_focus: str,
 ) -> list[str]:
+    success_cases = _mail_prompt_success_case_studies(profile)
     return [
-        f"{{customer_name}} = {_mail_prompt_variable_value(profile.recipient_name, 60)}",
-        f"{{company_name}} = {_mail_prompt_variable_value(profile.company_name, 100)}",
+        f"{{customer_name}} = {_mail_prompt_customer_salutation(profile)}",
+        f"{{company_name}} = {_mail_prompt_company_short_name(profile)}",
         f"{{industry}} = {_mail_prompt_variable_value(industry, 80)}",
         f"{{history}} = {_mail_prompt_variable_value(crm_history, 120)}",
         f"{{peer_case}} = {fewshot_title or '无命中'}",
+        f"{{case_studies}} = {success_cases}",
         f"{{business_lines}} = {service_focus.rstrip('。')}",
         f"{{seller_name}} = {_mail_prompt_variable_value(profile.seller_name, 40)}",
         "{referral_request} = 请对方判断是否转给相关团队，不直接索要电话或邮箱",
@@ -8689,20 +8694,201 @@ def _mail_prompt_customer_salutation(profile: MailDraftIntentProfile) -> str:
     return name
 
 
+_MAIL_PROMPT_COMPANY_NAME_BY_DOMAIN = {
+    "solventum.com": "舒万诺",
+}
+
+_MAIL_PROMPT_COMPANY_PREFIX_ALIASES = (
+    ("空气化工产品", "空气化工"),
+    ("百特医疗用品", "百特医疗"),
+    ("丹纳赫", "丹纳赫"),
+)
+
+_MAIL_PROMPT_COMPANY_LEGAL_SUFFIXES = (
+    "股份有限公司",
+    "有限责任公司",
+    "集团有限公司",
+    "股份公司",
+    "集团公司",
+    "有限公司",
+    "分公司",
+    "代表处",
+    "办事处",
+    "事业部",
+    "市场部",
+    "销售部",
+    "采购部",
+    "集团",
+    "公司",
+    "有限",
+)
+
+_MAIL_PROMPT_COMPANY_REGION_PREFIXES = (
+    "中华人民共和国",
+    "上海市",
+    "北京市",
+    "广州市",
+    "深圳市",
+    "中国",
+    "上海",
+    "北京",
+    "广州",
+    "深圳",
+    "苏州",
+    "杭州",
+    "南京",
+    "天津",
+    "成都",
+    "重庆",
+    "武汉",
+    "无锡",
+    "宁波",
+    "常州",
+    "昆山",
+)
+
+# 这些词在 CRM 公司全称中通常描述法人类型、业务属性或行业服务，不属于客户口头简称。
+# 必须按最长词优先、仅从尾部删除，并至少保留两个品牌字符，避免把真实品牌整体删空。
+_MAIL_PROMPT_COMPANY_GENERIC_SUFFIXES = (
+    "企业管理咨询",
+    "投资管理咨询",
+    "财务管理咨询",
+    "健康管理咨询",
+    "酒店管理咨询",
+    "商务咨询服务",
+    "技术咨询服务",
+    "企业咨询服务",
+    "展览展示服务",
+    "会议会展服务",
+    "供应链管理",
+    "国际贸易",
+    "商务服务",
+    "技术服务",
+    "企业服务",
+    "商业服务",
+    "咨询服务",
+    "信息服务",
+    "管理服务",
+    "专业服务",
+    "文化传播",
+    "文化传媒",
+    "生物科技",
+    "医疗科技",
+    "电子科技",
+    "网络科技",
+    "智能科技",
+    "信息技术",
+    "企业管理",
+    "管理咨询",
+    "商务咨询",
+    "投资管理",
+    "会展服务",
+    "展览服务",
+    "国际服务",
+    "进出口",
+    "科技",
+    "技术",
+    "贸易",
+    "商贸",
+    "实业",
+    "广告",
+    "传播",
+    "企业",
+    "工贸",
+    "经贸",
+    "发展",
+    "服务",
+    "咨询",
+    "管理",
+    "用品",
+    "产品",
+)
+
+_MAIL_PROMPT_COMPANY_PROTECTED_BOUNDARY_WORDS = (
+    "服饰",
+    "服装",
+    "传动",
+    "管件",
+    "管路",
+    "钢管",
+    "电子管",
+    "橡胶管",
+    "科普柯",
+    "传感器",
+    "传感",
+)
+
+
+def _mail_prompt_strip_company_suffixes(value: str, suffixes: tuple[str, ...]) -> str:
+    result = sanitize_text(value).strip(" -_，,；;·/")
+    while result:
+        matched = False
+        for suffix in suffixes:
+            if result.endswith(suffix) and len(result) - len(suffix) >= 2:
+                result = result[:-len(suffix)].strip(" -_，,；;·/")
+                matched = True
+                break
+        if not matched:
+            break
+    return result
+
+
+def _mail_prompt_company_six_char_boundary(value: str) -> str:
+    if len(value) <= 6:
+        return value
+    # 如果第 6 个字落在法律/业务/常见完整词中间，或刚好把该属性词整体带入简称，
+    # 统一退到最靠前的词首，禁止出现“有限”“商务咨”“展览服”“美特斯邦威服”等结果。
+    boundary_terms = (
+        _MAIL_PROMPT_COMPANY_LEGAL_SUFFIXES
+        + _MAIL_PROMPT_COMPANY_GENERIC_SUFFIXES
+        + _MAIL_PROMPT_COMPANY_PROTECTED_BOUNDARY_WORDS
+    )
+    boundary_starts = []
+    for term in boundary_terms:
+        for match in re.finditer(re.escape(term), value):
+            start = match.start()
+            if 2 <= start < 6 <= match.end():
+                boundary_starts.append(start)
+    if boundary_starts:
+        return value[:min(boundary_starts)].strip(" -_，,；;·/")
+    return value[:6]
+
+
 def _mail_prompt_company_short_name(profile: MailDraftIntentProfile) -> str:
+    domain = _normalize_mail_recipient_domain(getattr(profile, "contact_email", ""))
+    if domain:
+        for candidate_domain, alias in _MAIL_PROMPT_COMPANY_NAME_BY_DOMAIN.items():
+            if domain == candidate_domain or domain.endswith("." + candidate_domain):
+                return alias
+
     company = sanitize_text(profile.company_name or "").strip()
     if not company or _mail_is_own_company_name(company):
         return "贵司"
+    for marker, alias in _MAIL_PROMPT_COMPANY_PREFIX_ALIASES:
+        if marker in company:
+            return alias
+    company = re.sub(r"[-—_/]?\s*(?:市场部|销售部|采购部|事业部|办事处)$", "", company).strip()
     company = re.sub(r"[（(].*?[）)]", "", company)
-    company = re.sub(r"(股份)?有限公司|有限责任公司|集团|中国|上海|北京|广州|深圳|科技|技术|贸易|实业", "", company)
-    company = company.replace("医疗用品", "医疗")
+    company = re.sub(r"\s+", " ", company).strip()
+    company = _mail_prompt_strip_company_suffixes(company, _MAIL_PROMPT_COMPANY_LEGAL_SUFFIXES)
+    for region in _MAIL_PROMPT_COMPANY_REGION_PREFIXES:
+        if company.startswith(region) and len(company) - len(region) >= 2:
+            company = company[len(region):].strip(" -_，,；;·/")
+            break
+    company = _mail_prompt_strip_company_suffixes(company, _MAIL_PROMPT_COMPANY_GENERIC_SUFFIXES)
+    company = _mail_prompt_strip_company_suffixes(company, _MAIL_PROMPT_COMPANY_LEGAL_SUFFIXES)
+    # CRM 中部分同名公司用尾缀 2 区分记录；该数字不是客户品牌的一部分。
+    company = re.sub(r"(?<=[A-Za-z\u4e00-\u9fff])2$", "", company)
     company = company.strip(" -_，,；;")
     short = company or sanitize_text(profile.company_name or "").strip() or "贵司"
-    if len(short) <= 6:
-        return short
-    if "医疗" in short:
-        return short[: short.find("医疗") + 2]
-    return short[:6]
+    return _mail_prompt_company_six_char_boundary(short)
+
+
+def _mail_prompt_success_case_studies(profile: MailDraftIntentProfile, limit: int = 3) -> str:
+    cases = _mail_prompt_contract_case_examples(profile, limit=limit)
+    if not cases:
+        return "暂无匹配成功案例"
+    return "\n".join(cases)
 
 def _mail_prompt_history_summary(profile: MailDraftIntentProfile, crm_history: str) -> str:
     source = "；".join(
@@ -8732,6 +8918,7 @@ def _mail_prompt_history_summary(profile: MailDraftIntentProfile, crm_history: s
 
 
 def _mail_prompt_template_variable_values(profile: MailDraftIntentProfile, *, industry: str, crm_history: str) -> dict[str, str]:
+    success_cases = _mail_prompt_success_case_studies(profile)
     return {
         "customer_name": _mail_prompt_customer_salutation(profile),
         "company_name": _mail_prompt_company_short_name(profile),
@@ -8740,7 +8927,8 @@ def _mail_prompt_template_variable_values(profile: MailDraftIntentProfile, *, in
         "business_lines": "笔译/本地化、会议同传/设备、多媒体译制、排版印刷、展会活动物料、商务礼品",
         "seller_name": _mail_prompt_variable_value(profile.seller_name, 40),
         "referral_request": "请对方判断是否转给相关团队",
-        "peer_case": "",
+        "peer_case": success_cases,
+        "case_studies": success_cases,
     }
 
 
@@ -8751,7 +8939,13 @@ def _mail_apply_prompt_template_variables(template: str, values: dict[str, str])
     return _mail_brand_display_text(rendered)
 
 
-def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile) -> str:
+def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile, *, raw: bool = False) -> str:
+    """构造真实传给大模型的完整 prompt。
+
+    raw=False(默认): 脚本段使用变量/画像替换后的最终文本(真正传给 AI 的内容)。
+    raw=True: 脚本段保留原始脚本模板(含 {customer_name} 等未替换占位符)。
+    两者其余部分(system prompt / 输出格式约束)完全一致, 供前端做"替换前 vs 替换后"两列对照。
+    """
     crm_history = "；".join(
         part
         for part in [
@@ -8775,6 +8969,7 @@ def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile) -> str:
         template = sanitize_text(profile.sequence_template_script or "").strip()
     values = _mail_prompt_template_variable_values(profile, industry=industry, crm_history=crm_history)
     rendered_script = _mail_apply_prompt_template_variables(template, values)
+    script_section = _mail_brand_display_text(template) if raw else rendered_script
     runtime_settings = _load_runtime_settings_with_defaults()
     system_prompt = sanitize_text(runtime_settings.get("mail_system_prompt") or _MAIL_DRAFT_LLM_SYSTEM_PROMPT).strip()
     output_contract = (
@@ -8789,7 +8984,7 @@ def _build_mail_draft_llm_full_prompt(profile: MailDraftIntentProfile) -> str:
             part
             for part in [
                 system_prompt,
-                "【当前邮件脚本】\n" + rendered_script,
+                "【当前邮件脚本】\n" + script_section,
                 output_contract,
             ]
             if sanitize_text(part).strip()
@@ -18904,8 +19099,12 @@ def _build_mail_customer_suite_prompt_only(
     *,
     payload: MailGenerateDraftRequest,
     precomputed_crm_profile: dict | None = None,
+    raw: bool = False,
 ) -> str:
-    """Assemble the current LLM prompt without calling the model or changing the saved body."""
+    """Assemble the current LLM prompt without calling the model or changing the saved body.
+
+    raw=True 返回"替换前"脚本(保留 {变量} 占位符)组成的完整 prompt, 供两列对照。
+    """
     try:
         step = get_mail_sequence_step(payload.scenario, int(payload.suite_step))
         interval = get_mail_sequence_step_interval(payload.scenario, int(payload.suite_step))
@@ -18949,7 +19148,18 @@ def _build_mail_customer_suite_prompt_only(
         min_score=min_score,
         limit=5,
     )
-    return _mail_brand_display_text(_build_mail_draft_llm_full_prompt(intent_profile))
+    intent_profile.prompt_contract_case_examples = _mail_contract_case_examples_for_prompt(
+        db,
+        industry=_mail_generation_industry_for_prompt(intent_profile),
+        scenario=payload.scenario,
+        profile_text="\n".join([
+            intent_profile.recent_opportunities or "",
+            intent_profile.ongoing_contracts or "",
+            intent_profile.contact_recent_followup or "",
+        ]),
+        limit=5,
+    )
+    return _mail_brand_display_text(_build_mail_draft_llm_full_prompt(intent_profile, raw=raw))
 
 @app.get("/api/v1/mail/customer-suite")
 def get_mail_customer_suite(
@@ -19167,6 +19377,19 @@ def get_mail_customer_suite(
             draft["final_body_html"] = _apply_mail_suite_signature(
                 draft.get("final_body_html") or "", signature_html
             )
+            # 测试模式: 额外计算"替换前"脚本(保留 {变量} 占位符), 供前端做替换前/替换后两列对照。
+            # 只在测试模式算, 不拖累真实发送链路。替换前与 draft.llm_prompt(替换后) 用同一条 profile 构造路径。
+            if test_mode:
+                raw_db = SessionLocal()
+                try:
+                    draft["llm_prompt_raw"] = _build_mail_customer_suite_prompt_only(
+                        raw_db,
+                        payload=payload,
+                        precomputed_crm_profile=shared_crm_profile,
+                        raw=True,
+                    )[:20000]
+                finally:
+                    raw_db.close()
             return {
                 "suite_step": int(suite_step),
                 "step_label_cn": _mail_sequence_step_label_cn(scenario_norm, int(suite_step)),
@@ -20074,6 +20297,12 @@ def send_mail_customer_suite(
     # 发件邮箱不能走 sanitize_text(会被脱敏成 ***EMAIL***)
     sender_email = str((signature_fields or {}).get("email") or "").strip()
     sender_name = str((signature_fields or {}).get("english_name") or "").strip() or str((signature_fields or {}).get("staff_name") or "").strip()
+    # 第4块: 公共邮箱池发件出口。排期竞争分配的 asr_sender_email 覆盖发件地址(仅覆盖 From, 签名仍按销售)。
+    sender_email_override = str(getattr(payload, "sender_email_override", "") or "").strip()
+    if sender_email_override and "@" in sender_email_override:
+        sender_email = sender_email_override
+        if not sender_name:
+            sender_name = sender_email_override.split("@")[0]
     if not sender_email:
         raise HTTPException(status_code=422, detail="未取到在职销售的发件企业邮箱，无法发送")
 
@@ -22671,7 +22900,7 @@ def _autosend_commit_worker(staff: str, item_ids: list[str] | None = None, token
         db = SessionLocal()
         try:
             base = ("SELECT item_id, customer_id, contact_id, scenario, suite_step, subject, body_html, "
-                    "recipient_email, plan_date, plan_time "
+                    "recipient_email, plan_date, plan_time, asr_sender_kind, asr_sender_email "
                     "FROM mail_autosend_plan_item WHERE owner_staff_id=:s AND status='commit_queued'")
             # 一律按计划时刻升序写入: 排在最前的封先进 CRM, 写入耗时永远追不上它自己的计划时刻
             if item_ids:
@@ -22690,7 +22919,7 @@ def _autosend_commit_worker(staff: str, item_ids: list[str] | None = None, token
             db.close()
 
         for (item_id, customer_id, contact_id, scenario, step, subject, body_html,
-             recipient_email, plan_date, plan_time) in rows:
+             recipient_email, plan_date, plan_time, asr_sender_kind, asr_sender_email) in rows:
             if token and not _lock_owns(_AUTOSEND_COMMIT_ACTIVE, staff, token):
                 logger.warning("AUTOSEND_COMMIT_WORKER_PREEMPTED staff=%s", staff)
                 return
@@ -22723,12 +22952,15 @@ def _autosend_commit_worker(staff: str, item_ids: list[str] | None = None, token
                 logger.warning("AUTOSEND_COMMIT_EMPTY_BODY item=%s", item_id)
                 continue
 
+            # 第4块: 公共邮箱池发件出口。排期竞争分配了公共发件箱时, 真发用它覆盖 From(签名仍按销售)。
+            _sender_override = str(asr_sender_email or "").strip() if str(asr_sender_kind or "") == "public" else ""
             try:
                 req = MailCustomerSuiteSendRequest(
                     customer_id=cid,
                     scenario=scenario,
                     suite_steps=[int(step)],
                     recipient_emails=(recipient_email or None),
+                    sender_email_override=(_sender_override or None),
                     drafts=[{
                         "suite_step": int(step),
                         "subject": subject or "",
@@ -24854,6 +25086,108 @@ def asr_put_public_policy(payload: PublicPolicyRequest, db: Session = Depends(ge
     return {"ok": True, "policy": _asr_load_public_policy(db)}
 
 
+# ===== 第4块 4.2: 每天给自己发一封自检 =====
+def _mail_self_check_send_one(
+    *, sender_email: str, sender_name: str, recipient_email: str, staff_id: str,
+    dry_run: bool,
+) -> dict:
+    """从指定发件箱给自检收件人发一封自检邮件。dry_run=True 只构造 .eml 不写 CRM。
+
+    复用真发闭环的同一批 helper(_build_mail_eml_bytes / SFTP 上传 / _insert_spqueue_send_row),
+    不新造发送路径, 避免与主发送链路口径分叉。
+    """
+    sender_email = (sender_email or "").strip()
+    recipient_email = (recipient_email or "").strip()
+    if "@" not in sender_email:
+        return {"sender": sender_email, "ok": False, "error": "发件邮箱无效"}
+    if "@" not in recipient_email:
+        return {"sender": sender_email, "ok": False, "error": "自检收件邮箱无效"}
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    subject = f"[自检] {sender_email} 发送通道自检 {stamp}"
+    body_html = (
+        f"<p>这是一封自动自检邮件，用于确认发件通道 <b>{sender_email}</b> 当前可正常投递。</p>"
+        f"<p>生成时间：{stamp}</p>"
+        f"<p>收到本邮件即表示该发件箱工作正常。</p>"
+    )
+    try:
+        eml_bytes, _inline = _build_mail_eml_bytes(sender_email, sender_name or sender_email.split("@")[0], [recipient_email], subject, body_html, None)
+    except Exception as exc:
+        return {"sender": sender_email, "ok": False, "error": f"构造 .eml 失败: {sanitize_text(str(exc))[:120]}"}
+    if dry_run:
+        return {"sender": sender_email, "recipient": recipient_email, "ok": True, "dry_run": True,
+                "eml_bytes": len(eml_bytes), "subject": subject}
+    import mail_sftp
+    ok, eml_ftp_path = mail_sftp.upload_eml_bytes(eml_bytes)
+    if not ok or not eml_ftp_path:
+        return {"sender": sender_email, "ok": False, "error": "SFTP 上传失败"}
+    send_address = _mail_suite_serialize_address(sender_email, sender_name or sender_email.split("@")[0], internal_meta=None)
+    receiver = _mail_suite_serialize_receivers([{"email": recipient_email, "name": recipient_email, "meta": {}}])
+    spqueue_rowid = str(_uuid.uuid4())
+    from crm_database import CRMSessionLocal
+    crm_db = CRMSessionLocal()
+    try:
+        crm_send_id = _insert_spqueue_send_row(
+            crm_db, row_guid=spqueue_rowid, plan_dt=datetime.now(), subject=subject,
+            sender_email=sender_email, send_address=send_address, receiver=receiver,
+            staff_id=(staff_id or ""), eml_ftp_path=eml_ftp_path, email_text=subject,
+            attachment_files=None,
+        )
+        crm_db.commit()
+    except Exception as exc:
+        crm_db.rollback()
+        return {"sender": sender_email, "ok": False, "error": f"写 CRM 待发失败: {sanitize_text(str(exc))[:120]}"}
+    finally:
+        crm_db.close()
+    return {"sender": sender_email, "recipient": recipient_email, "ok": True, "dry_run": False,
+            "crm_send_id": crm_send_id, "eml_bytes": len(eml_bytes)}
+
+
+class MailSelfCheckSendRequest(BaseModel):
+    recipient: str                      # 自检收件人(发给自己)
+    dry_run: bool = True                # 默认只构造不真发, 显式置 False 才真写 CRM
+    include_public: bool = True         # 遍历所有启用的公共邮箱做发件通道自检
+    senders: list[str] | None = None    # 手动指定发件箱列表(留空=用启用的公共邮箱)
+    staff_id: str = ""
+
+
+@app.post("/api/v1/mail/self-check-send")
+def post_mail_self_check_send(payload: MailSelfCheckSendRequest, db: Session = Depends(get_db)):
+    """4.2: 每天给自己发一封自检。遍历发件箱(默认所有启用公共邮箱)各发一封给自检收件人。
+
+    dry_run=True(默认)只构造 .eml 验证通道参数, 不写 CRM; dry_run=False 才真写 CRM 待发队列。
+    """
+    recipient = (payload.recipient or "").strip()
+    if "@" not in recipient:
+        raise HTTPException(status_code=422, detail="recipient(自检收件邮箱)无效")
+    senders: list[dict] = []
+    if payload.senders:
+        for e in payload.senders:
+            e = (e or "").strip()
+            if "@" in e:
+                senders.append({"email": e, "display_name": ""})
+    if payload.include_public:
+        for mb in _asr_load_public_mailboxes(db):
+            if mb.get("enabled") and mb.get("email"):
+                senders.append({"email": str(mb["email"]).strip(), "display_name": mb.get("display_name") or ""})
+    # 去重
+    seen = set(); uniq = []
+    for s in senders:
+        k = s["email"].lower()
+        if k not in seen:
+            seen.add(k); uniq.append(s)
+    if not uniq:
+        raise HTTPException(status_code=422, detail="没有可用发件箱(请先在公共邮箱池添加并启用, 或用 senders 指定)")
+    results = []
+    for s in uniq:
+        results.append(_mail_self_check_send_one(
+            sender_email=s["email"], sender_name=s.get("display_name") or "",
+            recipient_email=recipient, staff_id=payload.staff_id, dry_run=bool(payload.dry_run),
+        ))
+    ok_n = sum(1 for r in results if r.get("ok"))
+    return {"ok": True, "dry_run": bool(payload.dry_run), "recipient": recipient,
+            "sender_count": len(uniq), "success": ok_n, "results": results}
+
+
 # ===== 需求18 统计: 哪封邮件(套装+第几封)回复最多 =====
 @app.get("/api/v1/mail/reply-ranking")
 def mail_reply_ranking(start: str = Query(""), end: str = Query(""), staff_id: str = Query(""),
@@ -25808,17 +26142,28 @@ def get_mail_iteration_analysis_detail(
     day: str = Query(..., min_length=1),
     metric: str = Query(..., min_length=1),
     staff_id: str | None = Query(None),
+    group_key: str | None = Query(None, description="metric=ai_suggestion_samples 时指定建议组键，下钻该建议命中的逐封原文对照"),
     limit: int = Query(80, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
-    """每日迭代分析单元格明细。默认不加载正文，双击数值时逐页加载。"""
+    """每日迭代分析单元格明细。默认不加载正文，双击数值时逐页加载。
+
+    metric=ai_suggestion_samples: 1.4 下钻——某条 AI 建议命中的逐封原始生成 vs 人工改后正文。
+    """
     import mail_llm_iteration_analysis as _iter
     day_d = _parse_stat_date(day)
     if day_d is None:
         raise HTTPException(status_code=422, detail="day is required (YYYY-MM-DD)")
     try:
-        data = _iter.detail_rows(db, day_d, metric, staff_id, limit, offset)
+        if (metric or "").strip() == "ai_suggestion_samples":
+            if not (group_key or "").strip():
+                raise HTTPException(status_code=422, detail="group_key is required for ai_suggestion_samples")
+            data = _iter.suggestion_samples(db, day_d, (group_key or "").strip(), staff_id, limit, offset)
+        else:
+            data = _iter.detail_rows(db, day_d, metric, staff_id, limit, offset)
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -25829,8 +26174,173 @@ def get_mail_iteration_analysis_detail(
         "day": day_d.isoformat(),
         "metric": metric,
         "staff_id": (staff_id or "").strip(),
+        "group_key": (group_key or "").strip(),
         **data,
     }
+
+
+class MailIterationSuggestionStatusRequest(BaseModel):
+    group_key: str
+    scope: str = ""
+    target: str = ""
+    suggestion_type: str = ""
+    landed_channel: str | None = None  # 'script'|'code'|'' ；None=本次不改落地渠道
+    landed_note: str | None = None
+    verified: bool | None = None       # None=本次不改验证状态
+    verified_by: str = ""
+
+
+@app.post("/api/v1/mail/iteration-analysis/suggestion-status")
+def post_mail_iteration_suggestion_status(
+    payload: MailIterationSuggestionStatusRequest,
+    db: Session = Depends(get_db),
+):
+    """1.1/1.2: 标记某条 AI 建议的落地渠道(脚本/代码)+生效时间点，以及人工验证+验证时间。"""
+    import mail_llm_iteration_analysis as _iter
+    try:
+        result = _iter.set_suggestion_status(
+            db,
+            group_key=payload.group_key,
+            scope=payload.scope,
+            target=payload.target,
+            suggestion_type=payload.suggestion_type,
+            landed_channel=payload.landed_channel,
+            landed_note=payload.landed_note,
+            verified=payload.verified,
+            verified_by=payload.verified_by,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("MAIL_ITERATION_SUGGESTION_STATUS_FAILED")
+        raise HTTPException(status_code=502, detail=f"建议状态保存失败: {sanitize_text(str(exc))[:200]}")
+    return {"ok": True, "status": result}
+
+
+# ===== 第5块: 回信 4 类价值分层 + 无效地址鉴定 + 联动取消/替换 =====
+@app.get("/api/v1/mail/reply-tiers/summary")
+def get_mail_reply_tiers_summary(
+    start: str = Query(..., min_length=1),
+    end: str = Query(..., min_length=1),
+    staff_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """5.3: 回信按 4 类价值分层统计 + 无效地址三层结果汇总。"""
+    import mail_reply_tier as _tier
+    start_d = _parse_stat_date(start)
+    end_d = _parse_stat_date(end)
+    if start_d is None or end_d is None:
+        raise HTTPException(status_code=422, detail="start/end required (YYYY-MM-DD)")
+    if start_d > end_d:
+        start_d, end_d = end_d, start_d
+    try:
+        return _tier.tier_summary(db, start_d, end_d, staff_id)
+    except Exception as exc:
+        logger.exception("MAIL_REPLY_TIER_SUMMARY_FAILED")
+        raise HTTPException(status_code=502, detail=f"回信分层统计失败: {sanitize_text(str(exc))[:200]}")
+
+
+@app.post("/api/v1/mail/reply-tiers/backfill")
+def post_mail_reply_tiers_backfill(
+    limit: int = Query(2000, ge=1, le=20000),
+    db: Session = Depends(get_db),
+):
+    """把历史回信(已判 is_valuable 但无 value_tier)用确定性规则回填分层。"""
+    import mail_reply_tier as _tier
+    try:
+        return {"ok": True, **_tier.backfill_tiers(db, limit)}
+    except Exception as exc:
+        logger.exception("MAIL_REPLY_TIER_BACKFILL_FAILED")
+        raise HTTPException(status_code=502, detail=f"分层回填失败: {sanitize_text(str(exc))[:200]}")
+
+
+class MailInvalidRecipientApplyRequest(BaseModel):
+    email: str
+    customer_id: str = ""
+    contact_id: str = ""
+    reason: str = "manual"
+
+
+@app.post("/api/v1/mail/invalid-recipient/apply")
+def post_mail_invalid_recipient_apply(
+    payload: MailInvalidRecipientApplyRequest,
+    db: Session = Depends(get_db),
+):
+    """5.1/5.2: 登记一个无效收件地址, 联动取消/替换该联系人后续未发排期; 返回三层结果。"""
+    import mail_reply_tier as _tier
+
+    def _resolver(customer_id: str, contact_id: str) -> list[str]:
+        key = (customer_id or "").strip() or (contact_id or "").strip()
+        if not key:
+            return []
+        try:
+            return _fetch_mail_contact_valid_emails(key) or []
+        except Exception:
+            return []
+
+    try:
+        result = _tier.apply_invalid_recipient(
+            db,
+            email=payload.email,
+            customer_id=payload.customer_id,
+            contact_id=payload.contact_id,
+            reason=payload.reason or "manual",
+            valid_email_resolver=_resolver,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("MAIL_INVALID_RECIPIENT_APPLY_FAILED")
+        raise HTTPException(status_code=502, detail=f"无效地址联动失败: {sanitize_text(str(exc))[:200]}")
+    return {"ok": True, "result": result}
+
+
+@app.post("/api/v1/mail/reply-tiers/process-bounces")
+def post_mail_reply_tiers_process_bounces(
+    limit: int = Query(500, ge=1, le=5000),
+    db: Session = Depends(get_db),
+):
+    """扫描判为退信(value_tier=invalid)但尚未登记无效地址的回信, 提取失效地址并联动取消/替换。"""
+    import mail_reply_tier as _tier
+    _tier.ensure_tables(db)
+
+    def _resolver(customer_id: str, contact_id: str) -> list[str]:
+        key = (customer_id or "").strip() or (contact_id or "").strip()
+        if not key:
+            return []
+        try:
+            return _fetch_mail_contact_valid_emails(key) or []
+        except Exception:
+            return []
+
+    rows = db.execute(text(
+        "SELECT reply_id, customer_id, reply_body, reply_subject FROM mail_ai_reply_analysis "
+        "WHERE value_tier='invalid' ORDER BY reply_received_at DESC NULLS LAST LIMIT :lim"
+    ), {"lim": limit}).fetchall()
+    processed = 0
+    linked = 0
+    aggregate = {"replaced_plans": 0, "cancelled_plans": 0, "died_addresses": 0}
+    for r in rows:
+        reply_id = str(r[0])
+        customer_id = (r[1] or "").strip()
+        failed = _tier.extract_failed_address(r[2] or "")
+        if not failed:
+            continue
+        # 已登记过的失效地址跳过, 避免重复联动
+        exists = db.execute(text("SELECT 1 FROM mail_invalid_recipient WHERE email=:e"), {"e": failed}).fetchone()
+        processed += 1
+        if exists:
+            continue
+        res = _tier.apply_invalid_recipient(
+            db, email=failed, customer_id=customer_id, reason="bounce",
+            source_reply_id=reply_id, valid_email_resolver=_resolver,
+        )
+        linked += 1
+        aggregate["died_addresses"] += 1
+        aggregate["replaced_plans"] += int(res.get("replaced_plan_count") or 0)
+        aggregate["cancelled_plans"] += int(res.get("cancelled_plan_count") or 0)
+    return {"ok": True, "scanned": len(rows), "processed": processed, "linked": linked, "aggregate": aggregate}
+
 
 @app.post("/api/v1/mail/ai-stats/broadcast")
 def post_mail_ai_stats_broadcast(

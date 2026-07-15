@@ -160,7 +160,118 @@ def ensure_tables(db: Session) -> None:
     db.execute(text("ALTER TABLE mail_llm_iteration_detail_index ADD COLUMN IF NOT EXISTS ai_suggestions JSONB NOT NULL DEFAULT '[]'::jsonb;"))
     db.execute(text("CREATE INDEX IF NOT EXISTS idx_mlid_date_staff ON mail_llm_iteration_detail_index (stat_date, staff_id);"))
     db.execute(text("CREATE INDEX IF NOT EXISTS idx_mlid_type ON mail_llm_iteration_detail_index (primary_type);"))
+    # AI建议"落地渠道/生效时间/人工验证"状态: 按建议组(scope|target|suggestion_type)记录, 与逐封明细解耦。
+    db.execute(text(
+        "CREATE TABLE IF NOT EXISTS mail_llm_iteration_suggestion_status ("
+        "group_key VARCHAR(400) PRIMARY KEY,"
+        "scope VARCHAR(80) NOT NULL DEFAULT '',"
+        "target VARCHAR(200) NOT NULL DEFAULT '',"
+        "suggestion_type VARCHAR(120) NOT NULL DEFAULT '',"
+        "landed_channel VARCHAR(20) NOT NULL DEFAULT '',"  # 'script'=脚本 / 'code'=代码 / ''=未落地
+        "landed_note TEXT NOT NULL DEFAULT '',"             # 具体落在哪(脚本开头/某函数)
+        "landed_at TIMESTAMP,"                              # 落地生效时间点
+        "verified BOOLEAN NOT NULL DEFAULT FALSE,"          # 人工已验证
+        "verified_by VARCHAR(120) NOT NULL DEFAULT '',"
+        "verified_at TIMESTAMP,"                            # 人工验证时间点
+        "updated_at TIMESTAMP DEFAULT now()"
+        ")"
+    ))
     db.commit()
+
+
+# 展示用类型列: 去掉笼统的"正文任意改动"(body_changed_count), 只保留具体改动点。
+DISPLAY_TYPE_COLUMNS = {k: v for k, v in TYPE_COLUMNS.items() if k != "正文任意改动"}
+
+LANDED_CHANNEL_LABELS = {
+    "script": "脚本",
+    "code": "代码",
+    "": "未落地",
+}
+
+
+def _group_status_key_str(scope: Any, target: Any, suggestion_type: Any) -> str:
+    return f"{scope or ''}||{target or ''}||{suggestion_type or ''}"
+
+
+def _load_suggestion_statuses(db: Session) -> dict[str, dict]:
+    rows = db.execute(text("SELECT * FROM mail_llm_iteration_suggestion_status")).fetchall()
+    return {str(r._mapping.get("group_key")): dict(r._mapping) for r in rows}
+
+
+def set_suggestion_status(
+    db: Session,
+    *,
+    group_key: str,
+    scope: str = "",
+    target: str = "",
+    suggestion_type: str = "",
+    landed_channel: str | None = None,
+    landed_note: str | None = None,
+    verified: bool | None = None,
+    verified_by: str = "",
+) -> dict:
+    """Upsert 建议组落地/验证状态。landed_channel/verified 为 None 表示本次不改动该维度。"""
+    ensure_tables(db)
+    gk = (group_key or "").strip()
+    if not gk:
+        raise ValueError("group_key is required")
+    existing = db.execute(text(
+        "SELECT * FROM mail_llm_iteration_suggestion_status WHERE group_key=:k"
+    ), {"k": gk}).fetchone()
+    cur = dict(existing._mapping) if existing else {}
+    new_channel = cur.get("landed_channel", "") or ""
+    new_note = cur.get("landed_note", "") or ""
+    new_landed_at = cur.get("landed_at")
+    new_verified = bool(cur.get("verified", False))
+    new_verified_at = cur.get("verified_at")
+    new_verified_by = cur.get("verified_by", "") or ""
+
+    if landed_channel is not None:
+        channel = (landed_channel or "").strip()
+        if channel and channel not in ("script", "code"):
+            raise ValueError("landed_channel must be 'script' | 'code' | ''")
+        new_channel = channel
+        if channel:
+            new_landed_at = cur.get("landed_at") if cur.get("landed_channel") == channel and cur.get("landed_at") else None
+            if new_landed_at is None:
+                new_landed_at = db.execute(text("SELECT now()")).scalar()
+        else:
+            new_landed_at = None
+    if landed_note is not None:
+        new_note = (landed_note or "").strip()
+    if verified is not None:
+        new_verified = bool(verified)
+        if new_verified:
+            new_verified_at = db.execute(text("SELECT now()")).scalar()
+            new_verified_by = (verified_by or "").strip()
+        else:
+            new_verified_at = None
+            new_verified_by = ""
+
+    db.execute(text(
+        "INSERT INTO mail_llm_iteration_suggestion_status "
+        "(group_key, scope, target, suggestion_type, landed_channel, landed_note, landed_at, verified, verified_by, verified_at, updated_at) "
+        "VALUES (:k,:scope,:target,:st,:ch,:note,:lat,:ver,:vby,:vat,now()) "
+        "ON CONFLICT (group_key) DO UPDATE SET "
+        "scope=EXCLUDED.scope, target=EXCLUDED.target, suggestion_type=EXCLUDED.suggestion_type, "
+        "landed_channel=EXCLUDED.landed_channel, landed_note=EXCLUDED.landed_note, landed_at=EXCLUDED.landed_at, "
+        "verified=EXCLUDED.verified, verified_by=EXCLUDED.verified_by, verified_at=EXCLUDED.verified_at, updated_at=now()"
+    ), {
+        "k": gk, "scope": scope or cur.get("scope") or "", "target": target or cur.get("target") or "",
+        "st": suggestion_type or cur.get("suggestion_type") or "",
+        "ch": new_channel, "note": new_note, "lat": new_landed_at,
+        "ver": new_verified, "vby": new_verified_by, "vat": new_verified_at,
+    })
+    db.commit()
+    row = db.execute(text(
+        "SELECT * FROM mail_llm_iteration_suggestion_status WHERE group_key=:k"
+    ), {"k": gk}).fetchone()
+    out = dict(row._mapping)
+    out["landed_channel_label"] = LANDED_CHANNEL_LABELS.get(out.get("landed_channel") or "", out.get("landed_channel") or "未落地")
+    out["landed_at"] = str(out.get("landed_at") or "")
+    out["verified_at"] = str(out.get("verified_at") or "")
+    out["updated_at"] = str(out.get("updated_at") or "")
+    return out
 
 
 def _norm_html(value: str | None) -> str:
@@ -479,7 +590,8 @@ def query_summary(db: Session, start: date, end: date, staff_id: str | None = No
         "daily": rows,
         "staff_daily": staff_rows,
         "totals": totals,
-        "type_columns": TYPE_COLUMNS,
+        # 1.5: 前端只展示具体改动点, 去掉笼统的"正文任意改动"列。底层仍保留 body_changed_count 供追溯。
+        "type_columns": DISPLAY_TYPE_COLUMNS,
         "staff_options": list_staff(db),
     }
 
@@ -556,10 +668,87 @@ def _ai_suggestion_summary_rows(db: Session, day: date, staff_id: str | None, li
     start = max(0, int(offset or 0))
     stop = start + max(1, min(int(limit or 80), 200))
     paged = items[start:stop]
+    statuses = _load_suggestion_statuses(db)
     for item in paged:
         item["sources"] = ", ".join(f"{k}:{v}" for k, v in item["sources"].most_common() if k)
         item["staff_ids"] = ", ".join(f"{k}:{v}" for k, v in item["staff_ids"].most_common() if k)
+        gk = _group_status_key_str(item.get("scope"), item.get("target"), item.get("suggestion_type"))
+        st = statuses.get(gk) or {}
+        item["group_key"] = gk
+        item["landed_channel"] = st.get("landed_channel") or ""
+        item["landed_channel_label"] = LANDED_CHANNEL_LABELS.get(st.get("landed_channel") or "", "未落地")
+        item["landed_note"] = st.get("landed_note") or ""
+        item["landed_at"] = str(st.get("landed_at") or "")
+        item["verified"] = bool(st.get("verified"))
+        item["verified_by"] = st.get("verified_by") or ""
+        item["verified_at"] = str(st.get("verified_at") or "")
     return {"total": total, "items": paged}
+
+
+def suggestion_samples(
+    db: Session,
+    day: date,
+    group_key: str,
+    staff_id: str | None = None,
+    limit: int = 80,
+    offset: int = 0,
+) -> dict:
+    """1.4 下钻: 某条 AI 建议(建议组)命中的逐封原始生成 vs 人工改后正文。"""
+    ensure_tables(db)
+    gk = (group_key or "").strip()
+    if not gk:
+        raise ValueError("group_key is required")
+    clauses, params = _detail_base_filters(day, staff_id)
+    clauses.append("d.ai_suggestion_count>0")
+    where = " AND ".join(clauses)
+    rows = db.execute(text(f"""
+        SELECT d.detail_id, d.stat_date, d.staff_id, d.source, d.customer_id, d.contact_id, d.scenario,
+               d.suite_step, d.crm_time, d.subject, d.primary_type, d.type_flags, d.ai_suggestions,
+               e.orig_subject, e.orig_body_html, e.final_subject, e.final_body_html, e.edit_count, e.last_edited_at
+        FROM mail_llm_iteration_detail_index d
+        LEFT JOIN mail_llm_edit_record e ON e.record_id=d.edit_record_id
+        WHERE {where}
+        ORDER BY d.crm_time DESC NULLS LAST, d.source_row_id
+    """), params).fetchall()
+    items: list[dict] = []
+    for r in rows:
+        m = dict(r._mapping)
+        suggestions = m.get("ai_suggestions") or []
+        if isinstance(suggestions, str):
+            suggestions = json.loads(suggestions)
+        hit = None
+        for s in suggestions:
+            if _group_status_key_str(s.get("scope"), s.get("target"), s.get("suggestion_type")) == gk:
+                hit = s
+                break
+        if hit is None:
+            continue
+        items.append({
+            "detail_id": str(m.get("detail_id") or ""),
+            "stat_date": str(m.get("stat_date") or ""),
+            "staff_id": m.get("staff_id") or "",
+            "source": m.get("source") or "",
+            "customer_id": m.get("customer_id") or "",
+            "contact_id": m.get("contact_id") or "",
+            "scenario": m.get("scenario") or "",
+            "scenario_label": SCENARIO_LABELS.get(m.get("scenario") or "", m.get("scenario") or ""),
+            "suite_step": m.get("suite_step"),
+            "crm_time": str(m.get("crm_time") or ""),
+            "subject": m.get("subject") or "",
+            "primary_type": m.get("primary_type") or "",
+            "type_flags": m.get("type_flags") or [],
+            "evidence": hit.get("evidence") or "",
+            "orig_subject": m.get("orig_subject") or "",
+            "orig_body_html": m.get("orig_body_html") or "",
+            "final_subject": m.get("final_subject") or "",
+            "final_body_html": m.get("final_body_html") or "",
+            "edit_count": int(m.get("edit_count") or 0),
+            "last_edited_at": str(m.get("last_edited_at") or ""),
+        })
+    total = len(items)
+    start = max(0, int(offset or 0))
+    stop = start + max(1, min(int(limit or 80), 200))
+    return {"total": total, "items": items[start:stop]}
 
 
 def detail_rows(db: Session, day: date, metric: str, staff_id: str | None = None, limit: int = 80, offset: int = 0) -> dict:

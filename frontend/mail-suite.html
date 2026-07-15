@@ -286,6 +286,30 @@
       padding: 10px;
       background: #0f172a;
       color: #e5e7eb;
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .prompt-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: #c7d2fe;
+    }
+    @media (max-width: 900px) {
+      .prompt-cols { grid-template-columns: 1fr; }
+    }
+    .prompt-col-head {
+      padding: 6px 10px;
+      background: #e0e7ff;
+      color: #312e81;
+      font-weight: 800;
+      font-size: 12px;
+    }
+    .prompt-col-head .prompt-col-hint {
+      font-weight: 500;
+      color: #4338ca;
+      margin-left: 6px;
     }
     .mail-body {
       padding: 14px;
@@ -1283,8 +1307,17 @@
               <div id="attachment-list-${esc(item.suite_step)}" class="attachment-list"></div>
             </div>
             <div id="prompt-panel-${esc(item.suite_step)}" class="prompt-panel" hidden>
-              <div class="prompt-panel-title">真实大模型 prompt（<span id="prompt-count-${esc(item.suite_step)}">0</span> 字符）</div>
-              <pre id="prompt-text-${esc(item.suite_step)}"></pre>
+              <div class="prompt-panel-title">真实大模型 prompt 对照（替换后 <span id="prompt-count-${esc(item.suite_step)}">0</span> 字符）</div>
+              <div class="prompt-cols">
+                <div>
+                  <div class="prompt-col-head">替换前<span class="prompt-col-hint">原始脚本，保留 {变量} 占位符</span></div>
+                  <pre id="prompt-raw-text-${esc(item.suite_step)}"></pre>
+                </div>
+                <div>
+                  <div class="prompt-col-head">替换后<span class="prompt-col-hint">变量/画像替换完，真正传给 AI</span></div>
+                  <pre id="prompt-text-${esc(item.suite_step)}"></pre>
+                </div>
+              </div>
             </div>
             <div class="send-config">
               <div class="field-label">发送间隔</div>
@@ -1736,15 +1769,26 @@
       return String(draft.llm_prompt || '').trim();
     }
 
+    function promptRawTextForStep(step) {
+      const item = getDraftItem(step);
+      const draft = item && item.draft || {};
+      return String(draft.llm_prompt_raw || '').trim();
+    }
+
     function syncPromptPanel(step) {
       const panel = document.getElementById(`prompt-panel-${step}`);
       const textEl = document.getElementById(`prompt-text-${step}`);
+      const rawEl = document.getElementById(`prompt-raw-text-${step}`);
       const countEl = document.getElementById(`prompt-count-${step}`);
       if (!panel || !textEl || !countEl) return;
       const promptText = promptTextForStep(step);
       const displayText = promptText || '这封历史保存稿没有记录当时真实 prompt；请点“重刷”重新运行一次 LLM，系统会保存这次真实发给大模型的完整 prompt。';
       textEl.textContent = displayText;
       countEl.textContent = String(promptText.length);
+      if (rawEl) {
+        const rawText = promptRawTextForStep(step);
+        rawEl.textContent = rawText || '替换前脚本仅在生成测试模式下计算；请从质量诊断页点 生成测试邮件/套装 打开本页查看。';
+      }
     }
 
     function togglePrompt(step) {

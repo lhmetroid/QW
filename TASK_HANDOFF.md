@@ -2059,3 +2059,19 @@ ode --check scratch\frontend-mail-suite-current-check.js；git diff --check -- b
 - 已确认问题2：确定性注入 blocked 响应后，套装外层 item.status 仍为 success；自动排期返回值只剩 subject/body_html/llm_prompt/recipient_email，safety 完全丢失，worker 后续无条件标 drafted，commit 只校验正文非空。
 - 其他关键发现：Few-Shot/完整黄金邮件/合同案例虽然查询，但 _build_mail_draft_llm_full_prompt 没拼入这些材料；当前 Prompt 保留未替换 {case_studies}；new_business_promotion 模板仍写“老客户激活”；生成质检 runtime enabled=false，且公共生成器直接调用 raw assembler，没有调用 quality-review wrapper。
 - 运行事故：为本地 API 调用启动邮件后端后，AUTOSEND watchdog 自动续跑历史 commit_queued；发现即停止 PID 3284。12:54-12:59 共16条 plan_item 更新为 sent/转入 CRM 待发（13条有 crm_send_id、3条无）；未删除或回滚。若人工要求处理，应先只读核对这16条对应 spQueueSend/计划日期，再决定是否取消，禁止直接批量删除。
+
+## 2026-07-15 邮件 LLM 通配符读取交接
+
+- 本轮只改 `backend/main.py` 的邮件 Prompt 通配符读取/渲染和新增定向测试，未改模板脚本文案、未调用 LLM、未写 CRM、未启用真实发信。
+- 公司简称规则已覆盖：`3M2`→`3M`、`欧莱雅2`→`欧莱雅`、`@solventum.com`→`舒万诺`、丹纳赫全称→`丹纳赫`。
+- `{case_studies}` 原因已确认：合同案例已查询到 `prompt_contract_case_examples`，但变量字典没有该 key；现已从脱敏合同案例统一赋值，并同步给 `{peer_case}`。
+- `_build_mail_customer_suite_prompt_only` 原先还漏查合同案例，现已补齐，页面查看 Prompt 与真实生成口径一致。
+- 定向测试 `backend/mail_prompt_wildcard_checks.py` 使用 AST 加载被测源码，避免 import `main.py` 时启动调度器或执行数据库初始化。
+
+### 2026-07-15 公司简称规则完善交接
+
+- 本轮经用户确认后，将历史公司名分析结果落到 `_mail_prompt_company_short_name`；未改提示词、未写 CRM、未调用 LLM、未重新生成草稿。
+- 新增法律尾词、地区前缀、业务属性尾词、常见完整词边界四组常量，以及循环尾词剥离和六字边界回退 helper。
+- 人工确认别名：`空气化工产品*`→`空气化工`，`百特医疗用品*`→`百特医疗`；`用品`、`产品`作为仅限尾部的通用属性词。
+- `backend/mail_prompt_wildcard_checks.py` 当前 7 个测试方法，覆盖 3M2/欧莱雅2、舒万诺、丹纳赫、空气化工、百特医疗、法律/业务尾词、六字完整词和成功案例通配符。
+- CRM 32,003 个不重复公司名全量只读回放：empty=0、over6=0、重点半词结尾=0。
