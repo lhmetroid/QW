@@ -8,6 +8,7 @@ original/final bodies are loaded lazily from mail_llm_edit_record.
 from __future__ import annotations
 
 import html
+import json
 import re
 from collections import Counter, defaultdict
 from datetime import date
@@ -61,6 +62,26 @@ SCENARIO_LABELS = {
     "new_contact_intro": "新接手联系人介绍",
 }
 
+SUGGESTION_TARGETS = {
+    "签名/联系方式调整": "通用签名/发件人配置",
+    "称呼/开头语言调整": "套装脚本开头",
+    "业务线/服务描述调整": "套装脚本业务线段落",
+    "结尾动作/语气调整": "套装脚本结尾动作",
+    "占位/测试痕迹处理": "通用出口质检",
+    "主题改动": "套装脚本主题",
+    "其他正文措辞调整": "套装脚本正文表达",
+}
+
+SUGGESTION_TEXTS = {
+    "签名/联系方式调整": "代码改：生成正文时禁止 LLM 输出签名/电话/邮箱；保存前统一调用销售签名/公共邮箱签名配置追加。脚本补充要求：正文结尾不要写任何署名、职位、电话、邮箱、网址。",
+    "称呼/开头语言调整": "脚本改：首句固定为“{联系人称呼}，您好。”；无联系人姓名时用“您好”，英文联系人用“Hi {FirstName},”，禁止臆造老师/经理/先生/女士。",
+    "业务线/服务描述调整": "脚本改：业务描述段只允许使用本次勾选的套装范围变量 `{selected_suite_services}`，每封最多写 2 个服务点；删除“笔译、口译、印刷、视频、本地化”等全量罗列句。",
+    "结尾动作/语气调整": "脚本改：结尾统一使用场景 CTA 模板。老客户激活写“如果近期有相关资料需要处理，我可以先帮您看下适合的安排。”；新业务推广写“如果您愿意，我可以发一份对应服务介绍给您参考。”；新联系人介绍写“后续相关资料也可以直接发我，我来协助衔接。”",
+    "占位/测试痕迹处理": "代码改：保存草稿和同步 CRM 前新增硬拦截，正则命中 case_company、{{...}}、[你的名字]、xxx、m2 等测试占位时禁止同步并回炉重写。",
+    "主题改动": "脚本改：主题单独生成，禁止从正文首句截取。模板改为“关于{客户业务场景}资料处理的一点参考”或“{服务点}支持的一点参考”，长度控制 18 个中文以内。",
+    "其他正文措辞调整": "脚本改：新增要求“少用泛泛营销判断，多写可执行协助动作；每段不超过 2 句；不写无法从 CRM/历史合作证明的结论”。把高频人工替换词沉淀进示例词表。",
+}
+
 
 def ensure_tables(db: Session) -> None:
     db.execute(text(
@@ -80,6 +101,7 @@ def ensure_tables(db: Session) -> None:
         "cta_count INTEGER NOT NULL DEFAULT 0,"
         "placeholder_count INTEGER NOT NULL DEFAULT 0,"
         "other_body_count INTEGER NOT NULL DEFAULT 0,"
+        "ai_suggestion_count INTEGER NOT NULL DEFAULT 0,"
         "computed_at TIMESTAMP DEFAULT now()"
         ")"
     ))
@@ -101,6 +123,7 @@ def ensure_tables(db: Session) -> None:
         "cta_count INTEGER NOT NULL DEFAULT 0,"
         "placeholder_count INTEGER NOT NULL DEFAULT 0,"
         "other_body_count INTEGER NOT NULL DEFAULT 0,"
+        "ai_suggestion_count INTEGER NOT NULL DEFAULT 0,"
         "computed_at TIMESTAMP DEFAULT now(),"
         "CONSTRAINT uq_mlias_date_staff UNIQUE(stat_date, staff_id)"
         ")"
@@ -125,10 +148,16 @@ def ensure_tables(db: Session) -> None:
         "body_changed BOOLEAN NOT NULL DEFAULT FALSE,"
         "primary_type VARCHAR(80),"
         "type_flags JSONB NOT NULL DEFAULT '[]'::jsonb,"
+        "ai_suggestion_count INTEGER NOT NULL DEFAULT 0,"
+        "ai_suggestions JSONB NOT NULL DEFAULT '[]'::jsonb,"
         "created_at TIMESTAMP DEFAULT now(),"
         "CONSTRAINT uq_mlid_source_row UNIQUE(source, source_row_id)"
         ")"
     ))
+    db.execute(text("ALTER TABLE mail_llm_iteration_daily_summary ADD COLUMN IF NOT EXISTS ai_suggestion_count INTEGER NOT NULL DEFAULT 0;"))
+    db.execute(text("ALTER TABLE mail_llm_iteration_staff_daily_summary ADD COLUMN IF NOT EXISTS ai_suggestion_count INTEGER NOT NULL DEFAULT 0;"))
+    db.execute(text("ALTER TABLE mail_llm_iteration_detail_index ADD COLUMN IF NOT EXISTS ai_suggestion_count INTEGER NOT NULL DEFAULT 0;"))
+    db.execute(text("ALTER TABLE mail_llm_iteration_detail_index ADD COLUMN IF NOT EXISTS ai_suggestions JSONB NOT NULL DEFAULT '[]'::jsonb;"))
     db.execute(text("CREATE INDEX IF NOT EXISTS idx_mlid_date_staff ON mail_llm_iteration_detail_index (stat_date, staff_id);"))
     db.execute(text("CREATE INDEX IF NOT EXISTS idx_mlid_type ON mail_llm_iteration_detail_index (primary_type);"))
     db.commit()
@@ -183,6 +212,66 @@ def classify_edit(row: dict[str, Any] | None) -> tuple[list[str], str, bool, boo
         if not primary:
             primary = "其他文本调整"
     return flags, primary, subject_changed, body_changed
+
+
+def _scenario_step_label(scenario: str | None, suite_step: Any) -> str:
+    scene = SCENARIO_LABELS.get(str(scenario or ""), str(scenario or "") or "未识别套装")
+    if suite_step:
+        return f"{scene} 第{suite_step}封"
+    return scene
+
+
+def _suggestion_scope(flag: str) -> str:
+    if flag in ("签名/联系方式调整", "占位/测试痕迹处理"):
+        return "通用部分"
+    return "套装脚本"
+
+
+def _suggestion_group_key(suggestion: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(suggestion.get("scope") or ""),
+        str(suggestion.get("target") or ""),
+        str(suggestion.get("suggestion_type") or ""),
+    )
+
+
+def build_ai_suggestions(item: dict[str, Any], flags: list[str], primary: str) -> list[dict[str, Any]]:
+    """Turn human-edit signals into concrete, groupable script fixes."""
+    if not item.get("edited"):
+        return []
+    ordered = [f for f in PRIMARY_ORDER if f in flags]
+    if "主题改动" in flags and "主题改动" not in ordered:
+        ordered.append("主题改动")
+    if "其他正文措辞调整" in flags and "其他正文措辞调整" not in ordered:
+        ordered.append("其他正文措辞调整")
+    if not ordered and primary:
+        ordered.append(primary)
+    scenario_step = _scenario_step_label(item.get("scenario"), item.get("suite_step"))
+    suggestions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for flag in ordered:
+        text = SUGGESTION_TEXTS.get(flag)
+        if not text or flag in seen:
+            continue
+        seen.add(flag)
+        scope = _suggestion_scope(flag)
+        target = SUGGESTION_TARGETS.get(flag, "套装脚本")
+        suggestions.append({
+            "scope": scope,
+            "target": target,
+            "affected_suite_step": scenario_step,
+            "scenario": item.get("scenario") or "",
+            "scenario_label": SCENARIO_LABELS.get(str(item.get("scenario") or ""), str(item.get("scenario") or "")),
+            "suite_step": item.get("suite_step"),
+            "suggestion_type": flag,
+            "suggestion": text,
+            "source": item.get("source") or "",
+            "staff_id": str(item.get("staff_id") or ""),
+            "customer_id": item.get("customer_id") or "",
+            "contact_id": item.get("contact_id") or "",
+            "evidence": f"{flag}：{item.get('subject') or '无主题'}"[:180],
+        })
+    return suggestions
 
 
 def _edit_records(db: Session, instance_ids: list[str]) -> tuple[dict[str, dict], dict[tuple, list[dict]]]:
@@ -263,6 +352,7 @@ def _empty_counts() -> dict[str, int]:
         "crm_total", "edited_total", "autosend_total", "autosend_edited",
         "mail_suite_total", "mail_suite_edited",
         *TYPE_COLUMNS.values(),
+        "ai_suggestion_count",
     ]
     return {k: 0 for k in keys}
 
@@ -275,6 +365,8 @@ def compute_and_store(db: Session, start: date, end: date) -> dict:
 
     daily: dict[date, dict[str, int]] = defaultdict(_empty_counts)
     staff_daily: dict[tuple, dict[str, int]] = defaultdict(_empty_counts)
+    daily_suggestion_keys: dict[date, set[tuple[str, str, str]]] = defaultdict(set)
+    staff_suggestion_keys: dict[tuple, set[tuple[str, str, str]]] = defaultdict(set)
     detail_count = 0
 
     for it in _crm_items(db, start, end):
@@ -286,6 +378,7 @@ def compute_and_store(db: Session, start: date, end: date) -> dict:
         edited = bool(it.get("edited"))
         if not edited:
             flags, primary, subject_changed, body_changed = [], "", False, False
+        suggestions = build_ai_suggestions(it, flags, primary) if edited else []
         for bucket in (daily[d], staff_daily[(d, staff)]):
             bucket["crm_total"] += 1
             if edited:
@@ -302,40 +395,50 @@ def compute_and_store(db: Session, start: date, end: date) -> dict:
                 col = TYPE_COLUMNS.get(flag)
                 if col:
                     bucket[col] += 1
+        for suggestion in suggestions:
+            key = _suggestion_group_key(suggestion)
+            daily_suggestion_keys[d].add(key)
+            staff_suggestion_keys[(d, staff)].add(key)
         db.execute(text(
             "INSERT INTO mail_llm_iteration_detail_index "
             "(stat_date, staff_id, source, source_row_id, instance_id, edit_record_id, customer_id, contact_id, "
-            "scenario, suite_step, crm_time, subject, edited, subject_changed, body_changed, primary_type, type_flags) "
-            "VALUES (:d,:staff,:src,:rid,:iid,:erid,:cid,:contact,:sc,:step,:ct,:sub,:ed,:sch,:bch,:pt,CAST(:flags AS jsonb))"
+            "scenario, suite_step, crm_time, subject, edited, subject_changed, body_changed, primary_type, type_flags, "
+            "ai_suggestion_count, ai_suggestions) "
+            "VALUES (:d,:staff,:src,:rid,:iid,:erid,:cid,:contact,:sc,:step,:ct,:sub,:ed,:sch,:bch,:pt,CAST(:flags AS jsonb),"
+            ":sugg_count,CAST(:suggestions AS jsonb))"
         ), {
             "d": d, "staff": staff, "src": source, "rid": str(it.get("source_row_id") or ""),
             "iid": it.get("instance_id"), "erid": edit.get("record_id") if edit else None,
             "cid": it.get("customer_id"), "contact": it.get("contact_id"), "sc": it.get("scenario"),
             "step": it.get("suite_step"), "ct": it.get("crm_time"), "sub": (it.get("subject") or "")[:500],
             "ed": edited, "sch": subject_changed, "bch": body_changed, "pt": primary,
-            "flags": __import__("json").dumps(flags, ensure_ascii=False),
+            "flags": json.dumps(flags, ensure_ascii=False),
+            "sugg_count": len(suggestions),
+            "suggestions": json.dumps(suggestions, ensure_ascii=False),
         })
         detail_count += 1
 
     for d, c in daily.items():
+        c["ai_suggestion_count"] = len(daily_suggestion_keys.get(d, set()))
         db.execute(text(
             "INSERT INTO mail_llm_iteration_daily_summary "
             "(stat_date, crm_total, edited_total, autosend_total, autosend_edited, mail_suite_total, mail_suite_edited, "
             "body_changed_count, subject_changed_count, signature_count, greeting_count, service_count, cta_count, "
-            "placeholder_count, other_body_count, computed_at) "
+            "placeholder_count, other_body_count, ai_suggestion_count, computed_at) "
             "VALUES (:d,:crm_total,:edited_total,:autosend_total,:autosend_edited,:mail_suite_total,:mail_suite_edited,"
             ":body_changed_count,:subject_changed_count,:signature_count,:greeting_count,:service_count,:cta_count,"
-            ":placeholder_count,:other_body_count,now())"
+            ":placeholder_count,:other_body_count,:ai_suggestion_count,now())"
         ), {"d": d, **c})
     for (d, staff), c in staff_daily.items():
+        c["ai_suggestion_count"] = len(staff_suggestion_keys.get((d, staff), set()))
         db.execute(text(
             "INSERT INTO mail_llm_iteration_staff_daily_summary "
             "(stat_date, staff_id, crm_total, edited_total, autosend_total, autosend_edited, mail_suite_total, mail_suite_edited, "
             "body_changed_count, subject_changed_count, signature_count, greeting_count, service_count, cta_count, "
-            "placeholder_count, other_body_count, computed_at) "
+            "placeholder_count, other_body_count, ai_suggestion_count, computed_at) "
             "VALUES (:d,:staff,:crm_total,:edited_total,:autosend_total,:autosend_edited,:mail_suite_total,:mail_suite_edited,"
             ":body_changed_count,:subject_changed_count,:signature_count,:greeting_count,:service_count,:cta_count,"
-            ":placeholder_count,:other_body_count,now())"
+            ":placeholder_count,:other_body_count,:ai_suggestion_count,now())"
         ), {"d": d, "staff": staff, **c})
     db.commit()
     return {"days": len(daily), "staff_days": len(staff_daily), "detail_rows": detail_count}
@@ -389,15 +492,83 @@ def list_staff(db: Session) -> list[str]:
     )).fetchall()]
 
 
-def detail_rows(db: Session, day: date, metric: str, staff_id: str | None = None, limit: int = 80, offset: int = 0) -> dict:
-    ensure_tables(db)
+def _detail_base_filters(day: date, staff_id: str | None = None) -> tuple[list[str], dict[str, Any]]:
     staff = (staff_id or "").strip()
     clauses = ["d.stat_date=:d"]
-    params: dict[str, Any] = {"d": day, "lim": max(1, min(int(limit or 80), 200)), "off": max(0, int(offset or 0))}
+    params: dict[str, Any] = {"d": day}
     if staff:
         clauses.append("d.staff_id=:staff")
         params["staff"] = staff
+    return clauses, params
+
+
+def _ai_suggestion_summary_rows(db: Session, day: date, staff_id: str | None, limit: int, offset: int) -> dict:
+    clauses, params = _detail_base_filters(day, staff_id)
+    clauses.append("d.ai_suggestion_count>0")
+    where = " AND ".join(clauses)
+    rows = db.execute(text(f"""
+        SELECT d.detail_id, d.stat_date, d.staff_id, d.source, d.customer_id, d.contact_id, d.scenario,
+               d.suite_step, d.crm_time, d.subject, d.ai_suggestions
+        FROM mail_llm_iteration_detail_index d
+        WHERE {where}
+        ORDER BY d.crm_time DESC NULLS LAST, d.source_row_id
+    """), params).fetchall()
+    grouped: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for r in rows:
+        m = dict(r._mapping)
+        suggestions = m.get("ai_suggestions") or []
+        if isinstance(suggestions, str):
+            suggestions = json.loads(suggestions)
+        for suggestion in suggestions:
+            key = _suggestion_group_key(suggestion)
+            g = grouped.get(key)
+            if not g:
+                g = {
+                    "suggestion_group": True,
+                    "scope": suggestion.get("scope") or "",
+                    "target": suggestion.get("target") or "",
+                    "suggestion_type": suggestion.get("suggestion_type") or "",
+                    "suggestion": suggestion.get("suggestion") or "",
+                    "scenario": suggestion.get("scenario") or "",
+                    "scenario_label": suggestion.get("scenario_label") or "",
+                    "suite_step": suggestion.get("suite_step"),
+                    "hit_count": 0,
+                    "sources": Counter(),
+                    "staff_ids": Counter(),
+                    "sample_customer_id": "",
+                    "sample_contact_id": "",
+                    "sample_subject": "",
+                    "sample_evidence": "",
+                    "sample_detail_id": "",
+                }
+                grouped[key] = g
+            g["hit_count"] += 1
+            g["sources"][m.get("source") or ""] += 1
+            g["staff_ids"][m.get("staff_id") or ""] += 1
+            if not g["sample_customer_id"]:
+                g["sample_customer_id"] = m.get("customer_id") or ""
+                g["sample_contact_id"] = m.get("contact_id") or ""
+                g["sample_subject"] = m.get("subject") or ""
+                g["sample_evidence"] = suggestion.get("evidence") or ""
+                g["sample_detail_id"] = str(m.get("detail_id") or "")
+    items = sorted(grouped.values(), key=lambda x: (-int(x["hit_count"]), x["target"], x["suggestion_type"]))
+    total = len(items)
+    start = max(0, int(offset or 0))
+    stop = start + max(1, min(int(limit or 80), 200))
+    paged = items[start:stop]
+    for item in paged:
+        item["sources"] = ", ".join(f"{k}:{v}" for k, v in item["sources"].most_common() if k)
+        item["staff_ids"] = ", ".join(f"{k}:{v}" for k, v in item["staff_ids"].most_common() if k)
+    return {"total": total, "items": paged}
+
+
+def detail_rows(db: Session, day: date, metric: str, staff_id: str | None = None, limit: int = 80, offset: int = 0) -> dict:
+    ensure_tables(db)
     metric_norm = (metric or "").strip()
+    if metric_norm == "ai_suggestion_count":
+        return _ai_suggestion_summary_rows(db, day, staff_id, limit, offset)
+    clauses, params = _detail_base_filters(day, staff_id)
+    params.update({"lim": max(1, min(int(limit or 80), 200)), "off": max(0, int(offset or 0))})
     if metric_norm == "edited_total":
         clauses.append("d.edited=TRUE")
     elif metric_norm == "crm_total":
@@ -447,6 +618,8 @@ def detail_rows(db: Session, day: date, metric: str, staff_id: str | None = None
             "edited": bool(m.get("edited")),
             "primary_type": m.get("primary_type") or "",
             "type_flags": m.get("type_flags") or [],
+            "ai_suggestion_count": int(m.get("ai_suggestion_count") or 0),
+            "ai_suggestions": m.get("ai_suggestions") or [],
             "orig_subject": m.get("orig_subject") or "",
             "orig_body_html": m.get("orig_body_html") or "",
             "final_subject": m.get("final_subject") or "",

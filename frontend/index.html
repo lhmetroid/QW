@@ -482,6 +482,7 @@
                                     <th class="border border-slate-200 px-3 py-2 text-right">业务线/服务</th>
                                     <th class="border border-slate-200 px-3 py-2 text-right">主题</th>
                                     <th class="border border-slate-200 px-3 py-2 text-right">占位/测试</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right cursor-help" title="根据当天人工修改归纳出的脚本/通用规则调整建议条数，双击数字查看逐条建议。">AI建议</th>
                                 </tr>
                             </thead>
                             <tbody id="mail-iter-daily-tbody"></tbody>
@@ -501,6 +502,7 @@
                                     <th class="border border-slate-200 px-3 py-2 text-right">签名/联系方式</th>
                                     <th class="border border-slate-200 px-3 py-2 text-right">业务线/服务</th>
                                     <th class="border border-slate-200 px-3 py-2 text-right">其他正文</th>
+                                    <th class="border border-slate-200 px-3 py-2 text-right cursor-help" title="根据该销售当天人工修改归纳出的脚本/通用规则调整建议条数。">AI建议</th>
                                 </tr>
                             </thead>
                             <tbody id="mail-iter-staff-tbody"></tbody>
@@ -4011,13 +4013,22 @@
         // ===== 邮件每日迭代分析 =====
         function mailDailyIterMetricCell(metric, day, staffId, val) {
             const n = Number(val || 0);
-            const staffArg = staffId ? `,'${escapeHtml(staffId)}'` : '';
-            return `<td class="border border-slate-200 px-3 py-2 text-right ${n ? 'cursor-pointer text-violet-700 hover:bg-violet-50 font-bold' : 'text-slate-400'}" ${n ? `ondblclick="openMailDailyIterationDetail('${metric}','${day}'${staffArg})" title="双击逐封加载原始/改后内容"` : ''}>${n}</td>`;
+            const staffArg = staffId ? `,'${escapeHtml(staffId)}'` : `,''`;
+            const tip = metric === 'ai_suggestion_count' ? '双击查看归纳后的 AI 建议' : '双击逐封加载原始/改后内容';
+            return `<td class="border border-slate-200 px-3 py-2 text-right ${n ? 'cursor-pointer text-violet-700 hover:bg-violet-50 font-bold' : 'text-slate-400'}" ${n ? `ondblclick="openMailDailyIterationDetail('${metric}','${day}'${staffArg},${n})" title="${tip}"` : ''}>${n}</td>`;
         }
         function mailDailyIterRateCell(row) {
             const rate = Number(row.edit_rate_pct || 0);
             const tone = rate >= 25 ? 'text-rose-700' : rate >= 10 ? 'text-amber-700' : 'text-slate-600';
             return `<td class="border border-slate-200 px-3 py-2 text-right font-bold ${tone}">${rate.toFixed(1)}%</td>`;
+        }
+        function mailDailyIterMetricCn(metric) {
+            return {
+                crm_total: '转入CRM', edited_total: '人工改动', autosend_total: '自动排期', mail_suite_total: '套装排期',
+                greeting_count: '称呼/开头', signature_count: '签名/联系方式', service_count: '业务线/服务',
+                subject_changed_count: '主题', placeholder_count: '占位/测试', other_body_count: '其他正文',
+                ai_suggestion_count: 'AI建议'
+            }[metric] || metric;
         }
         async function loadMailIterationDailyAnalysis(refresh) {
             const startEl = document.getElementById('mail-iter-start');
@@ -4072,9 +4083,10 @@
                     + `<td class="border border-slate-200 px-3 py-2 text-right">${t.signature_count || 0}</td>`
                     + `<td class="border border-slate-200 px-3 py-2 text-right">${t.service_count || 0}</td>`
                     + `<td class="border border-slate-200 px-3 py-2 text-right">${t.subject_changed_count || 0}</td>`
-                    + `<td class="border border-slate-200 px-3 py-2 text-right">${t.placeholder_count || 0}</td></tr>`;
+                    + `<td class="border border-slate-200 px-3 py-2 text-right">${t.placeholder_count || 0}</td>`
+                    + `<td class="border border-slate-200 px-3 py-2 text-right">${t.ai_suggestion_count || 0}</td></tr>`;
                 if (!daily.length) {
-                    html += `<tr><td colspan="11" class="border border-slate-200 px-3 py-6 text-center text-slate-400">该区间暂无每日迭代数据，点“回填/刷新”。</td></tr>`;
+                    html += `<tr><td colspan="12" class="border border-slate-200 px-3 py-6 text-center text-slate-400">该区间暂无每日迭代数据，点“回填/刷新”。</td></tr>`;
                 } else {
                     for (const r of daily) {
                         const day = r.stat_date || '';
@@ -4089,6 +4101,7 @@
                             + mailDailyIterMetricCell('service_count', day, '', r.service_count)
                             + mailDailyIterMetricCell('subject_changed_count', day, '', r.subject_changed_count)
                             + mailDailyIterMetricCell('placeholder_count', day, '', r.placeholder_count)
+                            + mailDailyIterMetricCell('ai_suggestion_count', day, '', r.ai_suggestion_count)
                             + `</tr>`;
                     }
                 }
@@ -4098,7 +4111,7 @@
                 const rows = data.staff_daily || [];
                 const names = data.staff_names || {};
                 if (!rows.length) {
-                    staffBody.innerHTML = `<tr><td colspan="9" class="border border-slate-200 px-3 py-6 text-center text-slate-400">该区间暂无销售明细。</td></tr>`;
+                    staffBody.innerHTML = `<tr><td colspan="10" class="border border-slate-200 px-3 py-6 text-center text-slate-400">该区间暂无销售明细。</td></tr>`;
                 } else {
                     staffBody.innerHTML = rows.map((r) => {
                         const day = r.stat_date || '';
@@ -4112,19 +4125,54 @@
                             + mailDailyIterMetricCell('signature_count', day, sid, r.signature_count)
                             + mailDailyIterMetricCell('service_count', day, sid, r.service_count)
                             + mailDailyIterMetricCell('other_body_count', day, sid, r.other_body_count)
+                            + mailDailyIterMetricCell('ai_suggestion_count', day, sid, r.ai_suggestion_count)
                             + `</tr>`;
                     }).join('');
                 }
             }
         }
-        async function openMailDailyIterationDetail(metric, day, staffId) {
+        function mailDailyIterNormalizeSuggestionRows(rows) {
+            const grouped = new Map();
+            for (const raw of (rows || [])) {
+                const candidates = Array.isArray(raw.ai_suggestions) && raw.ai_suggestions.length ? raw.ai_suggestions : [raw];
+                for (const sug of candidates) {
+                    const scope = sug.scope || raw.scope || '';
+                    const target = sug.target || raw.target || raw.adjust_target || raw.suggestion_target || '';
+                    const type = sug.suggestion_type || raw.suggestion_type || raw.change_type || raw.primary_type || '';
+                    const suggestion = sug.suggestion || raw.suggestion || raw.advice || raw.ai_suggestion || '';
+                    const key = [scope, target, type, suggestion].join('|');
+                    if (!grouped.has(key)) {
+                        grouped.set(key, {
+                            hit_count: 0, scope, target, suggestion_type: type, suggestion,
+                            sources_map: new Map(), staff_map: new Map(),
+                            sample_evidence: sug.evidence || raw.sample_evidence || raw.evidence || raw.subject || raw.sample_subject || '',
+                            sample_customer_id: sug.customer_id || raw.sample_customer_id || raw.customer_id || '',
+                            sample_contact_id: sug.contact_id || raw.sample_contact_id || raw.contact_id || ''
+                        });
+                    }
+                    const g = grouped.get(key);
+                    const inc = Number(raw.hit_count || 0) > 0 && candidates.length === 1 ? Number(raw.hit_count) : 1;
+                    g.hit_count += inc;
+                    const source = sug.source || raw.source || '';
+                    const staff = sug.staff_id || raw.staff_id || '';
+                    if (source) g.sources_map.set(source, (g.sources_map.get(source) || 0) + inc);
+                    if (staff) g.staff_map.set(staff, (g.staff_map.get(staff) || 0) + inc);
+                }
+            }
+            return Array.from(grouped.values()).sort((a, b) => (Number(b.hit_count || 0) - Number(a.hit_count || 0)) || String(a.target).localeCompare(String(b.target), 'zh-CN')).map((it) => ({
+                ...it,
+                sources: Array.from(it.sources_map.entries()).map(([k, v]) => `${k}:${v}`).join(', '),
+                staff_ids: Array.from(it.staff_map.entries()).map(([k, v]) => `${k}:${v}`).join(', ')
+            }));
+        }
+        async function openMailDailyIterationDetail(metric, day, staffId, expectedCount) {
             const modal = document.getElementById('mail-stats-detail-modal');
             const title = document.getElementById('mail-stats-detail-title');
             const body = document.getElementById('mail-stats-detail-body');
             if (!modal || !body) return;
             const staffText = staffId ? ` · 销售 ${staffId}` : '';
             modal.classList.remove('hidden');
-            if (title) title.textContent = `${day}${staffText} · 每日迭代明细 · ${metric}`;
+            if (title) title.textContent = `${day}${staffText} · 每日迭代明细 · ${mailDailyIterMetricCn(metric)}`;
             body.innerHTML = '<div class="text-slate-500">逐封加载中…</div>';
             const params = new URLSearchParams({ day, metric, limit: '80' });
             if (staffId) params.set('staff_id', staffId);
@@ -4134,6 +4182,35 @@
                 if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
                 const items = data.items || [];
                 if (!items.length) { body.innerHTML = '<div class="text-slate-400 py-6 text-center">无明细记录</div>'; return; }
+                if (metric === 'ai_suggestion_count') {
+                    const rows = mailDailyIterNormalizeSuggestionRows(items || []);
+                    const expected = Number(expectedCount || data.total || rows.length || 0);
+                    const visibleRows = rows.slice(0, expected || rows.length);
+                    if (!visibleRows.length) { body.innerHTML = '<div class="text-slate-400 py-6 text-center">无 AI 建议明细</div>'; return; }
+                    body.innerHTML = `<div class="text-[11px] text-slate-500">共 ${expected || visibleRows.length} 条归纳建议，本次显示 ${visibleRows.length} 条。</div>`
+                        + `<div class="overflow-auto"><table class="min-w-full border-collapse text-[11px]">
+                            <thead><tr class="bg-slate-50 text-slate-600">
+                                <th class="border border-slate-200 px-2 py-1 text-right">命中</th>
+                                <th class="border border-slate-200 px-2 py-1 text-left">来源</th>
+                                <th class="border border-slate-200 px-2 py-1 text-left">销售</th>
+                                <th class="border border-slate-200 px-2 py-1 text-left">调整范围</th>
+                                <th class="border border-slate-200 px-2 py-1 text-left">调整对象</th>
+                                <th class="border border-slate-200 px-2 py-1 text-left">改动类型</th>
+                                <th class="border border-slate-200 px-2 py-1 text-left">具体改法</th>
+                                <th class="border border-slate-200 px-2 py-1 text-left">样本证据</th>
+                            </tr></thead><tbody>`
+                        + visibleRows.map((it) => `<tr class="align-top hover:bg-violet-50">
+                            <td class="border border-slate-200 px-2 py-1 text-right font-bold text-violet-700">${Number(it.hit_count || 0)}</td>
+                            <td class="border border-slate-200 px-2 py-1 whitespace-nowrap">${escapeHtml(it.sources || '')}</td>
+                            <td class="border border-slate-200 px-2 py-1 whitespace-nowrap">${escapeHtml(it.staff_ids || '')}</td>
+                            <td class="border border-slate-200 px-2 py-1 whitespace-nowrap">${escapeHtml(it.scope || '')}</td>
+                            <td class="border border-slate-200 px-2 py-1 min-w-[180px]">${escapeHtml(it.target || '')}</td>
+                            <td class="border border-slate-200 px-2 py-1 whitespace-nowrap font-bold text-violet-700">${escapeHtml(it.suggestion_type || '')}</td>
+                            <td class="border border-slate-200 px-2 py-1 min-w-[340px]">${escapeHtml(it.suggestion || '')}</td>
+                            <td class="border border-slate-200 px-2 py-1 min-w-[220px] text-slate-600">${escapeHtml(it.sample_evidence || it.sample_subject || '')}<br><span class="font-mono text-[10px] text-slate-400">${escapeHtml(it.sample_customer_id || '')} ${escapeHtml(it.sample_contact_id || '')}</span></td>
+                        </tr>`).join('') + `</tbody></table></div>`;
+                    return;
+                }
                 const bodyBlock = (v) => v ? v : '<span class="text-slate-400">无记录</span>';
                 body.innerHTML = `<div class="text-[11px] text-slate-500">共 ${data.total || items.length} 封，本次加载 ${items.length} 封。</div>` + items.map((it) => {
                     const flags = (it.type_flags || []).map(x => `<span class="rounded bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">${escapeHtml(x)}</span>`).join(' ');

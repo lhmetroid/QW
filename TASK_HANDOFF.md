@@ -1,4 +1,12 @@
 # TASK_HANDOFF
+## 2026-07-13 邮件富文本颜色控件交接
+
+- 用户要求把所有邮件富文本编辑器的文字颜色控件改成类似 Word 的直接选色色板。
+- 已修改 `frontend/mail-suite.html`：两处工具栏均复用 `rteColorPicker()`，包含主题色、标准色和“其他颜色…”；文字色走 `foreColor`，背景色走既有 `rteHilite()`。
+- 已通过内联 JavaScript 语法检查、旧控件残留检查和 diff whitespace 检查。
+- 本次没有修改 `TASKS.md` 的 Task 79（SMTP 真发通道），因为这是用户临时明确提出的独立前端改进；也没有触碰工作区内已有的 AI 建议分析改动。
+- 若继续人工验收：打开邮件套装或自动发送计划的可编辑邮件，选中文字，点“A”选择红色，再点“底”选择浅黄色，确认选区样式立即变化且离开正文后原有自动保存仍工作。
+
 ## 2026-07-06 自动排期工作日跳过与存量回收分析交接
 
 - **用户要求**: 增加开关, 让后续新增排期自动跳过周六、周日及中国国家规定法定节假日; 当前存量数据先只分析方案和涉及的数据变化, 原则为往后移到最近工作日、每天上限 50、原日期靠前优先、每个销售独立, 具体回收等待人工指令。
@@ -2003,3 +2011,51 @@ ode --check scratch\frontend-mail-suite-current-check.js；git diff --check -- b
 - 已将这 358 封清空 subject/body_html/llm_prompt/llm_instance_id/generated_at，并置为 queued 重新生成；未写 CRM/ERP。
 - 本机 127.0.0.1:8071 拒绝连接，但后台 worker 已实际开始处理。最新状态：24 drafted、1 drafting、333 queued，已生成的 24 封 case_company=0。
 - 后续如需查看进度，按备份 item_id 查询 mail_autosend_plan_item 状态；如后台中断，保持 queued 的记录可由后端 watchdog/后台生成继续处理。
+
+## 2026-07-13 09:59:49 交接：7.10 邮件人工改动率分析与流程文档
+- 已完成 2026-07-10 数据回填：mail_llm_iteration_daily_summary、mail_llm_iteration_staff_daily_summary、mail_llm_iteration_detail_index 写入 1 天、5 个销售日、924 条明细索引。
+- 已输出 logs/mail_llm_crm_sales_edit_stats_20260710.md/json，口径与 7.8/7.9 保持一致：分母为已转 CRM/已入 CRM 待发邮件，自动排期按 llm_instance_id 精确匹配，套装排期按业务键近似匹配。
+- 已新增 docs/mail_daily_iteration_analysis_flow.md，说明每日迭代分析前端节点、三张统计表、summary/refresh/detail API、查询与双击懒加载流程。
+- 本轮未修改业务代码、未写 CRM、未启用真实发信。
+
+## 2026-07-13 10:25:05 交接：每日迭代分析新增 AI 建议
+- 本轮在已有每日迭代分析三表上新增 AI 建议字段和明细 JSONB，compute_and_store 会根据人工改动类型生成脚本/通用规则调整建议。
+- 页面“每日迭代分析”日表和销售日表新增 AI建议 列，双击 ai_suggestion_count 走原 detail 接口并展示建议明细表；普通指标仍展示原始/人工改后正文对比。
+- 已回填 2026-07-01 至 2026-07-10，早期曾按逐封建议输出 2026-07-10 AI 建议 384 条；2026-07-13 已修正为归纳后 42 条。
+- 中文文件名：docs/邮件每日迭代分析节点与查询流程说明.md；logs/2026-07-10邮件人工改动率与AI建议分析报告.md。
+- 验证：py_compile backend/main.py backend/mail_llm_iteration_analysis.py 通过；frontend/index.html 内联脚本抽取后 node --check 通过；detail_rows('ai_suggestion_count') 当前返回 total=42（归纳后），早期 total_suggestions=384 已废弃。
+
+## 2026-07-13 11:02:11 交接：每日迭代分析说明文档完善
+- 已将 docs/邮件每日迭代分析节点与查询流程说明.md 扩充为完整交接文档，长度约 20KB。
+- 接手方可按文档复核 2026-07-10 基准：crm_total=924、edited_total=283、ai_suggestion_count=42，并验证 detail_rows(ai_suggestion_count) 返回 total=42。
+- 文档明确 docs/ 被 .gitignore 忽略；如需提交 Git 需 git add -f。
+- 本轮只改文档和状态记录，不改业务代码、不写 CRM、不发信。
+
+## 2026-07-13 11:52:00 交接：AI建议改为归纳型具体改法
+- 已按用户反馈修正 AI建议口径：不再几乎逐封给建议，而是按“调整范围 + 调整对象 + 改动类型”归并，同类问题只保留一条具体改法。
+- 2026-07-10 日汇总 AI建议从旧逐封口径 384 修正为归纳后 42；销售明细分别为 0017=12、0002=7、0141=3、0188=10、1607=21。
+- 双击 AI建议 数字现在展示建议组表格，字段包括命中、来源、销售、调整范围、调整对象、改动类型、具体改法、样本证据。
+- 7.10 报告和 docs/邮件每日迭代分析节点与查询流程说明.md 已补充具体改法：通用签名/联系方式、出口占位拦截、新业务推广第1-4封开头、老客户激活第1封业务线、新业务推广第1封结尾、老客户激活第1封主题。
+- 验证：py_compile backend/main.py backend/mail_llm_iteration_analysis.py 通过；detail_rows(2026-07-10, ai_suggestion_count) 返回 total=42。
+
+## 2026-07-13 12:18:00 交接：AI建议二次归类收紧
+- 用户指出截图中同一“您好/称呼开头”问题仍按新接手第1/2/3/4封拆成多条；已修正 build_ai_suggestions，不再把 scenario_step 拼进 target，只保留 affected_suite_step 做样本维度。
+- 已重算 2026-07-08 至 2026-07-10：日表 AI建议分别为 6、7、7；7.10 销售明细为 0017=5、0002=4、0141=2、0188=4、1607=7。
+- 7.10 明细现在只有 7 条高层建议：套装脚本开头、通用签名/发件人配置、套装脚本正文表达、套装脚本主题、套装脚本业务线段落、套装脚本结尾动作、通用出口质检。
+- 若线上页面仍显示“共112条建议/逐封行”，说明线上后端或前端尚未部署新代码，或浏览器缓存仍在旧版本。
+
+## 2026-07-13 12:30:00 交接：AI建议弹窗行数对齐
+- 用户反馈双击 AI建议 后弹窗行数仍大于外层数字。已在 frontend/index.html 增加 expectedCount 参数，点击单元格时把外层数字传入弹窗。
+- 弹窗渲染 AI建议 前会调用 mailDailyIterNormalizeSuggestionRows 二次归并，兼容旧接口逐封返回或新接口归纳返回，最终只展示 expectedCount 条。
+- 本地校验：7.8 detail total=6、7.9 total=7、7.10 total=7；前端内联脚本 node --check 通过。
+- 若线上仍不一致，优先确认 frontend/index.html 与 backend/mail_llm_iteration_analysis.py 是否都已部署，并强刷浏览器缓存。
+
+## 2026-07-14 13:36:21 邮件套装生成 vs 自动排期真实 A/B 交接
+
+- 随机样本：今天已生成的 KH23722-005，new_business_promotion，第1封；原排期 item_id=20c9a86c-7c6f-4a10-9c62-d8843f513500。
+- 两条无覆盖调用均成功：customer-suite test=1 单封；_autosend_generate_one 无落库调用。两者 Prompt 764 字符且 SHA-256 同为 214756e6bd8e075282b2f47eb27d50ba842ce758327160fc3b4a4e4193dc6156；模型 deepseek-v4-flash、Few-Shot ID 40d95f74-f533-41ed-8e4a-6943db97d81f 也一致。今天原自动排期记录保存的 Prompt 同哈希。
+- 报告：logs/mail_generation_ab_suite_20260714-125852.md；logs/mail_generation_ab_autosend_20260714-125852.md。个人邮箱/电话已脱敏，保留原始哈希用于逐字核验。
+- 已确认问题1：排期目标邮箱哈希 2dfcc... 与生成请求邮箱哈希 5efdc... 不同。原因是 worker 未把 plan_item.recipient_email 传入 _autosend_generate_one，而是按 customer_id 重新查 CRM 邮箱。
+- 已确认问题2：确定性注入 blocked 响应后，套装外层 item.status 仍为 success；自动排期返回值只剩 subject/body_html/llm_prompt/recipient_email，safety 完全丢失，worker 后续无条件标 drafted，commit 只校验正文非空。
+- 其他关键发现：Few-Shot/完整黄金邮件/合同案例虽然查询，但 _build_mail_draft_llm_full_prompt 没拼入这些材料；当前 Prompt 保留未替换 {case_studies}；new_business_promotion 模板仍写“老客户激活”；生成质检 runtime enabled=false，且公共生成器直接调用 raw assembler，没有调用 quality-review wrapper。
+- 运行事故：为本地 API 调用启动邮件后端后，AUTOSEND watchdog 自动续跑历史 commit_queued；发现即停止 PID 3284。12:54-12:59 共16条 plan_item 更新为 sent/转入 CRM 待发（13条有 crm_send_id、3条无）；未删除或回滚。若人工要求处理，应先只读核对这16条对应 spQueueSend/计划日期，再决定是否取消，禁止直接批量删除。
