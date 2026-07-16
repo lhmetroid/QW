@@ -274,8 +274,17 @@ def set_suggestion_status(
     return out
 
 
+def _strip_signature_block(value: str | None) -> str:
+    """剥离 <div class="mail-signature">...</div> 真实签名块(与 main.py 发送口径一致)。
+
+    签名是系统自动注入的(不是人工改动), 而历史保存的 final 里签名常被 sanitize 打成 ***PHONE***/***EMAIL***。
+    比对人工改动时先剥掉签名, 避免把"签名被脱敏"误判成"签名/联系方式调整"人工改动。
+    """
+    return re.sub(r'(?is)<div class="mail-signature".*?</div>', "", value or "")
+
+
 def _norm_html(value: str | None) -> str:
-    s = html.unescape(value or "")
+    s = html.unescape(_strip_signature_block(value))
     s = re.sub(r"<br\s*/?>", "\n", s, flags=re.I)
     s = re.sub(r"</p\s*>", "\n", s, flags=re.I)
     s = re.sub(r"<[^>]+>", " ", s)
@@ -486,7 +495,10 @@ def compute_and_store(db: Session, start: date, end: date) -> dict:
         source = str(it.get("source") or "")
         edit = it.get("edit_record") or {}
         flags, primary, subject_changed, body_changed = classify_edit(edit)
-        edited = bool(it.get("edited"))
+        # 是否人工改动 = 确实保存过人工版(stored edited) 且 剥离签名后仍有真实主题/正文差异。
+        # 这样"仅因保存时对签名脱敏(***PHONE***/***EMAIL***)造成的差异"不再被算作人工改动, 也不再生成"签名类"AI建议。
+        edited = bool(it.get("edited")) and bool(subject_changed or body_changed)
+        it["edited"] = edited
         if not edited:
             flags, primary, subject_changed, body_changed = [], "", False, False
         suggestions = build_ai_suggestions(it, flags, primary) if edited else []

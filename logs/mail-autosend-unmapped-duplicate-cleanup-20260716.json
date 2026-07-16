@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-07-16T16:37:24.306650",
+  "apply": false,
+  "delete_candidates": 1,
+  "rows": [
+    {
+      "delete_rowid": "0BA3EDE2-15E9-4AF8-A2D3-BFA574586E97",
+      "staff": "0002",
+      "keep_plan_id": "d439fa8e-a591-4b92-a0d0-f28f99da897e",
+      "customer_id": "KH02044-076",
+      "scenario": "new_business_promotion",
+      "suite_step": 2
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "generated_at": "2026-07-16T16:13:55.935364",
+  "waitsend_checked": 821,
+  "item_map_count": 821,
+  "plan_map_count": 821,
+  "crm_queue_count": 807,
+  "three_way_mismatches": [
+    {
+      "item_id": "55a17313-0d9e-4f78-a65a-847b972b7f3e",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "6fa70f56-2f5a-406f-94a4-8395fd8b81b0",
+      "rowid": "4d748289-ef4e-4ba8-ae95-30b814bfcc58"
+    },
+    {
+      "item_id": "36bc55c8-f193-4d07-95d8-4acda6c2fa25",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "aeb251d2-8521-4fd4-b54b-8685a3e2ce38",
+      "rowid": "4ecb5236-0373-4a6e-8a6e-85c6933ba1e3"
+    },
+    {
+      "item_id": "369fb324-df93-4717-9581-2467aaa5a821",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "dc296ff0-aa9d-4754-86cc-28d83c623c97",
+      "rowid": "dcacabac-5a25-4e4b-abed-c3417454fd0d"
+    },
+    {
+      "item_id": "5c853ecf-563e-45a9-8aa1-5cb4fc806fab",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "bccbdc1a-e569-482f-8c84-b33d42c4e6cb",
+      "rowid": "96cb2a82-e7cf-4688-806e-e2a6e1124b60"
+    },
+    {
+      "item_id": "6608c1b2-5b63-4b97-8c7a-226097b01095",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "e580d4e6-ef98-4e04-9821-b7f56ac09d17",
+      "rowid": "7c8bf09c-bbf7-4f8a-af91-91c24cc05611"
+    },
+    {
+      "item_id": "925a1ebb-e059-4c6a-a23d-29124106b6d3",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "0a288693-7c4a-4baa-870f-907296aa8372",
+      "rowid": "6fa451d7-38bd-4003-93d2-fb07261f36c8"
+    },
+    {
+      "item_id": "65277196-9886-4326-b7f2-9af13d8f94cf",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "2bf5400c-299b-4d82-b7c7-4f5de595b67d",
+      "rowid": "7d2a01bb-c18c-430f-882d-72d482df962f"
+    },
+    {
+      "item_id": "3fec0e9b-52f4-40c7-ac98-6f9b78f5a907",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "29ccd6aa-cacc-4609-8fdc-43798b1950de",
+      "rowid": "d9391bdc-fc5e-43e3-a51c-74aae7842db7"
+    },
+    {
+      "item_id": "15ea9eb8-11a2-471d-879e-16a8daa09c4b",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "a9a18804-4525-4318-9ecf-01d1fcd9623f",
+      "rowid": "4ec38006-1633-422f-b9c1-8937e00d77c1"
+    },
+    {
+      "item_id": "07952e4b-378f-4e00-aa00-15fdf9dbdbea",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "09138622-5154-4032-8f77-94b4d0adcefa",
+      "rowid": "93b5f8a6-fb8e-4573-ad1d-e93d4c2f73ed"
+    },
+    {
+      "item_id": "2e63c27b-1c93-471a-bf52-d0f1f8a64033",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "6a7dc020-1f02-49d6-8c51-ab29db5f581e",
+      "rowid": "38dfb0e5-c080-4be6-a548-740f83c069be"
+    },
+    {
+      "item_id": "f24adf56-6879-4d60-b9eb-904bbcab2bf9",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "d914549a-eea1-4a0a-ab1e-072acfec0b51",
+      "rowid": "9b4ec6ee-f46c-4f5d-a10e-f1051f248abd"
+    },
+    {
+      "item_id": "5caa5e38-82fc-4b17-932d-3fff4060604c",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "aa126f8f-14a5-41e4-b73b-0aa65cc50c8f",
+      "rowid": "97db65d1-2d17-468f-9873-53648f5ec1ff"
+    },
+    {
+      "item_id": "62d0ef99-a29c-4522-a83a-a413aad7f91f",
+      "reason": "missing_current_row",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "b60da892-5498-4292-9cb6-24f4e83a9644",
+      "rowid": "ecdefde0-0d63-4551-862e-a0b8a3bcf510"
+    }
+  ],
+  "over_cap_days": [],
+  "gap_violations": [],
+  "ai_weekend_rows": [],
+  "max_combined_daily_count": 50
+}

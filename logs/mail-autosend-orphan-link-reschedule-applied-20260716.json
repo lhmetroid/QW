@@ -1,0 +1,66 @@
+{
+  "generated_at": "2026-07-16T16:35:13.224557",
+  "applied": true,
+  "source_sha256": "4ec8f598633a23bcb2187257f138b0296bbd105ec805bd314d62c96758f25100",
+  "audit_file": "logs\\mail-autosend-orphan-link-scope-20260716.json",
+  "config": {
+    "daily_cap": 50,
+    "skip_non_workdays": true,
+    "holiday_dates": []
+  },
+  "staff_count": 2,
+  "item_scope_count": 3,
+  "content_hash_unchanged": true,
+  "results": [
+    {
+      "ok": true,
+      "staff_id": "0002",
+      "overdue": 0,
+      "changed": 0,
+      "movable": 4,
+      "fixed_pending": 705,
+      "crm_pending_movable": 4,
+      "schedule_violations": 0,
+      "problem_count": 0,
+      "first_slot": null,
+      "last_slot": null,
+      "day_load": [],
+      "changes": [],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "0141",
+      "overdue": 0,
+      "changed": 1,
+      "movable": 8,
+      "fixed_pending": 729,
+      "crm_pending_movable": 8,
+      "schedule_violations": 4,
+      "problem_count": 4,
+      "first_slot": "2026-09-11 09:20",
+      "last_slot": "2026-09-11 09:20",
+      "day_load": [
+        {
+          "date": "2026-09-11",
+          "count": 1
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "e71a0b42-dc73-44a4-83d3-52d48bafc017",
+          "contact_id": "KH00907-070",
+          "company_name": "迈伯仕化学建材（中国）有限公司（原巴斯夫化学建材（中国）有限公司）",
+          "contact_name": "周晓亮",
+          "scenario": "re_activation",
+          "suite_step": 4,
+          "old": "2026-08-17 16:20",
+          "new_date": "2026-09-11",
+          "new_time": "09:20",
+          "seq_in_day": 44
+        }
+      ],
+      "applied": true
+    }
+  ]
+}

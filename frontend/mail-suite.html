@@ -1085,15 +1085,32 @@
         : Array.from(new Set([...(suite.draft_steps || []), ...(suite.send_plan_steps || []), ...(suite.autosend_steps || []), ...(suite.feedback_steps || [])])).sort((a, b) => Number(a) - Number(b));
       return steps.length ? steps.map((x) => `第${x}封`).join('、') : '未记录具体封次';
     }
-    // 已用套装单封单元格: 时间 + 3态(与日历一致): sent=已发送 / crm=已入CRM待发 / planned=预排期
+    // 邮件业务显示状态的唯一颜色/文案映射。所有排期相关界面必须复用，禁止各自解释 sent。
+    function mailDisplayStateMeta(raw) {
+      const aliases = { sent: 'crm_pending', committed: 'crm_pending', crm: 'crm_pending', sent_done: 'send_success', crm_sent: 'send_success' };
+      const state = aliases[String(raw || '').toLowerCase()] || String(raw || 'planned').toLowerCase();
+      const map = {
+        planned:       { label: '预排期',   cls: 'border-slate-300 bg-white text-slate-600' },
+        queued:        { label: '待生成',   cls: 'border-violet-300 bg-violet-50 text-violet-700' },
+        drafting:      { label: '生成中',   cls: 'border-amber-300 bg-amber-50 text-amber-700' },
+        drafted:       { label: '已生成',   cls: 'border-teal-400 bg-teal-50 text-teal-700' },
+        commit_queued: { label: '待同步CRM', cls: 'border-indigo-400 bg-indigo-50 text-indigo-700' },
+        committing:    { label: '同步CRM中', cls: 'border-cyan-400 bg-cyan-50 text-cyan-700' },
+        commit_failed: { label: '同步失败', cls: 'border-rose-400 bg-rose-50 text-rose-700' },
+        failed:        { label: '生成失败', cls: 'border-red-300 bg-red-50 text-red-700' },
+        crm_unknown:   { label: '待核实',   cls: 'border-orange-400 bg-orange-50 text-orange-700' },
+        crm_pending:   { label: '待发送',   cls: 'border-sky-400 bg-sky-50 text-sky-700' },
+        send_failed:   { label: '发送失败', cls: 'border-red-500 bg-red-50 text-red-800' },
+        deleted:       { label: '已取消',   cls: 'border-gray-400 bg-gray-100 text-gray-600' },
+        send_success:  { label: '已发送',   cls: 'border-emerald-400 bg-emerald-50 text-emerald-700' },
+      };
+      return { state, ...(map[state] || map.crm_unknown) };
+    }
+
+    // 已用套装单封单元格与排期清单、日历共用同一状态映射。
     function suiteRecordStepCell(ss) {
       if (!ss || !ss.state) return '<span class="text-slate-300">-</span>';
-      const map = {
-        sent: { label: '已发送', cls: 'border-emerald-400 bg-emerald-50 text-emerald-700' },
-        crm: { label: '已入CRM', cls: 'border-sky-400 bg-sky-50 text-sky-700' },
-        planned: { label: '预排期', cls: 'border-violet-300 bg-violet-50 text-violet-700' },
-      };
-      const m = map[ss.state] || map.planned;
+      const m = mailDisplayStateMeta(ss.state);
       const t = ss.time ? String(ss.time).replace('T', ' ').slice(5, 16) : '';   // MM-DD HH:MM
       return `<span class="rounded px-1.5 py-0.5 text-[11px] border ${m.cls}" style="display:inline-block;white-space:nowrap">${t ? esc(t) + ' ' : ''}${m.label}</span>`;
     }
@@ -1117,7 +1134,7 @@
           return;
         }
         body.innerHTML = `
-          <div class="suite-records-meta" style="margin-bottom:10px">共 ${suites.length} 个套装。每封显示对应发送时间与状态：<span class="text-emerald-700">已发送</span> / <span class="text-sky-700">已入CRM</span> / <span class="text-violet-700">预排期</span>。</div>
+          <div class="suite-records-meta" style="margin-bottom:10px">共 ${suites.length} 个套装。每封使用统一状态颜色：绿色已发送、蓝色CRM待发、青色已生成，其余状态按处理阶段显示。</div>
           <table class="suite-records-table">
             <thead><tr><th>套装</th><th>第1封</th><th>第2封</th><th>第3封</th><th>第4封</th></tr></thead>
             <tbody>${suites.map((suite) => `<tr>
@@ -2794,19 +2811,22 @@
       if (!it) return '<span class="text-slate-300">-</span>';
       const date = as2MmDd(it.plan_date);
       const st = it.status;
+      const view = mailDisplayStateMeta(it.display_status || st);
       const selected = as2Selected.has(it.item_id);
       const checked = selected ? ' checked' : '';
       const committed = (st === 'sent' || st === 'committed');
-      let cls = 'as2-step-btn rounded px-1 py-0.5 text-[11px] border ', label = date;
-      if (committed) { cls += 'border-sky-400 bg-sky-50 text-sky-700 font-bold'; label = date + '待发'; }
-      else if (st === 'drafted') { cls += 'border-emerald-400 bg-emerald-50 text-emerald-700 font-bold'; label = date; }
-      else if (st === 'drafting') { cls += 'border-amber-300 bg-amber-50 text-amber-700'; label = '⏳ ' + date; }
-      else if (st === 'queued') { cls += 'border-violet-300 bg-violet-50 text-violet-700'; label = '候 ' + date; }
-      else if (st === 'committing') { cls += 'border-sky-300 bg-sky-50 text-sky-600'; label = '⇢ ' + date; }
-      else if (st === 'commit_queued') { cls += 'border-indigo-300 bg-indigo-50 text-indigo-700'; label = '待同步 ' + date; }
-      else if (st === 'commit_failed') { cls += 'border-rose-400 bg-rose-50 text-rose-700 font-bold'; label = '同步✗ ' + date; }
-      else if (st === 'failed') { cls += 'border-rose-300 bg-rose-50 text-rose-700'; label = '✗ ' + date; }
-      else { cls += 'border-slate-200 bg-white text-slate-500'; label = '排 ' + date; }
+      let cls = 'as2-step-btn rounded px-1 py-0.5 text-[11px] border ' + view.cls;
+      let label = date + view.label;
+      if (view.state === 'planned') label = '排 ' + date;
+      else if (view.state === 'queued') label = '候 ' + date;
+      else if (view.state === 'drafting') label = '⏳ ' + date;
+      else if (view.state === 'committing') label = '⇢ ' + date;
+      else if (view.state === 'commit_queued') label = '待同步 ' + date;
+      else if (view.state === 'commit_failed') label = '同步✗ ' + date;
+      else if (view.state === 'failed' || view.state === 'send_failed') label = '✗ ' + date;
+      else if (view.state === 'drafted') label = date + '已生成';
+      else if (view.state === 'crm_pending') label = date + '待发';
+      else if (view.state === 'send_success') label = date + '已发送';
       const reasonTag = it.pick_reason && it.pick_reason !== 'matched' ? `<span class="text-[10px] text-violet-500">${as2Esc({ remaining: '补', resend: '重', fallback: '兜' }[it.pick_reason] || '')}</span>` : '';
       // 时间格不再点开邮件详情(详情改由联系人名进入); 已生成脚本(drafted)可勾选转入, 点时间=等同勾选框。
       // 勾选只更新当前 DOM 状态, 不重绘整张表, 避免列宽闪动。
@@ -2816,7 +2836,7 @@
           + `<input type="checkbox" data-as2-item-check="${as2Esc(it.item_id)}"${checked} onclick="event.stopPropagation()" onchange="as2SetItemSelected(decodeURIComponent('${itemArg}'), this.checked)">`
           + `<button type="button" data-as2-step-btn="${as2Esc(it.item_id)}" class="${cls} cursor-pointer" onclick="as2ToggleSelect(decodeURIComponent('${itemArg}'))" title="点击=勾选/取消该封转入CRM；按住鼠标拖过多行可批量勾选">${label}</button>${reasonTag}</div>`;
       }
-      return `<div class="as2-step-wrap flex items-center gap-1"><span class="${cls}" title="${as2Esc(st)}">${label}</span>${reasonTag}</div>`;
+      return `<div class="as2-step-wrap flex items-center gap-1"><span class="${cls}" title="${as2Esc(view.state)}">${label}</span>${reasonTag}</div>`;
     }
     function as2PlanGroups(items) {
       const groups = {};
@@ -3158,10 +3178,10 @@
       });
     }
     // 过期排期重排: apply=false 只预览(不写库), apply=true 落库。逐个销售调用后汇总。
-    async function as2Reschedule(staffIds, apply) {
+    async function as2Reschedule(staffIds, apply, itemIds) {
       const results = await Promise.all(staffIds.map((sid) => as2FetchJson('/api/v1/mail/autosend/reschedule', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ staff_id: sid, apply: !!apply }),
+        body: JSON.stringify({ staff_id: sid, apply: !!apply, item_ids: itemIds || null }),
       })));
       const dayMap = new Map();
       results.forEach((r) => (r.day_load || []).forEach((x) => dayMap.set(x.date, (dayMap.get(x.date) || 0) + Number(x.count || 0))));
@@ -3169,6 +3189,9 @@
       const lasts = results.map((r) => r.last_slot).filter(Boolean).sort();
       return {
         overdue: results.reduce((s, r) => s + Number(r.overdue || 0), 0),
+        problem_count: results.reduce((s, r) => s + Number(r.problem_count || r.overdue || 0), 0),
+        schedule_violations: results.reduce((s, r) => s + Number(r.schedule_violations || 0), 0),
+        crm_pending_movable: results.reduce((s, r) => s + Number(r.crm_pending_movable || 0), 0),
         changed: results.reduce((s, r) => s + Number(r.changed || 0), 0),
         movable: results.reduce((s, r) => s + Number(r.movable || 0), 0),
         fixed_pending: results.reduce((s, r) => s + Number(r.fixed_pending || 0), 0),
@@ -3188,12 +3211,12 @@
       let pre = null;
       as2Status('检查排期是否有过期邮件...');
       try {
-        pre = await as2Reschedule(staffIds, false);
+        pre = await as2Reschedule(staffIds, false, ids);
       } catch (e) { as2Status('过期排期检查失败, 未同步任何邮件: ' + e.message, true); return; }
-      if (pre.overdue > 0) {
+      if (pre.problem_count > 0) {
         const days = pre.day_load.slice(0, 6).map((x) => `${x.date} ${x.count}封`).join(' · ');
-        const body = `检测到 <b>${pre.overdue}</b> 封邮件的计划发送时刻已经过去。若按原时刻写入ERP, CRM 下次扫描会认定它们全部超时, 在同一分钟一起发出去。<br><br>
-            重排规则: 过期的封从 <b>现在+10分钟</b> 起、每 10 分钟一封依次排开; 当天最晚 18:30, 超过则顺延到下一个工作日 09:00 继续; 每日上限(含已同步待发)满了同样顺延。没过期的封不会被提前, 只会因让位而顺延。已同步待发送的 ${pre.fixed_pending} 封完全不动。<br><br>
+        const body = `检测到 <b>${pre.problem_count}</b> 封邮件存在过期或套装间隔错误。若按原时刻写入ERP, CRM 下次扫描会认定它们全部超时, 在同一分钟一起发出去。<br><br>
+            重排规则: 过期的封从 <b>现在+10分钟</b> 起、每 10 分钟一封依次排开; 当天最晚 18:30, 超过则顺延到下一个工作日 09:00 继续; 每日上限(含已同步待发)满了同样顺延。没过期的封不会被提前, 只会因让位而顺延。本次所选套装中 CRM 待发的 ${pre.crm_pending_movable} 封会释放旧槽后整套重排；其他套装已占用的 ${pre.fixed_pending} 个 CRM 槽位不动。<br><br>
             重排影响: 共 <b>${pre.changed}</b> 封排期时间变更${pre.first_slot ? `, 最早 <b>${pre.first_slot}</b>, 最晚 <b>${pre.last_slot}</b>` : ''}。${days ? `<br>落位分布: ${days}${pre.day_load.length > 6 ? ' ...' : ''}` : ''}<br><br>
             <span class="text-slate-500">重排只改发送日期与时刻, 不动邮件正文, 不动你的勾选。</span><br>
             <span class="text-slate-500">重排并同步: 先落库新排期, 再逐封写入ERP待发队列。</span><br>
@@ -3208,7 +3231,7 @@
         if (k === 'resched') {
           as2Status('正在重排...');
           try {
-            const r = await as2Reschedule(staffIds, true);
+            const r = await as2Reschedule(staffIds, true, ids);
             await as2LoadPlan();
             cal1Reload();
             as2Status(`已重排 ${r.changed} 封 (最早 ${r.first_slot || '-'}, 最晚 ${r.last_slot || '-'})，尚未同步。核对无误后再点"同步保存ERP系统"。`);
@@ -3519,17 +3542,14 @@
           scenario_label_cn: it.scenario_label_cn || 'CRM待发',
           suite_step: mapped ? Number(it.suite_step) : Math.min(seq[key], 4),
           plan_date: ds, plan_time: it.plan_time || '', send_time: it.plan_time || '',
-          subject: it.subject || '', status: it.status || 'sent', recipient_email: receiverKey,
+          subject: it.subject || '', status: it.status || 'crm_pending', display_status: it.display_status || 'crm_pending', recipient_email: receiverKey,
           mapped: mapped,
         });
       });
       return rows;
     }
     function cal1StepState(it) {
-      const raw = String((it && it.status) || '').toLowerCase();
-      if (raw === 'sent_done' || raw === 'crm_sent' || raw === 'send_success') return { label: '已发送', cls: 'border-emerald-400 bg-emerald-50 text-emerald-700' };
-      if (raw === 'sent') return { label: '待发送', cls: 'border-sky-400 bg-sky-50 text-sky-700' };
-      return { label: '预排', cls: 'border-violet-300 bg-violet-50 text-violet-700' };
+      return mailDisplayStateMeta((it && (it.display_status || it.status)) || 'planned');
     }
     function cal1StepCell(it) {
       if (!it) return '<span class="text-slate-300">-</span>';
@@ -3537,13 +3557,14 @@
       const dateTime = `${as2MmDd(it.plan_date)} ${it.plan_time || it.send_time || ''}`.trim() || '-';
       const title = `${state.label} · ${it.status || ''} · ${it.subject || ''}`;
       const st = String(it.status || '').toLowerCase();
+      const displayState = state.state;
       let click = '';
       if (it._kind === 'crm' && it.rowid) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'crm', rowid:'${as2Esc(it.rowid)}', expected_email:'${as2Esc(as2ExpectedEmail(it))}'}])"`;
-      else if (['sent_done', 'crm_sent', 'send_success'].includes(st) && it.crm_send_id) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'sent', send_id:'${as2Esc(it.crm_send_id)}', staff_id:'${as2Esc(as2OwnerStaffId(it))}', expected_email:'${as2Esc(as2ExpectedEmail(it))}'}])"`;
+      else if (displayState === 'send_success' && it.crm_send_id) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'sent', send_id:'${as2Esc(it.crm_send_id)}', staff_id:'${as2Esc(as2OwnerStaffId(it))}', expected_email:'${as2Esc(as2ExpectedEmail(it))}'}])"`;
       else if (it.item_id) click = ` onclick="as2ShowDayEmails('${as2Esc(it.plan_date || '')}', [{kind:'local', item_id:'${as2Esc(it.item_id)}'}])"`;
       // 取消: 本地预排期(未转入CRM) -> 删本地; CRM待发(本系统AI入队, 未实发) -> 删CRM行; 已发送不可取消
-      const cancelLocal = it._kind !== 'crm' && it.item_id && !['sent', 'sent_done', 'crm_sent', 'send_success'].includes(st);
-      const cancelCrm = it._kind === 'crm' && it.rowid && !['sent_done', 'crm_sent', 'send_success'].includes(st);
+      const cancelLocal = it._kind !== 'crm' && it.item_id && !['crm_pending', 'send_success'].includes(displayState);
+      const cancelCrm = it._kind === 'crm' && it.rowid && displayState === 'crm_pending';
       let cancelBtn = '';
       if (cancelLocal) {
         cancelBtn = `<button type="button" class="as2-iconbtn danger" style="width:18px;height:18px;font-size:11px" title="取消该预排期邮件(从排期清单移除, 不发送)" onclick="event.stopPropagation();cal1CancelLocal('${as2Esc(it.item_id)}','${as2Esc(as2MmDd(it.plan_date))}')">✕</button>`;
@@ -3600,9 +3621,9 @@
       return `local:${owner}::${scenario}::${contactKey}`;
     }
     function cal1StepPriority(it) {
-      const raw = String((it && it.status) || '').toLowerCase();
-      if (raw === 'sent_done' || raw === 'crm_sent' || raw === 'send_success') return 3;
-      if (raw === 'sent') return 2;
+      const state = mailDisplayStateMeta((it && (it.display_status || it.status)) || 'planned').state;
+      if (state === 'send_success') return 3;
+      if (state === 'crm_pending') return 2;
       return 1;
     }
     function cal1PreferGroupHead(current, next) {

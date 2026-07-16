@@ -1,0 +1,128 @@
+{
+  "generated_at": "2026-07-16T15:46:05.965401",
+  "apply": true,
+  "delete_candidates": 13,
+  "unresolved": [],
+  "rows": [
+    {
+      "customer_id": "KH00187-159",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 3,
+      "keep_rowid": "4E07B3E6-0A77-4454-BCC4-E10AE81DD466",
+      "delete_rowid": "4E205E08-3D54-4ABF-9526-F4E4014A1702",
+      "reason": "keep_the_only_row_matching_local_schedule"
+    },
+    {
+      "customer_id": "KH01969-042",
+      "staff": "0017",
+      "scenario": "re_activation",
+      "step": 4,
+      "keep_rowid": "2A620794-9EEA-48D6-9F5B-ACE83FE00C19",
+      "delete_rowid": "78316D1F-7F4B-405A-B702-83AA47773C5E",
+      "reason": "exact_content_time_duplicate_keep_status_synced_row"
+    },
+    {
+      "customer_id": "KH00187-151",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 3,
+      "keep_rowid": "1276CAAB-2A7A-4F25-B184-84C415E8D92A",
+      "delete_rowid": "A2AA13AA-FEAC-468F-A4E5-1D449FFB43B3",
+      "reason": "keep_the_only_row_matching_local_schedule"
+    },
+    {
+      "customer_id": "KH00187-151",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 4,
+      "keep_rowid": "B9A6B1BA-DB48-46BE-A560-3D982BE3B036",
+      "delete_rowid": "233CE688-4D00-440A-B895-F7846677D95C",
+      "reason": "keep_the_only_row_matching_local_schedule"
+    },
+    {
+      "customer_id": "KH00187-138",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 3,
+      "keep_rowid": "991BDE9E-F687-4B1F-BCB6-76F2B61077BA",
+      "delete_rowid": "B50E19C1-35D7-4BD4-8406-E25A33665F0E",
+      "reason": "keep_the_only_row_matching_local_schedule"
+    },
+    {
+      "customer_id": "KH00187-138",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 4,
+      "keep_rowid": "75C723B3-2FA3-4660-A732-0B1BABFBD1DD",
+      "delete_rowid": "DB23F004-6BD2-4152-BC9F-9B628BA89F48",
+      "reason": "keep_the_only_row_matching_local_schedule"
+    },
+    {
+      "customer_id": "KH00187-145",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 3,
+      "keep_rowid": "7F0F455E-A7DD-4138-9BDF-26658565EE78",
+      "delete_rowid": "C018F8C8-D2A4-4553-B8E7-EBE0BD64FC0E",
+      "reason": "keep_the_only_row_matching_local_schedule"
+    },
+    {
+      "customer_id": "KH00187-136",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 4,
+      "keep_rowid": "5A6486A0-5B27-49CB-98C3-1A75184C843E",
+      "delete_rowid": "A867B80D-8163-4346-8D7F-93478702CC11",
+      "reason": "keep_the_only_row_matching_local_schedule"
+    },
+    {
+      "customer_id": "KH00187-137",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 4,
+      "keep_rowid": "1C0533BA-B17D-4A61-854C-E7AD24E137F3",
+      "delete_rowid": "6649AB6F-191B-4657-8E59-0ECBA6B961EC",
+      "reason": "keep_the_only_row_matching_local_schedule"
+    },
+    {
+      "customer_id": "KH00187-137",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 3,
+      "keep_rowid": "14C90757-3F57-465A-820E-A96027C9C396",
+      "delete_rowid": "223413BC-C6F5-48C4-98C9-CECF8E7BAF54",
+      "reason": "keep_the_only_row_matching_local_schedule"
+    },
+    {
+      "customer_id": "KH00187-145",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 4,
+      "keep_rowid": "1B23AF59-9803-443A-8937-636276C92043",
+      "delete_rowid": "FD156E32-BD67-4C29-B836-A0650F80AAA1",
+      "reason": "keep_the_only_row_matching_local_schedule"
+    },
+    {
+      "customer_id": "KH00187-136",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 3,
+      "keep_rowid": "75E1A402-0B1B-451C-9CFB-0FCDFC642410",
+      "delete_rowid": "BD3FFF17-319A-4A4D-A3FF-1080224F8002",
+      "reason": "keep_the_only_row_matching_local_schedule"
+    },
+    {
+      "customer_id": "KH08496-026",
+      "staff": "0017",
+      "scenario": "re_activation",
+      "step": 4,
+      "keep_rowid": "D028C8A2-F528-43D4-ACEE-BA13F7499A92",
+      "delete_rowid": "B0820C31-E554-4274-A9E9-802EA6A2062E",
+      "reason": "exact_content_time_duplicate_keep_status_synced_row"
+    }
+  ],
+  "applied_at": "2026-07-16T15:46:06.846913",
+  "deleted_queue": 13,
+  "deleted_file_rows": 13
+}

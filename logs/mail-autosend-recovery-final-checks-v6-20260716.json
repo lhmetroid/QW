@@ -1,0 +1,73 @@
+{
+  "generated_at": "2026-07-16T13:32:41.866413",
+  "waitsend_checked": 821,
+  "item_map_count": 821,
+  "plan_map_count": 821,
+  "crm_queue_count": 821,
+  "three_way_mismatches": [],
+  "over_cap_days": [],
+  "gap_violations": [
+    {
+      "staff": "0188",
+      "date": "2026-07-29",
+      "left_minute": 610,
+      "right_minute": 615,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai",
+      "left_id": "B50E19C1-35D7-4BD4-8406-E25A33665F0E",
+      "right_id": "223413BC-C6F5-48C4-98C9-CECF8E7BAF54"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-07-29",
+      "left_minute": 615,
+      "right_minute": 620,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai",
+      "left_id": "223413BC-C6F5-48C4-98C9-CECF8E7BAF54",
+      "right_id": "BD3FFF17-319A-4A4D-A3FF-1080224F8002"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-07-29",
+      "left_minute": 620,
+      "right_minute": 625,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai",
+      "left_id": "BD3FFF17-319A-4A4D-A3FF-1080224F8002",
+      "right_id": "C018F8C8-D2A4-4553-B8E7-EBE0BD64FC0E"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-08-25",
+      "left_minute": 610,
+      "right_minute": 615,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai",
+      "left_id": "DB23F004-6BD2-4152-BC9F-9B628BA89F48",
+      "right_id": "6649AB6F-191B-4657-8E59-0ECBA6B961EC"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-08-25",
+      "left_minute": 615,
+      "right_minute": 620,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai",
+      "left_id": "6649AB6F-191B-4657-8E59-0ECBA6B961EC",
+      "right_id": "A867B80D-8163-4346-8D7F-93478702CC11"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-08-25",
+      "left_minute": 620,
+      "right_minute": 625,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai",
+      "left_id": "A867B80D-8163-4346-8D7F-93478702CC11",
+      "right_id": "FD156E32-BD67-4C29-B836-A0650F80AAA1"
+    }
+  ],
+  "ai_weekend_rows": [],
+  "max_combined_daily_count": 50
+}

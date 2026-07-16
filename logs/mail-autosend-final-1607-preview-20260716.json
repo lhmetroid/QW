@@ -1,0 +1,98 @@
+{
+  "generated_at": "2026-07-16T16:02:08.499498",
+  "applied": false,
+  "source_sha256": "d46a2a28a2c2942fe78912d0fded3e85924ab65ccccdb97b8649fb06fc8c1073",
+  "audit_file": "logs\\mail-autosend-final-1607-audit-20260716.json",
+  "config": {
+    "daily_cap": 50,
+    "skip_non_workdays": true,
+    "holiday_dates": []
+  },
+  "staff_count": 1,
+  "item_scope_count": 588,
+  "content_hash_unchanged": true,
+  "results": [
+    {
+      "ok": true,
+      "staff_id": "1607",
+      "overdue": 1,
+      "changed": 4,
+      "movable": 479,
+      "fixed_pending": 516,
+      "crm_pending_movable": 337,
+      "schedule_violations": 10,
+      "problem_count": 10,
+      "first_slot": "2026-07-17 16:50",
+      "last_slot": "2026-09-14 16:10",
+      "day_load": [
+        {
+          "date": "2026-07-17",
+          "count": 1
+        },
+        {
+          "date": "2026-08-10",
+          "count": 1
+        },
+        {
+          "date": "2026-08-21",
+          "count": 1
+        },
+        {
+          "date": "2026-09-14",
+          "count": 1
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "157aa316-5f5a-4bfa-be1b-fb15ef5589b5",
+          "contact_id": "KH12934-037",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "禹香丹",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-16 16:10",
+          "new_date": "2026-07-17",
+          "new_time": "16:50",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "a9e9a7fd-96e4-4bc4-9618-6529ba569529",
+          "contact_id": "KH12934-037",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "禹香丹",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-09-11 14:10",
+          "new_date": "2026-09-14",
+          "new_time": "16:10",
+          "seq_in_day": 42
+        },
+        {
+          "item_id": "21bc2cbb-f20b-4c07-861e-55eb8e0a8225",
+          "contact_id": "KH00721-028",
+          "company_name": "上海ABB工程有限公司",
+          "contact_name": "许",
+          "scenario": "re_activation",
+          "suite_step": 4,
+          "old": "2026-08-21 09:40",
+          "new_date": "2026-08-21",
+          "new_time": "10:40",
+          "seq_in_day": 39
+        },
+        {
+          "item_id": "f0f94a53-da78-48b4-8f0b-5fc1a83bed81",
+          "contact_id": "KH00721-077",
+          "company_name": "上海ABB工程有限公司",
+          "contact_name": "Sidney Chen",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-08-11 11:00",
+          "new_date": "2026-08-10",
+          "new_time": "13:40",
+          "seq_in_day": 49
+        }
+      ],
+      "applied": false
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "generated_at": "2026-07-16T16:16:16.530180",
+  "read_only": true,
+  "counts": {
+    "send_success": 14
+  },
+  "items": [
+    {
+      "plan_id": "6a7dc020-1f02-49d6-8c51-ab29db5f581e",
+      "staff": "0017",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T14:30:39.250000"
+    },
+    {
+      "plan_id": "a9a18804-4525-4318-9ecf-01d1fcd9623f",
+      "staff": "0017",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T15:10:45.797000"
+    },
+    {
+      "plan_id": "dc296ff0-aa9d-4754-86cc-28d83c623c97",
+      "staff": "0017",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T14:00:41.580000"
+    },
+    {
+      "plan_id": "e580d4e6-ef98-4e04-9821-b7f56ac09d17",
+      "staff": "0017",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T13:40:36.420000"
+    },
+    {
+      "plan_id": "aa126f8f-14a5-41e4-b73b-0aa65cc50c8f",
+      "staff": "0017",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T14:50:44.547000"
+    },
+    {
+      "plan_id": "0a288693-7c4a-4baa-870f-907296aa8372",
+      "staff": "0017",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T15:00:44.063000"
+    },
+    {
+      "plan_id": "29ccd6aa-cacc-4609-8fdc-43798b1950de",
+      "staff": "0017",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T15:20:48.547000"
+    },
+    {
+      "plan_id": "2bf5400c-299b-4d82-b7c7-4f5de595b67d",
+      "staff": "0017",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T13:35:27.330000"
+    },
+    {
+      "plan_id": "bccbdc1a-e569-482f-8c84-b33d42c4e6cb",
+      "staff": "0017",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T13:50:38.890000"
+    },
+    {
+      "plan_id": "d914549a-eea1-4a0a-ab1e-072acfec0b51",
+      "staff": "0017",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T14:21:37.500000"
+    },
+    {
+      "plan_id": "09138622-5154-4032-8f77-94b4d0adcefa",
+      "staff": "0017",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T14:10:52.907000"
+    },
+    {
+      "plan_id": "b60da892-5498-4292-9cb6-24f4e83a9644",
+      "staff": "0017",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T14:40:41.707000"
+    },
+    {
+      "plan_id": "6fa70f56-2f5a-406f-94a4-8395fd8b81b0",
+      "staff": "1607",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T15:30:54.480000"
+    },
+    {
+      "plan_id": "aeb251d2-8521-4fd4-b54b-8685a3e2ce38",
+      "staff": "1607",
+      "send_id_present": true,
+      "cached_status": "SendSuccess",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T15:20:53.877000"
+    }
+  ]
+}

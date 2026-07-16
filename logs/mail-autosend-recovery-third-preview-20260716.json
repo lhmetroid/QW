@@ -1,0 +1,82 @@
+{
+  "generated_at": "2026-07-16T12:20:36.817174",
+  "applied": false,
+  "source_sha256": "b7130ea7f759d92be7d6bd6025eb40fe37cd5e061d2834b2beb66714b40a0af0",
+  "audit_file": "logs\\mail-autosend-recovery-third-backup-20260716.json",
+  "config": {
+    "daily_cap": 50,
+    "skip_non_workdays": true,
+    "holiday_dates": []
+  },
+  "staff_count": 1,
+  "item_scope_count": 4,
+  "content_hash_unchanged": true,
+  "results": [
+    {
+      "ok": true,
+      "staff_id": "0188",
+      "overdue": 0,
+      "changed": 3,
+      "movable": 3,
+      "fixed_pending": 639,
+      "crm_pending_movable": 3,
+      "schedule_violations": 3,
+      "problem_count": 3,
+      "first_slot": "2026-07-24 14:00",
+      "last_slot": "2026-08-24 16:10",
+      "day_load": [
+        {
+          "date": "2026-07-24",
+          "count": 1
+        },
+        {
+          "date": "2026-08-05",
+          "count": 1
+        },
+        {
+          "date": "2026-08-24",
+          "count": 1
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "8f4da75c-99eb-437e-bdc8-0dd9c6e55d39",
+          "contact_id": "KH00717-024",
+          "company_name": "三菱重工业（上海）有限公司",
+          "contact_name": "陆行素.",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-21 12:50",
+          "new_date": "2026-07-24",
+          "new_time": "14:00",
+          "seq_in_day": 30
+        },
+        {
+          "item_id": "1684c3ac-e9b9-48fa-9ac8-c8cae00e1afd",
+          "contact_id": "KH00717-024",
+          "company_name": "三菱重工业（上海）有限公司",
+          "contact_name": "陆行素.",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-07-31 12:15",
+          "new_date": "2026-08-05",
+          "new_time": "12:40",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "bbedcacb-7afb-456d-b789-e4dd172d0652",
+          "contact_id": "KH00717-024",
+          "company_name": "三菱重工业（上海）有限公司",
+          "contact_name": "陆行素.",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-05 12:40",
+          "new_date": "2026-08-24",
+          "new_time": "16:10",
+          "seq_in_day": 44
+        }
+      ],
+      "applied": false
+    }
+  ]
+}

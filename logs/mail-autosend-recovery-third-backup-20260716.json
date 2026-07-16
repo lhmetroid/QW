@@ -1,0 +1,112 @@
+{
+  "generated_at": "2026-07-16T12:20:06.834876",
+  "read_only": true,
+  "staff_filter": null,
+  "active_items_checked": 11666,
+  "affected_suites": 1,
+  "affected_items": 4,
+  "crm_waitsend_items": 3,
+  "crm_send_success_items": 1,
+  "records": [
+    {
+      "item_id": "f5dc0166-5531-43c7-8e92-c35d4b9c1ee1",
+      "run_id": "3433e96b-67d1-447a-a60d-87f2b5c5719e",
+      "contact_id": "KH00717-024",
+      "customer_id": "KH00717-024",
+      "staff_id": "0188",
+      "scenario": "new_contact_intro",
+      "suite_step": 1,
+      "local_plan_date": "2026-07-13",
+      "local_plan_time": "11:45",
+      "local_status": "sent",
+      "interval_days_csv": "1,10,19,25",
+      "send_plan_id": "eb5ce831-2199-4f2e-af91-141ca6fec521",
+      "send_plan_time": "2026-07-15T11:45:00",
+      "send_plan_status": "enqueued",
+      "spqueue_rowid": "2fa48e05-eaab-4ead-8cee-9e45df55bfe8",
+      "crm_send_id": "Mal_S260715-000077",
+      "cached_crm_status": "SendSuccess",
+      "cached_fact_time": "2026-07-15T13:41:50.463000",
+      "crm_truth": {
+        "status": "SendSuccess",
+        "fact_time": "2026-07-15T13:41:50.463000",
+        "plan_time": "2026-07-15T11:45:00"
+      }
+    },
+    {
+      "item_id": "8f4da75c-99eb-437e-bdc8-0dd9c6e55d39",
+      "run_id": "3433e96b-67d1-447a-a60d-87f2b5c5719e",
+      "contact_id": "KH00717-024",
+      "customer_id": "KH00717-024",
+      "staff_id": "0188",
+      "scenario": "new_contact_intro",
+      "suite_step": 2,
+      "local_plan_date": "2026-07-21",
+      "local_plan_time": "12:50",
+      "local_status": "sent",
+      "interval_days_csv": "1,10,19,25",
+      "send_plan_id": "8fe75873-1b38-41c6-a9f5-f2e30c5b3b49",
+      "send_plan_time": "2026-07-21T12:50:00",
+      "send_plan_status": "enqueued",
+      "spqueue_rowid": "9c0a8c5f-7177-498a-9b88-751601f6475d",
+      "crm_send_id": "Mal_S260715-000069",
+      "cached_crm_status": "WaitSend",
+      "cached_fact_time": null,
+      "crm_truth": {
+        "status": "WaitSend",
+        "fact_time": null,
+        "plan_time": "2026-07-21T12:50:00"
+      }
+    },
+    {
+      "item_id": "1684c3ac-e9b9-48fa-9ac8-c8cae00e1afd",
+      "run_id": "3433e96b-67d1-447a-a60d-87f2b5c5719e",
+      "contact_id": "KH00717-024",
+      "customer_id": "KH00717-024",
+      "staff_id": "0188",
+      "scenario": "new_contact_intro",
+      "suite_step": 3,
+      "local_plan_date": "2026-07-31",
+      "local_plan_time": "12:15",
+      "local_status": "sent",
+      "interval_days_csv": "1,10,19,25",
+      "send_plan_id": "6fb64661-0042-4a66-8f85-dfd1616b8d7b",
+      "send_plan_time": "2026-07-31T12:15:00",
+      "send_plan_status": "enqueued",
+      "spqueue_rowid": "574b1ee2-2e68-45aa-a34f-d9cd7d608500",
+      "crm_send_id": "Mal_S260715-000044",
+      "cached_crm_status": "WaitSend",
+      "cached_fact_time": null,
+      "crm_truth": {
+        "status": "WaitSend",
+        "fact_time": null,
+        "plan_time": "2026-07-31T12:15:00"
+      }
+    },
+    {
+      "item_id": "bbedcacb-7afb-456d-b789-e4dd172d0652",
+      "run_id": "3433e96b-67d1-447a-a60d-87f2b5c5719e",
+      "contact_id": "KH00717-024",
+      "customer_id": "KH00717-024",
+      "staff_id": "0188",
+      "scenario": "new_contact_intro",
+      "suite_step": 4,
+      "local_plan_date": "2026-08-05",
+      "local_plan_time": "12:40",
+      "local_status": "sent",
+      "interval_days_csv": "1,10,19,25",
+      "send_plan_id": "48f4fc7b-2e40-40dc-84e8-05fd729f7171",
+      "send_plan_time": "2026-08-05T12:40:00",
+      "send_plan_status": "enqueued",
+      "spqueue_rowid": "d250d7bb-81ac-422a-93d7-ceaec4c019dc",
+      "crm_send_id": "Mal_S260715-000043",
+      "cached_crm_status": "WaitSend",
+      "cached_fact_time": null,
+      "crm_truth": {
+        "status": "WaitSend",
+        "fact_time": null,
+        "plan_time": "2026-08-05T12:40:00"
+      }
+    }
+  ]
+}

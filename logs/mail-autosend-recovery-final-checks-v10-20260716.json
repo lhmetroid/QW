@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-07-16T16:37:26.382451",
+  "waitsend_checked": 821,
+  "item_map_count": 821,
+  "plan_map_count": 821,
+  "crm_queue_count": 807,
+  "three_way_mismatches": [],
+  "resolved_transitions": [
+    {
+      "item_id": "55a17313-0d9e-4f78-a65a-847b972b7f3e",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T15:30:54.480000"
+    },
+    {
+      "item_id": "36bc55c8-f193-4d07-95d8-4acda6c2fa25",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T15:20:53.877000"
+    },
+    {
+      "item_id": "369fb324-df93-4717-9581-2467aaa5a821",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T14:00:41.580000"
+    },
+    {
+      "item_id": "5c853ecf-563e-45a9-8aa1-5cb4fc806fab",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T13:50:38.890000"
+    },
+    {
+      "item_id": "6608c1b2-5b63-4b97-8c7a-226097b01095",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T13:40:36.420000"
+    },
+    {
+      "item_id": "925a1ebb-e059-4c6a-a23d-29124106b6d3",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T15:00:44.063000"
+    },
+    {
+      "item_id": "65277196-9886-4326-b7f2-9af13d8f94cf",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T13:35:27.330000"
+    },
+    {
+      "item_id": "3fec0e9b-52f4-40c7-ac98-6f9b78f5a907",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T15:20:48.547000"
+    },
+    {
+      "item_id": "15ea9eb8-11a2-471d-879e-16a8daa09c4b",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T15:10:45.797000"
+    },
+    {
+      "item_id": "07952e4b-378f-4e00-aa00-15fdf9dbdbea",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T14:10:52.907000"
+    },
+    {
+      "item_id": "2e63c27b-1c93-471a-bf52-d0f1f8a64033",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T14:30:39.250000"
+    },
+    {
+      "item_id": "f24adf56-6879-4d60-b9eb-904bbcab2bf9",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T14:21:37.500000"
+    },
+    {
+      "item_id": "5caa5e38-82fc-4b17-932d-3fff4060604c",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T14:50:44.547000"
+    },
+    {
+      "item_id": "62d0ef99-a29c-4522-a83a-a413aad7f91f",
+      "status": "send_success",
+      "fact_send_time": "2026-07-16T14:40:41.707000"
+    }
+  ],
+  "over_cap_days": [],
+  "gap_violations": [],
+  "ai_weekend_rows": [],
+  "max_combined_daily_count": 50
+}

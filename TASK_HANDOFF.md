@@ -2075,3 +2075,32 @@ ode --check scratch\frontend-mail-suite-current-check.js；git diff --check -- b
 - 人工确认别名：`空气化工产品*`→`空气化工`，`百特医疗用品*`→`百特医疗`；`用品`、`产品`作为仅限尾部的通用属性词。
 - `backend/mail_prompt_wildcard_checks.py` 当前 7 个测试方法，覆盖 3M2/欧莱雅2、舒万诺、丹纳赫、空气化工、百特医疗、法律/业务尾词、六字完整词和成功案例通配符。
 - CRM 32,003 个不重复公司名全量只读回放：empty=0、over6=0、重点半词结尾=0。
+
+## 2026-07-16 交接：KH12934-018 套装时间/状态不一致事件
+- 安全结论：当前无重复发送、无重复待发。第1封 SendSuccess，真实发送 2026-07-15 13:36:49；第2~4封 WaitSend。
+- ERP权威排期：第1封 07-15 12:30；后续 08-03 13:50、08-20 11:50、09-10 09:30。截图中的 07-16/08-04/08-24/09-11 不是当前 ERP 权威时间。
+- 根因见 logs/mail-suite-duplicate-incident-20260716.md。优先修复应为：CRM业务键防重、重排仅限本次 item_ids、已入CRM行展示CRM权威时间、拆分入队/待发/实发状态。
+- 未实施代码修复，未写 CRM/ERP，未触发真实发信。若继续开发，应作为发送安全事故任务插入 Task79 之前，且先加只读审计与回归测试。
+- 诊断期间本地 8071 未运行，未启动后端（避免 watchdog 续跑队列）；生产只读 API 一次成功后代理临时失败，最终证据由 PostgreSQL+CRM SQL Server 直读闭环。
+
+### 2026-07-16 10:36:01 套装同日排期问题
+- 证据见 logs/mail-suite-same-day-incident-20260716.md。
+- 后续若获授权修复，应保证容量顺延后仍按套装累计间隔重新锚定，并先处理尚未同步CRM的受影响存量；任何生产批量改期须人工确认。
+
+## 2026-07-16 交接：套装排期/状态/CRM一致性修复待最后生产清理
+
+- 代码已完成：backend/main.py、backend/mail_ai_stats.py、frontend/mail-suite.html；新增排期回归、数据审计/回收、重复待发明细与安全清理脚本。
+- 生产排期时间已按用户授权回收，本地数据库、mail_customer_suite_send_plan和CRM spQueueSend.PlanSendTime已同步；正文、主题、Prompt内容哈希均未改变，也未触发真实发信。
+- 最终重点抽样：821条三方时间/状态不一致0；每日超过50封0；非工作日0；剩余6个十分钟间隔冲突已证明全部来自重复CRM待发旧行，而非排期算法。
+- 全局重复审计：13组/26条CRM WaitSend，应保留13、删除13。11组保留当前本地排期唯一匹配行；2组为收件人、主题、正文、时间完全相同的精确重复，保留crm_send_status已同步为WaitSend的行。dry-run 13/13可确定，无模糊组。
+- 未执行的唯一生产动作：python backend/mail_autosend_duplicate_cleanup.py --apply --confirm DELETE-13-DUPLICATE-WAITSEND。该命令会删除13条spQueueSend及其13条spQueueSendFile登记，并把对应本地send_plan crm_send_status标记deleted；执行前会重新验证全部keeper/delete行仍为OutBox宣传邮件-AI且销售一致。必须先取得人工明确删除授权。
+- 删除获授权并成功后：重跑crm_orphan_audit、post_recovery_checks（预期duplicate_pending_keys=0、gap_violations=0），再进行部署后的浏览器界面验收；在此之前Task 78A保持[~]，不得标[x]。
+- 注意：根目录仍缺少邮件智能回复实现方案.md、文件创建要求.md；未启动本地后端，避免watchdog自动续跑历史队列。
+### 2026-07-16 16:35后续交接
+
+- 已执行用户批准的13条重复CRM待发删除；最新常规duplicate审计为0。
+- 已回链3条“CRM真实WaitSend但本地commit_failed/无send_plan”的孤立记录，内容逐字归一后匹配，回链后整套重排同步成功。
+- 仍有1条额外精确重复CRM待发：只读证据在logs/mail-autosend-unmapped-audit-20260716.json，清理预演在logs/mail-autosend-unmapped-duplicate-cleanup-20260716.json。必须取得人工对这新增1条的明确删除授权后，执行：python backend/mail_autosend_unmapped_duplicate_cleanup.py --apply --confirm DELETE-1-UNMAPPED-DUPLICATE-WAITSEND。
+- 执行后应重跑unmapped_audit（预期0）、crm_orphan_audit（重复0）、post_recovery_checks v10口径（异常/间隔/上限/非工作日均0）。
+- 代码增加“未过期不提前”的not_before时间下界，防止两个套装在重复校验中交换空槽；slot冲突现在纳入problem_count。
+- Task78A仍保持[~]：还差新增1条删除授权及代码部署后的浏览器验收。

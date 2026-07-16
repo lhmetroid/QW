@@ -234,14 +234,12 @@ def ai_token_matches_send_id(token: str, send_id: str) -> bool:
 # 1) 同步真发状态: 本地 send_plan <- CRM spSendInfo{销售}.SendId
 # ---------------------------------------------------------------------------
 def _crm_send_info_for_missing_send_id(crm, table_name: str, plan) -> object | None:
-    """Fallback when CRM SendId was not readable immediately after queue insert.
-
-    Some CRM sender deployments remove the queue row and only later expose the generated SendId in
-    spSendInfo{staff}. In that case local crm_send_id stays empty, so match by the narrow immutable
-    fields we inserted: exact subject, planned send minute, AI UseRange, and sender address.
-    """
+    """缺 SendId 时按主题、计划分钟、AI用途、发件地址和收件邮箱做唯一匹配。"""
     subject = (plan[5] or "").strip()
     sender = (plan[7] or "").strip().lower()
+    recipient_raw = str(plan[9] or "") if len(plan) > 9 else ""
+    recipient_match = re.search(r"([^<>\s,;]+@[^<>\s,;]+)", recipient_raw.lower())
+    recipient = recipient_match.group(1) if recipient_match else ""
     if "@" not in sender or "*" in sender:
         sender = ""
     plan_time = plan[6]
@@ -255,19 +253,16 @@ def _crm_send_info_for_missing_send_id(crm, table_name: str, plan) -> object | N
         f"WHERE Subject=:sub AND PlanSendTime>=:a AND PlanSendTime<:b "
         f"AND UseRange=:ur "
         f"AND (:sender='' OR LOWER(CAST(COALESCE(SendAddress,'') AS NVARCHAR(MAX))) LIKE :sender_like) "
+        f"AND (:recipient='' OR LOWER(CAST(COALESCE(Receiver,'') AS NVARCHAR(MAX))) LIKE :recipient_like) "
         f"ORDER BY FactSendTime DESC, PlanSendTime DESC"
     ), {
-        "sub": subject,
-        "a": start,
-        "b": end,
-        "ur": _MAIL_AI_USE_RANGE,
-        "sender": sender,
-        "sender_like": f"%{sender}%" if sender else "%",
+        "sub": subject, "a": start, "b": end, "ur": _MAIL_AI_USE_RANGE,
+        "sender": sender, "sender_like": f"%{sender}%" if sender else "%",
+        "recipient": recipient, "recipient_like": f"%{recipient}%" if recipient else "%",
     }).fetchall()
     if len(rows) != 1:
         return None
     return rows[0]
-
 
 def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
     """对最近 lookback_days 转入的 enqueued 计划, 用 SendId 关联 spSendInfo{销售} 回填真发状态;
@@ -276,7 +271,7 @@ def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
     cutoff = datetime.utcnow() - timedelta(days=lookback_days)
     plans = db.execute(text(
         "SELECT plan_id, crm_send_id, inputer_staff_id, crm_message_id, crm_send_status, "
-        "       subject, plan_send_time, sender_email "
+        "       subject, plan_send_time, sender_email, spqueue_rowid, to_emails "
         "FROM mail_customer_suite_send_plan "
         "WHERE status='enqueued' AND created_at>=:cut"
     ), {"cut": cutoff}).fetchall()
@@ -317,6 +312,28 @@ def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
                         recovered_send_id = str(rec[0])
                 plan_id = r[0]
                 if rec is None:
+                    queue_row = None
+                    rowid = str(r[8] or "").strip()
+                    send_id = str(r[1] or "").strip()
+                    if rowid or send_id:
+                        queue_row = crm.execute(text(
+                            "SELECT TOP 1 PlanSendTime, CAST(RowId AS NVARCHAR(64)), "
+                            "ISNULL(CAST(SendId AS NVARCHAR(80)),'') FROM spQueueSend "
+                            "WHERE MessageType='Email' AND InputerStaffId=:staff "
+                            "AND ((:rid<>'' AND CAST(RowId AS NVARCHAR(64))=:rid) "
+                            "OR (:sid<>'' AND CAST(SendId AS NVARCHAR(80))=:sid))"
+                        ), {"staff": staff_id, "rid": rowid, "sid": send_id}).fetchone()
+                    if queue_row is not None:
+                        db.execute(text(
+                            "WITH target AS (SELECT plan_id FROM mail_customer_suite_send_plan "
+                            "WHERE plan_id=:pid FOR UPDATE SKIP LOCKED) "
+                            "UPDATE mail_customer_suite_send_plan p SET crm_send_status='WaitSend', "
+                            "plan_send_time=:pt, spqueue_rowid=COALESCE(NULLIF(:rid,''),p.spqueue_rowid), "
+                            "crm_send_id=COALESCE(NULLIF(:sid,''),p.crm_send_id), status_synced_at=now() "
+                            "FROM target WHERE p.plan_id=target.plan_id"
+                        ), {"pid": plan_id, "pt": queue_row[0], "rid": str(queue_row[1] or ""),
+                            "sid": str(queue_row[2] or "")})
+                        continue
                     # SendId 不在 spSendInfo: 仍在队列待发 或 已被删除。缺 SendId 的未来计划保持空状态, 等后续真发后再反查。
                     if r[1]:
                         db.execute(text(

@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-07-16T16:33:11.746060",
+  "read_only": true,
+  "records": [
+    {
+      "staff_id": "0002",
+      "item_id": "1b4ecfea-b4ce-4b3f-b74e-2049f72959bd"
+    },
+    {
+      "staff_id": "0141",
+      "item_id": "e71a0b42-dc73-44a4-83d3-52d48bafc017"
+    },
+    {
+      "staff_id": "0141",
+      "item_id": "d4d09f2d-37e3-4a3f-a2be-804f268cdf52"
+    }
+  ]
+}

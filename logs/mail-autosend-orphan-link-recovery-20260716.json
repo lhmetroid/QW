@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-07-16T16:33:11.312136",
+  "apply": true,
+  "target_count": 3,
+  "targets": [
+    {
+      "rowid": "EB11851E-E2B4-446A-999C-0ADC6465AB3B",
+      "staff": "0002",
+      "item_id": "1b4ecfea-b4ce-4b3f-b74e-2049f72959bd"
+    },
+    {
+      "rowid": "BF009205-46B1-4D25-8624-1E7980E69206",
+      "staff": "0141",
+      "item_id": "e71a0b42-dc73-44a4-83d3-52d48bafc017"
+    },
+    {
+      "rowid": "58AFEBCD-5FAE-4C71-B813-D6D9C57F8051",
+      "staff": "0141",
+      "item_id": "d4d09f2d-37e3-4a3f-a2be-804f268cdf52"
+    }
+  ],
+  "applied_at": "2026-07-16T16:33:11.744993",
+  "linked": [
+    {
+      "rowid": "EB11851E-E2B4-446A-999C-0ADC6465AB3B",
+      "staff": "0002",
+      "item_id": "1b4ecfea-b4ce-4b3f-b74e-2049f72959bd",
+      "plan_id": "1c33d11d-b18a-4c76-8ec0-01f7c86baeca",
+      "crm_plan_time": "2026-07-30T16:20:00"
+    },
+    {
+      "rowid": "BF009205-46B1-4D25-8624-1E7980E69206",
+      "staff": "0141",
+      "item_id": "e71a0b42-dc73-44a4-83d3-52d48bafc017",
+      "plan_id": "1a9a972e-d796-4ffb-bcc2-779a78eba0ad",
+      "crm_plan_time": "2026-08-17T16:20:00"
+    },
+    {
+      "rowid": "58AFEBCD-5FAE-4C71-B813-D6D9C57F8051",
+      "staff": "0141",
+      "item_id": "d4d09f2d-37e3-4a3f-a2be-804f268cdf52",
+      "plan_id": "141ed16e-ffb3-48ca-81ef-29e148acad12",
+      "crm_plan_time": "2026-08-18T10:50:00"
+    }
+  ]
+}

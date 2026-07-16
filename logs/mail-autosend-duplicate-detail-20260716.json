@@ -1,0 +1,630 @@
+{
+  "generated_at": "2026-07-16T13:39:28.553956",
+  "read_only": true,
+  "duplicate_groups": 13,
+  "details": [
+    {
+      "customer_id": "KH00187-159",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 3,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [
+        {
+          "item_id": "0ed693e3-de2a-486d-aa12-719ec5ea8e1f",
+          "status": "sent",
+          "plan_time": "2026-08-03T13:20",
+          "created_at": null
+        }
+      ],
+      "rows": [
+        {
+          "rowid": "4E205E08-3D54-4ABF-9526-F4E4014A1702",
+          "crm_plan_time": "2026-07-29T09:10:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-02T15:05:42.563000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "09ed916b-816e-4cfb-a20d-e370d1b6baf8",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-02T07:05:43.243435",
+          "cached_crm_status": "",
+          "subject_hash": "055497b8298b9cf91b7b517f5249b121",
+          "body_hash": "8291d9810293e2c68ca84b1acd808018",
+          "recipient_key_hash": "juzhao.hou@alstomgroup.com"
+        },
+        {
+          "rowid": "4E07B3E6-0A77-4454-BCC4-E10AE81DD466",
+          "crm_plan_time": "2026-08-03T13:20:00",
+          "matches_local_time": true,
+          "crm_input_time": "2026-07-02T15:05:51.767000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "ded5283b-8f52-4902-99cc-fa4b5cfc962d",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-02T07:05:52.447235",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "055497b8298b9cf91b7b517f5249b121",
+          "body_hash": "8291d9810293e2c68ca84b1acd808018",
+          "recipient_key_hash": "juzhao.hou@alstomgroup.com"
+        }
+      ]
+    },
+    {
+      "customer_id": "KH01969-042",
+      "staff": "0017",
+      "scenario": "re_activation",
+      "step": 4,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [],
+      "rows": [
+        {
+          "rowid": "78316D1F-7F4B-405A-B702-83AA47773C5E",
+          "crm_plan_time": "2026-07-22T09:00:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-01T09:52:22.347000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "7e584b60-8931-44b9-9f5d-ab4cee6b1d4f",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-01T01:52:22.606998",
+          "cached_crm_status": "",
+          "subject_hash": "e01676e935f4acf6e44793fd2dd414fc",
+          "body_hash": "d1be8fc6a87eedddfe2d0e9d3af7ac41",
+          "recipient_key_hash": "john.wong@pentair.com"
+        },
+        {
+          "rowid": "2A620794-9EEA-48D6-9F5B-ACE83FE00C19",
+          "crm_plan_time": "2026-07-22T09:00:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-01T09:51:27.020000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "2a91df71-205b-4e1c-9a26-44e06f3a9457",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-01T01:51:27.235225",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "e01676e935f4acf6e44793fd2dd414fc",
+          "body_hash": "d1be8fc6a87eedddfe2d0e9d3af7ac41",
+          "recipient_key_hash": "john.wong@pentair.com"
+        }
+      ]
+    },
+    {
+      "customer_id": "KH00187-151",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 3,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [
+        {
+          "item_id": "fae8b1c4-070c-4dc6-9fb5-ac8cbc8b938d",
+          "status": "sent",
+          "plan_time": "2026-08-03T13:50",
+          "created_at": null
+        }
+      ],
+      "rows": [
+        {
+          "rowid": "A2AA13AA-FEAC-468F-A4E5-1D449FFB43B3",
+          "crm_plan_time": "2026-07-29T09:35:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-02T15:40:17.500000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "956fc846-deb9-4250-87d2-42c9f459fd8c",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-02T07:40:18.242499",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "40f92ed5c1d9096c7d3bb0aabed5cf0e",
+          "body_hash": "ac211803637d1db37c7e20d93c25448f",
+          "recipient_key_hash": "irene.lew@sg.panasonic.com"
+        },
+        {
+          "rowid": "1276CAAB-2A7A-4F25-B184-84C415E8D92A",
+          "crm_plan_time": "2026-08-03T13:50:00",
+          "matches_local_time": true,
+          "crm_input_time": "2026-07-02T15:40:45.267000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "63c71f02-3e36-4a0e-a409-7f0b3ab97607",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-02T07:40:45.812760",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "40f92ed5c1d9096c7d3bb0aabed5cf0e",
+          "body_hash": "ac211803637d1db37c7e20d93c25448f",
+          "recipient_key_hash": "irene.lew@sg.panasonic.com"
+        }
+      ]
+    },
+    {
+      "customer_id": "KH00187-151",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 4,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [
+        {
+          "item_id": "22a631c9-d445-43ff-9d04-8eaa88b36562",
+          "status": "sent",
+          "plan_time": "2026-11-26T15:30",
+          "created_at": null
+        }
+      ],
+      "rows": [
+        {
+          "rowid": "233CE688-4D00-440A-B895-F7846677D95C",
+          "crm_plan_time": "2026-08-25T09:35:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-02T15:40:22.377000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "9c7b5322-741a-441f-8ae5-12fa35bab757",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-02T07:40:23.076241",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "9a287d030c4320c1cec444c0835edbd6",
+          "body_hash": "40d20a9e49627e8e17ec3c304c8bd247",
+          "recipient_key_hash": "irene.lew@sg.panasonic.com"
+        },
+        {
+          "rowid": "B9A6B1BA-DB48-46BE-A560-3D982BE3B036",
+          "crm_plan_time": "2026-11-26T15:30:00",
+          "matches_local_time": true,
+          "crm_input_time": "2026-07-02T15:40:50.390000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "04908911-cb0b-499f-ab69-9c4601399369",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-02T07:40:51.141264",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "9a287d030c4320c1cec444c0835edbd6",
+          "body_hash": "40d20a9e49627e8e17ec3c304c8bd247",
+          "recipient_key_hash": "irene.lew@sg.panasonic.com"
+        }
+      ]
+    },
+    {
+      "customer_id": "KH00187-138",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 3,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [
+        {
+          "item_id": "ed0ebdc4-631a-4599-a35a-6775d24771e3",
+          "status": "sent",
+          "plan_time": "2026-08-03T14:20",
+          "created_at": null
+        }
+      ],
+      "rows": [
+        {
+          "rowid": "B50E19C1-35D7-4BD4-8406-E25A33665F0E",
+          "crm_plan_time": "2026-07-29T10:10:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-03T10:50:03.910000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "2686a9db-7786-42cd-bac4-ae162f4744ec",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:50:04.033028",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "40f92ed5c1d9096c7d3bb0aabed5cf0e",
+          "body_hash": "302ba8592b34b379c8eb5b72f4b33f2f",
+          "recipient_key_hash": "yongji.shi@alstomgroup.com"
+        },
+        {
+          "rowid": "991BDE9E-F687-4B1F-BCB6-76F2B61077BA",
+          "crm_plan_time": "2026-08-03T14:20:00",
+          "matches_local_time": true,
+          "crm_input_time": "2026-07-03T10:50:26.460000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "120235fc-0921-4a27-bb6e-06217a0ab1d4",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:50:26.394168",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "40f92ed5c1d9096c7d3bb0aabed5cf0e",
+          "body_hash": "302ba8592b34b379c8eb5b72f4b33f2f",
+          "recipient_key_hash": "yongji.shi@alstomgroup.com"
+        }
+      ]
+    },
+    {
+      "customer_id": "KH00187-138",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 4,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [
+        {
+          "item_id": "16616076-da69-4e09-9f0a-4cc81c042f86",
+          "status": "sent",
+          "plan_time": "2026-11-26T16:00",
+          "created_at": null
+        }
+      ],
+      "rows": [
+        {
+          "rowid": "DB23F004-6BD2-4152-BC9F-9B628BA89F48",
+          "crm_plan_time": "2026-08-25T10:10:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-03T10:50:08.833000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "b725dc65-f628-4eea-8993-b97273cd11e7",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:50:09.017459",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "9a287d030c4320c1cec444c0835edbd6",
+          "body_hash": "7ddc17a0252a5b603e22e18519216d65",
+          "recipient_key_hash": "yongji.shi@alstomgroup.com"
+        },
+        {
+          "rowid": "75C723B3-2FA3-4660-A732-0B1BABFBD1DD",
+          "crm_plan_time": "2026-11-26T16:00:00",
+          "matches_local_time": true,
+          "crm_input_time": "2026-07-03T10:50:31.503000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "cda1bfa8-4d11-4ca3-b44a-5bd4ec54c005",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:50:31.706914",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "9a287d030c4320c1cec444c0835edbd6",
+          "body_hash": "7ddc17a0252a5b603e22e18519216d65",
+          "recipient_key_hash": "yongji.shi@alstomgroup.com"
+        }
+      ]
+    },
+    {
+      "customer_id": "KH00187-145",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 3,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [
+        {
+          "item_id": "50c6690d-814a-4b8a-ac87-6a90876b9c7a",
+          "status": "sent",
+          "plan_time": "2026-08-03T14:50",
+          "created_at": null
+        }
+      ],
+      "rows": [
+        {
+          "rowid": "C018F8C8-D2A4-4553-B8E7-EBE0BD64FC0E",
+          "crm_plan_time": "2026-07-29T10:25:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-03T10:51:08.690000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "e3c08f5f-d179-4625-a1b3-b348430c6eb8",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:51:08.900888",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "0b983d290ae182f807324736728aa2d8",
+          "body_hash": "701d1b62f499a887c2fd1b77d5fc57fe",
+          "recipient_key_hash": "yan.ma@alstomgroup.com"
+        },
+        {
+          "rowid": "7F0F455E-A7DD-4138-9BDF-26658565EE78",
+          "crm_plan_time": "2026-08-03T14:50:00",
+          "matches_local_time": true,
+          "crm_input_time": "2026-07-03T10:51:28.777000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "ac412a77-85e0-4679-8d61-e89e043aea66",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:51:28.930166",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "0b983d290ae182f807324736728aa2d8",
+          "body_hash": "701d1b62f499a887c2fd1b77d5fc57fe",
+          "recipient_key_hash": "yan.ma@alstomgroup.com"
+        }
+      ]
+    },
+    {
+      "customer_id": "KH00187-136",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 4,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [
+        {
+          "item_id": "42ad8d4c-7b23-4657-b64e-a45afdfbe78a",
+          "status": "sent",
+          "plan_time": "2026-11-26T16:20",
+          "created_at": null
+        }
+      ],
+      "rows": [
+        {
+          "rowid": "5A6486A0-5B27-49CB-98C3-1A75184C843E",
+          "crm_plan_time": "2026-11-26T16:20:00",
+          "matches_local_time": true,
+          "crm_input_time": "2026-07-03T10:51:13.020000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "404d41a6-cb5a-44b8-ad27-fd0dc55f1e7b",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:51:13.225434",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "804b4ef20ec13521214e5d5871781122",
+          "body_hash": "cc8f0546c79f74a2b22b4e06cdc24b72",
+          "recipient_key_hash": "xi.mu@alstomgroup.com"
+        },
+        {
+          "rowid": "A867B80D-8163-4346-8D7F-93478702CC11",
+          "crm_plan_time": "2026-08-25T10:20:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-03T10:50:52.987000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "743713f7-ec29-40cf-be91-fe016a05c09d",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:50:53.177243",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "804b4ef20ec13521214e5d5871781122",
+          "body_hash": "cc8f0546c79f74a2b22b4e06cdc24b72",
+          "recipient_key_hash": "xi.mu@alstomgroup.com"
+        }
+      ]
+    },
+    {
+      "customer_id": "KH00187-137",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 4,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [
+        {
+          "item_id": "9d67a51f-7d95-439d-a91c-c87bde7f82e2",
+          "status": "sent",
+          "plan_time": "2026-11-26T16:10",
+          "created_at": null
+        }
+      ],
+      "rows": [
+        {
+          "rowid": "6649AB6F-191B-4657-8E59-0ECBA6B961EC",
+          "crm_plan_time": "2026-08-25T10:15:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-03T10:50:31.910000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "5fffd885-936b-4d02-9313-52c9fb8c8106",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:50:32.128216",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "804b4ef20ec13521214e5d5871781122",
+          "body_hash": "bbd67209f79abe1e7eb78180862375f0",
+          "recipient_key_hash": "tingting.zhang@alstomgroup.com"
+        },
+        {
+          "rowid": "1C0533BA-B17D-4A61-854C-E7AD24E137F3",
+          "crm_plan_time": "2026-11-26T16:10:00",
+          "matches_local_time": true,
+          "crm_input_time": "2026-07-03T10:50:52.830000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "e2b8ba72-1da6-4066-b1e5-e0be008a726c",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:50:53.021074",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "804b4ef20ec13521214e5d5871781122",
+          "body_hash": "bbd67209f79abe1e7eb78180862375f0",
+          "recipient_key_hash": "tingting.zhang@alstomgroup.com"
+        }
+      ]
+    },
+    {
+      "customer_id": "KH00187-137",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 3,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [
+        {
+          "item_id": "b9257f99-e4df-4405-9314-5bb2831c9b95",
+          "status": "sent",
+          "plan_time": "2026-08-03T14:30",
+          "created_at": null
+        }
+      ],
+      "rows": [
+        {
+          "rowid": "223413BC-C6F5-48C4-98C9-CECF8E7BAF54",
+          "crm_plan_time": "2026-07-29T10:15:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-03T10:50:24.347000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "4c35638d-f765-43e8-9e52-964a85801689",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:50:24.550303",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "871e6988c1f4fda40a746c1fbc88dcd0",
+          "body_hash": "fd411cc687f42165abb0280f3de6b1e0",
+          "recipient_key_hash": "tingting.zhang@alstomgroup.com"
+        },
+        {
+          "rowid": "14C90757-3F57-465A-820E-A96027C9C396",
+          "crm_plan_time": "2026-08-03T14:30:00",
+          "matches_local_time": true,
+          "crm_input_time": "2026-07-03T10:50:47.317000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "a39d3d76-0859-4da1-80ef-e716b17328d2",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:50:47.520352",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "871e6988c1f4fda40a746c1fbc88dcd0",
+          "body_hash": "fd411cc687f42165abb0280f3de6b1e0",
+          "recipient_key_hash": "tingting.zhang@alstomgroup.com"
+        }
+      ]
+    },
+    {
+      "customer_id": "KH00187-145",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 4,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [
+        {
+          "item_id": "30d16dfb-e9ed-40dc-aca3-f9a33669650b",
+          "status": "sent",
+          "plan_time": "2026-11-26T16:30",
+          "created_at": null
+        }
+      ],
+      "rows": [
+        {
+          "rowid": "FD156E32-BD67-4C29-B836-A0650F80AAA1",
+          "crm_plan_time": "2026-08-25T10:25:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-03T10:51:14.363000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "54ac86e6-73f7-4be3-8382-443d614ced29",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:51:14.319473",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "9d1cb779291a60a5b81ef7e76c07f5d8",
+          "body_hash": "1281afda7c1e0aa18b297112a711fd98",
+          "recipient_key_hash": "yan.ma@alstomgroup.com"
+        },
+        {
+          "rowid": "1B23AF59-9803-443A-8937-636276C92043",
+          "crm_plan_time": "2026-11-26T16:30:00",
+          "matches_local_time": true,
+          "crm_input_time": "2026-07-03T10:51:34.823000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "e4c3495b-6a39-4080-95cb-25e65894d3ac",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:51:35.029767",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "9d1cb779291a60a5b81ef7e76c07f5d8",
+          "body_hash": "1281afda7c1e0aa18b297112a711fd98",
+          "recipient_key_hash": "yan.ma@alstomgroup.com"
+        }
+      ]
+    },
+    {
+      "customer_id": "KH00187-136",
+      "staff": "0188",
+      "scenario": "new_contact_intro",
+      "step": 3,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [
+        {
+          "item_id": "605f2427-c0fd-4ae3-b26b-bc60fd3b9d5e",
+          "status": "sent",
+          "plan_time": "2026-08-03T14:40",
+          "created_at": null
+        }
+      ],
+      "rows": [
+        {
+          "rowid": "75E1A402-0B1B-451C-9CFB-0FCDFC642410",
+          "crm_plan_time": "2026-08-03T14:40:00",
+          "matches_local_time": true,
+          "crm_input_time": "2026-07-03T10:51:08.067000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "2162596a-7fe4-4a7a-86de-d6023503e8d7",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:51:08.240581",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "055497b8298b9cf91b7b517f5249b121",
+          "body_hash": "02682e15504ebcb4105bb25457861758",
+          "recipient_key_hash": "xi.mu@alstomgroup.com"
+        },
+        {
+          "rowid": "BD3FFF17-319A-4A4D-A3FF-1080224F8002",
+          "crm_plan_time": "2026-07-29T10:20:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-07-03T10:50:47.940000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "1012830c-0449-49c6-b2b9-1909466a47c6",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-07-03T02:50:47.864039",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "055497b8298b9cf91b7b517f5249b121",
+          "body_hash": "02682e15504ebcb4105bb25457861758",
+          "recipient_key_hash": "xi.mu@alstomgroup.com"
+        }
+      ]
+    },
+    {
+      "customer_id": "KH08496-026",
+      "staff": "0017",
+      "scenario": "re_activation",
+      "step": 4,
+      "same_subject": true,
+      "same_body": true,
+      "same_recipient": true,
+      "local_items": [],
+      "rows": [
+        {
+          "rowid": "D028C8A2-F528-43D4-ACEE-BA13F7499A92",
+          "crm_plan_time": "2026-07-26T09:00:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-06-29T09:19:45.140000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "9554761d-e085-46ba-9bdb-8e804e6344af",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-06-29T01:19:45.796131",
+          "cached_crm_status": "WaitSend",
+          "subject_hash": "0d8b471ae5e5610ec7d493f5c959c37a",
+          "body_hash": "c07a9ac9a1218f060bfd3a88cae00ade",
+          "recipient_key_hash": "qian.sun@thalessaic.com.cn"
+        },
+        {
+          "rowid": "B0820C31-E554-4274-A9E9-802EA6A2062E",
+          "crm_plan_time": "2026-07-26T09:00:00",
+          "matches_local_time": false,
+          "crm_input_time": "2026-06-29T09:20:17.763000",
+          "send_id_present": true,
+          "file_rows": 1,
+          "plan_id": "b135fb0d-402a-4228-b812-b082ba8a9e5d",
+          "plan_status": "enqueued",
+          "plan_created_at": "2026-06-29T01:20:18.419400",
+          "cached_crm_status": "",
+          "subject_hash": "0d8b471ae5e5610ec7d493f5c959c37a",
+          "body_hash": "c07a9ac9a1218f060bfd3a88cae00ade",
+          "recipient_key_hash": "qian.sun@thalessaic.com.cn"
+        }
+      ]
+    }
+  ]
+}

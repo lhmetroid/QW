@@ -1,0 +1,130 @@
+{
+  "generated_at": "2026-07-16T15:58:36.579403",
+  "applied": true,
+  "source_sha256": "d46a2a28a2c2942fe78912d0fded3e85924ab65ccccdb97b8649fb06fc8c1073",
+  "audit_file": "logs\\mail-autosend-final-live-audit3-20260716.json",
+  "config": {
+    "daily_cap": 50,
+    "skip_non_workdays": true,
+    "holiday_dates": []
+  },
+  "staff_count": 5,
+  "item_scope_count": 11666,
+  "content_hash_unchanged": true,
+  "results": [
+    {
+      "ok": true,
+      "staff_id": "0002",
+      "overdue": 0,
+      "changed": 0,
+      "movable": 2343,
+      "fixed_pending": 13,
+      "crm_pending_movable": 697,
+      "schedule_violations": 0,
+      "problem_count": 0,
+      "first_slot": null,
+      "last_slot": null,
+      "day_load": [],
+      "changes": [],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "0017",
+      "overdue": 0,
+      "changed": 0,
+      "movable": 1121,
+      "fixed_pending": 108,
+      "crm_pending_movable": 817,
+      "schedule_violations": 0,
+      "problem_count": 0,
+      "first_slot": null,
+      "last_slot": null,
+      "day_load": [],
+      "changes": [],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "0141",
+      "overdue": 0,
+      "changed": 0,
+      "movable": 2078,
+      "fixed_pending": 22,
+      "crm_pending_movable": 716,
+      "schedule_violations": 0,
+      "problem_count": 0,
+      "first_slot": null,
+      "last_slot": null,
+      "day_load": [],
+      "changes": [],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "0188",
+      "overdue": 0,
+      "changed": 0,
+      "movable": 4728,
+      "fixed_pending": 6,
+      "crm_pending_movable": 625,
+      "schedule_violations": 0,
+      "problem_count": 0,
+      "first_slot": null,
+      "last_slot": null,
+      "day_load": [],
+      "changes": [],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "1607",
+      "overdue": 0,
+      "changed": 2,
+      "movable": 479,
+      "fixed_pending": 516,
+      "crm_pending_movable": 337,
+      "schedule_violations": 6,
+      "problem_count": 6,
+      "first_slot": "2026-08-11 11:00",
+      "last_slot": "2026-08-21 09:40",
+      "day_load": [
+        {
+          "date": "2026-08-11",
+          "count": 1
+        },
+        {
+          "date": "2026-08-21",
+          "count": 1
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "21bc2cbb-f20b-4c07-861e-55eb8e0a8225",
+          "contact_id": "KH00721-028",
+          "company_name": "上海ABB工程有限公司",
+          "contact_name": "许",
+          "scenario": "re_activation",
+          "suite_step": 4,
+          "old": "2026-08-21 10:40",
+          "new_date": "2026-08-21",
+          "new_time": "09:40",
+          "seq_in_day": 39
+        },
+        {
+          "item_id": "f0f94a53-da78-48b4-8f0b-5fc1a83bed81",
+          "contact_id": "KH00721-077",
+          "company_name": "上海ABB工程有限公司",
+          "contact_name": "Sidney Chen",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-08-10 13:40",
+          "new_date": "2026-08-11",
+          "new_time": "11:00",
+          "seq_in_day": 39
+        }
+      ],
+      "applied": true
+    }
+  ]
+}

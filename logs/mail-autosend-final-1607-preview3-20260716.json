@@ -1,0 +1,78 @@
+{
+  "generated_at": "2026-07-16T16:13:07.233275",
+  "applied": false,
+  "source_sha256": "f4762c6ac91cf526f0e707cc07d7d9040fcb1e60d35cad5c32597935864faae9",
+  "audit_file": "logs\\mail-autosend-final-1607-audit3-20260716.json",
+  "config": {
+    "daily_cap": 50,
+    "skip_non_workdays": true,
+    "holiday_dates": []
+  },
+  "staff_count": 1,
+  "item_scope_count": 588,
+  "content_hash_unchanged": true,
+  "results": [
+    {
+      "ok": true,
+      "staff_id": "1607",
+      "overdue": 0,
+      "changed": 3,
+      "movable": 479,
+      "fixed_pending": 516,
+      "crm_pending_movable": 337,
+      "schedule_violations": 6,
+      "problem_count": 6,
+      "first_slot": "2026-08-11 16:20",
+      "last_slot": "2026-08-21 11:10",
+      "day_load": [
+        {
+          "date": "2026-08-11",
+          "count": 1
+        },
+        {
+          "date": "2026-08-21",
+          "count": 2
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "21bc2cbb-f20b-4c07-861e-55eb8e0a8225",
+          "contact_id": "KH00721-028",
+          "company_name": "上海ABB工程有限公司",
+          "contact_name": "许",
+          "scenario": "re_activation",
+          "suite_step": 4,
+          "old": "2026-08-21 10:40",
+          "new_date": "2026-08-21",
+          "new_time": "10:50",
+          "seq_in_day": 39
+        },
+        {
+          "item_id": "f0f94a53-da78-48b4-8f0b-5fc1a83bed81",
+          "contact_id": "KH00721-077",
+          "company_name": "上海ABB工程有限公司",
+          "contact_name": "Sidney Chen",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-08-11 16:10",
+          "new_date": "2026-08-11",
+          "new_time": "16:20",
+          "seq_in_day": 40
+        },
+        {
+          "item_id": "9913aa2a-56cc-4375-b6ab-c1316aacc4df",
+          "contact_id": "KH00721-077",
+          "company_name": "上海ABB工程有限公司",
+          "contact_name": "Sidney Chen",
+          "scenario": "re_activation",
+          "suite_step": 4,
+          "old": "2026-08-21 10:50",
+          "new_date": "2026-08-21",
+          "new_time": "11:10",
+          "seq_in_day": 40
+        }
+      ],
+      "applied": false
+    }
+  ]
+}

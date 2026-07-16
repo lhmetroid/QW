@@ -1,0 +1,914 @@
+{
+  "generated_at": "2026-07-16T12:12:44.531132",
+  "applied": true,
+  "source_sha256": "b7130ea7f759d92be7d6bd6025eb40fe37cd5e061d2834b2beb66714b40a0af0",
+  "audit_file": "logs\\mail-autosend-recovery-second-backup-20260716.json",
+  "config": {
+    "daily_cap": 50,
+    "skip_non_workdays": true,
+    "holiday_dates": []
+  },
+  "staff_count": 3,
+  "item_scope_count": 92,
+  "content_hash_unchanged": true,
+  "results": [
+    {
+      "ok": true,
+      "staff_id": "0002",
+      "overdue": 0,
+      "changed": 9,
+      "movable": 9,
+      "fixed_pending": 677,
+      "crm_pending_movable": 9,
+      "schedule_violations": 9,
+      "problem_count": 9,
+      "first_slot": "2026-08-06 09:00",
+      "last_slot": "2026-08-24 15:10",
+      "day_load": [
+        {
+          "date": "2026-08-06",
+          "count": 3
+        },
+        {
+          "date": "2026-08-21",
+          "count": 3
+        },
+        {
+          "date": "2026-08-24",
+          "count": 3
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "41e8f2d6-c09c-4a3e-a5da-156b954249b0",
+          "contact_id": "KH23722-021",
+          "company_name": "丹纳赫商务服务（上海）有限公司",
+          "contact_name": "Bok Gong",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-24 12:00",
+          "new_date": "2026-08-06",
+          "new_time": "09:00",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "9886b2e1-a284-4cb5-82ce-d3e5182bcc2e",
+          "contact_id": "KH23722-021",
+          "company_name": "丹纳赫商务服务（上海）有限公司",
+          "contact_name": "Bok Gong",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-06 09:00",
+          "new_date": "2026-08-21",
+          "new_time": "14:30",
+          "seq_in_day": 33
+        },
+        {
+          "item_id": "b2951b37-1ae6-4859-b64a-7966ad68a99a",
+          "contact_id": "KH23722-021",
+          "company_name": "丹纳赫商务服务（上海）有限公司",
+          "contact_name": "Bok Gong",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-10 12:00",
+          "new_date": "2026-08-24",
+          "new_time": "14:50",
+          "seq_in_day": 35
+        },
+        {
+          "item_id": "be63ccf8-45d7-492c-9a59-7995d5c36696",
+          "contact_id": "KH23722-019",
+          "company_name": "丹纳赫商务服务（上海）有限公司",
+          "contact_name": "陶佳",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-24 12:10",
+          "new_date": "2026-08-06",
+          "new_time": "09:10",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "b61705e0-6587-47c5-bf23-ecccf352ea66",
+          "contact_id": "KH23722-019",
+          "company_name": "丹纳赫商务服务（上海）有限公司",
+          "contact_name": "陶佳",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-06 09:10",
+          "new_date": "2026-08-21",
+          "new_time": "14:40",
+          "seq_in_day": 34
+        },
+        {
+          "item_id": "72c1a07d-1a93-4311-9778-ab9d41bfbf64",
+          "contact_id": "KH23722-019",
+          "company_name": "丹纳赫商务服务（上海）有限公司",
+          "contact_name": "陶佳",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-10 12:10",
+          "new_date": "2026-08-24",
+          "new_time": "15:00",
+          "seq_in_day": 36
+        },
+        {
+          "item_id": "65d1ad58-7f28-4d83-93c5-0ce243977453",
+          "contact_id": "KH23722-005",
+          "company_name": "丹纳赫商务服务（上海）有限公司",
+          "contact_name": "swin zhang",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-24 12:20",
+          "new_date": "2026-08-06",
+          "new_time": "09:20",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "cc1dcf4a-5ecb-40d4-9236-ecc05eec8a6f",
+          "contact_id": "KH23722-005",
+          "company_name": "丹纳赫商务服务（上海）有限公司",
+          "contact_name": "swin zhang",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-06 09:20",
+          "new_date": "2026-08-21",
+          "new_time": "14:50",
+          "seq_in_day": 35
+        },
+        {
+          "item_id": "397ab166-21e4-45fb-b3f1-ac0e43911082",
+          "contact_id": "KH23722-005",
+          "company_name": "丹纳赫商务服务（上海）有限公司",
+          "contact_name": "swin zhang",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-10 12:20",
+          "new_date": "2026-08-24",
+          "new_time": "15:10",
+          "seq_in_day": 37
+        }
+      ],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "0017",
+      "overdue": 0,
+      "changed": 36,
+      "movable": 36,
+      "fixed_pending": 903,
+      "crm_pending_movable": 36,
+      "schedule_violations": 36,
+      "problem_count": 36,
+      "first_slot": "2026-07-23 09:30",
+      "last_slot": "2026-08-13 15:20",
+      "day_load": [
+        {
+          "date": "2026-07-23",
+          "count": 3
+        },
+        {
+          "date": "2026-07-24",
+          "count": 9
+        },
+        {
+          "date": "2026-08-04",
+          "count": 9
+        },
+        {
+          "date": "2026-08-05",
+          "count": 3
+        },
+        {
+          "date": "2026-08-07",
+          "count": 3
+        },
+        {
+          "date": "2026-08-13",
+          "count": 9
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "286e8010-f02f-4ef5-9a7f-cf0abb08de50",
+          "contact_id": "KH08496-050",
+          "company_name": "上海自仪泰雷兹交通自动化系统有限公司",
+          "contact_name": "马丽",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-20 16:50",
+          "new_date": "2026-07-23",
+          "new_time": "09:30",
+          "seq_in_day": 41
+        },
+        {
+          "item_id": "da01b412-ecee-4987-82fd-a1e22c360da0",
+          "contact_id": "KH08496-050",
+          "company_name": "上海自仪泰雷兹交通自动化系统有限公司",
+          "contact_name": "马丽",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-07-29 09:30",
+          "new_date": "2026-08-04",
+          "new_time": "09:30",
+          "seq_in_day": 41
+        },
+        {
+          "item_id": "76bcc630-9f0d-4b36-b503-95ba8df045a7",
+          "contact_id": "KH08496-050",
+          "company_name": "上海自仪泰雷兹交通自动化系统有限公司",
+          "contact_name": "马丽",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-05 11:30",
+          "new_date": "2026-08-07",
+          "new_time": "11:30",
+          "seq_in_day": 38
+        },
+        {
+          "item_id": "2d816ca9-7acc-41bd-bf7b-226e8fd334b0",
+          "contact_id": "KH08496-048",
+          "company_name": "上海自仪泰雷兹交通自动化系统有限公司",
+          "contact_name": "Amy Sun",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-20 17:00",
+          "new_date": "2026-07-23",
+          "new_time": "09:40",
+          "seq_in_day": 42
+        },
+        {
+          "item_id": "0b9c43d5-55d5-4b00-9fae-125ea97158aa",
+          "contact_id": "KH08496-048",
+          "company_name": "上海自仪泰雷兹交通自动化系统有限公司",
+          "contact_name": "Amy Sun",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-07-29 09:40",
+          "new_date": "2026-08-04",
+          "new_time": "09:40",
+          "seq_in_day": 42
+        },
+        {
+          "item_id": "c10fbb31-57b7-4898-afd2-d696796e8d71",
+          "contact_id": "KH08496-048",
+          "company_name": "上海自仪泰雷兹交通自动化系统有限公司",
+          "contact_name": "Amy Sun",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-05 11:40",
+          "new_date": "2026-08-07",
+          "new_time": "11:40",
+          "seq_in_day": 39
+        },
+        {
+          "item_id": "2bc58b3f-7be4-45f9-a6ac-8e99d7e38b1b",
+          "contact_id": "KH08496-044",
+          "company_name": "上海自仪泰雷兹交通自动化系统有限公司",
+          "contact_name": "许平",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-20 17:10",
+          "new_date": "2026-07-23",
+          "new_time": "09:50",
+          "seq_in_day": 43
+        },
+        {
+          "item_id": "11c96e63-bcee-4972-b0f4-83b8f14ac419",
+          "contact_id": "KH08496-044",
+          "company_name": "上海自仪泰雷兹交通自动化系统有限公司",
+          "contact_name": "许平",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-07-29 09:50",
+          "new_date": "2026-08-04",
+          "new_time": "09:50",
+          "seq_in_day": 43
+        },
+        {
+          "item_id": "14053128-b0d6-4421-b13f-77a61529cdac",
+          "contact_id": "KH08496-044",
+          "company_name": "上海自仪泰雷兹交通自动化系统有限公司",
+          "contact_name": "许平",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-05 11:50",
+          "new_date": "2026-08-07",
+          "new_time": "11:50",
+          "seq_in_day": 40
+        },
+        {
+          "item_id": "8f32da40-88e9-4bc1-984c-5f6fc72ebdf3",
+          "contact_id": "KH02506-002",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Bill Erickson",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-23 12:25",
+          "new_date": "2026-07-24",
+          "new_time": "14:20",
+          "seq_in_day": 40
+        },
+        {
+          "item_id": "44aa04e6-c35e-4c3d-90c3-8898c0997948",
+          "contact_id": "KH02506-002",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Bill Erickson",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-04 09:30",
+          "new_date": "2026-08-04",
+          "new_time": "10:00",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "0b8292da-0c6b-4126-934f-bd693c1ed2d1",
+          "contact_id": "KH02506-002",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Bill Erickson",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-07 11:30",
+          "new_date": "2026-08-13",
+          "new_time": "14:00",
+          "seq_in_day": 30
+        },
+        {
+          "item_id": "e5d46434-aea3-48ba-904c-dbcdde76736a",
+          "contact_id": "KH02506-019",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "施",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-23 12:30",
+          "new_date": "2026-07-24",
+          "new_time": "14:30",
+          "seq_in_day": 41
+        },
+        {
+          "item_id": "89fa07d6-3759-4437-ab31-752f551e12b7",
+          "contact_id": "KH02506-019",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "施",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-04 09:35",
+          "new_date": "2026-08-04",
+          "new_time": "10:10",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "4ee4c276-2a20-4ac0-b596-27a740c13900",
+          "contact_id": "KH02506-019",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "施",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-07 11:35",
+          "new_date": "2026-08-13",
+          "new_time": "14:10",
+          "seq_in_day": 31
+        },
+        {
+          "item_id": "c9af76a8-2988-41dd-819c-1570b51d8589",
+          "contact_id": "KH02506-003",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Zhou Peiming",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-23 12:35",
+          "new_date": "2026-07-24",
+          "new_time": "14:40",
+          "seq_in_day": 42
+        },
+        {
+          "item_id": "d443e6bc-f2dd-4d36-bed0-b0f9b743eec4",
+          "contact_id": "KH02506-003",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Zhou Peiming",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-04 09:40",
+          "new_date": "2026-08-04",
+          "new_time": "14:40",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "e0314359-ed30-4086-a295-1812bed158cb",
+          "contact_id": "KH02506-003",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Zhou Peiming",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-07 11:40",
+          "new_date": "2026-08-13",
+          "new_time": "14:20",
+          "seq_in_day": 32
+        },
+        {
+          "item_id": "99c6ee9f-4841-4253-9f2e-0b6c769f6c28",
+          "contact_id": "KH02506-035",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Ada.Xu",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-23 12:40",
+          "new_date": "2026-07-24",
+          "new_time": "14:50",
+          "seq_in_day": 43
+        },
+        {
+          "item_id": "43fb4f70-d49e-4dee-aa6d-134a168251d1",
+          "contact_id": "KH02506-035",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Ada.Xu",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-04 09:45",
+          "new_date": "2026-08-04",
+          "new_time": "14:50",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "a568547c-4afd-418d-a9ac-d6989eaba2d8",
+          "contact_id": "KH02506-035",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Ada.Xu",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-07 11:45",
+          "new_date": "2026-08-13",
+          "new_time": "14:30",
+          "seq_in_day": 33
+        },
+        {
+          "item_id": "513dbed9-d8dd-45b6-927a-53395b705e37",
+          "contact_id": "KH02506-032",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Tina Guan",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-23 12:45",
+          "new_date": "2026-07-24",
+          "new_time": "15:00",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "5142085e-b5bf-46e9-b614-802ebf372a9d",
+          "contact_id": "KH02506-032",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Tina Guan",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-04 09:50",
+          "new_date": "2026-08-04",
+          "new_time": "15:00",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "78185a20-2be2-4c50-bc25-7b8dc7dc5118",
+          "contact_id": "KH02506-032",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Tina Guan",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-07 11:50",
+          "new_date": "2026-08-13",
+          "new_time": "14:40",
+          "seq_in_day": 34
+        },
+        {
+          "item_id": "9a96e238-52db-4282-9c97-c0000568e62a",
+          "contact_id": "KH02506-039",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Steve Tam",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-23 12:50",
+          "new_date": "2026-07-24",
+          "new_time": "15:10",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "00c491ac-f075-44b8-ad6e-54d23ce778c4",
+          "contact_id": "KH02506-039",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Steve Tam",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-04 09:55",
+          "new_date": "2026-08-04",
+          "new_time": "15:10",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "99de303a-94bd-4875-960f-02b940311636",
+          "contact_id": "KH02506-039",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Steve Tam",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-07 11:55",
+          "new_date": "2026-08-13",
+          "new_time": "14:50",
+          "seq_in_day": 35
+        },
+        {
+          "item_id": "b48fb41a-4d87-4729-ac9a-19a0a90d8e05",
+          "contact_id": "KH02506-038",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Mike Zhang",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-23 12:55",
+          "new_date": "2026-07-24",
+          "new_time": "15:20",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "43111c70-5cf9-475f-9fe9-0db2c3cdf102",
+          "contact_id": "KH02506-038",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Mike Zhang",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-04 10:00",
+          "new_date": "2026-08-05",
+          "new_time": "11:30",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "b2d69ccf-3a9f-4c72-9882-226dffd4d233",
+          "contact_id": "KH02506-038",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Mike Zhang",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-07 12:00",
+          "new_date": "2026-08-13",
+          "new_time": "15:00",
+          "seq_in_day": 36
+        },
+        {
+          "item_id": "ab39a90a-b205-4b0d-90f9-e447bafc83f8",
+          "contact_id": "KH02506-037",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Su Cheng",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-23 13:00",
+          "new_date": "2026-07-24",
+          "new_time": "15:30",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "44c009d4-2663-49aa-bcb1-e4c2a742c96f",
+          "contact_id": "KH02506-037",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Su Cheng",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-04 10:05",
+          "new_date": "2026-08-05",
+          "new_time": "11:40",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "e0a0e51e-34b6-44d6-bc8b-77a7f61e5a4b",
+          "contact_id": "KH02506-037",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "Su Cheng",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-07 12:05",
+          "new_date": "2026-08-13",
+          "new_time": "15:10",
+          "seq_in_day": 37
+        },
+        {
+          "item_id": "e69c09de-75f8-4827-a730-e254d591664b",
+          "contact_id": "KH02506-007",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "张华",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-23 13:05",
+          "new_date": "2026-07-24",
+          "new_time": "15:40",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "4316f882-5859-4313-9dd5-04d31b51047a",
+          "contact_id": "KH02506-007",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "张华",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-04 10:10",
+          "new_date": "2026-08-05",
+          "new_time": "11:50",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "e996e314-1a7c-4d68-a45a-2916122cddd3",
+          "contact_id": "KH02506-007",
+          "company_name": "庄信万丰（上海）催化剂有限公司",
+          "contact_name": "张华",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-07 12:10",
+          "new_date": "2026-08-13",
+          "new_time": "15:20",
+          "seq_in_day": 38
+        }
+      ],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "0188",
+      "overdue": 0,
+      "changed": 21,
+      "movable": 24,
+      "fixed_pending": 618,
+      "crm_pending_movable": 24,
+      "schedule_violations": 21,
+      "problem_count": 21,
+      "first_slot": "2026-07-24 12:50",
+      "last_slot": "2026-08-24 16:00",
+      "day_load": [
+        {
+          "date": "2026-07-24",
+          "count": 7
+        },
+        {
+          "date": "2026-08-05",
+          "count": 7
+        },
+        {
+          "date": "2026-08-21",
+          "count": 2
+        },
+        {
+          "date": "2026-08-24",
+          "count": 5
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "1311c5e3-f41e-49af-8776-656eb2dadc86",
+          "contact_id": "KH00594-136",
+          "company_name": "斯必克（中国）投资有限公司",
+          "contact_name": "Hilary Du",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-21 12:05",
+          "new_date": "2026-07-24",
+          "new_time": "12:50",
+          "seq_in_day": 23
+        },
+        {
+          "item_id": "12d703cd-3448-45be-af2e-c0b29cbb7131",
+          "contact_id": "KH00594-136",
+          "company_name": "斯必克（中国）投资有限公司",
+          "contact_name": "Hilary Du",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-07-31 11:30",
+          "new_date": "2026-08-05",
+          "new_time": "12:00",
+          "seq_in_day": 43
+        },
+        {
+          "item_id": "0cab0cf8-ddfc-4a41-af2b-64b76715bc11",
+          "contact_id": "KH00594-136",
+          "company_name": "斯必克（中国）投资有限公司",
+          "contact_name": "Hilary Du",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-05 11:55",
+          "new_date": "2026-08-21",
+          "new_time": "17:00",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "dd291def-d94e-4d0a-bfd1-fd32e6e88ea5",
+          "contact_id": "KH00614-012",
+          "company_name": "瑞泰物流设备（昆山）有限公司",
+          "contact_name": "Terry Mu",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-21 12:10",
+          "new_date": "2026-07-24",
+          "new_time": "13:00",
+          "seq_in_day": 24
+        },
+        {
+          "item_id": "92e330de-7219-4ce2-b421-0659b867faa1",
+          "contact_id": "KH00614-012",
+          "company_name": "瑞泰物流设备（昆山）有限公司",
+          "contact_name": "Terry Mu",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-07-31 11:35",
+          "new_date": "2026-08-05",
+          "new_time": "12:10",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "0291da02-73a4-440b-aa3c-f19a7d7ec0ce",
+          "contact_id": "KH00614-012",
+          "company_name": "瑞泰物流设备（昆山）有限公司",
+          "contact_name": "Terry Mu",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-05 12:00",
+          "new_date": "2026-08-21",
+          "new_time": "17:10",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "42330f92-4924-4da7-bcdd-92001bce8489",
+          "contact_id": "KH00614-005",
+          "company_name": "瑞泰物流设备（昆山）有限公司",
+          "contact_name": "章琳",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-21 12:15",
+          "new_date": "2026-07-24",
+          "new_time": "13:10",
+          "seq_in_day": 25
+        },
+        {
+          "item_id": "95f6cc21-85dc-4562-b071-ae4affe35003",
+          "contact_id": "KH00614-005",
+          "company_name": "瑞泰物流设备（昆山）有限公司",
+          "contact_name": "章琳",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-07-31 11:40",
+          "new_date": "2026-08-05",
+          "new_time": "12:50",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "6a497bab-2ca9-4f65-b106-13eecac23730",
+          "contact_id": "KH00614-005",
+          "company_name": "瑞泰物流设备（昆山）有限公司",
+          "contact_name": "章琳",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-05 12:05",
+          "new_date": "2026-08-24",
+          "new_time": "15:20",
+          "seq_in_day": 39
+        },
+        {
+          "item_id": "42c58ce0-c152-4ab3-afa3-861dc238ea87",
+          "contact_id": "KH00614-003",
+          "company_name": "瑞泰物流设备（昆山）有限公司",
+          "contact_name": "sabrina liu(国外)",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-21 12:20",
+          "new_date": "2026-07-24",
+          "new_time": "13:20",
+          "seq_in_day": 26
+        },
+        {
+          "item_id": "1267aaaf-9537-4b3e-ab23-e7c0e44c5c6c",
+          "contact_id": "KH00614-003",
+          "company_name": "瑞泰物流设备（昆山）有限公司",
+          "contact_name": "sabrina liu(国外)",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-07-31 11:45",
+          "new_date": "2026-08-05",
+          "new_time": "15:50",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "411e5516-95e9-4c27-9b7d-f8ccefe8d95a",
+          "contact_id": "KH00614-003",
+          "company_name": "瑞泰物流设备（昆山）有限公司",
+          "contact_name": "sabrina liu(国外)",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-05 12:10",
+          "new_date": "2026-08-24",
+          "new_time": "15:30",
+          "seq_in_day": 40
+        },
+        {
+          "item_id": "d2dd0d47-eae4-45c9-b859-ef60da0d785d",
+          "contact_id": "KH00700-161",
+          "company_name": "瑞表国际贸易（上海）有限公司",
+          "contact_name": "Vicky",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-21 12:45",
+          "new_date": "2026-07-24",
+          "new_time": "13:30",
+          "seq_in_day": 27
+        },
+        {
+          "item_id": "43e314f4-6854-4133-b0bc-41636ba095ed",
+          "contact_id": "KH00700-161",
+          "company_name": "瑞表国际贸易（上海）有限公司",
+          "contact_name": "Vicky",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-07-31 12:10",
+          "new_date": "2026-08-05",
+          "new_time": "16:00",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "867bfbea-fbab-46ee-9a3c-460092744696",
+          "contact_id": "KH00700-161",
+          "company_name": "瑞表国际贸易（上海）有限公司",
+          "contact_name": "Vicky",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-05 12:35",
+          "new_date": "2026-08-24",
+          "new_time": "15:40",
+          "seq_in_day": 41
+        },
+        {
+          "item_id": "d0ce0555-369d-4946-8c0b-3b539772fa41",
+          "contact_id": "KH00717-022",
+          "company_name": "三菱重工业（上海）有限公司",
+          "contact_name": "前台",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-21 12:55",
+          "new_date": "2026-07-24",
+          "new_time": "13:40",
+          "seq_in_day": 28
+        },
+        {
+          "item_id": "39dbff2b-8637-4ff0-b22f-8088763a42ea",
+          "contact_id": "KH00717-022",
+          "company_name": "三菱重工业（上海）有限公司",
+          "contact_name": "前台",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-07-31 12:20",
+          "new_date": "2026-08-05",
+          "new_time": "16:10",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "6d653c59-7cf6-47f1-b3d4-8d13eb145350",
+          "contact_id": "KH00717-022",
+          "company_name": "三菱重工业（上海）有限公司",
+          "contact_name": "前台",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-05 12:45",
+          "new_date": "2026-08-24",
+          "new_time": "15:50",
+          "seq_in_day": 42
+        },
+        {
+          "item_id": "2604d3f6-b70b-4a04-9f95-4394861c4fae",
+          "contact_id": "KH00717-005",
+          "company_name": "三菱重工业（上海）有限公司",
+          "contact_name": "董",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-21 13:00",
+          "new_date": "2026-07-24",
+          "new_time": "13:50",
+          "seq_in_day": 29
+        },
+        {
+          "item_id": "02d34ea0-3dac-4a6a-8d38-53e86fe0a8ad",
+          "contact_id": "KH00717-005",
+          "company_name": "三菱重工业（上海）有限公司",
+          "contact_name": "董",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-07-31 12:25",
+          "new_date": "2026-08-05",
+          "new_time": "16:20",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "112daf19-50bd-4f88-91ae-cd062c617b22",
+          "contact_id": "KH00717-005",
+          "company_name": "三菱重工业（上海）有限公司",
+          "contact_name": "董",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-05 12:50",
+          "new_date": "2026-08-24",
+          "new_time": "16:00",
+          "seq_in_day": 43
+        }
+      ],
+      "applied": true
+    }
+  ]
+}

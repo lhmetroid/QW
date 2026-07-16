@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-07-16T13:26:30.272998",
+  "waitsend_checked": 821,
+  "item_map_count": 821,
+  "plan_map_count": 821,
+  "crm_queue_count": 821,
+  "three_way_mismatches": [],
+  "over_cap_days": [],
+  "gap_violations": [
+    {
+      "staff": "0188",
+      "date": "2026-07-29",
+      "left_minute": 610,
+      "right_minute": 615,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-07-29",
+      "left_minute": 615,
+      "right_minute": 620,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-07-29",
+      "left_minute": 620,
+      "right_minute": 625,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-08-25",
+      "left_minute": 610,
+      "right_minute": 615,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-08-25",
+      "left_minute": 615,
+      "right_minute": 620,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-08-25",
+      "left_minute": 620,
+      "right_minute": 625,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    }
+  ],
+  "ai_weekend_rows": [],
+  "max_combined_daily_count": 50
+}

@@ -1,0 +1,2496 @@
+{
+  "generated_at": "2026-07-16T13:12:13.377725",
+  "waitsend_checked": 821,
+  "item_map_count": 821,
+  "plan_map_count": 821,
+  "crm_queue_count": 821,
+  "three_way_mismatches": [
+    {
+      "item_id": "9662d010-e6df-4c09-99a2-7665594d6c59",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-10T09:10:00",
+      "send_plan": "2026-08-08T11:35:00",
+      "crm": "2026-08-08T11:35:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "c778099a-a13d-4f0c-9d53-76d6fb1aeae0",
+      "reason": "time_or_status_diff",
+      "local": "2026-10-23T14:50:00",
+      "send_plan": "2026-07-30T13:58:00",
+      "crm": "2026-07-30T13:58:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "d32e4263-7134-4443-a79b-afd07b0e694d",
+      "reason": "time_or_status_diff",
+      "local": "2026-11-04T09:30:00",
+      "send_plan": "2026-08-24T13:26:00",
+      "crm": "2026-08-24T13:26:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "0a3a2c24-0407-4487-99a7-f13084d0dce8",
+      "reason": "time_or_status_diff",
+      "local": "2026-11-09T14:50:00",
+      "send_plan": "2026-09-14T12:58:00",
+      "crm": "2026-09-14T12:58:00",
+      "cached_status": "WaitSend"
+    }
+  ],
+  "over_cap_days": [],
+  "gap_violations": [
+    {
+      "staff": "0002",
+      "date": "2026-07-18",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0002",
+      "date": "2026-07-18",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0002",
+      "date": "2026-07-18",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0002",
+      "date": "2026-07-28",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0002",
+      "date": "2026-07-28",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0002",
+      "date": "2026-07-28",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-17",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-17",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-17",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-17",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-17",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-17",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-17",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-17",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-22",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0141",
+      "date": "2026-07-16",
+      "left_minute": 840,
+      "right_minute": 848,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0141",
+      "date": "2026-07-16",
+      "left_minute": 848,
+      "right_minute": 855,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-07-17",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-07-29",
+      "left_minute": 610,
+      "right_minute": 615,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-07-29",
+      "left_minute": 615,
+      "right_minute": 620,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-07-29",
+      "left_minute": 620,
+      "right_minute": 625,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-08-25",
+      "left_minute": 610,
+      "right_minute": 615,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-08-25",
+      "left_minute": 615,
+      "right_minute": 620,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-08-25",
+      "left_minute": 620,
+      "right_minute": 625,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-17",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-17",
+      "left_minute": 565,
+      "right_minute": 566,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-17",
+      "left_minute": 688,
+      "right_minute": 692,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-17",
+      "left_minute": 861,
+      "right_minute": 864,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-18",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-18",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-20",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-20",
+      "left_minute": 649,
+      "right_minute": 649,
+      "left_source": "crm_ai",
+      "right_source": "crm_other"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-20",
+      "left_minute": 749,
+      "right_minute": 752,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-21",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_other"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-21",
+      "left_minute": 671,
+      "right_minute": 672,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_other"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 572,
+      "right_minute": 577,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 577,
+      "right_minute": 577,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 577,
+      "right_minute": 579,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 579,
+      "right_minute": 581,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 581,
+      "right_minute": 586,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 586,
+      "right_minute": 588,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 599,
+      "right_minute": 602,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-23",
+      "left_minute": 602,
+      "right_minute": 605,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-24",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_other"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-26",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_other"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 688,
+      "right_minute": 695,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 695,
+      "right_minute": 698,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-27",
+      "left_minute": 796,
+      "right_minute": 800,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-28",
+      "left_minute": 636,
+      "right_minute": 640,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-28",
+      "left_minute": 651,
+      "right_minute": 651,
+      "left_source": "crm_ai",
+      "right_source": "crm_other"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-30",
+      "left_minute": 582,
+      "right_minute": 591,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-30",
+      "left_minute": 664,
+      "right_minute": 672,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-30",
+      "left_minute": 701,
+      "right_minute": 706,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-30",
+      "left_minute": 706,
+      "right_minute": 714,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-30",
+      "left_minute": 869,
+      "right_minute": 869,
+      "left_source": "crm_ai",
+      "right_source": "crm_other"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-30",
+      "left_minute": 900,
+      "right_minute": 903,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-31",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-31",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-03",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-03",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-03",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-03",
+      "left_minute": 555,
+      "right_minute": 561,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-03",
+      "left_minute": 588,
+      "right_minute": 595,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-03",
+      "left_minute": 595,
+      "right_minute": 600,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-03",
+      "left_minute": 673,
+      "right_minute": 674,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-03",
+      "left_minute": 838,
+      "right_minute": 842,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-04",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-04",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-04",
+      "left_minute": 669,
+      "right_minute": 671,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-04",
+      "left_minute": 782,
+      "right_minute": 787,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-05",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-05",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-05",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-05",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-05",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-06",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-07",
+      "left_minute": 572,
+      "right_minute": 573,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-07",
+      "left_minute": 583,
+      "right_minute": 587,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-09",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-09",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 796,
+      "right_minute": 800,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-10",
+      "left_minute": 914,
+      "right_minute": 923,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-11",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-11",
+      "left_minute": 597,
+      "right_minute": 598,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-12",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-12",
+      "left_minute": 636,
+      "right_minute": 638,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-12",
+      "left_minute": 638,
+      "right_minute": 640,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-13",
+      "left_minute": 926,
+      "right_minute": 931,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-14",
+      "left_minute": 540,
+      "right_minute": 540,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-14",
+      "left_minute": 592,
+      "right_minute": 600,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-14",
+      "left_minute": 669,
+      "right_minute": 670,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-14",
+      "left_minute": 670,
+      "right_minute": 672,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-14",
+      "left_minute": 672,
+      "right_minute": 681,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-14",
+      "left_minute": 681,
+      "right_minute": 690,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-14",
+      "left_minute": 858,
+      "right_minute": 867,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-17",
+      "left_minute": 580,
+      "right_minute": 581,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-17",
+      "left_minute": 581,
+      "right_minute": 582,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-17",
+      "left_minute": 582,
+      "right_minute": 586,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-17",
+      "left_minute": 586,
+      "right_minute": 586,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-20",
+      "left_minute": 589,
+      "right_minute": 596,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-20",
+      "left_minute": 596,
+      "right_minute": 602,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-20",
+      "left_minute": 602,
+      "right_minute": 610,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-20",
+      "left_minute": 780,
+      "right_minute": 783,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-24",
+      "left_minute": 600,
+      "right_minute": 605,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-24",
+      "left_minute": 605,
+      "right_minute": 613,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-24",
+      "left_minute": 637,
+      "right_minute": 644,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-24",
+      "left_minute": 834,
+      "right_minute": 838,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-24",
+      "left_minute": 896,
+      "right_minute": 902,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-28",
+      "left_minute": 579,
+      "right_minute": 583,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-28",
+      "left_minute": 622,
+      "right_minute": 623,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-28",
+      "left_minute": 623,
+      "right_minute": 625,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-28",
+      "left_minute": 797,
+      "right_minute": 800,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-28",
+      "left_minute": 907,
+      "right_minute": 908,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-09-08",
+      "left_minute": 708,
+      "right_minute": 717,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-09-14",
+      "left_minute": 657,
+      "right_minute": 659,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-09-18",
+      "left_minute": 858,
+      "right_minute": 861,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-09-18",
+      "left_minute": 861,
+      "right_minute": 867,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-09-18",
+      "left_minute": 867,
+      "right_minute": 870,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-09-30",
+      "left_minute": 628,
+      "right_minute": 637,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-10-08",
+      "left_minute": 592,
+      "right_minute": 595,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-10-09",
+      "left_minute": 625,
+      "right_minute": 628,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-10-09",
+      "left_minute": 628,
+      "right_minute": 630,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-10-15",
+      "left_minute": 623,
+      "right_minute": 626,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-10-15",
+      "left_minute": 626,
+      "right_minute": 633,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-10-22",
+      "left_minute": 628,
+      "right_minute": 636,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-10-22",
+      "left_minute": 636,
+      "right_minute": 645,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-10-23",
+      "left_minute": 862,
+      "right_minute": 868,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-10-23",
+      "left_minute": 868,
+      "right_minute": 870,
+      "left_source": "crm_ai",
+      "right_source": "crm_ai"
+    }
+  ],
+  "ai_weekend_rows": [
+    {
+      "staff": "1607",
+      "date": "2026-07-18",
+      "rowid": "D2CEA531-E6FC-4F42-ADC6-5DE348A1D654"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-26",
+      "rowid": "A4353CD3-0E79-4F53-84C5-8C364845A86A"
+    },
+    {
+      "staff": "0002",
+      "date": "2026-07-18",
+      "rowid": "7E151AA7-4711-4B31-8FC3-5CF616ECC452"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-18",
+      "rowid": "CE759E67-D14A-4EF3-A29A-E4F031A1807A"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-18",
+      "rowid": "E35486D6-6101-403D-ABF6-0FFDF79CC45C"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-15",
+      "rowid": "E3B0E279-E064-4482-B3F1-96F7D1B3CE77"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-09",
+      "rowid": "2A4359EC-C4E8-4B7A-AEC4-FF3A056BE9BA"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-26",
+      "rowid": "C0830AB4-4C11-4055-A278-22F5E5488152"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-02",
+      "rowid": "76437599-4407-40BB-8398-161D4DD6E4F4"
+    },
+    {
+      "staff": "0002",
+      "date": "2026-07-18",
+      "rowid": "F277D40D-FE73-4BB5-BC5E-B9A5E40DEF11"
+    },
+    {
+      "staff": "0002",
+      "date": "2026-07-18",
+      "rowid": "871166DE-8066-4860-BFE9-29F7D1BD1D12"
+    },
+    {
+      "staff": "0002",
+      "date": "2026-07-18",
+      "rowid": "88C62460-37C9-4EB2-B8D1-6A0D0B54F3A1"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-19",
+      "rowid": "AB518E43-267D-42DC-B8D9-58A0EAF4B2B7"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-19",
+      "rowid": "901A3239-E39C-4891-856B-B25799157CAF"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-08-02",
+      "rowid": "C99068C3-6759-436A-87C2-3C25F56FC566"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-18",
+      "rowid": "22B2F440-5A50-4B61-A168-EBC53B0541DD"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-02",
+      "rowid": "9E613ED4-3969-4507-BB97-0948DB5D38B9"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-09",
+      "rowid": "5FDBAD6B-A757-46EA-8074-FC41B86E4ED4"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "32849521-EC3C-449B-BA6A-CEF0383AA6D8"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "0BE30432-51CD-44C3-BAAF-2F2E414264D6"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "D028C8A2-F528-43D4-ACEE-BA13F7499A92"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "B0820C31-E554-4274-A9E9-802EA6A2062E"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "2D7C55D5-674F-4996-9F40-4200593C9408"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "9A704C91-929C-4BA7-98B9-1072AB97F994"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "2802C269-EA9F-4E1D-AF27-3BD12807B48D"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "5B755283-5C25-4D66-B038-714E0A1BAE9E"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "240C9FE2-CA4A-45A7-AB47-6FBC61597993"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "426A1004-BDEC-4FA7-84B9-48BA197CC632"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "CBD98B67-B38B-4355-B3EB-152F70840344"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "A1DC7BB5-BBD5-4C38-868D-4AA2B74CC895"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "1F5D6AAB-BC02-4E8A-8FE9-BC74970FCE55"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "0680E9A9-17F0-483C-8339-E09B8A150501"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "BA144A5A-D609-4E9D-9C16-E587D16401BB"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "C2E98921-A845-4DD9-B4BD-CAAEDA647EFE"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "3C030E4C-F13B-4278-BC5B-918AEC84DEA3"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "03F1250C-1716-48D9-9E12-FDCA6E568291"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "CC530C37-01A4-4EBC-BFC5-E09F59767756"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-26",
+      "rowid": "0E54F348-AE36-411B-B40D-91BBA1E49D5A"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-26",
+      "rowid": "51E2F4E4-B278-4823-9D6E-E9D0BBC20F4B"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "A28CBCB5-54B3-4972-9DC2-41776ED14BBC"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "405BC495-CD21-4DED-B978-64031450FD79"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "1D985069-783A-4150-9E57-ABEC9415C907"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-07-26",
+      "rowid": "BFB64FC7-D112-4E31-9A78-F93BC33AD808"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "76DC7581-E046-4AC1-BB3B-482D669E9246"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "F6060615-E9F9-49A7-A2FA-B6DC2427C0B0"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "F2DFB70F-8AB5-4F02-BA3D-369B33C90A9D"
+    },
+    {
+      "staff": "0017",
+      "date": "2026-07-26",
+      "rowid": "8EF213EB-0B36-4102-837C-011E267408AE"
+    },
+    {
+      "staff": "0188",
+      "date": "2026-07-26",
+      "rowid": "37A1BF99-EC3A-4A32-B111-7E971E15124B"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-09",
+      "rowid": "1E37A82A-28BF-4CD7-BD32-820F791067A0"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-26",
+      "rowid": "976F85BC-2D63-47E4-B75E-E9271065C634"
+    },
+    {
+      "staff": "0141",
+      "date": "2026-07-26",
+      "rowid": "0EF40A90-C855-4F30-BB8E-496B6751FA6C"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-08",
+      "rowid": "98D0FC79-3B68-4BD6-81AB-EEB3E8A63177"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-09-25",
+      "rowid": "D0559F83-9756-4981-BC11-FB8C2F2B47C2"
+    }
+  ],
+  "max_combined_daily_count": 50
+}
