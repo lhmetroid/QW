@@ -22771,7 +22771,9 @@ class _AutosendSlotBook:
         self.skip_non_workdays = skip_non_workdays
         self.holiday_dates = holiday_dates
         # 今天的最早可用时刻: 现在+缓冲, 向上取整到 10 分钟网格(避免落在过去导致CRM立刻群发)
-        lead = int(now_minute) + _AUTOSEND_RESCHEDULE_LEAD_MINUTES
+        # 额外留一个发送间隔作为事务/CRM同步缓冲；否则“现在+10分钟”在长事务提交后会只剩9分钟，
+        # 下一轮立刻又被判为超时并反复整套重排。
+        lead = int(now_minute) + _AUTOSEND_RESCHEDULE_LEAD_MINUTES + _AUTOSEND_SLOT_GAP_MINUTES
         gap = _AUTOSEND_SLOT_GAP_MINUTES
         self.earliest_today = ((lead + gap - 1) // gap) * gap
 
