@@ -20091,11 +20091,28 @@ def _mail_suite_existing_pending_plan(db: Session, *, customer_id: str, scenario
                 ).fetchone()
                 if live:
                     result = {"plan_id": str(row[0]), "spqueue_rowid": str(live[0]),
-                              "crm_send_id": str(live[2] or row[2] or ""), "plan_send_time": live[1] or row[3]}
+                              "crm_send_id": str(live[2] or row[2] or ""), "plan_send_time": live[1] or row[3],
+                              "crm_status": "WaitSend", "crm_source": "queue"}
                     first_live = first_live or result
                     live_minute = live[1].replace(second=0, microsecond=0) if hasattr(live[1], "replace") else None
                     if expected_minute is not None and live_minute == expected_minute:
                         return result
+                    continue
+                send_id = str(row[2] or "")
+                if send_id and re.fullmatch(r"[0-9A-Za-z_-]{1,80}", send_id):
+                    info = crm_db.execute(
+                        text(f"SELECT TOP 1 PlanSendTime, ISNULL(Status,''), DeleteTime "
+                             f"FROM [spSendInfo{staff_id}] WHERE SendId=:sid AND MessageType='Email'"),
+                        {"sid": send_id},
+                    ).fetchone()
+                    if info and info[2] is None and str(info[1] or "").lower() in ("waitsend", "sending", "sendsuccess"):
+                        result = {"plan_id": str(row[0]), "spqueue_rowid": str(row[1] or ""),
+                                  "crm_send_id": send_id, "plan_send_time": info[0] or row[3],
+                                  "crm_status": str(info[1] or ""), "crm_source": "send_info"}
+                        first_live = first_live or result
+                        live_minute = info[0].replace(second=0, microsecond=0) if hasattr(info[0], "replace") else None
+                        if expected_minute is not None and live_minute == expected_minute:
+                            return result
             if first_live:
                 return first_live
         finally:
@@ -22681,34 +22698,54 @@ def _autosend_fmt_hhmm(minute: int) -> str:
 
 
 def _autosend_crm_pending_snapshot(staff: str, start_date) -> list[dict]:
-    """实时读取 CRM 待发队列；RowId 是后续安全改期和释放旧槽位的唯一键。"""
+    """实时读取 CRM 全部待发事实：队列表 + 已被调度器接走但仍 WaitSend 的销售分表。"""
+    if not re.fullmatch(r"[0-9A-Za-z]{1,8}", str(staff or "")):
+        raise RuntimeError("CRM 销售编号不合法")
     from crm_database import CRMSessionLocal
     crm_db = CRMSessionLocal()
     try:
-        rows = crm_db.execute(
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        queue_rows = crm_db.execute(
             text("SELECT CAST(RowId AS NVARCHAR(64)), ISNULL(CAST(SendId AS NVARCHAR(80)),''), PlanSendTime "
                  "FROM spQueueSend WHERE MessageType='Email' AND PlanSendTime >= :start "
                  "AND InputerStaffId = :sid"),
-            {"start": datetime.combine(start_date, datetime.min.time()), "sid": staff},
+            {"start": start_dt, "sid": staff},
+        ).fetchall()
+        info_rows = crm_db.execute(
+            text(f"SELECT ISNULL(CAST(SendId AS NVARCHAR(80)),''), PlanSendTime "
+                 f"FROM [spSendInfo{staff}] WHERE MessageType='Email' AND Status='WaitSend' "
+                 f"AND DeleteTime IS NULL AND PlanSendTime >= :start"),
+            {"start": start_dt},
         ).fetchall()
     finally:
         crm_db.close()
     out: list[dict] = []
-    for rowid, send_id, plan_dt in rows:
+    seen_send_ids: set[str] = set()
+    for rowid, send_id, plan_dt in queue_rows:
         if plan_dt is None:
             continue
-        out.append({"rowid": str(rowid or ""), "send_id": str(send_id or ""), "plan_dt": plan_dt})
+        sid = str(send_id or "")
+        if sid:
+            seen_send_ids.add(sid.lower())
+        out.append({"rowid": str(rowid or ""), "send_id": sid, "plan_dt": plan_dt, "source": "queue"})
+    for send_id, plan_dt in info_rows:
+        sid = str(send_id or "")
+        if plan_dt is None or (sid and sid.lower() in seen_send_ids):
+            continue
+        out.append({"rowid": "", "send_id": sid, "plan_dt": plan_dt, "source": "send_info"})
     return out
 
 
-def _autosend_crm_pending_slots(staff: str, start_date, exclude_rowids=None,
+def _autosend_crm_pending_slots(staff: str, start_date, exclude_rowids=None, exclude_send_ids=None,
                                 snapshot: list[dict] | None = None) -> dict:
-    """CRM 待发占用槽；整套重排时可按 RowId 释放该套装自己的旧槽。"""
-    excluded = {str(x or "").lower() for x in (exclude_rowids or []) if str(x or "")}
+    """CRM 待发占用槽；整套重排时按 RowId/SendId 释放该套装自己的旧槽。"""
+    excluded_rows = {str(x or "").lower() for x in (exclude_rowids or []) if str(x or "")}
+    excluded_sends = {str(x or "").lower() for x in (exclude_send_ids or []) if str(x or "")}
     rows = snapshot if snapshot is not None else _autosend_crm_pending_snapshot(staff, start_date)
     out: dict = {}
     for row in rows:
-        if str(row.get("rowid") or "").lower() in excluded:
+        if (str(row.get("rowid") or "").lower() in excluded_rows
+                or str(row.get("send_id") or "").lower() in excluded_sends):
             continue
         plan_dt = row.get("plan_dt")
         if plan_dt is None:
@@ -22850,19 +22887,23 @@ def _autosend_apply_crm_time_changes(staff: str, changes: list[dict],
                 plan_dt = meta["old_plan_dt"]
             else:
                 plan_dt = datetime.combine(c["new_date"], datetime.strptime(c["new_time"], "%H:%M").time())
-            updated = crm_db.execute(
-                text("UPDATE spQueueSend SET PlanSendTime=:dt WHERE RowId=:rid AND MessageType='Email'"),
-                {"dt": plan_dt, "rid": meta["rowid"]},
-            ).rowcount
-            if int(updated or 0) != 1:
-                raise RuntimeError(f"CRM 待发记录已变化或不存在: RowId={meta['rowid']}")
+            rowid = str(meta.get("rowid") or "")
             send_id = str(meta.get("send_id") or "")
+            queue_updated = 0
+            info_updated = 0
+            if rowid:
+                queue_updated = int(crm_db.execute(
+                    text("UPDATE spQueueSend SET PlanSendTime=:dt WHERE RowId=:rid AND MessageType='Email'"),
+                    {"dt": plan_dt, "rid": rowid},
+                ).rowcount or 0)
             if send_id:
-                crm_db.execute(
+                info_updated = int(crm_db.execute(
                     text(f"UPDATE [spSendInfo{staff}] SET PlanSendTime=:dt "
-                         "WHERE SendId=:sid AND Status='WaitSend'"),
+                         "WHERE SendId=:sid AND MessageType='Email' AND Status='WaitSend' AND DeleteTime IS NULL"),
                     {"dt": plan_dt, "sid": send_id},
-                )
+                ).rowcount or 0)
+            if queue_updated + info_updated < 1:
+                raise RuntimeError(f"CRM 待发记录已变化或不存在: RowId={rowid}, SendId={send_id}")
         crm_db.commit()
         return len(targets)
     except Exception:
@@ -22907,7 +22948,9 @@ def _autosend_reschedule_plan(db: Session, staff: str, apply_changes: bool,
         stmt = stmt.bindparams(bindparam("ids", expanding=True))
     candidates = db.execute(stmt, scope_params).fetchall()
     crm_snapshot = _autosend_crm_pending_snapshot(staff, today - timedelta(days=180))
-    live_queue = {str(x.get("rowid") or "").lower(): x for x in crm_snapshot}
+    live_queue = {str(x.get("rowid") or "").lower(): x for x in crm_snapshot if str(x.get("rowid") or "")}
+    live_pending_by_send = {str(x.get("send_id") or "").lower(): x for x in crm_snapshot
+                            if str(x.get("send_id") or "")}
     movable = []
     crm_pending_meta: dict[str, dict] = {}
     crm_actual_meta: dict[str, dict] = {}
@@ -22930,7 +22973,8 @@ def _autosend_reschedule_plan(db: Session, staff: str, apply_changes: bool,
     live_sent = _autosend_crm_sent_snapshot(staff, [str(p[6] or "") for p in send_plans])
     plan_map: dict[tuple, Any] = {}
     def live_rank(plan_row) -> int:
-        if str(plan_row[5] or "").lower() in live_queue:
+        if (str(plan_row[5] or "").lower() in live_queue
+                or str(plan_row[6] or "").lower() in live_pending_by_send):
             return 3
         truth = live_sent.get(str(plan_row[6] or ""))
         if truth and str(truth.get("status") or "").lower() == "sendsuccess":
@@ -22954,7 +22998,7 @@ def _autosend_reschedule_plan(db: Session, staff: str, apply_changes: bool,
                 movable.append(r)
             continue
         rowid = str(p[5] or "")
-        live = live_queue.get(rowid.lower()) if rowid else None
+        live = (live_queue.get(rowid.lower()) if rowid else None) or live_pending_by_send.get(str(p[6] or "").lower())
         if live is not None:
             plan_dt = live["plan_dt"]
             rr = list(r)
@@ -22962,8 +23006,9 @@ def _autosend_reschedule_plan(db: Session, staff: str, apply_changes: bool,
             rr[5] = plan_dt.strftime("%H:%M")
             movable.append(tuple(rr))
             crm_pending_meta[str(r[0])] = {
-                "plan_id": str(p[0]), "rowid": rowid, "send_id": str(p[6] or ""),
-                "old_plan_dt": plan_dt,
+                "plan_id": str(p[0]), "rowid": str(live.get("rowid") or rowid),
+                "send_id": str(live.get("send_id") or p[6] or ""),
+                "old_plan_dt": plan_dt, "source": str(live.get("source") or "queue"),
             }
             continue
         live_status = live_sent.get(str(p[6] or ""))
@@ -22994,9 +23039,12 @@ def _autosend_reschedule_plan(db: Session, staff: str, apply_changes: bool,
     skip_nwd = bool(cfg.get("skip_non_workdays", True))
     holiday_dates = cfg.get("holiday_dates", [])
 
-    occupied = _autosend_crm_pending_slots(staff, today,
-                                                [x["rowid"] for x in crm_pending_meta.values()],
-                                                crm_snapshot)
+    occupied = _autosend_crm_pending_slots(
+        staff, today,
+        [x["rowid"] for x in crm_pending_meta.values()],
+        [x["send_id"] for x in crm_pending_meta.values()],
+        crm_snapshot,
+    )
     book = _AutosendSlotBook(occupied, cap, today, now_minute, skip_nwd, holiday_dates)
     fixed_pending = sum(len(v) for v in occupied.values())
     # 范围重排还必须给同销售“未被选中的本地排期”占位，否则虽不改它们，

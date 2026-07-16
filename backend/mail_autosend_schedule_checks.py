@@ -194,6 +194,13 @@ def test_logical_suite_step_dedup_does_not_depend_on_date_or_subject():
     assert "suite_step=:st" in helper_source
     assert "recipient_email_key" in helper_source
     assert "FROM spQueueSend" in helper_source and "FolderId,'')='OutBox'" in helper_source
+    assert "FROM [spSendInfo{staff_id}]" in helper_source
+    assert '"waitsend", "sending", "sendsuccess"' in helper_source
+
+    snapshot = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == "_autosend_crm_pending_snapshot")
+    snapshot_source = ast.get_source_segment(SOURCE, snapshot) or ""
+    assert "FROM spQueueSend" in snapshot_source
+    assert "Status='WaitSend'" in snapshot_source and "spSendInfo{staff}" in snapshot_source
 
     key_fn = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == "_enqueue_dedup_key")
     key_source = ast.get_source_segment(SOURCE, key_fn) or ""

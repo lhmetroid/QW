@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-07-16T16:41:03.411790",
+  "generated_at": "2026-07-16T17:26:44.997771",
   "read_only": true,
-  "crm_ai_future": 3840,
-  "mapped_send_plan": 3839,
-  "unmapped_send_plan": 1,
+  "crm_ai_future": 3836,
+  "mapped_send_plan": 3836,
+  "unmapped_send_plan": 0,
   "duplicate_pending_keys": 0,
   "duplicate_pending_rows": 0,
   "pending_after_send_success_keys": 0,

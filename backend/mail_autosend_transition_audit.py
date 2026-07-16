@@ -65,6 +65,9 @@ def main() -> None:
             out.append({"plan_id": str(plan[0]), "staff": str(plan[1] or ""),
                         "send_id_present": bool(plan[2]), "cached_status": str(plan[3] or ""),
                         "classification": classification,
+                        "crm_history_status": str(truth[1] or "") if truth else "",
+                        "crm_history_present": bool(truth),
+                        "crm_history_deleted": bool(truth and truth[3] is not None),
                         "fact_send_time": truth[2].isoformat() if truth and truth[2] else None})
         result = {"generated_at": datetime.now().isoformat(), "read_only": True,
                   "counts": dict(counts), "items": out}

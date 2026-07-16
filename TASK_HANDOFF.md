@@ -2103,4 +2103,12 @@ ode --check scratch\frontend-mail-suite-current-check.js；git diff --check -- b
 - 仍有1条额外精确重复CRM待发：只读证据在logs/mail-autosend-unmapped-audit-20260716.json，清理预演在logs/mail-autosend-unmapped-duplicate-cleanup-20260716.json。必须取得人工对这新增1条的明确删除授权后，执行：python backend/mail_autosend_unmapped_duplicate_cleanup.py --apply --confirm DELETE-1-UNMAPPED-DUPLICATE-WAITSEND。
 - 执行后应重跑unmapped_audit（预期0）、crm_orphan_audit（重复0）、post_recovery_checks v10口径（异常/间隔/上限/非工作日均0）。
 - 代码增加“未过期不提前”的not_before时间下界，防止两个套装在重复校验中交换空槽；slot冲突现在纳入problem_count。
-- Task78A仍保持[~]：还差新增1条删除授权及代码部署后的浏览器验收。
+- Task78A仍保持[~]：还差新增1条删除授权及代码部署后的浏览器验收。### 2026-07-16 复核：新生成与历史CRM同步仍未达到“可宣布无问题”
+- 用户询问后执行生产CRM只读复核。代码定向测试7/7与py_compile通过；当前全局业务键重复0、待发撞10分钟0、超过每日50封0、AI周末排期0、最大日量50。
+- 仍有1条未回链的精确重复CRM待发，超出原13条删除授权，尚未删除。
+- 基于全量活动备份复核3103条原WaitSend：19条已确认正常转SendSuccess；另有23条未闭环，其中8条CRM队列已不存在但本地缓存仍WaitSend，15条为时间或缓存状态不一致（含8条本地与CRM一致但历史send_plan时间滞后、2条CRM时间与本地不同、5条CRM存在但缓存状态为空）。
+- 因修复代码仍在工作区、尚未部署，不能声称后续新生成已受线上新幂等/整套重排保护；历史数据也尚未完全同步干净。下一步须先逐条只读确认23条真实终态，再获生产写入授权后修复；同时取得新增1条重复待发删除授权，最后部署并做浏览器端验收。
+### 2026-07-16 17:28 全量回收锁冲突
+- 合并spQueueSend与spSendInfo WaitSend后的全量预演：11666项，预计126项改期，内容哈希不变。
+- apply在0141遇PostgreSQL行锁超时；0141当前事务回滚，尚未调用CRM改期。此前0002已提交20条本地未同步排期调整（crm_changed=0），0017无变化。
+- 必须重新生成当前审计后重试；不得假定旧126仍有效。

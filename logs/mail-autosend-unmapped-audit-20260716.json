@@ -1,43 +1,8 @@
 {
-  "generated_at": "2026-07-16T16:43:04.367452",
+  "generated_at": "2026-07-16T17:26:39.704957",
   "read_only": true,
-  "unmapped_by_rowid": 1,
+  "unmapped_by_rowid": 0,
   "matched_by_send_id": 0,
-  "truly_unmapped": 1,
-  "items": [
-    {
-      "rowid": "0BA3EDE2-15E9-4AF8-A2D3-BFA574586E97",
-      "staff": "0002",
-      "send_id_present": true,
-      "plan_time": "2026-08-13T09:40:00",
-      "matched_by_send_id": false,
-      "plan_id": null,
-      "local_plan_time": null,
-      "cached_status": null,
-      "exact_plan_candidates": [
-        {
-          "plan_id": "d439fa8e-a591-4b92-a0d0-f28f99da897e",
-          "status": "enqueued",
-          "plan_time": "2026-08-12T13:50:00",
-          "rowid_present": true,
-          "send_id_present": true,
-          "customer_id": "KH02044-076",
-          "scenario": "new_business_promotion",
-          "suite_step": 2,
-          "body_hash_matches": true
-        }
-      ],
-      "exact_local_candidates": [
-        {
-          "item_id": "831ce2e0-70c0-4128-b7b2-a0bf13564c28",
-          "status": "sent",
-          "plan_time": "2026-08-12T13:50",
-          "customer_id": "KH02044-076",
-          "scenario": "new_business_promotion",
-          "suite_step": 2,
-          "body_hash_matches": true
-        }
-      ]
-    }
-  ]
+  "truly_unmapped": 0,
+  "items": []
 }

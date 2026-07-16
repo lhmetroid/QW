@@ -40,10 +40,8 @@ PRIMARY_ORDER = [
 ]
 
 TERM_GROUPS = {
-    "签名/联系方式调整": [
-        "market2", "speed-asia.com", "总经理助理", "事必达团队", "angela",
-        "phone", "email", "tel", "电话", "邮箱", "@", "www.",
-    ],
+    # 注意: "签名/联系方式调整" 不再走 TERM_GROUPS 子串计数(会把 Stella 里的 "tel"、hotel/detail 误判),
+    #       改用 _contact_delta 精确检测正文里真实的邮箱/电话/网址/中文联系方式词变化(签名块已在 _norm_html 剥离)。
     "称呼/开头语言调整": ["hi ", "dear ", "hello", "您好", "你好", "尊敬的", "老师", "经理"],
     "业务线/服务描述调整": [
         "视频", "笔译", "口译", "印刷", "排版", "制版", "制作", "翻译",
@@ -53,8 +51,31 @@ TERM_GROUPS = {
         "方便", "参考供应商", "随时联系", "随时联系我们", "有需要", "供您参考",
         "会议", "电话沟通", "期待", "回复", "打扰",
     ],
-    "占位/测试痕迹处理": ["case_company_", "[你的名字]", "{{", "}}", "xxx", " xx ", "m2", "xxxx"],
+    # 去掉 "m2"(会误命中 form2/m2m 等)与孤立 " xx "; 只保留区分度高的真实占位痕迹。
+    "占位/测试痕迹处理": ["case_company_", "[你的名字]", "{{", "}}", "xxxx", "xxx"],
 }
+
+# 精确联系方式检测(替代签名类的模糊子串): 真实邮箱/电话/网址/中文联系方式词。
+_CONTACT_EMAIL_PAT = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+_CONTACT_PHONE_PAT = re.compile(r"\+?\d[\d\s\-]{6,}\d")
+_CONTACT_URL_PAT = re.compile(r"(?:https?://|www\.)[^\s，。；、)】]+", re.I)
+_CONTACT_CN_WORDS = ("电话", "邮箱", "微信", "手机", "传真")
+
+
+def _contact_delta(orig: str, final: str) -> bool:
+    """正文里真实联系方式(邮箱/电话/网址/中文联系方式词)是否发生变化。
+
+    用精确模式而非子串, 避免把名字(Stella 含 tel)、hotel/detail 等误判成联系方式改动。
+    签名块已在 _norm_html 里剥离, 故这里只对正文正身生效。
+    """
+    def _tokens(s: str) -> list[str]:
+        emails = sorted(_CONTACT_EMAIL_PAT.findall(s.lower()))
+        phones = sorted(re.sub(r"[\s\-]", "", m) for m in _CONTACT_PHONE_PAT.findall(s))
+        urls = sorted(_CONTACT_URL_PAT.findall(s.lower()))
+        return emails + phones + urls
+    if _tokens(orig) != _tokens(final):
+        return True
+    return any(orig.count(w) != final.count(w) for w in _CONTACT_CN_WORDS)
 
 SCENARIO_LABELS = {
     "re_activation": "老客户激活",
@@ -309,6 +330,9 @@ def classify_edit(row: dict[str, Any] | None) -> tuple[list[str], str, bool, boo
         flags.append("正文任意改动")
     if subject_changed:
         flags.append("主题改动")
+    # 签名/联系方式: 用精确联系方式检测(邮箱/电话/网址/中文联系方式词), 不用模糊子串, 避免名字含 tel 等误判。
+    if _contact_delta(orig, final):
+        flags.append("签名/联系方式调整")
     for name, terms in TERM_GROUPS.items():
         o = orig
         f = final

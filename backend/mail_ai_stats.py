@@ -248,7 +248,7 @@ def _crm_send_info_for_missing_send_id(crm, table_name: str, plan) -> object | N
     start = plan_time - timedelta(minutes=2)
     end = plan_time + timedelta(minutes=10)
     rows = crm.execute(text(
-        f"SELECT TOP 2 SendId, Status, FactSendTime, EmlFtpDir, DeleteTime "
+        f"SELECT TOP 2 SendId, Status, FactSendTime, EmlFtpDir, PlanSendTime, DeleteTime "
         f"FROM [{table_name}] "
         f"WHERE Subject=:sub AND PlanSendTime>=:a AND PlanSendTime<:b "
         f"AND UseRange=:ur "
@@ -297,7 +297,7 @@ def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
                     params = {f"s{j}": v for j, v in enumerate(chunk)}
                     placeholders = ",".join(f":s{j}" for j in range(len(chunk)))
                     q = crm.execute(text(
-                        f"SELECT SendId, Status, FactSendTime, EmlFtpDir, DeleteTime "
+                        f"SELECT SendId, Status, FactSendTime, EmlFtpDir, PlanSendTime, DeleteTime "
                         f"FROM [{tbl}] WHERE SendId IN ({placeholders})"
                     ), params).fetchall()
                     for rr in q:
@@ -349,7 +349,8 @@ def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
                 status_v = (str(rec[1]) if rec[1] else "").strip()
                 fact = rec[2]
                 eml_dir = (str(rec[3]) if rec[3] else "").strip()
-                deleted = rec[4] is not None
+                crm_plan_time = rec[4]
+                deleted = rec[5] is not None
                 final_status = "deleted" if deleted else status_v
                 db.execute(text(
                     "WITH target AS ("
@@ -358,9 +359,11 @@ def sync_send_status(db: Session, lookback_days: int = 120) -> dict:
                     ") "
                     "UPDATE mail_customer_suite_send_plan p "
                     "SET crm_send_id=COALESCE(p.crm_send_id,:sid), crm_send_status=:st, "
+                    "plan_send_time=COALESCE(:pt,p.plan_send_time), "
                     "crm_fact_send_time=:ft, crm_eml_ftp_dir=:ed, status_synced_at=now() "
                     "FROM target WHERE p.plan_id=target.plan_id"
-                ), {"sid": recovered_send_id, "st": final_status, "ft": fact, "ed": eml_dir, "pid": plan_id})
+                ), {"sid": recovered_send_id, "st": final_status, "pt": crm_plan_time,
+                    "ft": fact, "ed": eml_dir, "pid": plan_id})
                 if status_v == "SendSuccess" and not deleted:
                     sent += 1
                     # 解析发送 Message-ID(仅一次)

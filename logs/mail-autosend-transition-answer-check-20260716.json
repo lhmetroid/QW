@@ -1,0 +1,74 @@
+{
+  "generated_at": "2026-07-16T17:04:21.090337",
+  "read_only": true,
+  "counts": {
+    "send_success": 3,
+    "unexpected_missing": 5
+  },
+  "items": [
+    {
+      "plan_id": "acf71389-920b-4aa3-9c27-80c8db094e6a",
+      "staff": "0002",
+      "send_id_present": true,
+      "cached_status": "WaitSend",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T16:40:08.453000"
+    },
+    {
+      "plan_id": "19b76bba-4902-472c-ac68-1c14fefd11db",
+      "staff": "0002",
+      "send_id_present": true,
+      "cached_status": "WaitSend",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T16:10:04.640000"
+    },
+    {
+      "plan_id": "6db9ab07-cc4c-48f0-8470-05055d6e042c",
+      "staff": "0141",
+      "send_id_present": true,
+      "cached_status": "WaitSend",
+      "classification": "send_success",
+      "fact_send_time": "2026-07-16T16:30:05.030000"
+    },
+    {
+      "plan_id": "956fc846-deb9-4250-87d2-42c9f459fd8c",
+      "staff": "0188",
+      "send_id_present": true,
+      "cached_status": "WaitSend",
+      "classification": "unexpected_missing",
+      "fact_send_time": null
+    },
+    {
+      "plan_id": "9c7b5322-741a-441f-8ae5-12fa35bab757",
+      "staff": "0188",
+      "send_id_present": true,
+      "cached_status": "WaitSend",
+      "classification": "unexpected_missing",
+      "fact_send_time": null
+    },
+    {
+      "plan_id": "e3c08f5f-d179-4625-a1b3-b348430c6eb8",
+      "staff": "0188",
+      "send_id_present": true,
+      "cached_status": "WaitSend",
+      "classification": "unexpected_missing",
+      "fact_send_time": null
+    },
+    {
+      "plan_id": "743713f7-ec29-40cf-be91-fe016a05c09d",
+      "staff": "0188",
+      "send_id_present": true,
+      "cached_status": "WaitSend",
+      "classification": "unexpected_missing",
+      "fact_send_time": null
+    },
+    {
+      "plan_id": "2686a9db-7786-42cd-bac4-ae162f4744ec",
+      "staff": "0188",
+      "send_id_present": true,
+      "cached_status": "WaitSend",
+      "classification": "unexpected_missing",
+      "fact_send_time": null
+    }
+  ]
+}
