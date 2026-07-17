@@ -234,10 +234,12 @@ def apply_invalid_recipient(
     reason: str = "bounce",
     source_reply_id: str | None = None,
     valid_email_resolver: Callable[[str, str], list[str]] | None = None,
+    link_plans: bool = True,
 ) -> dict:
     """登记无效地址并联动后续排期(取消/替换)。返回三层结果。
 
     valid_email_resolver(customer_id, contact_id) -> list[str]: 该联系人当前所有有效地址(降序优先)。
+    link_plans=False(联动开关未打开): **只登记无效地址, 不取消/不替换任何排期**, 仍返回可替换/备用地址供人工参考。
     """
     ensure_tables(db)
     inv = (email or "").strip().lower()
@@ -253,7 +255,7 @@ def apply_invalid_recipient(
     pending = db.execute(text(
         f"SELECT item_id, contact_id, customer_id, recipient_email FROM mail_autosend_plan_item "
         f"WHERE {plan_clause}"
-    ), params).fetchall()
+    ), params).fetchall() if link_plans else []
 
     # 候选替换地址: 该联系人其他有效地址(去掉失效地址本身与已知无效地址)
     known_invalid = {inv}
@@ -316,6 +318,7 @@ def apply_invalid_recipient(
         "standby_emails": standby,           # 层3: 备用有效地址
         "standby_email_count": len(standby),
         "pending_affected": len(pending),
+        "link_plans": bool(link_plans),      # False = 联动开关未开, 只登记未动排期
     }
 
 

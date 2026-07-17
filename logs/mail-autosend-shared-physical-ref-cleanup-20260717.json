@@ -1,0 +1,136 @@
+{
+  "generated_at": "2026-07-17T12:46:13.653238",
+  "applied": true,
+  "shared_reference_groups": 25,
+  "cancelled_shadow_plans": 25,
+  "crm_queue_rows_changed": 0,
+  "content_changed": false,
+  "targets": [
+    {
+      "physical_key_hash": "bdb40ed7caeb425d",
+      "keeper_id": "44027437-6f59-4b7c-8175-8f3f8b731da1",
+      "loser_id": "01961d1c-e5ea-488a-80ca-55b6dd284af2"
+    },
+    {
+      "physical_key_hash": "128ee0445b0be83b",
+      "keeper_id": "a949ec3a-8c62-4cb7-ab2d-2c530c22e3fe",
+      "loser_id": "75a86a4b-8dc7-4206-bbab-b08731aca9d0"
+    },
+    {
+      "physical_key_hash": "abe5ecf32110c048",
+      "keeper_id": "bea6bf97-5bb4-4e31-858b-ee68a9e6ead6",
+      "loser_id": "6d7b142c-519c-406a-80a5-34158234d064"
+    },
+    {
+      "physical_key_hash": "97ebbac08df7513a",
+      "keeper_id": "e2a9e4e3-ae8e-4f58-8cbd-52497930880f",
+      "loser_id": "7cafc5dc-6389-4330-a423-f9f4874ec986"
+    },
+    {
+      "physical_key_hash": "8555c2461fcefcee",
+      "keeper_id": "3c768542-dd3a-47a2-bddc-cb6d5694150b",
+      "loser_id": "c74b0ece-f0bd-4a09-96d3-6ce12ae0f98f"
+    },
+    {
+      "physical_key_hash": "7d35f5841212ea04",
+      "keeper_id": "e9c339ed-656b-4218-bb80-9943b959706c",
+      "loser_id": "79e04db1-134f-4495-ba56-2acb683cb63d"
+    },
+    {
+      "physical_key_hash": "bc301790b875686a",
+      "keeper_id": "9ee32e07-41e4-4bbc-a95b-29c52a20c09d",
+      "loser_id": "65b16da4-b1c2-400d-b431-f2b4a9c6ed81"
+    },
+    {
+      "physical_key_hash": "c3105d2ffda7f221",
+      "keeper_id": "a41c27a0-b571-4831-9876-949bec752f17",
+      "loser_id": "a4b63697-d203-4ac5-8bd5-9f0d58d29a43"
+    },
+    {
+      "physical_key_hash": "93eae238342f1e56",
+      "keeper_id": "13739171-f9c8-4626-a8f4-c9e875ce0c9b",
+      "loser_id": "85925623-6692-4eff-a1ac-ef6b9f27340b"
+    },
+    {
+      "physical_key_hash": "f95974e0e67e5cd8",
+      "keeper_id": "e00fb454-f01d-450a-a6dc-48faccbc091c",
+      "loser_id": "9b44ec56-83b8-4dbc-a5d3-c4d26cb62652"
+    },
+    {
+      "physical_key_hash": "84a24e0c1288f3cb",
+      "keeper_id": "0087af02-20a8-43ae-8893-afacdec82cb7",
+      "loser_id": "fc89e5ac-1b97-4d11-91a8-802a9372183e"
+    },
+    {
+      "physical_key_hash": "83fd4373cc813354",
+      "keeper_id": "d3e28261-4d30-4a65-a83b-20960a75d996",
+      "loser_id": "a03cbddf-89a0-4edc-aa2e-8fb6244c0732"
+    },
+    {
+      "physical_key_hash": "041cf2c7926b080c",
+      "keeper_id": "1126709e-b5f1-452b-b6d5-7186082196fd",
+      "loser_id": "0bdfefd3-404d-496d-9d62-e39c0bc5c206"
+    },
+    {
+      "physical_key_hash": "4b31753e70409a25",
+      "keeper_id": "5e1e44ca-5275-4885-a29f-7b1a93ceb911",
+      "loser_id": "657f0ec7-92a2-48d9-96b3-bc544bcd6cf8"
+    },
+    {
+      "physical_key_hash": "7014ceb9e3aefad1",
+      "keeper_id": "3dbde764-d953-4877-8569-f5360bba39c4",
+      "loser_id": "88843990-a532-41af-ba61-95058806d4a3"
+    },
+    {
+      "physical_key_hash": "6f268e9d7f521468",
+      "keeper_id": "437ea5dd-6c9d-49ab-b9f5-0e432eb46da1",
+      "loser_id": "3168ad5c-dfb5-4fdc-a8f8-7117b87eabaa"
+    },
+    {
+      "physical_key_hash": "2151eb5d3356eddf",
+      "keeper_id": "fb698590-57a2-4555-ae3a-170a20fbde07",
+      "loser_id": "c0e311a3-7e35-4a74-a16d-f7803137ab4f"
+    },
+    {
+      "physical_key_hash": "533edd74113546d8",
+      "keeper_id": "9b2e41ff-93c0-4b5f-971f-44844d08b2b6",
+      "loser_id": "41b2b3dc-8342-4f1c-bf8b-55f3909e5822"
+    },
+    {
+      "physical_key_hash": "a3ec973608a4732d",
+      "keeper_id": "6388bbbe-9e92-46f8-9b07-7a7c3071d7a3",
+      "loser_id": "d3b1ba6d-9508-4b61-acd1-c521e854a64f"
+    },
+    {
+      "physical_key_hash": "af208f5fc8a525d7",
+      "keeper_id": "41cd862a-9afd-48b1-bdfc-7c81936f288f",
+      "loser_id": "b2752052-fa40-442b-9aeb-61f795bb968b"
+    },
+    {
+      "physical_key_hash": "89d983591f4a4d7b",
+      "keeper_id": "bb381c5e-1819-4f2a-9ac8-28a516b99b9c",
+      "loser_id": "48789087-0cdd-495d-ae74-9d35869a4cdc"
+    },
+    {
+      "physical_key_hash": "039bea107e5effee",
+      "keeper_id": "caca5cf4-c15d-40b4-8b42-20d2056cf16e",
+      "loser_id": "18263a75-7bb0-4f26-a4a0-49b0a669a526"
+    },
+    {
+      "physical_key_hash": "f21d6c515d6bdf16",
+      "keeper_id": "a03f784e-2c4d-4d0b-8111-15d39b67a1a9",
+      "loser_id": "995d1922-f2d1-4c86-b4c8-c309f3368fbc"
+    },
+    {
+      "physical_key_hash": "9098bfeeaec8f033",
+      "keeper_id": "1c49aec3-741a-4125-8647-1352d24da0d7",
+      "loser_id": "43729286-6539-4f08-a5a4-1992ef54f781"
+    },
+    {
+      "physical_key_hash": "a8e2c26a81d7296d",
+      "keeper_id": "6a329fff-8d26-4e7a-a4b8-e01535a54862",
+      "loser_id": "4e0ec607-78b1-4c3d-9931-d7173aadffc7"
+    }
+  ],
+  "applied_at": "2026-07-17T12:46:14.212029"
+}

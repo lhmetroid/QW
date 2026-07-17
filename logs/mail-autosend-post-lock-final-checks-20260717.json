@@ -1,0 +1,546 @@
+{
+  "generated_at": "2026-07-17T17:22:14.331639",
+  "waitsend_checked": 3536,
+  "item_map_count": 3536,
+  "plan_map_count": 3536,
+  "crm_queue_count": 3534,
+  "three_way_mismatches": [
+    {
+      "item_id": "d0110353-58e5-4783-a2c6-a11de144c02e",
+      "reason": "time_or_status_diff",
+      "local": "2026-07-21T14:30:00",
+      "send_plan": "2026-07-21T14:40:00",
+      "crm": "2026-07-21T14:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "f4e05a31-d972-494c-b3ae-4bb364d026cb",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-07T10:30:00",
+      "send_plan": "2026-08-07T10:40:00",
+      "crm": "2026-08-07T10:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "c87260ab-3223-4c33-8e04-799a9238379f",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-26T10:20:00",
+      "send_plan": "2026-08-26T10:30:00",
+      "crm": "2026-08-26T10:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "4472cac7-c4e1-4da1-aa87-fe38e3404137",
+      "reason": "time_or_status_diff",
+      "local": "2026-09-16T09:10:00",
+      "send_plan": "2026-09-16T09:20:00",
+      "crm": "2026-09-16T09:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "21bc2cbb-f20b-4c07-861e-55eb8e0a8225",
+      "reason": "missing_current_queue_without_final_status",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "d23d8bf1-43e3-48b3-bfce-21b4cbd06714",
+      "rowid": "bee5cf21-5069-4d91-979b-f9cfbebdbf2e",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "cb6814b0-af20-410f-884e-3addc7aa59fd",
+      "reason": "missing_current_queue_without_final_status",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "2ed46d3b-f3f8-4745-b994-24863b7b0da5",
+      "rowid": "1bf1ea65-3406-40c9-9397-b55242a808d6",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "843912dd-f142-4abf-93d8-fd297b7052e0",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T15:20:00",
+      "send_plan": "2026-08-12T16:10:00",
+      "crm": "2026-08-12T16:10:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "8ac2e99e-18f0-4447-9467-358eb3a5b6cd",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T16:10:00",
+      "send_plan": "2026-08-12T17:00:00",
+      "crm": "2026-08-12T17:00:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "e3c231c5-a431-4975-88f9-450cbbdf744a",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T15:10:00",
+      "send_plan": "2026-08-12T16:00:00",
+      "crm": "2026-08-12T16:00:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "8faa77af-72dd-4f7a-8bcd-92ebc04cbda5",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T16:20:00",
+      "send_plan": "2026-08-12T17:10:00",
+      "crm": "2026-08-12T17:10:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "ebabda1a-0c40-4713-b413-19c593ff3dfa",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T15:40:00",
+      "send_plan": "2026-08-12T16:30:00",
+      "crm": "2026-08-12T16:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "a3147d79-20b1-4b04-9718-022439c9a660",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T14:40:00",
+      "send_plan": "2026-08-12T15:30:00",
+      "crm": "2026-08-12T15:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "0e535e0e-d5cb-4422-8775-9d57951bcfb8",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T15:30:00",
+      "send_plan": "2026-08-12T16:20:00",
+      "crm": "2026-08-12T16:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "493c24ab-0d21-444b-867e-3459fd905f5c",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T16:00:00",
+      "send_plan": "2026-08-12T16:50:00",
+      "crm": "2026-08-12T16:50:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "5e58386d-7f5f-429b-bd04-8649408a80b3",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T15:50:00",
+      "send_plan": "2026-08-12T16:40:00",
+      "crm": "2026-08-12T16:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "0e03e1ec-38b8-4179-b731-e5529d0e9120",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T14:50:00",
+      "send_plan": "2026-08-12T15:40:00",
+      "crm": "2026-08-12T15:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "f9d1b43d-49c6-46b3-a7e1-398a599d51bd",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T15:00:00",
+      "send_plan": "2026-08-12T15:50:00",
+      "crm": "2026-08-12T15:50:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "eea3b56c-d818-4573-ab44-764d44ebafe3",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T14:20:00",
+      "send_plan": "2026-08-12T15:10:00",
+      "crm": "2026-08-12T15:10:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "d331ddd5-c11b-4153-85e6-11d892a3c920",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T14:30:00",
+      "send_plan": "2026-08-12T15:20:00",
+      "crm": "2026-08-12T15:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "9544c2c9-644f-46aa-8470-64637d580056",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T15:20:00",
+      "send_plan": "2026-08-11T15:20:00",
+      "crm": "2026-08-12T09:50:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "4e65b7df-85e6-4e38-83a0-f5c1daa99473",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T15:10:00",
+      "send_plan": "2026-08-11T15:10:00",
+      "crm": "2026-08-12T09:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "5b8baf32-553a-4cbf-8bd8-31ba9c1a5d49",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T15:00:00",
+      "send_plan": "2026-08-11T15:00:00",
+      "crm": "2026-08-12T09:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "5f5966ef-77e0-4565-ab82-09a31672d512",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T14:50:00",
+      "send_plan": "2026-08-11T14:50:00",
+      "crm": "2026-08-12T09:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "a09edc7c-4313-4e0a-ba0e-84b6268f37d9",
+      "reason": "time_or_status_diff",
+      "local": "2026-07-17T17:30:00",
+      "send_plan": "2026-07-17T17:30:00",
+      "crm": "2026-07-17T17:50:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "8e9d6f52-b64d-4e8c-8691-d8e61c35147c",
+      "reason": "time_or_status_diff",
+      "local": "2026-07-17T17:40:00",
+      "send_plan": "2026-07-17T17:40:00",
+      "crm": "2026-07-17T18:00:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "3f69e217-7902-4df6-983c-fd87507bd664",
+      "reason": "time_or_status_diff",
+      "local": "2026-07-17T17:20:00",
+      "send_plan": "2026-07-17T17:20:00",
+      "crm": "2026-07-17T17:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "9a540855-c39d-4c46-8074-ba5ca7e872ef",
+      "reason": "time_or_status_diff",
+      "local": "2026-07-17T17:50:00",
+      "send_plan": "2026-07-17T17:50:00",
+      "crm": "2026-07-17T18:10:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "077d7686-f9cb-4bc1-a11a-1dace5ea5886",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-12T14:10:00",
+      "send_plan": "2026-08-12T15:00:00",
+      "crm": "2026-08-12T15:00:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "2091dc91-cd3a-4582-97a0-08c95b5378ba",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T09:20:00",
+      "send_plan": "2026-08-11T10:50:00",
+      "crm": "2026-08-11T10:50:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "25caa124-7cdb-42b9-9544-b825a0c75abb",
+      "reason": "time_or_status_diff",
+      "local": "2026-07-17T17:20:00",
+      "send_plan": "2026-07-17T17:40:00",
+      "crm": "2026-07-17T17:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "cd74d902-985f-441b-ac4d-8bc6b34101e1",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-10T17:00:00",
+      "send_plan": "2026-08-11T10:10:00",
+      "crm": "2026-08-11T10:10:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "71ed8b32-0f48-429e-9033-28c5d917b434",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T09:10:00",
+      "send_plan": "2026-08-11T10:40:00",
+      "crm": "2026-08-11T10:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "8113cf3e-da97-49a7-b705-cadc99801bb6",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T10:20:00",
+      "send_plan": "2026-08-12T14:10:00",
+      "crm": "2026-08-12T14:10:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "8dd7110d-f72b-4ac2-9ee2-1b5a7f0f35a7",
+      "reason": "time_or_status_diff",
+      "local": "2026-07-17T17:40:00",
+      "send_plan": "2026-07-17T18:00:00",
+      "crm": "2026-07-17T18:00:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "c2c15562-25da-4df9-beb0-7a2f14a8786b",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-10T16:20:00",
+      "send_plan": "2026-08-11T09:30:00",
+      "crm": "2026-08-11T09:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "cd3f56e9-d9c7-46d5-8e30-7eff615ccb64",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-10T16:00:00",
+      "send_plan": "2026-08-11T09:10:00",
+      "crm": "2026-08-11T09:10:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "743f67f7-15ef-47b2-b513-c1d3e5f2253d",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-10T16:50:00",
+      "send_plan": "2026-08-11T10:00:00",
+      "crm": "2026-08-11T10:00:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "3f7fd605-807b-4c6f-bb69-0755633f6af4",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-10T16:10:00",
+      "send_plan": "2026-08-11T09:20:00",
+      "crm": "2026-08-11T09:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "6301e6b6-af4d-46a0-9527-c25ae2fe2c7d",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T11:00:00",
+      "send_plan": "2026-08-12T14:50:00",
+      "crm": "2026-08-12T14:50:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "1f9c1f59-6a47-47d5-b472-bad833c45e8f",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T10:30:00",
+      "send_plan": "2026-08-12T14:20:00",
+      "crm": "2026-08-12T14:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "857d9048-c709-4740-bd79-80c8edcc6670",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T10:50:00",
+      "send_plan": "2026-08-12T14:40:00",
+      "crm": "2026-08-12T14:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "0197da55-6f7e-4e05-945a-b8aaabdcafaf",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-10T17:10:00",
+      "send_plan": "2026-08-11T10:20:00",
+      "crm": "2026-08-11T10:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "c52bba33-9cb1-478a-8c63-c759ad3b782a",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-10T16:40:00",
+      "send_plan": "2026-08-11T09:50:00",
+      "crm": "2026-08-11T09:50:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "0762c81e-bb5b-4f4a-bc5f-1d5c7d482a5b",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-10T16:30:00",
+      "send_plan": "2026-08-11T09:40:00",
+      "crm": "2026-08-11T09:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "1160b309-d95d-4842-8336-53338a59d940",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T10:40:00",
+      "send_plan": "2026-08-12T14:30:00",
+      "crm": "2026-08-12T14:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "6df60d55-4a68-46de-bfbc-04bf4848672a",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T09:30:00",
+      "send_plan": "2026-08-11T11:00:00",
+      "crm": "2026-08-11T11:00:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "3d4d125c-6625-4122-b063-d6fa5d400bbb",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-10T15:50:00",
+      "send_plan": "2026-08-11T09:00:00",
+      "crm": "2026-08-11T09:00:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "aa29fe26-8b04-458c-80a0-60f9c2358484",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-11T09:00:00",
+      "send_plan": "2026-08-11T10:30:00",
+      "crm": "2026-08-11T10:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "8f3ec6e0-b9ea-4abd-9242-79edeeaceda3",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-13T16:00:00",
+      "send_plan": "2026-08-13T17:50:00",
+      "crm": "2026-08-13T17:50:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "c5e9199c-b7e7-4fae-9617-da6660ed0b5b",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-14T11:40:00",
+      "send_plan": "2026-08-14T17:20:00",
+      "crm": "2026-08-14T17:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "f9e84ed2-b5ac-4a0e-b68c-65466f5815f4",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-17T15:20:00",
+      "send_plan": "2026-08-17T17:40:00",
+      "crm": "2026-08-17T17:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "935d5846-04bf-4f3c-9bba-3f6453d753f1",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-13T13:10:00",
+      "send_plan": "2026-08-13T17:20:00",
+      "crm": "2026-08-13T17:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "61f2991e-dab2-46ae-8075-e468b6c3510d",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-17T12:30:00",
+      "send_plan": "2026-09-01T14:10:00",
+      "crm": "2026-09-01T14:10:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "0483ec01-cc4d-41b9-b5fe-1683f1bdf259",
+      "reason": "time_or_status_diff",
+      "local": "2026-07-17T17:20:00",
+      "send_plan": "2026-07-17T17:40:00",
+      "crm": "2026-07-17T17:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "64357abe-6c38-463e-b547-0e77f9f7e809",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-18T13:30:00",
+      "send_plan": "2026-08-18T17:20:00",
+      "crm": "2026-08-18T17:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "da702278-8a52-4f26-9680-eb8f4f320826",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-19T12:50:00",
+      "send_plan": "2026-09-01T14:30:00",
+      "crm": "2026-09-01T14:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "269df2ef-801b-41d6-aeba-17e10fa9db4f",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-20T09:10:00",
+      "send_plan": "2026-09-02T09:10:00",
+      "crm": "2026-09-02T09:10:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "1f52ca4a-fae4-453c-b3c2-330f9053463c",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-13T15:30:00",
+      "send_plan": "2026-08-13T17:40:00",
+      "crm": "2026-08-13T17:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "1aa30db1-a87b-4d0b-9adc-f6fd6a5dd165",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-14T11:10:00",
+      "send_plan": "2026-09-01T14:00:00",
+      "crm": "2026-09-01T14:00:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "f5b02542-ba86-40e1-bc13-c9399dececcf",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-17T14:50:00",
+      "send_plan": "2026-09-02T09:00:00",
+      "crm": "2026-09-02T09:00:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "95807445-070c-4dc9-ae0a-84d2cb091b07",
+      "reason": "time_or_status_diff",
+      "local": "2026-07-17T17:30:00",
+      "send_plan": "2026-07-17T17:50:00",
+      "crm": "2026-07-17T17:50:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "62610dc5-0edb-4573-8513-875320a57710",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-14T13:30:00",
+      "send_plan": "2026-08-14T17:30:00",
+      "crm": "2026-08-14T17:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "f2e215cc-bf33-43fe-9892-be3d2b6b85e8",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-17T17:10:00",
+      "send_plan": "2026-08-17T17:50:00",
+      "crm": "2026-08-17T17:50:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "0c7fe130-fd16-48b7-9819-b12d32b8fae9",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-18T09:30:00",
+      "send_plan": "2026-09-01T14:20:00",
+      "crm": "2026-09-01T14:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "7b6393e1-2d37-4922-9281-ae49ee6c75e6",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-13T13:30:00",
+      "send_plan": "2026-08-13T17:30:00",
+      "crm": "2026-08-13T17:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "637c27a4-b7e7-4420-857d-86786a5bbf7a",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-17T12:50:00",
+      "send_plan": "2026-08-17T17:20:00",
+      "crm": "2026-08-17T17:20:00",
+      "cached_status": "WaitSend"
+    }
+  ],
+  "resolved_transitions": [],
+  "over_cap_days": [],
+  "gap_violations": [],
+  "ai_weekend_rows": [],
+  "max_combined_daily_count": 50
+}

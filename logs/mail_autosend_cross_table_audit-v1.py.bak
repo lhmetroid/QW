@@ -1,0 +1,101 @@
+from __future__ import annotations
+import hashlib
+import json
+from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
+from sqlalchemy import text
+from database import SessionLocal
+from crm_database import CRMSessionLocal
+
+OUT = Path(__file__).resolve().parent.parent / "logs" / "mail-autosend-cross-table-pending-audit-20260716.json"
+
+def key_hash(key):
+    return hashlib.sha256("|".join(map(str, key)).encode("utf-8")).hexdigest()[:16]
+
+pg = SessionLocal()
+crm = CRMSessionLocal()
+try:
+    plans = pg.execute(text(
+        "SELECT plan_id,customer_id,inputer_staff_id,scenario,suite_step,"
+        "lower(COALESCE(recipient_email_key,'')),COALESCE(spqueue_rowid,''),"
+        "COALESCE(crm_send_id,''),plan_send_time,COALESCE(crm_send_status,''),status "
+        "FROM mail_customer_suite_send_plan WHERE status IN ('enqueued','duplicate_skipped')"
+    )).fetchall()
+    queue_by_row = {}
+    staffs = sorted({str(p[2] or "") for p in plans if str(p[2] or "")})
+    for staff in staffs:
+        rows = crm.execute(text(
+            "SELECT CAST(RowId AS NVARCHAR(64)),ISNULL(CAST(SendId AS NVARCHAR(80)),''),PlanSendTime "
+            "FROM spQueueSend WHERE InputerStaffId=:staff AND MessageType='Email' "
+            "AND ISNULL(FolderId,'')='OutBox' AND ISNULL(CAST(UseRange AS NVARCHAR(200)),'') LIKE '%宣传邮件-AI%'"
+        ), {"staff": staff}).fetchall()
+        for rowid, send_id, plan_dt in rows:
+            queue_by_row[str(rowid).lower()] = {
+                "source": "queue", "rowid": str(rowid), "send_id": str(send_id or ""), "plan_time": plan_dt
+            }
+
+    info_by_key = {}
+    by_staff = defaultdict(set)
+    for p in plans:
+        if p[7]:
+            by_staff[str(p[2] or "")].add(str(p[7]))
+    for staff, send_ids in by_staff.items():
+        if not staff.isalnum() or len(staff) > 8:
+            continue
+        values = sorted(send_ids)
+        for pos in range(0, len(values), 200):
+            chunk = values[pos:pos + 200]
+            params = {f"s{i}": value for i, value in enumerate(chunk)}
+            marks = ",".join(f":s{i}" for i in range(len(chunk)))
+            rows = crm.execute(text(
+                f"SELECT ISNULL(CAST(SendId AS NVARCHAR(80)),''),PlanSendTime "
+                f"FROM [spSendInfo{staff}] WHERE SendId IN ({marks}) AND MessageType='Email' "
+                f"AND Status='WaitSend' AND DeleteTime IS NULL"
+            ), params).fetchall()
+            for send_id, plan_dt in rows:
+                info_by_key[(staff, str(send_id))] = {
+                    "source": "send_info", "rowid": "", "send_id": str(send_id), "plan_time": plan_dt
+                }
+
+    grouped = defaultdict(dict)
+    for p in plans:
+        staff = str(p[2] or "")
+        rowid = str(p[6] or "")
+        send_id = str(p[7] or "")
+        queue = queue_by_row.get(rowid.lower()) if rowid else None
+        info = info_by_key.get((staff, send_id)) if send_id else None
+        live = info or queue
+        if live is None:
+            continue
+        physical_send_id = str((info or queue).get("send_id") or send_id)
+        physical = f"send:{staff}:{physical_send_id}" if physical_send_id else f"queue:{rowid.lower()}"
+        key = (str(p[1] or ""), staff, str(p[3] or ""), int(p[4] or 0), str(p[5] or ""))
+        grouped[key][physical] = {
+            "plan_id": str(p[0]), "source": "both" if info and queue else live["source"],
+            "rowid": rowid, "send_id": physical_send_id,
+            "plan_time": live["plan_time"].isoformat() if live["plan_time"] else None,
+            "send_plan_time": p[8].isoformat() if p[8] else None,
+            "cached_status": str(p[9] or ""), "plan_status": str(p[10] or "")
+        }
+
+    duplicates = []
+    for key, physical in grouped.items():
+        if len(physical) > 1:
+            duplicates.append({
+                "business_key_hash": key_hash(key), "staff": key[1], "scenario": key[2],
+                "suite_step": key[3], "physical_count": len(physical),
+                "rows": list(physical.values())
+            })
+    result = {
+        "generated_at": datetime.now().isoformat(), "read_only": True,
+        "plan_rows_checked": len(plans), "live_business_keys": len(grouped),
+        "cross_table_duplicate_keys": len(duplicates),
+        "cross_table_duplicate_physical_rows": sum(x["physical_count"] for x in duplicates),
+        "duplicates": duplicates,
+    }
+    OUT.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps({k: v for k, v in result.items() if k != "duplicates"}, ensure_ascii=False))
+finally:
+    crm.close()
+    pg.close()

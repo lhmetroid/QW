@@ -1,0 +1,284 @@
+{
+  "generated_at": "2026-07-17T13:06:36.393704",
+  "applied": true,
+  "source_sha256": "5dc868b333e72c6e3294c52d7c4e42be37ebf03802f2815d6d9c1aa7dfaec4e7",
+  "audit_file": "logs\\mail-autosend-all-active-current-20260717.json",
+  "config": {
+    "daily_cap": 50,
+    "skip_non_workdays": true,
+    "holiday_dates": []
+  },
+  "staff_count": 5,
+  "item_scope_count": 11648,
+  "content_hash_unchanged": true,
+  "concurrent_content_change_count": 0,
+  "concurrent_content_change_item_ids": [],
+  "results": [
+    {
+      "ok": true,
+      "staff_id": "0002",
+      "overdue": 0,
+      "changed": 4,
+      "movable": 2337,
+      "fixed_pending": 10,
+      "crm_pending_movable": 708,
+      "schedule_violations": 4,
+      "problem_count": 4,
+      "first_slot": "2026-07-31 10:40",
+      "last_slot": "2026-09-02 12:20",
+      "day_load": [
+        {
+          "date": "2026-07-31",
+          "count": 1
+        },
+        {
+          "date": "2026-08-10",
+          "count": 1
+        },
+        {
+          "date": "2026-09-01",
+          "count": 1
+        },
+        {
+          "date": "2026-09-02",
+          "count": 1
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "d748b654-c324-43b7-881a-a888398bd8cd",
+          "contact_id": "KH02044-220",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "Tianjiao Wang",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 13:50",
+          "new_date": "2026-07-31",
+          "new_time": "10:40",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "987cdd65-3be0-4e95-8cc1-b45419c107a9",
+          "contact_id": "KH02044-220",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "Tianjiao Wang",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-31 11:00",
+          "new_date": "2026-08-10",
+          "new_time": "17:10",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "15cae66f-9135-4ee1-b1b6-66500904876c",
+          "contact_id": "KH02044-220",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "Tianjiao Wang",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-07 13:00",
+          "new_date": "2026-09-01",
+          "new_time": "11:50",
+          "seq_in_day": 17
+        },
+        {
+          "item_id": "c17b17f2-ce13-4644-ba4e-6507524706fb",
+          "contact_id": "KH02044-220",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "Tianjiao Wang",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-11 16:00",
+          "new_date": "2026-09-02",
+          "new_time": "12:20",
+          "seq_in_day": 20
+        }
+      ],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "0017",
+      "overdue": 0,
+      "changed": 1,
+      "movable": 1097,
+      "fixed_pending": 99,
+      "crm_pending_movable": 893,
+      "schedule_violations": 4,
+      "problem_count": 4,
+      "first_slot": "2026-07-17 17:50",
+      "last_slot": "2026-07-17 17:50",
+      "day_load": [
+        {
+          "date": "2026-07-17",
+          "count": 1
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "a9771607-2b49-4b75-bdfd-bbdc940db820",
+          "contact_id": "KH17247-057",
+          "company_name": "凯德置地中国控股有限公司/雅诗阁物业管理（上海）有限公司",
+          "contact_name": "沈嘉璐",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 17:40",
+          "new_date": "2026-07-17",
+          "new_time": "17:50",
+          "seq_in_day": 26
+        }
+      ],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "0141",
+      "overdue": 0,
+      "changed": 1,
+      "movable": 2057,
+      "fixed_pending": 17,
+      "crm_pending_movable": 739,
+      "schedule_violations": 4,
+      "problem_count": 4,
+      "first_slot": "2026-07-17 18:30",
+      "last_slot": "2026-07-17 18:30",
+      "day_load": [
+        {
+          "date": "2026-07-17",
+          "count": 1
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "bb693451-a73d-46c8-9410-bca00e5420a2",
+          "contact_id": "KH00362-166",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "翁",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 14:50",
+          "new_date": "2026-07-17",
+          "new_time": "18:30",
+          "seq_in_day": 30
+        }
+      ],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "0188",
+      "overdue": 0,
+      "changed": 4,
+      "movable": 4728,
+      "fixed_pending": 4,
+      "crm_pending_movable": 665,
+      "schedule_violations": 4,
+      "problem_count": 4,
+      "first_slot": "2026-07-27 13:20",
+      "last_slot": "2026-12-01 14:30",
+      "day_load": [
+        {
+          "date": "2026-07-27",
+          "count": 1
+        },
+        {
+          "date": "2026-08-05",
+          "count": 1
+        },
+        {
+          "date": "2026-08-25",
+          "count": 1
+        },
+        {
+          "date": "2026-12-01",
+          "count": 1
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "1807e59f-e5ba-425a-91dc-df7382abeffe",
+          "contact_id": "KH00314-066",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "侯文婧",
+          "scenario": "new_contact_intro",
+          "suite_step": 1,
+          "old": "2026-07-17 13:20",
+          "new_date": "2026-07-27",
+          "new_time": "13:20",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "030d500b-b9c6-4c84-80d7-06e652dc1cbf",
+          "contact_id": "KH00314-066",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "侯文婧",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-27 13:20",
+          "new_date": "2026-08-05",
+          "new_time": "12:20",
+          "seq_in_day": 31
+        },
+        {
+          "item_id": "5e34037b-e6b8-454d-9afa-2da454bb2a3b",
+          "contact_id": "KH00314-066",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "侯文婧",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-08-04 13:10",
+          "new_date": "2026-08-25",
+          "new_time": "14:00",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "86ba92be-33b9-4ed9-a241-43e77c50a5fb",
+          "contact_id": "KH00314-066",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "侯文婧",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-25 14:10",
+          "new_date": "2026-12-01",
+          "new_time": "14:30",
+          "seq_in_day": 33
+        }
+      ],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "1607",
+      "overdue": 0,
+      "changed": 1,
+      "movable": 468,
+      "fixed_pending": 532,
+      "crm_pending_movable": 342,
+      "schedule_violations": 4,
+      "problem_count": 4,
+      "first_slot": "2026-07-17 16:40",
+      "last_slot": "2026-07-17 16:40",
+      "day_load": [
+        {
+          "date": "2026-07-17",
+          "count": 1
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "85c73683-0f63-4133-953e-21887e690b2d",
+          "contact_id": "KH12934-021",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "施艳",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 13:30",
+          "new_date": "2026-07-17",
+          "new_time": "16:40",
+          "seq_in_day": 30
+        }
+      ],
+      "applied": true
+    }
+  ]
+}

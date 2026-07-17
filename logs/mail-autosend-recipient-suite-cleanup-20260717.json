@@ -1,0 +1,131 @@
+{
+  "generated_at": "2026-07-17T11:54:15.202879",
+  "applied": true,
+  "suite_count": 6,
+  "loser_plan_count": 18,
+  "queue_delete_count": 18,
+  "info_logical_delete_count": 15,
+  "decisions": [
+    {
+      "staff": "1607",
+      "scenario": "re_activation",
+      "recipient_key_hash": "a1f670c078fb1686",
+      "keeper_business_hash": "0e31b243a5c5ccb6",
+      "loser_business_hash": "cad3d8643068d696",
+      "keeper_plan_ids": [
+        "bf2bcb4e-ddc5-4444-83ed-ddfd15c3a831",
+        "d23d8bf1-43e3-48b3-bfce-21b4cbd06714",
+        "fb00fba1-5de2-4399-bb86-6e96770ca985",
+        "1f02b872-532b-4f3c-b436-945d2227a8bc"
+      ],
+      "loser_plan_ids": [
+        "31bbb0f3-47be-4ec7-9ceb-43f3a9c01afe",
+        "f0fbc040-1e57-4260-a624-dd025197c1cf",
+        "591c4f2e-0b6a-445c-9eb8-120a14aa8aba",
+        "be4157e1-45a0-4bd6-94bf-dbcc8bd1b9c9"
+      ]
+    },
+    {
+      "staff": "0017",
+      "scenario": "new_business_promotion",
+      "recipient_key_hash": "0e3b024b3726ea33",
+      "keeper_business_hash": "45e146603c8d9bc6",
+      "loser_business_hash": "38179fed594cec11",
+      "keeper_plan_ids": [
+        "78fed753-386b-4832-bcf7-811cde85ac4c",
+        "fc89e5ac-1b97-4d11-91a8-802a9372183e",
+        "64b545ff-d6e6-4248-8c95-f7b4753bfe83",
+        "995d1922-f2d1-4c86-b4c8-c309f3368fbc",
+        "52a5a491-92bb-4dc9-8ecd-17c2a0b96230",
+        "0087af02-20a8-43ae-8893-afacdec82cb7",
+        "a03f784e-2c4d-4d0b-8111-15d39b67a1a9",
+        "19c113a3-6ac1-4eb6-b51d-b7fe4081ee83"
+      ],
+      "loser_plan_ids": [
+        "fc21a983-1611-4d3e-b8c0-bf436dd49a32",
+        "0b7daede-201a-4cf0-a4af-39075a736561",
+        "2bfe777a-d316-4875-bc02-386fe49946d7",
+        "5f46e97d-26c3-4fa6-a02a-8396f6f7294c"
+      ]
+    },
+    {
+      "staff": "0141",
+      "scenario": "re_activation",
+      "recipient_key_hash": "a6e7b9bac42ecf6d",
+      "keeper_business_hash": "63b20e7531958727",
+      "loser_business_hash": "5ed3328bfd84e47b",
+      "keeper_plan_ids": [
+        "b2f12853-8f37-45eb-b015-c9c844282a7a",
+        "f0c8ee62-21a1-4e5b-bc19-bfcf99def984",
+        "e71cd513-1703-4e7b-a91c-eeafb1a08a3e",
+        "c04ebcd1-9e72-4f54-b906-eefcf3d4fc91"
+      ],
+      "loser_plan_ids": [
+        "eae239e6-6ad1-4a43-bc73-22d756df318f",
+        "77f014d9-24b1-41f5-a29c-0021cb4fa741",
+        "8d42a8e2-fa7f-4c39-ac2f-e24a95f44620",
+        "d57ac653-0b63-48fe-adbc-9ac04756ab36"
+      ]
+    },
+    {
+      "staff": "0017",
+      "scenario": "new_business_promotion",
+      "recipient_key_hash": "b2c4d6099d59b306",
+      "keeper_business_hash": "d32e73089a3314d1",
+      "loser_business_hash": "98947863c4888ac4",
+      "keeper_plan_ids": [
+        "c4b1cf5d-0e94-422b-8a87-ac5ee9ebf33b",
+        "308b41ea-0d1b-4ba4-9532-db73c8e90793",
+        "29e6ded0-0c29-4820-8cfc-28df65171781",
+        "5b0826c6-d94a-4cc4-8ed7-714ba8e35f31"
+      ],
+      "loser_plan_ids": [
+        "a3c0ea64-2b8f-4191-bcb5-b930c9526f8c",
+        "621047da-8022-406f-ad0a-f0145e1a3def",
+        "8a63cd78-74f2-4c3a-b354-01704a3f6caa",
+        "5973c57c-da44-4fa7-bea5-9b5064e2bd93"
+      ]
+    },
+    {
+      "staff": "0017",
+      "scenario": "new_business_promotion",
+      "recipient_key_hash": "6f89e3c1a848fe39",
+      "keeper_business_hash": "894820ba1a3d2f25",
+      "loser_business_hash": "fee844f502b932ff",
+      "keeper_plan_ids": [
+        "18332b8d-50dc-4dd9-9a79-62693cc1e445",
+        "a9342dc5-f0d8-4637-9469-c754a833f109",
+        "3f882988-d1ff-4d84-964d-850430aa6988",
+        "4a78e681-220e-46ba-9f3b-a70072573009"
+      ],
+      "loser_plan_ids": [
+        "c0556d8a-9f95-4862-882e-1f7d675b6eea",
+        "2e40144d-8f8c-42aa-8b98-fd79b6b8ca1f"
+      ]
+    },
+    {
+      "staff": "1607",
+      "scenario": "re_activation",
+      "recipient_key_hash": "43478fcd9d7dede7",
+      "keeper_business_hash": "609c9ca0c8eb49dc",
+      "loser_business_hash": "f86ff5e60b2943bb",
+      "keeper_plan_ids": [
+        "7f315b47-4cea-4935-bc78-e6fe19fe74fe",
+        "9fa15ea3-3e87-40d4-99e0-86a981ffc3ab",
+        "f18f47cc-fb0f-435d-8ef6-22566f332b5c",
+        "2ed46d3b-f3f8-4745-b994-24863b7b0da5"
+      ],
+      "loser_plan_ids": [
+        "95790358-8fd1-421c-bfa9-dc0e809c32af",
+        "56073bbc-bbbb-4d9e-8550-33b04706dd71",
+        "d81738e2-710d-4862-b1e6-213491b11175",
+        "35b50c99-ed8b-4aa8-aef4-5802ffaeac10"
+      ]
+    }
+  ],
+  "applied_at": "2026-07-17T11:54:15.689338",
+  "deleted_queue": 18,
+  "deleted_queue_files": 18,
+  "logically_deleted_send_info": 15,
+  "local_items_cancelled": 18
+}

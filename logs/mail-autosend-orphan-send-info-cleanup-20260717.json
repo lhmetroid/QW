@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-07-17T12:23:11.691877",
+  "applied": true,
+  "orphan_info_count": 6,
+  "targets": [
+    {
+      "staff": "0002",
+      "send_id_hash": "2c5d47f20089227c"
+    },
+    {
+      "staff": "0017",
+      "send_id_hash": "0f6b1ecc63d9bea1"
+    },
+    {
+      "staff": "0017",
+      "send_id_hash": "64d525f742389419"
+    },
+    {
+      "staff": "0141",
+      "send_id_hash": "86e147f11f51039b"
+    },
+    {
+      "staff": "0188",
+      "send_id_hash": "06c1d195c9cc0721"
+    },
+    {
+      "staff": "1607",
+      "send_id_hash": "7fbd1e2a803d0899"
+    }
+  ],
+  "applied_at": "2026-07-17T12:23:11.757291",
+  "logically_deleted": 6
+}

@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-07-17T13:03:33.419007",
+  "read_only": true,
+  "counts": {
+    "unexpected_missing": 2
+  },
+  "items": [
+    {
+      "plan_id": "d23d8bf1-43e3-48b3-bfce-21b4cbd06714",
+      "staff": "1607",
+      "send_id_present": true,
+      "cached_status": "WaitSend",
+      "classification": "unexpected_missing",
+      "crm_history_status": "WaitSend",
+      "crm_history_present": true,
+      "crm_history_deleted": false,
+      "fact_send_time": null
+    },
+    {
+      "plan_id": "2ed46d3b-f3f8-4745-b994-24863b7b0da5",
+      "staff": "1607",
+      "send_id_present": true,
+      "cached_status": "WaitSend",
+      "classification": "unexpected_missing",
+      "crm_history_status": "WaitSend",
+      "crm_history_present": true,
+      "crm_history_deleted": false,
+      "fact_send_time": null
+    }
+  ]
+}

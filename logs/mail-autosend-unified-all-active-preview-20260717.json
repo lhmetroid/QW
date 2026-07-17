@@ -1,0 +1,2084 @@
+{
+  "generated_at": "2026-07-17T12:56:50.937836",
+  "applied": false,
+  "source_sha256": "5dc868b333e72c6e3294c52d7c4e42be37ebf03802f2815d6d9c1aa7dfaec4e7",
+  "audit_file": "logs\\mail-autosend-all-active-backup-20260716.json",
+  "config": {
+    "daily_cap": 50,
+    "skip_non_workdays": true,
+    "holiday_dates": []
+  },
+  "staff_count": 5,
+  "item_scope_count": 11666,
+  "content_hash_unchanged": true,
+  "concurrent_content_change_count": 0,
+  "concurrent_content_change_item_ids": [],
+  "results": [
+    {
+      "ok": true,
+      "staff_id": "0002",
+      "overdue": 4,
+      "changed": 45,
+      "movable": 2337,
+      "fixed_pending": 10,
+      "crm_pending_movable": 708,
+      "schedule_violations": 45,
+      "problem_count": 45,
+      "first_slot": "2026-07-28 16:50",
+      "last_slot": "2026-09-02 12:10",
+      "day_load": [
+        {
+          "date": "2026-07-28",
+          "count": 3
+        },
+        {
+          "date": "2026-07-29",
+          "count": 3
+        },
+        {
+          "date": "2026-07-30",
+          "count": 3
+        },
+        {
+          "date": "2026-07-31",
+          "count": 4
+        },
+        {
+          "date": "2026-08-06",
+          "count": 1
+        },
+        {
+          "date": "2026-08-07",
+          "count": 5
+        },
+        {
+          "date": "2026-08-10",
+          "count": 4
+        },
+        {
+          "date": "2026-08-26",
+          "count": 3
+        },
+        {
+          "date": "2026-08-27",
+          "count": 3
+        },
+        {
+          "date": "2026-08-28",
+          "count": 2
+        },
+        {
+          "date": "2026-08-31",
+          "count": 8
+        },
+        {
+          "date": "2026-09-01",
+          "count": 4
+        },
+        {
+          "date": "2026-09-02",
+          "count": 2
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "7f11ab1c-b998-4443-abab-928834c6e585",
+          "contact_id": "KH02044-272",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "Wang Le",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 12:20",
+          "new_date": "2026-07-28",
+          "new_time": "16:50",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "6ae49d13-d03b-4cf9-a4ce-cb82a2eb9317",
+          "contact_id": "KH02044-272",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "Wang Le",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-30 17:10",
+          "new_date": "2026-08-06",
+          "new_time": "17:10",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "439bf731-eb6e-4ce8-a216-8524ceb140e1",
+          "contact_id": "KH02044-272",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "Wang Le",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-07 11:30",
+          "new_date": "2026-08-26",
+          "new_time": "15:30",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "d1df1b23-fdbd-4201-9a60-2543a95206d7",
+          "contact_id": "KH02044-272",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "Wang Le",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-11 14:30",
+          "new_date": "2026-08-27",
+          "new_time": "12:20",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "40316f79-bd2c-4035-b307-1cb59255ee07",
+          "contact_id": "KH02044-275",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "梁芬",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 12:30",
+          "new_date": "2026-07-28",
+          "new_time": "17:00",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "d9ea219e-b94c-48d4-8cee-d41257adf4ef",
+          "contact_id": "KH02044-275",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "梁芬",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-31 09:40",
+          "new_date": "2026-08-07",
+          "new_time": "10:30",
+          "seq_in_day": 38
+        },
+        {
+          "item_id": "091aac66-a700-4b42-a8f9-519ec5f2a570",
+          "contact_id": "KH02044-275",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "梁芬",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-07 11:40",
+          "new_date": "2026-08-26",
+          "new_time": "15:40",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "43d728b1-111a-4b6a-91b8-a498350a148f",
+          "contact_id": "KH02044-275",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "梁芬",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-11 14:40",
+          "new_date": "2026-08-27",
+          "new_time": "12:30",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "c8ffaeef-f9d2-44d5-b063-6da57a4baeb2",
+          "contact_id": "KH00261-007",
+          "company_name": "拜耳技术工程（上海）有限公司/科思创（上海）投资有限公司",
+          "contact_name": "陶剑云",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 12:40",
+          "new_date": "2026-07-28",
+          "new_time": "17:10",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "fa419265-2a97-4222-8a9f-a30a7025c219",
+          "contact_id": "KH00261-007",
+          "company_name": "拜耳技术工程（上海）有限公司/科思创（上海）投资有限公司",
+          "contact_name": "陶剑云",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-31 09:50",
+          "new_date": "2026-08-07",
+          "new_time": "10:40",
+          "seq_in_day": 39
+        },
+        {
+          "item_id": "e66f2779-2e72-4f08-9fea-420b92fe5c3e",
+          "contact_id": "KH00261-007",
+          "company_name": "拜耳技术工程（上海）有限公司/科思创（上海）投资有限公司",
+          "contact_name": "陶剑云",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-07 11:50",
+          "new_date": "2026-08-26",
+          "new_time": "15:50",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "34330877-7ba3-470d-9ea1-97c4d8bdf6de",
+          "contact_id": "KH00261-007",
+          "company_name": "拜耳技术工程（上海）有限公司/科思创（上海）投资有限公司",
+          "contact_name": "陶剑云",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-11 14:50",
+          "new_date": "2026-08-27",
+          "new_time": "12:40",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "8f59e228-5101-4232-97e8-856e1fea64b4",
+          "contact_id": "KH02044-240",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "黄萍",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 13:00",
+          "new_date": "2026-07-29",
+          "new_time": "09:50",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "4bdccc37-ebfd-4f29-99b0-2113fb8bb7c8",
+          "contact_id": "KH02044-240",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "黄萍",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-31 10:10",
+          "new_date": "2026-08-07",
+          "new_time": "10:50",
+          "seq_in_day": 40
+        },
+        {
+          "item_id": "1b7df0e7-b00b-44d2-92ef-9d22bd56a75b",
+          "contact_id": "KH02044-240",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "黄萍",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-07 12:10",
+          "new_date": "2026-08-28",
+          "new_time": "17:00",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "9a44b09c-706d-406f-b294-f30a18327617",
+          "contact_id": "KH02044-240",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "黄萍",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-11 15:10",
+          "new_date": "2026-08-31",
+          "new_time": "16:00",
+          "seq_in_day": 42
+        },
+        {
+          "item_id": "5d96700d-8f10-46c3-ba92-e39a75b937ba",
+          "contact_id": "KH02044-062",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "舒琪",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 13:30",
+          "new_date": "2026-07-29",
+          "new_time": "11:10",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "38b3e201-0784-4d37-98e2-3e261a8df873",
+          "contact_id": "KH02044-062",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "舒琪",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-31 10:40",
+          "new_date": "2026-08-07",
+          "new_time": "11:00",
+          "seq_in_day": 41
+        },
+        {
+          "item_id": "79ee8aa7-8ecc-4566-b955-3b97fba947cb",
+          "contact_id": "KH02044-062",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "舒琪",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-07 12:40",
+          "new_date": "2026-08-28",
+          "new_time": "17:10",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "903793d4-9e02-4bf4-9ee2-95f89ec7c17f",
+          "contact_id": "KH02044-062",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "舒琪",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-11 15:40",
+          "new_date": "2026-08-31",
+          "new_time": "16:10",
+          "seq_in_day": 43
+        },
+        {
+          "item_id": "7441cb7e-ac83-4358-9f93-4f5ff08a7924",
+          "contact_id": "KH02044-064",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "赵宇",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 13:40",
+          "new_date": "2026-07-29",
+          "new_time": "12:00",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "8065119f-ec75-4e13-90de-a1a0e43c6eae",
+          "contact_id": "KH02044-064",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "赵宇",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-31 10:50",
+          "new_date": "2026-08-07",
+          "new_time": "11:10",
+          "seq_in_day": 42
+        },
+        {
+          "item_id": "70ff0b7c-6965-4a91-b029-5b74e85d9320",
+          "contact_id": "KH02044-064",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "赵宇",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-07 12:50",
+          "new_date": "2026-08-31",
+          "new_time": "16:20",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "acd33b73-d5e4-4458-a39c-36db3c7b25e9",
+          "contact_id": "KH02044-064",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "赵宇",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-11 15:50",
+          "new_date": "2026-09-01",
+          "new_time": "11:10",
+          "seq_in_day": 13
+        },
+        {
+          "item_id": "2394d44f-460b-43f7-9e7e-49320ff1f675",
+          "contact_id": "KH13094-019",
+          "company_name": "英威达管理（上海）有限公司",
+          "contact_name": "金旖旎",
+          "scenario": "re_activation",
+          "suite_step": 2,
+          "old": "2026-07-20 10:10",
+          "new_date": "2026-07-30",
+          "new_time": "09:10",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "7a71d5ee-445e-439f-acfa-6a1b2ad1aa2b",
+          "contact_id": "KH13094-019",
+          "company_name": "英威达管理（上海）有限公司",
+          "contact_name": "金旖旎",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-07-29 09:50",
+          "new_date": "2026-08-10",
+          "new_time": "12:20",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "b1ab6965-3489-4341-8fba-7c3d1f88d428",
+          "contact_id": "KH13094-019",
+          "company_name": "英威达管理（上海）有限公司",
+          "contact_name": "金旖旎",
+          "scenario": "re_activation",
+          "suite_step": 4,
+          "old": "2026-08-04 09:30",
+          "new_date": "2026-08-31",
+          "new_time": "16:30",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "2794588f-5c87-4804-8351-7abedeccb95c",
+          "contact_id": "KH13094-018",
+          "company_name": "英威达管理（上海）有限公司",
+          "contact_name": "谢栋",
+          "scenario": "re_activation",
+          "suite_step": 2,
+          "old": "2026-07-20 11:20",
+          "new_date": "2026-07-30",
+          "new_time": "17:00",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "e7ef7df5-e251-40d9-8ca8-55cf28e18091",
+          "contact_id": "KH13094-018",
+          "company_name": "英威达管理（上海）有限公司",
+          "contact_name": "谢栋",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-07-29 11:10",
+          "new_date": "2026-08-10",
+          "new_time": "12:30",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "3cb48935-c568-4d99-8c97-bfbb3dc2a845",
+          "contact_id": "KH13094-018",
+          "company_name": "英威达管理（上海）有限公司",
+          "contact_name": "谢栋",
+          "scenario": "re_activation",
+          "suite_step": 4,
+          "old": "2026-08-04 10:50",
+          "new_date": "2026-08-31",
+          "new_time": "16:40",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "e29ae5c6-ddaf-4d0e-91d9-f6565c32f36d",
+          "contact_id": "KH13094-110",
+          "company_name": "英威达管理（上海）有限公司",
+          "contact_name": "Tracy Xu",
+          "scenario": "re_activation",
+          "suite_step": 2,
+          "old": "2026-07-20 12:00",
+          "new_date": "2026-07-30",
+          "new_time": "17:10",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "6d58eadd-73b0-4d10-b49a-e6ad94aa10fa",
+          "contact_id": "KH13094-110",
+          "company_name": "英威达管理（上海）有限公司",
+          "contact_name": "Tracy Xu",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-07-29 12:00",
+          "new_date": "2026-08-10",
+          "new_time": "16:10",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "02220a0a-3bfd-45ae-a1f9-59dad20d35f9",
+          "contact_id": "KH13094-110",
+          "company_name": "英威达管理（上海）有限公司",
+          "contact_name": "Tracy Xu",
+          "scenario": "re_activation",
+          "suite_step": 4,
+          "old": "2026-08-04 11:40",
+          "new_date": "2026-08-31",
+          "new_time": "16:50",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "6cac8f19-bed2-4f92-babe-68b90b93f037",
+          "contact_id": "KH13094-097",
+          "company_name": "英威达管理（上海）有限公司",
+          "contact_name": "沈林",
+          "scenario": "re_activation",
+          "suite_step": 2,
+          "old": "2026-07-20 13:10",
+          "new_date": "2026-07-31",
+          "new_time": "09:20",
+          "seq_in_day": 42
+        },
+        {
+          "item_id": "dda55515-2b6c-4fd8-949f-84a3beceaf8f",
+          "contact_id": "KH13094-097",
+          "company_name": "英威达管理（上海）有限公司",
+          "contact_name": "沈林",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-07-30 09:10",
+          "new_date": "2026-08-10",
+          "new_time": "16:50",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "413ff05c-4e1e-409b-861c-dcd7bfb0cd8e",
+          "contact_id": "KH13094-097",
+          "company_name": "英威达管理（上海）有限公司",
+          "contact_name": "沈林",
+          "scenario": "re_activation",
+          "suite_step": 4,
+          "old": "2026-08-04 13:00",
+          "new_date": "2026-08-31",
+          "new_time": "17:00",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "a1771507-cc87-4a61-bd59-0e399042f6b7",
+          "contact_id": "KH02044-138",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "王青华",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-28 16:00",
+          "new_date": "2026-07-31",
+          "new_time": "09:40",
+          "seq_in_day": 43
+        },
+        {
+          "item_id": "f2df8d78-6a73-4130-9626-eb51ca30cf8a",
+          "contact_id": "KH02044-138",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "王青华",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-26 15:30",
+          "new_date": "2026-08-31",
+          "new_time": "17:10",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "f01d7926-4401-4bb8-b2b7-732c3365beff",
+          "contact_id": "KH02044-138",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "王青华",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-27 12:20",
+          "new_date": "2026-09-01",
+          "new_time": "11:20",
+          "seq_in_day": 14
+        },
+        {
+          "item_id": "5ab5cce1-15df-49c0-b42d-f42eec57f64d",
+          "contact_id": "KH00261-072",
+          "company_name": "拜耳技术工程（上海）有限公司/科思创（上海）投资有限公司",
+          "contact_name": "陈查立",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-28 16:10",
+          "new_date": "2026-07-31",
+          "new_time": "09:50",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "34b94dc4-9141-4f35-a720-d26f2877c443",
+          "contact_id": "KH00261-072",
+          "company_name": "拜耳技术工程（上海）有限公司/科思创（上海）投资有限公司",
+          "contact_name": "陈查立",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-26 15:40",
+          "new_date": "2026-09-01",
+          "new_time": "11:30",
+          "seq_in_day": 15
+        },
+        {
+          "item_id": "18392ecd-0252-41a1-95f7-976617bc074c",
+          "contact_id": "KH00261-072",
+          "company_name": "拜耳技术工程（上海）有限公司/科思创（上海）投资有限公司",
+          "contact_name": "陈查立",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-27 12:30",
+          "new_date": "2026-09-02",
+          "new_time": "12:00",
+          "seq_in_day": 18
+        },
+        {
+          "item_id": "30a3bf44-8281-47e6-9502-c58f88ea0d3b",
+          "contact_id": "KH02044-025",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "孙祎单",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-28 16:20",
+          "new_date": "2026-07-31",
+          "new_time": "10:10",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "8bd371cf-b3c1-417e-bba6-46792f6cce4f",
+          "contact_id": "KH02044-025",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "孙祎单",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-26 15:50",
+          "new_date": "2026-09-01",
+          "new_time": "11:40",
+          "seq_in_day": 16
+        },
+        {
+          "item_id": "9f6a65b8-6ef9-4ed7-8efd-4dabfd80df5a",
+          "contact_id": "KH02044-025",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "孙祎单",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-27 12:40",
+          "new_date": "2026-09-02",
+          "new_time": "12:10",
+          "seq_in_day": 19
+        }
+      ],
+      "applied": false
+    },
+    {
+      "ok": true,
+      "staff_id": "0017",
+      "overdue": 1,
+      "changed": 34,
+      "movable": 1097,
+      "fixed_pending": 99,
+      "crm_pending_movable": 893,
+      "schedule_violations": 47,
+      "problem_count": 47,
+      "first_slot": "2026-07-17 17:40",
+      "last_slot": "2026-09-03 09:40",
+      "day_load": [
+        {
+          "date": "2026-07-17",
+          "count": 1
+        },
+        {
+          "date": "2026-07-21",
+          "count": 1
+        },
+        {
+          "date": "2026-07-22",
+          "count": 3
+        },
+        {
+          "date": "2026-07-28",
+          "count": 2
+        },
+        {
+          "date": "2026-07-30",
+          "count": 1
+        },
+        {
+          "date": "2026-08-03",
+          "count": 1
+        },
+        {
+          "date": "2026-08-07",
+          "count": 1
+        },
+        {
+          "date": "2026-08-10",
+          "count": 5
+        },
+        {
+          "date": "2026-08-18",
+          "count": 2
+        },
+        {
+          "date": "2026-08-19",
+          "count": 5
+        },
+        {
+          "date": "2026-08-21",
+          "count": 1
+        },
+        {
+          "date": "2026-08-27",
+          "count": 1
+        },
+        {
+          "date": "2026-08-28",
+          "count": 5
+        },
+        {
+          "date": "2026-09-03",
+          "count": 5
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "a9771607-2b49-4b75-bdfd-bbdc940db820",
+          "contact_id": "KH17247-057",
+          "company_name": "凯德置地中国控股有限公司/雅诗阁物业管理（上海）有限公司",
+          "contact_name": "沈嘉璐",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 12:50",
+          "new_date": "2026-07-17",
+          "new_time": "17:40",
+          "seq_in_day": 26
+        },
+        {
+          "item_id": "b66c40fd-9fc3-44ac-92a5-c84e2e74c3ac",
+          "contact_id": "KH17247-057",
+          "company_name": "凯德置地中国控股有限公司/雅诗阁物业管理（上海）有限公司",
+          "contact_name": "沈嘉璐",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-27 10:00",
+          "new_date": "2026-07-28",
+          "new_time": "10:30",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "23db9a85-7744-4d6e-9e89-ac0cc3697f2b",
+          "contact_id": "KH17247-027",
+          "company_name": "凯德置地中国控股有限公司/雅诗阁物业管理（上海）有限公司",
+          "contact_name": "熊雯",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-21 09:50",
+          "new_date": "2026-07-21",
+          "new_time": "17:00",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "acda4262-4c07-4fa7-a599-4072a20ec30c",
+          "contact_id": "KH17247-027",
+          "company_name": "凯德置地中国控股有限公司/雅诗阁物业管理（上海）有限公司",
+          "contact_name": "熊雯",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-30 09:40",
+          "new_date": "2026-07-30",
+          "new_time": "13:50",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "3eeaabe9-f49a-4228-b171-4a963a0aca83",
+          "contact_id": "KH17247-006",
+          "company_name": "凯德置地中国控股有限公司/雅诗阁物业管理（上海）有限公司",
+          "contact_name": "孟michelle",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-22 12:40",
+          "new_date": "2026-07-22",
+          "new_time": "16:40",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "a6df75b4-ad13-43af-83f2-01900ea78e47",
+          "contact_id": "KH17247-026",
+          "company_name": "凯德置地中国控股有限公司/雅诗阁物业管理（上海）有限公司",
+          "contact_name": "emily",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-22 14:00",
+          "new_date": "2026-07-22",
+          "new_time": "16:50",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "dbae338e-8cc4-48ad-8f90-24f2c444d32a",
+          "contact_id": "KH17247-063",
+          "company_name": "凯德置地中国控股有限公司/雅诗阁物业管理（上海）有限公司",
+          "contact_name": "Donna Dou",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-22 14:30",
+          "new_date": "2026-07-22",
+          "new_time": "17:00",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "b4188604-c28d-4768-ae30-1d189b2194b2",
+          "contact_id": "KH17247-093",
+          "company_name": "凯德置地中国控股有限公司/雅诗阁物业管理（上海）有限公司",
+          "contact_name": "Sandra Wang",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-28 10:30",
+          "new_date": "2026-07-28",
+          "new_time": "17:00",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "f23ad290-48a1-41da-9c7a-669b4a6d17dd",
+          "contact_id": "KH17247-093",
+          "company_name": "凯德置地中国控股有限公司/雅诗阁物业管理（上海）有限公司",
+          "contact_name": "Sandra Wang",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-06 13:10",
+          "new_date": "2026-08-07",
+          "new_time": "15:40",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "b5a64aa7-13f5-4202-845c-0d50acb3c135",
+          "contact_id": "KH17247-093",
+          "company_name": "凯德置地中国控股有限公司/雅诗阁物业管理（上海）有限公司",
+          "contact_name": "Sandra Wang",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-12 09:10",
+          "new_date": "2026-08-18",
+          "new_time": "10:40",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "53900d94-9cbf-4ce9-b318-53867b6ed27a",
+          "contact_id": "KH06190-023",
+          "company_name": "开德阜国际贸易（上海）有限公司",
+          "contact_name": "Lily Lin",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-30 13:50",
+          "new_date": "2026-08-03",
+          "new_time": "09:10",
+          "seq_in_day": 43
+        },
+        {
+          "item_id": "f875f0ba-9729-4952-a858-a3296a333d0b",
+          "contact_id": "KH06190-023",
+          "company_name": "开德阜国际贸易（上海）有限公司",
+          "contact_name": "Lily Lin",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-12 16:20",
+          "new_date": "2026-08-18",
+          "new_time": "16:50",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "aa797909-7448-4cff-9d20-b4c260dad780",
+          "contact_id": "KH06190-023",
+          "company_name": "开德阜国际贸易（上海）有限公司",
+          "contact_name": "Lily Lin",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-18 10:40",
+          "new_date": "2026-08-21",
+          "new_time": "09:00",
+          "seq_in_day": 0
+        },
+        {
+          "item_id": "6c30263e-0b58-4064-975b-dd1e46595225",
+          "contact_id": "KH06190-023",
+          "company_name": "开德阜国际贸易（上海）有限公司",
+          "contact_name": "Lily Lin",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-24 12:50",
+          "new_date": "2026-08-27",
+          "new_time": "09:00",
+          "seq_in_day": 0
+        },
+        {
+          "item_id": "95c1652f-2d1e-4b5f-b21b-067d50a6a52b",
+          "contact_id": "KH14216-051",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "毛佳琴",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-08-06 13:20",
+          "new_date": "2026-08-10",
+          "new_time": "13:30",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "c6a60c24-55c5-417e-a39c-9f391d0d701d",
+          "contact_id": "KH14216-051",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "毛佳琴",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-18 16:50",
+          "new_date": "2026-08-19",
+          "new_time": "09:00",
+          "seq_in_day": 21
+        },
+        {
+          "item_id": "9ec6b46b-a459-4d3b-a2c2-bb1b8696b408",
+          "contact_id": "KH14216-051",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "毛佳琴",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-25 10:40",
+          "new_date": "2026-08-28",
+          "new_time": "09:10",
+          "seq_in_day": 1
+        },
+        {
+          "item_id": "6f6bf74b-cce0-4930-a8f8-b5e00f6e3e78",
+          "contact_id": "KH14216-051",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "毛佳琴",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-31 09:10",
+          "new_date": "2026-09-03",
+          "new_time": "09:00",
+          "seq_in_day": 0
+        },
+        {
+          "item_id": "7b78b7f0-bd1a-42e6-8b4f-0eb7fa1576ae",
+          "contact_id": "KH14216-020",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "刘佳",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-08-06 13:30",
+          "new_date": "2026-08-10",
+          "new_time": "13:40",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "cdaee977-74bd-4c51-90b2-430beb9a65cc",
+          "contact_id": "KH14216-020",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "刘佳",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-18 17:00",
+          "new_date": "2026-08-19",
+          "new_time": "09:10",
+          "seq_in_day": 22
+        },
+        {
+          "item_id": "1e9d4ef5-bd4f-4bf8-adcd-bdbf4dbf04c0",
+          "contact_id": "KH14216-020",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "刘佳",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-25 10:50",
+          "new_date": "2026-08-28",
+          "new_time": "09:20",
+          "seq_in_day": 2
+        },
+        {
+          "item_id": "820d047a-ef19-43fc-a5a5-bee1d2446f92",
+          "contact_id": "KH14216-020",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "刘佳",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-31 09:20",
+          "new_date": "2026-09-03",
+          "new_time": "09:10",
+          "seq_in_day": 1
+        },
+        {
+          "item_id": "85d36e3a-61f8-45d4-b282-1eaa080af22f",
+          "contact_id": "KH14216-039",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "吴琼",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-08-06 13:40",
+          "new_date": "2026-08-10",
+          "new_time": "13:50",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "b6f47426-f339-430e-af55-d25f21a9ace3",
+          "contact_id": "KH14216-039",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "吴琼",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-18 17:10",
+          "new_date": "2026-08-19",
+          "new_time": "12:50",
+          "seq_in_day": 23
+        },
+        {
+          "item_id": "f3acccd2-798d-4d9e-973a-b9daaadd95a9",
+          "contact_id": "KH14216-039",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "吴琼",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-25 11:00",
+          "new_date": "2026-08-28",
+          "new_time": "09:30",
+          "seq_in_day": 3
+        },
+        {
+          "item_id": "fc1c94fb-b5e6-465c-a4cd-29d4d6139642",
+          "contact_id": "KH14216-039",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "吴琼",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-31 09:30",
+          "new_date": "2026-09-03",
+          "new_time": "09:20",
+          "seq_in_day": 2
+        },
+        {
+          "item_id": "3a956ae6-f231-43f5-a6ef-7e7fe6eca692",
+          "contact_id": "KH14216-031",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "尚芸",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-08-06 13:50",
+          "new_date": "2026-08-10",
+          "new_time": "14:00",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "eef97f50-a867-4838-8033-ca2c8b4c8c0d",
+          "contact_id": "KH14216-031",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "尚芸",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-19 09:00",
+          "new_date": "2026-08-19",
+          "new_time": "13:00",
+          "seq_in_day": 24
+        },
+        {
+          "item_id": "f8f94bd9-f980-4a86-82e8-bc35c8a9ed91",
+          "contact_id": "KH14216-031",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "尚芸",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-25 11:10",
+          "new_date": "2026-08-28",
+          "new_time": "09:40",
+          "seq_in_day": 4
+        },
+        {
+          "item_id": "62866949-c60e-42fb-a7ab-ec39552430d7",
+          "contact_id": "KH14216-031",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "尚芸",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-31 09:40",
+          "new_date": "2026-09-03",
+          "new_time": "09:30",
+          "seq_in_day": 3
+        },
+        {
+          "item_id": "5dafb21b-c175-4012-a58a-dc5ba54d079e",
+          "contact_id": "KH14216-045",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "范佳蔚",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-08-06 14:00",
+          "new_date": "2026-08-10",
+          "new_time": "15:20",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "8d339fd4-f714-42b3-8ac1-5cc5a8586ac4",
+          "contact_id": "KH14216-045",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "范佳蔚",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-19 09:10",
+          "new_date": "2026-08-19",
+          "new_time": "13:10",
+          "seq_in_day": 25
+        },
+        {
+          "item_id": "74255b7d-65eb-4cb4-9060-75b53cdb103e",
+          "contact_id": "KH14216-045",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "范佳蔚",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-25 11:20",
+          "new_date": "2026-08-28",
+          "new_time": "09:50",
+          "seq_in_day": 5
+        },
+        {
+          "item_id": "ffd9a409-6889-409e-abb0-8f951542c5c9",
+          "contact_id": "KH14216-045",
+          "company_name": "开利空调冷冻研发管理（上海）有限公司",
+          "contact_name": "范佳蔚",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-31 09:50",
+          "new_date": "2026-09-03",
+          "new_time": "09:40",
+          "seq_in_day": 4
+        }
+      ],
+      "applied": false
+    },
+    {
+      "ok": true,
+      "staff_id": "0141",
+      "overdue": 0,
+      "changed": 21,
+      "movable": 2058,
+      "fixed_pending": 17,
+      "crm_pending_movable": 698,
+      "schedule_violations": 70,
+      "problem_count": 70,
+      "first_slot": "2026-07-17 17:00",
+      "last_slot": "2026-08-03 16:30",
+      "day_load": [
+        {
+          "date": "2026-07-17",
+          "count": 3
+        },
+        {
+          "date": "2026-07-27",
+          "count": 1
+        },
+        {
+          "date": "2026-07-30",
+          "count": 5
+        },
+        {
+          "date": "2026-07-31",
+          "count": 8
+        },
+        {
+          "date": "2026-08-03",
+          "count": 4
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "8f8c08a0-ced7-4950-b383-fefadb0a4d6e",
+          "contact_id": "KH23426-304",
+          "company_name": "巴斯夫（中国）有限公司2",
+          "contact_name": "邵忆非",
+          "scenario": "re_activation",
+          "suite_step": 2,
+          "old": "2026-07-17 13:20",
+          "new_date": "2026-07-17",
+          "new_time": "17:00",
+          "seq_in_day": 28
+        },
+        {
+          "item_id": "fe70331b-62c9-40b2-a8a4-05b29d438195",
+          "contact_id": "KH00362-371",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "Yang Tommy Yi Nian",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 13:30",
+          "new_date": "2026-07-17",
+          "new_time": "18:10",
+          "seq_in_day": 29
+        },
+        {
+          "item_id": "3906bc59-8e48-46e7-9d24-0e92968413a1",
+          "contact_id": "KH00362-086",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "杨",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 17:00",
+          "new_date": "2026-07-17",
+          "new_time": "18:20",
+          "seq_in_day": 30
+        },
+        {
+          "item_id": "483f83d0-fd69-4ccc-a5de-95c0d90e5fa0",
+          "contact_id": "KH00362-086",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "杨",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-29 13:20",
+          "new_date": "2026-07-30",
+          "new_time": "10:10",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "c391848f-391a-4e40-bf49-ed1d536a7add",
+          "contact_id": "KH01129-060",
+          "company_name": "索尔维投资有限公司/苏威（上海）有限公司/罗索青（上海）企业管理有限公司",
+          "contact_name": "丁",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-07-29 10:10",
+          "new_date": "2026-07-30",
+          "new_time": "15:00",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "21ce85f7-7347-4b61-964b-5f12fa3ba40c",
+          "contact_id": "KH00362-125",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "顾m",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-29 10:30",
+          "new_date": "2026-07-30",
+          "new_time": "15:20",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "c01f9f95-3453-4b55-8800-f8f2a910da6e",
+          "contact_id": "KH00362-081",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "卢",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-29 10:40",
+          "new_date": "2026-07-30",
+          "new_time": "15:30",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "d93dc903-976b-4406-9566-5b7b13acc250",
+          "contact_id": "KH01129-096",
+          "company_name": "索尔维投资有限公司/苏威（上海）有限公司/罗索青（上海）企业管理有限公司",
+          "contact_name": "Melia ZHU",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-07-29 11:10",
+          "new_date": "2026-07-30",
+          "new_time": "15:40",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "9afc5eda-da00-467f-b149-485952ac1578",
+          "contact_id": "KH00289-136",
+          "company_name": "宝洁（中国）营销有限公司,广州宝洁有限公司",
+          "contact_name": "Kuo T",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-07-29 11:30",
+          "new_date": "2026-07-31",
+          "new_time": "15:50",
+          "seq_in_day": 42
+        },
+        {
+          "item_id": "1910cb14-09de-4ba3-9fa6-e96859598522",
+          "contact_id": "KH00362-080",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "孙文灏",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-29 11:40",
+          "new_date": "2026-07-31",
+          "new_time": "16:00",
+          "seq_in_day": 43
+        },
+        {
+          "item_id": "2fd3057e-d4d3-477b-b357-4bcbf2ce2acb",
+          "contact_id": "KH01129-103",
+          "company_name": "索尔维投资有限公司/苏威（上海）有限公司/罗索青（上海）企业管理有限公司",
+          "contact_name": "yuanjing cheng",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-07-29 11:50",
+          "new_date": "2026-07-31",
+          "new_time": "16:10",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "57789252-e4a4-42ef-86a5-4e1ff59a2ab0",
+          "contact_id": "KH00362-128",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "徐",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-29 14:00",
+          "new_date": "2026-07-31",
+          "new_time": "16:20",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "a7ce7bbb-1fd1-4037-8874-6b7bd089fa94",
+          "contact_id": "KH01129-121",
+          "company_name": "索尔维投资有限公司/苏威（上海）有限公司/罗索青（上海）企业管理有限公司",
+          "contact_name": "Sarah FAN",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-07-29 13:10",
+          "new_date": "2026-07-31",
+          "new_time": "16:30",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "0f3ff10c-b8e6-4aa0-8d48-587f02781a38",
+          "contact_id": "KH00362-048",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "Ada Zhong",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-30 09:30",
+          "new_date": "2026-07-31",
+          "new_time": "16:40",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "393d3be7-0600-4985-ac66-25ce759385eb",
+          "contact_id": "KH00362-041",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "廖建伦 Raymond Liu",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-30 09:40",
+          "new_date": "2026-07-31",
+          "new_time": "16:50",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "f8c3b078-e2da-4a3c-9396-883d3a40594e",
+          "contact_id": "KH00362-278",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "洪璐",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-31 09:10",
+          "new_date": "2026-07-31",
+          "new_time": "17:00",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "a5659356-35cb-4da0-84e0-27c669b4ceeb",
+          "contact_id": "KH09148-006",
+          "company_name": "艺康（中国）投资有限公司",
+          "contact_name": "祝一",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-03 09:00",
+          "new_date": "2026-08-03",
+          "new_time": "11:20",
+          "seq_in_day": 43
+        },
+        {
+          "item_id": "972b136f-6e11-4f5d-9130-a2d486241400",
+          "contact_id": "KH09148-001",
+          "company_name": "艺康（中国）投资有限公司",
+          "contact_name": "刘晓瑜",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-03 09:20",
+          "new_date": "2026-08-03",
+          "new_time": "11:40",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "dbcc0fa4-f49e-49a5-9c22-97549bd3deab",
+          "contact_id": "KH09148-036",
+          "company_name": "艺康（中国）投资有限公司",
+          "contact_name": "杨微微",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-03 09:30",
+          "new_date": "2026-08-03",
+          "new_time": "11:50",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "86f9fdfb-4822-431e-a8ee-d0f6bc9fa806",
+          "contact_id": "KH09148-007",
+          "company_name": "艺康（中国）投资有限公司",
+          "contact_name": "李晓英",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-03 09:50",
+          "new_date": "2026-08-03",
+          "new_time": "16:30",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "160ac81a-f545-4f81-9f59-2c4e7e78bb1d",
+          "contact_id": "KH00362-387",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "杜光渭",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-27 09:20",
+          "new_date": "2026-07-27",
+          "new_time": "11:00",
+          "seq_in_day": 41
+        }
+      ],
+      "applied": false
+    },
+    {
+      "ok": true,
+      "staff_id": "0188",
+      "overdue": 5,
+      "changed": 27,
+      "movable": 4728,
+      "fixed_pending": 4,
+      "crm_pending_movable": 665,
+      "schedule_violations": 36,
+      "problem_count": 36,
+      "first_slot": "2026-07-17 17:10",
+      "last_slot": "2026-12-01 14:20",
+      "day_load": [
+        {
+          "date": "2026-07-17",
+          "count": 3
+        },
+        {
+          "date": "2026-07-27",
+          "count": 4
+        },
+        {
+          "date": "2026-07-29",
+          "count": 2
+        },
+        {
+          "date": "2026-08-05",
+          "count": 4
+        },
+        {
+          "date": "2026-08-07",
+          "count": 2
+        },
+        {
+          "date": "2026-08-25",
+          "count": 6
+        },
+        {
+          "date": "2026-12-01",
+          "count": 6
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "9d9409c8-444c-498d-b336-9e9c4161d25c",
+          "contact_id": "KH00314-043",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "钱苗苗",
+          "scenario": "new_contact_intro",
+          "suite_step": 1,
+          "old": "2026-07-17 12:20",
+          "new_date": "2026-07-17",
+          "new_time": "17:10",
+          "seq_in_day": 29
+        },
+        {
+          "item_id": "1cbfb120-8a5d-4dec-8b96-463b62bd61f8",
+          "contact_id": "KH00314-040",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "邓怡萱",
+          "scenario": "new_contact_intro",
+          "suite_step": 1,
+          "old": "2026-07-17 12:30",
+          "new_date": "2026-07-17",
+          "new_time": "17:20",
+          "seq_in_day": 30
+        },
+        {
+          "item_id": "4ac11e22-f118-4876-80ae-f58d75c72133",
+          "contact_id": "KH00314-039",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "汪国进",
+          "scenario": "new_contact_intro",
+          "suite_step": 1,
+          "old": "2026-07-17 12:40",
+          "new_date": "2026-07-17",
+          "new_time": "17:30",
+          "seq_in_day": 31
+        },
+        {
+          "item_id": "cc3eeb1e-49aa-4fbe-88ec-40e33909b4a5",
+          "contact_id": "KH00314-127",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "chang yue",
+          "scenario": "new_contact_intro",
+          "suite_step": 1,
+          "old": "2026-07-17 12:50",
+          "new_date": "2026-07-27",
+          "new_time": "12:50",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "9a6202be-046e-4929-b78f-1fce50b6fda0",
+          "contact_id": "KH00314-127",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "chang yue",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-27 12:50",
+          "new_date": "2026-08-05",
+          "new_time": "11:20",
+          "seq_in_day": 27
+        },
+        {
+          "item_id": "1d74d57a-4ea2-4d5b-84b6-94244ba35269",
+          "contact_id": "KH00314-127",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "chang yue",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-08-04 12:40",
+          "new_date": "2026-08-25",
+          "new_time": "12:30",
+          "seq_in_day": 43
+        },
+        {
+          "item_id": "5b95db89-12dc-4271-a846-ff0316243fdd",
+          "contact_id": "KH00314-127",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "chang yue",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-25 13:40",
+          "new_date": "2026-12-01",
+          "new_time": "13:30",
+          "seq_in_day": 27
+        },
+        {
+          "item_id": "91a082ab-73d4-43ef-a2df-32588348ea1d",
+          "contact_id": "KH00314-150",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "沈燕婷",
+          "scenario": "new_contact_intro",
+          "suite_step": 1,
+          "old": "2026-07-17 13:00",
+          "new_date": "2026-07-27",
+          "new_time": "13:00",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "336ee121-c3ab-49ef-8bcf-05d10a2e993a",
+          "contact_id": "KH00314-150",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "沈燕婷",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-27 13:00",
+          "new_date": "2026-08-05",
+          "new_time": "11:30",
+          "seq_in_day": 28
+        },
+        {
+          "item_id": "624279fb-fe6c-44f2-a8d2-971723c9522e",
+          "contact_id": "KH00314-150",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "沈燕婷",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-08-04 12:50",
+          "new_date": "2026-08-25",
+          "new_time": "12:40",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "747e376f-694e-4109-83c0-d5f3eaa24f38",
+          "contact_id": "KH00314-150",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "沈燕婷",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-25 13:50",
+          "new_date": "2026-12-01",
+          "new_time": "13:40",
+          "seq_in_day": 28
+        },
+        {
+          "item_id": "b105b385-f034-4c2c-b824-ec8750414795",
+          "contact_id": "KH00314-067",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "Gloria Xie",
+          "scenario": "new_contact_intro",
+          "suite_step": 1,
+          "old": "2026-07-17 13:10",
+          "new_date": "2026-07-27",
+          "new_time": "13:10",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "175aef5b-10a4-4d6c-9f7f-e3c868ea9b5b",
+          "contact_id": "KH00314-067",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "Gloria Xie",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-27 13:10",
+          "new_date": "2026-08-05",
+          "new_time": "11:40",
+          "seq_in_day": 29
+        },
+        {
+          "item_id": "cee8b5f1-3497-4b28-8ea8-a6e7dfe4dcdd",
+          "contact_id": "KH00314-067",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "Gloria Xie",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-08-04 13:00",
+          "new_date": "2026-08-25",
+          "new_time": "12:50",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "84726b45-e4ff-4dde-8dcb-58e3b066942d",
+          "contact_id": "KH00314-067",
+          "company_name": "赢创特种化学（上海）有限公司",
+          "contact_name": "Gloria Xie",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-25 14:00",
+          "new_date": "2026-12-01",
+          "new_time": "13:50",
+          "seq_in_day": 29
+        },
+        {
+          "item_id": "9323849d-e5f7-43dc-9c39-13a2aae55114",
+          "contact_id": "KH00238-207",
+          "company_name": "法国巴黎银行（中国）有限公司",
+          "contact_name": "Tang",
+          "scenario": "new_contact_intro",
+          "suite_step": 1,
+          "old": "2026-07-17 17:10",
+          "new_date": "2026-07-27",
+          "new_time": "17:10",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "2d718361-84e5-4440-bd85-c53414c1e345",
+          "contact_id": "KH00238-207",
+          "company_name": "法国巴黎银行（中国）有限公司",
+          "contact_name": "Tang",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-27 09:10",
+          "new_date": "2026-08-05",
+          "new_time": "11:50",
+          "seq_in_day": 30
+        },
+        {
+          "item_id": "ae104b4b-c755-4219-afab-a2feb16a1b0c",
+          "contact_id": "KH00238-207",
+          "company_name": "法国巴黎银行（中国）有限公司",
+          "contact_name": "Tang",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-08-04 09:00",
+          "new_date": "2026-08-25",
+          "new_time": "13:00",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "35b00aff-182b-49d3-8dac-8c54eaca958e",
+          "contact_id": "KH00238-207",
+          "company_name": "法国巴黎银行（中国）有限公司",
+          "contact_name": "Tang",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-10 09:00",
+          "new_date": "2026-12-01",
+          "new_time": "14:00",
+          "seq_in_day": 30
+        },
+        {
+          "item_id": "302fc54a-2ac6-4fd7-af24-4e5cafae7577",
+          "contact_id": "KH00238-185",
+          "company_name": "法国巴黎银行（中国）有限公司",
+          "contact_name": "fang",
+          "scenario": "new_contact_intro",
+          "suite_step": 1,
+          "old": "2026-07-17 17:20",
+          "new_date": "2026-07-29",
+          "new_time": "09:10",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "d2b060fc-f04a-4dc5-91d7-38c4598446a1",
+          "contact_id": "KH00238-185",
+          "company_name": "法国巴黎银行（中国）有限公司",
+          "contact_name": "fang",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-27 09:20",
+          "new_date": "2026-08-07",
+          "new_time": "09:20",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "5cf22555-7ee4-46d3-8b84-db9038040449",
+          "contact_id": "KH00238-185",
+          "company_name": "法国巴黎银行（中国）有限公司",
+          "contact_name": "fang",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-08-04 09:10",
+          "new_date": "2026-08-25",
+          "new_time": "13:40",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "74b8e18d-e460-4120-8f1a-3f819a058f4d",
+          "contact_id": "KH00238-185",
+          "company_name": "法国巴黎银行（中国）有限公司",
+          "contact_name": "fang",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-10 09:10",
+          "new_date": "2026-12-01",
+          "new_time": "14:10",
+          "seq_in_day": 31
+        },
+        {
+          "item_id": "4ab12129-725c-4c3e-b471-f9dc5a2d3cf0",
+          "contact_id": "KH00238-178",
+          "company_name": "法国巴黎银行（中国）有限公司",
+          "contact_name": "elaine",
+          "scenario": "new_contact_intro",
+          "suite_step": 1,
+          "old": "2026-07-17 17:30",
+          "new_date": "2026-07-29",
+          "new_time": "09:40",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "5c03534d-8e89-4d60-a605-a4f9bf14f1d6",
+          "contact_id": "KH00238-178",
+          "company_name": "法国巴黎银行（中国）有限公司",
+          "contact_name": "elaine",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-27 09:30",
+          "new_date": "2026-08-07",
+          "new_time": "09:30",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "806ae2ca-447a-4597-881e-5180c60aaeaf",
+          "contact_id": "KH00238-178",
+          "company_name": "法国巴黎银行（中国）有限公司",
+          "contact_name": "elaine",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-08-04 09:20",
+          "new_date": "2026-08-25",
+          "new_time": "13:50",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "86d9b622-f4b7-41e6-beec-3b5ecc8cb8f2",
+          "contact_id": "KH00238-178",
+          "company_name": "法国巴黎银行（中国）有限公司",
+          "contact_name": "elaine",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-10 09:20",
+          "new_date": "2026-12-01",
+          "new_time": "14:20",
+          "seq_in_day": 32
+        }
+      ],
+      "applied": false
+    },
+    {
+      "ok": true,
+      "staff_id": "1607",
+      "overdue": 0,
+      "changed": 21,
+      "movable": 468,
+      "fixed_pending": 532,
+      "crm_pending_movable": 342,
+      "schedule_violations": 48,
+      "problem_count": 48,
+      "first_slot": "2026-07-17 13:30",
+      "last_slot": "2026-09-16 09:00",
+      "day_load": [
+        {
+          "date": "2026-07-17",
+          "count": 5
+        },
+        {
+          "date": "2026-07-20",
+          "count": 2
+        },
+        {
+          "date": "2026-07-21",
+          "count": 1
+        },
+        {
+          "date": "2026-08-03",
+          "count": 5
+        },
+        {
+          "date": "2026-08-04",
+          "count": 2
+        },
+        {
+          "date": "2026-08-05",
+          "count": 1
+        },
+        {
+          "date": "2026-08-07",
+          "count": 1
+        },
+        {
+          "date": "2026-08-24",
+          "count": 1
+        },
+        {
+          "date": "2026-08-26",
+          "count": 1
+        },
+        {
+          "date": "2026-09-14",
+          "count": 1
+        },
+        {
+          "date": "2026-09-16",
+          "count": 1
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "85c73683-0f63-4133-953e-21887e690b2d",
+          "contact_id": "KH12934-021",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "施艳",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 13:10",
+          "new_date": "2026-07-17",
+          "new_time": "13:30",
+          "seq_in_day": 22
+        },
+        {
+          "item_id": "c9ada629-b42c-4365-9cb3-35ab09c62053",
+          "contact_id": "KH12934-021",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "施艳",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-04 09:20",
+          "new_date": "2026-08-04",
+          "new_time": "09:40",
+          "seq_in_day": 23
+        },
+        {
+          "item_id": "f2f0ea04-a97a-48ed-9b7e-66727c67eb82",
+          "contact_id": "KH12934-053",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "王玥琳",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 13:20",
+          "new_date": "2026-07-17",
+          "new_time": "13:40",
+          "seq_in_day": 23
+        },
+        {
+          "item_id": "7c22c3c5-5dc7-41de-b90e-fd6b2f0ec2fe",
+          "contact_id": "KH12934-053",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "王玥琳",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-03 10:20",
+          "new_date": "2026-08-03",
+          "new_time": "12:00",
+          "seq_in_day": 40
+        },
+        {
+          "item_id": "63cf059d-f427-4b9c-9f51-52dc59e1db9f",
+          "contact_id": "KH12934-038",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "杨",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 13:30",
+          "new_date": "2026-07-17",
+          "new_time": "14:20",
+          "seq_in_day": 24
+        },
+        {
+          "item_id": "ecf82e3e-72a2-4861-9ace-131574ccf3b9",
+          "contact_id": "KH12934-038",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "杨",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-03 11:00",
+          "new_date": "2026-08-03",
+          "new_time": "12:20",
+          "seq_in_day": 41
+        },
+        {
+          "item_id": "c7f1b50a-01d0-4f9f-b0ad-0df34c2645e8",
+          "contact_id": "KH12934-096",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "丁一平",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 13:40",
+          "new_date": "2026-07-17",
+          "new_time": "15:20",
+          "seq_in_day": 25
+        },
+        {
+          "item_id": "eeeefc2b-eeb6-4aa2-8866-33280c013917",
+          "contact_id": "KH12934-096",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "丁一平",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-03 11:30",
+          "new_date": "2026-08-03",
+          "new_time": "13:50",
+          "seq_in_day": 42
+        },
+        {
+          "item_id": "15bb2d2e-fe76-4dce-acd3-160dae0a19d4",
+          "contact_id": "KH12934-050",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "黄海艳",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-17 15:00",
+          "new_date": "2026-07-17",
+          "new_time": "16:20",
+          "seq_in_day": 26
+        },
+        {
+          "item_id": "0dd4555a-0595-4efd-a5ef-d407509047e7",
+          "contact_id": "KH12934-050",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "黄海艳",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-03 12:20",
+          "new_date": "2026-08-03",
+          "new_time": "14:40",
+          "seq_in_day": 43
+        },
+        {
+          "item_id": "c2daa3bf-ed0b-443d-a80f-915524a5c2e0",
+          "contact_id": "KH12934-072",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "王",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-03 10:50",
+          "new_date": "2026-08-03",
+          "new_time": "15:40",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "8794eb8b-653f-4318-9c13-2bbc458be57d",
+          "contact_id": "KH12934-075",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "杨丽",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-04 09:30",
+          "new_date": "2026-08-04",
+          "new_time": "09:50",
+          "seq_in_day": 24
+        },
+        {
+          "item_id": "86610052-a950-4641-8d4a-ae3ec0d1c938",
+          "contact_id": "KH12934-066",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "王梓宵",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-05 09:20",
+          "new_date": "2026-08-05",
+          "new_time": "10:30",
+          "seq_in_day": 10
+        },
+        {
+          "item_id": "edccb19f-85f6-4526-8acb-a5b60fbec4a5",
+          "contact_id": "KH12934-028",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "浦绮丽",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-24 14:40",
+          "new_date": "2026-08-24",
+          "new_time": "14:50",
+          "seq_in_day": 46
+        },
+        {
+          "item_id": "474a89e5-fd41-47d8-986c-59f57792bb1d",
+          "contact_id": "KH12934-028",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "浦绮丽",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-09-14 11:50",
+          "new_date": "2026-09-14",
+          "new_time": "12:10",
+          "seq_in_day": 41
+        },
+        {
+          "item_id": "1634ee47-f467-46e9-add3-9a50942253c5",
+          "contact_id": "KH12934-095",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "Mitsuhiro Matsuda松田",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-20 09:40",
+          "new_date": "2026-07-20",
+          "new_time": "12:20",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "69db5fa3-299f-4e0d-a497-0cd991ebdd96",
+          "contact_id": "KH12934-061",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "张",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-20 11:00",
+          "new_date": "2026-07-20",
+          "new_time": "13:20",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "750cfcef-bd7c-42e1-b437-0ba605ae1740",
+          "contact_id": "KH12934-045",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "坂顶 幸治",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-20 13:20",
+          "new_date": "2026-07-21",
+          "new_time": "13:40",
+          "seq_in_day": 30
+        },
+        {
+          "item_id": "ddf0adef-c1e9-4b8a-887c-04328aadc1fe",
+          "contact_id": "KH12934-045",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "坂顶 幸治",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-06 09:10",
+          "new_date": "2026-08-07",
+          "new_time": "09:00",
+          "seq_in_day": 9
+        },
+        {
+          "item_id": "e286b1be-aeea-458b-a7d8-416bf29fcc5f",
+          "contact_id": "KH12934-045",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "坂顶 幸治",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-25 18:00",
+          "new_date": "2026-08-26",
+          "new_time": "10:10",
+          "seq_in_day": 8
+        },
+        {
+          "item_id": "b1b53303-199f-4eb9-b6d4-f50a30d4b4b5",
+          "contact_id": "KH12934-045",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "坂顶 幸治",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-09-15 09:10",
+          "new_date": "2026-09-16",
+          "new_time": "09:00",
+          "seq_in_day": 3
+        }
+      ],
+      "applied": false
+    }
+  ]
+}

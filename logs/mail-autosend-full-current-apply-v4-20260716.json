@@ -1,0 +1,580 @@
+{
+  "generated_at": "2026-07-16T17:38:16.961164",
+  "applied": true,
+  "source_sha256": "2ff17b89485174b4fb4e4f2988374fef3b809d5806b688c122d47f31b1e2e629",
+  "audit_file": "logs\\mail-autosend-full-current-audit-v4-20260716.json",
+  "config": {
+    "daily_cap": 50,
+    "skip_non_workdays": true,
+    "holiday_dates": []
+  },
+  "staff_count": 5,
+  "item_scope_count": 11666,
+  "content_hash_unchanged": true,
+  "results": [
+    {
+      "ok": true,
+      "staff_id": "0002",
+      "overdue": 1,
+      "changed": 8,
+      "movable": 2339,
+      "fixed_pending": 12,
+      "crm_pending_movable": 694,
+      "schedule_violations": 8,
+      "problem_count": 8,
+      "first_slot": "2026-07-27 09:10",
+      "last_slot": "2026-08-31 13:40",
+      "day_load": [
+        {
+          "date": "2026-07-27",
+          "count": 2
+        },
+        {
+          "date": "2026-08-06",
+          "count": 2
+        },
+        {
+          "date": "2026-08-28",
+          "count": 2
+        },
+        {
+          "date": "2026-08-31",
+          "count": 2
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "222abe13-dac7-41dc-941c-cad9415d4dc3",
+          "contact_id": "KH02044-200",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "印晓君",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-16 17:40",
+          "new_date": "2026-07-27",
+          "new_time": "09:10",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "2fab7418-6e9a-428d-b8e8-5c57ccff8b45",
+          "contact_id": "KH02044-200",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "印晓君",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-27 09:10",
+          "new_date": "2026-08-06",
+          "new_time": "14:50",
+          "seq_in_day": 43
+        },
+        {
+          "item_id": "6a82131b-7cdc-4677-98ef-42b2cc26a4ba",
+          "contact_id": "KH02044-200",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "印晓君",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-03 09:00",
+          "new_date": "2026-08-28",
+          "new_time": "14:10",
+          "seq_in_day": 31
+        },
+        {
+          "item_id": "4e7a9f04-f0fc-466c-9ce2-7e5294da0297",
+          "contact_id": "KH02044-200",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "印晓君",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-10 10:10",
+          "new_date": "2026-08-31",
+          "new_time": "13:30",
+          "seq_in_day": 27
+        },
+        {
+          "item_id": "1411ecbc-c695-4785-bf71-318c88ebecc3",
+          "contact_id": "KH02044-114",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "高航",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-16 17:50",
+          "new_date": "2026-07-27",
+          "new_time": "09:20",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "16737371-d6d6-4e96-b853-318cecc4cda5",
+          "contact_id": "KH02044-114",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "高航",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-27 09:20",
+          "new_date": "2026-08-06",
+          "new_time": "15:00",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "4e4db51a-a228-4daa-a8fc-82a4b02e0b43",
+          "contact_id": "KH02044-114",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "高航",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-03 09:10",
+          "new_date": "2026-08-28",
+          "new_time": "14:20",
+          "seq_in_day": 32
+        },
+        {
+          "item_id": "55679698-3659-4045-8272-f26ef7b606c0",
+          "contact_id": "KH02044-114",
+          "company_name": "科思创（上海）投资有限公司",
+          "contact_name": "高航",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-10 11:20",
+          "new_date": "2026-08-31",
+          "new_time": "13:40",
+          "seq_in_day": 28
+        }
+      ],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "0017",
+      "overdue": 0,
+      "changed": 0,
+      "movable": 1121,
+      "fixed_pending": 110,
+      "crm_pending_movable": 817,
+      "schedule_violations": 0,
+      "problem_count": 0,
+      "first_slot": null,
+      "last_slot": null,
+      "day_load": [],
+      "changes": [],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "0141",
+      "overdue": 1,
+      "changed": 8,
+      "movable": 2077,
+      "fixed_pending": 21,
+      "crm_pending_movable": 717,
+      "schedule_violations": 8,
+      "problem_count": 8,
+      "first_slot": "2026-07-27 09:30",
+      "last_slot": "2026-08-21 12:20",
+      "day_load": [
+        {
+          "date": "2026-07-27",
+          "count": 2
+        },
+        {
+          "date": "2026-08-05",
+          "count": 2
+        },
+        {
+          "date": "2026-08-20",
+          "count": 2
+        },
+        {
+          "date": "2026-08-21",
+          "count": 2
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "bbfb03b2-edf6-4993-9b4d-e929660771e5",
+          "contact_id": "KH00362-437",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "liaucs",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-16 17:40",
+          "new_date": "2026-07-27",
+          "new_time": "09:30",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "97b6b587-f343-4b18-afb1-7f4d6bb0874c",
+          "contact_id": "KH00362-437",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "liaucs",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-27 09:30",
+          "new_date": "2026-08-05",
+          "new_time": "16:10",
+          "seq_in_day": 44
+        },
+        {
+          "item_id": "1fad6a47-b022-48c2-91fa-0f6926ed0e11",
+          "contact_id": "KH00362-437",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "liaucs",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-03 10:10",
+          "new_date": "2026-08-20",
+          "new_time": "14:00",
+          "seq_in_day": 30
+        },
+        {
+          "item_id": "f8bed8fa-b3c6-427a-ae59-712e9b67519e",
+          "contact_id": "KH00362-437",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "liaucs",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-10 09:20",
+          "new_date": "2026-08-21",
+          "new_time": "12:10",
+          "seq_in_day": 19
+        },
+        {
+          "item_id": "d8c96e0b-362e-459a-885b-c06827debced",
+          "contact_id": "KH00362-436",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "puahhb",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-16 17:50",
+          "new_date": "2026-07-27",
+          "new_time": "09:40",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "71f6e649-ddb2-4cdd-84bf-76a272d3cb55",
+          "contact_id": "KH00362-436",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "puahhb",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-07-27 09:40",
+          "new_date": "2026-08-05",
+          "new_time": "16:30",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "abecb7a9-431c-4b67-852b-c5d019e5c1e6",
+          "contact_id": "KH00362-436",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "puahhb",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-03 10:20",
+          "new_date": "2026-08-20",
+          "new_time": "14:10",
+          "seq_in_day": 31
+        },
+        {
+          "item_id": "3fb3ce24-5415-4159-af2e-f8c808103c16",
+          "contact_id": "KH00362-436",
+          "company_name": "空气化工产品（中国）投资有限公司/空气化工产品（上海）有限公司",
+          "contact_name": "puahhb",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-08-10 09:40",
+          "new_date": "2026-08-21",
+          "new_time": "12:20",
+          "seq_in_day": 20
+        }
+      ],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "0188",
+      "overdue": 1,
+      "changed": 8,
+      "movable": 4728,
+      "fixed_pending": 17,
+      "crm_pending_movable": 625,
+      "schedule_violations": 8,
+      "problem_count": 8,
+      "first_slot": "2026-07-31 15:30",
+      "last_slot": "2026-12-02 09:00",
+      "day_load": [
+        {
+          "date": "2026-07-31",
+          "count": 1
+        },
+        {
+          "date": "2026-08-03",
+          "count": 1
+        },
+        {
+          "date": "2026-08-10",
+          "count": 1
+        },
+        {
+          "date": "2026-11-30",
+          "count": 2
+        },
+        {
+          "date": "2026-12-01",
+          "count": 2
+        },
+        {
+          "date": "2026-12-02",
+          "count": 1
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "aadc0d2b-e853-45ba-b16e-0b320c3e48ec",
+          "contact_id": "KH01151-118",
+          "company_name": "天地国际运输代理（中国）有限公司",
+          "contact_name": "shally 胡",
+          "scenario": "new_contact_intro",
+          "suite_step": 1,
+          "old": "2026-07-16 17:40",
+          "new_date": "2026-07-31",
+          "new_time": "15:30",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "f6bf68ea-045e-429f-bc7b-a13ccd242f7a",
+          "contact_id": "KH01151-118",
+          "company_name": "天地国际运输代理（中国）有限公司",
+          "contact_name": "shally 胡",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-07-31 15:30",
+          "new_date": "2026-08-10",
+          "new_time": "14:20",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "b44c4acc-ff2c-414e-907c-90d5643c1fbe",
+          "contact_id": "KH01151-118",
+          "company_name": "天地国际运输代理（中国）有限公司",
+          "contact_name": "shally 胡",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-08-05 15:40",
+          "new_date": "2026-11-30",
+          "new_time": "16:50",
+          "seq_in_day": 47
+        },
+        {
+          "item_id": "40ceb3b4-6adf-4022-be7b-3c04c3541685",
+          "contact_id": "KH01151-118",
+          "company_name": "天地国际运输代理（中国）有限公司",
+          "contact_name": "shally 胡",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-10 14:20",
+          "new_date": "2026-12-01",
+          "new_time": "10:50",
+          "seq_in_day": 11
+        },
+        {
+          "item_id": "c1a940ae-d0c8-4af0-b28e-30f6eb6b3486",
+          "contact_id": "KH01151-066",
+          "company_name": "天地国际运输代理（中国）有限公司",
+          "contact_name": "凌晟莉",
+          "scenario": "new_contact_intro",
+          "suite_step": 1,
+          "old": "2026-07-16 17:50",
+          "new_date": "2026-08-03",
+          "new_time": "16:30",
+          "seq_in_day": 45
+        },
+        {
+          "item_id": "09782434-1d8b-4289-b183-336b0320459c",
+          "contact_id": "KH01151-066",
+          "company_name": "天地国际运输代理（中国）有限公司",
+          "contact_name": "凌晟莉",
+          "scenario": "new_contact_intro",
+          "suite_step": 2,
+          "old": "2026-08-06 09:30",
+          "new_date": "2026-11-30",
+          "new_time": "17:00",
+          "seq_in_day": 48
+        },
+        {
+          "item_id": "fea95305-1fca-4d06-b718-876564fc559a",
+          "contact_id": "KH01151-066",
+          "company_name": "天地国际运输代理（中国）有限公司",
+          "contact_name": "凌晟莉",
+          "scenario": "new_contact_intro",
+          "suite_step": 3,
+          "old": "2026-08-07 09:00",
+          "new_date": "2026-12-01",
+          "new_time": "11:00",
+          "seq_in_day": 12
+        },
+        {
+          "item_id": "11d94140-0c13-4bca-b218-250f6cb94931",
+          "contact_id": "KH01151-066",
+          "company_name": "天地国际运输代理（中国）有限公司",
+          "contact_name": "凌晟莉",
+          "scenario": "new_contact_intro",
+          "suite_step": 4,
+          "old": "2026-08-10 14:30",
+          "new_date": "2026-12-02",
+          "new_time": "09:00",
+          "seq_in_day": 0
+        }
+      ],
+      "applied": true
+    },
+    {
+      "ok": true,
+      "staff_id": "1607",
+      "overdue": 0,
+      "changed": 9,
+      "movable": 478,
+      "fixed_pending": 514,
+      "crm_pending_movable": 336,
+      "schedule_violations": 10,
+      "problem_count": 10,
+      "first_slot": "2026-07-20 13:20",
+      "last_slot": "2026-09-15 09:10",
+      "day_load": [
+        {
+          "date": "2026-07-20",
+          "count": 3
+        },
+        {
+          "date": "2026-08-06",
+          "count": 1
+        },
+        {
+          "date": "2026-08-11",
+          "count": 1
+        },
+        {
+          "date": "2026-08-21",
+          "count": 2
+        },
+        {
+          "date": "2026-08-25",
+          "count": 1
+        },
+        {
+          "date": "2026-09-15",
+          "count": 1
+        }
+      ],
+      "changes": [
+        {
+          "item_id": "750cfcef-bd7c-42e1-b437-0ba605ae1740",
+          "contact_id": "KH12934-045",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "坂顶 幸治",
+          "scenario": "new_business_promotion",
+          "suite_step": 1,
+          "old": "2026-07-16 17:50",
+          "new_date": "2026-07-20",
+          "new_time": "13:20",
+          "seq_in_day": 35
+        },
+        {
+          "item_id": "ddf0adef-c1e9-4b8a-887c-04328aadc1fe",
+          "contact_id": "KH12934-045",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "坂顶 幸治",
+          "scenario": "new_business_promotion",
+          "suite_step": 2,
+          "old": "2026-08-03 15:40",
+          "new_date": "2026-08-06",
+          "new_time": "09:10",
+          "seq_in_day": 5
+        },
+        {
+          "item_id": "e286b1be-aeea-458b-a7d8-416bf29fcc5f",
+          "contact_id": "KH12934-045",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "坂顶 幸治",
+          "scenario": "new_business_promotion",
+          "suite_step": 3,
+          "old": "2026-08-21 13:20",
+          "new_date": "2026-08-25",
+          "new_time": "18:00",
+          "seq_in_day": 49
+        },
+        {
+          "item_id": "b1b53303-199f-4eb9-b6d4-f50a30d4b4b5",
+          "contact_id": "KH12934-045",
+          "company_name": "欧姆龙自动化（中国）有限公司",
+          "contact_name": "坂顶 幸治",
+          "scenario": "new_business_promotion",
+          "suite_step": 4,
+          "old": "2026-09-11 13:00",
+          "new_date": "2026-09-15",
+          "new_time": "09:10",
+          "seq_in_day": 4
+        },
+        {
+          "item_id": "f664cdba-bef7-40ec-bceb-378eb85d2998",
+          "contact_id": "KH00721-028",
+          "company_name": "上海ABB工程有限公司",
+          "contact_name": "许",
+          "scenario": "re_activation",
+          "suite_step": 2,
+          "old": "2026-07-20 13:20",
+          "new_date": "2026-07-20",
+          "new_time": "15:40",
+          "seq_in_day": 36
+        },
+        {
+          "item_id": "21bc2cbb-f20b-4c07-861e-55eb8e0a8225",
+          "contact_id": "KH00721-028",
+          "company_name": "上海ABB工程有限公司",
+          "contact_name": "许",
+          "scenario": "re_activation",
+          "suite_step": 4,
+          "old": "2026-08-21 10:50",
+          "new_date": "2026-08-21",
+          "new_time": "11:10",
+          "seq_in_day": 33
+        },
+        {
+          "item_id": "ea6f1686-2074-4cef-8fb6-64bd10db9d88",
+          "contact_id": "KH00721-077",
+          "company_name": "上海ABB工程有限公司",
+          "contact_name": "Sidney Chen",
+          "scenario": "re_activation",
+          "suite_step": 2,
+          "old": "2026-07-20 15:40",
+          "new_date": "2026-07-20",
+          "new_time": "15:50",
+          "seq_in_day": 37
+        },
+        {
+          "item_id": "f0f94a53-da78-48b4-8f0b-5fc1a83bed81",
+          "contact_id": "KH00721-077",
+          "company_name": "上海ABB工程有限公司",
+          "contact_name": "Sidney Chen",
+          "scenario": "re_activation",
+          "suite_step": 3,
+          "old": "2026-08-11 16:20",
+          "new_date": "2026-08-11",
+          "new_time": "16:30",
+          "seq_in_day": 40
+        },
+        {
+          "item_id": "9913aa2a-56cc-4375-b6ab-c1316aacc4df",
+          "contact_id": "KH00721-077",
+          "company_name": "上海ABB工程有限公司",
+          "contact_name": "Sidney Chen",
+          "scenario": "re_activation",
+          "suite_step": 4,
+          "old": "2026-08-21 11:10",
+          "new_date": "2026-08-21",
+          "new_time": "11:20",
+          "seq_in_day": 34
+        }
+      ],
+      "applied": true
+    }
+  ]
+}

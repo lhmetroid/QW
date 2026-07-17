@@ -1046,7 +1046,18 @@
                             <span id="asr-policy-status" class="text-[11px] text-slate-500"></span>
                         </div>
                     </div>
-                    <div class="text-[11px] text-slate-400">说明: 排期时"仅公共/个人优先当日不足用公共"会按上面规则把邮件分配到公共邮箱, 并在待发项记录发件箱; 转入CRM(同步保存ERP)时真发出口已按待发项发件箱标记(asr_sender_email)用公共邮箱发出, 签名仍按联系人对应在职销售代表赋值。</div>
+                    <div class="text-[11px] text-slate-400">说明: 排期时"仅公共/个人优先当日不足用公共"会按上面规则把邮件分配到公共邮箱, 并在待发项记录发件箱; 转入CRM(同步保存ERP)时真发出口会按待发项发件箱标记(asr_sender_email)用公共邮箱发出(需下方"公共邮箱池真发覆盖"开关打开), 签名任何情况下都按联系人对应在职销售代表赋值。</div>
+
+                    <!-- 邮件新功能特性开关: 默认全关, 打开才生效; 需人工配置的没配好就跳过 -->
+                    <div class="rounded-lg border border-rose-300 bg-rose-50/40 p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <h3 class="text-sm font-bold text-rose-900">新功能特性开关<span class="ml-1 cursor-help text-[11px] text-rose-500" title="凡是会真发邮件、覆盖发件人、取消或替换客户后续排期的动作, 默认全部关闭, 打开才生效; 需要人工配置的(如自检收件邮箱)没配好就自动跳过, 不报错也不误动。">ⓘ</span></h3>
+                            <button type="button" onclick="loadMailFeatureSwitches()" class="rounded border border-rose-300 bg-white px-2 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-100">刷新</button>
+                        </div>
+                        <div class="mt-1 text-[11px] text-rose-700">默认全关。未打开或缺少人工配置时，相关动作会自动跳过（不报错、不误动）。</div>
+                        <div id="mail-feature-switch-status" class="mt-2 text-[11px] text-slate-500"></div>
+                        <div id="mail-feature-switch-body" class="mt-2 space-y-2"></div>
+                    </div>
 
                     <!-- 第4块 4.2: 每天给自己发一封自检 -->
                     <div class="rounded-lg border border-sky-300 bg-sky-50/40 p-4">
@@ -4448,6 +4459,69 @@
             } catch (err) { if (statusEl) statusEl.textContent = '处理失败：' + err.message; }
         }
 
+        // 邮件新功能特性开关: 默认全关, 打开才生效; 需人工配置的没配好就跳过
+        async function loadMailFeatureSwitches() {
+            const statusEl = document.getElementById('mail-feature-switch-status');
+            const body = document.getElementById('mail-feature-switch-body');
+            if (!body) return;
+            if (statusEl) statusEl.textContent = '加载中…';
+            try {
+                const r = await fetch(`${window.location.origin}/api/v1/mail/feature-switches`, { credentials: 'include' });
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                const feats = d.features || [];
+                const onCnt = feats.filter(f => f.enabled).length;
+                if (statusEl) statusEl.textContent = `共 ${feats.length} 个开关，已打开 ${onCnt} 个。`;
+                body.innerHTML = feats.map((f) => {
+                    const cfgInputs = (f.config_keys || []).map((ck) => `
+                        <label class="text-[11px] text-slate-600">${escapeHtml(ck)}
+                          <input type="text" id="fsw-cfg-${escapeHtml(f.key)}-${escapeHtml(ck)}" value="${escapeHtml(String((f.config || {})[ck] || ''))}"
+                                 class="ml-1 rounded border border-slate-300 px-2 py-0.5 text-[11px]" placeholder="人工配置，未填则跳过">
+                        </label>`).join(' ');
+                    const req = (f.requires || []).length
+                        ? `<div class="text-[10px] text-slate-400">前置要求：${(f.requires || []).map(escapeHtml).join('；')}</div>` : '';
+                    return `<div class="rounded border ${f.enabled ? 'border-emerald-300 bg-emerald-50/50' : 'border-slate-200 bg-white'} p-2">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                          <label class="flex items-center gap-2 text-xs font-bold ${f.enabled ? 'text-emerald-800' : 'text-slate-700'}">
+                            <input type="checkbox" id="fsw-en-${escapeHtml(f.key)}" ${f.enabled ? 'checked' : ''}>
+                            ${escapeHtml(f.label)} <span class="font-normal ${f.enabled ? 'text-emerald-700' : 'text-slate-400'}">${f.enabled ? '已开启' : '已关闭(跳过)'}</span>
+                          </label>
+                          <div class="flex flex-wrap items-center gap-2">${cfgInputs}
+                            <button type="button" onclick="saveMailFeatureSwitch('${escapeHtml(f.key)}')" class="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">保存</button>
+                          </div>
+                        </div>
+                        <div class="mt-1 text-[10px] text-slate-500">${escapeHtml(f.desc)}</div>${req}
+                    </div>`;
+                }).join('');
+            } catch (err) {
+                if (statusEl) statusEl.textContent = '加载失败：' + err.message;
+                if (body) body.innerHTML = '';
+            }
+        }
+        async function saveMailFeatureSwitch(key) {
+            const statusEl = document.getElementById('mail-feature-switch-status');
+            const enEl = document.getElementById(`fsw-en-${key}`);
+            const payload = { key, enabled: !!(enEl && enEl.checked), config: {} };
+            document.querySelectorAll(`[id^="fsw-cfg-${key}-"]`).forEach((el) => {
+                const ck = el.id.replace(`fsw-cfg-${key}-`, '');
+                payload.config[ck] = el.value || '';
+            });
+            if (payload.enabled && !confirm(`确认打开【${key}】？打开后该动作会真实生效（可能真发邮件或改动排期）。`)) {
+                if (enEl) enEl.checked = false;
+                return;
+            }
+            if (statusEl) statusEl.textContent = '保存中…';
+            try {
+                const r = await fetch(`${window.location.origin}/api/v1/mail/feature-switch`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                loadMailFeatureSwitches();
+            } catch (err) { if (statusEl) statusEl.textContent = '保存失败：' + err.message; }
+        }
+
         // 第4块 4.2: 发件通道自检
         async function runMailSelfCheck() {
             const recipient = (document.getElementById('mail-selfcheck-recipient') || {}).value || '';
@@ -4811,6 +4885,8 @@
                 if (b) b.className = (m === mode) ? activeCls : inactiveCls;
             });
             if (mode === 'mailbox' && !asrMailboxLoaded) asrLoadMailboxes();
+            // 特性开关面板与邮箱规则同处模式③, 每次展开都拉最新状态
+            if (mode === 'mailbox' && typeof loadMailFeatureSwitches === 'function') loadMailFeatureSwitches();
             if (mode === 'trigger') asrUpdateTriggerApiDocs();
             if (mode === 'stats') asrLoadReplyRanking();
         }

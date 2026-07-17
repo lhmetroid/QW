@@ -1,0 +1,255 @@
+{
+  "generated_at": "2026-07-17T17:03:58.446629",
+  "waitsend_checked": 3536,
+  "item_map_count": 3536,
+  "plan_map_count": 3536,
+  "crm_queue_count": 3534,
+  "three_way_mismatches": [
+    {
+      "item_id": "d0110353-58e5-4783-a2c6-a11de144c02e",
+      "reason": "time_or_status_diff",
+      "local": "2026-07-21T14:30:00",
+      "send_plan": "2026-07-21T14:40:00",
+      "crm": "2026-07-21T14:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "f4e05a31-d972-494c-b3ae-4bb364d026cb",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-07T10:30:00",
+      "send_plan": "2026-08-07T10:40:00",
+      "crm": "2026-08-07T10:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "c87260ab-3223-4c33-8e04-799a9238379f",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-26T10:20:00",
+      "send_plan": "2026-08-26T10:30:00",
+      "crm": "2026-08-26T10:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "4472cac7-c4e1-4da1-aa87-fe38e3404137",
+      "reason": "time_or_status_diff",
+      "local": "2026-09-16T09:10:00",
+      "send_plan": "2026-09-16T09:20:00",
+      "crm": "2026-09-16T09:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "21bc2cbb-f20b-4c07-861e-55eb8e0a8225",
+      "reason": "missing_current_queue_without_final_status",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "d23d8bf1-43e3-48b3-bfce-21b4cbd06714",
+      "rowid": "bee5cf21-5069-4d91-979b-f9cfbebdbf2e",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "cb6814b0-af20-410f-884e-3addc7aa59fd",
+      "reason": "missing_current_queue_without_final_status",
+      "has_item": true,
+      "has_plan": true,
+      "has_queue": false,
+      "plan_id": "2ed46d3b-f3f8-4745-b994-24863b7b0da5",
+      "rowid": "1bf1ea65-3406-40c9-9397-b55242a808d6",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "8f3ec6e0-b9ea-4abd-9242-79edeeaceda3",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-13T16:00:00",
+      "send_plan": "2026-08-13T17:50:00",
+      "crm": "2026-08-13T17:50:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "c5e9199c-b7e7-4fae-9617-da6660ed0b5b",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-14T11:40:00",
+      "send_plan": "2026-08-14T17:20:00",
+      "crm": "2026-08-14T17:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "f9e84ed2-b5ac-4a0e-b68c-65466f5815f4",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-17T15:20:00",
+      "send_plan": "2026-08-17T17:40:00",
+      "crm": "2026-08-17T17:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "935d5846-04bf-4f3c-9bba-3f6453d753f1",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-13T13:10:00",
+      "send_plan": "2026-08-13T17:20:00",
+      "crm": "2026-08-13T17:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "61f2991e-dab2-46ae-8075-e468b6c3510d",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-17T12:30:00",
+      "send_plan": "2026-09-01T14:10:00",
+      "crm": "2026-09-01T14:10:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "64357abe-6c38-463e-b547-0e77f9f7e809",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-18T13:30:00",
+      "send_plan": "2026-08-18T17:20:00",
+      "crm": "2026-08-18T17:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "da702278-8a52-4f26-9680-eb8f4f320826",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-19T12:50:00",
+      "send_plan": "2026-09-01T14:30:00",
+      "crm": "2026-09-01T14:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "269df2ef-801b-41d6-aeba-17e10fa9db4f",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-20T09:10:00",
+      "send_plan": "2026-09-01T14:40:00",
+      "crm": "2026-09-01T14:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "1f52ca4a-fae4-453c-b3c2-330f9053463c",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-13T15:30:00",
+      "send_plan": "2026-08-13T17:40:00",
+      "crm": "2026-08-13T17:40:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "1aa30db1-a87b-4d0b-9adc-f6fd6a5dd165",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-14T11:10:00",
+      "send_plan": "2026-09-01T14:00:00",
+      "crm": "2026-09-01T14:00:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "f5b02542-ba86-40e1-bc13-c9399dececcf",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-17T14:50:00",
+      "send_plan": "2026-08-17T17:30:00",
+      "crm": "2026-08-17T17:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "62610dc5-0edb-4573-8513-875320a57710",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-14T13:30:00",
+      "send_plan": "2026-08-14T17:30:00",
+      "crm": "2026-08-14T17:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "f2e215cc-bf33-43fe-9892-be3d2b6b85e8",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-17T17:10:00",
+      "send_plan": "2026-08-17T17:50:00",
+      "crm": "2026-08-17T17:50:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "0c7fe130-fd16-48b7-9819-b12d32b8fae9",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-18T09:30:00",
+      "send_plan": "2026-09-01T14:20:00",
+      "crm": "2026-09-01T14:20:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "7b6393e1-2d37-4922-9281-ae49ee6c75e6",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-13T13:30:00",
+      "send_plan": "2026-08-13T17:30:00",
+      "crm": "2026-08-13T17:30:00",
+      "cached_status": "WaitSend"
+    },
+    {
+      "item_id": "637c27a4-b7e7-4420-857d-86786a5bbf7a",
+      "reason": "time_or_status_diff",
+      "local": "2026-08-17T12:50:00",
+      "send_plan": "2026-08-17T17:20:00",
+      "crm": "2026-08-17T17:20:00",
+      "cached_status": "WaitSend"
+    }
+  ],
+  "resolved_transitions": [],
+  "over_cap_days": [],
+  "gap_violations": [
+    {
+      "staff": "1607",
+      "date": "2026-07-17",
+      "left_minute": 1040,
+      "right_minute": 1044,
+      "left_source": "local",
+      "right_source": "crm_other",
+      "left_id": "36e7e8a1-106a-4fbc-a0fd-8b7db6bdce15",
+      "right_id": "64D54E96-88B4-4ED5-ABB4-D8626858332D"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-07-17",
+      "left_minute": 1044,
+      "right_minute": 1050,
+      "left_source": "crm_other",
+      "right_source": "local",
+      "left_id": "64D54E96-88B4-4ED5-ABB4-D8626858332D",
+      "right_id": "396f114e-4a79-49f0-9895-85cb7ee1e38e"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-17",
+      "left_minute": 630,
+      "right_minute": 636,
+      "left_source": "crm_ai",
+      "right_source": "crm_other",
+      "left_id": "E3D3F825-198B-412B-A3EF-2C7A8179D6F5",
+      "right_id": "01EDBE41-D2AD-4496-8769-20ABBFF8850B"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-17",
+      "left_minute": 636,
+      "right_minute": 640,
+      "left_source": "crm_other",
+      "right_source": "crm_ai",
+      "left_id": "01EDBE41-D2AD-4496-8769-20ABBFF8850B",
+      "right_id": "5C7C583D-B75B-4931-96A5-EBD089B96C4A"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-24",
+      "left_minute": 740,
+      "right_minute": 744,
+      "left_source": "crm_ai",
+      "right_source": "crm_other",
+      "left_id": "5E3EEE2B-B007-454D-B79F-91A8268EA3E6",
+      "right_id": "EAFFE6BA-B6A5-4287-9229-FE4C9C2EE61F"
+    },
+    {
+      "staff": "1607",
+      "date": "2026-08-24",
+      "left_minute": 744,
+      "right_minute": 750,
+      "left_source": "crm_other",
+      "right_source": "local",
+      "left_id": "EAFFE6BA-B6A5-4287-9229-FE4C9C2EE61F",
+      "right_id": "84e4d1ef-12c7-48ab-be9d-50f389249471"
+    }
+  ],
+  "ai_weekend_rows": [],
+  "max_combined_daily_count": 50
+}

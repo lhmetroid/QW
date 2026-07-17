@@ -23446,6 +23446,14 @@ def _autosend_commit_worker(staff: str, item_ids: list[str] | None = None, token
             cfg = _autosend_serialize_config(_autosend_get_or_create_config(db))
             skip_nwd = bool(cfg.get("skip_non_workdays", True))
             holiday_dates = cfg.get("holiday_dates", [])
+            # 第4块 4.1 开关: 默认关 -> 不用公共邮箱覆盖发件人, 始终走销售个人企业邮箱(与开关引入前行为一致)。
+            try:
+                import mail_feature_switch as _fsw
+                _public_send_on = _fsw.is_enabled(db, "public_mailbox_send")
+            except Exception:
+                _public_send_on = False
+            if not _public_send_on:
+                logger.info("AUTOSEND_COMMIT_PUBLIC_SEND_SKIPPED staff=%s 开关 public_mailbox_send 未打开, 发件人仍用个人邮箱", staff)
         finally:
             db.close()
 
@@ -23484,7 +23492,12 @@ def _autosend_commit_worker(staff: str, item_ids: list[str] | None = None, token
                 continue
 
             # 第4块: 公共邮箱池发件出口。排期竞争分配了公共发件箱时, 真发用它覆盖 From(签名仍按销售)。
-            _sender_override = str(asr_sender_email or "").strip() if str(asr_sender_kind or "") == "public" else ""
+            # 仅当 4.1 开关打开 且 排期确实分配了公共发件箱时才覆盖 From; 否则保持个人邮箱(跳过, 不误动)。
+            _sender_override = (
+                str(asr_sender_email or "").strip()
+                if (_public_send_on and str(asr_sender_kind or "") == "public")
+                else ""
+            )
             try:
                 req = MailCustomerSuiteSendRequest(
                     customer_id=cid,
@@ -25683,7 +25696,7 @@ def _mail_self_check_send_one(
 
 
 class MailSelfCheckSendRequest(BaseModel):
-    recipient: str                      # 自检收件人(发给自己)
+    recipient: str = ""                 # 自检收件人(发给自己); 留空则用开关里人工配置的 self_check_recipient
     dry_run: bool = True                # 默认只构造不真发, 显式置 False 才真写 CRM
     include_public: bool = True         # 遍历所有启用的公共邮箱做发件通道自检
     senders: list[str] | None = None    # 手动指定发件箱列表(留空=用启用的公共邮箱)
@@ -25694,11 +25707,24 @@ class MailSelfCheckSendRequest(BaseModel):
 def post_mail_self_check_send(payload: MailSelfCheckSendRequest, db: Session = Depends(get_db)):
     """4.2: 每天给自己发一封自检。遍历发件箱(默认所有启用公共邮箱)各发一封给自检收件人。
 
-    dry_run=True(默认)只构造 .eml 验证通道参数, 不写 CRM; dry_run=False 才真写 CRM 待发队列。
+    开关口径(默认关, 不误发):
+    - dry_run=True(默认): 只构造 .eml 验证通道参数, 不写 CRM, 不需要开关。
+    - dry_run=False(真发): 必须 `self_check_send` 开关已打开 **且** 人工配好 `self_check_recipient`,
+      否则不真发、直接返回 skipped 原因(不报错)。
     """
+    import mail_feature_switch as _fsw
     recipient = (payload.recipient or "").strip()
+    if not bool(payload.dry_run):
+        gate = _fsw.check(db, "self_check_send")   # 要求开关开 + config.self_check_recipient 已配
+        if not gate["ok"]:
+            return {"ok": True, "skipped": True, "reason": gate["reason"], "dry_run": False,
+                    "sender_count": 0, "success": 0, "results": []}
+        if not recipient:
+            recipient = str(gate["config"].get("self_check_recipient") or "").strip()
+    if not recipient:
+        recipient = str(_fsw.get_config(db, "self_check_send").get("self_check_recipient") or "").strip()
     if "@" not in recipient:
-        raise HTTPException(status_code=422, detail="recipient(自检收件邮箱)无效")
+        raise HTTPException(status_code=422, detail="recipient(自检收件邮箱)无效; 可在特性开关里配置 self_check_recipient")
     senders: list[dict] = []
     if payload.senders:
         for e in payload.senders:
@@ -26820,6 +26846,38 @@ def post_mail_reply_tiers_backfill(
         raise HTTPException(status_code=502, detail=f"分层回填失败: {sanitize_text(str(exc))[:200]}")
 
 
+# ===== 邮件新功能特性开关: 默认全关, 打开才生效; 需人工配置的没配好就跳过 =====
+@app.get("/api/v1/mail/feature-switches")
+def get_mail_feature_switches(db: Session = Depends(get_db)):
+    """列出所有邮件特性开关及其当前状态/配置/前置要求。"""
+    import mail_feature_switch as _fsw
+    try:
+        return {"ok": True, "features": _fsw.list_all(db)}
+    except Exception as exc:
+        logger.exception("MAIL_FEATURE_SWITCH_LIST_FAILED")
+        raise HTTPException(status_code=502, detail=f"读取特性开关失败: {sanitize_text(str(exc))[:200]}")
+
+
+class MailFeatureSwitchRequest(BaseModel):
+    key: str
+    enabled: bool | None = None      # None=本次不改开关状态
+    config: dict[str, Any] | None = None  # None=本次不改配置
+
+
+@app.put("/api/v1/mail/feature-switch")
+def put_mail_feature_switch(payload: MailFeatureSwitchRequest, db: Session = Depends(get_db)):
+    """打开/关闭某个特性开关, 或更新它的人工配置项(如自检收件邮箱)。"""
+    import mail_feature_switch as _fsw
+    try:
+        result = _fsw.set_switch(db, payload.key, enabled=payload.enabled, config=payload.config)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("MAIL_FEATURE_SWITCH_SET_FAILED")
+        raise HTTPException(status_code=502, detail=f"保存特性开关失败: {sanitize_text(str(exc))[:200]}")
+    return {"ok": True, "feature": result, "features": _fsw.list_all(db)}
+
+
 class MailInvalidRecipientApplyRequest(BaseModel):
     email: str
     customer_id: str = ""
@@ -26832,8 +26890,14 @@ def post_mail_invalid_recipient_apply(
     payload: MailInvalidRecipientApplyRequest,
     db: Session = Depends(get_db),
 ):
-    """5.1/5.2: 登记一个无效收件地址, 联动取消/替换该联系人后续未发排期; 返回三层结果。"""
+    """5.1/5.2: 登记一个无效收件地址, 联动取消/替换该联系人后续未发排期; 返回三层结果。
+
+    开关口径: `bounce_auto_link` 未打开时**只登记, 不取消/不替换任何排期**(返回里 link_plans=false)。
+    本接口是人工显式指定地址的入口, 故登记本身不需要 bounce_capture 开关。
+    """
     import mail_reply_tier as _tier
+    import mail_feature_switch as _fsw
+    _auto_link = _fsw.is_enabled(db, "bounce_auto_link")
 
     def _resolver(customer_id: str, contact_id: str) -> list[str]:
         key = (customer_id or "").strip() or (contact_id or "").strip()
@@ -26852,6 +26916,7 @@ def post_mail_invalid_recipient_apply(
             contact_id=payload.contact_id,
             reason=payload.reason or "manual",
             valid_email_resolver=_resolver,
+            link_plans=_auto_link,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -26866,8 +26931,20 @@ def post_mail_reply_tiers_process_bounces(
     limit: int = Query(500, ge=1, le=5000),
     db: Session = Depends(get_db),
 ):
-    """扫描判为退信(value_tier=invalid)但尚未登记无效地址的回信, 提取失效地址并联动取消/替换。"""
+    """扫描判为退信(value_tier=invalid)但尚未登记无效地址的回信, 提取失效地址并联动取消/替换。
+
+    开关口径(默认关, 不误动):
+    - `bounce_capture` 未开 -> 整个动作跳过(不扫描、不登记), 返回 skipped 原因。
+    - `bounce_auto_link` 未开 -> 只登记无效地址, **不取消/不替换任何后续排期**。
+    """
     import mail_reply_tier as _tier
+    import mail_feature_switch as _fsw
+    gate = _fsw.check(db, "bounce_capture")
+    if not gate["ok"]:
+        return {"ok": True, "skipped": True, "reason": gate["reason"],
+                "scanned": 0, "processed": 0, "linked": 0,
+                "aggregate": {"replaced_plans": 0, "cancelled_plans": 0, "died_addresses": 0}}
+    _auto_link = _fsw.is_enabled(db, "bounce_auto_link")
     _tier.ensure_tables(db)
 
     def _resolver(customer_id: str, contact_id: str) -> list[str]:
@@ -26900,12 +26977,16 @@ def post_mail_reply_tiers_process_bounces(
         res = _tier.apply_invalid_recipient(
             db, email=failed, customer_id=customer_id, reason="bounce",
             source_reply_id=reply_id, valid_email_resolver=_resolver,
+            link_plans=_auto_link,   # 联动开关未开 -> 只登记, 不动排期
         )
         linked += 1
         aggregate["died_addresses"] += 1
         aggregate["replaced_plans"] += int(res.get("replaced_plan_count") or 0)
         aggregate["cancelled_plans"] += int(res.get("cancelled_plan_count") or 0)
-    return {"ok": True, "scanned": len(rows), "processed": processed, "linked": linked, "aggregate": aggregate}
+    return {"ok": True, "scanned": len(rows), "processed": processed, "linked": linked,
+            "auto_link": bool(_auto_link),
+            "note": "" if _auto_link else "bounce_auto_link 开关未打开: 只登记了无效地址, 未取消/替换任何后续排期",
+            "aggregate": aggregate}
 
 
 @app.post("/api/v1/mail/ai-stats/broadcast")
