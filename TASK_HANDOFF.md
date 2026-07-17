@@ -2125,3 +2125,10 @@ ode --check scratch\frontend-mail-suite-current-check.js；git diff --check -- b
 - 修复提交已推送：514fc81 (ix(mail): unify suite scheduling and CRM truth)。
 - 只读访问 https://api.speedasia.net/static/mail-suite.html 返回 HTTP 200，但 Last-Modified=2026-07-14 06:34:40 GMT，确认生产静态页没有自动拉取本次提交；后端同样没有证据已重启到 514fc81。
 - 当前环境没有 C:\QW 生产服务器登录/重启入口。必须由服务器侧执行 git pull origin main 并重启 8071；部署前旧 worker 继续入队，新问题仍可能继续产生，因此 Task78A 保持[~]。
+
+## 2026-07-17 部署后复验新增：CRM合法槽位也必须回写本地显示时间
+
+- 复验发现64条缓存层错位：56条CRM/send_plan一致但页面本地项旧，8条本地/send_plan一致但CRM新。根因是重排计算会采用CRM真值，但无需移动时旧代码不执行changes回写。
+- backend/main.py 已改为：每次识别到CRM实时待发，无论是否需要改槽，都先把CRM权威日期/时间/SendId/WaitSend状态回写 mail_autosend_plan_item 与 mail_customer_suite_send_plan；若随后需要重排，再由新槽覆盖。
+- 存量已回收。最终跨表：4202+物理待发与业务键一一对应，重复/未映射/共享引用/SendId重号/撞槽均0；合并口径超50=0、间隔不足10分钟=0、非工作日=0、最大日量50；连续预演global=0、unified=0。
+- 线上何珺接口抽查300条：display_status缺失0，crm_pending=75、send_success=209、drafted=16。两条队列表缺失项经分表核实均为合法WaitSend，验证器现归类pending_in_send_info。

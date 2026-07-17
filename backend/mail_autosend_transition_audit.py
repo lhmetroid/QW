@@ -57,6 +57,8 @@ def main() -> None:
             truth = sent.get((str(plan[1] or ""), str(plan[2] or "")))
             if truth and str(truth[1] or "").lower() == "sendsuccess" and truth[3] is None:
                 classification = "send_success"
+            elif truth and str(truth[1] or "").lower() in ("waitsend", "sending") and truth[3] is None:
+                classification = "pending_in_send_info"
             elif str(plan[3] or "").lower() == "deleted":
                 classification = "deleted"
             else:

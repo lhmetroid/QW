@@ -119,6 +119,10 @@ def test_reschedule_scope_and_time_only_crm_contract():
     forbidden = ("SET Subject", "SET EmailContent", "SET PureText", "EmlFtpPath=", "Receiver=")
     assert not any(x in helper_source for x in forbidden), helper_source
     assert "crm_pending_meta" in helper_source and "restore=True" not in helper_source
+    rescheduler = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == "_autosend_reschedule_plan")
+    rescheduler_source = ast.get_source_segment(SOURCE, rescheduler) or ""
+    assert "plan_date=COALESCE(:truth_day,plan_date)" in rescheduler_source
+    assert "plan_send_time=:dt" in rescheduler_source and "truth_dt" in rescheduler_source
 
 
 def test_whole_crm_pending_suite_is_rebuilt_from_saved_intervals():

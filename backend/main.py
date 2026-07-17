@@ -23315,13 +23315,26 @@ def _autosend_reschedule_plan(db: Session, staff: str, apply_changes: bool,
         crm_changed = False
         try:
             for item_id, meta in {**crm_pending_meta, **crm_actual_meta}.items():
+                truth_dt = meta.get("old_plan_dt")
                 db.execute(
                     text("UPDATE mail_autosend_plan_item SET status='sent', "
                          "crm_send_id=COALESCE(NULLIF(:sid,''),crm_send_id), "
+                         "plan_date=COALESCE(:truth_day,plan_date), "
+                         "plan_time=COALESCE(:truth_time,plan_time), send_time=COALESCE(:truth_time,send_time), "
                          "committed_at=COALESCE(committed_at,now()), commit_error=NULL, updated_at=now() "
                          "WHERE item_id=:i"),
-                    {"sid": str(meta.get("send_id") or ""), "i": item_id},
+                    {"sid": str(meta.get("send_id") or ""), "i": item_id,
+                     "truth_day": truth_dt.date() if truth_dt is not None else None,
+                     "truth_time": truth_dt.strftime("%H:%M") if truth_dt is not None else None},
                 )
+                # 即使 CRM 当前槽位合法、无需再次移动，也必须把权威时间写回本地两层；
+                # 旧逻辑只在 changes 中回写，导致页面继续显示旧日期而 CRM 已是新日期。
+                if truth_dt is not None and meta.get("plan_id"):
+                    db.execute(
+                        text("UPDATE mail_customer_suite_send_plan SET plan_send_time=:dt, "
+                             "crm_send_status='WaitSend', status_synced_at=now() WHERE plan_id=:pid"),
+                        {"dt": truth_dt, "pid": meta["plan_id"]},
+                    )
             for c in changes:
                 db.execute(
                     text("UPDATE mail_autosend_plan_item SET plan_date=:d, plan_time=:t, send_time=:t, "
