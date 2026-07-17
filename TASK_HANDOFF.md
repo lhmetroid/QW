@@ -2119,3 +2119,9 @@ ode --check scratch\frontend-mail-suite-current-check.js；git diff --check -- b
 - 已完成数据：25 条同一物理 RowId 的本地影子计划已取消，未删 CRM 邮件；曾对全销售存量做 CRM+本地统一时间回收并达到二次预演 0。
 - 当前动态：线上 C:\QW 服务未更新，验证期间 CRM 待发持续增加，说明旧 worker 仍在运行。最新只读审计仍保持业务重复/共享引用/SendId重号/撞槽为0，但偶发新增缺 SendId 会由新状态同步逻辑唯一回链。不要把 Task78A 标[x]。
 - 下一步：推送 main 后，在生产服务器执行 git pull 并重启 8071 后端；启动前如不希望旧队列自动续跑，先设置 MAIL_AUTOSEND_AUTO_RESUME=0。部署后运行状态同步、全量只读审计和统一零变更预演，再用浏览器确认绿色=已发送、蓝色=CRM待发送，并抽查何珺。
+
+## 2026-07-17 13:18:59 生产部署阻断确认
+
+- 修复提交已推送：514fc81 (ix(mail): unify suite scheduling and CRM truth)。
+- 只读访问 https://api.speedasia.net/static/mail-suite.html 返回 HTTP 200，但 Last-Modified=2026-07-14 06:34:40 GMT，确认生产静态页没有自动拉取本次提交；后端同样没有证据已重启到 514fc81。
+- 当前环境没有 C:\QW 生产服务器登录/重启入口。必须由服务器侧执行 git pull origin main 并重启 8071；部署前旧 worker 继续入队，新问题仍可能继续产生，因此 Task78A 保持[~]。
