@@ -20058,11 +20058,12 @@ def _mail_suite_existing_pending_plan(db: Session, *, customer_id: str, scenario
     """
     candidates = db.execute(
         text("SELECT plan_id, spqueue_rowid, COALESCE(crm_send_id,''), plan_send_time "
-             "FROM mail_customer_suite_send_plan WHERE customer_id=:c AND scenario=:sc "
+             "FROM mail_customer_suite_send_plan WHERE scenario=:sc "
              "AND suite_step=:st AND COALESCE(inputer_staff_id,'')=:staff "
-             "AND lower(COALESCE(recipient_email_key,''))=:recipient "
+             "AND ((:recipient<>'' AND lower(COALESCE(recipient_email_key,''))=:recipient) "
+             "OR (:recipient='' AND customer_id=:c)) "
              "AND status IN ('enqueued','duplicate_skipped') "
-             "AND COALESCE(spqueue_rowid,'')<>'' AND lower(COALESCE(crm_send_status,''))<>'deleted' "
+             "AND COALESCE(spqueue_rowid,'')<>'' "
              "ORDER BY CASE WHEN status='enqueued' THEN 0 ELSE 1 END, created_at DESC"),
         {"c": customer_id, "sc": scenario, "st": int(suite_step), "staff": staff_id or "",
          "recipient": (recipient_key or "").lower()},
@@ -20102,7 +20103,8 @@ def _mail_suite_existing_pending_plan(db: Session, *, customer_id: str, scenario
                 if send_id and re.fullmatch(r"[0-9A-Za-z_-]{1,80}", send_id):
                     info = crm_db.execute(
                         text(f"SELECT TOP 1 PlanSendTime, ISNULL(Status,''), DeleteTime "
-                             f"FROM [spSendInfo{staff_id}] WHERE SendId=:sid AND MessageType='Email'"),
+                             f"FROM [spSendInfo{staff_id}] WHERE SendId=:sid AND MessageType='Email' "
+                             f"AND ISNULL(CAST(UseRange AS NVARCHAR(200)),'') LIKE '%宣传邮件-AI%'"),
                         {"sid": send_id},
                     ).fetchone()
                     if info and info[2] is None and str(info[1] or "").lower() in ("waitsend", "sending", "sendsuccess"):
@@ -20156,8 +20158,9 @@ def _spqueue_pending_duplicate_rowid(recipient_emails: list[str], subject: str, 
 def _enqueue_dedup_key(staff_id: str, recipient_key: str, customer_id: str, scenario: str, suite_step: int) -> str:
     """入队幂等键: 销售 + 联系人 + 场景 + 封次 + 收件人；排期或主题变化不能产生第二条待发。"""
     import hashlib as _hl
-    raw = "|".join([str(staff_id or ""), str(customer_id or ""), str(scenario or ""),
-                    str(int(suite_step)), str(recipient_key or "").lower()])
+    recipient_identity = str(recipient_key or "").strip().lower()
+    contact_identity = recipient_identity or str(customer_id or "").strip()
+    raw = "|".join([str(staff_id or ""), contact_identity, str(scenario or ""), str(int(suite_step))])
     return _hl.md5(raw.encode("utf-8", "ignore")).hexdigest()
 
 
@@ -20466,8 +20469,21 @@ def send_mail_customer_suite(
     except Exception:
         logger.exception("MAIL_SUITE_SEND_WORKDAY_CFG_FAILED")
         _skip_nwd, _extra_holidays = True, []
-    # 本批已占用的发送日: 跨周末顺延会把相邻两封挤到同一个周一(如间隔5天/6天都落到周末),
-    # 客户同一天收两封。故同批内再撞日就继续往后找下一个工作日。
+    # 所有套装入口共用销售级槽位账本：CRM 实时待发 + 本地尚未转入的排期都占位，
+    # 统一执行每日上限、10分钟间隔、工作日和当天安全提前量，不能让不同联系人都落到 09:00。
+    _slot_snapshot = _autosend_crm_pending_snapshot(owner_staff_id or "", now_bj.date()) if owner_staff_id else []
+    _slot_occupied = _autosend_crm_pending_slots(owner_staff_id or "", now_bj.date(), snapshot=_slot_snapshot) if owner_staff_id else {}
+    _suite_slot_book = _AutosendSlotBook(
+        _slot_occupied, int(_wd_cfg.get("daily_cap") or 50) if '_wd_cfg' in locals() else 50,
+        now_bj.date(), now_bj.hour * 60 + now_bj.minute, _skip_nwd, _extra_holidays)
+    if owner_staff_id:
+        _local_slots = db.execute(text(
+            f"SELECT plan_date,plan_time FROM mail_autosend_plan_item WHERE owner_staff_id=:staff "
+            f"AND status IN ({_AUTOSEND_SCHEDULED_SQL_IN}) AND plan_date>=:today"
+        ), {"staff":owner_staff_id,"today":now_bj.date()}).fetchall()
+        for _local_day, _local_time in _local_slots:
+            _suite_slot_book.occupy_fixed(_local_day, _autosend_parse_hhmm(_local_time) or _AUTOSEND_DAY_START_MINUTE)
+    # 本批已占用的发送日: 跨周末顺延会把相邻两封挤到同一个周一时，继续后移。
     _used_days: set = set()
     import uuid as _uuid
     batch_id = _uuid.uuid4().hex
@@ -20520,9 +20536,15 @@ def send_mail_customer_suite(
         _plan_day = _autosend_next_workday(_base_dt.date(), _skip_nwd, _extra_holidays)
         while _plan_day in _used_days:   # 同批撞日(顺延导致), 再往后找一个工作日
             _plan_day = _autosend_next_workday(_plan_day + timedelta(days=1), _skip_nwd, _extra_holidays)
+        _requested_minute = hh * 60 + mm
+        _plan_day, _slot_minute, _slot_seq = _suite_slot_book.take(_plan_day, _requested_minute)
+        while _plan_day in _used_days:
+            _plan_day, _slot_minute, _slot_seq = _suite_slot_book.take(
+                _autosend_next_workday(_plan_day + timedelta(days=1), _skip_nwd, _extra_holidays))
         _used_days.add(_plan_day)
+        _slot_hh, _slot_mm = divmod(_slot_minute, 60)
         plan_dt = _base_dt.replace(year=_plan_day.year, month=_plan_day.month, day=_plan_day.day,
-                                   hour=hh, minute=mm, second=0, microsecond=0)
+                                   hour=_slot_hh, minute=_slot_mm, second=0, microsecond=0)
         body_text = _mail_suite_html_to_text(final_body_html)
         # 幂等去重(三道): ① 业务级—同销售+联系人+场景+封次+收件人已有 CRM 待发则复用原行;
         # ② 内容级—同收件人+同主题+同计划日兜底; ③ 稳定业务 dedup_key 防并发/重启重跑。
@@ -21306,6 +21328,7 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
     load = dict(existing_load or {})  # {(owner, 'YYYY-MM-DD'): count}
     items: list[dict] = []
     skipped: list[dict] = []
+    claimed_recipient_suites: set[tuple[str, str, str]] = set()
     for c in contacts:
         cid = c.get("contact_id")
         owner = str(c.get("owner_staff_id") or "")
@@ -21332,6 +21355,15 @@ def _autosend_schedule(contacts: list[dict], rules: list[dict], interval_days: l
                 "detail": "符合的套装都已发过/跳过(含兜底), 本次不发" if reason == "all_used" else "无可用套装规则",
             })
             continue
+        recipient_identity = str(c.get("email") or "").strip().lower()
+        recipient_suite_key = (owner, recipient_identity, str(scenario)) if recipient_identity else (owner, f"contact:{cid}", str(scenario))
+        if recipient_suite_key in claimed_recipient_suites:
+            skipped.append({
+                "contact_id": cid,"owner_staff_id": owner,"reason": "duplicate_recipient_suite",
+                "detail": "同一销售、同一收件邮箱已安排该套装，本次跳过重复联系人记录",
+            })
+            continue
+        claimed_recipient_suites.add(recipient_suite_key)
         prev_actual = None
         first = True
         base_actual = None       # 首封真实落位日: 后续累计间隔必须锚定这里
@@ -22102,76 +22134,133 @@ class AutosendPreviewRequest(BaseModel):
 
 
 def _autosend_align_crm_status(db, items: list[dict]) -> None:
-    """读层对齐 CRM 状态，但必须锁定到同一个联系人。
-
-    之前只按 customer_id + scenario + suite_step 对齐，同一客户公司下 Vera / liyu tang
-    这类多联系人会互相继承 CRM 待发行，导致点 liyu tang 读出 Vera 正文。这里必须同时匹配
-    销售、客户、套装、封次和收件邮箱，匹配不上就保持本地状态，不借用别人的 CRM 行。
-    """
+    """列表读取时以 CRM 实时事实覆盖本地缓存，保证所有销售的颜色、状态、时间同源。"""
     if not items:
         return
     customer_ids = {str(it.get("customer_id") or it.get("contact_id") or "").strip() for it in items}
-    customer_ids = {x for x in customer_ids if x}
+    customer_ids.discard("")
     if not customer_ids:
         return
     try:
         rows = db.execute(
             text("SELECT customer_id, scenario, suite_step, inputer_staff_id, "
                  "COALESCE(recipient_email_key,''), COALESCE(spqueue_rowid,''), COALESCE(crm_send_id,''), "
-                 "CASE WHEN crm_send_status='SendSuccess' OR crm_fact_send_time IS NOT NULL THEN 2 ELSE 1 END AS rk, "
                  "plan_send_time, COALESCE(crm_send_status,''), crm_fact_send_time "
                  "FROM mail_customer_suite_send_plan "
-                 "WHERE customer_id IN :ids AND status IN ('enqueued','duplicate_skipped') "
-                 "AND COALESCE(crm_send_status,'') <> 'deleted'")
+                 "WHERE customer_id IN :ids AND status IN ('enqueued','duplicate_skipped') ")
             .bindparams(bindparam("ids", expanding=True)),
             {"ids": list(customer_ids)},
         ).fetchall()
     except Exception:
         logger.exception("AUTOSEND_PLAN_CRM_ALIGN_FAILED")
         return
-    crm_map: dict[tuple[str, str, int, str, str], tuple[int, str, str, Any, str, Any]] = {}
-    for c, sc, st, staff, recipient_key, rowid, send_id, rk, plan_dt, crm_status, fact_dt in rows:
-        if st is None:
+
+    by_staff: dict[str, list] = {}
+    for row in rows:
+        staff = str(row[3] or "")
+        if re.fullmatch(r"[0-9A-Za-z]{1,8}", staff):
+            by_staff.setdefault(staff, []).append(row)
+    queue_truth: dict[tuple[str, str], dict] = {}
+    info_truth: dict[tuple[str, str], dict] = {}
+    try:
+        from crm_database import CRMSessionLocal
+        crm_db = CRMSessionLocal()
+        try:
+            for staff, staff_rows in by_staff.items():
+                rowids = sorted({str(r[5] or "") for r in staff_rows if str(r[5] or "")})
+                for pos in range(0, len(rowids), 200):
+                    chunk = rowids[pos:pos + 200]
+                    params = {f"r{i}": value for i, value in enumerate(chunk)}
+                    marks = ",".join(f":r{i}" for i in range(len(chunk)))
+                    found = crm_db.execute(text(
+                        f"SELECT CAST(RowId AS NVARCHAR(64)),PlanSendTime,ISNULL(CAST(SendId AS NVARCHAR(80)),'') "
+                        f"FROM spQueueSend WHERE CAST(RowId AS NVARCHAR(64)) IN ({marks}) "
+                        f"AND MessageType='Email' AND ISNULL(FolderId,'')='OutBox' "
+                        f"AND ISNULL(InputerStaffId,'')=:staff AND ISNULL(UseRange,'') LIKE '%宣传邮件-AI%'"
+                    ), {**params, "staff": staff}).fetchall()
+                    for rowid, plan_dt, send_id in found:
+                        queue_truth[(staff, str(rowid or "").lower())] = {
+                            "status":"WaitSend","plan_dt":plan_dt,"fact_dt":None,
+                            "send_id":str(send_id or ""),"rowid":str(rowid or ""),"source":"queue",
+                        }
+                send_ids = sorted({str(r[6] or "") for r in staff_rows if str(r[6] or "")})
+                for pos in range(0, len(send_ids), 200):
+                    chunk = send_ids[pos:pos + 200]
+                    params = {f"s{i}": value for i, value in enumerate(chunk)}
+                    marks = ",".join(f":s{i}" for i in range(len(chunk)))
+                    found = crm_db.execute(text(
+                        f"SELECT ISNULL(CAST(SendId AS NVARCHAR(80)),''),ISNULL(Status,''),"
+                        f"FactSendTime,PlanSendTime,DeleteTime FROM [spSendInfo{staff}] "
+                        f"WHERE SendId IN ({marks}) AND MessageType='Email' "
+                        f"AND ISNULL(CAST(UseRange AS NVARCHAR(200)),'') LIKE '%宣传邮件-AI%'"
+                    ), params).fetchall()
+                    for send_id, status, fact_dt, plan_dt, delete_time in found:
+                        key = (staff, str(send_id or "").lower())
+                        truth = {"status":"deleted" if delete_time else str(status or ""),
+                                 "plan_dt":plan_dt,"fact_dt":fact_dt,"send_id":str(send_id or ""),
+                                 "rowid":"","source":"send_info"}
+                        old = info_truth.get(key)
+                        rank = 3 if truth["status"].lower() == "sendsuccess" else (2 if delete_time is None else 1)
+                        old_rank = (3 if old and old["status"].lower() == "sendsuccess" else
+                                    (2 if old and old["status"].lower() != "deleted" else 1))
+                        if old is None or rank > old_rank:
+                            info_truth[key] = truth
+        finally:
+            crm_db.close()
+    except Exception:
+        logger.exception("AUTOSEND_CRM_LIVE_ALIGN_FAILED")
+        return
+
+    crm_map: dict[tuple[str, str, int, str, str], tuple[int, dict]] = {}
+    for row in rows:
+        customer, scenario, step, staff, recipient_key, rowid, send_id = row[:7]
+        if step is None:
             continue
-        key = (str(c or ""), str(sc or ""), int(st), str(staff or ""), str(recipient_key or "").lower())
+        truth = queue_truth.get((str(staff or ""), str(rowid or "").lower()))
+        if truth is None and send_id:
+            truth = info_truth.get((str(staff or ""), str(send_id or "").lower()))
+        if truth is None:
+            truth = {"status":"pending_or_deleted","plan_dt":row[7],"fact_dt":None,
+                     "send_id":str(send_id or ""),"rowid":"","source":"missing"}
+        display = _mail_delivery_display_status(truth["status"], "enqueued", truth.get("fact_dt"))
+        rank = 4 if display == "send_success" else (3 if display == "crm_pending" else (2 if display == "deleted" else 1))
+        key = (str(customer or ""),str(scenario or ""),int(step),str(staff or ""),str(recipient_key or "").lower())
         old = crm_map.get(key)
-        val = (int(rk or 1), str(rowid or ""), str(send_id or ""), plan_dt, str(crm_status or ""), fact_dt)
-        if old is None or val[0] > old[0]:
-            crm_map[key] = val
+        if old is None or rank > old[0]:
+            crm_map[key] = (rank, truth)
+
     for it in items:
         it["display_status"] = _mail_delivery_display_status(local_status=it.get("status"))
-        sc = str(it.get("scenario") or "")
         try:
-            st = int(it.get("suite_step") or 0)
+            step = int(it.get("suite_step") or 0)
         except (TypeError, ValueError):
             continue
         recipient_key = _autosend_receiver_key(str(it.get("recipient_email") or "")).lower()
         if not recipient_key:
             continue
-        base_ids = [str(it.get("customer_id") or "").strip(), str(it.get("contact_id") or "").strip()]
         hit = None
-        for cid in base_ids:
-            if not cid:
-                continue
-            hit = crm_map.get((cid, sc, st, str(it.get("owner_staff_id") or ""), recipient_key))
+        for customer in (str(it.get("customer_id") or "").strip(), str(it.get("contact_id") or "").strip()):
+            if customer:
+                hit = crm_map.get((customer,str(it.get("scenario") or ""),step,
+                                   str(it.get("owner_staff_id") or ""),recipient_key))
             if hit:
                 break
-        if hit:
-            rk, rowid, send_id, plan_dt, crm_status, fact_dt = hit
-            it["status"] = "sent"
-            it["display_status"] = _mail_delivery_display_status(crm_status, "enqueued", fact_dt)
-            it["crm_synced"] = True
-            it["crm_sent"] = (it["display_status"] == "send_success")
-            authoritative_dt = fact_dt if it["crm_sent"] and fact_dt is not None else plan_dt
-            if authoritative_dt is not None:
-                it["plan_date"] = authoritative_dt.date().isoformat()
-                it["plan_time"] = authoritative_dt.strftime("%H:%M")
-                it["send_time"] = it["plan_time"]
-            if rowid:
-                it["spqueue_rowid"] = rowid
-            if send_id:
-                it["crm_send_id"] = send_id
-
+        if not hit:
+            continue
+        _rank, truth = hit
+        it["status"] = "sent"
+        it["display_status"] = _mail_delivery_display_status(truth["status"], "enqueued", truth.get("fact_dt"))
+        it["crm_synced"] = truth["source"] != "missing"
+        it["crm_sent"] = it["display_status"] == "send_success"
+        authoritative_dt = truth.get("fact_dt") if it["crm_sent"] else truth.get("plan_dt")
+        if authoritative_dt is not None:
+            it["plan_date"] = authoritative_dt.date().isoformat()
+            it["plan_time"] = authoritative_dt.strftime("%H:%M")
+            it["send_time"] = it["plan_time"]
+        if truth.get("rowid"):
+            it["spqueue_rowid"] = truth["rowid"]
+        if truth.get("send_id"):
+            it["crm_send_id"] = truth["send_id"]
 def _autosend_plan_where(staff: str, statuses, company_tokens=None):
     """构造排期清单 WHERE 子句与参数(销售 + 状态 + 可选公司名多词 OR), 供列表与计数共用, 保证口径一致。"""
     clauses = []
@@ -22713,7 +22802,7 @@ def _autosend_crm_pending_snapshot(staff: str, start_date) -> list[dict]:
         ).fetchall()
         info_rows = crm_db.execute(
             text(f"SELECT ISNULL(CAST(SendId AS NVARCHAR(80)),''), PlanSendTime "
-                 f"FROM [spSendInfo{staff}] WHERE MessageType='Email' AND Status='WaitSend' "
+                 f"FROM [spSendInfo{staff}] WHERE MessageType='Email' AND Status IN ('WaitSend','Sending') "
                  f"AND DeleteTime IS NULL AND PlanSendTime >= :start"),
             {"start": start_dt},
         ).fetchall()
@@ -22744,8 +22833,13 @@ def _autosend_crm_pending_slots(staff: str, start_date, exclude_rowids=None, exc
     rows = snapshot if snapshot is not None else _autosend_crm_pending_snapshot(staff, start_date)
     out: dict = {}
     for row in rows:
-        if (str(row.get("rowid") or "").lower() in excluded_rows
-                or str(row.get("send_id") or "").lower() in excluded_sends):
+        source = str(row.get("source") or "queue")
+        # RowId 才是队列表物理主键。历史上同一销售也出现过多个队列行共用 SendId；
+        # 若用一个 SendId 释放所有队列槽，会把另一封误当成本套装并反复排进同一分钟。
+        if source == "queue":
+            if str(row.get("rowid") or "").lower() in excluded_rows:
+                continue
+        elif str(row.get("send_id") or "").lower() in excluded_sends:
             continue
         plan_dt = row.get("plan_dt")
         if plan_dt is None:
@@ -22861,7 +22955,8 @@ def _autosend_crm_sent_snapshot(staff: str, send_ids: list[str]) -> dict[str, di
             marks = ",".join(f":sid{j}" for j in range(len(chunk)))
             rows = crm_db.execute(text(
                 f"SELECT SendId, ISNULL(Status,''), FactSendTime, PlanSendTime, DeleteTime "
-                f"FROM [spSendInfo{staff}] WHERE SendId IN ({marks}) AND MessageType='Email'"
+                f"FROM [spSendInfo{staff}] WHERE SendId IN ({marks}) AND MessageType='Email' "
+                f"AND ISNULL(CAST(UseRange AS NVARCHAR(200)),'') LIKE '%宣传邮件-AI%'"
             ), params).fetchall()
             for send_id, status, fact_dt, plan_dt, deleted_at in rows:
                 out[str(send_id or "")] = {
@@ -22899,11 +22994,19 @@ def _autosend_apply_crm_time_changes(staff: str, changes: list[dict],
                     {"dt": plan_dt, "rid": rowid},
                 ).rowcount or 0)
             if send_id:
-                info_updated = int(crm_db.execute(
-                    text(f"UPDATE [spSendInfo{staff}] SET PlanSendTime=:dt "
-                         "WHERE SendId=:sid AND MessageType='Email' AND Status='WaitSend' AND DeleteTime IS NULL"),
-                    {"dt": plan_dt, "sid": send_id},
-                ).rowcount or 0)
+                same_send_queue_count = int(crm_db.execute(
+                    text("SELECT COUNT(1) FROM spQueueSend WHERE MessageType='Email' "
+                         "AND InputerStaffId=:staff AND CAST(SendId AS NVARCHAR(80))=:sid"),
+                    {"staff": staff, "sid": send_id},
+                ).scalar() or 0)
+                # 分表记录按 SendId 定位；同销售多个队列行撞 SendId 时它是歧义键，绝不能批量改到
+                # 某一封的时间。队列已迁出(0)或 SendId 在队列内唯一(1)时才可安全同步分表。
+                if same_send_queue_count <= 1:
+                    info_updated = int(crm_db.execute(
+                        text(f"UPDATE [spSendInfo{staff}] SET PlanSendTime=:dt "
+                             "WHERE SendId=:sid AND MessageType='Email' AND Status IN ('WaitSend','Sending') AND DeleteTime IS NULL"),
+                        {"dt": plan_dt, "sid": send_id},
+                    ).rowcount or 0)
             if queue_updated + info_updated < 1:
                 raise RuntimeError(f"CRM 待发记录已变化或不存在: RowId={rowid}, SendId={send_id}")
         crm_db.commit()

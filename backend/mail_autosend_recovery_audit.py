@@ -47,7 +47,7 @@ def main():
             text(
                 "SELECT i.item_id, i.run_id, i.contact_id, COALESCE(i.customer_id,i.contact_id), "
                 "i.owner_staff_id, i.scenario, i.suite_step, i.plan_date, i.plan_time, i.status, "
-                "COALESCE(r.interval_days_csv,'') "
+                "COALESCE(r.interval_days_csv,''), lower(COALESCE(i.recipient_email,'')) "
                 "FROM mail_autosend_plan_item i LEFT JOIN mail_autosend_run r ON r.run_id=i.run_id "
                 "WHERE i.status IN :statuses" + staff_sql +
                 " ORDER BY i.run_id, i.contact_id, i.scenario, i.suite_step"
@@ -85,7 +85,7 @@ def main():
                 text(
                     "SELECT plan_id, customer_id, inputer_staff_id, scenario, suite_step, plan_send_time, "
                     "status, COALESCE(spqueue_rowid,''), COALESCE(crm_send_id,''), "
-                    "COALESCE(crm_send_status,''), crm_fact_send_time "
+                    "COALESCE(crm_send_status,''), crm_fact_send_time, lower(COALESCE(recipient_email_key,'')), created_at "
                     "FROM mail_customer_suite_send_plan WHERE customer_id IN :ids"
                 ).bindparams(bindparam("ids", expanding=True)), {"ids": batch},
             ).fetchall())
@@ -109,7 +109,7 @@ def main():
                     f"SELECT CAST(RowId AS NVARCHAR(64)), ISNULL(CAST(SendId AS NVARCHAR(80)),''), PlanSendTime "
                     f"FROM spQueueSend WHERE CAST(RowId AS NVARCHAR(64)) IN ({marks}) AND MessageType='Email'"
                 ), params).fetchall():
-                    queue_by_rowid[str(rowid)] = {"status": "WaitSend", "send_id": str(send_id or ""), "plan_time": plan_dt.isoformat() if plan_dt else None}
+                    queue_by_rowid[str(rowid).lower()] = {"status": "WaitSend", "send_id": str(send_id or ""), "plan_time": plan_dt.isoformat() if plan_dt else None}
         for staff, sendids in by_staff_sendids.items():
             if not staff.isalnum() or len(staff) > 8:
                 continue
@@ -135,15 +135,22 @@ def main():
 
     plan_map = defaultdict(list)
     for p in plans:
-        plan_map[(str(p[1] or ""), str(p[3] or ""), int(p[4] or 0))].append(p)
+        plan_map[(str(p[1] or ""),str(p[2] or ""),str(p[3] or ""),int(p[4] or 0),str(p[11] or ""))].append(p)
+    def plan_rank(p):
+        queue_live = bool(str(p[7] or "") and str(p[7]).lower() in queue_by_rowid)
+        info = sent_by_key.get((str(p[2] or ""),str(p[8] or ""))) if str(p[8] or "") else None
+        info_live = bool(info and str(info.get("status") or "").lower() in ("waitsend","sending","sendsuccess"))
+        active = str(p[6] or "") in ("enqueued","duplicate_skipped")
+        return (queue_live, info_live, active, p[12] or datetime.min, str(p[0]))
+
     records = []
     for r in affected:
-        key = (str(r[3] or ""), str(r[5] or ""), int(r[6] or 0))
-        candidates = sorted(plan_map.get(key, []), key=lambda p: (str(p[0])), reverse=True)
+        key = (str(r[3] or ""),str(r[4] or ""),str(r[5] or ""),int(r[6] or 0),str(r[11] or ""))
+        candidates = sorted(plan_map.get(key, []), key=plan_rank, reverse=True)
         plan = candidates[0] if candidates else None
         truth = None
         if plan:
-            truth = queue_by_rowid.get(str(plan[7] or "")) or sent_by_key.get((str(plan[2] or ""), str(plan[8] or "")))
+            truth = queue_by_rowid.get(str(plan[7] or "").lower()) or sent_by_key.get((str(plan[2] or ""), str(plan[8] or "")))
         records.append({
             "item_id": str(r[0]), "run_id": str(r[1] or ""), "contact_id": str(r[2] or ""),
             "customer_id": str(r[3] or ""), "staff_id": str(r[4] or ""), "scenario": str(r[5] or ""),

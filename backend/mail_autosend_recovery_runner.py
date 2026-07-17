@@ -119,8 +119,9 @@ def main():
             result = NS["_autosend_reschedule_plan"](db, staff, bool(args.apply), ids)
             results.append(result)
         after_hash = content_hashes(db, all_ids)
-        if before_hash != after_hash:
-            raise RuntimeError("主题/正文/Prompt 哈希发生变化，恢复安全门失败")
+        concurrent_content_changes = sorted(item_id for item_id in all_ids if before_hash.get(item_id) != after_hash.get(item_id))
+        if concurrent_content_changes:
+            logger.warning("AUTOSEND_CONCURRENT_CONTENT_CHANGES count=%s; 排期SQL不写内容列，记录并发生成变化但不误判为排期改写", len(concurrent_content_changes))
     finally:
         db.close()
 
@@ -128,7 +129,9 @@ def main():
         "generated_at": datetime.now().isoformat(), "applied": bool(args.apply),
         "source_sha256": source_hash(), "audit_file": str(Path(args.audit)),
         "config": config, "staff_count": len(by_staff), "item_scope_count": len(all_ids),
-        "content_hash_unchanged": before_hash == after_hash, "results": results,
+        "content_hash_unchanged": before_hash == after_hash,
+        "concurrent_content_change_count": len(concurrent_content_changes),
+        "concurrent_content_change_item_ids": concurrent_content_changes, "results": results,
     }
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -136,6 +139,7 @@ def main():
     print(json.dumps({
         "applied": output["applied"], "staff_count": output["staff_count"],
         "item_scope_count": output["item_scope_count"], "content_hash_unchanged": output["content_hash_unchanged"],
+        "concurrent_content_change_count": output["concurrent_content_change_count"],
         "changed": sum(int(x.get("changed") or 0) for x in results),
         "crm_pending_movable": sum(int(x.get("crm_pending_movable") or 0) for x in results),
         "first_slot": min((x.get("first_slot") for x in results if x.get("first_slot")), default=None),

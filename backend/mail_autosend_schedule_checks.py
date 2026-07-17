@@ -90,6 +90,13 @@ def test_capacity_slots_and_no_same_day_suite():
         assert (days[3] - days[0]).days >= 24, days
 
 
+def test_same_recipient_same_scenario_is_scheduled_once():
+    rows = contacts(2)
+    rows[1]["email"] = rows[0]["email"]
+    result = schedule(rows, RULES, [1, 10, 19, 25], 50, date(2026, 7, 16))
+    assert len(result["items"]) == 4, result
+    assert any(x.get("reason") == "duplicate_recipient_suite" for x in result["skipped"]), result
+
 def test_holiday_weekend_and_makeup_workday():
     holiday = schedule(contacts(1), RULES, [1, 10, 19, 25], 50, date(2026, 9, 25))["items"][0]
     assert holiday["plan_date"] == "2026-09-28", holiday
@@ -107,6 +114,8 @@ def test_reschedule_scope_and_time_only_crm_contract():
     helper = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == "_autosend_apply_crm_time_changes")
     helper_source = ast.get_source_segment(SOURCE, helper) or ""
     assert "UPDATE spQueueSend SET PlanSendTime=:dt" in helper_source
+    assert "same_send_queue_count <= 1" in helper_source
+    assert "InputerStaffId=:staff" in helper_source
     forbidden = ("SET Subject", "SET EmailContent", "SET PureText", "EmlFtpPath=", "Receiver=")
     assert not any(x in helper_source for x in forbidden), helper_source
     assert "crm_pending_meta" in helper_source and "restore=True" not in helper_source
@@ -190,7 +199,9 @@ def test_whole_crm_pending_suite_is_rebuilt_from_saved_intervals():
 def test_logical_suite_step_dedup_does_not_depend_on_date_or_subject():
     helper = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == "_mail_suite_existing_pending_plan")
     helper_source = ast.get_source_segment(SOURCE, helper) or ""
-    assert "customer_id=:c AND scenario=:sc" in helper_source
+    assert "FROM mail_customer_suite_send_plan WHERE scenario=:sc" in helper_source
+    assert "(:recipient<>'' AND lower(COALESCE(recipient_email_key,''))=:recipient)" in helper_source
+    assert "OR (:recipient='' AND customer_id=:c)" in helper_source
     assert "suite_step=:st" in helper_source
     assert "recipient_email_key" in helper_source
     assert "FROM spQueueSend" in helper_source and "FolderId,'')='OutBox'" in helper_source
@@ -200,7 +211,17 @@ def test_logical_suite_step_dedup_does_not_depend_on_date_or_subject():
     snapshot = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == "_autosend_crm_pending_snapshot")
     snapshot_source = ast.get_source_segment(SOURCE, snapshot) or ""
     assert "FROM spQueueSend" in snapshot_source
-    assert "Status='WaitSend'" in snapshot_source and "spSendInfo{staff}" in snapshot_source
+    slots_fn = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == "_autosend_crm_pending_slots")
+    slots_ns = {"dict": dict}
+    exec(compile(ast.Module(body=[slots_fn], type_ignores=[]), str(MAIN), "exec"), slots_ns)
+    duplicate_send_snapshot = [
+        {"rowid":"row-a","send_id":"shared","plan_dt":datetime(2026,8,11,17,0),"source":"queue"},
+        {"rowid":"row-b","send_id":"shared","plan_dt":datetime(2026,8,11,17,10),"source":"queue"},
+    ]
+    remaining = slots_ns["_autosend_crm_pending_slots"](
+        "1607", date(2026,8,1), ["row-a"], ["shared"], duplicate_send_snapshot)
+    assert remaining == {date(2026,8,11): [17 * 60 + 10]}, remaining
+    assert "Status IN ('WaitSend','Sending')" in snapshot_source and "spSendInfo{staff}" in snapshot_source
 
     key_fn = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == "_enqueue_dedup_key")
     key_source = ast.get_source_segment(SOURCE, key_fn) or ""
